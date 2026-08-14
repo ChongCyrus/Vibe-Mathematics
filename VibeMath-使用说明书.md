@@ -1,11 +1,11 @@
-# Vibe Math 多代理数学问题求解与验证框架 · 使用说明书（永久 preset 版）
+# Vibe Math 多代理数学问题求解与验证框架 · 使用说明书
 
 > 本插件是一个**永久 agent preset**（`vibe-math`），运行在 DeepSeek Harness 内，实现
 > “广度探索 → 深度迭代 → 交叉验证 → 知识沉淀”的闭环，用于自动求解数学问题、
 > 多代理交叉验证结论，并支持**断点续跑**与**中途人工干预（并继续）**。
 >
-> 与早期“动态插件 + 浏览器面板”版本不同：本版本是**纯 Host 侧、无浏览器 UI** 的持久插件，
-> 通过 16 个 `vibe_math_*` 工具 + `/vibe` 斜杠命令驱动，进程重启后**自动加载，无需重新 define/run**。
+> 本插件是**纯 Host 侧**的持久插件，通过 20 个 `vibe_math_*` 工具 + `/vibe` 斜杠命令驱动，
+> 进程重启后**自动加载**。
 
 ---
 
@@ -15,7 +15,7 @@
 2. [安装与启动（选 preset 开新会话）](#2-安装与启动)
 3. [目录结构与数据文件（按项目）](#3-目录结构与数据文件)
 4. [快速上手（5 分钟跑通）](#4-快速上手5-分钟跑通)
-5. [控制工具清单（16 个）](#5-控制工具清单)
+5. [控制工具清单（20 个）](#5-控制工具清单)
 6. [斜杠命令 /vibe](#6-斜杠命令-vibe)
 7. [工作流详解](#7-工作流详解)
 8. [人工 / 自动模式](#8-人工--自动模式)
@@ -33,7 +33,7 @@
 
 | 角色 | 说明 |
 |---|---|
-| 调度器（插件代码） | 唯一主控：读 `qs.csv`、派发子代理、写文件、推进状态机，按优先级 2>3>1 循环。 |
+| 调度器（插件代码） | 唯一主控：读 `qs.csv`、派发子代理、写文件、推进状态机，按固定顺序循环（验证 → 晋升 → 判定 → 求解）。 |
 | Brainstorm 子代理 | 元认知头脑风暴，为问题拆出若干个“大相径庭”的求解方向。 |
 | Solver 子代理 | 每个方向一个专属求解器，**同一会话内多轮迭代**，产出引理/碎片结论/完整解法/存活概率。 |
 | 验证器子代理 | 每个验证单元 **≥3 个**独立“严苛审稿人”，独立审查 → 辩论 → 裁决。 |
@@ -55,15 +55,15 @@ C:\Users\<你>\.dsh\.agent-presets\vibe-math\
 **使用步骤（重要）**：preset 只在**新建会话并选中该 preset** 时生效。
 
 1. 新建一个会话，在 preset 选择器里选 **“Vibe Math”**；
-2. 会话启动后，工具列表里应出现 16 个 `vibe_math_*` 工具，输入框键入 `/vibe` 有自动补全；
-3. 直接对话即可（无需任何 `cordis_define` / `cordis_run`）。
+2. 会话启动后，工具列表里应出现 20 个 `vibe_math_*` 工具，输入框键入 `/vibe` 有自动补全；
+3. 直接对话即可。
 
-> 当前正在运行的 `cordis` 会话**不会**自动挂载该 preset；`/vibe` 与 `vibe_math_*` 工具
-> 只在你新开的 “Vibe Math” 会话里可用。
+> “Vibe Math” preset 只在其**自身会话**里生效；其它会话不会挂载该 preset，`/vibe` 与
+> `vibe_math_*` 工具只在 “Vibe Math” 会话里可用。
 >
 > **重要：修改 preset 文件（`vibe-math.js` / `agent.cordis.yml`）后，必须重启 DSH 进程再开新会话。**
 > 原因：preset 的“standing mount”在首次挂载后**缓存到进程退出为止**，仅仅新开会话不会重新读取
-> 已改动的组合文件；不重启会继续用旧代码（例如看不到后来新增的 `/vibe` 命令）。
+> 已改动的组合文件。
 
 ### 会话内的模型上下文（skill/说明）
 
@@ -220,14 +220,13 @@ vibe_math_interrupt_agent {"childId":"<childId>"}
 
 ## 7. 工作流详解
 
-调度器每次“tick”按固定优先级推进（与规格一致）：
+调度器每次“tick”按固定顺序循环推进（每轮都执行）：
 
 ```
-优先级 2 > 3 > 1：
-  (2) 验证结果处理：Pending_Verification → 拆解 → 派验证器（并补齐缺的验证器）
-      （以及 Temp_Validated → Verified 的依赖满足后晋升扫描）
-  (3) Verified 出现新文件 → 派判定器 → 回写 qs.csv
-  (1) 取优先级最高未解决问题 → solve(q)
+1) 验证结果处理：Pending_Verification → 拆解 → 派验证器（并补齐缺的验证器）
+2) 晋升扫描：Temp_Validated → Verified（依赖链满足后原子移动）
+3) 判定器：Verified 出现新文件 → 判断是否解决某题 → 回写 qs.csv
+4) solve(q)：取优先级最高未解决问题，头脑风暴 / 派生方向 / 派求解器
 ```
 
 **并发铁律**：任何“派发新代理”前必须等 `active_sub_agents_count < maxParallelThreshold`。
@@ -252,7 +251,7 @@ vibe_math_interrupt_agent {"childId":"<childId>"}
   `Pending_Verification/`；`dead-end` 或达到 `solverMaxRounds` → 记录归因，方向关闭。
   （`max-tokens` 截断视为 `continue` 续跑，而非误判死路。）
 - **分支递归**：Solver 提出 `aux_hypotheses`（高复杂度子问题）→ 调度器把子问题加进 `qs.csv`
-  （id=`{qid}_sub_{n}`）、记入 `dependencies.json`、异步 `solve(q_sub)`，当前方向先“临时假设成立”继续。
+  （id=`{qid}_sub_{唯一id}`）、记入 `dependencies.json`、异步 `solve(q_sub)`，当前方向先“临时假设成立”继续。
 
 ### 7.3 验证与结果处理
 
@@ -313,7 +312,7 @@ vibe_math_interrupt_agent {"childId":"<childId>"}
      （继续辩论或出裁决），不会因中断而卡死；
    - 冷恢复各子会话（DSH continuable 机制自动完成）。
 
-> 提示：preset 是永久插件，重启 DSH 后**无需重新 define/run**，只需在新会话里 `vibe_math_resume`。
+> 提示：preset 是永久插件，重启 DSH 后**无需重装**，只需在新会话里 `vibe_math_resume`。
 
 ---
 
@@ -388,9 +387,8 @@ vibe_math_interrupt_agent {"childId":"<childId>"}
 
 ## 12. 常见问题
 
-**Q1：我在当前会话里看不到 `vibe_math_*` 工具 / `/vibe`？**
-本插件是**永久 preset**，只在**新建会话并选择 “Vibe Math” preset** 时挂载；当前 `cordis`
-会话不会挂载它。
+**Q1：我看不到 `vibe_math_*` 工具 / `/vibe`？**
+本插件是**永久 preset**，只在**新建会话并选择 “Vibe Math” preset** 时挂载；其它会话不会挂载它。
 
 **Q2：`VibeMath` 目录建在哪里？**
 在根代理会话工作区下，即 `<会话 cwd>/VibeMath`。用 `vibe_math_status` 的 `frameworkRoot`

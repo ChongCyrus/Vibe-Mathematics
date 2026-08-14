@@ -57,7 +57,7 @@ LLM 推理并返回结构化 JSON，从不直接写文件——从构造上满�
 
 1. 新建会话，选 **“Vibe Math”** preset。
 2. `vibe_math_add_problem {id:"q1", description:"证明……", priority:0}`（或 `/vibe add q1 证明……`）。
-3. `vibe_math_start` → 调度器按优先级 2>3>1 自动推进：头脑风暴 → Solver 多轮迭代 →
+3. `vibe_math_start` → 调度器自动循环推进：头脑风暴 → Solver 多轮迭代 →
    验证（独立审查+辩论+裁决）→ 晋升 Verified → 判定器回写 qs 状态。
 4. 需要人工把关时 `vibe_math_set_mode manual`，在关键节点 `vibe_math_decide` 裁决后继续。
 5. 中断/重启后新开会话，`vibe_math_resume` 从 `VibeMath_State` 与持久子会话恢复。
@@ -70,6 +70,6 @@ provider/model；`solverPersona`/`verifierPersona` 可注入人格。
 
 ## 六、注意
 
-- **preset 只在新建会话并选中 “Vibe Math” 时生效**；当前 `cordis` 会话不挂载它。
+- **preset 只在新建会话并选中 “Vibe Math” 时生效**；其它会话不挂载它。
 - 框架根目录由根代理会话 cwd 决定（`<cwd>/VibeMath`），可看 `vibe_math_status` 的 `frameworkRoot`。
 - 完整使用与已知边界见 `VibeMath-使用说明书.md`。
