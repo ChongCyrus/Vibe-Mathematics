@@ -1,0 +1,7 @@
+# Runtime data produced by the framework (never commit)
+VibeMath/
+*.log
+.DS_Store
+node_modules/
+.vscode/
+.idea/
