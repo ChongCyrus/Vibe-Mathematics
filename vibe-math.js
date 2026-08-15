@@ -269,7 +269,7 @@ export function apply(ctx) {
   function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
 
   // ================= init / control =================
-  async function resolveRootAgent(agent) { try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} if (agent) rootAgent = agent; return rootAgent }
+  async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
   async function init(agent) { await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }; currentProject = await readCurrentProject(); await ensureDirs(); if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n'); params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await loadState(); scheduler.activeCount = 0; await saveAll(); return { ok: true } }
   async function startScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
@@ -434,7 +434,7 @@ export function apply(ctx) {
     ctx.effect(() => tools.register({
       name: name, description: description, parameters: parameters,
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
-      execute: async function (args, exec) { try { const agent = (exec && exec.agent) || undefined; return JSON.stringify(await executeFn(args || {}, agent)) } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) } },
+      execute: async function (args, exec) { try { const agent = (exec && exec.agent) || undefined; await resolveRootAgent(agent); if (rootAgent) currentProject = await readCurrentProject(); return JSON.stringify(await executeFn(args || {}, agent)) } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) } },
     }))
   }
 
