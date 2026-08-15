@@ -1,0 +1,42 @@
+{
+  "name": "dsh-vibe-math",
+  "description": "Multi-agent mathematical problem-solving & verification framework for DeepSeek Harness: breadth-first brainstorm, iterative solving, multi-verifier cross-validation with debate, and a Verified knowledge base — with checkpoint resume and mid-run human intervention.",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "vibe-math.js",
+  "exports": {
+    ".": "./vibe-math.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "vibe-math.js",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "agent-preset",
+    "multi-agent",
+    "mathematics",
+    "math",
+    "theorem-proving",
+    "verification",
+    "solver",
+    "llm-agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChongCyrus/Vibe-Mathematics.git"
+  },
+  "homepage": "https://github.com/ChongCyrus/Vibe-Mathematics#readme",
+  "bugs": {
+    "url": "https://github.com/ChongCyrus/Vibe-Mathematics/issues"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,5 +1,8 @@
 # Vibe Mathematics — 多代理数学问题求解与验证框架
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
+
 > 一个运行在 **DeepSeek Harness** 内的**永久 agent preset**（`vibe-math`）。
 > 它用「**广度探索 → 深度迭代 → 交叉验证 → 知识沉淀**」的闭环，自动求解数学问题，
 > 并对每个结论做多代理交叉验证；支持**断点续跑**与**中途人工干预**，全程可由自然语言驱动。
@@ -63,6 +66,24 @@
 ---
 
 ## 🚀 安装
+
+两种安装方式，任选其一（也可并存）：
+
+### 方式 A：作为插件包一键安装（推荐）
+
+发布到 npm 后：
+
+```sh
+dsh plugin --profile <你的 profile> add dsh-vibe-math
+```
+
+不发布也能直接从 GitHub 装：
+
+```sh
+dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
+```
+
+### 方式 B：作为 agent preset 手动安装
 
 1. 把本仓库的三个文件放到 preset 目录：
 
