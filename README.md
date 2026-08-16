@@ -42,6 +42,65 @@
 
 ---
 
+## 🧩 架构图
+
+> 静态 PNG 预览 + 可编辑 Mermaid 图源（GitHub 原生渲染）；完整流程说明见 [docs/架构图.md](docs/架构图.md)。
+
+![Vibe Math 架构图](示例图/框架图.png)
+
+```mermaid
+flowchart TB
+    subgraph L1["👤 交互层"]
+        U["😀 用户（自然语言）"]
+        M["🤖 主代理（助手 + 汇报者）<br/>翻译需求 · 汇报进度 · 问答配置<br/>不求解 · 不调度"]
+    end
+
+    subgraph L2["⚙️ 调度层（插件代码）"]
+        SCHED["调度器 Scheduler<br/>唯一文件写者<br/>读 qs.csv · 派发子代理 · 推进状态机"]
+    end
+
+    subgraph L3["🧠 子代理层（continuable 持久会话）"]
+        BRAIN["🧭 Brainstorm<br/>拆解多个求解方向"]
+        SOLV["✍️ Solver × N<br/>逐方向多轮迭代"]
+        DERI["🔀 Derive<br/>死路时派生新方向"]
+        VERI["🔬 Verifier × ≥3<br/>独立审查 → 辩论 → 裁决"]
+        DECI["⚖️ Decider<br/>判定是否解决"]
+    end
+
+    subgraph L4["💾 数据层 · VibeMath/Projects/&lt;项目&gt;/"]
+        QS["📋 qs.csv"]
+        PEND["📥 Pending_Verification/"]
+        UNDR["📂 Under_Verification/"]
+        TVAL["✅ Temp_Validated/"]
+        KNOW["📚 Verified/ 可信知识库"]
+        STATE["🗄️ Progress_Logs/ · VibeMath_State/"]
+    end
+
+    U -->|"求解 XX / 查进度 / 干预"| M
+    M -->|"vibe_math_* 工具"| SCHED
+
+    SCHED -->|"① 派发"| BRAIN
+    BRAIN -->|"多个大相径庭的方向"| SCHED
+    SCHED -->|"② 每方向一个"| SOLV
+    SOLV -->|"结构化结果 JSON"| SCHED
+    SOLV -.->|"迭代至卡死"| DERI
+    DERI -->|"派生 1~3 个新方向"| SCHED
+    SCHED -->|"③ 写盘"| PEND
+    SCHED -->|"④ 拆解为最小验证单元"| UNDR
+    SCHED -->|"⑤ 派发 ≥3 个"| VERI
+    VERI -->|"裁决 JSON"| SCHED
+    SCHED -->|"⑥ 通过"| TVAL
+    SCHED -->|"⑦ 晋升"| KNOW
+    SCHED -->|"⑧ 派发"| DECI
+    DECI -->|"⑨ 已解决 → 回写"| QS
+    SCHED <-->|"读取问题"| QS
+    SCHED <-->|"状态落盘 / 断点恢复"| STATE
+```
+
+**一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
+
+---
+
 ## 📁 目录结构
 
 框架数据落在会话工作区的 `VibeMath/` 下，每个项目一套完整布局：
