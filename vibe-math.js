@@ -1,19 +1,47 @@
 // Vibe Math — permanent host plugin: multi-agent mathematical problem solving &
 // verification framework ("广度探索 → 深度迭代 → 交叉验证 → 知识沉淀").
 //
-// Preset-local plugin, import-free (Node's ESM resolver cannot see the harness's
-// TypeScript sources). Registers 20 model tools, /vibe slash commands, and a
-// background scheduler; provides NO service, so it sits loose in the preset.
+// Preset-local plugin. Only node: builtins are imported (the harness's own
+// TypeScript sources are not reachable via ESM resolution). Registers 20 model
+// tools, /vibe slash commands, and a background scheduler; provides NO service,
+// so it sits loose in the preset.
 //
 // Projects: each math project lives in its own folder under
 // <workspace>/VibeMath/Projects/<project>/ with its own qs/Verified/... layout.
 // The current project is recorded in <workspace>/VibeMath/current.json.
 // Default parameters can be overridden by an (optionally commented) JSON file:
 // <project>/vibe_math_setting.json (fallback <workspace>/VibeMath/vibe_math_setting.json).
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// Ensure the agent-preset form is installed under the DSH preset root, so a
+// market/bundle install also surfaces "Vibe Math" in the agent-preset picker.
+// No-op when the preset already exists or when running inside the preset itself.
+function ensurePresetInstalled(logger) {
+  try {
+    const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh')
+    const presetDir = join(dshHome, '.agent-presets', 'vibe-math')
+    const here = dirname(fileURLToPath(import.meta.url))
+    const files = ['agent.cordis.yml', 'preset.yml', 'vibe-math.js']
+    if (files.every((f) => existsSync(join(presetDir, f)))) return false
+    if (!files.every((f) => existsSync(join(here, f)))) return false
+    mkdirSync(presetDir, { recursive: true })
+    for (const f of files) writeFileSync(join(presetDir, f), readFileSync(join(here, f)))
+    logger?.info?.('[vibe-math] agent preset installed to %s (visible in the preset picker for new sessions)', presetDir)
+    return true
+  } catch (err) {
+    logger?.warn?.('[vibe-math] could not install agent preset: %s', String(err?.message ?? err))
+    return false
+  }
+}
+
 export const name = 'vibe-math'
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
 
 export function apply(ctx) {
+  ensurePresetInstalled(ctx.logger)
   const subagents = ctx.subagents
   const agents = ctx.agents
   const fs = ctx.fs
