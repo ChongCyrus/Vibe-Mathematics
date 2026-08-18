@@ -46,8 +46,11 @@ def arrow(x1, y1, x2, y2, label=None, lx=0, ly=0.24, ls=9.5, rad=0.0,
 def band(x0, y0, x1, y1, fc, title, tc="#607D8B"):
     ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, facecolor=fc,
                            edgecolor="none", alpha=0.5, zorder=1))
-    ax.text(x0 + 0.3, y1 - 0.16, title, fontsize=11.5, color=tc,
-            fontweight="bold", ha="left", va="top", zorder=2)
+    # title pinned to the band's top-left corner, drawn ABOVE the boxes, with a
+    # white backing so it is never obscured by the rectangles
+    ax.text(x0 + 0.35, y1 - 0.12, title, fontsize=11.5, color=tc,
+            fontweight="bold", ha="left", va="top", zorder=6,
+            bbox=dict(fc="white", ec="none", alpha=0.85, pad=1.2))
 
 # ── title ────────────────────────────────────────────────────────────────
 ax.text(9, 11.12, "Vibe Math — 多代理数学问题求解与验证框架", fontsize=22,
