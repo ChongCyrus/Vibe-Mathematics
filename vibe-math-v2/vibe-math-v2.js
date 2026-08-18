@@ -51,6 +51,7 @@ export function apply(ctx) {
     reportMode: 'file',           // file | push | both
     promoteValueThreshold: 0.7,   // Propos → qs auto-promotion threshold (价值/关键性)
     priorityAdjust: 'none',       // none | deadend-deprioritize | survival-map
+    proposPriorityAdjust: 'none', // none | progress-graded（按定论接近度+证明/证伪材料量动态调命题优先级）
     tickIntervalMs: 2000,         // 调度器心跳间隔（毫秒）
     activityLogCap: 100,          // 活动日志保留条数（report.recentActivity 最多显示 30 条）
     maxExplorerRetries: 3,        // explorer 重派生上限（拆方向失败重试次数）
@@ -135,6 +136,7 @@ export function apply(ctx) {
     { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
     { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
     { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
+    { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整：none=不自动调；progress-graded=按「定论接近度（|布尔估计-0.5|）+ 证明/证伪材料量」重算，越接近定论越优先验证', suggestion: 'none' },
     { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
     { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 report.recentActivity 的细节量，报告最多显示 30 条）', suggestion: 100 },
     { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限（达到后该问题标记为方向耗尽）', suggestion: 3 },
@@ -175,6 +177,7 @@ export function apply(ctx) {
       else if (k === 'verdictMode') { out[k] = (v === 'flat' || v === 'forced') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'reportMode') { out[k] = (v === 'file' || v === 'push' || v === 'both') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'priorityAdjust') { out[k] = (v === 'none' || v === 'deadend-deprioritize' || v === 'survival-map') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'proposPriorityAdjust') { out[k] = (v === 'none' || v === 'progress-graded') ? v : DEFAULT_PARAMS[k] }
       else { out[k] = v }
     }
     return out
@@ -495,14 +498,15 @@ export function apply(ctx) {
   }
   // note 4: probability-1 rules
   async function processStatusUpdates() {
-    let changed = false
     const qs = await getQs()
+    let qsChanged = false
     for (let i = 0; i < qs.length; i++) {
       const q = qs[i]
-      if (q.解法列表 && q.解法列表.some(function (s) { return s.正确概率 === 1 })) { if (!q.已解决) changed = true; q.已解决 = true; q.优先级 = 'never' }
+      if (q.解法列表 && q.解法列表.some(function (s) { return s.正确概率 === 1 })) { if (!q.已解决) qsChanged = true; q.已解决 = true; q.优先级 = 'never' }
     }
-    if (changed) { await writeQs(qs); logActivity('update', 'problems marked solved by probability-1 solutions') }
+    if (qsChanged) { await writeQs(qs); logActivity('update', 'problems marked solved by probability-1 solutions') }
     const propos = await getPropos()
+    let closedPromoted = false
     for (let i = 0; i < propos.length; i++) {
       const p = propos[i]
       let pChanged = false
@@ -511,32 +515,61 @@ export function apply(ctx) {
       if (proofOne && p.布尔估计 !== 1) { p.布尔估计 = 1; pChanged = true }
       else if (refuteOne && p.布尔估计 !== 0) { p.布尔估计 = 0; pChanged = true }
       if ((p.布尔估计 === 1 || p.布尔估计 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
-      if (p.布尔估计 === 1 || p.布尔估计 === 0) { if (await writeVerifiedCardIfNeeded(p)) pChanged = true }
+      if (p.布尔估计 === 1 || p.布尔估计 === 0) {
+        if (await writeVerifiedCardIfNeeded(p)) pChanged = true
+        // 源命题已定论 → 关闭其晋升出的"僵尸"问题（避免永远未解决）
+        const srcMarker = '由命题 ' + p.id + '（'
+        for (let j = 0; j < qs.length; j++) {
+          const qj = qs[j]
+          if (!qj.已解决 && String(qj.progress || '').indexOf(srcMarker) !== -1) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
+        }
+      }
       if (pChanged) await upsertProposition(p)
     }
+    if (closedPromoted) { await writeQs(qs); logActivity('update', 'promoted problems closed because their source proposition resolved') }
   }
   async function processPriorityAdjust() {
     const mode = params.priorityAdjust || 'none'
-    if (mode === 'none') return
-    const qs = await getQs()
-    let changed = false
-    for (let i = 0; i < qs.length; i++) {
-      const q = qs[i]
-      if (q.已解决 || q.优先级 === 'never') continue
-      const prog = parseProgress(q)
-      if (mode === 'deadend-deprioritize') {
-        if (prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' })) {
-          const cur = Number(q.优先级); if (Number.isFinite(cur) && cur < 10) { q.优先级 = 10; changed = true }
-        }
-      } else if (mode === 'survival-map') {
-        if (prog.directions.length > 0) {
-          const maxSurv = Math.max.apply(null, prog.directions.map(function (d) { return Number(d.survival) || 0 }))
-          const target = Math.round(Math.max(0, Math.min(10, 10 - 10 * maxSurv)))
-          if (q.优先级 !== target) { q.优先级 = target; changed = true }
+    if (mode !== 'none') {
+      const qs = await getQs()
+      let changed = false
+      for (let i = 0; i < qs.length; i++) {
+        const q = qs[i]
+        if (q.已解决 || q.优先级 === 'never') continue
+        const prog = parseProgress(q)
+        if (mode === 'deadend-deprioritize') {
+          if (prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' })) {
+            const cur = Number(q.优先级); if (Number.isFinite(cur) && cur < 10) { q.优先级 = 10; changed = true }
+          }
+        } else if (mode === 'survival-map') {
+          if (prog.directions.length > 0) {
+            const maxSurv = Math.max.apply(null, prog.directions.map(function (d) { return Number(d.survival) || 0 }))
+            const target = Math.round(Math.max(0, Math.min(10, 10 - 10 * maxSurv)))
+            if (q.优先级 !== target) { q.优先级 = target; changed = true }
+          }
         }
       }
+      if (changed) { await writeQs(qs); logActivity('priority', 'priorities auto-adjusted (' + mode + ')') }
     }
-    if (changed) { await writeQs(qs); logActivity('priority', 'priorities auto-adjusted (' + mode + ')') }
+    const pMode = params.proposPriorityAdjust || 'none'
+    if (pMode === 'progress-graded') {
+      const propos = await getPropos()
+      const changedProps = []
+      for (let i = 0; i < propos.length; i++) {
+        const p = propos[i]
+        if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
+        const closeness = Math.abs(Number(p.布尔估计) - 0.5)
+        const material = Math.min(5, (p.证明列表 || []).length + (p.证伪列表 || []).length)
+        const score = closeness * 1.2 + material * 0.08
+        const target = Math.round(Math.max(0, Math.min(10, 10 - 10 * score)))
+        const cur = Number(p.优先级)
+        if (Number.isFinite(cur) && cur !== target) { p.优先级 = target; changedProps.push(p) }
+      }
+      if (changedProps.length > 0) {
+        for (let i = 0; i < changedProps.length; i++) await upsertProposition(changedProps[i])
+        logActivity('priority', 'proposition priorities auto-adjusted (progress-graded)')
+      }
+    }
   }
   // note 3 + user 价值 field: promote high-value unresolved propositions into qs.json
   async function processPromote() {
@@ -583,7 +616,7 @@ export function apply(ctx) {
       for (let j = 0; j < sols.length; j++) {
         const s = sols[j]
         if (s.正确概率 === 1 || s.正确概率 === 0 || s.已验) continue
-        out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, priority: q.优先级 === 'never' ? 999 : Number(q.优先级) })
+        out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, prob: Number(s.正确概率) || 0, priority: q.优先级 === 'never' ? 999 : Number(q.优先级) })
       }
     }
     const propos = await getPropos()
@@ -592,13 +625,13 @@ export function apply(ctx) {
       if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       if (proofs.length === 0 && refutes.length === 0) {
-        out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
+        out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
       } else {
-        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
-        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, prob: Number(refutes[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
       }
     }
-    out.sort(function (a, b) { return a.priority - b.priority })
+    out.sort(function (a, b) { if (a.priority !== b.priority) return a.priority - b.priority; return (b.prob || 0) - (a.prob || 0) })
     return out
   }
   async function backfillVerifiers(t) {
@@ -686,6 +719,7 @@ export function apply(ctx) {
     const prog = parseProgress(q)
     const dir = prog.directions.find(function (d) { return d.id === dirId })
     if (!dir) { delete agentRegistry[childId]; return }
+    if (!parsed && !scheduler.running) { delete agentRegistry[childId]; return } // abort：不把方向标记为死路，保留待 resume
     const status = (parsed && parsed.status) || statusFromStop(stopReason)
     dir.round = meta.round
     if (parsed) {
@@ -742,9 +776,11 @@ export function apply(ctx) {
   function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
   async function addLemmaAsProposition(qid, lemma) {
     if (!lemma || !lemma.title) return
+    let be = clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6)
+    if (be >= 1) be = 0.99; else if (be <= 0) be = 0.01 // 写入时概率必须 <1 且 >0（待验证器验证）
     const p = {
       id: 'p-' + shortId(), 概述: lemma.statement || lemma.title,
-      布尔估计: clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6),
+      布尔估计: be,
       细类型: (lemma.细类型 && typeof lemma.细类型 === 'object') ? lemma.细类型 : { 未分类: {} },
       证明列表: [{ 完整过程: lemma.proof || '', 正确概率: clamp01(0.7), '支持信息/依据': '' }],
       证伪列表: [], 优先级: (lemma.优先级 != null) ? lemma.优先级 : 1,
@@ -785,6 +821,14 @@ export function apply(ctx) {
     const Reason = (parsed && parsed.Reason) || ''
     let t = tasks['verify:' + rId]
     if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
+    if (!parsed && !scheduler.running) {
+      // abort：被中断的验证器没有产出，丢弃该子代理并清理任务簿记（任务在 resume 时由 processVerify 重建）
+      delete agentRegistry[childId]
+      const ix = t.children.indexOf(childId); if (ix !== -1) t.children.splice(ix, 1)
+      delete t.childResults[childId]
+      if (t.children.length === 0 && t.id && tasks[t.id]) delete tasks[t.id]
+      return
+    }
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
     t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round }
     delete agentRegistry[childId]
@@ -796,6 +840,7 @@ export function apply(ctx) {
   async function advanceVerification(t, round) {
     if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
       if (!scheduler.running) { t.status = 'paused'; return } // resume will re-advance this task
+      if (scheduler.activeCount >= params.maxParallelThreshold) { t.status = 'paused'; return } // 并发门：等有空闲槽位再辩论（reconcileVerify 会重推进）
       t.round = round + 1
       const transcript = buildTranscript(t)
       const nextChildren = []
@@ -905,7 +950,7 @@ export function apply(ctx) {
           sol.已验 = true
           sol.验证记录 = sol.验证记录 || []
           sol.验证记录.push({ 结果: v, 时间: now(), 依据: strongestReason(t, v >= 0.5 ? 1 : 0) })
-          if (v === 1) { q.已解决 = true; q.优先级 = 'never' }
+          if (v === 1) { q.已解决 = true; q.优先级 = 'never'; await writeVerifiedProblemCardIfNeeded(q, sol) }
         }
         await writeQs(qs)
       }
@@ -932,6 +977,16 @@ export function apply(ctx) {
       内容: (p.布尔估计 === 1 ? ((p.证明列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程 : ((p.证伪列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程) || '',
       来源: p.来源问题 || '', 时间: now(), 分类: cat,
     }
+    list.push(card)
+    await writeJson('Verified/' + cat + '_Verified.json', list)
+    return true
+  }
+  async function writeVerifiedProblemCardIfNeeded(q, sol) {
+    if (!q || !q.已解决) return false
+    const cat = '问题'
+    const list = await readVerifiedCategory(cat)
+    if (list.some(function (c) { return c.id === q.id })) return false // idempotent
+    const card = { id: q.id, 概述: q.概述, 类型: '问题', 结论: true, 概率: 1, 内容: (sol && sol.完整解法) || '', 来源: q.id, 时间: now(), 分类: cat }
     list.push(card)
     await writeJson('Verified/' + cat + '_Verified.json', list)
     return true
@@ -970,15 +1025,28 @@ export function apply(ctx) {
         logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
         agentRegistry = {}; tasks = {}
       }
+      scheduler.activeCount = 0 // 仅清空 registry/tasks 时归零；同进程 resume 保留存活计数（并发门才准确）
     }
     await writeJson('VibeMath_State/process_epoch.json', processEpoch)
-    scheduler.activeCount = 0; await saveAll()
+    await saveAll()
     return { ok: true }
   }
   async function startScheduler(agent) { const r = await init(agent, true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler(agent) { const r = await init(agent, false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
   async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
+  async function autoResolvePending() {
+    const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
+    for (let i = 0; i < pending.length; i++) {
+      const d = pending[i]
+      try {
+        if (d.node === 'spawn') { await spawnChild(d.data.label, d.data.promptText, d.data.meta); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
+        else if (d.node === 'verdict') { await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
+      } catch (e) { console.error('vibe-math-v2: auto-resolve decision failed: ' + String((e && e.message) || e)) }
+    }
+    if (pending.length > 0) { scheduler.gate = null; logActivity('mode', 'switched to auto — auto-resolved ' + pending.length + ' pending decision(s)'); await saveAll(); scheduleTick() }
+  }
   async function getStatus() {
     const qs = await getQs(); const propos = await getPropos()
     return {
@@ -990,7 +1058,7 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       registeredAgents: Object.keys(agentRegistry).length,
-      recentActivity: activityLog.slice(-10), params: params,
+      recentActivity: activityLog.slice(-Math.min(10, Number(params.activityLogCap) || 100)), params: params,
     }
   }
 
@@ -1026,8 +1094,8 @@ export function apply(ctx) {
   registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
-  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -1054,7 +1122,7 @@ export function apply(ctx) {
     if (cmd === 'abort') return await abortScheduler()
     if (cmd === 'status') return await getStatus()
     if (cmd === 'report') { await maybeWriteReport(true); return await buildReport() }
-    if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); return { ok: true, mode: params.mode } }
+    if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } }
     if (cmd === 'setup') { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')

@@ -420,6 +420,7 @@ flowchart TB
 | `reportMode` | `file` | `file` = 写报告文件 / `push` = 推送主代理汇报 / `both` |
 | `promoteValueThreshold` | 0.7 | Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json |
 | `priorityAdjust` | `none` | `none` / `deadend-deprioritize`（全死路降优先级）/ `survival-map`（按存活率重算） |
+| `proposPriorityAdjust` | `none` | 命题优先级动态调整：`none` / `progress-graded`（按定论接近度+证明/证伪材料量重算，越接近定论越优先验证） |
 | `provider` / `model` | 空 | 子代理模型（空 = 继承根代理） |
 | `solverPersona` / `verifierPersona` | 空 | 注入求解器/验证器的额外要求 |
 | `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具 |
