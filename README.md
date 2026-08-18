@@ -403,7 +403,9 @@ flowchart TB
 | `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具（硬性 toolFilter） |
 | `verifierToolAllow` / `verifierToolDeny` | `[]` | 验证器允许/禁止的工具 |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | 每轮外部工具调用上限（0=不限，软性） |
-| `reportIntervalMs` | 30000 | 自动写进度报告的最小间隔 |
+| `reportIntervalMs` | 0 | 0 = 仅事件驱动（有代理状态更新等事件才写报告）；>0 = 定时自动写（毫秒） |
+| `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
+| `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
 
 ### v2（新架构）默认值
 
@@ -423,7 +425,10 @@ flowchart TB
 | `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具 |
 | `verifierToolAllow` / `verifierToolDeny` | `[]` | 验证器允许/禁止的工具 |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | 每轮外部工具调用上限（0=不限） |
-| `reportIntervalMs` | 30000 | 进度汇报最小间隔（毫秒） |
+| `reportIntervalMs` | 0 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
+| `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
+| `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
+| `maxExplorerRetries` | 3 | explorer 拆方向失败的重派生上限 |
 
 ---
 
@@ -431,7 +436,7 @@ flowchart TB
 
 - **断点续跑**：所有状态落盘到 `VibeMath_State/*.json`，每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` 即可续跑。v2 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。
 - **中途人工干预**：`manual` 模式在关键节点（v1：brainstorm/solver 派发、验证裁决、晋升 Verified；v2：explorer/solver 派发、验证裁决）挂起决策；可随时 `set_mode auto` 切回自动；可对任意子代理 `message_agent` / `interrupt_agent`。
-- **进度汇报**：定时 / 有变动时写 `Progress_Logs/report.json`；v2 的 `reportMode` 还能 `push` —— 调度器通过 `rootAgent.followup()` 唤醒主代理主动汇报。
+- **进度汇报**：默认**事件驱动** —— 只有代理状态更新等事件发生时才会写 `Progress_Logs/report.json`（v2 的 `reportMode` 可 `file`/`push`/`both`，`push` 通过 `rootAgent.followup()` 唤醒主代理主动汇报）；只有把 `reportIntervalMs` 设为 >0 才启动定时自动汇报（间隔毫秒）。
 
 ---
 

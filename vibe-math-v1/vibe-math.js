@@ -69,7 +69,9 @@ export function apply(ctx) {
     verifierToolDeny: [],
     solverMaxToolCalls: 0,
     verifierMaxToolCalls: 0,
-    reportIntervalMs: 30000,
+    reportIntervalMs: 0,          // 0 = 仅事件驱动（有代理状态更新等事件才写报告）；>0 = 定时自动写（毫秒）
+    tickIntervalMs: 2000,         // 调度器心跳间隔（毫秒）：多久扫描一次状态并推进
+    activityLogCap: 100,          // 活动日志保留条数（report.recentActivity 最多显示 30 条）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
   let scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }
@@ -152,7 +154,9 @@ export function apply(ctx) {
     { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
     { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
     { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
-    { name: 'reportIntervalMs', type: 'integer', description: '自动写进度报告 report.json 的最小间隔（毫秒）', suggestion: 30000 },
+    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写 report.json）；>0 = 定时自动汇报', suggestion: 0 },
+    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 report.recentActivity 的细节量，报告最多显示 30 条）', suggestion: 100 },
   ]
 
   // ================= fs =================
@@ -178,7 +182,7 @@ export function apply(ctx) {
   // ================= settings file (JSONC) =================
   function sanitizeParams(obj) {
     const out = {}
-    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs']
+    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
@@ -231,7 +235,7 @@ export function apply(ctx) {
   async function saveAll() { await writeJson('VibeMath_State/params.json', params); await writeJson('VibeMath_State/scheduler_state.json', scheduler); await writeJson('VibeMath_State/agent_registry.json', agentRegistry); await writeJson('VibeMath_State/dependencies.json', dependencies); await writeJson('VibeMath_State/decision_queue.json', decisionQueue); await writeJson('VibeMath_State/tasks.json', tasks); await writeJson('VibeMath_State/solved_by_verified.json', solvedByVerified); await writeJson('VibeMath_State/promotion_queue.json', promotionQueue); await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy); scheduler.lastCheckpoint = now() }
 
   // ================= activity log / report =================
-  function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); if (activityLog.length > 100) activityLog.shift(); reportDirty = true }
+  function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); const cap = Number(params.activityLogCap) || 100; if (activityLog.length > cap) activityLog.shift(); reportDirty = true }
   function buildReport() {
     const openTasks = Object.keys(tasks).filter(function (k) { const t = tasks[k]; return t.status === 'spawning' || t.status === 'debating' || t.status === 'awaiting-verdict' })
     return {
@@ -246,13 +250,14 @@ export function apply(ctx) {
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       openTasks: openTasks.length,
       registeredAgents: Object.keys(agentRegistry).length,
-      recentActivity: activityLog.slice(-30),
+      recentActivity: activityLog.slice(-Math.min(30, Number(params.activityLogCap) || 100)),
       params: params,
     }
   }
   async function maybeWriteReport(force) {
-    if (!force && !reportDirty) return
-    if (!force && (now() - lastReportWrite) < (Number(params.reportIntervalMs) || 30000)) return
+    const interval = Number(params.reportIntervalMs) || 0
+    if (!force && interval > 0 && (now() - lastReportWrite) < interval) return
+    if (!force && interval <= 0 && !reportDirty) return
     await writeJson('Progress_Logs/report.json', buildReport())
     lastReportWrite = now()
     reportDirty = false
@@ -458,7 +463,7 @@ export function apply(ctx) {
 
   // ================= events / timer =================
   ctx.on('subagent/end', function (info) { onChildEnd(info).catch(function (e) { console.error('vibe-math onChildEnd reject: ' + String((e && e.stack) || e)) }) })
-  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, 2000); return () => clearInterval(t) })
+  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, Math.max(200, Number(params.tickIntervalMs) || 2000)); return () => clearInterval(t) })
 
   // ================= tools =================
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
@@ -477,7 +482,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report (status + recent activity + params) and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['direct-veto', 'weighted-vote'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, args); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['direct-veto', 'weighted-vote'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, args); await saveAll(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema (each param: name, type, current, default, description, options, suggestion) for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })

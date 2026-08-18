@@ -47,10 +47,13 @@ export function apply(ctx) {
     verifierToolDeny: [],
     solverMaxToolCalls: 0,
     verifierMaxToolCalls: 0,
-    reportIntervalMs: 30000,
+    reportIntervalMs: 0,          // 0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 定时自动汇报（毫秒）
     reportMode: 'file',           // file | push | both
     promoteValueThreshold: 0.7,   // Propos → qs auto-promotion threshold (价值/关键性)
     priorityAdjust: 'none',       // none | deadend-deprioritize | survival-map
+    tickIntervalMs: 2000,         // 调度器心跳间隔（毫秒）
+    activityLogCap: 100,          // 活动日志保留条数（report.recentActivity 最多显示 30 条）
+    maxExplorerRetries: 3,        // explorer 重派生上限（拆方向失败重试次数）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
   let scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }
@@ -128,10 +131,13 @@ export function apply(ctx) {
     { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
     { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
     { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
-    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报最小间隔（毫秒）', suggestion: 30000 },
+    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 同时按该间隔定时自动汇报', suggestion: 0 },
     { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
     { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
     { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
+    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 report.recentActivity 的细节量，报告最多显示 30 条）', suggestion: 100 },
+    { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限（达到后该问题标记为方向耗尽）', suggestion: 3 },
   ]
 
   // ================= fs =================
@@ -156,7 +162,7 @@ export function apply(ctx) {
   // ================= settings =================
   function sanitizeParams(obj) {
     const out = {}
-    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs']
+    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
@@ -275,7 +281,7 @@ export function apply(ctx) {
   async function reliableFiles() { return await listFiles('Reliable') }
 
   // ================= reporting =================
-  function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); if (activityLog.length > 100) activityLog.shift(); reportDirty = true }
+  function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); const cap = Number(params.activityLogCap) || 100; if (activityLog.length > cap) activityLog.shift(); reportDirty = true }
   async function buildReport() {
     const qs = await getQs()
     const propos = await getPropos()
@@ -287,21 +293,28 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
-      recentActivity: activityLog.slice(-30),
+      recentActivity: activityLog.slice(-Math.min(30, Number(params.activityLogCap) || 100)),
       params: params,
     }
   }
   async function maybeWriteReport(force) {
-    if (!force && !reportDirty) return
-    if (!force && (now() - lastReportWrite) < (Number(params.reportIntervalMs) || 30000)) return
+    const interval = Number(params.reportIntervalMs) || 0
+    if (!force && interval > 0 && (now() - lastReportWrite) < interval) return
+    if (!force && interval <= 0 && !reportDirty) return
     await writeJson('Progress_Logs/report.json', await buildReport())
     lastReportWrite = now(); reportDirty = false
   }
   async function maybePushReport(force) {
     const mode = params.reportMode || 'file'
     if (mode !== 'push' && mode !== 'both') return
-    // heartbeat: push on interval (or force), independent of reportDirty so 'both' mode works
-    if (!force && (now() - lastPushReport) < (Number(params.reportIntervalMs) || 30000)) return
+    const interval = Number(params.reportIntervalMs) || 0
+    if (interval > 0) {
+      // heartbeat: push on interval (or force), independent of reportDirty so 'both' mode works
+      if (!force && (now() - lastPushReport) < interval) return
+    } else if (!force && !reportDirty) {
+      // event-driven: only push when an event happened since the last report
+      return
+    }
     if (!rootAgent || typeof rootAgent.followup !== 'function') return
     try {
       const report = await buildReport()
@@ -310,7 +323,7 @@ export function apply(ctx) {
         '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '。' +
         '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
       rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'plugin', plugin: 'vibe-math-v2' } })
-      lastPushReport = now(); reportDirty = false
+      lastPushReport = now()
     } catch (e) {
       console.error('vibe-math-v2: push report failed: ' + String((e && e.message) || e))
     }
@@ -455,8 +468,8 @@ export function apply(ctx) {
       await processVerify()
       await reconcileVerify()
       await processSolve()
-      await maybeWriteReport(false)
       await maybePushReport(false)
+      await maybeWriteReport(false)
       const qs = await getQs()
       const unsolved = qs.filter(function (q) { return !q.已解决 && q.优先级 !== 'never' })
       if (unsolved.length === 0 && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0) {
@@ -469,7 +482,7 @@ export function apply(ctx) {
           const prog = parseProgress(unsolved[i])
           const exhaustedAll = prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' || d.status === 'success' })
           const hasActive = prog.directions.some(function (d) { return d.status === 'active' })
-          const blocked = (prog.directions.length === 0 || exhaustedAll) && (explorerRetries[unsolved[i].id] || 0) >= 3
+          const blocked = (prog.directions.length === 0 || exhaustedAll) && (explorerRetries[unsolved[i].id] || 0) >= (Number(params.maxExplorerRetries) || 3)
           if (hasActive || !blocked) { allBlocked = false; break }
         }
         if (allBlocked) {
@@ -623,10 +636,11 @@ export function apply(ctx) {
       const prog = parseProgress(q)
       const allExhausted = prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' || d.status === 'success' })
       if (prog.directions.length === 0 || allExhausted) {
-        if ((explorerRetries[q.id] || 0) >= 3) {
-          if (prog.directions.length === 0) prog.directions.push({ id: 'd_' + shortId(), title: 'explorer 失败', method: '', core_assumption: '', feasibility: 0, status: 'dead-end', round: 0, survival: 0, routes: [], blockers: [], dead_end_reason: 'explorer 连续 3 次未产出方向' })
+        const explorerCap = Number(params.maxExplorerRetries) || 3
+        if ((explorerRetries[q.id] || 0) >= explorerCap) {
+          if (prog.directions.length === 0) prog.directions.push({ id: 'd_' + shortId(), title: 'explorer 失败', method: '', core_assumption: '', feasibility: 0, status: 'dead-end', round: 0, survival: 0, routes: [], blockers: [], dead_end_reason: 'explorer 连续 ' + explorerCap + ' 次未产出方向' })
           await saveProgress(q.id, prog)
-          logActivity('explorer', 'problem ' + q.id + ' explorer exhausted (3 failed attempts)')
+          logActivity('explorer', 'problem ' + q.id + ' explorer exhausted (' + explorerCap + ' failed attempts)')
           continue
         }
         explorerRetries[q.id] = (explorerRetries[q.id] || 0) + 1
@@ -995,7 +1009,7 @@ export function apply(ctx) {
 
   // ================= events / timer =================
   ctx.on('subagent/end', function (info) { onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) }) })
-  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, 2000); return () => clearInterval(t) })
+  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, Math.max(200, Number(params.tickIntervalMs) || 2000)); return () => clearInterval(t) })
 
   // ================= tools =================
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
@@ -1013,7 +1027,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
