@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — TWO agent presets in one install: vibe-math-v1 (classic pipeline: brainstorm → solver iteration → multi-verifier debate → Verified) and vibe-math-v2 (new probability-driven architecture: qs.json + Propos knowledge base + explorer→solver→review/debate verdict). Installing this bundle auto-installs both presets into the DSH preset root.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "main": "installer.js",
   "exports": {

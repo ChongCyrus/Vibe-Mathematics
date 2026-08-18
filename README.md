@@ -43,6 +43,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 安装时插件会自动把两个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v1/` 与 `vibe-math-v2/`。
 之后新建会话，预设选择器里选择 **Vibe Math**（v1）或 **Vibe Math V2**（v2）即可。
+**升级包版本后重启 DSH，未手动改过的 preset 文件会自动更新到新版本**（细节见文末「v2」安装器说明）。
 
 ### 方式 B：作为 agent preset 手动安装
 
@@ -456,7 +457,7 @@ flowchart TB
 - manual 模式在第一个未决关键节点暂停整条主循环。
 
 **v2**：
-- 安装器只**补装缺失**的 preset 文件，不覆盖你已编辑的预设（删除对应目录即可重新安装）。
+- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——版本升级会自动替换**未被手动修改**的 preset 文件（哈希一致才覆盖）；你改过的文件会被保留并在日志中提示。无记录的老安装首次会一次性刷新到当前版本。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v1` 与 `vibe-math-v2` 目录后重启 DSH。
 - `flat` 裁决在辩论不一致时直接判 `0.5`；`forced` 按历史准确率+置信度加权。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
 - 两个 preset 文件互相独立、可共存；同一会话同时只能选一个预设。
