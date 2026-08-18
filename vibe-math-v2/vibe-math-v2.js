@@ -34,6 +34,7 @@ export function apply(ctx) {
     mode: 'auto',                 // auto | manual
     maxParallelThreshold: 4,      // concurrency gate: active turns < this
     solverMaxRounds: 3,           // per-direction iteration cap (spec example)
+    directionsPerSolver: 1,       // 每个 solver 提示词附带的方向数量（1 = 只看自己方向）
     verifierCount: 3,             // independent reviewers per verification
     debateMaxRounds: 5,           // debate round cap (spec example)
     verdictMode: 'flat',          // flat = 均衡机制(0.5) | forced = 强制裁决(weighted)
@@ -119,6 +120,7 @@ export function apply(ctx) {
     { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
     { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
     { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
+    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的方向数量：1 = 只看自己方向（互不干扰）；>1 = 额外附带其他活跃方向摘要用于协调', suggestion: 1 },
     { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
     { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
     { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致直接判 0.5）；forced = 强制裁决（按历史准确率+严谨性加权）', suggestion: 'flat' },
@@ -164,7 +166,7 @@ export function apply(ctx) {
   // ================= settings =================
   function sanitizeParams(obj) {
     const out = {}
-    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries']
+    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
@@ -396,6 +398,16 @@ export function apply(ctx) {
       (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '') +
       (d.lessons && d.lessons.length ? ' | lessons: ' + d.lessons.join('; ') : '') +
       (d.blockers && d.blockers.length ? ' | blockers: ' + d.blockers.join('; ') : '')
+  }
+  // 每个 solver 默认只看自己方向（互不干扰）：round>1 时带上自己的历史进度，
+  // directionsPerSolver>1 时再附带其他活跃方向摘要用于协调（总数不超过该参数）。
+  function buildSolverContext(all, own, round, perSolver) {
+    const out = []
+    const n = Math.max(1, Number(perSolver) || 1)
+    if (round > 1) out.push(own)
+    const others = all.filter(function (d) { return d.id !== own.id && d.status === 'active' })
+    for (let i = 0; i < others.length && out.length < n; i++) out.push(others[i])
+    return out.map(directionSummary).join('\n')
   }
   function solverPrompt(q, dir, round, progressText) {
     let head = solverPersonaText() + 'You are a dedicated solver agent working ONE solution direction of a math problem (agent_self_iteration).\n\n'
@@ -688,7 +700,7 @@ export function apply(ctx) {
           if (dir.status === 'success' || dir.status === 'dead-end') continue
           const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
           if (running) continue
-          const progressText = prog.directions.map(directionSummary).join('\n')
+          const progressText = buildSolverContext(prog.directions, dir, 1, params.directionsPerSolver)
           const promptText = solverPrompt(q, dir, 1, progressText)
           const r = await maybeGate('spawn', 'solver for problem ' + q.id + ' direction ' + dir.id, { label: 'solver:' + q.id + ':' + dir.id, promptText: promptText, meta: { role: 'solver', qid: q.id, direction: dir.id, round: 1, description: q.概述 } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } })
           if (r && r.gated) return
@@ -743,7 +755,7 @@ export function apply(ctx) {
           delete agentRegistry[childId]
           logActivity('solver', qid + '/' + dirId + ' dead-end (success without solution)')
         } else {
-          const progressText = prog.directions.map(directionSummary).join('\n')
+          const progressText = buildSolverContext(prog.directions, dir, meta.round + 1, params.directionsPerSolver)
           await followupChild(childId, solverPrompt(q, dir, meta.round + 1, progressText))
           agentRegistry[childId].round = meta.round + 1
           dir.round = meta.round + 1
@@ -755,7 +767,7 @@ export function apply(ctx) {
       delete agentRegistry[childId]
       logActivity('solver', qid + '/' + dirId + ' dead-end: ' + dir.dead_end_reason)
     } else {
-      const progressText = prog.directions.map(directionSummary).join('\n')
+      const progressText = buildSolverContext(prog.directions, dir, meta.round + 1, params.directionsPerSolver)
       if (!scheduler.running) {
         // paused/aborted: stop the follow-up chain; keep the direction active for resume
         delete agentRegistry[childId]
@@ -1095,7 +1107,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })

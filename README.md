@@ -15,6 +15,24 @@
 
 ---
 
+## 🧩 架构图（v1 + v2）
+
+> 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)；可编辑生成脚本：[v1](docs/generate_framework_diagram.py) / [v2](docs/generate_framework_diagram_v2.py)。
+
+### Vibe Math V1（经典流水线）
+
+![Vibe Math V1 架构图](示例图/框架图-v1.png)
+
+**一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
+
+### Vibe Math V2（新架构 · 概率驱动）
+
+![Vibe Math V2 架构图](示例图/框架图-v2.png)
+
+**一句话流水线**：`qs.json` 按优先级取问题 → Explorer 拆方向（全死路则重派生）→ 每方向一个 Solver 多轮迭代（引理进 `Propos/`、解法回 `qs.json`，概率均 <1）→ 调度器选 r（命题 / 命题+证明·证伪 / 问题+解法）派 ≥3 验证器独立审查→辩论→裁决 → 概率=1 自动收口（问题 solved、命题 1/0，优先级置 `never`）；全程状态落盘，`resume` 断点续跑，`reportMode` 可 file/push/both 汇报。
+
+---
+
 ## ✨ 功能特色
 
 - **多代理自动求解**：主代理把问题交给调度器，调度器派发 brainstorm / solver / verifier / decider（v1）或 explorer / solver / verifier（v2）等子代理协同求解，**你无需逐节点手操**。
@@ -93,116 +111,6 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧩 架构图 · v1（经典）
-
-> 静态 PNG 预览 + 可编辑 Mermaid 图源（GitHub 原生渲染）；完整流程说明见 [docs/架构图.md](docs/架构图.md)。
-
-![Vibe Math V1 架构图](示例图/框架图-v1.png)
-
-```mermaid
-flowchart TB
-    subgraph L1["👤 交互层"]
-        U["😀 用户（自然语言）"]
-        M["🤖 主代理（助手 + 汇报者）<br/>翻译需求 · 汇报进度 · 问答配置<br/>不求解 · 不调度"]
-    end
-
-    subgraph L2["⚙️ 调度层（插件代码）"]
-        SCHED["调度器 Scheduler<br/>唯一文件写者<br/>读 qs.csv · 派发子代理 · 推进状态机"]
-    end
-
-    subgraph L3["🧠 子代理层（continuable 持久会话）"]
-        BRAIN["🧭 Brainstorm<br/>拆解多个求解方向"]
-        SOLV["✍️ Solver × N<br/>逐方向多轮迭代"]
-        DERI["🔀 Derive<br/>死路时派生新方向"]
-        VERI["🔬 Verifier × ≥3<br/>独立审查 → 辩论 → 裁决"]
-        DECI["⚖️ Decider<br/>判定是否解决"]
-    end
-
-    subgraph L4["💾 数据层 · VibeMath/Projects/&lt;项目&gt;/"]
-        QS["📋 qs.csv"]
-        PEND["📥 Pending_Verification/"]
-        UNDR["📂 Under_Verification/"]
-        TVAL["✅ Temp_Validated/"]
-        KNOW["📚 Verified/ 可信知识库"]
-        STATE["🗄️ Progress_Logs/ · VibeMath_State/"]
-    end
-
-    U -->|"求解 XX / 查进度 / 干预"| M
-    M -->|"vibe_math_* 工具"| SCHED
-
-    SCHED -->|"① 派发"| BRAIN
-    BRAIN -->|"多个大相径庭的方向"| SCHED
-    SCHED -->|"② 每方向一个"| SOLV
-    SOLV -->|"结构化结果 JSON"| SCHED
-    SOLV -.->|"迭代至卡死"| DERI
-    DERI -->|"派生 1~3 个新方向"| SCHED
-    SCHED -->|"③ 写盘"| PEND
-    SCHED -->|"④ 拆解为最小验证单元"| UNDR
-    SCHED -->|"⑤ 派发 ≥3 个"| VERI
-    VERI -->|"裁决 JSON"| SCHED
-    SCHED -->|"⑥ 通过"| TVAL
-    SCHED -->|"⑦ 晋升"| KNOW
-    SCHED -->|"⑧ 派发"| DECI
-    DECI -->|"⑨ 已解决 → 回写"| QS
-    SCHED <-->|"读取问题"| QS
-    SCHED <-->|"状态落盘 / 断点恢复"| STATE
-```
-
-**一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
-
----
-
-## 🧩 架构图 · v2（新架构 · 概率驱动）
-
-> 静态 PNG 预览 + 可编辑 Mermaid 图源（GitHub 原生渲染）；生成脚本见 [docs/generate_framework_diagram_v2.py](docs/generate_framework_diagram_v2.py)。
-
-![Vibe Math V2 架构图](示例图/框架图-v2.png)
-
-```mermaid
-flowchart TB
-    subgraph L1["👤 交互层"]
-        U["😀 用户（自然语言）"]
-        M["🤖 主代理（助手 + 汇报者）<br/>翻译需求 · 汇报进度 · 问答配置<br/>不求解 · 不调度"]
-    end
-
-    subgraph L2["⚙️ 调度层（插件代码 · 概率驱动）"]
-        SCHED["调度器 Scheduler<br/>唯一文件写者 · 按优先级调度<br/>explorer → 逐方向 solver → 验证器 → 收口<br/>断点持久化 · 人工决策门"]
-    end
-
-    subgraph L3["🧠 子代理层（continuable 持久会话）"]
-        EXP["🧭 Explorer<br/>拆方向 / 全死路时重派生（去死路 · 并集）"]
-        SOLV["✍️ Solver × N<br/>agent_self_iteration<br/>逐方向多轮迭代"]
-        VERI["🔬 Verifier × ≥3<br/>独立审查 → 辩论 → 裁决"]
-    end
-
-    subgraph L4["💾 数据层 · VibeMath/Projects/&lt;项目&gt;/"]
-        QS["📋 qs/qs.json<br/>问题 + 解法（正确概率）"]
-        PRP["📚 Propos/&lt;分类&gt;_Propos.json<br/>命题（布尔估计 · 证明/证伪列表）"]
-        VERD["✅ Verified/<br/>定论事实（0/1）"]
-        LOGS["🗄️ Verification_logs/ · Progress_Logs/<br/>· Reliable/ · VibeMath_State/"]
-    end
-
-    U -->|"求解 / 查进度 / 干预"| M
-    M -->|"vibe_math_* 工具"| SCHED
-
-    SCHED -->|"① 按优先级取问题"| QS
-    SCHED -->|"② 派 Explorer"| EXP
-    EXP -->|"方向集 M_q"| SCHED
-    SCHED -->|"③ 每方向一个"| SOLV
-    SOLV -->|"引理 → Propos（概率&lt;1）"| PRP
-    SOLV -->|"解法 → qs（概率&lt;1）"| QS
-    SOLV -.->|"卡死 → 重派生"| EXP
-    SCHED -->|"④ 选 r 派 ≥3 验证器"| VERI
-    VERI -->|"⑤ 裁决 0/1/中间"| SCHED
-    SCHED -->|"⑥ 概率=1 → 收口/晋升"| PRP
-    SCHED -->|"已解决 / 优先级 never"| QS
-    SCHED -->|"晋升定论"| VERD
-    SCHED <-->|"辩论记录 / 状态落盘"| LOGS
-```
-
-**一句话流水线**：`qs.json` 按优先级取问题 → Explorer 拆方向（全死路则重派生）→ 每方向一个 Solver 多轮迭代（引理进 `Propos/`、解法回 `qs.json`，概率均 <1）→ 调度器选 r（命题 / 命题+证明·证伪 / 问题+解法）派 ≥3 验证器独立审查→辩论→裁决 → 概率=1 自动收口（问题 solved、命题 1/0，优先级置 `never`）；全程状态落盘，`resume` 断点续跑，`reportMode` 可 file/push/both 汇报。
-
----
 
 ## 📁 目录结构
 
@@ -279,9 +187,9 @@ flowchart TB
 | `vibe_math_setup` | 返回参数 schema（交互式配置用） |
 | `vibe_math_save_settings` | 把当前参数存成新默认 |
 | `vibe_math_template` | 生成默认参数模板文件 |
-| `vibe_math_new_project` / `set_project` / `list_projects` | 项目管理 |
+| `vibe_math_new_project` / `vibe_math_set_project` / `vibe_math_list_projects` | 项目管理 |
 | `vibe_math_list_decisions` / `decide` | 查看 / 裁决人工决策 |
-| `vibe_math_list_agents` / `message_agent` / `interrupt_agent` | 查看 / 发消息 / 中断子代理 |
+| `vibe_math_list_agents` / `vibe_math_message_agent` / `vibe_math_interrupt_agent` | 查看 / 发消息 / 中断子代理 |
 
 斜杠命令（与工具等价）：`/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents`
 
@@ -415,6 +323,7 @@ flowchart TB
 | `mode` | `auto` | `auto` / `manual` |
 | `maxParallelThreshold` | 4 | 全局最大并发子代理轮数（新派发前须 active < 阈值） |
 | `solverMaxRounds` | 3 | 每个求解方向最大迭代轮数（agent_self_iteration 上限） |
+| `directionsPerSolver` | 1 | 每个 solver 提示词附带的方向数量（1 = 只看自己方向、互不干扰；>1 = 附带其他活跃方向摘要用于协调） |
 | `verifierCount` | 3 | 每个验证对象的独立验证器数量 |
 | `debateMaxRounds` | 5 | 验证辩论（交流群）最大轮数 |
 | `verdictMode` | `flat` | `flat` = 均衡机制（不一致判 0.5）/ `forced` = 强制裁决（历史准确率+严谨性加权） |
