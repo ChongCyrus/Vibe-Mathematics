@@ -64,6 +64,10 @@ export function apply(ctx) {
   let reportDirty = false
   let tickInFlight = false
   let explorerRetries = {}
+  // Process epoch: written to state at init; a DIFFERENT persisted epoch means a
+  // previous DSH process wrote this state (in-flight children are gone), while an
+  // equal epoch means same-process pause→resume (children may still be alive).
+  const processEpoch = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
@@ -374,6 +378,7 @@ export function apply(ctx) {
     return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
       ' survival=' + d.survival +
       (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '') +
+      (d.lessons && d.lessons.length ? ' | lessons: ' + d.lessons.join('; ') : '') +
       (d.blockers && d.blockers.length ? ' | blockers: ' + d.blockers.join('; ') : '')
   }
   function solverPrompt(q, dir, round, progressText) {
@@ -384,11 +389,12 @@ export function apply(ctx) {
     head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Each round you MUST produce, even if incomplete:\n' +
       '- new lemmas / intermediate conclusions WITH full proofs (these go to the Propos/ knowledge base);\n' +
       '- each concrete sub-route tried, its progress overview, an EXPLICIT feasibility signal (e.g. "unremovable singularity", "conflicts with known theorem X"), and any blocker;\n' +
+      '- lessons learned from failed attempts (what to avoid, what did not work and why);\n' +
       '- an updated survival probability for this direction.\n'
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions", TEMPORARILY ASSUME it holds, and continue the main line — every later proposition MUST then be stated as "若 <q_sub 标题> 成立，则：..." so the dependency is explicit.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
     head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
-      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"title":"...","statement":"..."}]}'
+      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"title":"...","statement":"..."}]}'
     return head
   }
   function verifierReviewPrompt(r) {
@@ -595,7 +601,12 @@ export function apply(ctx) {
     const ids = Object.keys(tasks)
     for (let i = 0; i < ids.length; i++) {
       const t = tasks[ids[i]]
-      if (t.type !== 'verify' || t.status !== 'spawning') continue
+      if (t.type !== 'verify') continue
+      if (t.status === 'paused') {
+        const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === t.round })
+        if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
+      }
+      if (t.status !== 'spawning') continue
       if (scheduler.activeCount >= params.maxParallelThreshold) break
       await backfillVerifiers(t)
     }
@@ -665,6 +676,7 @@ export function apply(ctx) {
     dir.round = meta.round
     if (parsed) {
       if (parsed.routes) dir.routes = (dir.routes || []).concat(parsed.routes)
+      if (parsed.lessons) dir.lessons = (dir.lessons || []).concat(parsed.lessons)
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
       if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) await addLemmaAsProposition(qid, parsed.lemmas[i]) }
@@ -696,14 +708,19 @@ export function apply(ctx) {
       logActivity('solver', qid + '/' + dirId + ' dead-end: ' + dir.dead_end_reason)
     } else {
       const progressText = prog.directions.map(directionSummary).join('\n')
-      try {
-        await followupChild(childId, solverPrompt(q, dir, meta.round + 1, progressText))
-        agentRegistry[childId].round = meta.round + 1
-        dir.round = meta.round + 1
-      } catch (e) {
-        console.error('vibe-math-v2: solver followup failed: ' + String((e && e.message) || e))
-        dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || '求解器续轮失败（followup 异常）'
+      if (!scheduler.running) {
+        // paused/aborted: stop the follow-up chain; keep the direction active for resume
         delete agentRegistry[childId]
+      } else {
+        try {
+          await followupChild(childId, solverPrompt(q, dir, meta.round + 1, progressText))
+          agentRegistry[childId].round = meta.round + 1
+          dir.round = meta.round + 1
+        } catch (e) {
+          console.error('vibe-math-v2: solver followup failed: ' + String((e && e.message) || e))
+          dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || '求解器续轮失败（followup 异常）'
+          delete agentRegistry[childId]
+        }
       }
     }
     await saveProgress(qid, prog)
@@ -764,6 +781,7 @@ export function apply(ctx) {
   }
   async function advanceVerification(t, round) {
     if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
+      if (!scheduler.running) { t.status = 'paused'; return } // resume will re-advance this task
       t.round = round + 1
       const transcript = buildTranscript(t)
       const nextChildren = []
@@ -922,23 +940,29 @@ export function apply(ctx) {
 
   // ================= init / control =================
   async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
-  async function init(agent) {
+  async function init(agent, fresh) {
     await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }
     currentProject = await readCurrentProject(); await ensureDirs()
     if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
     params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await loadState()
-    // In-flight children of a previous process are gone after restart: drop stale
-    // registrations so scheduling is not blocked by phantom entries. Completed work
-    // already lives in qs.json / Propos / progress; only the interrupted turn is lost.
-    if (Object.keys(agentRegistry).length > 0 || Object.keys(tasks).length > 0) {
-      logActivity('resume', 'cleared ' + Object.keys(agentRegistry).length + ' stale agent(s) and ' + Object.keys(tasks).length + ' in-flight task(s) from previous process')
-      agentRegistry = {}; tasks = {}
+    // Distinguish same-process continue from cross-process restart via processEpoch:
+    // equal epoch = same process (pause→resume; children may still be alive), different
+    // epoch = previous process wrote this state (in-flight children are gone).
+    const prevEpoch = await readJson('VibeMath_State/process_epoch.json')
+    const stale = typeof prevEpoch === 'string' && prevEpoch !== processEpoch
+    if (fresh || stale) {
+      if (fresh) { const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]) }
+      if (Object.keys(agentRegistry).length > 0 || Object.keys(tasks).length > 0) {
+        logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
+        agentRegistry = {}; tasks = {}
+      }
     }
+    await writeJson('VibeMath_State/process_epoch.json', processEpoch)
     scheduler.activeCount = 0; await saveAll()
     return { ok: true }
   }
-  async function startScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
-  async function resumeScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function startScheduler(agent) { const r = await init(agent, true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler(agent) { const r = await init(agent, false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
   async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   async function getStatus() {
