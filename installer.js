@@ -61,6 +61,35 @@ function writeState(path, state) {
   }
 }
 
+// DSH 适配性自检（能力检测，而非版本号——DSH 不向插件暴露版本）。
+// 检查两个 preset 运行时需要的宿主服务与关键 API 形状是否可用，
+// 缺失时打 warning 提示宿主版本可能过旧 / 缺少对应插件行。
+function checkHostCapabilities(ctx, logger) {
+  const problems = []
+  const checks = [
+    ['subagents', ['startContinuable', 'followup', 'interrupt']],
+    ['agents', ['roots']],
+    ['tools', ['register']],
+    ['commands', ['register']],
+    ['fs', ['resolve', 'stat', 'readText', 'writeText', 'listDir']],
+  ]
+  for (let i = 0; i < checks.length; i++) {
+    const svc = checks[i][0]
+    const methods = checks[i][1]
+    let s
+    try { s = (ctx && ctx.get) ? ctx.get(svc) : undefined } catch (e) { s = undefined }
+    if (s === undefined) { problems.push('宿主缺少服务 ' + svc); continue }
+    for (let j = 0; j < methods.length; j++) {
+      if (typeof s[methods[j]] !== 'function') problems.push(svc + '.' + methods[j] + ' 不可用（宿主版本可能过旧）')
+    }
+  }
+  if (problems.length > 0) {
+    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。两个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目实测基线版本 0.1.0-rc.5，见 package.json 的 dsh.minVersion）。')
+  } else {
+    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（实测基线 DSH 0.1.0-rc.5）。')
+  }
+}
+
 export function apply(ctx) {
   const logger = ctx && ctx.logger
   try {
@@ -143,6 +172,7 @@ export function apply(ctx) {
     } else if (installed > 0) {
       logger?.info?.('[dsh-vibe-math] restored ' + installed + ' missing preset file(s)')
     }
+    checkHostCapabilities(ctx, logger)
   } catch (err) {
     logger?.warn?.('[dsh-vibe-math] preset install/update failed: %s', String((err && err.message) || err))
   }
