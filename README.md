@@ -96,7 +96,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 > 静态 PNG 预览 + 可编辑 Mermaid 图源（GitHub 原生渲染）；完整流程说明见 [docs/架构图.md](docs/架构图.md)。
 
-![Vibe Math 架构图](示例图/框架图.png)
+![Vibe Math V1 架构图](示例图/框架图-v1.png)
 
 ```mermaid
 flowchart TB

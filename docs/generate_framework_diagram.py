@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Generate the Vibe Math framework diagram (架构图) as a PNG poster.
-Output: 示例图/框架图.png   (run from anywhere: python docs/generate_framework_diagram.py)
+"""Generate the Vibe Math V1 framework diagram (架构图) as a PNG poster.
+Output: 示例图/框架图-v1.png   (run from anywhere: python docs/generate_framework_diagram.py)
 Layout: left = 4-stage pipeline (交互/调度/子代理·求解/子代理·验证/沉淀回写),
         right = 数据层 boxes aligned by stage, all arrows vertical/horizontal/diagonal-in-gap.
 """
@@ -15,7 +15,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
-OUT = os.path.join(ROOT, "示例图", "框架图.png")
+OUT = os.path.join(ROOT, "示例图", "框架图-v1.png")
 
 fig = plt.figure(figsize=(18, 11.5))
 ax = fig.add_axes([0, 0, 1, 1])
@@ -53,7 +53,7 @@ def band(x0, y0, x1, y1, fc, title, tc="#607D8B"):
             bbox=dict(fc="white", ec="none", alpha=0.85, pad=1.2))
 
 # ── title ────────────────────────────────────────────────────────────────
-ax.text(9, 11.12, "Vibe Math — 多代理数学问题求解与验证框架", fontsize=22,
+ax.text(9, 11.12, "Vibe Math V1 — 多代理数学问题求解与验证框架（经典流水线）", fontsize=20,
         ha="center", va="center", color="#1A237E", fontweight="bold")
 ax.text(9, 10.66, "广度探索 → 深度迭代 → 交叉验证 → 知识沉淀   ·   一个主代理 + 一个代码调度器 + 五类子代理",
         fontsize=11, ha="center", va="center", color="#555")
