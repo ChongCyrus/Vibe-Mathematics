@@ -153,6 +153,10 @@ flowchart TB
 
 ## 🧩 架构图 · v2（新架构 · 概率驱动）
 
+> 静态 PNG 预览 + 可编辑 Mermaid 图源（GitHub 原生渲染）；生成脚本见 [docs/generate_framework_diagram_v2.py](docs/generate_framework_diagram_v2.py)。
+
+![Vibe Math V2 架构图](示例图/框架图-v2.png)
+
 ```mermaid
 flowchart TB
     subgraph L1["👤 交互层"]
