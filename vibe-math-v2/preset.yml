@@ -1,0 +1,2 @@
+name: Vibe Math V2
+description: 多代理数学问题求解与验证框架（新架构）：概率驱动调度 —— qs.json 问题清单 + Propos/ 命题库 + Reliable/ 参考文献，explorer 拆方向 → 逐方向 Solver 迭代 → 多验证器独立审查→辩论→裁决；断点续跑、人工/自动干预、file/push 双模式进度汇报。

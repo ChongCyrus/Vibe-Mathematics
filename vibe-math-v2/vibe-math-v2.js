@@ -1,0 +1,1046 @@
+// Vibe Math V2 — host plugin implementing the NEW architecture spec
+// ("新架构-vibe-math-实现方案.md"): probability-driven scheduling over a
+// problem list (qs/qs.json) and a proposition knowledge base (Propos/),
+// multi-agent independent review → debate → consensus verification, with
+// checkpoint resume, manual intervention, and file/push progress reporting.
+//
+// Preset-local plugin, import-free (only node builtins reachable). Registers
+// vibe_math_* tools, a /vibe slash command, and a background scheduler;
+// provides NO service, so it sits loose in the preset.
+//
+// Data layout (per project, under <workspace>/VibeMath/Projects/<project>/):
+//   qs/qs.json                 — problems (概述/已解决/解法列表/优先级/progress)
+//   Propos/<分类>_Propos.json   — propositions (概述/布尔估计/细类型/证明·证伪列表/优先级/价值·关键性/progress)
+//   Reliable/                  — read-only trusted references (user drops files)
+//   Verified/                  — resolved facts index (布尔估计=0/1 的命题、已解决问题)
+//   Verification_logs/         — debate transcripts per verification run
+//   Progress_Logs/report.json  — periodic progress report
+//   VibeMath_State/            — scheduler private state (checkpoint/resume)
+export const name = 'vibe-math-v2'
+export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
+
+export function apply(ctx) {
+  const subagents = ctx.subagents
+  const agents = ctx.agents
+  const fs = ctx.fs
+  const tools = ctx.tools
+  const commands = ctx.commands
+  const subprocess = ctx.get('subprocess')
+  const sandboxPolicy = ctx.get('sandboxPolicy')
+
+  let rootAgent = undefined
+  let currentProject = 'default'
+  const DEFAULT_PARAMS = {
+    mode: 'auto',                 // auto | manual
+    maxParallelThreshold: 4,      // concurrency gate: active turns < this
+    solverMaxRounds: 3,           // per-direction iteration cap (spec example)
+    verifierCount: 3,             // independent reviewers per verification
+    debateMaxRounds: 5,           // debate round cap (spec example)
+    verdictMode: 'flat',          // flat = 均衡机制(0.5) | forced = 强制裁决(weighted)
+    provider: '',
+    model: '',
+    solverPersona: '',
+    verifierPersona: '',
+    solverToolAllow: [],
+    solverToolDeny: [],
+    verifierToolAllow: [],
+    verifierToolDeny: [],
+    solverMaxToolCalls: 0,
+    verifierMaxToolCalls: 0,
+    reportIntervalMs: 30000,
+    reportMode: 'file',           // file | push | both
+    promoteValueThreshold: 0.7,   // Propos → qs auto-promotion threshold (价值/关键性)
+    priorityAdjust: 'none',       // none | deadend-deprioritize | survival-map
+  }
+  let params = Object.assign({}, DEFAULT_PARAMS)
+  let scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }
+  let agentRegistry = {}
+  let decisionQueue = []
+  let verifierAccuracy = {}
+  let tasks = {}                  // verify tasks keyed by 'verify:<rId>'
+  let activityLog = []
+  let lastReportWrite = 0
+  let lastPushReport = 0
+  let reportDirty = false
+  let tickInFlight = false
+  let explorerRetries = {}
+
+  // ================= helpers =================
+  function textBlock(t) { return { type: 'text', text: String(t) } }
+  function now() { return Date.now() }
+  function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
+  function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
+  function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
+  function workspaceRoot() { try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) {} if (sandboxPolicy && sandboxPolicy.workspaceRoot) return sandboxPolicy.workspaceRoot; return '.' }
+  function vibeRoot() { return (workspaceRoot() + '/VibeMath').replace(/\\/g, '/') }
+  function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
+  function frameworkRoot() { return projectRoot(currentProject) }
+  function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
+  function getPolicy() { try { if (sandboxPolicy && rootAgent && rootAgent.session) return sandboxPolicy.resolve({ session: rootAgent.session }) } catch (e) {} try { if (sandboxPolicy) return sandboxPolicy.resolve({}) } catch (e) {} return undefined }
+  function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
+  function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
+  function parseJson(text) {
+    if (typeof text !== 'string') return undefined
+    const tryObj = function (s) { try { const v = JSON.parse(s); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : undefined } catch (e) { return undefined } }
+    const fenceRe = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+    let m
+    while ((m = fenceRe.exec(text)) !== null) { const obj = tryObj(m[1].trim()); if (obj !== undefined) return obj }
+    const whole = tryObj(text.trim()); if (whole !== undefined) return whole
+    let best = undefined; let bestLen = -1
+    for (let start = 0; start < text.length; start++) {
+      if (text[start] !== '{') continue
+      let depth = 0, inStr = false, esc = false, end = -1
+      for (let i = start; i < text.length; i++) {
+        const c = text[i]
+        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue }
+        if (c === '"') { inStr = true; continue }
+        if (c === '{') depth++
+        else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
+      }
+      if (end === -1) continue
+      const obj = tryObj(text.slice(start, end + 1))
+      if (obj !== undefined && (end - start + 1) > bestLen) { best = obj; bestLen = end - start + 1 }
+    }
+    return best
+  }
+  function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JSON.parse(v) } catch (e) { return fb } }
+  function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
+
+  // ================= parameter schema =================
+  const PARAM_SCHEMA = [
+    { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
+    { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
+    { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
+    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
+    { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
+    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致直接判 0.5）；forced = 强制裁决（按历史准确率+严谨性加权）', suggestion: 'flat' },
+    { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
+    { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
+    { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
+    { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
+    { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
+    { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
+    { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
+    { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
+    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
+    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
+    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报最小间隔（毫秒）', suggestion: 30000 },
+    { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
+    { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
+    { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
+  ]
+
+  // ================= fs =================
+  async function fsTarget(rel) { return await fs.resolve(rel, { cwd: frameworkRoot() }) }
+  async function readText(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
+  async function writeText(rel, content) { const t = await fsTarget(rel); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true }
+  async function readJson(rel) { const t = await readText(rel); if (t === undefined || t === '') return undefined; try { return JSON.parse(t) } catch (e) { return undefined } }
+  async function writeJson(rel, obj) { return await writeText(rel, JSON.stringify(obj, null, 2)) }
+  async function listFiles(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'file' }).map(function (e) { return e.name }) } catch (e) { return [] } }
+  async function listDirsAt(base, rel) { try { const t = await fs.resolve(rel, { cwd: base }); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
+  async function readTextAbs(path) { try { const t = await fs.resolve(path); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
+  async function writeTextAbs(path, content) { try { const t = await fs.resolve(path); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true } catch (e) { return false } }
+  async function readCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' } }
+  async function writeCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {} }
+
+  // ================= subprocess =================
+  function psQuote(p) { return "'" + String(p).replace(/'/g, "''") + "'" }
+  async function runShell(script, cwd) { if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }; try { const handle = subprocess.spawn({ argv: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script], cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 }); const outcome = await handle.done; return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode } } catch (e) { return { ok: false, error: String((e && e.message) || e) } } }
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verification_logs', 'Progress_Logs', 'VibeMath_State']; const paths = [vibeRoot() + '/Projects'].concat(dirs.map(function (d) { return base + '/' + d })); const list = paths.map(psQuote).join(','); return await runShell('New-Item -Force -ItemType Directory -Path ' + list + ' | Out-Null') }
+  async function removeFile(rel) { const base = frameworkRoot(); return await runShell('Remove-Item -Force -LiteralPath ' + psQuote(base + '/' + rel) + ' -ErrorAction SilentlyContinue') }
+
+  // ================= settings =================
+  function sanitizeParams(obj) {
+    const out = {}
+    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs']
+    const numFields = ['promoteValueThreshold']
+    const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
+    for (const k of Object.keys(DEFAULT_PARAMS)) {
+      if (!(k in obj)) continue
+      const v = obj[k]
+      if (intFields.indexOf(k) !== -1) { const n = Number(v); out[k] = Number.isFinite(n) ? Math.floor(n) : DEFAULT_PARAMS[k] }
+      else if (numFields.indexOf(k) !== -1) { const n = Number(v); out[k] = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : DEFAULT_PARAMS[k] }
+      else if (arrayFields.indexOf(k) !== -1) { out[k] = Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string' }) : DEFAULT_PARAMS[k] }
+      else if (k === 'mode') { out[k] = (v === 'manual' || v === 'auto') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'verdictMode') { out[k] = (v === 'flat' || v === 'forced') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'reportMode') { out[k] = (v === 'file' || v === 'push' || v === 'both') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'priorityAdjust') { out[k] = (v === 'none' || v === 'deadend-deprioritize' || v === 'survival-map') ? v : DEFAULT_PARAMS[k] }
+      else { out[k] = v }
+    }
+    return out
+  }
+  async function loadSettings() {
+    let text = await readText('vibe_math_setting.json')
+    if (text === undefined) text = await readTextAbs(vibeRoot() + '/vibe_math_setting.json')
+    if (text === undefined) return
+    const clean = stripJsonComments(text)
+    try {
+      const obj = JSON.parse(clean)
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) params = Object.assign({}, params, sanitizeParams(obj))
+    } catch (e) {
+      console.error('vibe-math-v2: invalid vibe_math_setting.json ignored: ' + String((e && e.message) || e))
+    }
+  }
+  function settingsTemplateFrom(src) {
+    const lines = []
+    lines.push('{')
+    lines.push('  // Vibe Math V2 默认参数配置（JSON with Comments，可加 // 注释）。')
+    lines.push('  // 位置：<项目>/vibe_math_setting.json（全局回退：<工作区>/VibeMath/vibe_math_setting.json）。')
+    const keys = Object.keys(src).sort()
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]
+      const v = src[k]
+      const schema = PARAM_SCHEMA.find(function (p) { return p.name === k })
+      const desc = schema ? schema.description : ''
+      const comma = i === keys.length - 1 ? '' : ','
+      lines.push('  // ' + k + (desc ? ' — ' + desc : ''))
+      lines.push('  ' + JSON.stringify(k) + ': ' + JSON.stringify(v) + comma)
+    }
+    lines.push('}')
+    return lines.join('\n') + '\n'
+  }
+  function settingsTemplate() { return settingsTemplateFrom(params) }
+  async function saveSettings() { await writeText('vibe_math_setting.json', settingsTemplate()); return { ok: true, path: frameworkRoot() + '/vibe_math_setting.json' } }
+  async function createTemplate(where) { const isGlobal = where !== 'project'; const path = isGlobal ? (vibeRoot() + '/vibe_math_setting.json') : (frameworkRoot() + '/vibe_math_setting.json'); const content = settingsTemplateFrom(DEFAULT_PARAMS); const ok = isGlobal ? await writeTextAbs(path, content) : await writeText('vibe_math_setting.json', content); return { ok: ok, path: path, where: isGlobal ? 'global' : 'project' } }
+
+  // ================= persistence =================
+  async function loadState() {
+    const pj = await readJson('VibeMath_State/params.json'); if (pj) params = Object.assign({}, params, pj)
+    const s = await readJson('VibeMath_State/scheduler_state.json'); if (s) scheduler = Object.assign({}, scheduler, s)
+    const r = await readJson('VibeMath_State/agent_registry.json'); if (r) agentRegistry = r
+    const dq = await readJson('VibeMath_State/decision_queue.json'); if (dq) decisionQueue = dq
+    const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = va
+    const tk = await readJson('VibeMath_State/tasks.json'); if (tk) tasks = tk
+    const er = await readJson('VibeMath_State/explorer_retries.json'); if (er) explorerRetries = er
+  }
+  async function saveAll() {
+    await writeJson('VibeMath_State/params.json', params)
+    await writeJson('VibeMath_State/scheduler_state.json', scheduler)
+    await writeJson('VibeMath_State/agent_registry.json', agentRegistry)
+    await writeJson('VibeMath_State/decision_queue.json', decisionQueue)
+    await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
+    await writeJson('VibeMath_State/tasks.json', tasks)
+    await writeJson('VibeMath_State/explorer_retries.json', explorerRetries)
+    scheduler.lastCheckpoint = now()
+  }
+
+  // ================= data layer: qs.json =================
+  async function getQs() { const a = await readJson('qs/qs.json'); return Array.isArray(a) ? a : [] }
+  async function writeQs(list) { await writeJson('qs/qs.json', list) }
+  async function findQ(qid) { const qs = await getQs(); return qs.find(function (q) { return q.id === qid }) }
+
+  // progress is a JSON string inside the problem object
+  function parseProgress(q) { const p = safeJson((q && q.progress) || '', null); if (p && typeof p === 'object') return p; return { directions: [], experience: '' } }
+  async function saveProgress(qid, progObj) { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return; q.progress = JSON.stringify(progObj); await writeQs(qs) }
+
+  // ================= data layer: Propos =================
+  function categoryOf(p) { const t = (p && p.细类型) || {}; const keys = Object.keys(t); return (keys.length > 0 && typeof t[keys[0]] === 'object') ? keys[0] : '未分类' }
+  function proposFile(cat) { return 'Propos/' + String(cat) + '_Propos.json' }
+  async function proposFiles() { return await listFiles('Propos') }
+  async function readProposCategory(cat) { const a = await readJson(proposFile(cat)); return Array.isArray(a) ? a : [] }
+  async function getPropos() {
+    const out = []
+    const files = await proposFiles()
+    for (let i = 0; i < files.length; i++) {
+      const fname = files[i]
+      const cat = fname.replace(/_Propos\.json$/i, '')
+      const list = await readProposCategory(cat)
+      for (let j = 0; j < list.length; j++) { list[j]._category = cat; out.push(list[j]) }
+    }
+    return out
+  }
+  async function findProposition(pId) { const all = await getPropos(); return all.find(function (p) { return p.id === pId }) }
+  async function upsertProposition(p) {
+    const cat = p._category || categoryOf(p)
+    delete p._category
+    const list = await readProposCategory(cat)
+    const idx = list.findIndex(function (x) { return x.id === p.id })
+    if (idx !== -1) list[idx] = p; else list.push(p)
+    await writeJson(proposFile(cat), list)
+    return cat
+  }
+  async function deleteProposition(p) {
+    const cat = p._category || categoryOf(p)
+    const list = await readProposCategory(cat)
+    const next = list.filter(function (x) { return x.id !== p.id })
+    await writeJson(proposFile(cat), next)
+  }
+
+  // ================= data layer: Verified / Reliable =================
+  async function readVerifiedCategory(cat) { const a = await readJson('Verified/' + String(cat) + '_Verified.json'); return Array.isArray(a) ? a : [] }
+  async function reliableFiles() { return await listFiles('Reliable') }
+
+  // ================= reporting =================
+  function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); if (activityLog.length > 100) activityLog.shift(); reportDirty = true }
+  async function buildReport() {
+    const qs = await getQs()
+    const propos = await getPropos()
+    return {
+      ok: true, at: now(), project: currentProject, frameworkRoot: frameworkRoot(),
+      running: scheduler.running, mode: params.mode,
+      activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
+      propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
+      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
+      registeredAgents: Object.keys(agentRegistry).length,
+      recentActivity: activityLog.slice(-30),
+      params: params,
+    }
+  }
+  async function maybeWriteReport(force) {
+    if (!force && !reportDirty) return
+    if (!force && (now() - lastReportWrite) < (Number(params.reportIntervalMs) || 30000)) return
+    await writeJson('Progress_Logs/report.json', await buildReport())
+    lastReportWrite = now(); reportDirty = false
+  }
+  async function maybePushReport(force) {
+    const mode = params.reportMode || 'file'
+    if (mode !== 'push' && mode !== 'both') return
+    // heartbeat: push on interval (or force), independent of reportDirty so 'both' mode works
+    if (!force && (now() - lastPushReport) < (Number(params.reportIntervalMs) || 30000)) return
+    if (!rootAgent || typeof rootAgent.followup !== 'function') return
+    try {
+      const report = await buildReport()
+      const text = '[Vibe Math V2] 进度更新：当前项目 "' + currentProject + '" 运行中=' + report.running +
+        '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
+        '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '。' +
+        '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
+      rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'plugin', plugin: 'vibe-math-v2' } })
+      lastPushReport = now(); reportDirty = false
+    } catch (e) {
+      console.error('vibe-math-v2: push report failed: ' + String((e && e.message) || e))
+    }
+  }
+
+  // ================= child spawn / followup =================
+  function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
+  function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
+  function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const f = {}; if (Array.isArray(allow) && allow.length > 0) f.allow = allow.slice(); if (Array.isArray(deny) && deny.length > 0) f.deny = deny.slice(); return (f.allow || f.deny) ? f : undefined }
+  async function spawnChild(label, promptText, meta) {
+    const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
+    const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf
+    let started
+    try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
+    catch (e) {
+      if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math-v2: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e }
+    }
+    agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
+    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    await saveAll(); return started.childId
+  }
+  async function followupChild(childId, promptText) { await subagents.followup(rootAgent, childId, [textBlock(promptText)], { source: { kind: 'user' }, signal: makeSignal(30000) }); scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1; await saveAll() }
+  async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
+
+  // ================= prompts =================
+  function solverPersonaText() { return params.solverPersona ? (String(params.solverPersona) + '\n\n') : '' }
+  function verifierPersonaText() { return params.verifierPersona ? (String(params.verifierPersona) + '\n\n') : '' }
+  function capabilitiesText(role) {
+    const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
+    let t = '\nYOUR PERMISSIONS / CAPABILITIES:\n'
+    t += '- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).\n'
+    t += '- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).\n'
+    t += '- You may use external tools (web search, symbolic/numeric computation, literature lookup) to assist; '
+    t += (maxCalls && Number(maxCalls) > 0) ? ('call such external tools AT MOST ' + maxCalls + ' times this round.\n') : 'no per-round limit by default.\n'
+    t += '- You must NOT write files directly: return structured JSON only — the scheduler is the single writer.\n'
+    t += '\nHOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):\n'
+    t += '- These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).\n'
+    t += '- COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.\n'
+    t += '- FINE READ after: once you identify a valuable object, read that file again and extract its full JSON (完整过程 / 证明 / 证伪 / progress) via the index you found.\n'
+    return t
+  }
+  function explorerPrompt(q) {
+    return 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\n' +
+      capabilitiesText('solver') +
+      '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. ' +
+      'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
+      'Record each direction with its core assumption and an initial feasibility estimate.\n\n' +
+      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
+      '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}'
+  }
+  function rederivePrompt(q, prog) {
+    const prior = prog.directions.map(function (d) {
+      return '- ' + d.id + '「' + d.title + '」status=' + d.status + ' round=' + d.round + ' survival=' + d.survival + (d.dead_end_reason ? ' [blocker: ' + d.dead_end_reason + ']' : '') +
+        (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '')
+    }).join('\n')
+    return 'You are a research mathematician re-deriving strategy for a problem whose prior directions stalled or failed.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\nPRIOR DIRECTIONS (with blockers):\n' + prior + '\n' +
+      capabilitiesText('solver') +
+      '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven to be dead ends (unless a new tool/idea changes that). ' +
+      'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. ' +
+      'Finally return the UNION of high-potential leftover directions and the brand-new directions as the new direction set M_q (drop dead ends).\n\n' +
+      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
+      '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5,"motivation":"..."}]}'
+  }
+  function directionSummary(d) {
+    return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
+      ' survival=' + d.survival +
+      (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '') +
+      (d.blockers && d.blockers.length ? ' | blockers: ' + d.blockers.join('; ') : '')
+  }
+  function solverPrompt(q, dir, round, progressText) {
+    let head = solverPersonaText() + 'You are a dedicated solver agent working ONE solution direction of a math problem (agent_self_iteration).\n\n'
+    head += 'PROBLEM (id: ' + q.id + '): ' + q.概述 + '\nDIRECTION: ' + dir.title + ' (method: ' + dir.method + '; core assumption: ' + dir.core_assumption + ')\nROUND: ' + round + ' of ' + params.solverMaxRounds + '\n'
+    if (round > 1 || (progressText && progressText.length)) head += '\nYOUR PRIOR PROGRESS / OTHER DIRECTIONS:\n' + progressText + '\n'
+    head += capabilitiesText('solver')
+    head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Each round you MUST produce, even if incomplete:\n' +
+      '- new lemmas / intermediate conclusions WITH full proofs (these go to the Propos/ knowledge base);\n' +
+      '- each concrete sub-route tried, its progress overview, an EXPLICIT feasibility signal (e.g. "unremovable singularity", "conflicts with known theorem X"), and any blocker;\n' +
+      '- an updated survival probability for this direction.\n'
+    head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions", TEMPORARILY ASSUME it holds, and continue the main line — every later proposition MUST then be stated as "若 <q_sub 标题> 成立，则：..." so the dependency is explicit.\n'
+    head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
+    head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
+      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"title":"...","statement":"..."}]}'
+    return head
+  }
+  function verifierReviewPrompt(r) {
+    let target = ''
+    if (r.kind === 'proposition') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述
+    else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
+    else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
+    return verifierPersonaText() + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + target + '\n' +
+      capabilitiesText('verifier') +
+      '\nIndependently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
+      '{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence; when Result=1 for a bare proposition, Reason must be a complete proof; when Result=0, Reason must be a rigorous complete refutation"}'
+  }
+  function verifierDebatePrompt(r, transcript) {
+    let target = ''
+    if (r.kind === 'proposition') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述
+    else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
+    else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
+    return verifierPersonaText() + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + target + '\n' +
+      capabilitiesText('verifier') +
+      '\nOTHERS HAVE SAID SO FAR (轮流发言):\n' + transcript + '\n' +
+      '\nRespond to the others (agree / rebut / add new evidence). If you changed your Result because of them, state the reason explicitly.\n' +
+      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
+      '{"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null"}'
+  }
+
+  // ================= decisions (manual/auto) =================
+  function enqueueDecision(node, contextText, data) { const d = { id: uuid(), node: node, context: contextText, data: data, status: 'pending', resolution: null, createdAt: now() }; decisionQueue.push(d); return d }
+  async function maybeGate(node, contextText, data, autoFn) { if (params.mode === 'auto') return await autoFn(data); const d = enqueueDecision(node, contextText, data); scheduler.gate = { decisionId: d.id, node: node }; logActivity('gate', node + ': ' + contextText); await saveAll(); return { gated: true, decisionId: d.id } }
+  async function applyDecision(node, data, resolution) {
+    if (node === 'spawn') {
+      if (resolution.action === 'approve') { await spawnChild(data.label, data.promptText, data.meta); return { spawned: true } }
+      try {
+        const meta = data.meta || {}
+        if (meta.role === 'explorer' && meta.qid) {
+          const q = await findQ(meta.qid)
+          if (q) { const prog = parseProgress(q); prog.directions.push({ id: 'd_' + shortId(), title: '用户拒绝派发', method: '', core_assumption: '', feasibility: 0, status: 'dead-end', round: 0, survival: 0, routes: [], blockers: [], dead_end_reason: 'explorer 派发被用户拒绝' }); await saveProgress(meta.qid, prog) }
+        } else if (meta.role === 'solver' && meta.qid && meta.direction) {
+          const q = await findQ(meta.qid)
+          if (q) { const prog = parseProgress(q); const d = prog.directions.find(function (x) { return x.id === meta.direction }); if (d) { d.status = 'dead-end'; d.dead_end_reason = '求解器派发被用户拒绝' } await saveProgress(meta.qid, prog) }
+        }
+      } catch (e) { console.error('vibe-math-v2: spawn reject mark failed: ' + String((e && e.message) || e)) }
+      return { spawned: false, rejected: true }
+    }
+    if (node === 'verdict') { const overridden = resolution.action === 'override' && (resolution.verdict === 1 || resolution.verdict === 0); const v = overridden ? Number(resolution.verdict) : data.verdict; await settleVerdict(data.task, v); delete tasks[data.task.id]; return { verdict: v, overridden: overridden } }
+    return {}
+  }
+  async function resolveDecision(id, resolution) { const d = decisionQueue.find(function (x) { return x.id === id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
+
+  // ================= scheduler core =================
+  function scheduleTick() { tick().catch(function (e) { console.error('vibe-math-v2 tick error: ' + String((e && e.stack) || e)) }) }
+  async function tick() {
+    if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return
+    tickInFlight = true
+    try {
+      await processStatusUpdates()
+      await processPriorityAdjust()
+      await processPromote()
+      await processVerify()
+      await reconcileVerify()
+      await processSolve()
+      await maybeWriteReport(false)
+      await maybePushReport(false)
+      const qs = await getQs()
+      const unsolved = qs.filter(function (q) { return !q.已解决 && q.优先级 !== 'never' })
+      if (unsolved.length === 0 && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0) {
+        scheduler.running = false
+        logActivity('stop', 'all active problems solved (never-priority problems excluded) and no active agents/tasks — scheduler stopped (strict termination)')
+        await saveAll(); await maybeWriteReport(true); await maybePushReport(true)
+      } else if (Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && unsolved.length > 0) {
+        let allBlocked = true
+        for (let i = 0; i < unsolved.length; i++) {
+          const prog = parseProgress(unsolved[i])
+          const exhaustedAll = prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' || d.status === 'success' })
+          const hasActive = prog.directions.some(function (d) { return d.status === 'active' })
+          const blocked = (prog.directions.length === 0 || exhaustedAll) && (explorerRetries[unsolved[i].id] || 0) >= 3
+          if (hasActive || !blocked) { allBlocked = false; break }
+        }
+        if (allBlocked) {
+          scheduler.running = false
+          logActivity('stall', 'no feasible direction remains for any unsolved problem — scheduler paused (stalled, NOT all solved)')
+          await saveAll(); await maybeWriteReport(true)
+        }
+      }
+    } finally { tickInFlight = false }
+  }
+  // note 4: probability-1 rules
+  async function processStatusUpdates() {
+    let changed = false
+    const qs = await getQs()
+    for (let i = 0; i < qs.length; i++) {
+      const q = qs[i]
+      if (q.解法列表 && q.解法列表.some(function (s) { return s.正确概率 === 1 })) { if (!q.已解决) changed = true; q.已解决 = true; q.优先级 = 'never' }
+    }
+    if (changed) { await writeQs(qs); logActivity('update', 'problems marked solved by probability-1 solutions') }
+    const propos = await getPropos()
+    for (let i = 0; i < propos.length; i++) {
+      const p = propos[i]
+      let pChanged = false
+      const proofOne = (p.证明列表 || []).some(function (x) { return x.正确概率 === 1 })
+      const refuteOne = (p.证伪列表 || []).some(function (x) { return x.正确概率 === 1 })
+      if (proofOne && p.布尔估计 !== 1) { p.布尔估计 = 1; pChanged = true }
+      else if (refuteOne && p.布尔估计 !== 0) { p.布尔估计 = 0; pChanged = true }
+      if ((p.布尔估计 === 1 || p.布尔估计 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
+      if (p.布尔估计 === 1 || p.布尔估计 === 0) { if (await writeVerifiedCardIfNeeded(p)) pChanged = true }
+      if (pChanged) await upsertProposition(p)
+    }
+  }
+  async function processPriorityAdjust() {
+    const mode = params.priorityAdjust || 'none'
+    if (mode === 'none') return
+    const qs = await getQs()
+    let changed = false
+    for (let i = 0; i < qs.length; i++) {
+      const q = qs[i]
+      if (q.已解决 || q.优先级 === 'never') continue
+      const prog = parseProgress(q)
+      if (mode === 'deadend-deprioritize') {
+        if (prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' })) {
+          const cur = Number(q.优先级); if (Number.isFinite(cur) && cur < 10) { q.优先级 = 10; changed = true }
+        }
+      } else if (mode === 'survival-map') {
+        if (prog.directions.length > 0) {
+          const maxSurv = Math.max.apply(null, prog.directions.map(function (d) { return Number(d.survival) || 0 }))
+          const target = Math.round(Math.max(0, Math.min(10, 10 - 10 * maxSurv)))
+          if (q.优先级 !== target) { q.优先级 = target; changed = true }
+        }
+      }
+    }
+    if (changed) { await writeQs(qs); logActivity('priority', 'priorities auto-adjusted (' + mode + ')') }
+  }
+  // note 3 + user 价值 field: promote high-value unresolved propositions into qs.json
+  async function processPromote() {
+    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    const qs = await getQs()
+    const qDescriptions = qs.map(function (q) { return q.概述 })
+    const propos = await getPropos()
+    for (let i = 0; i < propos.length; i++) {
+      const p = propos[i]
+      if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
+      if (Number(p['价值/关键性']) < Number(params.promoteValueThreshold)) continue
+      if (p.在问题清单) continue
+      if (qDescriptions.indexOf(p.概述) !== -1) continue
+      const qid = 'q-promoted-' + String(p.id).replace(/[^a-z0-9\-]/gi, '').slice(-12)
+      qs.push({ id: qid, 概述: p.概述, 已解决: false, 解法列表: [], 优先级: 1, progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标是证明/证伪该命题。' })
+      p.在问题清单 = true
+      await upsertProposition(p)
+      await writeQs(qs)
+      logActivity('promote', 'proposition ' + p.id + ' promoted to problem ' + qid)
+      return // one per tick is enough
+    }
+  }
+  async function processVerify() {
+    const candidates = await buildVerifyCandidates()
+    for (let i = 0; i < candidates.length; i++) {
+      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      const c = candidates[i]
+      const rId = c.rId
+      if (tasks['verify:' + rId]) continue
+      const inflight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'verifier' && m.rId === rId })
+      if (inflight) continue
+      tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }
+      await saveAll()
+      return // one verification at a time keeps scheduling simple; tick will continue next pass
+    }
+  }
+  async function buildVerifyCandidates() {
+    const out = []
+    const qs = await getQs()
+    for (let i = 0; i < qs.length; i++) {
+      const q = qs[i]
+      if (q.已解决 || q.优先级 === 'never') continue
+      const sols = q.解法列表 || []
+      for (let j = 0; j < sols.length; j++) {
+        const s = sols[j]
+        if (s.正确概率 === 1 || s.正确概率 === 0 || s.已验) continue
+        out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, priority: q.优先级 === 'never' ? 999 : Number(q.优先级) })
+      }
+    }
+    const propos = await getPropos()
+    for (let i = 0; i < propos.length; i++) {
+      const p = propos[i]
+      if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
+      const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
+      if (proofs.length === 0 && refutes.length === 0) {
+        out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
+      } else {
+        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+      }
+    }
+    out.sort(function (a, b) { return a.priority - b.priority })
+    return out
+  }
+  async function backfillVerifiers(t) {
+    while (t.children.length < t.expectedCount) {
+      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      const index = t.children.length
+      const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
+      t.children.push(childId)
+    }
+    if (t.children.length >= t.expectedCount) t.status = 'debating'
+  }
+  async function reconcileVerify() {
+    const ids = Object.keys(tasks)
+    for (let i = 0; i < ids.length; i++) {
+      const t = tasks[ids[i]]
+      if (t.type !== 'verify' || t.status !== 'spawning') continue
+      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      await backfillVerifiers(t)
+    }
+  }
+  async function processSolve() {
+    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    const qs = await getQs()
+    const unsolved = qs.filter(function (q) { return !q.已解决 && q.优先级 !== 'never' }).sort(function (a, b) { return (a.优先级 === 'never' ? 999 : Number(a.优先级)) - (b.优先级 === 'never' ? 999 : Number(b.优先级)) })
+    for (let i = 0; i < unsolved.length; i++) {
+      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      const q = unsolved[i]
+      const busy = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && (m.role === 'explorer' || m.role === 'solver') })
+      if (busy) continue
+      const prog = parseProgress(q)
+      const allExhausted = prog.directions.length > 0 && prog.directions.every(function (d) { return d.status === 'dead-end' || d.status === 'success' })
+      if (prog.directions.length === 0 || allExhausted) {
+        if ((explorerRetries[q.id] || 0) >= 3) {
+          if (prog.directions.length === 0) prog.directions.push({ id: 'd_' + shortId(), title: 'explorer 失败', method: '', core_assumption: '', feasibility: 0, status: 'dead-end', round: 0, survival: 0, routes: [], blockers: [], dead_end_reason: 'explorer 连续 3 次未产出方向' })
+          await saveProgress(q.id, prog)
+          logActivity('explorer', 'problem ' + q.id + ' explorer exhausted (3 failed attempts)')
+          continue
+        }
+        explorerRetries[q.id] = (explorerRetries[q.id] || 0) + 1
+        const promptText = (prog.directions.length > 0) ? rederivePrompt(q, prog) : explorerPrompt(q)
+        const r = await maybeGate('spawn', 'explorer for problem ' + q.id, { label: 'explorer:' + q.id, promptText: promptText, meta: { role: 'explorer', qid: q.id } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } })
+        if (r && r.gated) return
+      } else {
+        // spawn solvers for each active direction
+        for (let j = 0; j < prog.directions.length; j++) {
+          if (scheduler.activeCount >= params.maxParallelThreshold) break
+          const dir = prog.directions[j]
+          if (dir.status === 'success' || dir.status === 'dead-end') continue
+          const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
+          if (running) continue
+          const progressText = prog.directions.map(directionSummary).join('\n')
+          const promptText = solverPrompt(q, dir, 1, progressText)
+          const r = await maybeGate('spawn', 'solver for problem ' + q.id + ' direction ' + dir.id, { label: 'solver:' + q.id + ':' + dir.id, promptText: promptText, meta: { role: 'solver', qid: q.id, direction: dir.id, round: 1, description: q.概述 } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } })
+          if (r && r.gated) return
+        }
+      }
+    }
+  }
+
+  // ================= solver (agent_self_iteration) handling =================
+  async function handleExplorer(childId, meta, output) {
+    delete agentRegistry[childId]
+    const parsed = parseJson(output)
+    const dirs = (parsed && parsed.directions) || []
+    if (dirs.length === 0) { logActivity('explorer', 'problem ' + meta.qid + ' returned no directions'); await saveAll(); return }
+    explorerRetries[meta.qid] = 0
+    const q = await findQ(meta.qid); if (!q) return
+    const prog = parseProgress(q)
+    prog.directions = dirs.map(function (d) {
+      return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || '', core_assumption: d.core_assumption || '', feasibility: clamp01(d.feasibility), status: 'active', round: 0, survival: clamp01(d.feasibility), routes: [], blockers: [], dead_end_reason: '' }
+    })
+    await saveProgress(meta.qid, prog)
+    logActivity('explorer', 'problem ' + meta.qid + ' → ' + prog.directions.length + ' directions')
+  }
+  async function handleSolver(childId, meta, output, stopReason) {
+    const qid = meta.qid; const dirId = meta.direction
+    const parsed = parseJson(output)
+    const q = await findQ(qid); if (!q) { delete agentRegistry[childId]; return }
+    const prog = parseProgress(q)
+    const dir = prog.directions.find(function (d) { return d.id === dirId })
+    if (!dir) { delete agentRegistry[childId]; return }
+    const status = (parsed && parsed.status) || statusFromStop(stopReason)
+    dir.round = meta.round
+    if (parsed) {
+      if (parsed.routes) dir.routes = (dir.routes || []).concat(parsed.routes)
+      if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
+      if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
+      if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) await addLemmaAsProposition(qid, parsed.lemmas[i]) }
+      if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) await addSubQuestion(qid, dirId, parsed.sub_questions[i]) }
+    }
+    if (status === 'success') {
+      if (parsed && parsed.solution) {
+        dir.status = 'success'
+        delete agentRegistry[childId]
+        logActivity('solver', qid + '/' + dirId + ' success at round ' + meta.round)
+        await addSolution(qid, parsed.solution, parsed.solution_probability)
+      } else {
+        // claimed success without a solution text — treat as an incomplete round
+        if (meta.round >= params.solverMaxRounds) {
+          dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || 'claimed success without solution at iteration cap'
+          delete agentRegistry[childId]
+          logActivity('solver', qid + '/' + dirId + ' dead-end (success without solution)')
+        } else {
+          const progressText = prog.directions.map(directionSummary).join('\n')
+          await followupChild(childId, solverPrompt(q, dir, meta.round + 1, progressText))
+          agentRegistry[childId].round = meta.round + 1
+          dir.round = meta.round + 1
+        }
+      }
+    } else if (status === 'dead-end' || meta.round >= params.solverMaxRounds) {
+      dir.status = 'dead-end'
+      if (!dir.dead_end_reason) dir.dead_end_reason = (status === 'dead-end' && !parsed) ? 'solver ended abnormally (' + stopReason + ')' : 'iteration cap reached'
+      delete agentRegistry[childId]
+      logActivity('solver', qid + '/' + dirId + ' dead-end: ' + dir.dead_end_reason)
+    } else {
+      const progressText = prog.directions.map(directionSummary).join('\n')
+      try {
+        await followupChild(childId, solverPrompt(q, dir, meta.round + 1, progressText))
+        agentRegistry[childId].round = meta.round + 1
+        dir.round = meta.round + 1
+      } catch (e) {
+        console.error('vibe-math-v2: solver followup failed: ' + String((e && e.message) || e))
+        dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || '求解器续轮失败（followup 异常）'
+        delete agentRegistry[childId]
+      }
+    }
+    await saveProgress(qid, prog)
+  }
+  function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
+  async function addLemmaAsProposition(qid, lemma) {
+    if (!lemma || !lemma.title) return
+    const p = {
+      id: 'p-' + shortId(), 概述: lemma.statement || lemma.title,
+      布尔估计: clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6),
+      细类型: (lemma.细类型 && typeof lemma.细类型 === 'object') ? lemma.细类型 : { 未分类: {} },
+      证明列表: [{ 完整过程: lemma.proof || '', 正确概率: clamp01(0.7), '支持信息/依据': '' }],
+      证伪列表: [], 优先级: (lemma.优先级 != null) ? lemma.优先级 : 1,
+      '价值/关键性': clamp01(lemma['价值/关键性'] != null ? lemma['价值/关键性'] : 0.5),
+      progress: '由求解器针对问题 ' + qid + ' 的方向迭代产出。', 来源问题: qid,
+    }
+    await upsertProposition(p)
+    logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id)
+  }
+  async function addSubQuestion(qid, dirId, sq) {
+    if (!sq || !sq.title) return
+    const qs = await getQs()
+    const subId = qid + '-sub-' + shortId()
+    qs.push({ id: subId, 概述: sq.statement || sq.title, 已解决: false, 解法列表: [], 优先级: 1, progress: '子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；主线临时假设其成立。' })
+    await writeQs(qs)
+    const q = qs.find(function (x) { return x.id === qid })
+    if (q) { const prog = parseProgress(q); const d = prog.directions.find(function (x) { return x.id === dirId }); if (d) { d.sub_questions = d.sub_questions || []; d.sub_questions.push(subId) } await saveProgress(qid, prog) }
+    logActivity('subquestion', qid + ' → ' + subId + '（' + sq.title + '）')
+  }
+  async function addSolution(qid, solutionText, prob) {
+    const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return
+    const p = clamp01(prob != null ? prob : 0.8)
+    const finalProb = p >= 1 ? 0.99 : (p <= 0 ? 0.01 : p) // must be < 1 (待验证器验证)
+    q.解法列表 = q.解法列表 || []
+    q.解法列表.push({ 完整解法: String(solutionText), 正确概率: finalProb, 来源: 'solver', 验证记录: [] })
+    await writeQs(qs)
+    logActivity('solution', 'problem ' + qid + ' got a candidate solution (probability ' + finalProb + ', awaiting verification)')
+  }
+
+  // ================= verification (验证器) =================
+  function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
+  function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
+  function verifierWeight(cid, rigor) { const acc = verifierAccuracy[cid] || { correct: 0, total: 0 }; const base = acc.total > 0 ? (acc.correct / acc.total) : 0.5; const bonus = (typeof rigor === 'number' && Number.isFinite(rigor)) ? Math.max(-0.2, Math.min(0.2, rigor)) : 0; return Math.max(0.05, Math.min(0.95, base + bonus)) }
+  async function handleVerifier(childId, meta, output, stopReason) {
+    const rId = meta.rId
+    const parsed = parseJson(output)
+    const Result = clamp01((parsed && parsed.Result != null) ? parsed.Result : 0.5)
+    const Reason = (parsed && parsed.Reason) || ''
+    let t = tasks['verify:' + rId]
+    if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
+    if (t.children.indexOf(childId) === -1) t.children.push(childId)
+    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round }
+    delete agentRegistry[childId]
+    const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === meta.round })
+    if (!allReported) { await saveAll(); return }
+    await advanceVerification(t, meta.round)
+    await saveAll()
+  }
+  async function advanceVerification(t, round) {
+    if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
+      t.round = round + 1
+      const transcript = buildTranscript(t)
+      const nextChildren = []
+      for (let i = 0; i < t.children.length; i++) {
+        const cid = t.children[i]
+        try {
+          await followupChild(cid, verifierDebatePrompt(t.r, transcript))
+          agentRegistry[cid] = { role: 'verifier', rId: t.rId, round: round + 1, index: i }
+          nextChildren.push(cid)
+        } catch (e) {
+          console.error('vibe-math-v2: verifier followup failed: ' + String((e && e.message) || e))
+          delete agentRegistry[cid]
+          delete t.childResults[cid]
+        }
+      }
+      t.children = nextChildren
+      if (nextChildren.length === 0) await finalizeVerification(t)
+    } else {
+      await finalizeVerification(t)
+    }
+  }
+  async function finalizeVerification(t) {
+    const verdict = finalVerdict(t)
+    if (params.mode === 'manual') {
+      const d = enqueueDecision('verdict', 'verdict for ' + t.rId + ' (debate finished) = ' + verdict, { rId: t.rId, verdict: verdict, task: JSON.parse(JSON.stringify(t)) })
+      scheduler.gate = { decisionId: d.id, node: 'verdict' }
+      t.status = 'awaiting-verdict'
+    } else {
+      await settleVerdict(t, verdict)
+      delete tasks[t.id]
+    }
+  }
+  function finalVerdict(t) {
+    const rs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid] })
+    if (rs.length === 0) return 0.5
+    if (rs.every(function (r) { return r.Result === 1 })) return 1
+    if (rs.every(function (r) { return r.Result === 0 })) return 0
+    if (params.verdictMode === 'forced') {
+      let num = 0; let den = 0
+      const cids = Object.keys(t.childResults)
+      for (let i = 0; i < rs.length; i++) {
+        const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
+        const accRate = acc.total > 0 ? (acc.correct / acc.total) : 0.5
+        const confident = (rs[i].Result === 1 || rs[i].Result === 0) ? 0.1 : 0
+        const w = Math.max(0.05, Math.min(0.95, accRate + confident))
+        num += w * rs[i].Result; den += w
+      }
+      return den > 0 ? Math.max(0.01, Math.min(0.99, num / den)) : 0.5
+    }
+    return 0.5 // flat = 均衡机制
+  }
+  async function settleVerdict(t, verdict) {
+    const v = clamp01(verdict)
+    const r = t.r
+    const cids = Object.keys(t.childResults)
+    // update verifier historical accuracy (forced mode audit)
+    for (let i = 0; i < cids.length; i++) {
+      const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
+      acc.total += 1
+      if (t.childResults[cids[i]].Result === v) acc.correct += 1
+      verifierAccuracy[cids[i]] = acc
+    }
+    await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
+    // debate transcript log
+    await writeJson('Verification_logs/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), at: now() })
+
+    if (r.kind === 'proposition') {
+      const p = await findProposition(r.pId)
+      if (p) {
+        p.布尔估计 = v
+        if (v === 1) { p.证明列表 = p.证明列表 || []; p.证明列表.push({ 完整过程: strongestReason(t, 1), 正确概率: 1, '支持信息/依据': '', 已验: true }); p.优先级 = 'never' }
+        else if (v === 0) { p.证伪列表 = p.证伪列表 || []; p.证伪列表.push({ 完整过程: strongestReason(t, 0), 正确概率: 1, '支持信息/依据': '', 已验: true }); p.优先级 = 'never' }
+        else {
+          p.证明列表 = p.证明列表 || []; p.证伪列表 = p.证伪列表 || []
+          p.证明列表.push({ 完整过程: strongestReason(t, 1) || '根据辩论得到的支持性论证', 正确概率: v, '支持信息/依据': '', 已验: true })
+          p.证伪列表.push({ 完整过程: strongestReason(t, 0) || '根据辩论得到的反驳性论证', 正确概率: 1 - v, '支持信息/依据': '', 已验: true })
+        }
+        await upsertProposition(p)
+        await writeVerifiedCardIfNeeded(p)
+      }
+    } else if (r.kind === 'prop-proof') {
+      const p = await findProposition(r.pId)
+      if (p) {
+        const list = r.side === '证明' ? (p.证明列表 = p.证明列表 || []) : (p.证伪列表 = p.证伪列表 || [])
+        const item = list[r.idx]
+        if (item) {
+          item.正确概率 = v
+          item.已验 = true
+          if (v === 1) { item['支持信息/依据'] = strongestReason(t, 1) || item['支持信息/依据'] }
+          else if (v === 0) {
+            const other = r.side === '证明' ? (p.证伪列表 = p.证伪列表 || []) : (p.证明列表 = p.证明列表 || [])
+            other.push({ 完整过程: strongestReason(t, 0) || '', 正确概率: 1, '支持信息/依据': '判定 ' + r.side + ' 错误后的反证', 已验: true })
+          } else {
+            const other = r.side === '证明' ? (p.证伪列表 = p.证伪列表 || []) : (p.证明列表 = p.证明列表 || [])
+            other.push({ 完整过程: strongestReason(t, v >= 0.5 ? 0 : 1) || '辩论得出的相反方向论证', 正确概率: 1 - v, '支持信息/依据': '', 已验: true })
+            item['支持信息/依据'] = strongestReason(t, v >= 0.5 ? 1 : 0) || item['支持信息/依据']
+          }
+        }
+        await upsertProposition(p)
+        await writeVerifiedCardIfNeeded(p)
+      }
+    } else if (r.kind === 'problem-solution') {
+      const qs = await getQs(); const q = qs.find(function (x) { return x.id === r.qid }); if (q) {
+        const sol = (q.解法列表 || [])[r.idx]
+        if (sol) {
+          sol.正确概率 = v
+          sol.已验 = true
+          sol.验证记录 = sol.验证记录 || []
+          sol.验证记录.push({ 结果: v, 时间: now(), 依据: strongestReason(t, v >= 0.5 ? 1 : 0) })
+          if (v === 1) { q.已解决 = true; q.优先级 = 'never' }
+        }
+        await writeQs(qs)
+      }
+    }
+    logActivity('verdict', t.rId + ' = ' + v + (v === 1 ? ' (fully verified)' : v === 0 ? ' (refuted)' : ' (uncertain)'))
+  }
+  function strongestReason(t, wantTrue) {
+    const cids = Object.keys(t.childResults)
+    let best = ''; let bestDist = -1
+    for (let i = 0; i < cids.length; i++) {
+      const res = t.childResults[cids[i]]
+      const dist = wantTrue ? res.Result : 1 - res.Result
+      if (dist > bestDist && res.Reason) { bestDist = dist; best = res.Reason }
+    }
+    return best
+  }
+  async function writeVerifiedCardIfNeeded(p) {
+    if (p.布尔估计 !== 1 && p.布尔估计 !== 0) return false
+    const cat = categoryOf(p)
+    const list = await readVerifiedCategory(cat)
+    if (list.some(function (c) { return c.id === p.id })) return false // idempotent
+    const card = {
+      id: p.id, 概述: p.概述, 类型: '命题', 结论: p.布尔估计 === 1, 概率: p.布尔估计,
+      内容: (p.布尔估计 === 1 ? ((p.证明列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程 : ((p.证伪列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程) || '',
+      来源: p.来源问题 || '', 时间: now(), 分类: cat,
+    }
+    list.push(card)
+    await writeJson('Verified/' + cat + '_Verified.json', list)
+    return true
+  }
+
+  // ================= child result dispatch =================
+  async function onChildEnd(info) {
+    const meta = agentRegistry[info.id]
+    if (meta === undefined) return
+    scheduler.activeCount = Math.max(0, scheduler.activeCount - 1)
+    const output = blocksToText(info.lastAssistantMessage)
+    try {
+      if (meta.role === 'explorer') await handleExplorer(info.id, meta, output)
+      else if (meta.role === 'solver') await handleSolver(info.id, meta, output, info.stopReason)
+      else if (meta.role === 'verifier') await handleVerifier(info.id, meta, output, info.stopReason)
+    } catch (e) { console.error('vibe-math-v2 onChildEnd error: ' + String((e && e.stack) || e)) }
+    await saveAll()
+    scheduleTick()
+  }
+
+  // ================= init / control =================
+  async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
+  async function init(agent) {
+    await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }
+    currentProject = await readCurrentProject(); await ensureDirs()
+    if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
+    params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await loadState()
+    // In-flight children of a previous process are gone after restart: drop stale
+    // registrations so scheduling is not blocked by phantom entries. Completed work
+    // already lives in qs.json / Propos / progress; only the interrupted turn is lost.
+    if (Object.keys(agentRegistry).length > 0 || Object.keys(tasks).length > 0) {
+      logActivity('resume', 'cleared ' + Object.keys(agentRegistry).length + ' stale agent(s) and ' + Object.keys(tasks).length + ' in-flight task(s) from previous process')
+      agentRegistry = {}; tasks = {}
+    }
+    scheduler.activeCount = 0; await saveAll()
+    return { ok: true }
+  }
+  async function startScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
+  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function getStatus() {
+    const qs = await getQs(); const propos = await getPropos()
+    return {
+      ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
+      project: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects'),
+      mode: params.mode, activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      frameworkRoot: frameworkRoot(),
+      problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
+      propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
+      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
+      registeredAgents: Object.keys(agentRegistry).length,
+      recentActivity: activityLog.slice(-10), params: params,
+    }
+  }
+
+  // ================= projects =================
+  async function setProject(slug, create) {
+    if (!rootAgent) return { ok: false, message: 'no root agent available' }
+    const exists = (await listDirsAt(vibeRoot(), 'Projects')).indexOf(slug) !== -1
+    if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
+    if (scheduler.running) await abortScheduler()
+    currentProject = slug; await writeCurrentProject(); await ensureDirs()
+    if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false
+    await loadSettings(); await loadState(); await saveAll()
+    return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
+  }
+
+  // ================= events / timer =================
+  ctx.on('subagent/end', function (info) { onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) }) })
+  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, 2000); return () => clearInterval(t) })
+
+  // ================= tools =================
+  function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
+  function registerTool(name, description, parameters, executeFn) {
+    ctx.effect(() => tools.register({
+      name: name, description: description, parameters: parameters,
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
+      execute: async function (args, exec) { try { const agent = (exec && exec.agent) || undefined; await resolveRootAgent(agent); if (rootAgent) currentProject = await readCurrentProject(); return JSON.stringify(await executeFn(args || {}, agent)) } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) } },
+    }))
+  }
+  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V2 scheduler for the current project.', objParams({}), async function (args, agent) { return await startScheduler(agent) })
+  registerTool('vibe_math_resume', 'Resume the Vibe Math V2 scheduler after a checkpoint/restart.', objParams({}), async function (args, agent) { return await resumeScheduler(agent) })
+  registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), async function () { return await pauseScheduler() })
+  registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
+  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
+  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
+  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); return { ok: true, mode: params.mode } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
+  registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
+  registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
+  registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), async function (args) { const qs = await getQs(); if (qs.some(function (q) { return q.id === args.id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: args.id, 概述: args.description, 已解决: false, 解法列表: [], 优先级: args.priority || 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } })
+  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), async function (args) {
+    const p = { id: args.id, 概述: args.概述, 布尔估计: clamp01(args.布尔估计 != null ? args.布尔估计 : 0.5), 细类型: (args.细类型 && typeof args.细类型 === 'object') ? args.细类型 : { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: (args.优先级 != null) ? args.优先级 : 1, '价值/关键性': clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), progress: '用户手动添加。' }
+    await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) }
+  })
+  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category).', objParams({}), async function () { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } })
+  registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, true) })
+  registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
+  registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
+  registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), async function () { return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) } })
+  registerTool('vibe_math_decide', 'Resolve a pending manual decision (verdict override uses verdict: 1|0).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; const resolution = { action: args.action, verdict: args.verdict }; const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
+  registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), async function () { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round, rId: m.rId }) } return { ok: true, agents: out, count: out.length } })
+  registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
+  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
+
+  // ================= slash command /vibe =================
+  async function dispatchVibeCommand(cmd, args, agent) {
+    if (cmd === 'start') return await startScheduler(agent)
+    if (cmd === 'resume') return await resumeScheduler(agent)
+    if (cmd === 'pause') return await pauseScheduler()
+    if (cmd === 'abort') return await abortScheduler()
+    if (cmd === 'status') return await getStatus()
+    if (cmd === 'report') { await maybeWriteReport(true); return await buildReport() }
+    if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); return { ok: true, mode: params.mode } }
+    if (cmd === 'setup') { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
+    if (cmd === 'save') return await saveSettings()
+    if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
+    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
+    if (cmd === 'project') {
+      if (args.length === 0 || args[0] === 'list') return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') }
+      if (args[0] === 'new') return await setProject(slugify(args.slice(1).join(' ')), true)
+      return await setProject(slugify(args[0]), false)
+    }
+    if (cmd === 'decisions') return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) }
+    if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
+    return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
+  }
+  ctx.effect(() => commands.register({
+    name: 'vibe',
+    description: 'control the Vibe Math V2 solver (start/pause/projects/setup/save/decisions/agents)',
+    input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|project [list|new <name>|<name>]|decisions|agents]' },
+    handler: async function (invocation) {
+      const line = String(invocation && invocation.rawInput ? invocation.rawInput : '').trim()
+      const parts = line.length > 0 ? line.split(/\s+/) : []
+      const cmd = parts[0] || ''
+      const rest = parts.slice(1)
+      const result = await dispatchVibeCommand(cmd, rest, invocation.agent)
+      return { kind: 'success', text: JSON.stringify(result, null, 2) }
+    },
+  }))
+}

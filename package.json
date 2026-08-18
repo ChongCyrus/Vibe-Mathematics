@@ -1,18 +1,25 @@
 {
   "name": "dsh-vibe-math",
-  "description": "Multi-agent mathematical problem-solving & verification framework for DeepSeek Harness: breadth-first brainstorm, iterative solving, multi-verifier cross-validation with debate, and a Verified knowledge base — with checkpoint resume and mid-run human intervention. Installs as a bundle AND auto-installs its agent preset.",
-  "version": "0.2.0",
+  "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — TWO agent presets in one install: vibe-math-v1 (classic pipeline: brainstorm → solver iteration → multi-verifier debate → Verified) and vibe-math-v2 (new probability-driven architecture: qs.json + Propos knowledge base + explorer→solver→review/debate verdict). Installing this bundle auto-installs both presets into the DSH preset root.",
+  "version": "0.3.0",
   "type": "module",
-  "main": "vibe-math.js",
+  "main": "installer.js",
   "exports": {
-    ".": "./vibe-math.js",
+    ".": "./installer.js",
+    "./installer": "./installer.js",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
-    "vibe-math.js",
+    "installer.js",
     "cordis.patch.yml",
-    "agent.cordis.yml",
-    "preset.yml"
+    "vibe-math-v1/agent.cordis.yml",
+    "vibe-math-v1/preset.yml",
+    "vibe-math-v1/vibe-math.js",
+    "vibe-math-v1/实现方案-多代理数学问题求解与验证框架.md",
+    "vibe-math-v2/agent.cordis.yml",
+    "vibe-math-v2/preset.yml",
+    "vibe-math-v2/vibe-math-v2.js",
+    "vibe-math-v2/实现方案.md"
   ],
   "license": "MIT",
   "keywords": [

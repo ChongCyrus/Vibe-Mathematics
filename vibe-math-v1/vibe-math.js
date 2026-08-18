@@ -17,12 +17,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Ensure the agent-preset form is installed under the DSH preset root, so a
-// market/bundle install also surfaces "Vibe Math" in the agent-preset picker.
+// market/bundle install also surfaces "Vibe Math V1" in the agent-preset picker.
 // No-op when the preset already exists or when running inside the preset itself.
 function ensurePresetInstalled(logger) {
   try {
     const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh')
-    const presetDir = join(dshHome, '.agent-presets', 'vibe-math')
+    const presetDir = join(dshHome, '.agent-presets', 'vibe-math-v1')
     const here = dirname(fileURLToPath(import.meta.url))
     const files = ['agent.cordis.yml', 'preset.yml', 'vibe-math.js']
     if (files.every((f) => existsSync(join(presetDir, f)))) return false

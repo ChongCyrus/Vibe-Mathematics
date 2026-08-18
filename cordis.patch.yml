@@ -1,45 +1,9 @@
-# The dsh-vibe-math bundle patch. Applied after `@deepseek-ai/dsh-base`, it:
-#   1. enriches the coding persona with the Vibe Math toolkit instructions, and
-#   2. inserts the vibe-math plugin row — 20 vibe_math_* tools, the /vibe slash
-#      command, and a background scheduler (brainstorm → solver iteration →
-#      multi-verifier debate → promotion to Verified → triage back to qs.csv).
-#
-# The plugin consumes the HOST subagents/agents/fs/tools/commands services (all
-# provided by dsh-base) and publishes nothing, so it sits loose with no realm.
-#
-# A patch replaces the target row's whole `config`; `system-prompt` only owns
-# `persona`, so restating just that key is complete.
-
-- id: system-prompt
-  config:
-    persona: |-
-      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
-
-      ## Vibe Math toolkit
-
-      This session includes the "Vibe Math" multi-agent mathematical problem-solving and
-      verification framework. It is driven by a background scheduler (code), NOT by the model:
-      you only issue the control tools below and read status; the scheduler automatically runs
-      brainstorm → solver iteration → multi-verifier debate → promotion to Verified → triage
-      back to the problem list.
-
-      - vibe_math_add_problem {id, description, priority} — add a problem to qs.csv.
-      - vibe_math_start / vibe_math_resume — start / resume the scheduler (resume = continue after a checkpoint or restart).
-      - vibe_math_status / vibe_math_report — read scheduler status / full progress report.
-      - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
-      - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema).
-      - vibe_math_setup — parameter schema for guided configuration.
-      - vibe_math_save_settings — persist current params as new defaults.
-      - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
-      - vibe_math_list_decisions / vibe_math_decide {id, action} — resolve manual decisions.
-      - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
-
-      A /vibe slash command mirrors these. When the user asks to solve or verify a math problem:
-      add the problem (or ask for it first), then vibe_math_start, then report vibe_math_status.
-      In manual mode, poll vibe_math_list_decisions and resolve each with vibe_math_decide.
-      Data lives under {{cwd}}/VibeMath/Projects/<project>/ and survives restarts via vibe_math_resume.
+# The dsh-vibe-math merged bundle patch. Installing this bundle (dsh plugin add
+# dsh-vibe-math / dsh-market) runs ONE plugin row: the preset installer, which
+# copies both agent presets (vibe-math-v1 + vibe-math-v2) into the DSH preset
+# root. The presets themselves register the vibe_math_* tools — nothing is
+# injected into the profile composition directly.
 
 - insert:
-    - id: vibe-math
-      name: dsh-vibe-math
+    - id: vibe-math-preset-installer
+      name: dsh-vibe-math/installer
