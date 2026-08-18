@@ -1045,6 +1045,8 @@ export function apply(ctx) {
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
     if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
+    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 概述: desc, 布尔估计: 0.5, 细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1, '价值/关键性': 0.5, progress: '用户通过 /vibe 添加。' }; await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) } }
+    if (cmd === 'list-propositions') { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } }
     if (cmd === 'project') {
       if (args.length === 0 || args[0] === 'list') return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') }
       if (args[0] === 'new') return await setProject(slugify(args.slice(1).join(' ')), true)
@@ -1052,12 +1054,12 @@ export function apply(ctx) {
     }
     if (cmd === 'decisions') return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) }
     if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
-    return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
+    return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
   }
   ctx.effect(() => commands.register({
     name: 'vibe',
-    description: 'control the Vibe Math V2 solver (start/pause/projects/setup/save/decisions/agents)',
-    input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|project [list|new <name>|<name>]|decisions|agents]' },
+    description: 'control the Vibe Math V2 solver (start/pause/projects/setup/save/decisions/agents/propositions)',
+    input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents]' },
     handler: async function (invocation) {
       const line = String(invocation && invocation.rawInput ? invocation.rawInput : '').trim()
       const parts = line.length > 0 ? line.split(/\s+/) : []
