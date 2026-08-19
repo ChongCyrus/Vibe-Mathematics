@@ -477,6 +477,7 @@ export function apply(ctx) {
   function directionSummary(d) {
     return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
       ' survival=' + d.survival +
+      (d.lemmas && d.lemmas.length ? ' | lemmas: ' + d.lemmas.map(function (l) { return '「' + l.title + '」(' + l.id + ')' }).join('; ') : '') +
       (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '') +
       (d.lessons && d.lessons.length ? ' | lessons: ' + d.lessons.join('; ') : '') +
       (d.blockers && d.blockers.length ? ' | blockers: ' + d.blockers.join('; ') : '')
@@ -840,7 +841,7 @@ export function apply(ctx) {
       if (parsed.lessons) dir.lessons = (dir.lessons || []).concat(parsed.lessons)
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
-      if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) await addLemmaAsProposition(qid, parsed.lemmas[i]) }
+      if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) { const lid = await addLemmaAsProposition(qid, parsed.lemmas[i]); if (lid) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: lid, title: parsed.lemmas[i].title || '' }) } } }
       if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const sq = parsed.sub_questions[i]; if (sq && sq.q_sub_statement && dir.sub_questions && dir.sub_questions.some(function (x) { return x.statement === sq.q_sub_statement })) continue; const rec = await addSubQuestion(qid, dirId, sq); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
     }
     if (status === 'success') {
@@ -902,6 +903,7 @@ export function apply(ctx) {
     }
     await upsertProposition(p)
     logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id)
+    return p.id
   }
   // 点5（q_sub 严格化）：solver 报告子问题 q_sub 时，注册三个对象：
   //   1) q_sub 本身（问题类，完整陈述）入 qs.json；
