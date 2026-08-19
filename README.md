@@ -7,6 +7,7 @@
 > 运行在 **DeepSeek Harness** 内的一组 **agent preset**（`vibe-math-v1` / `vibe-math-v2`），
 > 用多代理协作自动求解数学问题并对结论做多代理交叉验证。两个预设共享「**断点续跑**、
 > **中途人工干预**、**进度汇报**、**自然语言驱动**」三大底座能力，但采用两套不同的求解架构：
+> **💡 推荐使用 `vibe-math-v2`**（v1 的架构级重构，更完善更优雅；v1 作为早期架构保留兼容，可能在将来版本中被遗弃、不再维护）。
 >
 > - **`vibe-math-v1`（经典流水线）**：「广度探索 → 深度迭代 → 交叉验证 → 知识沉淀」闭环；
 > - **`vibe-math-v2`（新架构 · 概率驱动）**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度。
@@ -61,7 +62,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
 安装时插件会自动把两个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v1/` 与 `vibe-math-v2/`。
-之后新建会话，预设选择器里选择 **Vibe Math**（v1）或 **Vibe Math V2**（v2）即可。
+之后新建会话，预设选择器里选择 **Vibe Math V2**（v2，**推荐**）或 **Vibe Math**（v1）即可——v2 是当前主推架构（v1 的架构级重构，更完善更优雅）；v1 作为早期架构保留兼容，**可能在将来版本中被遗弃、不再维护**，新项目请优先选 v2。
 **升级包版本后重启 DSH，未手动改过的 preset 文件会自动更新到新版本**（细节见文末「v2」安装器说明）。
 
 ### 方式 B：作为 agent preset 手动安装
@@ -90,15 +91,20 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ## 🧭 两个预设怎么选
 
-| | **vibe-math-v1（经典）** | **vibe-math-v2（新架构）** |
+> **💡 强烈建议优先使用 `vibe-math-v2`（新架构）**。v2 是对 v1（经典流水线）的**架构级重构**：v1 的流水线设计存在一些固有缺陷（CSV 数据模型表达能力有限、验证单元拆分粒度不易控制、缺少命题知识库与概率驱动的调度依据等），而 v2 用「问题清单 + 命题知识库 + 概率驱动调度 + 独立评审→辩论→裁决」解决了这些问题，更完善、更优雅，且经多次实测与迭代（8 点需求、多会话隔离、断点续跑、人工干预均验证通过，适配 dsh-v0.1.0-rc.7）。
+>
+> **⚠️ `vibe-math-v1` 是 v2 的架构级前身，仅作参考/兼容保留，可能在将来的版本中被遗弃、不再维护。** 新项目、新问题请直接使用 v2。
+
+| | **vibe-math-v1（经典 · 将弃用）** | **vibe-math-v2（新架构 · 推荐）** |
 |---|---|---|
+| 定位 | 早期流水线架构（v2 的前身，保留兼容） | **当前主推架构**，更完善、更优雅 |
 | 核心思想 | 流水线：拆方向 → 逐方向求解 → 拆最小单元 → 多验证器辩论 → 晋升 `Verified/` | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度求解与验证 |
 | 数据 | `qs/qs.csv` + `Progress_Logs/` | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` |
 | 角色 | brainstorm / solver / derive / verifier / decider | explorer（拆方向）→ 逐方向 solver → verifier（独立审查→辩论→裁决） |
 | 收口规则 | 验证通过晋升 `Verified/`，decider 判定解决 | 解法/证明达概率 `1` 即收口（问题 solved、命题 1/0），`never` 永不调度 |
 | 特设能力 | 子问题分支（Aux_Hypothesis） | 命题「价值/关键性」自动晋升问题清单；`reportMode file/push/both`；`priorityAdjust` 三种优先级策略 |
 
-两者都支持：断点续跑（`vibe_math_resume`）、人工/自动模式切换、`vibe_math_*` 工具集与 `/vibe` 命令、按项目隔离、子代理权限调控。
+两者都支持：断点续跑（`vibe_math_resume`）、人工/自动模式切换、`vibe_math_*` 工具集与 `/vibe` 命令、按项目隔离、子代理权限调控。**但建议新项目一律选 v2**。
 
 ---
 
