@@ -20,13 +20,13 @@
 
 > 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)；可编辑生成脚本：[v1](docs/generate_framework_diagram.py) / [v2](docs/generate_framework_diagram_v2.py)。
 
-### Vibe Math V1（经典流水线）
+### Vibe Math V1（经典流水线）⚠️ 早期架构 · 将弃用 · 不建议新项目使用
 
 ![Vibe Math V1 架构图](示例图/框架图-v1.png)
 
 **一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
 
-### Vibe Math V2（新架构 · 概率驱动）
+### Vibe Math V2（新架构 · 概率驱动）✅ 推荐 · 当前主推架构
 
 ![Vibe Math V2 架构图](示例图/框架图-v2.png)
 
@@ -108,7 +108,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧠 架构与分工（v1 · 经典）
+## 🧠 架构与分工（v1 · 经典）⚠️ 早期架构 · 将弃用 · 不建议新项目使用
 
 框架 = **一个主代理（助手）+ 一个代码调度器 + 五类子代理**。
 
