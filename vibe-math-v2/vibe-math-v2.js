@@ -38,6 +38,13 @@ export function apply(ctx) {
   // ================= per-session registry =================
   const sessions = new Map() // rootAgentId -> Session
   const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+  // Process epoch: PROCESS-level (one per apply, shared by every session), written to
+  // VibeMath_State/process_epoch.json at init; a DIFFERENT persisted epoch means a
+  // previous DSH process wrote this state (in-flight children are gone), while an
+  // equal epoch means same-process pause→resume (children may still be alive).
+  // Kept at apply level (not per-session) to match the 0.3.17 semantics: two sessions
+  // in the same process must never treat each other as a stale previous process.
+  const processEpoch = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
 
   function sessionIdOf(agent) { try { return (agent && agent.id) ? String(agent.id) : undefined } catch (e) { return undefined } }
   // Walk up the durable session lineage to the top-level (root) agent of this session,
@@ -117,10 +124,6 @@ export function apply(ctx) {
   let tickInFlight = false
   let lastTickAt = 0
   let explorerRetries = {}
-  // Process epoch: written to state at init; a DIFFERENT persisted epoch means a
-  // previous DSH process wrote this state (in-flight children are gone), while an
-  // equal epoch means same-process pause→resume (children may still be alive).
-  const processEpoch = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
