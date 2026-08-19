@@ -212,7 +212,7 @@ export function apply(ctx) {
     lines.push('{')
     lines.push('  // Vibe Math 默认参数配置（JSON with Comments，可加 // 注释）。')
     lines.push('  // 位置：<项目>/vibe_math_setting.json（全局回退：<工作区>/VibeMath/vibe_math_setting.json）。')
-    lines.push('  // 该文件只提供“默认值”；运行期 vibe_math_set_params 改过的值会存到 VibeMath_State/params.json 并覆盖此处。')
+    lines.push('  // 本文件是参数的唯一持久化来源：vibe_math_set_params / set_mode 会立即写回此文件；全局文件仅作项目文件不存在时的回退默认。')
     const keys = Object.keys(src).sort()
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i]
@@ -231,8 +231,20 @@ export function apply(ctx) {
   async function createTemplate(where) { const isGlobal = where !== 'project'; const path = isGlobal ? (vibeRoot() + '/vibe_math_setting.json') : (frameworkRoot() + '/vibe_math_setting.json'); const content = settingsTemplateFrom(DEFAULT_PARAMS); const ok = isGlobal ? await writeTextAbs(path, content) : await writeText('vibe_math_setting.json', content); return { ok: ok, path: path, where: isGlobal ? 'global' : 'project' } }
 
   // ================= persistence =================
-  async function loadState() { const pj = await readJson('VibeMath_State/params.json'); if (pj) params = Object.assign({}, params, pj); const s = await readJson('VibeMath_State/scheduler_state.json'); if (s) scheduler = Object.assign({}, scheduler, s); const r = await readJson('VibeMath_State/agent_registry.json'); if (r) agentRegistry = r; const d = await readJson('VibeMath_State/dependencies.json'); if (d) dependencies = d; const dq = await readJson('VibeMath_State/decision_queue.json'); if (dq) decisionQueue = dq; const tk = await readJson('VibeMath_State/tasks.json'); if (tk) tasks = tk; const sv = await readJson('VibeMath_State/solved_by_verified.json'); if (sv) solvedByVerified = sv; const pq = await readJson('VibeMath_State/promotion_queue.json'); if (pq) promotionQueue = pq; const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = va }
-  async function saveAll() { await writeJson('VibeMath_State/params.json', params); await writeJson('VibeMath_State/scheduler_state.json', scheduler); await writeJson('VibeMath_State/agent_registry.json', agentRegistry); await writeJson('VibeMath_State/dependencies.json', dependencies); await writeJson('VibeMath_State/decision_queue.json', decisionQueue); await writeJson('VibeMath_State/tasks.json', tasks); await writeJson('VibeMath_State/solved_by_verified.json', solvedByVerified); await writeJson('VibeMath_State/promotion_queue.json', promotionQueue); await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy); scheduler.lastCheckpoint = now() }
+  async function loadState() { const s = await readJson('VibeMath_State/scheduler_state.json'); if (s) scheduler = Object.assign({}, scheduler, s); const r = await readJson('VibeMath_State/agent_registry.json'); if (r) agentRegistry = r; const d = await readJson('VibeMath_State/dependencies.json'); if (d) dependencies = d; const dq = await readJson('VibeMath_State/decision_queue.json'); if (dq) decisionQueue = dq; const tk = await readJson('VibeMath_State/tasks.json'); if (tk) tasks = tk; const sv = await readJson('VibeMath_State/solved_by_verified.json'); if (sv) solvedByVerified = sv; const pq = await readJson('VibeMath_State/promotion_queue.json'); if (pq) promotionQueue = pq; const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = va }
+  async function saveAll() { await writeJson('VibeMath_State/scheduler_state.json', scheduler); await writeJson('VibeMath_State/agent_registry.json', agentRegistry); await writeJson('VibeMath_State/dependencies.json', dependencies); await writeJson('VibeMath_State/decision_queue.json', decisionQueue); await writeJson('VibeMath_State/tasks.json', tasks); await writeJson('VibeMath_State/solved_by_verified.json', solvedByVerified); await writeJson('VibeMath_State/promotion_queue.json', promotionQueue); await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy); scheduler.lastCheckpoint = now() }
+  // 一次性迁移（单文件化）：旧版 params.json 合并进 vibe_math_setting.json 后删除。
+  async function migrateLegacyParams() {
+    const legacy = await readJson('VibeMath_State/params.json')
+    if (!legacy || Object.keys(legacy).length === 0) return
+    try {
+      params = Object.assign({}, params, sanitizeParams(legacy))
+      await saveSettings()
+      await writeJson('VibeMath_State/params.json', {}) // 一次性守卫：即使删除失败，空对象也不再覆盖设置文件
+      await removeFile('VibeMath_State/params.json')
+      logActivity('params', 'legacy params.json merged into vibe_math_setting.json and removed')
+    } catch (e) { console.error('vibe-math: params migration failed: ' + String((e && e.message) || e)) }
+  }
 
   // ================= activity log / report =================
   function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); const cap = Number(params.activityLogCap) || 100; if (activityLog.length > cap) activityLog.shift(); reportDirty = true }
@@ -307,7 +319,7 @@ export function apply(ctx) {
 
   // ================= init / control =================
   async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
-  async function init(agent) { await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }; currentProject = await readCurrentProject(); await ensureDirs(); if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n'); params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await loadState(); scheduler.activeCount = 0; await saveAll(); return { ok: true } }
+  async function init(agent) { await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }; currentProject = await readCurrentProject(); await ensureDirs(); if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n'); params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await migrateLegacyParams(); await loadState(); scheduler.activeCount = 0; await saveAll(); return { ok: true } }
   async function startScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
@@ -338,7 +350,7 @@ export function apply(ctx) {
     await ensureDirs()
     if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n')
     params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; dependencies = {}; decisionQueue = []; tasks = {}; brainstormRetries = {}; deriveRetries = {}; solvedByVerified = {}; promotionQueue = {}; verifierAccuracy = {}; activityLog = []
-    await loadSettings(); await loadState(); await saveAll()
+    await loadSettings(); await migrateLegacyParams(); await loadState(); await saveAll()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
   }
 
@@ -508,8 +520,8 @@ export function apply(ctx) {
   registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report (status + recent activity + params) and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return buildReport() })
-  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['direct-veto', 'weighted-vote'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, args); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['direct-veto', 'weighted-vote'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, args); await saveAll(); await saveSettings(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema (each param: name, type, current, default, description, options, suggestion) for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -531,7 +543,7 @@ export function apply(ctx) {
     if (cmd === 'abort') return await abortScheduler()
     if (cmd === 'status') return await getStatus()
     if (cmd === 'report') { await maybeWriteReport(true); return buildReport() }
-    if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } }
+    if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } }
     if (cmd === 'setup') { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')

@@ -237,6 +237,8 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 - **生成模板**：`/vibe template`（生成到工作区）或 `/vibe template project`（生成到当前项目）——
   会产出一份**带 `//` 注释、逐项中文说明**的 JSON 模板，你手改后重启/resume 即生效。
 - **保存当前值**：`/vibe save` 把当前生效参数写回该文件。
+- **唯一持久化来源**：该文件是参数的**唯一持久化层**（项目级优先 → 缺失时回退全局 `<工作区>/VibeMath/vibe_math_setting.json` → 内置默认）。
+  `vibe_math_set_params` / `set_mode` 会**立即写回**项目级文件并持久化，无需再手动 save。
 
 ---
 
