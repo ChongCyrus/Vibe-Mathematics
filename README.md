@@ -82,7 +82,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 - **形态依赖**：两个 preset 依赖 DSH 的标准 **agent-preset 机制**（`~/.dsh/.agent-presets/<id>/` + preset picker）与 **bundle patch 机制**（`cordis.patch.yml` 注入安装器）。
 - **宿主插件行**：`agent.cordis.yml` 引用宿主提供的 `@deepseek-ai/dsh-*` 插件行（persona、agent-instructions、tool-bash/pwsh、tool-fs/fs-search、tool-jobs、skill-filesystem、tool-skill、tool-goal、plan-mode、compaction、subagent/workflow、ask-user、todo、web 等，约 21 个唯一包名）。宿主缺行会导致 preset 挂载失败（会话启动时报错）。
-- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / followup / interrupt）、`agents`（roots）、`tools`（register）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），可选 `subprocess` / `sandboxPolicy`。这些 API 形状随 DSH 版本演进，**低于 `package.json` 中 `dsh.minVersion`（实测基线 `0.1.0-rc.5`）的版本未验证**，可能无法挂载。
+- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / followup / interrupt）、`agents`（roots）、`tools`（register）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），可选 `subprocess` / `sandboxPolicy`。这些 API 形状随 DSH 版本演进；本项目**已充分测试并确认适配 `dsh-v0.1.0-rc.7`**（`package.json` 的 `dsh.minVersion` / `testedVersion` 均为 `0.1.0-rc.7`），低于该版本的 DSH 未验证，可能无法挂载。
 - **运行时自检**：安装器（bundle 插件）每次启动时对上述服务与关键 API 做**能力自检**（DSH 不暴露版本号，故按能力而非版本检测）；不满足时打 warning 并提示升级 DSH。preset 挂载失败时先看 DSH 日志里的自检 warning。
 - **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin update dsh-vibe-math`，重启 DSH 后安装器会自动把 preset 更新到新版本（见上文「安装」说明）。
 

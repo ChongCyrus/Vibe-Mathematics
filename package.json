@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — TWO agent presets in one install: vibe-math-v1 (classic pipeline: brainstorm → solver iteration → multi-verifier debate → Verified) and vibe-math-v2 (new probability-driven architecture: qs.json + Propos knowledge base + explorer→solver→review/debate verdict). Installing this bundle auto-installs both presets into the DSH preset root.",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "type": "module",
   "main": "installer.js",
   "exports": {
@@ -48,8 +48,8 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
-    "minVersion": "0.1.0-rc.5",
-    "testedVersion": "0.1.0-rc.5",
-    "compatNote": "依赖宿主提供的 subagents/agents/tools/commands/fs 服务与 @deepseek-ai/dsh-* 插件行；低于 minVersion 的 DSH 未验证，可能无法挂载 preset（安装器启动时会做能力自检并告警）"
+    "minVersion": "0.1.0-rc.7",
+    "testedVersion": "0.1.0-rc.7",
+    "compatNote": "依赖宿主提供的 subagents/agents/tools/commands/fs 服务与 @deepseek-ai/dsh-* 插件行；本项目已充分测试并确认适配 dsh-v0.1.0-rc.7（低于 minVersion 的 DSH 未验证，可能无法挂载 preset；安装器启动时会做能力自检并告警）"
   }
 }

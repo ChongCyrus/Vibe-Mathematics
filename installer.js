@@ -84,9 +84,9 @@ function checkHostCapabilities(ctx, logger) {
     }
   }
   if (problems.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。两个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目实测基线版本 0.1.0-rc.5，见 package.json 的 dsh.minVersion）。')
+    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。两个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.0-rc.7，见 package.json 的 dsh.minVersion）。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（实测基线 DSH 0.1.0-rc.5）。')
+    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.0-rc.7）。')
   }
 }
 
