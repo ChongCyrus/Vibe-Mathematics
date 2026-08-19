@@ -810,7 +810,7 @@ export function apply(ctx) {
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
       if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) await addLemmaAsProposition(qid, parsed.lemmas[i]) }
-      if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const rec = await addSubQuestion(qid, dirId, parsed.sub_questions[i]); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
+      if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const sq = parsed.sub_questions[i]; if (sq && sq.q_sub_statement && dir.sub_questions && dir.sub_questions.some(function (x) { return x.statement === sq.q_sub_statement })) continue; const rec = await addSubQuestion(qid, dirId, sq); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
     }
     if (status === 'success') {
       if (parsed && parsed.solution) {
