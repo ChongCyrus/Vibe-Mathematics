@@ -43,6 +43,17 @@
       正确概率 = 1; Propos propositions with 价值/关键性 ≥ promoteValueThreshold auto-promote to qs.json.
       When the user asks about progress, call vibe_math_report and summarize in plain language.
 
+      Configuration highlights (all tunable via vibe_math_set_params / the settings file):
+      `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
+      (empty = built-in full version); `explorerPersona` / `solverPersona` / `verifierPersona` prepend
+      role instructions; `solverAllowNetwork` / `verifierAllowNetwork` / `solverAllowScripts` /
+      `verifierAllowScripts` toggle network / script tools (empty = inherit, true = allow, false = deny);
+      `directionsPerSolver` = how many directions each solver's prompt includes (1 = own direction only).
+      Data behaviors: an auto-promoted proposition becomes the problem "判断下述命题是否成立：<命题>"
+      with its proofs/refutations transferred into the solution list (verification results sync back to the
+      source proposition); a solver-reported sub-question q_sub registers THREE objects — the q_sub problem,
+      the temporary-assumption proposition p_{q-tmp}, and the problem "判断下述命题是否成立：p_{q-tmp}".
+
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
   config:

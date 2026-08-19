@@ -395,19 +395,25 @@ export function apply(ctx) {
       '\n4) OUTPUT REQUIREMENTS (你输出的每个对象必须满足)：\n' +
       '- 完整性、不断章取义：任何你写出的问题/命题/结论都要给出完整陈述，并把它所依赖的对象、环境、背景、定义全部补全（例如提到某个序列/函数/定理时给出其完整定义与假设）。\n' +
       '- 若结论依赖某个临时假设 p，必须显式写成「若 <p 的完整陈述> 成立，则：...」（同样要定义完整）。\n' +
-      '- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。\n'
+      '- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。\n' +
+      '- 示例（完整问题 概述）："设 {a_n} 为非负实数序列（n≥1），满足：对任意正整数 n 都存在 i,j 使 |a_i − a_j| = 1/n^p（p>0 为实参数）。判断：p 在什么范围内保证级数 ∑_{n=1}^∞ a_n 发散？" —— 每个记号（序列、参数、级数）都在句内定义完整，读它的人无需再查背景。\n' +
+      '- 示例（完整命题 概述）："设函数 f:[0,1]→R 连续，则 f 在 [0,1] 上有界（连续性按 ε-δ 定义，有界性按标准实数分析定义）。" —— 概念与对象定义完整，不引用未定义的记号。\n'
   }
   function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
   function capabilitiesText(role) {
     const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
     const netOn = role === 'solver' ? params.solverAllowNetwork : params.verifierAllowNetwork
     const scrOn = role === 'solver' ? params.solverAllowScripts : params.verifierAllowScripts
+    const toolParts = []
+    if (netOn !== false) toolParts.push('web search / literature lookup')
+    if (scrOn !== false) toolParts.push('symbolic/numeric computation (running scripts)')
     let t = '\nYOUR PERMISSIONS / CAPABILITIES:\n'
     t += '- Network tools (web search / fetch): ' + (netOn === false ? 'DISABLED for you' : 'available') + '; Script/shell tools (bash/pwsh): ' + (scrOn === false ? 'DISABLED for you' : 'available') + ' (your actual tool list is enforced by the framework).\n'
+    t += toolParts.length > 0
+      ? ('- You may use external tools (' + toolParts.join(', ') + ') to assist; ' + ((maxCalls && Number(maxCalls) > 0) ? ('call such external tools AT MOST ' + maxCalls + ' times this round.\n') : 'no per-round limit by default.\n'))
+      : '- External tools: none enabled for you this round.\n'
     t += '- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).\n'
     t += '- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).\n'
-    t += '- You may use external tools (web search, symbolic/numeric computation, literature lookup) to assist; '
-    t += (maxCalls && Number(maxCalls) > 0) ? ('call such external tools AT MOST ' + maxCalls + ' times this round.\n') : 'no per-round limit by default.\n'
     t += '- You must NOT write files directly: return structured JSON only — the scheduler is the single writer.\n'
     t += '\nHOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):\n'
     t += '- These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).\n'
@@ -422,6 +428,7 @@ export function apply(ctx) {
       '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. ' +
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
       'Record each direction with its core assumption and an initial feasibility estimate.\n\n' +
+      'feasibility ∈ [0,1]: your estimate of the probability this direction leads to a full solution. Every direction must be self-contained and unambiguous: title / method / core_assumption written completely, defining every object they mention — no 断章取义, no undefined symbols.\n\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
       '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}'
   }
@@ -436,6 +443,7 @@ export function apply(ctx) {
       '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven to be dead ends (unless a new tool/idea changes that). ' +
       'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. ' +
       'Finally return the UNION of high-potential leftover directions and the brand-new directions as the new direction set M_q (drop dead ends).\n\n' +
+      'feasibility ∈ [0,1] as above. Every returned direction (kept or new) must be self-contained and unambiguous, with complete definitions — no 断章取义.\n\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
       '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5,"motivation":"..."}]}'
   }
@@ -468,6 +476,8 @@ export function apply(ctx) {
       '- lessons learned from failed attempts (what to avoid, what did not work and why);\n' +
       '- an updated survival probability for this direction.\n'
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation it mentions must be fully defined — never quote partially, 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION that is one possible answer to q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion that depends on this assumption MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (with complete definitions). The scheduler registers q_sub and the problem "判断下述命题是否成立：p_{q-tmp}" in the problem list, and p_{q-tmp} in the proposition base.\n'
+    head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 布尔估计 / solution_probability / survival_probability you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ (or 正确概率=1 entries you READ from files) count as certain.\n'
+    head += '- Each lemma you output must carry a COMPLETE statement ("statement") and a COMPLETE proof ("proof"): define every object/notation it uses — no 断章取义, no undefined symbols.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
     head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
       '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}'
@@ -481,8 +491,9 @@ export function apply(ctx) {
     return verifierPersonaText() + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + target + '\n' +
       knowledgeContextText() +
       capabilitiesText('verifier') +
+      '\nResult ∈ [0,1] = your probability that the TARGET is CORRECT: 1 ONLY when you are fully certain (for a bare proposition: Reason must be a complete proof; for a proof/refutation/solution: you verified every step and Reason confirms the whole chain); 0 ONLY when you are certain it is wrong (Reason must be a rigorous complete refutation / pinpoint the fatal flaw); otherwise a value strictly between 0 and 1.\n' +
       '\nIndependently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence; when Result=1 for a bare proposition, Reason must be a complete proof; when Result=0, Reason must be a rigorous complete refutation"}'
+      '{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence"}'
   }
   function verifierDebatePrompt(r, transcript) {
     let target = ''
@@ -492,8 +503,8 @@ export function apply(ctx) {
     return verifierPersonaText() + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + target + '\n' +
       knowledgeContextText() +
       capabilitiesText('verifier') +
-      '\nOTHERS HAVE SAID SO FAR (轮流发言):\n' + transcript + '\n' +
-      '\nRespond to the others (agree / rebut / add new evidence). If you changed your Result because of them, state the reason explicitly.\n' +
+      '\nFULL DEBATE HISTORY SO FAR (每轮所有评审轮流发言的记录):\n' + transcript + '\n' +
+      '\nRespond to the others (agree / rebut / add new evidence, referencing earlier rounds if needed). If you changed your Result because of them, state the reason explicitly.\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
       '{"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null"}'
   }
@@ -669,7 +680,7 @@ export function apply(ctx) {
       if (tasks['verify:' + rId]) continue
       const inflight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'verifier' && m.rId === rId })
       if (inflight) continue
-      tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }
+      tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }
       await saveAll()
       return // one verification at a time keeps scheduling simple; tick will continue next pass
     }
@@ -684,6 +695,7 @@ export function apply(ctx) {
       for (let j = 0; j < sols.length; j++) {
         const s = sols[j]
         if (s.正确概率 === 1 || s.正确概率 === 0 || s.已验) continue
+        if (!String(s.完整解法 || '').trim()) continue
         out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, prob: Number(s.正确概率) || 0, priority: q.优先级 === 'never' ? 999 : Number(q.优先级) })
       }
     }
@@ -695,8 +707,8 @@ export function apply(ctx) {
       if (proofs.length === 0 && refutes.length === 0) {
         out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
       } else {
-        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
-        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, prob: Number(refutes[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; if (!String(proofs[j].完整过程 || '').trim()) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; if (!String(refutes[j].完整过程 || '').trim()) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, prob: Number(refutes[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
       }
     }
     out.sort(function (a, b) { if (a.priority !== b.priority) return a.priority - b.priority; return (b.prob || 0) - (a.prob || 0) })
@@ -904,7 +916,7 @@ export function apply(ctx) {
     const Result = clamp01((parsed && parsed.Result != null) ? parsed.Result : 0.5)
     const Reason = (parsed && parsed.Reason) || ''
     let t = tasks['verify:' + rId]
-    if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
+    if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
     if (!parsed && !scheduler.running) {
       // abort：被中断的验证器没有产出，丢弃该子代理并清理任务簿记（任务在 resume 时由 processVerify 重建）
       delete agentRegistry[childId]
@@ -926,7 +938,10 @@ export function apply(ctx) {
       if (!scheduler.running) { t.status = 'paused'; return } // resume will re-advance this task
       if (scheduler.activeCount >= params.maxParallelThreshold) { t.status = 'paused'; return } // 并发门：等有空闲槽位再辩论（reconcileVerify 会重推进）
       t.round = round + 1
-      const transcript = buildTranscript(t)
+      const roundTranscript = buildTranscript(t)
+      t.history = t.history || []
+      t.history.push('Round ' + round + ':\n' + roundTranscript)
+      const transcript = t.history.join('\n\n')
       const nextChildren = []
       for (let i = 0; i < t.children.length; i++) {
         const cid = t.children[i]
@@ -989,7 +1004,7 @@ export function apply(ctx) {
     }
     await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
     // debate transcript log
-    await writeJson('Verification_logs/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), at: now() })
+    await writeJson('Verification_logs/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
 
     if (r.kind === 'proposition') {
       const p = await findProposition(r.pId)
