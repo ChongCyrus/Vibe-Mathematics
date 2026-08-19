@@ -19,6 +19,13 @@
 export const name = 'vibe-math-v2'
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
 
+// Standing mount: DSH mounts each agent preset ONCE per preset and joins every
+// session that names it to that SAME plugin instance (see @deepseek-ai/dsh-agent-presets).
+// This plugin must therefore isolate ALL per-session state itself, keyed by the
+// root agent (session) id — otherwise two sessions running the preset at the same
+// time (e.g. project A and project B) would share one rootAgent/scheduler/registry
+// and spawn children under the wrong parent session. Each session gets its own
+// Session instance below via makeSession(rootAgent, sessionId).
 export function apply(ctx) {
   const subagents = ctx.subagents
   const agents = ctx.agents
@@ -28,7 +35,41 @@ export function apply(ctx) {
   const subprocess = ctx.get('subprocess')
   const sandboxPolicy = ctx.get('sandboxPolicy')
 
-  let rootAgent = undefined
+  // ================= per-session registry =================
+  const sessions = new Map() // rootAgentId -> Session
+  const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+
+  function sessionIdOf(agent) { try { return (agent && agent.id) ? String(agent.id) : undefined } catch (e) { return undefined } }
+  // Walk up the durable session lineage to the top-level (root) agent of this session,
+  // so calls from a child agent (which inherits this preset) still route to its session.
+  function rootOf(agent) {
+    try {
+      let cur = agent
+      const seen = new Set()
+      while (cur) {
+        const id = cur.id
+        if (seen.has(id)) return cur
+        seen.add(id)
+        const parentId = (cur.session && cur.session.header) ? cur.session.header.parentSession : undefined
+        if (parentId === undefined) return cur
+        const parent = agents.get(parentId)
+        if (!parent) return cur
+        cur = parent
+      }
+    } catch (e) { /* fall through */ }
+    return agent
+  }
+  function getSession(agent) {
+    const root = rootOf(agent)
+    const sid = sessionIdOf(root)
+    if (sid === undefined) return undefined
+    let s = sessions.get(sid)
+    if (!s) { s = makeSession(root, sid); sessions.set(sid, s) }
+    return s
+  }
+
+  // ================= per-session plugin body =================
+  function makeSession(rootAgent, sessionId) {
   let currentProject = 'default'
   const DEFAULT_PARAMS = {
     mode: 'auto',                 // auto | manual
@@ -74,6 +115,7 @@ export function apply(ctx) {
   let lastPushReport = 0
   let reportDirty = false
   let tickInFlight = false
+  let lastTickAt = 0
   let explorerRetries = {}
   // Process epoch: written to state at init; a DIFFERENT persisted epoch means a
   // previous DSH process wrote this state (in-flight children are gone), while an
@@ -91,6 +133,7 @@ export function apply(ctx) {
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
   function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
+  function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
   function getPolicy() { try { if (sandboxPolicy && rootAgent && rootAgent.session) return sandboxPolicy.resolve({ session: rootAgent.session }) } catch (e) {} try { if (sandboxPolicy) return sandboxPolicy.resolve({}) } catch (e) {} return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
   function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
@@ -166,8 +209,14 @@ export function apply(ctx) {
   async function listDirsAt(base, rel) { try { const t = await fs.resolve(rel, { cwd: base }); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function readTextAbs(path) { try { const t = await fs.resolve(path); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
   async function writeTextAbs(path, content) { try { const t = await fs.resolve(path); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true } catch (e) { return false } }
-  async function readCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' } }
-  async function writeCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {} }
+  async function readCurrentProject() {
+    // 按会话隔离的 current 文件（多会话并行时互不覆盖）；无则回退旧共享文件
+    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s !== undefined) { const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } } catch (e) {}
+    try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' }
+  }
+  async function writeCurrentProject() {
+    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {}
+  }
 
   // ================= subprocess =================
   function psQuote(p) { return "'" + String(p).replace(/'/g, "''") + "'" }
@@ -388,6 +437,7 @@ export function apply(ctx) {
       if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math-v2: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e }
     }
     agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
+    childOwner.set(started.childId, sessionId)
     scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
     await saveAll(); return started.childId
   }
@@ -568,6 +618,7 @@ export function apply(ctx) {
   async function tick() {
     if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return
     tickInFlight = true
+    lastTickAt = now()
     try {
       await processStatusUpdates()
       await processPriorityAdjust()
@@ -1187,9 +1238,8 @@ export function apply(ctx) {
   }
 
   // ================= init / control =================
-  async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
-  async function init(agent, fresh) {
-    await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }
+  async function init(fresh) {
+    if (!rootAgent) return { ok: false, message: 'no root agent available' }
     currentProject = await readCurrentProject(); await ensureDirs()
     if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
     params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await migrateLegacyParams(); await loadState()
@@ -1210,8 +1260,8 @@ export function apply(ctx) {
     await saveAll()
     return { ok: true }
   }
-  async function startScheduler(agent) { const r = await init(agent, true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
-  async function resumeScheduler(agent) { const r = await init(agent, false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function startScheduler() { const r = await init(true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
   async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
@@ -1255,20 +1305,16 @@ export function apply(ctx) {
   }
 
   // ================= events / timer =================
-  ctx.on('subagent/end', function (info) { onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) }) })
-  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, Math.max(200, Number(params.tickIntervalMs) || 2000)); return () => clearInterval(t) })
+  // NOTE: subagent/end listener and the tick timer are registered ONCE at the
+  // apply level (below), routing through childOwner/sessions — NOT here, because
+  // the standing-mount plugin instance is shared by every session.
 
   // ================= tools =================
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
-  function registerTool(name, description, parameters, executeFn) {
-    ctx.effect(() => tools.register({
-      name: name, description: description, parameters: parameters,
-      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
-      execute: async function (args, exec) { try { const agent = (exec && exec.agent) || undefined; await resolveRootAgent(agent); if (rootAgent) currentProject = await readCurrentProject(); return JSON.stringify(await executeFn(args || {}, agent)) } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) } },
-    }))
-  }
-  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V2 scheduler for the current project.', objParams({}), async function (args, agent) { return await startScheduler(agent) })
-  registerTool('vibe_math_resume', 'Resume the Vibe Math V2 scheduler after a checkpoint/restart.', objParams({}), async function (args, agent) { return await resumeScheduler(agent) })
+  const handlers = {}
+  function registerTool(name, description, parameters, executeFn) { handlers[name] = executeFn }
+  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V2 scheduler for the current project.', objParams({}), async function () { return await startScheduler() })
+  registerTool('vibe_math_resume', 'Resume the Vibe Math V2 scheduler after a checkpoint/restart.', objParams({}), async function () { return await resumeScheduler() })
   registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), async function () { return await pauseScheduler() })
   registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
@@ -1294,9 +1340,9 @@ export function apply(ctx) {
   registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
 
   // ================= slash command /vibe =================
-  async function dispatchVibeCommand(cmd, args, agent) {
-    if (cmd === 'start') return await startScheduler(agent)
-    if (cmd === 'resume') return await resumeScheduler(agent)
+  async function dispatchVibeCommand(cmd, args) {
+    if (cmd === 'start') return await startScheduler()
+    if (cmd === 'resume') return await resumeScheduler()
     if (cmd === 'pause') return await pauseScheduler()
     if (cmd === 'abort') return await abortScheduler()
     if (cmd === 'status') { await refreshParams(); return await getStatus() }
@@ -1317,17 +1363,87 @@ export function apply(ctx) {
     if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
     return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
   }
+
+  // ================= session surface =================
+  return {
+    sessionId: sessionId,
+    scheduler: scheduler,
+    tickInFlight: tickInFlight,
+    scheduleTick: scheduleTick,
+    onChildEnd: onChildEnd,
+    dispatchVibeCommand: dispatchVibeCommand,
+    handlers: handlers,
+    // 每次工具调用前同步当前项目（按会话读 current.json；多会话互不干扰）
+    refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
+    getRunning: function () { return scheduler.running },
+    // 会话自己的心跳节流：timer 每 1s 询问是否到点；tick 执行时刷新 lastTickAt
+    tickDue: function () { const iv = Math.max(200, Number(params.tickIntervalMs) || 2000); return (now() - lastTickAt) >= iv },
+  }
+}
+
+  // ================= apply-level registrations (ONCE per preset) =================
+  function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
+  function registerTool(name, description, parameters, handlerName) {
+    ctx.effect(() => tools.register({
+      name: name, description: description, parameters: parameters,
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
+      execute: async function (args, exec) {
+        try {
+          const s = getSession(exec && exec.agent)
+          if (!s) return JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' })
+          await s.refreshProject()
+          return JSON.stringify(await s.handlers[handlerName](args || {}, exec && exec.agent))
+        } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) }
+      },
+    }))
+  }
+  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V2 scheduler for the current project.', objParams({}), 'vibe_math_start')
+  registerTool('vibe_math_resume', 'Resume the Vibe Math V2 scheduler after a checkpoint/restart.', objParams({}), 'vibe_math_resume')
+  registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), 'vibe_math_pause')
+  registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), 'vibe_math_abort')
+  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
+  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), 'vibe_math_report')
+  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
+  registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
+  registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
+  registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), 'vibe_math_add_problem')
+  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), 'vibe_math_add_proposition')
+  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category).', objParams({}), 'vibe_math_list_propositions')
+  registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
+  registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
+  registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), 'vibe_math_list_projects')
+  registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), 'vibe_math_list_decisions')
+  registerTool('vibe_math_decide', 'Resolve a pending manual decision (verdict override uses verdict: 1|0).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), 'vibe_math_decide')
+  registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), 'vibe_math_list_agents')
+  registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), 'vibe_math_message_agent')
+  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), 'vibe_math_interrupt_agent')
+
+  // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
     name: 'vibe',
     description: 'control the Vibe Math V2 solver (start/pause/projects/setup/save/decisions/agents/propositions)',
     input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents]' },
     handler: async function (invocation) {
+      const s = getSession(invocation && invocation.agent)
+      if (!s) return { kind: 'success', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
       const line = String(invocation && invocation.rawInput ? invocation.rawInput : '').trim()
       const parts = line.length > 0 ? line.split(/\s+/) : []
       const cmd = parts[0] || ''
       const rest = parts.slice(1)
-      const result = await dispatchVibeCommand(cmd, rest, invocation.agent)
+      const result = await s.dispatchVibeCommand(cmd, rest)
       return { kind: 'success', text: JSON.stringify(result, null, 2) }
     },
   }))
+
+  // subagent/end (registered once; routed to the owning session via childOwner)
+  ctx.on('subagent/end', function (info) {
+    const sid = childOwner.get(info.id)
+    const s = sid !== undefined ? sessions.get(sid) : undefined
+    if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) })
+  })
+
+  // tick timer (registered once; ticks every running session at its own pace)
+  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
 }

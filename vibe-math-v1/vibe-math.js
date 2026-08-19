@@ -40,6 +40,13 @@ function ensurePresetInstalled(logger) {
 export const name = 'vibe-math'
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
 
+// Standing mount: DSH mounts each agent preset ONCE per preset and joins every
+// session that names it to that SAME plugin instance (see @deepseek-ai/dsh-agent-presets).
+// This plugin must therefore isolate ALL per-session state itself, keyed by the
+// root agent (session) id — otherwise two sessions running the preset at the same
+// time (e.g. project A and project B) would share one rootAgent/scheduler/registry
+// and spawn children under the wrong parent session. Each session gets its own
+// Session instance below via makeSession(rootAgent, sessionId).
 export function apply(ctx) {
   ensurePresetInstalled(ctx.logger)
   const subagents = ctx.subagents
@@ -50,7 +57,41 @@ export function apply(ctx) {
   const subprocess = ctx.get('subprocess')
   const sandboxPolicy = ctx.get('sandboxPolicy')
 
-  let rootAgent = undefined
+  // ================= per-session registry =================
+  const sessions = new Map() // rootAgentId -> Session
+  const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+
+  function sessionIdOf(agent) { try { return (agent && agent.id) ? String(agent.id) : undefined } catch (e) { return undefined } }
+  // Walk up the durable session lineage to the top-level (root) agent of this session,
+  // so calls from a child agent (which inherits this preset) still route to its session.
+  function rootOf(agent) {
+    try {
+      let cur = agent
+      const seen = new Set()
+      while (cur) {
+        const id = cur.id
+        if (seen.has(id)) return cur
+        seen.add(id)
+        const parentId = (cur.session && cur.session.header) ? cur.session.header.parentSession : undefined
+        if (parentId === undefined) return cur
+        const parent = agents.get(parentId)
+        if (!parent) return cur
+        cur = parent
+      }
+    } catch (e) { /* fall through */ }
+    return agent
+  }
+  function getSession(agent) {
+    const root = rootOf(agent)
+    const sid = sessionIdOf(root)
+    if (sid === undefined) return undefined
+    let s = sessions.get(sid)
+    if (!s) { s = makeSession(root, sid); sessions.set(sid, s) }
+    return s
+  }
+
+  // ================= per-session plugin body =================
+  function makeSession(rootAgent, sessionId) {
   let currentProject = 'default'
   const DEFAULT_PARAMS = {
     mode: 'auto',
@@ -80,6 +121,7 @@ export function apply(ctx) {
   let decisionQueue = []
   let tasks = {}
   let tickInFlight = false
+  let lastTickAt = 0
   let brainstormRetries = {}
   let deriveRetries = {}
   let solvedByVerified = {}
@@ -99,6 +141,7 @@ export function apply(ctx) {
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
   function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
+  function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
   function getPolicy() { try { if (sandboxPolicy && rootAgent && rootAgent.session) return sandboxPolicy.resolve({ session: rootAgent.session }) } catch (e) {} try { if (sandboxPolicy) return sandboxPolicy.resolve({}) } catch (e) {} return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
   function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
@@ -169,8 +212,14 @@ export function apply(ctx) {
   async function writeJson(rel, obj) { return await writeText(rel, JSON.stringify(obj, null, 2)) }
   async function listFiles(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'file' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function listDirsAt(base, rel) { try { const t = await fs.resolve(rel, { cwd: base }); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
-  async function readCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' } }
-  async function writeCurrentProject() { try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {} }
+  async function readCurrentProject() {
+    // 按会话隔离的 current 文件（多会话并行时互不覆盖）；无则回退旧共享文件
+    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s !== undefined) { const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } } catch (e) {}
+    try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' }
+  }
+  async function writeCurrentProject() {
+    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {}
+  }
 
   // ================= subprocess =================
   function psQuote(p) { return "'" + String(p).replace(/'/g, "''") + "'" }
@@ -292,7 +341,7 @@ export function apply(ctx) {
   function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
   function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const f = {}; if (Array.isArray(allow) && allow.length > 0) f.allow = allow.slice(); if (Array.isArray(deny) && deny.length > 0) f.deny = deny.slice(); return (f.allow || f.deny) ? f : undefined }
-  async function spawnChild(label, promptText, meta) { const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }; const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf; let started; try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } catch (e) { if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e } } agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {}); scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1; await saveAll(); return started.childId }
+  async function spawnChild(label, promptText, meta) { const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }; const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf; let started; try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } catch (e) { if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e } } agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {}); childOwner.set(started.childId, sessionId); scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1; await saveAll(); return started.childId }
   async function followupChild(childId, promptText) { await subagents.followup(rootAgent, childId, [textBlock(promptText)], { source: { kind: 'user' }, signal: makeSignal(30000) }); scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1; await saveAll() }
   async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
 
@@ -324,10 +373,10 @@ export function apply(ctx) {
   function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
 
   // ================= init / control =================
-  async function resolveRootAgent(agent) { if (rootAgent) return rootAgent; if (agent) { rootAgent = agent; return rootAgent } try { const roots = agents.roots ? agents.roots() : []; if (roots && roots.length > 0) { rootAgent = roots[0]; return rootAgent } } catch (e) {} return rootAgent }
-  async function init(agent) { await resolveRootAgent(agent); if (!rootAgent) return { ok: false, message: 'no root agent available' }; currentProject = await readCurrentProject(); await ensureDirs(); if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n'); params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await migrateLegacyParams(); await loadState(); scheduler.activeCount = 0; await saveAll(); return { ok: true } }
-  async function startScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
-  async function resumeScheduler(agent) { const r = await init(agent); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function init() {
+    if (!rootAgent) return { ok: false, message: 'no root agent available' }; currentProject = await readCurrentProject(); await ensureDirs(); if ((await readText('qs/qs.csv')) === undefined) await writeText('qs/qs.csv', 'id,description,priority,status,deps\n'); params = Object.assign({}, DEFAULT_PARAMS); await loadSettings(); await migrateLegacyParams(); await loadState(); scheduler.activeCount = 0; await saveAll(); return { ok: true } }
+  async function startScheduler() { const r = await init(); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler() { const r = await init(); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
   async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
@@ -368,7 +417,7 @@ export function apply(ctx) {
 
   // ================= scheduler =================
   function scheduleTick() { tick().catch(function (e) { console.error('vibe-math tick error: ' + String((e && e.stack) || e)) }) }
-  async function tick() { if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return; tickInFlight = true; try { await processVerification(); await reconcileTasks(); await processPromotion(); await processDecider(); await processSolve(); await maybeWriteReport(false); const qs = await getQs(); const unsolved = qs.filter(function (q) { return q.status !== 'solved' && !solvedByVerified[q.id] }); if (unsolved.length === 0 && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0) { scheduler.running = false; logActivity('stop', 'no unsolved problems, no active agents/tasks — scheduler stopped'); await saveAll(); await maybeWriteReport(true) } } finally { tickInFlight = false } }
+  async function tick() { if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return; tickInFlight = true; lastTickAt = now(); try { await processVerification(); await reconcileTasks(); await processPromotion(); await processDecider(); await processSolve(); await maybeWriteReport(false); const qs = await getQs(); const unsolved = qs.filter(function (q) { return q.status !== 'solved' && !solvedByVerified[q.id] }); if (unsolved.length === 0 && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0) { scheduler.running = false; logActivity('stop', 'no unsolved problems, no active agents/tasks — scheduler stopped'); await saveAll(); await maybeWriteReport(true) } } finally { tickInFlight = false } }
   async function processSolve() { if (scheduler.activeCount >= params.maxParallelThreshold) return; const qs = await getQs(); const unsolved = qs.filter(function (q) { return q.status !== 'solved' && !solvedByVerified[q.id] }).sort(function (a, b) { return a.priority - b.priority }); for (let i = 0; i < unsolved.length; i++) { if (scheduler.activeCount >= params.maxParallelThreshold) break; const q = unsolved[i]; const busy = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && (m.role === 'brainstorm' || m.role === 'solver' || m.role === 'derive') }); if (busy) continue; const prog = await readProgress(q.id); if (prog.length === 0) { if ((brainstormRetries[q.id] || 0) >= 3) { await writeProgress(q.id, [{ direction_id: 'd_' + shortId(), title: 'brainstorm failed', method: '', core_assumption: '', round: 0, status: 'dead-end', survival_probability: 0, dead_end_reason: 'brainstorm produced no directions after 3 attempts', lemmas: [], sub_routes: [], aux_hypotheses: [], updated_at: String(now()) }]); continue } brainstormRetries[q.id] = (brainstormRetries[q.id] || 0) + 1; const label = 'brainstorm:' + q.id; const promptText = brainstormPrompt(q); const r = await maybeGate('spawn', 'brainstorm for problem ' + q.id, { label: label, promptText: promptText, meta: { role: 'brainstorm', qid: q.id } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } }); if (r && r.gated) return } else { for (let j = 0; j < prog.length; j++) { if (scheduler.activeCount >= params.maxParallelThreshold) break; const dir = prog[j]; if (dir.status === 'success' || dir.status === 'dead-end') continue; const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.direction_id && m.role === 'solver' }); if (running) continue; const label = 'solver:' + q.id + ':' + dir.direction_id; const promptText = solverPrompt(q, dir, Math.max(1, dir.round + 1)); const r = await maybeGate('spawn', 'solver for problem ' + q.id + ' direction ' + dir.direction_id, { label: label, promptText: promptText, meta: { role: 'solver', qid: q.id, description: q.description, direction: dir.direction_id, round: Math.max(1, dir.round + 1) } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } }); if (r && r.gated) return } if (scheduler.activeCount < params.maxParallelThreshold) { const activeDirs = prog.filter(function (d) { return d.status !== 'success' && d.status !== 'dead-end' }); if (activeDirs.length === 0 && (deriveRetries[q.id] || 0) < 3) { deriveRetries[q.id] = (deriveRetries[q.id] || 0) + 1; const dlabel = 'derive:' + q.id; const dprompt = deriveDirectionsPrompt(q, prog); const dr = await maybeGate('spawn', 'derive new directions for problem ' + q.id, { label: dlabel, promptText: dprompt, meta: { role: 'derive', qid: q.id, description: q.description } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } }); if (dr && dr.gated) return } } } } }
 
   // ================= child result handling =================
@@ -507,21 +556,17 @@ export function apply(ctx) {
   async function handleDecider(childId, meta, output) { delete agentRegistry[childId]; const parsed = parseJson(output); const qid = parsed && parsed.solves_qid; const processed = (await readJson('VibeMath_State/decided_verified.json')) || []; if (processed.indexOf(meta.verifiedFile) === -1) processed.push(meta.verifiedFile); if (qid && qid !== 'null') { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (q && q.status !== 'solved') { q.status = 'solved'; solvedByVerified[qid] = true; await writeQs(qs); const newName = qid + '-的解法_' + shortId() + '.csv'; await atomicMove('Verified/' + meta.verifiedFile, 'Verified/' + newName); processed.push(newName); logActivity('decider', 'problem ' + qid + ' solved; Verified file renamed to ' + newName) } } await writeJson('VibeMath_State/decided_verified.json', processed) }
 
   // ================= events / timer =================
-  ctx.on('subagent/end', function (info) { onChildEnd(info).catch(function (e) { console.error('vibe-math onChildEnd reject: ' + String((e && e.stack) || e)) }) })
-  ctx.effect(() => { const t = setInterval(function () { scheduleTick() }, Math.max(200, Number(params.tickIntervalMs) || 2000)); return () => clearInterval(t) })
+  // NOTE: subagent/end listener and the tick timer are registered ONCE at the
+  // apply level (below), routing through childOwner/sessions — NOT here, because
+  // the standing-mount plugin instance is shared by every session.
 
   // ================= tools =================
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
-  function registerTool(name, description, parameters, executeFn) {
-    ctx.effect(() => tools.register({
-      name: name, description: description, parameters: parameters,
-      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
-      execute: async function (args, exec) { try { const agent = (exec && exec.agent) || undefined; await resolveRootAgent(agent); if (rootAgent) currentProject = await readCurrentProject(); return JSON.stringify(await executeFn(args || {}, agent)) } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) } },
-    }))
-  }
+  const handlers = {}
+  function registerTool(name, description, parameters, executeFn) { handlers[name] = executeFn }
 
-  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math scheduler for the current project.', objParams({}), async function (args, agent) { return await startScheduler(agent) })
-  registerTool('vibe_math_resume', 'Resume the scheduler after a checkpoint/restart.', objParams({}), async function (args, agent) { return await resumeScheduler(agent) })
+  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math scheduler for the current project.', objParams({}), async function () { return await startScheduler() })
+  registerTool('vibe_math_resume', 'Resume the scheduler after a checkpoint/restart.', objParams({}), async function () { return await resumeScheduler() })
   registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), async function () { return await pauseScheduler() })
   registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
@@ -542,9 +587,9 @@ export function apply(ctx) {
   registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
 
   // ================= slash command /vibe =================
-  async function dispatchVibeCommand(cmd, args, agent) {
-    if (cmd === 'start') return await startScheduler(agent)
-    if (cmd === 'resume') return await resumeScheduler(agent)
+  async function dispatchVibeCommand(cmd, args) {
+    if (cmd === 'start') return await startScheduler()
+    if (cmd === 'resume') return await resumeScheduler()
     if (cmd === 'pause') return await pauseScheduler()
     if (cmd === 'abort') return await abortScheduler()
     if (cmd === 'status') { await refreshParams(); return await getStatus() }
@@ -563,17 +608,85 @@ export function apply(ctx) {
     if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
     return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <description> | project [list | new <name> | <name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
   }
+
+  // ================= session surface =================
+  return {
+    sessionId: sessionId,
+    scheduler: scheduler,
+    tickInFlight: tickInFlight,
+    scheduleTick: scheduleTick,
+    onChildEnd: onChildEnd,
+    dispatchVibeCommand: dispatchVibeCommand,
+    handlers: handlers,
+    // 每次工具调用前同步当前项目（按会话读 current.json；多会话互不干扰）
+    refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
+    getRunning: function () { return scheduler.running },
+    // 会话自己的心跳节流：timer 每 1s 询问是否到点；tick 执行时刷新 lastTickAt
+    tickDue: function () { const iv = Math.max(200, Number(params.tickIntervalMs) || 2000); return (now() - lastTickAt) >= iv },
+  }
+}
+
+  // ================= apply-level registrations (ONCE per preset) =================
+  function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
+  function registerTool(name, description, parameters, handlerName) {
+    ctx.effect(() => tools.register({
+      name: name, description: description, parameters: parameters,
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
+      execute: async function (args, exec) {
+        try {
+          const s = getSession(exec && exec.agent)
+          if (!s) return JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' })
+          await s.refreshProject()
+          return JSON.stringify(await s.handlers[handlerName](args || {}, exec && exec.agent))
+        } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }) }
+      },
+    }))
+  }
+  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math scheduler for the current project.', objParams({}), 'vibe_math_start')
+  registerTool('vibe_math_resume', 'Resume the scheduler after a checkpoint/restart.', objParams({}), 'vibe_math_resume')
+  registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), 'vibe_math_pause')
+  registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), 'vibe_math_abort')
+  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
+  registerTool('vibe_math_report', 'Return the full progress report (status + recent activity + params) and write it to Progress_Logs/report.json.', objParams({}), 'vibe_math_report')
+  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['direct-veto', 'weighted-vote'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_setup', 'Return the interactive parameter schema (each param: name, type, current, default, description, options, suggestion) for guided configuration.', objParams({}), 'vibe_math_setup')
+  registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
+  registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
+  registerTool('vibe_math_add_problem', 'Add a problem to the current project qs.csv.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), 'vibe_math_add_problem')
+  registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
+  registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
+  registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), 'vibe_math_list_projects')
+  registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), 'vibe_math_list_decisions')
+  registerTool('vibe_math_decide', 'Resolve a pending manual decision.', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'string', enum: ['true', 'false'] } }, ['id', 'action']), 'vibe_math_decide')
+  registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), 'vibe_math_list_agents')
+  registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), 'vibe_math_message_agent')
+  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), 'vibe_math_interrupt_agent')
+
+  // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
     name: 'vibe',
     description: 'control the Vibe Math solver (start/pause/projects/setup/save/decisions/agents)',
     input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|project [list|new <name>|<name>]|decisions|agents]' },
     handler: async function (invocation) {
+      const s = getSession(invocation && invocation.agent)
+      if (!s) return { kind: 'success', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
       const line = String(invocation && invocation.rawInput ? invocation.rawInput : '').trim()
       const parts = line.length > 0 ? line.split(/\s+/) : []
       const cmd = parts[0] || ''
       const rest = parts.slice(1)
-      const result = await dispatchVibeCommand(cmd, rest, invocation.agent)
+      const result = await s.dispatchVibeCommand(cmd, rest)
       return { kind: 'success', text: JSON.stringify(result, null, 2) }
     },
   }))
+
+  // subagent/end (registered once; routed to the owning session via childOwner)
+  ctx.on('subagent/end', function (info) {
+    const sid = childOwner.get(info.id)
+    const s = sid !== undefined ? sessions.get(sid) : undefined
+    if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math onChildEnd reject: ' + String((e && e.stack) || e)) })
+  })
+
+  // tick timer (registered once; ticks every running session at its own pace)
+  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
 }
