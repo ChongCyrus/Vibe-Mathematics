@@ -126,7 +126,7 @@ export function apply(ctx) {
     { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
     { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
     { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
-    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的方向数量：1 = 只看自己方向（互不干扰）；>1 = 额外附带其他活跃方向摘要用于协调', suggestion: 1 },
+    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向（互不干扰）；N>1 = 额外附带最多 N 个其他活跃方向摘要用于协调', suggestion: 1 },
     { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
     { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
     { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致直接判 0.5）；forced = 强制裁决（按历史准确率+严谨性加权）', suggestion: 'flat' },
@@ -274,9 +274,18 @@ export function apply(ctx) {
   async function writeQs(list) { await writeJson('qs/qs.json', list) }
   async function findQ(qid) { const qs = await getQs(); return qs.find(function (q) { return q.id === qid }) }
 
-  // progress is a JSON string inside the problem object
-  function parseProgress(q) { const p = safeJson((q && q.progress) || '', null); if (p && typeof p === 'object') return p; return { directions: [], experience: '' } }
-  async function saveProgress(qid, progObj) { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return; q.progress = JSON.stringify(progObj); await writeQs(qs) }
+  // progress：结构化 JSON 对象（旧数据可能是 JSON 字符串，两者兼容解析）。
+  // 注意：必须保证返回对象含 directions 数组（晋升/判断/子问题等 progress 可能只有来源/说明等字段）。
+  function parseProgress(q) {
+    const raw = (q && q.progress) || null
+    let p = null
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) p = raw
+    else p = safeJson(raw, null)
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return { directions: [], experience: '' }
+    if (!Array.isArray(p.directions)) p.directions = []
+    return p
+  }
+  async function saveProgress(qid, progObj) { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return; q.progress = progObj; await writeQs(qs) }
 
   // ================= data layer: Propos =================
   function categoryOf(p) { const t = (p && p.细类型) || {}; const keys = Object.keys(t); return (keys.length > 0 && typeof t[keys[0]] === 'object') ? keys[0] : '未分类' }
@@ -411,6 +420,7 @@ export function apply(ctx) {
       '- Verification_logs/：辩论记录。Progress_Logs/：进度与报告。VibeMath_State/：调度器私有状态——不要读也不要改。\n' +
       '\n4) OUTPUT REQUIREMENTS (你输出的每个对象必须满足)：\n' +
       '- 完整性、不断章取义：任何你写出的问题/命题/结论都要给出完整陈述，并把它所依赖的对象、环境、背景、定义全部补全（例如提到某个序列/函数/定理时给出其完整定义与假设）。\n' +
+      '- 引用溯源：若你引用了 qs/qs.json、Propos/、Verified/、Reliable/ 中已有的命题/引理/结论/解法，必须给出出处——具体文件路径（相对项目根，如 Propos/数论_Propos.json 或 Verified/未分类_Verified.json）+ 对象 id 或 JSON 路径（如 .证明列表[0] 或 .directions[1]）；没有出处的引用一律不允许。你自己新提出的结论则必须自带完整定义，不得引用未定义的内容。\n' +
       '- 若结论依赖某个临时假设 p，必须显式写成「若 <p 的完整陈述> 成立，则：...」（同样要定义完整）。\n' +
       '- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。\n' +
       '- 示例（完整问题 概述）："设 {a_n} 为非负实数序列（n≥1），满足：对任意正整数 n 都存在 i,j 使 |a_i − a_j| = 1/n^p（p>0 为实参数）。判断：p 在什么范围内保证级数 ∑_{n=1}^∞ a_n 发散？" —— 每个记号（序列、参数、级数）都在句内定义完整，读它的人无需再查背景。\n' +
@@ -471,14 +481,17 @@ export function apply(ctx) {
       (d.lessons && d.lessons.length ? ' | lessons: ' + d.lessons.join('; ') : '') +
       (d.blockers && d.blockers.length ? ' | blockers: ' + d.blockers.join('; ') : '')
   }
-  // 每个 solver 默认只看自己方向（互不干扰）：round>1 时带上自己的历史进度，
-  // directionsPerSolver>1 时再附带其他活跃方向摘要用于协调（总数不超过该参数）。
+  // 每个 solver 可见的方向总数 = directionsPerSolver（默认 1 = 只看自己方向，互不干扰）。
+  // round 1 时自己的方向由 DIRECTION 行给出、占用 1 个名额；round>1 时自己的历史进度摘要占用 1 个名额；
+  // 其余名额填充其他活跃方向摘要（n=3 → 自己 + 最多 2 个其他方向）。
   function buildSolverContext(all, own, round, perSolver) {
     const out = []
     const n = Math.max(1, Number(perSolver) || 1)
-    if (round > 1) out.push(own)
+    let slots = n
+    if (round > 1) { out.push(own); slots -= 1 }
+    else slots -= 1 // round 1：自己的方向已由 DIRECTION 行给出
     const others = all.filter(function (d) { return d.id !== own.id && d.status === 'active' })
-    for (let i = 0; i < others.length && out.length < n; i++) out.push(others[i])
+    for (let i = 0; i < others.length && slots > 0; i++) { out.push(others[i]); slots -= 1 }
     return out.map(directionSummary).join('\n')
   }
   function solverPrompt(q, dir, round, progressText) {
@@ -494,7 +507,7 @@ export function apply(ctx) {
       '- an updated survival probability for this direction.\n'
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation it mentions must be fully defined — never quote partially, 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION that is one possible answer to q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion that depends on this assumption MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (with complete definitions). The scheduler registers q_sub and the problem "判断下述命题是否成立：p_{q-tmp}" in the problem list, and p_{q-tmp} in the proposition base.\n'
     head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 布尔估计 / solution_probability / survival_probability you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ (or 正确概率=1 entries you READ from files) count as certain.\n'
-    head += '- Each lemma you output must carry a COMPLETE statement ("statement") and a COMPLETE proof ("proof"): define every object/notation it uses — no 断章取义, no undefined symbols.\n'
+    head += '- Each lemma you output must carry a COMPLETE statement ("statement") and a COMPLETE proof ("proof"): define every object/notation it uses — no 断章取义, no undefined symbols. If a lemma/conclusion references or is derived from existing knowledge (Propos/Verified/Reliable/qs files), state the source file path + object id / JSON path inside the statement — no unsourced references.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
     head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
       '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}'
@@ -607,11 +620,12 @@ export function apply(ctx) {
       if ((p.布尔估计 === 1 || p.布尔估计 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
       if (p.布尔估计 === 1 || p.布尔估计 === 0) {
         if (await writeVerifiedCardIfNeeded(p)) pChanged = true
-        // 源命题已定论 → 关闭其晋升出的"僵尸"问题（避免永远未解决）
-        const srcMarker = '由命题 ' + p.id + '（'
+        // 源命题已定论 → 关闭其晋升出的"僵尸"问题（优先用 判断命题 字段；兼容旧文本标记数据）
         for (let j = 0; j < qs.length; j++) {
           const qj = qs[j]
-          if (!qj.已解决 && String(qj.progress || '').indexOf(srcMarker) !== -1) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
+          if (qj.已解决) continue
+          if (qj.判断命题 === p.id) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
+          else if (String((qj.progress && typeof qj.progress === 'object' ? (qj.progress.来源命题 || '') : qj.progress) || '').indexOf(p.id) !== -1) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
         }
       }
       if (pChanged) await upsertProposition(p)
@@ -680,7 +694,7 @@ export function apply(ctx) {
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       for (let j = 0; j < proofs.length; j++) { const it = proofs[j]; sols.push({ 完整解法: '【证明】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证明#' + j + ')', 来源命题: p.id, 来源列表: '证明', 来源索引: j, 验证记录: [] }) }
       for (let j = 0; j < refutes.length; j++) { const it = refutes[j]; sols.push({ 完整解法: '【证伪】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证伪#' + j + ')', 来源命题: p.id, 来源列表: '证伪', 来源索引: j, 验证记录: [] }) }
-      qs.push({ id: qid, 概述: '判断下述命题是否成立：' + p.概述, 已解决: false, 解法列表: sols, 优先级: 1, 判断命题: p.id, 细类型: (p.细类型 && typeof p.细类型 === 'object') ? p.细类型 : {}, '价值/关键性': p['价值/关键性'], progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标：证明或证伪该命题（解法列表中的【证明】/【证伪】条目即原命题的证明/证伪材料，验证结果会回写源命题）。' })
+      qs.push({ id: qid, 概述: '判断下述命题是否成立：' + p.概述, 已解决: false, 解法列表: sols, 优先级: 1, 判断命题: p.id, 细类型: (p.细类型 && typeof p.细类型 === 'object') ? p.细类型 : {}, '价值/关键性': p['价值/关键性'], progress: { 来源: 'promote', 来源命题: p.id, 说明: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标：证明或证伪该命题（解法列表中的【证明】/【证伪】条目即原命题的证明/证伪材料，验证结果会回写源命题）。' } })
       p.在问题清单 = true
       await upsertProposition(p)
       await writeQs(qs)
@@ -801,7 +815,7 @@ export function apply(ctx) {
     delete agentRegistry[childId]
     const parsed = parseJson(output)
     const dirs = (parsed && parsed.directions) || []
-    if (dirs.length === 0) { logActivity('explorer', 'problem ' + meta.qid + ' returned no directions'); await saveAll(); return }
+    if (dirs.length === 0) { logActivity('explorer', 'problem ' + meta.qid + ' returned no directions (output head: ' + String(output || '').slice(0, 200) + ')'); await saveAll(); return }
     explorerRetries[meta.qid] = 0
     const q = await findQ(meta.qid); if (!q) return
     const prog = parseProgress(q)
@@ -884,7 +898,7 @@ export function apply(ctx) {
       证明列表: [{ 完整过程: lemma.proof || '', 正确概率: clamp01(0.7), '支持信息/依据': '' }],
       证伪列表: [], 优先级: (lemma.优先级 != null) ? lemma.优先级 : 1,
       '价值/关键性': clamp01(lemma['价值/关键性'] != null ? lemma['价值/关键性'] : 0.5),
-      progress: '由求解器针对问题 ' + qid + ' 的方向迭代产出。', 来源问题: qid,
+      progress: { 来源: 'solver-lemma', 问题: qid, 说明: '由求解器针对问题 ' + qid + ' 的方向迭代产出。' }, 来源问题: qid,
     }
     await upsertProposition(p)
     logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id)
@@ -908,14 +922,14 @@ export function apply(ctx) {
     const assumeId = 'p-tmp-' + shortId()
     const judgeId = qid + '-judge-' + shortId()
     const assumeStatement = sq.assumption_statement || sq.assumption_title || ('对子问题「' + (sq.q_sub_title || sq.q_sub_statement) + '」的一种回答（临时假设）')
-    qs.push({ id: subId, 概述: sq.q_sub_statement, 已解决: false, 解法列表: [], 优先级: 1, progress: '临时子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；求解主线在 p_{q-tmp}（' + assumeId + '）假设下推进。' })
-    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, 判断命题: assumeId, progress: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' })
+    qs.push({ id: subId, 概述: sq.q_sub_statement, 已解决: false, 解法列表: [], 优先级: 1, progress: { 类型: 'sub-question', 来源问题: qid, 来源方向: dirId, 说明: '临时子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；求解主线在 p_{q-tmp}（' + assumeId + '）假设下推进。' } })
+    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, 判断命题: assumeId, progress: { 类型: 'judge', 假设命题: assumeId, 说明: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' } })
     await writeQs(qs)
     const p = {
       id: assumeId, 概述: assumeStatement, 布尔估计: 0.5,
       细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1,
       '价值/关键性': 0.5,
-      progress: '临时假设 p_{q-tmp}：由问题 ' + qid + ' 方向 ' + dirId + ' 在求解中临时假设其成立以推进主线；依赖子问题 ' + subId + '；若该假设被证伪，则依赖它的主线结论需重新审视。',
+      progress: { 类型: 'temporary-assumption', 来源问题: qid, 子问题: subId, 说明: '临时假设 p_{q-tmp}：由问题 ' + qid + ' 方向 ' + dirId + ' 在求解中临时假设其成立以推进主线；若该假设被证伪，则依赖它的主线结论需重新审视。' },
       来源问题: qid,
     }
     await upsertProposition(p)
@@ -1262,9 +1276,9 @@ export function apply(ctx) {
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
-  registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), async function (args) { const qs = await getQs(); if (qs.some(function (q) { return q.id === args.id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: args.id, 概述: args.description, 已解决: false, 解法列表: [], 优先级: args.priority || 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } })
+  registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), async function (args) { const qs = await getQs(); if (qs.some(function (q) { return q.id === args.id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: args.id, 概述: args.description, 已解决: false, 解法列表: [], 优先级: args.priority || 0, progress: { directions: [] } }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } })
   registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), async function (args) {
-    const p = { id: args.id, 概述: args.概述, 布尔估计: clamp01(args.布尔估计 != null ? args.布尔估计 : 0.5), 细类型: (args.细类型 && typeof args.细类型 === 'object') ? args.细类型 : { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: (args.优先级 != null) ? args.优先级 : 1, '价值/关键性': clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), progress: '用户手动添加。' }
+    const p = { id: args.id, 概述: args.概述, 布尔估计: clamp01(args.布尔估计 != null ? args.布尔估计 : 0.5), 细类型: (args.细类型 && typeof args.细类型 === 'object') ? args.细类型 : { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: (args.优先级 != null) ? args.优先级 : 1, '价值/关键性': clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), progress: { 来源: 'user', 说明: '用户手动添加。' } }
     await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) }
   })
   registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category).', objParams({}), async function () { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } })
@@ -1289,8 +1303,8 @@ export function apply(ctx) {
     if (cmd === 'setup') { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
-    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
-    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 概述: desc, 布尔估计: 0.5, 细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1, '价值/关键性': 0.5, progress: '用户通过 /vibe 添加。' }; await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) } }
+    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: { directions: [] } }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
+    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 概述: desc, 布尔估计: 0.5, 细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1, '价值/关键性': 0.5, progress: { 来源: 'user-vibe', 说明: '用户通过 /vibe 添加。' } }; await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) } }
     if (cmd === 'list-propositions') { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } }
     if (cmd === 'project') {
       if (args.length === 0 || args[0] === 'list') return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') }

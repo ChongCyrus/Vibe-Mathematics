@@ -333,7 +333,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `mode` | `auto` | `auto` / `manual` |
 | `maxParallelThreshold` | 4 | 全局最大并发子代理轮数（新派发前须 active < 阈值） |
 | `solverMaxRounds` | 3 | 每个求解方向最大迭代轮数（agent_self_iteration 上限） |
-| `directionsPerSolver` | 1 | 每个 solver 提示词附带的方向数量（1 = 只看自己方向、互不干扰；>1 = 附带其他活跃方向摘要用于协调） |
+| `directionsPerSolver` | 1 | 每个 solver 提示词可见的方向总数（1 = 只看自己方向、互不干扰；N>1 = 自己 + 最多 N-1 个其他活跃方向摘要） |
 | `verifierCount` | 3 | 每个验证对象的独立验证器数量 |
 | `debateMaxRounds` | 5 | 验证辩论（交流群）最大轮数 |
 | `verdictMode` | `flat` | `flat` = 均衡机制（不一致判 0.5）/ `forced` = 强制裁决（历史准确率+严谨性加权） |
