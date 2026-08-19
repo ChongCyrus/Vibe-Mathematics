@@ -663,7 +663,7 @@ export function apply(ctx) {
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       for (let j = 0; j < proofs.length; j++) { const it = proofs[j]; sols.push({ 完整解法: '【证明】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证明#' + j + ')', 来源命题: p.id, 来源列表: '证明', 来源索引: j, 验证记录: [] }) }
       for (let j = 0; j < refutes.length; j++) { const it = refutes[j]; sols.push({ 完整解法: '【证伪】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证伪#' + j + ')', 来源命题: p.id, 来源列表: '证伪', 来源索引: j, 验证记录: [] }) }
-      qs.push({ id: qid, 概述: '判断下述命题是否成立：' + p.概述, 已解决: false, 解法列表: sols, 优先级: 1, 细类型: (p.细类型 && typeof p.细类型 === 'object') ? p.细类型 : {}, '价值/关键性': p['价值/关键性'], progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标：证明或证伪该命题（解法列表中的【证明】/【证伪】条目即原命题的证明/证伪材料，验证结果会回写源命题）。' })
+      qs.push({ id: qid, 概述: '判断下述命题是否成立：' + p.概述, 已解决: false, 解法列表: sols, 优先级: 1, 判断命题: p.id, 细类型: (p.细类型 && typeof p.细类型 === 'object') ? p.细类型 : {}, '价值/关键性': p['价值/关键性'], progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标：证明或证伪该命题（解法列表中的【证明】/【证伪】条目即原命题的证明/证伪材料，验证结果会回写源命题）。' })
       p.在问题清单 = true
       await upsertProposition(p)
       await writeQs(qs)
@@ -703,6 +703,7 @@ export function apply(ctx) {
     for (let i = 0; i < propos.length; i++) {
       const p = propos[i]
       if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
+      if (p.在问题清单) continue // 已晋升：其证明/证伪经晋升问题的解法验证，避免同一内容双重验证
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       if (proofs.length === 0 && refutes.length === 0) {
         out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
@@ -882,7 +883,7 @@ export function apply(ctx) {
     const judgeId = qid + '-judge-' + shortId()
     const assumeStatement = sq.assumption_statement || sq.assumption_title || ('对子问题「' + (sq.q_sub_title || sq.q_sub_statement) + '」的一种回答（临时假设）')
     qs.push({ id: subId, 概述: sq.q_sub_statement, 已解决: false, 解法列表: [], 优先级: 1, progress: '临时子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；求解主线在 p_{q-tmp}（' + assumeId + '）假设下推进。' })
-    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, progress: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' })
+    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, 判断命题: assumeId, progress: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' })
     await writeQs(qs)
     const p = {
       id: assumeId, 概述: assumeStatement, 布尔估计: 0.5,
@@ -1060,6 +1061,19 @@ export function apply(ctx) {
                 await upsertProposition(sp)
                 logActivity('promote-sync', 'promoted solution verdict ' + v + ' synced to proposition ' + sp.id + ' ' + sol.来源列表 + '#' + sol.来源索引)
               }
+            }
+          }
+          // 点5 联动：「判断下述命题是否成立：X」问题的**新解法**验证结果 → X 命题收口
+          // （转移条目走上面来源联动 + processStatusUpdates 按证明/证伪侧向收口；这里只处理无来源的新解法）
+          if (q.判断命题 && !sol.来源列表) {
+            const ap = await findProposition(q.判断命题)
+            if (ap) {
+              ap.布尔估计 = v
+              if (v === 1) { ap.证明列表 = ap.证明列表 || []; ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
+              else if (v === 0) { ap.证伪列表 = ap.证伪列表 || []; ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
+              await upsertProposition(ap)
+              await writeVerifiedCardIfNeeded(ap)
+              logActivity('judge-sync', 'judge problem verdict ' + v + ' synced to proposition ' + ap.id)
             }
           }
           if (v === 1) { q.已解决 = true; q.优先级 = 'never'; await writeVerifiedProblemCardIfNeeded(q) }
