@@ -250,6 +250,12 @@ export function apply(ctx) {
     await writeJson('VibeMath_State/explorer_retries.json', explorerRetries)
     scheduler.lastCheckpoint = now()
   }
+  // 查询类工具（status/setup/report）汇报前重读设置文件：文件是唯一持久化源，可能在会话启动后被用户手改或由本进程外编辑更新。
+  async function refreshParams() {
+    params = Object.assign({}, DEFAULT_PARAMS)
+    await loadSettings()
+    await migrateLegacyParams()
+  }
   // 一次性迁移（单文件化）：旧版 VibeMath_State/params.json 中的运行时参数合并进 vibe_math_setting.json 后删除。
   async function migrateLegacyParams() {
     const legacy = await readJson('VibeMath_State/params.json')
@@ -1249,11 +1255,11 @@ export function apply(ctx) {
   registerTool('vibe_math_resume', 'Resume the Vibe Math V2 scheduler after a checkpoint/restart.', objParams({}), async function (args, agent) { return await resumeScheduler(agent) })
   registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), async function () { return await pauseScheduler() })
   registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
-  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
-  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
+  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
+  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
   registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
-  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
+  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
   registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), async function (args) { const qs = await getQs(); if (qs.some(function (q) { return q.id === args.id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: args.id, 概述: args.description, 已解决: false, 解法列表: [], 优先级: args.priority || 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } })
@@ -1277,10 +1283,10 @@ export function apply(ctx) {
     if (cmd === 'resume') return await resumeScheduler(agent)
     if (cmd === 'pause') return await pauseScheduler()
     if (cmd === 'abort') return await abortScheduler()
-    if (cmd === 'status') return await getStatus()
-    if (cmd === 'report') { await maybeWriteReport(true); return await buildReport() }
+    if (cmd === 'status') { await refreshParams(); return await getStatus() }
+    if (cmd === 'report') { await refreshParams(); await maybeWriteReport(true); return await buildReport() }
     if (cmd === 'mode') { params.mode = (args[0] === 'manual') ? 'manual' : 'auto'; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } }
-    if (cmd === 'setup') { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
+    if (cmd === 'setup') { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
     if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: '' }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
