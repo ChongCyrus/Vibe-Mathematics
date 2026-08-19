@@ -340,9 +340,12 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `priorityAdjust` | `none` | `none` / `deadend-deprioritize`（全死路降优先级）/ `survival-map`（按存活率重算） |
 | `proposPriorityAdjust` | `none` | 命题优先级动态调整：`none` / `progress-graded`（按定论接近度+证明/证伪材料量重算，越接近定论越优先验证） |
 | `provider` / `model` | 空 | 子代理模型（空 = 继承根代理） |
-| `solverPersona` / `verifierPersona` | 空 | 注入求解器/验证器的额外要求 |
+| `solverPersona` / `verifierPersona` / `explorerPersona` | 空 | 注入求解器/验证器/explorer 提示词开头的人格/要求 |
+| `knowledgeContext` | 空 | 共享知识/数据模型说明（空 = 内置完整版：对象/属性定义、概率语义、文件夹用途、输出完整性要求；非空 = 覆盖并注入所有子代理提示词） |
 | `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具 |
 | `verifierToolAllow` / `verifierToolDeny` | `[]` | 验证器允许/禁止的工具 |
+| `solverAllowNetwork` / `verifierAllowNetwork` | 空 | 网络工具开关（web_search/web/fetch）：空=继承全部；`true`=在已有 allow 列表时补入；`false`=禁止 |
+| `solverAllowScripts` / `verifierAllowScripts` | 空 | 脚本工具开关（bash/pwsh）：同上 |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | 每轮外部工具调用上限（0=不限） |
 | `reportIntervalMs` | 0 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
 | `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |

@@ -42,10 +42,16 @@ export function apply(ctx) {
     model: '',
     solverPersona: '',
     verifierPersona: '',
+    explorerPersona: '',          // 注入每个 explorer/rederive 提示词开头的人格/要求
+    knowledgeContext: '',         // 共享知识/数据模型说明（空 = 使用内置完整版；非空 = 覆盖）
     solverToolAllow: [],
     solverToolDeny: [],
     verifierToolAllow: [],
     verifierToolDeny: [],
+    solverAllowNetwork: '',       // '' = 继承全部；true = 允许网络工具；false = 禁止
+    verifierAllowNetwork: '',
+    solverAllowScripts: '',       // '' = 继承全部；true = 允许脚本工具；false = 禁止
+    verifierAllowScripts: '',
     solverMaxToolCalls: 0,
     verifierMaxToolCalls: 0,
     reportIntervalMs: 0,          // 0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 定时自动汇报（毫秒）
@@ -128,10 +134,16 @@ export function apply(ctx) {
     { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
     { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
     { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
+    { name: 'explorerPersona', type: 'string', description: '注入每个 explorer/重派生提示词开头的人格/要求', suggestion: '' },
+    { name: 'knowledgeContext', type: 'string', description: '共享知识/数据模型说明（空 = 内置完整版；非空 = 覆盖，注入 explorer/solver/verifier 提示词）', suggestion: '' },
     { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
     { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
     { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
     { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
+    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承全部；true=允许（在已有 allow 列表时补入网络工具）；false=禁止 web_search/web/fetch', suggestion: '' },
+    { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关（同 solverAllowNetwork）', suggestion: '' },
+    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关：空=继承全部；true=允许（在已有 allow 列表时补入）；false=禁止 bash/pwsh', suggestion: '' },
+    { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关（同 solverAllowScripts）', suggestion: '' },
     { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
     { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
     { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 同时按该间隔定时自动汇报', suggestion: 0 },
@@ -180,6 +192,7 @@ export function apply(ctx) {
       else if (k === 'reportMode') { out[k] = (v === 'file' || v === 'push' || v === 'both') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'priorityAdjust') { out[k] = (v === 'none' || v === 'deadend-deprioritize' || v === 'survival-map') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'proposPriorityAdjust') { out[k] = (v === 'none' || v === 'progress-graded') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'solverAllowNetwork' || k === 'verifierAllowNetwork' || k === 'solverAllowScripts' || k === 'verifierAllowScripts') { out[k] = (v === true || v === false || v === '') ? v : DEFAULT_PARAMS[k] }
       else { out[k] = v }
     }
     return out
@@ -337,7 +350,9 @@ export function apply(ctx) {
   // ================= child spawn / followup =================
   function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
-  function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const f = {}; if (Array.isArray(allow) && allow.length > 0) f.allow = allow.slice(); if (Array.isArray(deny) && deny.length > 0) f.deny = deny.slice(); return (f.allow || f.deny) ? f : undefined }
+  const NETWORK_TOOLS = ['web_search', 'web', 'fetch']
+  const SCRIPT_TOOLS = ['bash', 'pwsh']
+  function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const net = role === 'solver' ? params.solverAllowNetwork : role === 'verifier' ? params.verifierAllowNetwork : undefined; const scr = role === 'solver' ? params.solverAllowScripts : role === 'verifier' ? params.verifierAllowScripts : undefined; let a = Array.isArray(allow) ? allow.slice() : []; let d = Array.isArray(deny) ? deny.slice() : []; if (net === false) d = d.concat(NETWORK_TOOLS); else if (net === true && a.length > 0) a = a.concat(NETWORK_TOOLS); if (scr === false) d = d.concat(SCRIPT_TOOLS); else if (scr === true && a.length > 0) a = a.concat(SCRIPT_TOOLS); const f = {}; if (a.length > 0) f.allow = a; if (d.length > 0) f.deny = d; return (f.allow || f.deny) ? f : undefined }
   async function spawnChild(label, promptText, meta) {
     const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
     const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf
@@ -356,9 +371,39 @@ export function apply(ctx) {
   // ================= prompts =================
   function solverPersonaText() { return params.solverPersona ? (String(params.solverPersona) + '\n\n') : '' }
   function verifierPersonaText() { return params.verifierPersona ? (String(params.verifierPersona) + '\n\n') : '' }
+  function explorerPersonaText() { return params.explorerPersona ? (String(params.explorerPersona) + '\n\n') : '' }
+  // 共享知识/数据模型说明（点6）：完整解释各对象/属性含义、概率语义、文件夹用途、输出要求。
+  // 空参数 = 使用内置完整版；非空 = 由用户覆盖（点8）。
+  function defaultKnowledgeContext() {
+    return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
+      '\n1) PROBABILITY SEMANTICS — the single most important rule:\n' +
+      '- 正确概率 / 布尔估计 ∈ [0,1]。\n' +
+      '- 1 = 绝对正确（已被证明且验证通过）：你可以把它当作已知事实/可信结论直接用于推理。\n' +
+      '- 0 = 绝对错误（已被证伪且验证通过）。\n' +
+      '- 0 与 1 之间的任何值 = 未定论/待验证：只能作为参考证据，绝不能当作已成立的事实引用。\n' +
+      '- Verified/ 中的卡片概率恒为 1 或 0，内容可信、可直接引用。\n' +
+      '\n2) OBJECT MODELS (按实现方案)：\n' +
+      '- 问题 PROBLEM（qs/qs.json）：{ id, 概述（完整问题陈述，所提到的每个对象/记号都要给出完整定义）, 已解决(bool), 解法列表:[{ 完整解法（详细步骤）, 正确概率, 已验 }], 优先级（整数，越小越优先调度；"never"=永不调度）, progress（历史：已试方向、各方向路线、阻碍及原因、教训、可行性评估）}。\n' +
+      '- 命题 PROPOSITION（Propos/<分类>_Propos.json）：{ id, 概述（完整陈述）, 布尔估计（该命题为真的概率）, 细类型（分类 JSON）, 证明列表:[{ 完整过程（完整证明）, 正确概率, 支持信息/依据 }], 证伪列表:[{ 完整过程（完整证伪）, 正确概率, 支持信息/依据 }], 优先级, 价值/关键性（0-1，重要性）, progress（过往尝试与教训）}。\n' +
+      '- 收口规则：问题的某个解法 正确概率=1 → 问题已解决；命题的证明/证伪条目 正确概率=1 → 命题布尔估计=1/0（已定论）。\n' +
+      '\n3) FOLDERS (per project, VibeMath/Projects/<project>/)：\n' +
+      '- qs/qs.json：问题清单——求解与验证的唯一问题来源。\n' +
+      '- Propos/<分类>_Propos.json：命题知识库（已有认知）。\n' +
+      '- Reliable/：可信参考文献（只读）。\n' +
+      '- Verified/<分类>_Verified.json：定论事实索引——布尔估计=0/1 的命题卡片与已解决问题卡片；内容可信、可直接使用。\n' +
+      '- Verification_logs/：辩论记录。Progress_Logs/：进度与报告。VibeMath_State/：调度器私有状态——不要读也不要改。\n' +
+      '\n4) OUTPUT REQUIREMENTS (你输出的每个对象必须满足)：\n' +
+      '- 完整性、不断章取义：任何你写出的问题/命题/结论都要给出完整陈述，并把它所依赖的对象、环境、背景、定义全部补全（例如提到某个序列/函数/定理时给出其完整定义与假设）。\n' +
+      '- 若结论依赖某个临时假设 p，必须显式写成「若 <p 的完整陈述> 成立，则：...」（同样要定义完整）。\n' +
+      '- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。\n'
+  }
+  function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
   function capabilitiesText(role) {
     const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
+    const netOn = role === 'solver' ? params.solverAllowNetwork : params.verifierAllowNetwork
+    const scrOn = role === 'solver' ? params.solverAllowScripts : params.verifierAllowScripts
     let t = '\nYOUR PERMISSIONS / CAPABILITIES:\n'
+    t += '- Network tools (web search / fetch): ' + (netOn === false ? 'DISABLED for you' : 'available') + '; Script/shell tools (bash/pwsh): ' + (scrOn === false ? 'DISABLED for you' : 'available') + ' (your actual tool list is enforced by the framework).\n'
     t += '- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).\n'
     t += '- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).\n'
     t += '- You may use external tools (web search, symbolic/numeric computation, literature lookup) to assist; '
@@ -371,7 +416,8 @@ export function apply(ctx) {
     return t
   }
   function explorerPrompt(q) {
-    return 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\n' +
+    return explorerPersonaText() + 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\n' +
+      knowledgeContextText() +
       capabilitiesText('solver') +
       '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. ' +
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
@@ -384,7 +430,8 @@ export function apply(ctx) {
       return '- ' + d.id + '「' + d.title + '」status=' + d.status + ' round=' + d.round + ' survival=' + d.survival + (d.dead_end_reason ? ' [blocker: ' + d.dead_end_reason + ']' : '') +
         (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '')
     }).join('\n')
-    return 'You are a research mathematician re-deriving strategy for a problem whose prior directions stalled or failed.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\nPRIOR DIRECTIONS (with blockers):\n' + prior + '\n' +
+    return explorerPersonaText() + 'You are a research mathematician re-deriving strategy for a problem whose prior directions stalled or failed.\n\nPROBLEM (id: ' + q.id + '): ' + q.概述 + '\n\nPRIOR DIRECTIONS (with blockers):\n' + prior + '\n' +
+      knowledgeContextText() +
       capabilitiesText('solver') +
       '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven to be dead ends (unless a new tool/idea changes that). ' +
       'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. ' +
@@ -413,16 +460,17 @@ export function apply(ctx) {
     let head = solverPersonaText() + 'You are a dedicated solver agent working ONE solution direction of a math problem (agent_self_iteration).\n\n'
     head += 'PROBLEM (id: ' + q.id + '): ' + q.概述 + '\nDIRECTION: ' + dir.title + ' (method: ' + dir.method + '; core assumption: ' + dir.core_assumption + ')\nROUND: ' + round + ' of ' + params.solverMaxRounds + '\n'
     if (round > 1 || (progressText && progressText.length)) head += '\nYOUR PRIOR PROGRESS / OTHER DIRECTIONS:\n' + progressText + '\n'
+    head += knowledgeContextText()
     head += capabilitiesText('solver')
     head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Each round you MUST produce, even if incomplete:\n' +
       '- new lemmas / intermediate conclusions WITH full proofs (these go to the Propos/ knowledge base);\n' +
       '- each concrete sub-route tried, its progress overview, an EXPLICIT feasibility signal (e.g. "unremovable singularity", "conflicts with known theorem X"), and any blocker;\n' +
       '- lessons learned from failed attempts (what to avoid, what did not work and why);\n' +
       '- an updated survival probability for this direction.\n'
-    head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions", TEMPORARILY ASSUME it holds, and continue the main line — every later proposition MUST then be stated as "若 <q_sub 标题> 成立，则：..." so the dependency is explicit.\n'
+    head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation it mentions must be fully defined — never quote partially, 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION that is one possible answer to q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion that depends on this assumption MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (with complete definitions). The scheduler registers q_sub and the problem "判断下述命题是否成立：p_{q-tmp}" in the problem list, and p_{q-tmp} in the proposition base.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
     head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:\n' +
-      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"title":"...","statement":"..."}]}'
+      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}'
     return head
   }
   function verifierReviewPrompt(r) {
@@ -431,6 +479,7 @@ export function apply(ctx) {
     else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
     else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
     return verifierPersonaText() + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + target + '\n' +
+      knowledgeContextText() +
       capabilitiesText('verifier') +
       '\nIndependently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
       '{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence; when Result=1 for a bare proposition, Reason must be a complete proof; when Result=0, Reason must be a rigorous complete refutation"}'
@@ -441,6 +490,7 @@ export function apply(ctx) {
     else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
     else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
     return verifierPersonaText() + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + target + '\n' +
+      knowledgeContextText() +
       capabilitiesText('verifier') +
       '\nOTHERS HAVE SAID SO FAR (轮流发言):\n' + transcript + '\n' +
       '\nRespond to the others (agree / rebut / add new evidence). If you changed your Result because of them, state the reason explicitly.\n' +
@@ -514,7 +564,7 @@ export function apply(ctx) {
     let qsChanged = false
     for (let i = 0; i < qs.length; i++) {
       const q = qs[i]
-      if (q.解法列表 && q.解法列表.some(function (s) { return s.正确概率 === 1 })) { if (!q.已解决) qsChanged = true; q.已解决 = true; q.优先级 = 'never' }
+      if (q.解法列表 && q.解法列表.some(function (s) { return s.正确概率 === 1 })) { if (!q.已解决) { qsChanged = true; await writeVerifiedProblemCardIfNeeded(q) } q.已解决 = true; q.优先级 = 'never' }
     }
     if (qsChanged) { await writeQs(qs); logActivity('update', 'problems marked solved by probability-1 solutions') }
     const propos = await getPropos()
@@ -595,12 +645,18 @@ export function apply(ctx) {
       if (Number(p['价值/关键性']) < Number(params.promoteValueThreshold)) continue
       if (p.在问题清单) continue
       if (qDescriptions.indexOf(p.概述) !== -1) continue
+      if (qDescriptions.indexOf('判断下述命题是否成立：' + p.概述) !== -1) continue
       const qid = 'q-promoted-' + String(p.id).replace(/[^a-z0-9\-]/gi, '').slice(-12)
-      qs.push({ id: qid, 概述: p.概述, 已解决: false, 解法列表: [], 优先级: 1, progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标是证明/证伪该命题。' })
+      // 点3：证明/证伪列表 → 解法列表（条目前加【证明】/【证伪】前缀），保留概率/已验并记录来源以便回写联动
+      const sols = []
+      const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
+      for (let j = 0; j < proofs.length; j++) { const it = proofs[j]; sols.push({ 完整解法: '【证明】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证明#' + j + ')', 来源命题: p.id, 来源列表: '证明', 来源索引: j, 验证记录: [] }) }
+      for (let j = 0; j < refutes.length; j++) { const it = refutes[j]; sols.push({ 完整解法: '【证伪】' + (it.完整过程 || ''), 正确概率: clamp01(it.正确概率 != null ? it.正确概率 : 0.5), 已验: !!it.已验, 来源: '由命题晋升(证伪#' + j + ')', 来源命题: p.id, 来源列表: '证伪', 来源索引: j, 验证记录: [] }) }
+      qs.push({ id: qid, 概述: '判断下述命题是否成立：' + p.概述, 已解决: false, 解法列表: sols, 优先级: 1, 细类型: (p.细类型 && typeof p.细类型 === 'object') ? p.细类型 : {}, '价值/关键性': p['价值/关键性'], progress: '由命题 ' + p.id + '（价值/关键性=' + p['价值/关键性'] + '）自动晋升；目标：证明或证伪该命题（解法列表中的【证明】/【证伪】条目即原命题的证明/证伪材料，验证结果会回写源命题）。' })
       p.在问题清单 = true
       await upsertProposition(p)
       await writeQs(qs)
-      logActivity('promote', 'proposition ' + p.id + ' promoted to problem ' + qid)
+      logActivity('promote', 'proposition ' + p.id + ' promoted to problem ' + qid + '（' + sols.length + ' 条证明/证伪转为解法）')
       return // one per tick is enough
     }
   }
@@ -802,15 +858,31 @@ export function apply(ctx) {
     await upsertProposition(p)
     logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id)
   }
+  // 点5（q_sub 严格化）：solver 报告子问题 q_sub 时，注册三个对象：
+  //   1) q_sub 本身（问题类，完整陈述）入 qs.json；
+  //   2) p_{q-tmp}（命题类临时假设：对 q_sub 的某种回答）入 Propos/；
+  //   3) 「判断下述命题是否成立：p_{q-tmp}」（问题类）入 qs.json。
   async function addSubQuestion(qid, dirId, sq) {
-    if (!sq || !sq.title) return
+    if (!sq || !sq.q_sub_statement) return
     const qs = await getQs()
     const subId = qid + '-sub-' + shortId()
-    qs.push({ id: subId, 概述: sq.statement || sq.title, 已解决: false, 解法列表: [], 优先级: 1, progress: '子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；主线临时假设其成立。' })
+    const assumeId = 'p-tmp-' + shortId()
+    const judgeId = qid + '-judge-' + shortId()
+    const assumeStatement = sq.assumption_statement || sq.assumption_title || ('对子问题「' + (sq.q_sub_title || sq.q_sub_statement) + '」的一种回答（临时假设）')
+    qs.push({ id: subId, 概述: sq.q_sub_statement, 已解决: false, 解法列表: [], 优先级: 1, progress: '临时子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；求解主线在 p_{q-tmp}（' + assumeId + '）假设下推进。' })
+    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, progress: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' })
     await writeQs(qs)
+    const p = {
+      id: assumeId, 概述: assumeStatement, 布尔估计: 0.5,
+      细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1,
+      '价值/关键性': 0.5,
+      progress: '临时假设 p_{q-tmp}：由问题 ' + qid + ' 方向 ' + dirId + ' 在求解中临时假设其成立以推进主线；依赖子问题 ' + subId + '；若该假设被证伪，则依赖它的主线结论需重新审视。',
+      来源问题: qid,
+    }
+    await upsertProposition(p)
     const q = qs.find(function (x) { return x.id === qid })
-    if (q) { const prog = parseProgress(q); const d = prog.directions.find(function (x) { return x.id === dirId }); if (d) { d.sub_questions = d.sub_questions || []; d.sub_questions.push(subId) } await saveProgress(qid, prog) }
-    logActivity('subquestion', qid + ' → ' + subId + '（' + sq.title + '）')
+    if (q) { const prog = parseProgress(q); const d = prog.directions.find(function (x) { return x.id === dirId }); if (d) { d.sub_questions = d.sub_questions || []; d.sub_questions.push({ subId: subId, judgeId: judgeId, assumeId: assumeId }) } await saveProgress(qid, prog) }
+    logActivity('subquestion', qid + ' → q_sub ' + subId + ' + 判断问题 ' + judgeId + ' + 临时假设 ' + assumeId)
   }
   async function addSolution(qid, solutionText, prob) {
     const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return
@@ -962,7 +1034,20 @@ export function apply(ctx) {
           sol.已验 = true
           sol.验证记录 = sol.验证记录 || []
           sol.验证记录.push({ 结果: v, 时间: now(), 依据: strongestReason(t, v >= 0.5 ? 1 : 0) })
-          if (v === 1) { q.已解决 = true; q.优先级 = 'never'; await writeVerifiedProblemCardIfNeeded(q, sol) }
+          // 点3 回写联动：晋升问题的解法验证结果同步回源命题的证明/证伪条目（含内容比对防错位）
+          if (sol.来源命题 && (sol.来源列表 === '证明' || sol.来源列表 === '证伪')) {
+            const sp = await findProposition(sol.来源命题)
+            if (sp) {
+              const slist = sol.来源列表 === '证明' ? (sp.证明列表 || []) : (sp.证伪列表 || [])
+              const item = slist[sol.来源索引]
+              if (item && item.完整过程 === String(sol.完整解法 || '').replace(/^【(证明|证伪)】/, '')) {
+                item.正确概率 = v; item.已验 = true
+                await upsertProposition(sp)
+                logActivity('promote-sync', 'promoted solution verdict ' + v + ' synced to proposition ' + sp.id + ' ' + sol.来源列表 + '#' + sol.来源索引)
+              }
+            }
+          }
+          if (v === 1) { q.已解决 = true; q.优先级 = 'never'; await writeVerifiedProblemCardIfNeeded(q) }
         }
         await writeQs(qs)
       }
@@ -979,29 +1064,41 @@ export function apply(ctx) {
     }
     return best
   }
+  // 点4：Verified 卡片 = 每对象一卡，内容 = 该对象当前所有正确概率=1 的证明/证伪完整过程；
+  // 新 1-概率条目出现时自动更新（内容不变则不写）。幂等键 = 对象 id。
   async function writeVerifiedCardIfNeeded(p) {
     if (p.布尔估计 !== 1 && p.布尔估计 !== 0) return false
     const cat = categoryOf(p)
     const list = await readVerifiedCategory(cat)
-    if (list.some(function (c) { return c.id === p.id })) return false // idempotent
+    const idx = list.findIndex(function (c) { return c.id === p.id })
+    const proofs1 = (p.证明列表 || []).filter(function (x) { return x.正确概率 === 1 })
+    const refutes1 = (p.证伪列表 || []).filter(function (x) { return x.正确概率 === 1 })
+    const parts = []
+    for (let i = 0; i < proofs1.length; i++) parts.push('【证明 #' + (i + 1) + '】' + (proofs1[i].完整过程 || ''))
+    for (let i = 0; i < refutes1.length; i++) parts.push('【证伪 #' + (i + 1) + '】' + (refutes1[i].完整过程 || ''))
     const card = {
       id: p.id, 概述: p.概述, 类型: '命题', 结论: p.布尔估计 === 1, 概率: p.布尔估计,
-      内容: (p.布尔估计 === 1 ? ((p.证明列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程 : ((p.证伪列表 || []).find(function (x) { return x.正确概率 === 1 }) || {}).完整过程) || '',
+      内容: parts.join('\n'), 证明条数: proofs1.length, 证伪条数: refutes1.length,
       来源: p.来源问题 || '', 时间: now(), 分类: cat,
     }
-    list.push(card)
+    if (idx === -1) list.push(card)
+    else { if (list[idx].内容 === card.内容 && list[idx].概率 === card.概率) return false; list[idx] = card }
     await writeJson('Verified/' + cat + '_Verified.json', list)
-    return true
+    return idx === -1
   }
-  async function writeVerifiedProblemCardIfNeeded(q, sol) {
+  async function writeVerifiedProblemCardIfNeeded(q) {
     if (!q || !q.已解决) return false
     const cat = '问题'
     const list = await readVerifiedCategory(cat)
-    if (list.some(function (c) { return c.id === q.id })) return false // idempotent
-    const card = { id: q.id, 概述: q.概述, 类型: '问题', 结论: true, 概率: 1, 内容: (sol && sol.完整解法) || '', 来源: q.id, 时间: now(), 分类: cat }
-    list.push(card)
+    const idx = list.findIndex(function (c) { return c.id === q.id })
+    const sols1 = (q.解法列表 || []).filter(function (s) { return s.正确概率 === 1 })
+    const parts = []
+    for (let i = 0; i < sols1.length; i++) parts.push('【解法 #' + (i + 1) + '】' + (sols1[i].完整解法 || ''))
+    const card = { id: q.id, 概述: q.概述, 类型: '问题', 结论: true, 概率: 1, 内容: parts.join('\n'), 解法条数: sols1.length, 来源: q.id, 时间: now(), 分类: cat }
+    if (idx === -1) list.push(card)
+    else { if (list[idx].内容 === card.内容) return false; list[idx] = card }
     await writeJson('Verified/' + cat + '_Verified.json', list)
-    return true
+    return idx === -1
   }
 
   // ================= child result dispatch =================
@@ -1107,7 +1204,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
