@@ -706,6 +706,7 @@ export function apply(ctx) {
       if (p.在问题清单) continue // 已晋升：其证明/证伪经晋升问题的解法验证，避免同一内容双重验证
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       if (proofs.length === 0 && refutes.length === 0) {
+        if (String(p.id).indexOf('p-tmp-') === 0) continue // 临时假设由「判断下述命题是否成立：p_{q-tmp}」问题统一验证，避免裸命题验证双重路径
         out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
       } else {
         for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; if (!String(proofs[j].完整过程 || '').trim()) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
@@ -809,7 +810,7 @@ export function apply(ctx) {
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
       if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) await addLemmaAsProposition(qid, parsed.lemmas[i]) }
-      if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) await addSubQuestion(qid, dirId, parsed.sub_questions[i]) }
+      if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const rec = await addSubQuestion(qid, dirId, parsed.sub_questions[i]); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
     }
     if (status === 'success') {
       if (parsed && parsed.solution) {
@@ -875,8 +876,16 @@ export function apply(ctx) {
   //   1) q_sub 本身（问题类，完整陈述）入 qs.json；
   //   2) p_{q-tmp}（命题类临时假设：对 q_sub 的某种回答）入 Propos/；
   //   3) 「判断下述命题是否成立：p_{q-tmp}」（问题类）入 qs.json。
+  // 返回 {subId,judgeId,assumeId}，由 handleSolver 在最终保存 progress 时记入方向（避免旧 progress 覆盖丢记录）。
   async function addSubQuestion(qid, dirId, sq) {
-    if (!sq || !sq.q_sub_statement) return
+    if (!sq || !sq.q_sub_statement) return undefined
+    const q = await findQ(qid)
+    if (q) {
+      const prog = parseProgress(q)
+      const d = prog.directions.find(function (x) { return x.id === dirId })
+      // 去重：同一方向已注册过相同陈述的 q_sub 则跳过（避免多轮重复上报产生重复问题/假设）
+      if (d && d.sub_questions && d.sub_questions.some(function (x) { return x.statement === sq.q_sub_statement })) { logActivity('subquestion', 'duplicate q_sub skipped for ' + qid + '/' + dirId); return undefined }
+    }
     const qs = await getQs()
     const subId = qid + '-sub-' + shortId()
     const assumeId = 'p-tmp-' + shortId()
@@ -893,9 +902,8 @@ export function apply(ctx) {
       来源问题: qid,
     }
     await upsertProposition(p)
-    const q = qs.find(function (x) { return x.id === qid })
-    if (q) { const prog = parseProgress(q); const d = prog.directions.find(function (x) { return x.id === dirId }); if (d) { d.sub_questions = d.sub_questions || []; d.sub_questions.push({ subId: subId, judgeId: judgeId, assumeId: assumeId }) } await saveProgress(qid, prog) }
     logActivity('subquestion', qid + ' → q_sub ' + subId + ' + 判断问题 ' + judgeId + ' + 临时假设 ' + assumeId)
+    return { subId: subId, judgeId: judgeId, assumeId: assumeId, statement: sq.q_sub_statement }
   }
   async function addSolution(qid, solutionText, prob) {
     const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return
