@@ -171,6 +171,7 @@ export function apply(ctx) {
   let lastPlanAt = 0
   let lastPlanSummary = null      // { at, summary, actions, outcomes } for the next brief
   let projectLock = { sessionId: '', at: 0 }
+  let lastIndexWrite = 0          // State/index.json 写入节流（每 5s 至多一次；工具/init 强制时立即）
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
@@ -595,6 +596,7 @@ export function apply(ctx) {
       methods: Object.fromEntries(methods), dirs: Object.fromEntries(dirState),
     }
     await writeJson('State/index.json', idx)
+    lastIndexWrite = now()
     return { ok: true, problems: problems.size, propos: propos.size, methods: methods.size }
   }
   async function loadKnowledgeBase() {
@@ -829,12 +831,12 @@ export function apply(ctx) {
       '- 其余一切（未定论命题、Progress/ 研究日志、Methods/ 中未验证断言、Notes/）= 经验性记录/参考，绝不能当作已成立事实引用。\n' +
       '- 概率语义：1 = 绝对正确（可当已知事实）；0 = 绝对错误；0 与 1 之间 = 未定论/待验证。\n' +
       '\n2) OBJECT MODELS（md 卡片，软规范：头部锚点行 + 正文自由叙述）：\n' +
-      '- 问题卡 Problems/<id>.md：{ ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
+      '- 问题卡 Problems/<id>.md：{ ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划（由调度器按规划代理的计划自动更新：一句话说明下一轮安排）, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
       '- 命题卡 Propos/<分类>/<id>.md：{ ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], ## 陈述（完整）, ## 证明尝试（### 证明 N｜…）, ## 证伪尝试（### 证伪 N｜…）}。\n' +
       '- 方法卡 Methods/<id>.md：{ ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
       '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n' +
       '\n3) FOLDERS：Problems/ 问题清单；Progress/ 研究日志（每问题一个 md，按方向按轮续写）；Propos/ 命题库；Methods/ 理论发明库；Verified/ 绝对可信（只读）；Reliable/ 可信参考文献（只读）；Notes/ 自由笔记；Logs/ 审计；State/ 调度器私有——不要读也不要改。\n' +
-      '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）。\n' +
+      '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。\n' +
       '\n5) OUTPUT REQUIREMENTS：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」；只输出规定的 JSON（```json 围栏内），JSON 之外不写任何内容。'
   }
   function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
@@ -950,17 +952,17 @@ export function apply(ctx) {
       '{"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null"}'
   }
   function plannerPrompt(brief) {
-    return personaText('plannerPersona') + 'You are the SCHEDULING PLANNER of a multi-agent mathematical research system. Decide the next up to ' + params.planningHorizon + ' actions (one action per item) that the code scheduler should take.\n\n' +
+    return personaText('plannerPersona') + 'You are the SCHEDULING PLANNER of a multi-agent mathematical research system. Your job: autonomously choose the OPTIMAL schedule — you may lay out the NEXT ' + params.planningHorizon + ' agent-task calls in one plan (they will be executed in order, beyond-capacity ones queued for later ticks).\n\n' +
       'CURRENT STATE BRIEF (JSON):\n' + JSON.stringify(brief, null, 2) + '\n\n' +
       'ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):\n' +
       '- {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).\n' +
       '- {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.\n' +
-      '- {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates).\n' +
+      '- {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.\n' +
       '- {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.\n' +
       '- {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).\n' +
       '- {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.\n' +
       '- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.\n' +
-      '\nHARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (the brief shows how many slots are free); prefer high-value/high-survival work; schedule at most ' + params.planningHorizon + ' actions.\n' +
+      '\nHARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; schedule at most ' + params.planningHorizon + ' actions.\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
       '{"summary":"one-line plan rationale","plan":[{"action":"...","role":"...","target":"...","direction":"...","childId":"...","reason":"..."}]}'
   }
@@ -994,7 +996,7 @@ export function apply(ctx) {
     }
     if (node === 'verdict') { const overridden = resolution.action === 'override' && (resolution.verdict === 1 || resolution.verdict === 0); const v = overridden ? Number(resolution.verdict) : data.verdict; await settleVerdict(data.task, v); delete tasks[data.task.id]; return { verdict: v, overridden: overridden } }
     if (node === 'plan') {
-      if (resolution.action === 'approve') { planQueue = (data.plan || []).slice(); logActivity('plan', 'plan ' + data.planId + ' approved: ' + planQueue.length + ' action(s) queued') }
+      if (resolution.action === 'approve') { planQueue = (data.plan || []).slice(); await applyPlanToProblemCards(planQueue); logActivity('plan', 'plan ' + data.planId + ' approved: ' + planQueue.length + ' action(s) queued') }
       else { planQueue = []; logActivity('plan', 'plan ' + data.planId + ' rejected by user') }
       return { planApproved: resolution.action === 'approve', queued: planQueue.length }
     }
@@ -1026,7 +1028,8 @@ export function apply(ctx) {
       await maybeMethodKeepFallback()
       await maybePushReport(false)
       await maybeWriteReport(false)
-      if (params.indexAutoRebuild) await rebuildIndex()
+      // index 节流：每 5s 至多重写一次（工具调用/init/setProject 仍即时重建）
+      if (params.indexAutoRebuild && (now() - lastIndexWrite) > 5000) await rebuildIndex()
       await checkTermination()
     } finally { tickInFlight = false }
   }
@@ -1035,8 +1038,10 @@ export function apply(ctx) {
     let changed = false
     for (const q of allProblems()) {
       if ((q.solutions || []).some(function (s) { return s.prob === 1 })) {
-        if (q.状态 !== '已解决') { changed = true; await writeVerifiedProblemCardIfNeeded(q) }
+        const wasSolved = q.状态 === '已解决'
         q.状态 = '已解决'; q.优先级 = 'never'
+        // 先置状态再写卡（writeVerifiedProblemCardIfNeeded 依赖 状态=已解决 才能生成卡）
+        if (!wasSolved) { changed = true; await writeVerifiedProblemCardIfNeeded(q) }
       }
     }
     for (const p of allPropos()) {
@@ -1267,7 +1272,11 @@ export function apply(ctx) {
     // 规划代理在途时不再重复调用
     const plannerInFlight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'planner' })
     if (plannerInFlight) return
-    if (!hasSchedulableWork() && methodLog.pendingInventions.length === 0 && planQueue.length === 0) { await maybeMethodKeepFallback(); return }
+    // 有"可调度工作"= 有待解问题方向可推进 或 有验证候选 或 有待沉淀发明 或 有待执行计划。
+    // 修复：仅剩验证候选（如所有问题已解决但 Propos 里仍有未验证命题/解法）时也必须触发规划，
+    // 否则 planner 永远不会被调用、验证永不进行。
+    const verifyWork = (await buildVerifyCandidates()).length > 0
+    if (!hasSchedulableWork() && !verifyWork && methodLog.pendingInventions.length === 0 && planQueue.length === 0) { await maybeMethodKeepFallback(); return }
     // 冷却：系统空闲且有工作时忽略冷却（避免 30s 空转）
     const cooldown = Number(params.planMinIntervalMs) || 0
     const hasInflight = Object.keys(agentRegistry).length > 0 || planQueue.length > 0
@@ -1322,6 +1331,7 @@ export function apply(ctx) {
       return
     }
     planQueue = validated
+    await applyPlanToProblemCards(validated)
     await saveAll()
   }
   async function validatePlan(actions) {
@@ -1380,6 +1390,17 @@ export function apply(ctx) {
       }
     }
     return out
+  }
+  // 计划审批/入队后：把 planner 的下一步安排回写到问题卡的「计划」锚点（软规范：- 计划: 一句话说明下一轮安排）
+  async function applyPlanToProblemCards(actions) {
+    for (let i = 0; i < (actions || []).length; i++) {
+      const a = actions[i]
+      const tid = a.target || ''
+      if (!tid || !problems.has(tid)) continue
+      const q = problems.get(tid)
+      const desc = a.reason ? String(a.reason) : ('下一步：' + (a.role ? a.role : a.action) + (a.direction ? ' ' + a.direction : ''))
+      if (q.计划 !== desc) { q.计划 = desc; await saveProblem(q) }
+    }
   }
   async function executePlanQueue() {
     while (planQueue.length > 0 && scheduler.activeCount < params.maxParallelThreshold) {
@@ -1758,13 +1779,20 @@ export function apply(ctx) {
     await saveMethod(m, false)
   }
   async function maybePromoteMethods() {
-    // 自动/人工门晋升：满足条件（应用记录 ≥ 3）时触发
-    if (params.methodAutoPromote) {
-      for (const m of methods.values()) {
-        if ((m.applications || []).length >= 3 && !globalMethods.has(m.id)) {
-          await promoteMethodToGlobal(m)
-          logActivity('method', 'method ' + m.id + ' auto-promoted to global library (3+ applications)')
-        }
+    // 方法晋升：应用记录 ≥ 3 且尚未入全局库时触发。
+    // methodAutoPromote=true → 自动晋升；否则 manual 模式下挂「方法晋升门」（method-promote 决策）。
+    for (const m of methods.values()) {
+      if ((m.applications || []).length < 3 || globalMethods.has(m.id)) continue
+      if (params.methodAutoPromote) {
+        await promoteMethodToGlobal(m)
+        logActivity('method', 'method ' + m.id + ' auto-promoted to global library (3+ applications)')
+      } else if (params.mode === 'manual') {
+        const alreadyPending = decisionQueue.some(function (d) { return d.status === 'pending' && d.node === 'method-promote' && d.data.methodId === m.id })
+        if (alreadyPending) continue
+        const d = enqueueDecision('method-promote', '方法 ' + m.id + '「' + m.标题 + '」已有 ' + (m.applications || []).length + ' 次应用，是否晋升到全局方法库（VibeMath/Methods/）供跨项目复用？', { methodId: m.id })
+        if (!scheduler.gate) scheduler.gate = { decisionId: d.id, node: 'method-promote' }
+        logActivity('method', 'method-promote gate: ' + m.id + ' awaiting user decision')
+        await saveAll()
       }
     }
   }
@@ -1772,7 +1800,6 @@ export function apply(ctx) {
   // ================= verification (验证器) =================
   function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
-  function verifierWeight(cid, rigor) { const acc = verifierAccuracy[cid] || { correct: 0, total: 0 }; const base = acc.total > 0 ? (acc.correct / acc.total) : 0.5; const bonus = (typeof rigor === 'number' && Number.isFinite(rigor)) ? Math.max(-0.2, Math.min(0.2, rigor)) : 0; return Math.max(0.05, Math.min(0.95, base + bonus)) }
   async function handleVerifier(childId, meta, output, stopReason) {
     const rId = meta.rId
     const parsed = parseJson(output)
@@ -2015,7 +2042,7 @@ export function apply(ctx) {
       try {
         if (d.node === 'spawn') { await spawnChild(d.data.label, d.data.promptText, d.data.meta); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
         else if (d.node === 'verdict') { await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
-        else if (d.node === 'plan') { planQueue = (d.data.plan || []).slice(); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
+        else if (d.node === 'plan') { planQueue = (d.data.plan || []).slice(); await applyPlanToProblemCards(planQueue); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
         else if (d.node === 'method-promote') { const m = methods.get(d.data.methodId); if (m) await promoteMethodToGlobal(m); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
       } catch (e) { console.error('vibe-math-v3: auto-resolve decision failed: ' + String((e && e.message) || e)) }
     }
@@ -2156,8 +2183,6 @@ export function apply(ctx) {
     refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
     getRunning: function () { return scheduler.running },
     tickDue: function () { const iv = Math.max(200, Number(params.tickIntervalMs) || 2000); return (now() - lastTickAt) >= iv },
-    // 供 apply 级事件/定时器复用
-    __fs: fs, __ctx: ctx, __spawn: spawnChild, __saveAll: saveAll, __onChildEndRef: onChildEnd,
   }
 }
 

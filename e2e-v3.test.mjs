@@ -330,6 +330,114 @@ const ex3 = spawnByLabel('explorer:q3')
 if (ex3) fireEnd({ id: ex3.childId, runId: 'e3', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"directions":[{"id":"d1","title":"Fourier 展开法","method":"x² 的傅里叶展开","core_assumption":"","feasibility":0.7}]}\n```' }] })
 await callTool('vibe_math_set_mode', { mode: 'auto' }, ROOT_A)
 
+// ================= Scenario F: planner arranges verification (fix: verify-only work triggers planner) =================
+console.log('\n-- Scenario F: planner arranges verification + plan anchor write-back --')
+const newF = await callTool('vibe_math_new_project', { name: 'projf' }, ROOT_A)
+assert(newF.ok === true && newF.project === 'projf', 'session A switched to projf')
+await callTool('vibe_math_set_params', { verifierCount: 2, debateMaxRounds: 1, planMinIntervalMs: 0 }, ROOT_A)
+const addQf = await callTool('vibe_math_add_problem', { id: 'qF', description: '证明 2^p-1 形式的梅森素数有无穷多个', priority: 0 }, ROOT_A)
+assert(addQf.ok === true, 'problem qF added')
+const addPf = await callTool('vibe_math_add_proposition', { id: 'pF', 概述: '欧拉公式 e^{iπ}+1=0 成立', 概率: 0.7, '价值/关键性': 0.5, 分类: '数论' }, ROOT_A)
+assert(addPf.ok === true, 'proposition pF added (verify-only work exists)')
+const sF = await callTool('vibe_math_start', {}, ROOT_A)
+assert(sF.ok === true, 'scheduler started on projf')
+// 注意：projv3 可能有遗留未结算的 planner（abort 只中断不产生 end 事件），必须按"新增计数"匹配
+const plannersF0 = allSpawnsByLabel('planner:').length
+assert(await waitFor('new planner for projf', () => allSpawnsByLabel('planner:').length > plannersF0), 'planner called (has solve work AND verify candidates)')
+const plF = allSpawnsByLabel('planner:')[plannersF0]
+fireEnd({ id: plF.childId, runId: 'plF', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"summary":"explore qF + verify pF","plan":[{"action":"spawn","role":"explorer","target":"qF","reason":"new problem needs directions"},{"action":"spawn","role":"verifier","target":"r-pF","reason":"unverified proposition"}]}\n```' }] })
+assert(await waitFor('explorer qF spawn', () => spawnByLabel('explorer:qF') !== undefined), 'plan action 1 executed → explorer:qF')
+const qFmd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems', 'qF.md'), 'utf8')
+assert(qFmd.includes('- 计划:') && !qFmd.includes('- 计划: 待调度'), 'problem qF 计划 anchor updated by plan (not 待调度 anymore): ' + qFmd.split('\n').find(l => l.startsWith('- 计划:')))
+assert(await waitFor('verifier spawn for r-pF', () => spawnByLabel('verifier:r-pF') !== undefined), 'plan action 2 executed → verify task r-pF created')
+assert(await waitFor('both r-pF verifiers', () => allSpawnsByLabel('verifier:r-pF').length >= 2), '2 verifiers spawned for r-pF (planner-arranged verification)')
+const vpF = allSpawnsByLabel('verifier:r-pF')
+for (let i = 0; i < vpF.length; i++) fireEnd({ id: vpF[i].childId, runId: 'vpf' + i, provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"Result":1,"Reason":"验证通过"}\n```' }] })
+assert(await waitFor('pF verified', () => existsSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Verified', '命题', 'pF.md'))), 'pF verified via planner-arranged verification (fix: verify-only work still triggers planner)')
+const exF = spawnByLabel('explorer:qF')
+if (exF) fireEnd({ id: exF.childId, runId: 'eF', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"directions":[{"id":"d1","title":"解析数论法","method":"素数分布估计","core_assumption":"","feasibility":0.5}]}\n```' }] })
+
+// ================= Scenario G: promote via plan =================
+console.log('\n-- Scenario G: promote via planner --')
+// 统一的"下一个未 fire 的 planner"匹配（projv3 有遗留 planner、F 场景验证结算又 spawn 了一个未 fire 的 planner）
+const firedPlannerSet = new Set()
+function nextUnfiredPlanner() {
+  for (let i = spawns.length - 1; i >= 0; i--) {
+    if (spawns[i].label.startsWith('planner:') && !firedPlannerSet.has(spawns[i].childId)) return spawns[i]
+  }
+  return undefined
+}
+async function waitAndFirePlan(planJson) {
+  assert(await waitFor('unfired planner', () => nextUnfiredPlanner() !== undefined), 'an unfired planner is available')
+  const p = nextUnfiredPlanner()
+  firedPlannerSet.add(p.childId)
+  fireEnd({ id: p.childId, runId: 'pl' + Math.random(), provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: planJson }] })
+}
+const addPg = await callTool('vibe_math_add_proposition', { id: 'pG', 概述: '黎曼猜想的一种等价形式', 概率: 0.6, '价值/关键性': 0.9, 分类: '数论' }, ROOT_A)
+assert(addPg.ok === true, 'proposition pG added (价值 0.9 ≥ promoteValueThreshold)')
+await waitAndFirePlan('```json\n{"summary":"promote pG","plan":[{"action":"promote","target":"pG","reason":"high value, unresolved"}]}\n```')
+assert(await waitFor('promoted judge problem', () => {
+  const dir = join(WS, 'VibeMath', 'Projects', 'projf', 'Problems')
+  if (!existsSync(dir)) return false
+  return readdirSync(dir).some(f => f.startsWith('q-promoted-') && f.endsWith('.md'))
+}), 'promote action → judge problem Problems/q-promoted-*.md created')
+const promFile = readdirSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems')).find(f => f.startsWith('q-promoted-'))
+const promMd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems', promFile), 'utf8')
+assert(promMd.includes('判断下述命题是否成立') && promMd.includes('- 来源: promote'), 'judge problem card has 判断命题 statement + 来源 promote')
+
+// ================= Scenario I: method promotion gate =================
+console.log('\n-- Scenario I: method promotion manual gate --')
+await callTool('vibe_math_set_mode', { mode: 'manual' }, ROOT_A)
+const addMg = await callTool('vibe_math_method_add', { id: 'mG', 标题: '筛法工具', 类型: '工具', 核心内容: '一类素数分布估计工具' }, ROOT_A)
+assert(addMg.ok === true, 'method mG added to projf Methods/')
+await waitAndFirePlan('```json\n{"summary":"solve qF d1","plan":[{"action":"spawn","role":"solver","target":"qF","direction":"d1","reason":"push the direction"}]}\n```')
+// manual 模式：计划先挂审批门，approve 后才执行
+assert(await waitFor('plan approval in manual (I)', () => {
+  return true
+}, 400), '')
+await sleep(500)
+const decI0 = await callTool('vibe_math_list_decisions', {}, ROOT_A)
+const planDecI = (decI0.decisions || []).find(d => d.node === 'plan')
+assert(planDecI !== undefined, 'plan approval gate raised in manual mode (I)')
+if (planDecI) await callTool('vibe_math_decide', { id: planDecI.id, action: 'approve' }, ROOT_A)
+assert(await waitFor('solver qF:d1 spawn', () => spawnByLabel('solver:qF:d1') !== undefined), 'solver:qF:d1 spawned')
+const solF = spawnByLabel('solver:qF:d1')
+fireEnd({ id: solF.childId, runId: 'sF1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"status":"continue","methods_used":[{"id":"mG","效果":"1","建议":""},{"id":"mG","效果":"2","建议":""},{"id":"mG","效果":"3","建议":""}]}\n```' }] })
+assert(await waitFor('method-promote decision', () => {
+  // maybePromoteMethods 在 child end 后同步触发；轮询 decisionQueue 快照
+  return true
+}, 300).then(() => { return true }), '')
+await sleep(600)
+const decI = await callTool('vibe_math_list_decisions', {}, ROOT_A)
+const mpDec = (decI.decisions || []).find(d => d.node === 'method-promote')
+assert(mpDec !== undefined, 'method-promote gate raised (mG has 3 applications, manual mode)')
+if (mpDec) {
+  const resI = await callTool('vibe_math_decide', { id: mpDec.id, action: 'approve' }, ROOT_A)
+  assert(resI.ok === true && resI.applied && resI.applied.promoted === true, 'method-promote approved')
+}
+assert(existsSync(join(WS, 'VibeMath', 'Methods', 'mG.md')), 'mG promoted to GLOBAL method library (VibeMath/Methods/mG.md)')
+
+// ================= Scenario J: q_sub three-object registration =================
+console.log('\n-- Scenario J: q_sub registration --')
+// solver 续轮（round 2 followup，同一 child）输出子问题 → 注册 q_sub/判断问题/p-tmp 三对象
+fireEnd({ id: solF.childId, runId: 'sF2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"status":"continue","sub_questions":[{"q_sub_title":"估计 π(x) 的上界","q_sub_statement":"设 π(x) 为不超过 x 的素数个数（x≥2 为实数），估计 π(x) 的阶。","assumption_title":"π(x) ~ x/ln x 成立","assumption_statement":"π(x) 与 x/ln x 渐近等价（素数定理）"}]}\n```' }] })
+assert(await waitFor('q_sub problem card', () => {
+  const dir = join(WS, 'VibeMath', 'Projects', 'projf', 'Problems')
+  return existsSync(dir) && readdirSync(dir).some(f => f.includes('-sub-') && f.endsWith('.md'))
+}), 'q_sub problem card registered (Problems/qF-sub-*.md)')
+assert(await waitFor('judge problem card', () => {
+  const dir = join(WS, 'VibeMath', 'Projects', 'projf', 'Problems')
+  return existsSync(dir) && readdirSync(dir).some(f => f.includes('-judge-') && f.endsWith('.md'))
+}), 'judge problem card registered (Problems/qF-judge-*.md)')
+assert(await waitFor('p-tmp proposition card', () => {
+  const dir = join(WS, 'VibeMath', 'Projects', 'projf', 'Propos', '未分类')
+  return existsSync(dir) && readdirSync(dir).some(f => f.startsWith('p-tmp-') && f.endsWith('.md'))
+}), 'p-tmp temporary-assumption proposition card registered (Propos/未分类/p-tmp-*.md)')
+const subFile = readdirSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems')).find(f => f.includes('-sub-'))
+const subMd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems', subFile), 'utf8')
+assert(subMd.includes('## 来源与动机') && subMd.includes('回填'), 'q_sub card has 来源与动机 section (产生原因 + 回填计划)')
+await callTool('vibe_math_set_mode', { mode: 'auto' }, ROOT_A)
+
 // ---------- cleanup ----------
 await callTool('vibe_math_pause', {}, ROOT_A)
 rmSync(WS, { recursive: true, force: true })

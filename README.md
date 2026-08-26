@@ -7,11 +7,11 @@
 > 运行在 **DeepSeek Harness** 内的一组 **agent preset**（`vibe-math-v1` / `vibe-math-v2` / `vibe-math-v3`），
 > 用多代理协作自动求解数学问题并对结论做多代理交叉验证。三个预设共享「**断点续跑**、
 > **中途人工干预**、**进度汇报**、**自然语言驱动**」底座能力，但采用三代不同的求解架构：
-> **💡 推荐使用 `vibe-math-v3`**（第三代架构：论文式 Markdown 知识库 + 规划代理调度 + 通用理论发明库）。
+> **💡 `vibe-math-v2` 与 `vibe-math-v3` 同级主推**——两者都是成熟可用、正在维护的主推架构，根据你的实际需求自行选择（详见下方「怎么选」）。
 >
 > - **`vibe-math-v1`（经典流水线）⚠️ 将弃用**：「广度探索 → 深度迭代 → 交叉验证 → 知识沉淀」闭环；
-> - **`vibe-math-v2`（新架构 · 概率驱动）✅ 次推**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度；
-> - **`vibe-math-v3`（第三代 · 论文式 md + 规划代理 + 方法库）✅ 当前主推**：全部知识以 **Markdown 论文/研究报告式** 存储与续写（`Problems/` 问题清单+依赖+来源动机、`Progress/` 研究日志、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）；调度前由**规划代理**自主制定接下来 N 步计划；解决过程中发明的理论/框架/工具/方法/思想由 **Method Keeper** 沉淀为可复用方法体系（如发明群论、泛函分析那样）。
+> - **`vibe-math-v2`（概率驱动 · JSON 数据层）✅ 主推**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度 + 代码启发式调度；
+> - **`vibe-math-v3`（第三代 · 论文式 md + 规划代理 + 方法库）✅ 主推**：全部知识以 **Markdown 论文/研究报告式** 存储与续写（`Problems/` 问题清单+依赖+来源动机、`Progress/` 研究日志、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）；调度前由**规划代理**自主制定接下来 N 步计划；解决过程中发明的理论/框架/工具/方法/思想由 **Method Keeper** 沉淀为可复用方法体系（如发明群论、泛函分析那样）。
 
 安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**三个** agent preset。
 
@@ -27,13 +27,15 @@
 
 **一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
 
-### Vibe Math V2（概率驱动）✅ 次推（上一代主推）
+### Vibe Math V2（概率驱动 · JSON 数据层）✅ 主推
 
 ![Vibe Math V2 架构图](示例图/框架图-v2.png)
 
 **一句话流水线**：`qs.json` 按优先级取问题 → Explorer 拆方向（全死路则重派生）→ 每方向一个 Solver 多轮迭代（引理进 `Propos/`、解法回 `qs.json`，概率均 <1）→ 调度器选 r（命题 / 命题+证明·证伪 / 问题+解法）派 ≥3 验证器独立审查→辩论→裁决 → 概率=1 自动收口（问题 solved、命题 1/0，优先级置 `never`）；全程状态落盘，`resume` 断点续跑，`reportMode` 可 file/push/both 汇报。
 
-### Vibe Math V3（论文式 md + 规划代理 + 方法库）✅ 推荐 · 当前主推架构
+### Vibe Math V3（论文式 md + 规划代理 + 方法库）✅ 主推
+
+**一句话流水线**：全部知识以 **Markdown 论文/研究报告式**存储与续写（`Problems/` 问题清单含依赖/后生问题来源动机、`Progress/` 研究日志按方向按轮续写、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）→ 调度前调度器构造状态简报并调用**规划代理**，规划代理一次性安排接下来 N 步（spawn solver/verifier/explorer/method-keeper、interrupt、promote、wait），代码校验后执行（超出并发的动作排队跨 tick 消费；规划失败自动回退 v2 式启发式）→ 验证器独立审查→辩论→**近共识裁决**（同侧且均值 ≥0.85/≤0.15 取均值，修复 v2 flat 误判）→ 概率=1 收口并生成 `Verified/` 卡 → 求解器的 `methods_used`/`new_inventions` 上报由 **Method Keeper** 沉淀/完善方法库（可组成体系层级、跨项目复用）。
 
 **一句话流水线**：全部知识以 **Markdown 论文/研究报告式**存储与续写（`Problems/` 问题清单含依赖/后生问题来源动机、`Progress/` 研究日志按方向按轮续写、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）→ 调度前调度器构造状态简报并调用**规划代理**，规划代理一次性安排接下来 N 步（spawn solver/verifier/explorer/method-keeper、interrupt、promote、wait），代码校验后执行（超出并发的动作排队跨 tick 消费；规划失败自动回退 v2 式启发式）→ 验证器独立审查→辩论→**近共识裁决**（同侧且均值 ≥0.85/≤0.15 取均值，修复 v2 flat 误判）→ 概率=1 收口并生成 `Verified/` 卡 → 求解器的 `methods_used`/`new_inventions` 上报由 **Method Keeper** 沉淀/完善方法库（可组成体系层级、跨项目复用）。
 
@@ -70,7 +72,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
 安装时插件会自动把三个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v1/`、`vibe-math-v2/` 与 `vibe-math-v3/`。
-之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**推荐**）、**Vibe Math V2**（v2，次推）或 **Vibe Math**（v1）即可——v3 是当前主推架构；v1 作为早期架构保留兼容，**可能在将来版本中被遗弃、不再维护**，新项目请优先选 v3。
+之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**主推**）、**Vibe Math V2**（v2，**主推**）或 **Vibe Math**（v1）即可——v2 与 v3 同级主推，按实际需求自选（见「怎么选」）；v1 作为早期架构保留兼容，**可能在将来版本中被遗弃、不再维护**。
 **升级包版本后重启 DSH，未手动改过的 preset 文件会自动更新到新版本**（细节见文末「v2/v3」安装器说明）。
 
 ### 方式 B：作为 agent preset 手动安装
@@ -100,15 +102,25 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ## 🧭 三个预设怎么选
 
-> **💡 强烈建议优先使用 `vibe-math-v3`（第三代架构）**。v3 在 v2 的概率驱动调度之上做了三项架构级升级：① 全部知识改为**论文式 Markdown** 存储与续写（问题清单含依赖与后生问题来源动机、研究日志、命题库、方法库，只有 `Verified/` 绝对可信）；② 调度升级为**规划代理自主制定 N 步计划**（代码只校验执行，失败回退启发式）；③ 新增**通用理论发明库**——求解中发明的理论/框架/工具/方法/思想经 Method Keeper 沉淀为可复用、可体系化、跨项目扩充的方法论。
+> **💡 `vibe-math-v2` 与 `vibe-math-v3` 同级主推，按你的实际需求自行选择：**
 >
-> **`vibe-math-v2`（概率驱动）✅ 次推**：v3 的直接前身，JSON 数据层 + 代码启发式调度，成熟稳定；若你偏好结构化 JSON 数据，可用 v2。
+> - **选 `vibe-math-v2`（概率驱动 · JSON 数据层）**，如果你：
+>   - 偏好**结构化 JSON 数据**（`qs.json` / `Propos/<分类>_Propos.json` / `Verified/` 卡），方便程序化检索与二次加工；
+>   - 想要**成熟稳定的代码启发式调度**（优先级 + 概率，行为可预期、不依赖规划代理的"临场发挥"）；
+>   - 不需要方法库沉淀 / 论文式叙述，数据以字段为主即可。
+> - **选 `vibe-math-v3`（论文式 md + 规划代理 + 方法库）**，如果你：
+>   - 偏好**论文/研究报告式的自然语言知识库**（问题清单含依赖与后生问题来源动机、研究日志按方向按轮续写，人类可读、可自由续写）；
+>   - 希望调度由**规划代理**根据实际情况自主制定 N 步计划（更灵活，失败自动回退启发式）；
+>   - 希望**通用理论发明库**——求解中发明的理论/框架/工具/方法/思想经 Method Keeper 沉淀为可复用、可体系化、跨项目扩充的方法论（像"解决方程时发明群论"）；
+>   - 接受"只有 `Verified/` 绝对可信，其余 md 为经验参考"的可信分层。
 >
-> **⚠️ `vibe-math-v1` 是早期流水线架构，仅作参考/兼容保留，可能在将来的版本中被遗弃、不再维护。** 新项目、新问题请直接使用 v3（或 v2）。
+> 两者都成熟可用、持续维护，且都支持断点续跑、人工/自动干预、进度汇报、多会话隔离、命题晋升、近共识/加权裁决等核心能力；切换成本低（同一套 `vibe_math_*` 工具与 `/vibe` 命令、同一套参数体系）。
+>
+> **⚠️ `vibe-math-v1` 是早期流水线架构，仅作参考/兼容保留，可能在将来的版本中被遗弃、不再维护。** 新项目请直接使用 v2 或 v3。
 
-| | **v1（经典 · 将弃用）** | **v2（概率驱动 · 次推）** | **v3（论文式 md · 推荐）** |
+| | **v1（经典 · 将弃用）** | **v2（概率驱动 · 主推）** | **v3（论文式 md · 主推）** |
 |---|---|---|---|
-| 定位 | 早期流水线架构（保留兼容） | 上一代主推架构（JSON 数据层） | **当前主推架构**（第三代） |
+| 定位 | 早期流水线架构（保留兼容） | **主推**（JSON 数据层） | **主推**（第三代） |
 | 核心思想 | 流水线：拆方向 → 逐方向求解 → 拆最小单元 → 多验证器辩论 → 晋升 `Verified/` | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度 | **论文式 md 知识库 + 规划代理调度 + 通用理论发明库** |
 | 数据 | `qs/qs.csv` + `Progress_Logs/` | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` |
 | 角色 | brainstorm / solver / derive / verifier / decider | explorer → 逐方向 solver → verifier | **planner（规划代理）** → explorer → 逐方向 solver → verifier → **method-keeper（方法整理代理）** |
@@ -116,7 +128,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | 收口规则 | 验证通过晋升 `Verified/`，decider 判定解决 | 解法/证明达概率 `1` 即收口，`never` 永不调度 | 同 v2（近共识裁决修复 flat 误判） |
 | 特设能力 | 子问题分支（Aux_Hypothesis） | 命题「价值/关键性」自动晋升问题清单；`reportMode file/push/both`；`priorityAdjust` | **方法库沉淀循环**（`methods_used`/`new_inventions` → Method Keeper）；**计划审批门/方法晋升门**；**项目锁**；后生问题「来源与动机」一等公民 |
 
-三者都支持：断点续跑（`vibe_math_resume`）、人工/自动模式切换、`vibe_math_*` 工具集与 `/vibe` 命令、按项目隔离、子代理权限调控。**新项目建议一律选 v3**（偏好 JSON 结构化数据可选 v2）。
+三者都支持：断点续跑（`vibe_math_resume`）、人工/自动模式切换、`vibe_math_*` 工具集与 `/vibe` 命令、按项目隔离、子代理权限调控。**v2 与 v3 均为同级主推**——偏好结构化 JSON 数据与确定性调度选 v2，偏好论文式 md、规划代理与理论发明库选 v3。
 
 ---
 
@@ -138,7 +150,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧠 架构与分工（v3 · 第三代）✅ 推荐 · 当前主推架构
+## 🧠 架构与分工（v3 · 第三代）✅ 主推
 
 框架 = **一个主代理（助手）+ 一个代码调度器 + 一个规划代理 + 六类子代理**。
 
@@ -177,7 +189,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
    └─ VibeMath_State/                  # 调度器私有持久状态（断点恢复用）
 ```
 
-### v2（概率驱动 · 次推）
+### v2（概率驱动 · 主推）
 
 ```
 <会话工作区>/VibeMath/
@@ -194,7 +206,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
    └─ VibeMath_State/                  # 调度器私有持久状态（断点恢复用）
 ```
 
-### v3（论文式 md · 推荐）
+### v3（论文式 md + 规划代理 + 方法库）✅ 主推
 
 ```
 <会话工作区>/VibeMath/
@@ -392,7 +404,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
 
-### v2（新架构）默认值
+### v2（概率驱动 · 主推）默认值
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
