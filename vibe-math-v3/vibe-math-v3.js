@@ -405,6 +405,7 @@ export function apply(ctx) {
   function composeProblemMd(p) {
     const lines = []
     lines.push('# 问题｜' + (p.标题 || p.id))
+    lines.push(anchorLine('标题', p.标题 || p.id))
     lines.push(anchorLine('ID', p.id))
     lines.push(anchorLine('类型', '问题'))
     lines.push(anchorLine('状态', p.状态 || '求解中'))
@@ -447,6 +448,7 @@ export function apply(ctx) {
   function composePropositionMd(p) {
     const lines = []
     lines.push('# 命题｜' + (p.标题 || p.id))
+    lines.push(anchorLine('标题', p.标题 || p.id))
     lines.push(anchorLine('ID', p.id))
     lines.push(anchorLine('类型', '命题'))
     lines.push(anchorLine('状态', p.状态 || '未定论'))
@@ -498,6 +500,7 @@ export function apply(ctx) {
   function composeMethodMd(m) {
     const lines = []
     lines.push('# 方法｜' + (m.标题 || m.id))
+    lines.push(anchorLine('标题', m.标题 || m.id))
     lines.push(anchorLine('ID', m.id))
     lines.push(anchorLine('类型', m.类型 || '方法'))
     lines.push(anchorLine('状态', m.状态 || '经验'))
@@ -890,32 +893,59 @@ export function apply(ctx) {
 
   // ================= prompts =================
   function personaText(key) { return params[key] ? (String(params[key]) + '\n\n') : '' }
-  function defaultKnowledgeContext() {
-    return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
-      '\n1) TRUST LAYERS — the single most important rule:\n' +
+  function kcTrustLayers() {
+    return '\n1) TRUST LAYERS — the single most important rule:\n' +
       '- Verified/ 中的内容 = 绝对可信（已被验证器判定为真/假并生成只读副本）：可直接引用。\n' +
       '- Propos/ 中 状态: 已验证·真/假 的命题 = 可信（以 Verified/ 副本为准）。\n' +
       '- 其余一切（未定论命题、Progress/ 研究日志、Methods/ 中未验证断言、Notes/）= 经验性记录/参考，绝不能当作已成立事实引用。\n' +
-      '- 概率语义：1 = 绝对正确（可当已知事实）；0 = 绝对错误；0 与 1 之间 = 未定论/待验证。\n' +
-      '\n2) OBJECT MODELS（md 卡片，软规范：头部锚点行 + 正文自由叙述）：\n' +
-      '- 问题卡 Problems/<id>.md：{ ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划（由调度器按规划代理的计划自动更新：一句话说明下一轮安排）, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
-      '- 命题卡 Propos/<分类>/<id>.md：{ ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], ## 陈述（完整）, ## 证明尝试（### 证明 N｜…）, ## 证伪尝试（### 证伪 N｜…）}。\n' +
-      '- 方法卡 Methods/<id>.md：{ ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
-      '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n' +
-      '\n3) FOLDERS：Problems/ 问题清单；Progress/ 研究日志（每问题一个 md，按方向按轮续写）；Propos/ 命题库；Methods/ 理论发明库；Verified/ 绝对可信（只读）；Reliable/ 可信参考文献（只读）；Notes/ 自由笔记；Logs/ 审计；State/ 调度器私有——不要读也不要改。\n' +
-      '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。**重要区分**：methods_used 只能填**已存在方法卡的 ID**（形如 m-abc12345，来自 AVAILABLE METHODS 列表）；你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（由 Method Keeper 蒸馏建卡）；千万不要把方法名/标题文字当 id 填进 methods_used。\n' +
-      '\n5) OUTPUT REQUIREMENTS：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」；只输出规定的 JSON（```json 围栏内），JSON 之外不写任何内容。' +
-      '\n\n6) WRITE-INTO-MD WORKFLOW（推荐，代理自组织直接写 md）：框架允许你**直接写 Markdown**，把研究内容落到对应路径的 md 文件里，而不是全部塞进 JSON。做法（你拥有 file 工具）：\n' +
-      '- 每个角色有明确的"归属文件"：求解器写该方向的完整叙述到 `Progress/<问题id>/<方向id>.md`；新引理写一张完整命题卡到 `Propos/<分类>/<p-id>.md`（含锚点 `# 命题｜标题`、`- ID/状态/概率/优先级` 与 `## 陈述`/`## 证明尝试`）；方法整理代理写 `Methods/<m-id>.md`（锚点 `- ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`）。\n' +
-      '- **并发写安全**：写任何文件前先 `vibe_math_claim_write({target:"<相对项目根的路径>"})` 申请写锁（同一文件同一时刻只允许一个代理写；若返回 busy 请稍后重试），写完 `vibe_math_release_write({target})`。不同方向是不同文件，天然不冲突。\n' +
-      '- 写完内容后，用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报**轻量元数据**（方向状态/存活率/引理 id 及**证明 proof**/方法卡 id/新发明清单），让调度器更新索引与调度——内容留在 md，只有调度元数据与**待验证的证明**才进机读接口（证明是验证必需，必须随 lemmas 上报，否则验证器无法核验）。\n' +
-      '- 若你所在环境无法写文件（工具不可用/被拒），再回退到"把内容放进下面的 JSON 字段"由调度器落盘。两种方式二选一即可，不要重复。'
+      '- 概率语义：1 = 绝对正确（可当已知事实）；0 = 绝对错误；0 与 1 之间 = 未定论/待验证。\n'
   }
-  function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
+  function kcObjectModels() {
+    return '\n2) OBJECT MODELS（md 卡片，软规范：头部锚点行 + 正文自由叙述）：\n' +
+      '- 问题卡 Problems/<id>.md：{ 标题, ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划（由调度器按规划代理的计划自动更新：一句话说明下一轮安排）, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
+      '- 命题卡 Propos/<分类>/<id>.md：{ 标题, ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], ## 陈述（完整）, ## 证明尝试（### 证明 N｜…｜概率X｜状态Y）, ## 证伪尝试（### 证伪 N｜…｜概率X｜状态Y）}。\n' +
+      '- 方法卡 Methods/<id>.md：{ 标题, ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
+      '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n'
+  }
+  function kcFolders() {
+    return '\n3) FOLDERS：Problems/ 问题清单；Progress/ 研究日志（每问题一个聚合索引 <qid>.md + 每方向一个文件 <qid>/<dirId>.md，按方向按轮续写）；Propos/ 命题库；Methods/ 理论发明库；Verified/ 绝对可信（只读）；Reliable/ 可信参考文献（只读）；Notes/ 自由笔记；Logs/ 审计；State/ 调度器私有——不要读也不要改。\n'
+  }
+  function kcMethodLibrary() {
+    return '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。**重要区分**：methods_used 只能填**已存在方法卡的 ID**（形如 m-abc12345，来自 AVAILABLE METHODS 列表）；你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（由 Method Keeper 蒸馏建卡）；千万不要把方法名/标题文字当 id 填进 methods_used。\n'
+  }
+  function kcOutputQuality() {
+    return '\n5) OUTPUT QUALITY RULES：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」。你的机器回复是一个 JSON 对象（```json 围栏内），JSON 之外不要再输出其他文本——任何要写进 md 的内容都通过文件工具写入，不要当作聊天气泡输出。'
+  }
+  // 写 md 工作流：优先级最高的内容落地方式（与 syncMeta/applyAgentWrites/claimWrite 的字段契约严格一致）
+  function kcWriteMd() {
+    return '\n6) WRITE-INTO-MD WORKFLOW（优先推荐）：把研究内容直接写进你的归属 Markdown 文件，而不是塞进回复 JSON。你的角色决定归属文件：\n' +
+      '- 求解器：把该方向的完整叙述（本轮进展/子路线/可行性信号/教训/完整解法文本）写进 `Progress/<问题id>/<方向id>.md`；聚合索引 `Progress/<问题id>.md` 由调度器维护，不要动它。\n' +
+      '- 新引理：写一张完整命题卡到 `Propos/<分类>/<p-id>.md`，含锚点 `- 标题:`、`- ID/类型/状态/概率/优先级` 与 `## 陈述`；证明写进 `### 证明 1｜标题｜概率X｜状态Y` 段落（完整证明文本是验证必需，否则验证器只能验裸命题）。\n' +
+      '- 方法整理代理：写 `Methods/<m-id>.md`，含 `- 标题/ID/类型/状态/可信断言/适用场景` 与 `## 核心内容`/`## 应用记录`/`## 改进历史`。\n' +
+      '- **并发写安全**：写任何文件前先 `vibe_math_claim_write({target:"<相对项目根的路径>"})` 申请写锁（同一文件同一时刻只允许一个代理写；返回 busy 请稍后重试），写完 `vibe_math_release_write({target})`。不同方向是不同文件，天然不冲突。\n' +
+      '- **写完必须上报**：用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报轻量元数据（方向状态/存活率/引理 id+证明/方法卡 id/新发明/解法），让调度器更新索引与调度——内容留在 md，只有调度元数据与**待验证的证明**才进机读接口。\n' +
+      '- **分类一致性**：你写引理卡到 `Propos/<分类>/`，sync_meta 里该引理的 `分类` 字段必须严格等于那个目录名（否则调度器会按别处去查，找不到你写的卡）。\n' +
+      '- 若你的环境无法真正写文件（文件工具不可用/被拒），回退：把要写的内容放进回复 JSON 的 `__writes` 数组（`[{"path":"<目标>","content":"<全文>"}]`）并同样配 `meta`，由调度器落盘。两种方式二选一，不要重复。'
+  }
+  function defaultKnowledgeContext() {
+    return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
+      kcTrustLayers() + kcObjectModels() + kcFolders() + kcMethodLibrary() + kcOutputQuality() + kcWriteMd()
+  }
+  // 验证器只返回 Result/Reason，不写文件——去掉与文件工作流（第6节）及方法上报（第4节）相关的指令，避免无关且矛盾的提示。
+  function defaultVerifierKnowledgeContext() {
+    return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
+      kcTrustLayers() + kcObjectModels() + kcFolders() + kcOutputQuality()
+  }
+  function knowledgeContextText(role) {
+    const k = params.knowledgeContext ? String(params.knowledgeContext) : (role === 'verifier' ? defaultVerifierKnowledgeContext() : defaultKnowledgeContext())
+    return k ? ('\n' + k + '\n') : ''
+  }
   function capabilitiesText(role) {
-    const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
-    const netOn = role === 'solver' ? params.solverAllowNetwork : params.verifierAllowNetwork
-    const scrOn = role === 'solver' ? params.solverAllowScripts : params.verifierAllowScripts
+    // explorer 是研究/探索角色，工具预算与 solver 一致（网络/脚本/调用次数），仅 verifier 使用 verifier 配置
+    const isSolver = role === 'solver' || role === 'explorer'
+    const maxCalls = isSolver ? params.solverMaxToolCalls : params.verifierMaxToolCalls
+    const netOn = isSolver ? params.solverAllowNetwork : params.verifierAllowNetwork
+    const scrOn = isSolver ? params.solverAllowScripts : params.verifierAllowScripts
     const toolParts = []
     if (netOn !== false) toolParts.push('web search / literature lookup')
     if (scrOn !== false) toolParts.push('symbolic/numeric computation (running scripts)')
@@ -926,8 +956,12 @@ export function apply(ctx) {
       : '- External tools: none enabled for you this round.\n'
     t += '- You may READ any file under Verified/ as a known, trusted dependency.\n'
     t += '- You should BASE your reasoning on Propos/ (propositions with proofs/refutations and probabilities), Methods/ (reusable theories/tools), Reliable/ (trusted references), and Verified/.\n'
-    t += '- You must NOT write files directly: return structured JSON only — the scheduler is the single writer (it composes the Markdown knowledge base from your report).\n'
-    t += '\nHOW TO READ EXISTING KNOWLEDGE: these are Markdown files. COARSE SCAN first: use read/grep on the anchor header lines (- ID/- 状态/- 概率/- 优先级/- 依赖) to locate relevant objects — do NOT load full prose yet. FINE READ after: read the full card for 陈述/证明/证伪/解法/核心内容 sections.\n'
+    t += (role === 'verifier'
+      ? '- You ONLY return Result/Reason JSON — you do not write files and you do not use the WRITE-INTO-MD workflow.\n'
+      : (role === 'explorer'
+        ? '- Your output is the direction set (structural metadata): report it via the metadata form (meta.kind=directions); the scheduler writes it into the research log. You do NOT write per-direction files.\n'
+        : '- Write your research content directly into your assigned Markdown file (see WRITE-INTO-MD WORKFLOW) and return ONLY lightweight scheduling metadata; if your file tools are unavailable, fall back to the __writes + meta JSON described in the OUTPUT CONTRACT.\n'))
+    t += '\nHOW TO READ EXISTING KNOWLEDGE: these are Markdown files. COARSE SCAN first: use read/grep on the anchor header lines (- 标题/- ID/- 状态/- 概率/- 优先级/- 依赖) to locate relevant objects — do NOT load full prose yet. FINE READ after: read the full card for 陈述/证明/证伪/解法/核心内容 sections.\n'
     return t
   }
   function methodsIndexText() {
@@ -942,12 +976,12 @@ export function apply(ctx) {
     return personaText('explorerPersona') + 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.陈述 + '\n' +
       knowledgeContextText() +
       methodsIndexText() +
-      capabilitiesText('solver') +
+      capabilitiesText('explorer') +
       '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. First check the AVAILABLE METHODS list — if a listed method/system applies, plan to use it (you will reference its id in methods_used). ' +
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
       'Record each direction with its core assumption and an initial feasibility estimate. Every direction must be self-contained: title / method / core_assumption written completely, defining every object they mention — no 断章取义.\n\n' +
-      'feasibility ∈ [0,1]. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}'
+      'feasibility ∈ [0,1]. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
+      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
   }
   function rederivePrompt(q, prog) {
     const prior = prog.map(function (d) {
@@ -957,11 +991,11 @@ export function apply(ctx) {
     return personaText('explorerPersona') + 'You are a research mathematician re-deriving strategy for a problem whose prior directions stalled or failed.\n\nPROBLEM (id: ' + q.id + '): ' + q.陈述 + '\n\nPRIOR DIRECTIONS (with blockers):\n' + prior + '\n' +
       knowledgeContextText() +
       methodsIndexText() +
-      capabilitiesText('solver') +
+      capabilitiesText('explorer') +
       '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven dead ends (unless a new tool/idea changes that). ' +
       'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. Return the UNION of high-potential leftover directions and the brand-new directions (drop dead ends).\n\n' +
-      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5,"motivation":"..."}],"methods_used":[...],"new_inventions":[...]}'
+      'feasibility ∈ [0,1]. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
+      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
   }
   function directionSummary(d) {
     return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
@@ -995,10 +1029,13 @@ export function apply(ctx) {
       '- an updated survival probability for this direction;\n' +
       '- ANY new theory/tool/method/idea you invented or summarized this round in new_inventions (类型：理论体系|框架|工具|方法|思想|范式|技巧) — the Method Keeper will distill it into the theory library.'
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation fully defined — 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION answering q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion depending on it MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (complete definitions).\n'
-    head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 概率 / solution_probability / survival_probability you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ count as certain.\n'
-    head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
-    head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分析":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}],"methods_used":[{"id":"<已有方法卡的ID，形如 m-abc12345，必须是 AVAILABLE METHODS 中出现的 id>","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}]}\n' +
+    head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 概率 / prob / solution_prob / survival you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ count as certain.\n'
+    head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; write the full solution prose into your direction Progress file and put the solution into the `solution_text` field of the meta.\n'
+    head += '\nOUTPUT CONTRACT — pick ONE channel. Write content into Markdown; only lightweight scheduling metadata (and verification-required proofs) cross the machine reply.\n' +
+      'CHANNEL A (recommended, you can write files): write the full round narrative into `Progress/' + q.id + '/' + dir.id + '.md` and each new lemma card into `Propos/<分类>/<id>.md`, then reply ONLY this metadata object:\n' +
+      '{"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '","round":' + round + ',"survival":0.5,"status":"continue|success|dead-end","dead_end_reason":"... or null","lemmas":[{"id":"p-...","title":"...","statement":"...","proof":"<完整证明文本，供验证器核验>","prob":0.6,"分类":"<引理卡目录名，必须与你要写入的 Propos/<分类>/ 目录严格一致>","优先级":1}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}],"solution_prob":0.85,"solution_text":"<完整解法文本，或 null>","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}}\n' +
+      'CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:\n' +
+      '{"__writes":[{"path":"Progress/' + q.id + '/' + dir.id + '.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '",...同上 meta 字段...}}\n' +
       '区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。'
     return head
   }
@@ -1009,7 +1046,7 @@ export function apply(ctx) {
   }
   function verifierReviewPrompt(r) {
     return personaText('verifierPersona') + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + verifierTargetText(r) + '\n' +
-      knowledgeContextText() +
+      knowledgeContextText('verifier') +
       capabilitiesText('verifier') +
       '\nResult ∈ [0,1] = your probability that the TARGET is CORRECT: 1 ONLY when you are fully certain (for a bare proposition: Reason must be a complete proof; for a proof/refutation/solution: you verified every step and Reason confirms the whole chain); 0 ONLY when you are certain it is wrong (Reason must be a rigorous complete refutation / pinpoint the fatal flaw); otherwise a value strictly between 0 and 1.\n' +
       '\nCitations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证·真/假). Never cite an unverified or refuted object as a fact — if you need a sub-claim of a refuted card, re-derive it yourself.\n' +
@@ -1018,7 +1055,7 @@ export function apply(ctx) {
   }
   function verifierDebatePrompt(r, transcript) {
     return personaText('verifierPersona') + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + verifierTargetText(r) + '\n' +
-      knowledgeContextText() +
+      knowledgeContextText('verifier') +
       capabilitiesText('verifier') +
       '\nFULL DEBATE HISTORY SO FAR (每轮所有评审轮流发言的记录):\n' + transcript + '\n' +
       '\nRespond to the others (agree / rebut / add new evidence, referencing earlier rounds if needed). If you changed your Result because of them, state the reason explicitly. ' +
@@ -1046,8 +1083,11 @@ export function apply(ctx) {
       knowledgeContextText() +
       '\nRECENT WORK DIGEST:\n' + digest + '\n\n' +
       'For each pending invention decide: create a NEW method card, or fold it into an EXISTING method (as an improvement). Only list 可信断言 for claims already verified (ids from Verified/) — everything else stays 经验 (experiential). You may propose 上级体系/子方法 links to organize methods into systems.\n' +
-      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"new_methods":[{"标题":"...","类型":"理论体系|框架|工具|方法|思想|范式|技巧","核心内容":"...","定义与记号":"...","适用场景":"...","上级体系":[],"子方法":[],"可信断言":[],"来源":"从哪些工作提炼"}],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}'
+      'OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.\n' +
+      'CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:\n' +
+      '{"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}\n' +
+      'CHANNEL B (your file tools are unavailable): put the method-card content into __writes and carry the same meta:\n' +
+      '{"__writes":[{"path":"Methods/<m-id>.md","content":"<# 方法｜标题 + 锚点 + ## 核心内容... 完整卡面>"}],"meta":{"kind":"methods","used":[...],"created":["m-xxx"],"improvements":[...]}}'
   }
 
   // ================= decisions (manual/auto) =================
@@ -1437,6 +1477,7 @@ export function apply(ctx) {
           if (!q || q.状态 === '已解决' || q.优先级 === 'never' || q.状态 === '等待依赖') continue
           const dir = (getDirState(q.id) || []).find(function (d) { return d.id === String(a.direction || '') })
           if (!dir || dir.status !== 'active') continue
+          if ((dir.round || 0) >= (Number(params.solverMaxRounds) || 3)) continue // 已到轮次上限，不再调度（由后续 re-derive/stall 处理）
           const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
           if (running) continue
         } else if (role === 'verifier') {
@@ -1504,9 +1545,10 @@ export function apply(ctx) {
         if (!q) return
         const dir = (getDirState(q.id) || []).find(function (d) { return d.id === a.direction })
         if (!dir) return
-        const progressText = buildSolverContext(getDirState(q.id), dir, 1, params.directionsPerSolver)
-        await spawnChild('solver:' + q.id + ':' + dir.id, solverPrompt(q, dir, 1, progressText), { role: 'solver', qid: q.id, direction: dir.id, round: 1, description: q.陈述 })
-        logActivity('solver', 'problem ' + q.id + ' direction ' + dir.id + ' solver spawned (plan)')
+        const nextRound = (dir.round || 0) + 1   // 续轮上限由 syncMeta 的 solver 分支约束（见下）
+        const progressText = buildSolverContext(getDirState(q.id), dir, nextRound, params.directionsPerSolver)
+        await spawnChild('solver:' + q.id + ':' + dir.id, solverPrompt(q, dir, nextRound, progressText), { role: 'solver', qid: q.id, direction: dir.id, round: nextRound, description: q.陈述 })
+        logActivity('solver', 'problem ' + q.id + ' direction ' + dir.id + ' solver spawned (plan, round ' + nextRound + ')')
       } else if (a.role === 'verifier') {
         const cands = await buildVerifyCandidates()
         const c = cands.find(function (x) { return x.rId === a.target })
@@ -1591,9 +1633,11 @@ export function apply(ctx) {
         if (dir.status === 'success' || dir.status === 'dead-end') continue
         const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
         if (running) continue
-        const progressText = buildSolverContext(dirs, dir, 1, params.directionsPerSolver)
-        const promptText = solverPrompt(q, dir, 1, progressText)
-        const r = await maybeGate('spawn', 'solver for problem ' + q.id + ' direction ' + dir.id, { label: 'solver:' + q.id + ':' + dir.id, promptText: promptText, meta: { role: 'solver', qid: q.id, direction: dir.id, round: 1, description: q.陈述 } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } })
+        if ((dir.round || 0) >= (Number(params.solverMaxRounds) || 3)) { dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || '迭代轮限到达（solverMaxRounds=' + params.solverMaxRounds + '）'; await saveDirState(); await writeJournal(q.id); logActivity('solver', 'problem ' + q.id + ' direction ' + dir.id + ' dead-end (round cap reached in heuristic)'); continue }
+        const nextRound = (dir.round || 0) + 1
+        const progressText = buildSolverContext(dirs, dir, nextRound, params.directionsPerSolver)
+        const promptText = solverPrompt(q, dir, nextRound, progressText)
+        const r = await maybeGate('spawn', 'solver for problem ' + q.id + ' direction ' + dir.id, { label: 'solver:' + q.id + ':' + dir.id, promptText: promptText, meta: { role: 'solver', qid: q.id, direction: dir.id, round: nextRound, description: q.陈述 } }, async function (d) { await spawnChild(d.label, d.promptText, d.meta); return { spawned: true } })
         if (r && r.gated) return
       }
     }
@@ -1840,7 +1884,8 @@ export function apply(ctx) {
     if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'methods'))) {
       await applyAgentWrites(parsed.__writes)
       if (parsed.meta && parsed.meta.kind === 'methods') await syncMeta(parsed.meta, { id: childId })
-      if (parsed.meta && Array.isArray(parsed.meta.created) && parsed.meta.created.length > 0) methodLog.pendingInventions = []
+      // 消费已沉淀的发明：新建方法卡或对已有方法的改进都视为已处理本轮 pending（与旧 JSON 路径一致，防 improvements-only 反复触发）
+      if (parsed.meta && ((Array.isArray(parsed.meta.created) && parsed.meta.created.length > 0) || (Array.isArray(parsed.meta.improvements) && parsed.meta.improvements.length > 0))) methodLog.pendingInventions = []
       await saveAll(); return
     }
     if (!parsed) { logActivity('method', 'method keeper returned nothing usable'); await saveAll(); return }
@@ -2200,7 +2245,10 @@ export function apply(ctx) {
   }
   async function checkTermination() {
     const unsolved = allProblems().filter(function (q) { return !(q.状态 === '已解决' || q.优先级 === 'never') })
-    if (unsolved.length === 0 && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
+    // 终止前必须无遗留验证对象 / 待沉淀发明：否则会在命题/解法仍未验证、发明尚未蒸馏时提前停机，
+    // 导致"仅剩验证候选 / 仅剩发明"的工作永远不会被执行（验证/方法库是独立于问题求解的收尾工作）。
+    const leftoverVerify = (await buildVerifyCandidates()).length > 0 || methodLog.pendingInventions.length > 0
+    if (unsolved.length === 0 && !leftoverVerify && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
       scheduler.running = false
       await releaseProjectLock()
       logActivity('stop', 'all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)')
@@ -2317,7 +2365,7 @@ export function apply(ctx) {
         if (oldDirs && oldDirs.length > 0) await archiveDirections(qid, oldDirs)
         const list = (meta.directions || []).map(function (d) {
           const old = (getDirState(qid) || []).find(function (x) { return x.id === d.id })
-          return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || old?.method || '', core_assumption: d.core_assumption || old?.core_assumption || '', feasibility: clamp01(d.feasibility != null ? d.feasibility : (old ? old.survival : 0.5)), status: 'active', round: old ? old.round : 0, survival: clamp01(d.survival != null ? d.survival : (old ? old.survival : 0.5)), routes: old?.routes || [], lessons: old?.lessons || [], blockers: old?.blockers || [], lemmas: old?.lemmas || [], journal: old?.journal || [], dead_end_reason: '' }
+          return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || old?.method || '', core_assumption: d.core_assumption || old?.core_assumption || '', feasibility: clamp01(d.feasibility != null ? d.feasibility : (old ? old.survival : 0.5)), status: 'active', round: old ? old.round : 0, survival: clamp01(d.survival != null ? d.survival : (d.feasibility != null ? d.feasibility : (old ? old.survival : 0.5))), routes: old?.routes || [], lessons: old?.lessons || [], blockers: old?.blockers || [], lemmas: old?.lemmas || [], journal: old?.journal || [], dead_end_reason: '' }
         })
         dirState.set(qid, list)
         await saveDirState(); await writeJournal(qid)
@@ -2337,6 +2385,11 @@ export function apply(ctx) {
         if (meta.status) dir.status = String(meta.status)
         if (meta.dead_end_reason) dir.dead_end_reason = String(meta.dead_end_reason)
         if (meta.round) dir.round = Number(meta.round)
+        // 轮次上限：达到 solverMaxRounds 且仍未成功/死路 → 强制死路（新协议路径没有 followup 自迭代，必须靠此收口，与旧路径一致）
+        if ((dir.round || 0) >= (Number(params.solverMaxRounds) || 3) && dir.status !== 'success' && dir.status !== 'dead-end') {
+          dir.status = 'dead-end'
+          dir.dead_end_reason = dir.dead_end_reason || ('迭代轮限到达（solverMaxRounds=' + params.solverMaxRounds + '）')
+        }
         // 引理注册（id 由代理在命题卡里自定）
         if (Array.isArray(meta.lemmas)) {
           for (const l of meta.lemmas) {
@@ -2360,6 +2413,14 @@ export function apply(ctx) {
           const p = clamp01(meta.solution_prob)
           q.solutions.push({ title: '解法 ' + (q.solutions.length + 1), prob: p >= 1 ? 0.99 : (p <= 0 ? 0.01 : p), status: '未定论', text: String(meta.solution_text).slice(0, 2000) })
         }
+        // 子问题/临时假设（与旧 JSON 路径一致）：注册 q_sub 问题 + 判断问题 + p-tmp 假设
+        if (Array.isArray(meta.sub_questions)) {
+          for (const sq of meta.sub_questions) {
+            if (!sq || !sq.q_sub_statement) continue
+            const rec = await addSubQuestion(qid, dirId, sq)
+            if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) }
+          }
+        }
         await saveProblem(q); await saveDirState(); await writeJournal(qid)
         await consumeMethodFeedback(meta, { qid: qid, dirId: dirId })
         logActivity('solver', qid + '/' + dirId + ' meta sync (status=' + (meta.status || '') + ', survival=' + dir.survival + ')')
@@ -2375,6 +2436,18 @@ export function apply(ctx) {
           methods.set(mid, mm)
           // 若代理已直接写了方法卡文件则保留其内容；否则写一张标准卡兜底
           if ((await readText('Methods/' + mid + '.md')) === undefined) await saveMethod(mm, false)
+        }
+      }
+      // 改进：把内容写进已有方法卡的 ## 改进历史（与旧 JSON 路径一致）
+      if (Array.isArray(meta.improvements)) {
+        for (const imp of meta.improvements) {
+          if (!imp || !imp.id) continue
+          const m = methods.get(imp.id)
+          if (!m) { logActivity('method', 'improvement referenced unknown method ' + imp.id); continue }
+          m.improvements = m.improvements || []
+          m.improvements.push({ v: m.improvements.length + 1, 原因: imp.原因 || '', text: imp.改进内容 || '' })
+          await saveMethod(m, false)
+          logActivity('method', 'method ' + imp.id + ' improved (v' + m.improvements.length + ')')
         }
       }
       await saveAll()
@@ -2472,7 +2545,7 @@ export function apply(ctx) {
   registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), 'vibe_math_lock_status')
   registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly.', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_claim_write')
   registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root).', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_release_write')
-  registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after writing content to Markdown files.', objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
+  registerTool('vibe_math_sync_meta', 'After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}', objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
