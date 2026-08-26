@@ -22,19 +22,26 @@
       ## Vibe Math V4 toolkit
 
       This session includes the "Vibe Math V4" persistent self-organizing collaborative
-      research framework (fourth-generation architecture). Instead of a central scheduler
-      assigning roles, a set of RESIDENT subagents permanently collaborate: they message
-      each other, hold meetings, decide all task allocation themselves, persist their own
-      progress / proposition / method / sub-problem libraries, and verify objects ONLY by
-      unanimous consensus (else they stay as unverified with a probability). Anything is
-      verified only when ALL residents agree true or false.
+      research framework (fourth-generation architecture). It is a REAL research group that
+      works by talking: a set of RESIDENT subagents message each other and hold meetings,
+      and they decide ALL task allocation, division of labor, priorities, what to verify, and
+      when to stop — through their own discussion. There is NO central scheduler assigning
+      tasks. Each resident persists its own progress / proposition / method / sub-problem
+      library and WRITES those files DIRECTLY (via fs) in a documented format; anyone may READ
+      everyone else's files (read-only). Anything is "established" only when ALL residents
+      agree (unanimous true or false); otherwise it stays in a library with a probability.
+
+      The framework is just a facilitator: it relays the group's conversation (a resident's
+      `input` is forwarded to the others, and meetings forward everyone's contribution so the
+      team genuinely discusses/debates), convenes and records meetings, exposes a shared task
+      board, and stops the run only when the whole team agrees the problem is solved.
 
       Data lives under {{cwd}}/VibeMath/Projects/<project>/:
         Problems/ (original problem card), Progress/<resident>/ (each resident's progress),
-        Propos/<resident>/ (each resident's propositions), Methods/<resident>/ (theories/tools),
-        Subproblems/<resident>/, Shared/ (meeting transcripts / task board / debates),
-        Verified/ (read-only, ONLY after unanimous consensus), State/ (framework-private),
-        Reliable/ (references), Notes/.
+        Propos/<resident>/ (each resident's propositions, "- ID: p-<id>" / "- 概率:" / "- 价值程度:" ...),
+        Methods/<resident>/ (theories/tools), Subproblems/<resident>/, Shared/ (meeting transcripts /
+        task board / debates), Verified/ (read-only, ONLY after unanimous consensus),
+        State/ (framework-private), Reliable/ (references), Notes/.
 
       Main controls:
         - vibe_v4_start {problem, residentCount?, seedDirections?} — spawn residents, brainstorm, begin.

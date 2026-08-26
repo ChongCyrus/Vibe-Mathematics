@@ -104,49 +104,102 @@ export function apply(ctx) {
     // ---- resident prompts ----
     function banner(){ const o=[]; for(const [id,r] of residents) o.push('- '+id+'「'+(r.direction||'（未定）')+'」'+r.status+'·轮'+r.rounds); return o.join('\n') }
     async function inboxText(rId){ const mb=mailboxes.get(rId)||[]; if(mb.length===0) return '  (no new messages)\n'; return mb.map(m=>'  ['+m.from+'] '+m.content).join('\n')+'\n' }
+    function residentLibraries(){
+      const base=frameworkRoot()
+      return '你的资料库根目录：'+base+'/\n'
+        +'  Progress/<你>/progress.md —— 你的研究日志（叙述，可追加）。\n'
+        +'  Propos/<你>/<id>.md —— 你的命题/引理。格式：\n'
+        +'    - ID: p-<id>; - 状态: 未定论; - 概率: <0-1>; - 价值程度: <0-1>; - 动机用途计划: <为何重要/打算怎么用>\n'
+        +'    然后 ## 陈述 <陈述>；## 证明尝试；## 证伪尝试。\n'
+        +'  Methods/<你>/<id>.md —— 你的理论/方法/工具。格式：- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。\n'
+        +'  Subproblems/<你>/<id>.md —— 你的子问题。格式：- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 陈述；## 进度。\n'
+    }
+    function toolList(){
+      return 'vibe_v4_send_message {to, content} —— 给某常驻发消息（to=all 广播）。\n'
+        +'vibe_v4_meeting {agenda} —— 发起/参与会议（框架会把各常驻的实际 input 转给其他人，让大家看到并讨论/辩论）。\n'
+        +'vibe_v4_propose_task/claim_task/task_done/list_tasks —— 共享任务板（提议/认领/完成/查看；任务板是你们协调分工的载体）。\n'
+        +'vibe_v4_publish_progress/record_proposition/record_method/record_subproblem —— 便捷记录器（可选；推荐直接用 fs 写自己的文件）。\n'
+        +'vibe_v4_read_progress {id} —— 只读某常驻的进展。\n'
+        +'vibe_v4_list_residents / vibe_v4_list_tasks —— 查看团队组成 / 开放任务。\n'
+        +'vibe_v4_report_context {pct} —— 上报上下文占比（框架据此压缩你的上下文）。\n'
+        +'fs (read/write/list) —— 读取任意文件；写入你自己的文件（推荐直接用 fs 直接写自己的 md）。\n'
+    }
+    // A shared, complete context block so a resident always knows the situation: mission,
+    // work model, what it can do, which files it owns (+ formats), what others' files are,
+    // and that it may READ anyone and WRITE its own directly. level 'full' = initial brief.
+    function contextBrief(r, level){
+      const s=[]
+      s.push('## 背景 —— 你是常驻研究团队的一员')
+      s.push('You are resident researcher '+r.rId+'（常驻研究者 '+r.rId+'；共 '+params.residentCount+' 位常驻），正在协作解决：')
+      s.push(problemText)
+      s.push('')
+      s.push('这像一个**真实的学术小组**：没有中央调度器、没有外部派活——你们自己通过 **互相发消息 + 开会讨论** 来决定一切：谁做什么、怎么分工、验证什么、何时停止。你的 Round 决定你这一轮做什么；团队的优先级与分工由大家的讨论涌现。')
+      s.push('')
+      s.push('### 工作模式（会发生什么）')
+      s.push('1. 每人有一份持久、全组可见的专属资料库（见下）。')
+      s.push('2. 你们自由发消息、开会；**会议会把每个人实际说的话（input）转给其他人**，让你看得到、能回复、能讨论、能辩论。')
+      s.push('3. 你独立研究，并**直接用 fs 写入你自己的文件**（按格式），供全组阅读。')
+      s.push('4. 任何"已确立"的东西须**全组一致**验证（全真或全假）才作数；否则只是带概率的工作估计。')
+      s.push('5. 只有**全组在会议上一致认为原问题已解决**，run 才停止。')
+      s.push('')
+      s.push('### 你负责的文件（你只写自己的；但可读任何人的）')
+      s.push(residentLibraries())
+      s.push('其他人把结论/进展写进他们的目录，你就能读到。**你应主动读别人的库**，对齐事实、彼此衔接、避免重复劳动。')
+      if(level!=='full'){ s.push('（格式见你最初的说明；直接用 fs 写自己的文件即可。）') }
+      s.push('')
+      s.push('### 可用工具')
+      s.push(toolList())
+      s.push('')
+      s.push('### 规则')
+      s.push('- 只有 Verified/（或卡片标"已验证·真/假"）算已确立；其余都是你的实验性工作，请区分"猜想/已知"。')
+      s.push('- 验证必须**全组一致**（全真或全假）；你只信全票结果。未全票的对象留在库里带概率。')
+      s.push('- 你自己决定做什么，但**优先级/分工由团队讨论决定**，不是固定模式。若你认为问题已解决或接近解决，请**发起会议**让团队表决。')
+      s.push('- 退出时**只**输出一个 JSON 对象（放在 ```json 代码围栏内；围栏外不要有文字）。')
+      return s.join('\n')
+    }
     function brainstormPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'You are resident researcher '+r.rId+' (of '+params.residentCount+'), collaborating on:\n'+problemText
-        +(r.direction?('\n\nAssigned direction (you may refine it):\n'+r.direction):'')+'\n\n'
-        +'This is your FIRST, independent thinking round. Independently brainstorm: your insight / solution direction / sub-problems / plausible lemmas / rough plan. You do NOT see the others yet.\n'
-        +'Rules:\n- Only facts already in Verified/ are established; everything else is your own working (experiential), clearly mark conjecture vs known.\n'
-        +'- Record valuable artifacts to YOUR library via vibe_v4_publish_progress / vibe_v4_record_proposition / vibe_v4_record_method / vibe_v4_record_subproblem; each must carry 价值程度 / 动机用途计划 / 自身概率估计.\n'
-        +'Reply with ONLY a JSON object in a ```json fence (no prose outside):\n'
-        +'{"summary":"<your insight, one tight paragraph>","solved":false}'
+        +contextBrief(r,'full')+'\n'
+        +(r.direction?('\n\n你被建议的初始方向（可自行调整/细化）：\n'+r.direction+'\n'):'')
+        +'## 这是你的第一轮：独立头脑风暴\n'
+        +'独立地想清楚：你对这个问题的洞察 / 解决方向 / 关键子问题 / 可能的引理 / 粗略计划。你还未见到其他人，先独立产出。\n'
+        +'把有价值的产物**直接用 fs 写进你自己的文件**（按上面格式），并在 summary 里概述你的切入方向与初步结论（标注哪些是猜想、哪些凭你已确证）。\n'
+        +'Reply with ONLY a JSON object:\n'
+        +'{"summary":"<your insight / direction / rough plan, one tight paragraph>","solved":false}'
     }
     async function normalPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'You are resident researcher '+r.rId+' collaborating with '+Math.max(0,residents.size-1)+' other resident(s) on:\n'+problemText+'\n\nResidents:\n'+banner()+'\n\n'
-        +'This is your round (#'+r.rounds+'). You decide what to do — there is NO external assignment. Typical actions:\n'
-        +'- advance your direction; verify your own claims; record valuable artifacts to YOUR library (vibe_v4_publish_progress / record_proposition / record_method / record_subproblem), each with 价值程度 / 动机用途计划 / 自身概率估计;\n'
-        +'- message a specific resident (vibe_v4_send_message) or broadcast;\n'
-        +'- propose / claim / complete a shared task (vibe_v4_propose_task / vibe_v4_claim_task / vibe_v4_task_done / vibe_v4_list_tasks) — the task board is how you coordinate work;\n'
-        +'- call a meeting (vibe_v4_meeting) to coordinate / allocate tasks / propose a verification;\n'
-        +'- propose an object for unanimous verification (set propose_verify in your reply);\n'
-        +'- report your context usage (vibe_v4_report_context) so the framework compacts you when needed.\n'
-        +'You may READ any other resident\'s Progress/Propos/Methods/Subproblems (read-only via vibe_v4_read_progress / fs); you only WRITE your own '+r.rId+' library.\n'
-        +'Rules:\n- Only Verified/ is established. Verification requires ALL residents unanimous; you trust only unanimous results.\n'
-        +'- If the ORIGINAL problem is solved, set solved=true (we stop only when ALL residents agree).\n'
-        +'New items:\n'+ (await inboxText(r.rId))
-        +'\nReply with ONLY a JSON object in a ```json fence (no prose outside):\n'
-        +'{"summary":"<what you did this round, 1-3 sentences>","solved":false,"propose_verify":"<id|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","contextPct":40}'
+        +contextBrief(r,'recap')+'\n'
+        +'## 你的第 '+r.rounds+' 轮\n'
+        +'这一轮你自己决定做什么：推进你的方向、验证你的结论、给某常驻发消息、提议/认领任务、或发起会议/验证。**一切由你和团队讨论决定，没有外部派活。**\n'
+        +'动手前先**读读别人的库**（Read-only）知道大家做到哪、对齐事实、避免重复；然后**直接把你的进展/新结论用 fs 写进你自己的文件**。\n'
+        +'若你有话要对团队说（想让大家看到、讨论），在回复的 "input" 里写出来——它会被转发给其他常驻（如同一场群聊）。\n'
+        +'\n团队成员：\n'+banner()+'\n'
+        +'New items:\n'+ (await inboxText(r.rId)) +'\n'
+        +'Reply with ONLY a JSON object:\n'
+        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or empty string>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
     }
     function meetingPrompt(r, st){
+      const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'You are resident '+r.rId+'. A meeting is in progress (agenda: '+st.agenda+').'
-        +(st.type==='verify'?('\nThe group is verifying object: '+st.targetId+'. Give your independent verdict.'):'')
-        +'\nGive your input. You may: propose a task (propose_task), claim an open task (claim_task), propose an object for unanimous verification (propose_verify), or vote on whether the original problem is solved (voteSolved).\n'
-        +'Reply with ONLY a JSON object (```json fence):\n'
-        +'{"input":"<your contribution>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
+        +contextBrief(r,'recap')+'\n'
+        +'## 会议进行中 —— A meeting is in progress (agenda: '+st.agenda+').'
+        +(st.type==='verify'?('\n团队正在验证对象：'+st.targetId+'（'+st.targetType+'）。请先看他人意见，再给独立判断。'):'')
+        +'\n这是一场**真实讨论**：下面已有人发言（框架把各常驻的 input 转给你），请先看，然后**加入讨论/补充/反驳/表决**。'
+        +(prior?('\n\n### 已有发言（他人 input，已转发给你）\n'+prior):'\n（目前还没人发言，你先说。）')
+        +'\n\n你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。'
+        +'\nReply with ONLY a JSON object:\n'
+        +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
       const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+v.verdict+' ('+v.confidence+') '+v.reason).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'You are resident '+r.rId+'. The group is verifying object '+vs.targetId+' ('+vs.targetType+'). '
-        +'It may be TRUE only if ALL residents agree true (FALSE only if ALL agree false). Give your honest independent verdict'
-        +(vs.stage==='debate'?' after considering the others:':'')+'.\n'
-        +(vs.stage==='debate'?('Others so far:\n'+others):'')
-        +'\nReply with ONLY a JSON object (```json fence):\n'
+        +contextBrief(r,'recap')+'\n'
+        +'## 团队验证 —— The group is verifying object '+vs.targetId+'（'+vs.targetType+'）。\n'
+        +'只有**全体常驻一致判真（或一致判假）**才算数。请给出你**诚实独立的判断**'
+        +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
+        +(vs.stage==='debate'&&others?('### 他人意见（已转发给你）\n'+others+'\n'):'')
+        +'\nReply with ONLY a JSON object:\n'
         +'{"vote":{"verdict":"TRUE","confidence":0.8,"reason":"<your logic>"}}'
     }
 
@@ -219,6 +272,17 @@ export function apply(ctx) {
       let n=0
       for(const [,r] of residents){ const res=await postMessage('facilitator',r.rId,content); if(res&&res.ok) n++ }
       logActivity('broadcast','to '+n+' resident(s)'); await saveAll(); return {ok:true,message:'broadcast to '+n+' resident(s)'}
+    }
+    // group conversation relay: when a resident "speaks" (input in its round), forward its
+    // words to every other resident's inbox so the whole group can see & react — a real group chat.
+    async function relayToGroup(from, content){
+      const text=String(content||'').trim()
+      if(!text) return
+      for(const [,r] of residents){
+        if(r.rId===from) continue
+        const mb=mailboxes.get(r.rId)||[]; mb.push({from,at:now(),content:'[群聊] '+text}); mailboxes.set(r.rId,mb)
+      }
+      logActivity('relay',from+' → 团队: '+text.slice(0,60)); await saveAll()
     }
 
     // ---- meeting ----
@@ -338,11 +402,10 @@ export function apply(ctx) {
     // of infinite token-burning, matching the "framework never assigns work" philosophy.
     function heartbeatPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'You are resident researcher '+r.rId+'. CHECKPOINT (idle): the group is waiting for direction.\n'
-        +'State in one line what you will do next. If you have nothing further to add, or you believe the '
-        +'problem is solved / close to solved, PROPOSE a meeting (propose_meeting), propose a verification '
-        +'(propose_verify), or set solved=true so the group can reach a decision — do NOT produce filler work.\n'
-        +'\nReply with ONLY a JSON object (```json fence):\n'
+        +contextBrief(r,'recap')+'\n'
+        +'## CHECKPOINT（空闲）—— 团队在等待方向。\n'
+        +'请用一句话说明你下一步做什么；若你已无产出、或认为问题已解决/接近解决，请**提议开会（propose_meeting）**、**提议验证（propose_verify）**、或**声明 solved=true**，让团队能做出决定——不要产出填充性工作。\n'
+        +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you do next or a declaration>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","claim_task":"<id|null>"}'
     }
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
@@ -438,6 +501,9 @@ export function apply(ctx) {
       if(typeof parsed.contextPct==='number'){ r.contextPct=clPct(parsed.contextPct) }
       if(parsed.compacted===true || (r.needCompact && parsed.summary)){ r.contextSeed=String(parsed.summary||''); r.contextPct=Math.min(r.contextPct||15,25); r.roundsSinceCompact=0; r.needCompact=false; logActivity('compact',r.rId+' consolidated context') }
       if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
+      // group-conversation relay: the resident may choose to speak to the whole team (input) —
+      // forward it to the others so this is a real discussion group, not private monologues.
+      if(typeof parsed.input==='string' && parsed.input.trim()) await relayToGroup(r.rId, parsed.input.trim())
       // task actions via reply (a resident may propose or claim a task in its round)
       if(parsed.propose_task) await proposeTask(parsed.propose_task, parsed.task_desc||'', r.rId)
       if(parsed.claim_task) await claimTask(parsed.claim_task, r.rId)

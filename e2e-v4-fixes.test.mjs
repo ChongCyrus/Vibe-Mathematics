@@ -129,5 +129,37 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T5: prompt completeness (background/mission/tools/files) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T5 prompt completeness --')
+  await m.callTool('vibe_v4_start', { problem:'提示词测试', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  const p = m.spawns[0].request.prompt[0].text
+  assert(/resident researcher/i.test(p), 'T5: brainstorm prompt names the resident researcher')
+  assert(/背景/.test(p) && /工作模式/.test(p) && /你负责的文件/.test(p) && /可用工具/.test(p) && /规则/.test(p), 'T5: prompt has 背景/工作模式/文件/工具/规则 sections')
+  assert(/- 概率:/.test(p) && /- 价值程度:/.test(p) && /fs/.test(p) && /直接/.test(p), 'T5: prompt describes file format + direct fs write')
+  assert(/vibe_v4_/.test(p) && /\binput\b/.test(p), 'T5: prompt lists the vibe_v4 tools + input relay field')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T6: group-conversation relay (input forwarded to others) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T6 group-conversation relay --')
+  await m.callTool('vibe_v4_start', { problem:'群聊转发', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
+  let fu=null
+  for(let i=0;i<60;i++){ if(m.followups.length>0){ fu=m.followups.shift(); break } await sleep(40) }
+  assert(fu, 'T6: got a fairness/checkpoint wake after brainstorm')
+  m.fireEnd({ id: fu.childId, runId:'t6-w', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'我推进引理A', input:'大家好，我建议先验证引理A。', solved:false})}] })
+  await sleep(150)
+  const relayed = m.followups.some(f=>/引理A|群聊/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
+  assert(relayed, 'T6: resident input is relayed & delivered to the other residents (group chat)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

@@ -57,6 +57,8 @@
 > 🔧 **v1.3.5 边界 A 落地 + 真实 `/compact`**：`maxParallel` 真正限流（在途上限），`activityTimeoutMs` 作为**心跳门控**（空闲超时才触发 CHECKPOINT 唤醒，推动收敛/停止而非无限烧 token）；并用 DSH 真实 `ctx.compaction.compactIfNeeded(常驻 agent, 'pressure', signal)` 压缩常驻自身上下文（回退到自述指令）。详见 §19。
 >
 > 🔧 **v1.3.6 修复 v4 preset 选择后跳回原 preset**：v4 插件的 `apply` 读取 `ctx.subagents/agents/fs/tools/commands` 却**未声明 `inject`**，被 DSH 守卫以"未声明依赖"拒绝 → 组合无法挂载 → 选择后自动回退。已补 `export const inject = [...]`，并把心跳定时器从全局 `setTimeout/clearTimeout`（插件沙箱里不存在）改为 **`timer` 服务（`ctx.timeout`）**。
+>
+> 🔧 **v1.3.7 哲学回归（清晰提示词 + 真实交流群 + 直接写文件）**：常驻每轮统一注入 `contextBrief`（背景/使命、工作模式、你负责的文件与格式、可用工具及功能、规则），并明确"只写自己、可读任何人的库、应主动读别人对齐事实"；会议把其他常驻实际发言（input）转给每个人看（能补充/反驳/表决），常驻日常轮的 `input` 经 `relayToGroup` 转发到其它常驻邮箱（像群聊）；常驻**直接用 fs 写自己的 md**（按格式），`vibe_v4_*` 记录工具只是可选便利；去掉"typical actions"式固定约束，改为"你自己决定做什么；优先级/分工由团队讨论涌现"。详见 §20。
 
 ---
 
