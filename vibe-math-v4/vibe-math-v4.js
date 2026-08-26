@@ -11,6 +11,7 @@ export function apply(ctx) {
   const commands = ctx.commands
   const subprocess = ctx.get('subprocess')
   const sandboxPolicy = ctx.get('sandboxPolicy')
+  const compaction = ctx.get('compaction')   // @deepseek-ai/dsh-compaction (CompactionEngine); optional
 
   const sessions = new Map()      // rootAgentId -> Session
   const childOwner = new Map()    // childId -> rootAgentId
@@ -36,7 +37,7 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
-    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = ''
+    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatTimer = null
     const activityLogCap = 200
 
     // ---- utils ----
@@ -156,6 +157,7 @@ export function apply(ctx) {
     }
     async function wakeResident(r, promptText, kind){
       if(!r.childId) return false
+      clearHeartbeat()
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
       r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
       // context / /compact: if the resident reports high context (or reached the round proxy),
@@ -218,6 +220,7 @@ export function apply(ctx) {
     // ---- meeting ----
     async function startMeeting(agenda,type,targetId){
       if(meetingState) return {ok:false,message:'meeting already in progress'}
+      clearHeartbeat()
       meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[]}
       logActivity('meeting','start: '+agenda); await saveAll(); await scheduleNext(); return {ok:true,id:meetingState.id}
     }
@@ -252,6 +255,7 @@ export function apply(ctx) {
 
     // ---- verification (unanimous) ----
     async function beginVerify(pv){
+      clearHeartbeat()
       pendingVerify=null
       verifyState={targetId:pv.targetId,targetType:pv.targetType,stage:'independent',round:0,asked:[],verdicts:{},transcript:[]}
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
@@ -323,19 +327,68 @@ export function apply(ctx) {
     }
     function guessTargetType(id){ if(/^p-/.test(id)) return 'proposition'; if(/^m-/.test(id)) return 'method'; if(/^s-/.test(id)) return 'subproblem'; return 'proposition' }
 
+    // ---- heartbeat / liveness helpers (boundary-A: event-driven + gated heartbeat) ----
+    // A checkpoint wake is NOT "keep working forever": it nudges the least-recently-active
+    // resident, after an idle timeout, to either make concrete progress or push the group
+    // toward a decision (meeting / verify / solved). This adds convergence pressure instead
+    // of infinite token-burning, matching the "framework never assigns work" philosophy.
+    function heartbeatPrompt(r){
+      return (params.residentPersona?params.residentPersona+'\n':'')
+        +'You are resident researcher '+r.rId+'. CHECKPOINT (idle): the group is waiting for direction.\n'
+        +'State in one line what you will do next. If you have nothing further to add, or you believe the '
+        +'problem is solved / close to solved, PROPOSE a meeting (propose_meeting), propose a verification '
+        +'(propose_verify), or set solved=true so the group can reach a decision — do NOT produce filler work.\n'
+        +'\nReply with ONLY a JSON object (```json fence):\n'
+        +'{"summary":"<what you do next or a declaration>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","claim_task":"<id|null>"}'
+    }
+    function clearHeartbeat(){ if(heartbeatTimer!==null){ try{ clearTimeout(heartbeatTimer) }catch(e){} heartbeatTimer=null } }
+    function armHeartbeat(){
+      clearHeartbeat()
+      const ms=Number(params.activityTimeoutMs)||120000
+      if(!(ms>0)) return
+      heartbeatTimer=setTimeout(()=>{ heartbeatTimer=null; scheduleNext().catch(()=>{}) }, ms)
+    }
+    // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
+    // falling back silently to the resident self-summary directive when the service is absent.
+    async function realCompact(r){
+      if(!r || !r.childId) return
+      if(compaction===undefined || !compaction.compactIfNeeded) return
+      let agent
+      try { agent = agents.get(r.childId) } catch(e){ agent = undefined }
+      if(!agent || !agent.session) return
+      try {
+        const signal = makeSignal(params.activityTimeoutMs||60000)
+        const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+        if(result && (result.shadowedSeqs||[]).length>0){
+          r.roundsSinceCompact=0; r.needCompact=false; r.contextPct=Math.min(r.contextPct||15,25)
+          logActivity('compact', r.rId+' real /compact (shadowed '+result.shadowedSeqs.length+' items, ~'+String(result.shadowedTokenCount||0)+' tokens)')
+        }
+      } catch(e){ /* real compaction unavailable/failed; the soft directive already covers it */ }
+    }
+
     // ---- liveness / scheduling ----
     async function scheduleNext(){
-      if(!running||autoDone) return
+      if(!running||autoDone){ clearHeartbeat(); return }
       if(phase==='brainstorm'){ await maybeFinishBrainstorm(); return }
       if(meetingState){ await continueMeetingRound(); return }
       if(verifyState){ await continueVerifyRound(); return }
       if(pendingVerify){ const pv=pendingVerify; await beginVerify(pv); return }
       // mailbox delivery
       const delivered=await deliverNextMailbox(); if(delivered) return
-      // fairness / coordination wake of the least-recently-active resident
+      // maxParallel: don't start a new wake when the in-flight cap is reached
+      const mp=Number(params.maxParallel)||0
+      if(mp>0 && busy.size>=mp){ armHeartbeat(); return }
+      // heartbeat / coordination wake of the least-recently-active resident, ONLY after idle timeout
+      clearHeartbeat()
       let target=null, oldest=-1
       for(const [,r] of residents){ if(busy.has(r.rId)) continue; const idle=now()-r.lastActiveAt; if(idle>oldest){ oldest=idle; target=r } }
-      if(target){ await wakeResident(target, await normalPrompt(target), 'normal'); await saveAll(); return }
+      const atOs=Number(params.activityTimeoutMs)||120000
+      if(target && oldest>=atOs){
+        // an idle timeout has elapsed: checkpoint wake (event-driven work is unchanged)
+        await wakeResident(target, await heartbeatPrompt(target), 'normal'); await saveAll(); return
+      }
+      // everyone is busy or not idle-enough: arm a heartbeat to re-check later (no infinite spin)
+      armHeartbeat()
     }
     async function maybeFinishBrainstorm(){
       const pending=[]; for(const [,r] of residents){ if(r.status==='brainstorm' && !r.insight) pending.push(r.rId) }
@@ -359,6 +412,7 @@ export function apply(ctx) {
     async function onResidentEnd(childId, info){
       const r=byChild(childId); if(!r) return
       busy.delete(r.rId)
+      realCompact(r).catch(()=>{})   // best-effort real DSH /compact of this resident while idle
       const output=blocksToText(info&&info.lastAssistantMessage)
       const parsed=parseReply(output)
       const kind=wakeKind.get(r.rId)||'normal'
@@ -398,7 +452,7 @@ export function apply(ctx) {
       if(residentCount) params.residentCount=Number(residentCount)||4
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
-      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0
+      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0; clearHeartbeat()
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
@@ -426,8 +480,8 @@ export function apply(ctx) {
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
     function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=upd[k] } return {ok:true} }
-    async function initAbort(){ running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
-    function setPause(){ running=false; return {ok:true,message:'paused'} }
+    async function initAbort(){ clearHeartbeat(); running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
+    function setPause(){ clearHeartbeat(); running=false; return {ok:true,message:'paused'} }
 
     return {
       sessionId, running:()=>running, autoDone:()=>autoDone, phase:()=>phase,

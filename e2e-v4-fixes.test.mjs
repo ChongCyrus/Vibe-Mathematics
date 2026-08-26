@@ -40,7 +40,7 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T1 A1 non-unanimous verify write-back --')
   await m.callTool('vibe_v4_start', { problem:'非全票验证', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
-  await m.callTool('vibe_v4_set', { verdictMaxRounds: 1 })
+  await m.callTool('vibe_v4_set', { verdictMaxRounds: 1, activityTimeoutMs: 40 })
   await m.callToolAs('vibe_v4_record_proposition', { id:'p-mixed', title:'混合', statement:'s', prob:0.6, value:0.5, motivation:'m' }, m.spawns[0].childId)
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
@@ -69,6 +69,7 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T2 A2 method unanimous verify -> 类型: 方法 --')
   await m.callTool('vibe_v4_start', { problem:'方法验证', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
   await m.callToolAs('vibe_v4_record_method', { id:'m-meth', title:'方法', type:'方法', content:'c', value:0.5, motivation:'m' }, m.spawns[0].childId)
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   let fi=0, proposed=false
@@ -97,6 +98,7 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T3 A3 abort -> resume re-spawns (same process) --')
   await m.callTool('vibe_v4_start', { problem:'abort-resume', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
   await m.callTool('vibe_v4_abort', {})
   const before = m.spawns.length
   const r = await m.callTool('vibe_v4_resume', {})
@@ -110,7 +112,7 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T4 B2 recordProposition triggers auto-sync meeting --')
   await m.callTool('vibe_v4_start', { problem:'自动同步', residentCount:1 })
   await waitFor(()=>m.spawns.length>=1)
-  await m.callTool('vibe_v4_set', { meetingKeepEvery: 1 })
+  await m.callTool('vibe_v4_set', { meetingKeepEvery: 1, activityTimeoutMs: 40 })
   const c = m.spawns[m.spawns.length-1]
   m.fireEnd({ id: c.childId, runId:'br-'+c.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
   await sleep(80)

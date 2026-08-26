@@ -40,6 +40,8 @@ function classWake(promptText){ if(/meeting is in progress/i.test(promptText)) r
 // ---------- start ----------
 console.log('-- V4 self-drive: start --')
 const st = await callTool('vibe_v4_start', { problem: '证明 π 是无理数（Niven 积分类似方法）', residentCount: 3 })
+// boundary-A: the fairness wake is now a gated heartbeat; drive it with a short timeout
+await callTool('vibe_v4_set', { activityTimeoutMs: 40 })
 assert(st.ok === true, 'v4 start ok (message=' + st.message + ')')
 await waitFor(()=>spawns.length>=3, 3000)
 assert(spawns.length >= 3, 'start spawned >=3 residents (got ' + spawns.length + ')')
