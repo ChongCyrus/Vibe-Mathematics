@@ -51,6 +51,8 @@
 > 🔧 **v1.3.2 审计修复**：修复上下文压缩按占比失效（`contextPct` 单位错配，现按百分比保存）、常驻工具按"调用者身份"路由（各常驻库归属正确）、`vibe_v4_read_progress` 真正返回文本、跨进程断点续跑重建常驻、`message(all)` 广播真正投递、`addMember` 增开无 id 碰撞。详见 `vibe-math-v4/实现方案.md` §17。
 >
 > 🔧 **v1.3.3 审计修复**：非全票验证把平均概率写回源卡（兑现"留库附概率"）、方法型验证标 `类型: 方法`（不再误标命题）、同进程 abort→resume 重建常驻、记录命题也触发自动同步会议、唤醒信号改用 `activityTimeoutMs`、`verdictMaxRounds`/`meetingKeepEvery` 可调且展示。详见 §18。
+>
+> 🔧 **v1.3.4 和谐修复**：重排 `框架图-v4.png` 消除文字/箭头重叠遮挡（子标签不再溢出框、`/compact` 移入独立的"上下文"能力块、底部"产物沉淀·断点续跑"居中排布）；补齐 `agent.cordis.yml` 常驻描述中的"deadlines"一词（v4 并无截止机制），并移除 `实现方案.md` 中不存在的 `vibe_v4_inject`（实际用 `vibe_v4_message`）。
 
 ---
 

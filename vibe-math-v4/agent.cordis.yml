@@ -32,7 +32,7 @@
       Data lives under {{cwd}}/VibeMath/Projects/<project>/:
         Problems/ (original problem card), Progress/<resident>/ (each resident's progress),
         Propos/<resident>/ (each resident's propositions), Methods/<resident>/ (theories/tools),
-        Subproblems/<resident>/, Shared/ (meeting transcripts / task board / deadlines / debates),
+        Subproblems/<resident>/, Shared/ (meeting transcripts / task board / debates),
         Verified/ (read-only, ONLY after unanimous consensus), State/ (framework-private),
         Reliable/ (references), Notes/.
 
