@@ -1,11 +1,14 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
 // When this bundle is installed (e.g. `dsh plugin add dsh-vibe-math` or from the
-// dsh-market), this plugin copies ALL THREE agent presets out of the package into
-// the DSH preset root, so the user immediately gets three presets in the picker:
+// dsh-market), this plugin copies ALL FOUR agent presets out of the package into
+// the DSH preset root, so the user immediately gets four presets in the picker:
 //   vibe-math-v1/  (classic pipeline architecture)
 //   vibe-math-v2/  (probability-driven architecture)
 //   vibe-math-v3/  (THIRD-generation: paper-style Markdown knowledge base +
 //                   planner-agent scheduling + universal theory/method library)
+//   vibe-math-v4/  (FOURTH-generation: persistent self-organizing resident
+//                   subagents — message bus / meetings / unanimous-consensus
+//                   verification / per-resident libraries) [new]
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
 //   - baseline (no state file — e.g. upgrading from an installer that predates
@@ -42,6 +45,11 @@ const PRESETS = [
     src: 'vibe-math-v3',
     dst: 'vibe-math-v3',
     files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v3.js', '实现方案.md'],
+  },
+  {
+    src: 'vibe-math-v4',
+    dst: 'vibe-math-v4',
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v4.js', '实现方案.md'],
   },
 ]
 
