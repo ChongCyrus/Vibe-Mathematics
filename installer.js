@@ -1,9 +1,11 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
 // When this bundle is installed (e.g. `dsh plugin add dsh-vibe-math` or from the
-// dsh-market), this plugin copies BOTH agent presets out of the package into the
-// DSH preset root, so the user immediately gets two presets in the picker:
+// dsh-market), this plugin copies ALL THREE agent presets out of the package into
+// the DSH preset root, so the user immediately gets three presets in the picker:
 //   vibe-math-v1/  (classic pipeline architecture)
-//   vibe-math-v2/  (new probability-driven architecture)
+//   vibe-math-v2/  (probability-driven architecture)
+//   vibe-math-v3/  (THIRD-generation: paper-style Markdown knowledge base +
+//                   planner-agent scheduling + universal theory/method library)
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
 //   - baseline (no state file — e.g. upgrading from an installer that predates
@@ -36,6 +38,11 @@ const PRESETS = [
     dst: 'vibe-math-v2',
     files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v2.js', '实现方案.md'],
   },
+  {
+    src: 'vibe-math-v3',
+    dst: 'vibe-math-v3',
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v3.js', '实现方案.md'],
+  },
 ]
 
 const STATE_FILE = '.vibe-math-installed.json'
@@ -62,9 +69,9 @@ function writeState(path, state) {
 }
 
 // DSH 适配性自检（能力检测，而非版本号——DSH 不向插件暴露版本）。
-// 检查两个 preset 运行时需要的宿主服务与关键 API 形状是否可用，
+// 检查三个 preset 运行时需要的宿主服务与关键 API 形状是否可用，
 // 缺失时打 warning 提示宿主版本可能过旧 / 缺少对应插件行。
-function checkHostCapabilities(ctx, logger) {
+async function checkHostCapabilities(ctx, logger) {
   const problems = []
   const checks = [
     ['subagents', ['startContinuable', 'followup', 'interrupt']],
@@ -83,14 +90,24 @@ function checkHostCapabilities(ctx, logger) {
       if (typeof s[methods[j]] !== 'function') problems.push(svc + '.' + methods[j] + ' 不可用（宿主版本可能过旧）')
     }
   }
+  // fs API shape: DSH 0.1.1 起 resolve 返回 {targetKey, displayPath} 对象（旧版返回字符串路径）
+  try {
+    const f = (ctx && ctx.get) ? ctx.get('fs') : undefined
+    if (f && typeof f.resolve === 'function') {
+      const r = await f.resolve('x', { cwd: process.cwd() })
+      if (typeof r !== 'object' || r === null || typeof r.targetKey !== 'string') {
+        problems.push('fs.resolve 返回形状不符（期望 {targetKey, displayPath}，v3 预设要求 DSH ≥ 0.1.1）')
+      }
+    }
+  } catch (e) { problems.push('fs.resolve 能力检测失败：' + String((e && e.message) || e)) }
   if (problems.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。两个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.0-rc.7，见 package.json 的 dsh.minVersion）。')
+    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。三个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.1-rc.2，见 package.json 的 dsh.minVersion/testedVersion）。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.0-rc.7）。')
+    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.1-rc.2）。')
   }
 }
 
-export function apply(ctx) {
+export async function apply(ctx) {
   const logger = ctx && ctx.logger
   try {
     const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh')
@@ -172,7 +189,7 @@ export function apply(ctx) {
     } else if (installed > 0) {
       logger?.info?.('[dsh-vibe-math] restored ' + installed + ' missing preset file(s)')
     }
-    checkHostCapabilities(ctx, logger)
+    await checkHostCapabilities(ctx, logger)
   } catch (err) {
     logger?.warn?.('[dsh-vibe-math] preset install/update failed: %s', String((err && err.message) || err))
   }

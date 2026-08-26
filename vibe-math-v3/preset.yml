@@ -1,0 +1,2 @@
+name: Vibe Math V3
+description: 多代理数学研究与验证框架（第三代架构）：论文式 Markdown 知识库（Problems/ 问题清单+依赖+来源动机、Progress/ 研究日志、Propos/ 命题库、Methods/ 通用理论发明库、Verified/ 绝对可信）+ 规划代理自主调度（一次安排接下来 n 次各代理任务）+ 方法库沉淀循环（Method Keeper 提炼理论/框架/工具/方法/思想）；断点续跑、人工/自动干预、多会话并行隔离。
