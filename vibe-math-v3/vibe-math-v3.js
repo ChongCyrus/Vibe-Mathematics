@@ -2108,6 +2108,9 @@ export function apply(ctx) {
 
   // ================= child result dispatch =================
   async function onChildEnd(info) {
+    // 子代理结束/中断：自动释放它持有的所有写锁（防锁残留导致文件被永久锁住）
+    const endedId = String(info.id)
+    for (const k of Object.keys(fileOwner)) { if (String(fileOwner[k].childId) === endedId) delete fileOwner[k] }
     const meta = agentRegistry[info.id]
     if (meta === undefined) return
     scheduler.activeCount = Math.max(0, scheduler.activeCount - 1)
@@ -2327,7 +2330,13 @@ export function apply(ctx) {
           for (const l of meta.lemmas) {
             if (!l || (!l.id && !l.title)) continue
             const pid = l.id || ('p-' + shortId())
-            if (!propos.has(pid)) { propos.set(pid, { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(l.prob != null ? l.prob : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: l.分类 || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }); await saveProposition(propos.get(pid)) }
+            if (!propos.has(pid)) {
+              const pn = { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(l.prob != null ? l.prob : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: l.分类 || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }
+              propos.set(pid, pn)
+              // 若代理已直接写了该命题卡，保留其内容（不覆盖）；否则写一张标准卡兜底（保证可被索引/验证）
+              const rel = 'Propos/' + categoryOf(pn) + '/' + pid + '.md'
+              if ((await readText(rel)) === undefined) await saveProposition(pn)
+            }
             if (!(dir.lemmas || []).some(function (x) { return x.id === pid })) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: pid, title: l.title || pid }) }
           }
         }
