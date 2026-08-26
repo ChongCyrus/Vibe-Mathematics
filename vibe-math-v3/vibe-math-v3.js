@@ -912,10 +912,10 @@ export function apply(ctx) {
     return '\n3) FOLDERS：Problems/ 问题清单；Progress/ 研究日志（每问题一个聚合索引 <qid>.md + 每方向一个文件 <qid>/<dirId>.md，按方向按轮续写）；Propos/ 命题库；Methods/ 理论发明库；Verified/ 绝对可信（只读）；Reliable/ 可信参考文献（只读）；Notes/ 自由笔记；Logs/ 审计；State/ 调度器私有——不要读也不要改。\n'
   }
   function kcMethodLibrary() {
-    return '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。**重要区分**：methods_used 只能填**已存在方法卡的 ID**（形如 m-abc12345，来自 AVAILABLE METHODS 列表）；你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（由 Method Keeper 蒸馏建卡）；千万不要把方法名/标题文字当 id 填进 methods_used。\n'
+    return '\n5) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。**重要区分**：methods_used 只能填**已存在方法卡的 ID**（形如 m-abc12345，来自 AVAILABLE METHODS 列表）；你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（由 Method Keeper 蒸馏建卡）；千万不要把方法名/标题文字当 id 填进 methods_used。\n'
   }
   function kcOutputQuality() {
-    return '\n5) OUTPUT QUALITY RULES：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」。你的机器回复是一个 JSON 对象（```json 围栏内），JSON 之外不要再输出其他文本——任何要写进 md 的内容都通过文件工具写入，不要当作聊天气泡输出。'
+    return '\n4) OUTPUT QUALITY RULES：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」。你的机器回复是一个 JSON 对象（```json 围栏内），JSON 之外不要再输出其他文本——任何要写进 md 的内容都通过文件工具写入，不要当作聊天气泡输出。'
   }
   // 写文件共用规则（仅供真正写 md 的代理：solver / method-keeper）：写锁、上报、回退；不含具体归属文件（按角色注入）
   function kcWriteRules() {
@@ -994,7 +994,7 @@ export function apply(ctx) {
       knowledgeContextText('explorer') +
       methodsIndexText() +
       capabilitiesText('explorer') +
-      '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. First check the AVAILABLE METHODS list — if a listed method/system underlies a direction you will propose, reference its id in methods_used (this is a REFERENCE, not an application — you are only suggesting the direction builds on it, not claiming you used it). ' +
+      '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. First check the AVAILABLE METHODS list — if a listed method/system underlies a direction you will propose, reference its id in methods_used (the method card will log this direction as building on it; you are planning to leverage it, not claiming you already applied it). ' +
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
       'Record each direction with its core assumption and an initial feasibility estimate. Every direction must be self-contained: title / method / core_assumption written completely, defining every object they mention — no 断章取义.\n\n' +
       'feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
@@ -1039,11 +1039,13 @@ export function apply(ctx) {
     head += knowledgeContextText('solver')
     head += methodsIndexText()
     head += capabilitiesText('solver')
-    head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Consult AVAILABLE METHODS first — reuse a listed method/system when it fits (report it in methods_used). Each round you MUST produce, even if incomplete:\n' +
+    head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Consult AVAILABLE METHODS first — reuse a listed method/system when it fits (report it in methods_used).\n' +
+      'PRIMARY GOAL: drive toward a COMPLETE solution of the problem along this direction. The single most valuable thing you can deliver is the full proof/solution; intermediate lemmas, sub-routes, lessons and inventions are by-products to record as you go, NOT the main deliverable — do not spread your effort across them at the expense of the proof itself. If the complete solution is not attainable this round, report honestly and still push as far as the core argument as you can.\n' +
+      'Each round you should report (whenever produced):\n' +
       '- new lemmas / intermediate conclusions WITH full proofs (they become Propos/ proposition cards);\n' +
       '- each concrete sub-route tried, its progress overview, an EXPLICIT feasibility signal (e.g. "unremovable singularity", "conflicts with known theorem X"), and any blocker;\n' +
       '- lessons learned from failed attempts;\n' +
-      '- an updated survival probability for this direction;\n' +
+      '- survival ∈ (0,1) = your updated confidence that this direction can still be pushed to a full proof (not the confidence the current partial work is right);\n' +
       '- ANY new theory/tool/method/idea you invented or summarized this round in new_inventions (类型：理论体系|框架|工具|方法|思想|范式|技巧) — the Method Keeper will distill it into the theory library.'
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation fully defined — 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION answering q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion depending on it MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (complete definitions).\n'
     head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 概率 / prob / solution_prob / survival you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ count as certain.\n'
@@ -1444,10 +1446,17 @@ export function apply(ctx) {
     const actions = (parsed && Array.isArray(parsed.plan)) ? parsed.plan : []
     const summary = (parsed && parsed.summary) ? String(parsed.summary) : ''
     const planId = meta.planId || ('plan-' + shortId())
-    if (actions.length === 0) {
+    if (!parsed) {
+      // 输出不可解析 = 真正的规划器失败 → 计失败，3 次禁用（退回启发式）
       plannerFails += 1
-      logActivity('plan', 'planner ' + planId + ' returned no usable plan (' + String(output || '').slice(0, 200) + ')')
+      logActivity('plan', 'planner ' + planId + ' returned UNPARSEABLE output (' + String(output || '').slice(0, 200) + ')')
       if (plannerFails >= (Number(params.plannerMaxFails) || 3)) { params.plannerEnabled = false; logActivity('plan', 'planner disabled after ' + plannerFails + ' consecutive failures — heuristic mode') }
+      await fallbackScheduler()
+      return
+    }
+    if (actions.length === 0) {
+      // 空计划：多为"规划到处理之间工作已被完成/解决"的状态竞争，不是规划器失败——不累计、不禁用
+      logActivity('plan', 'planner ' + planId + ' returned empty plan (no actionable work)')
       await fallbackScheduler()
       return
     }
@@ -1457,7 +1466,8 @@ export function apply(ctx) {
     await writeJson('Logs/Plans/' + planId + '.json', { at: now(), planId: planId, summary: summary, raw: actions, validated: validated, project: currentProject })
     logActivity('plan', 'planner ' + planId + ' → ' + validated.length + '/' + actions.length + ' valid action(s): ' + validated.map(function (a) { return a.action + (a.role ? ':' + a.role : '') + (a.target ? ':' + a.target : '') }).join(', '))
     if (validated.length === 0) {
-      plannerFails += 1
+      // 计划被校验全部剔除（多为规划后状态已变/动作冗余，属状态竞争）——不累计 plannerFails、不禁用规划器
+      logActivity('plan', 'planner ' + planId + ' plan all filtered by validation (state changed) — no op')
       await fallbackScheduler()
       return
     }
@@ -2272,9 +2282,10 @@ export function apply(ctx) {
   }
   async function checkTermination() {
     const unsolved = allProblems().filter(function (q) { return !(q.状态 === '已解决' || q.优先级 === 'never') })
-    // 终止前必须无遗留验证对象 / 待沉淀发明：否则会在命题/解法仍未验证、发明尚未蒸馏时提前停机，
-    // 导致"仅剩验证候选 / 仅剩发明"的工作永远不会被执行（验证/方法库是独立于问题求解的收尾工作）。
-    const leftoverVerify = (await buildVerifyCandidates()).length > 0 || methodLog.pendingInventions.length > 0
+    // 终止前必须无遗留验证对象（未验证命题/证明/解法）；否则会在命题/解法仍未验证时提前停机。
+    // 注意：待沉淀发明（pendingInventions）不应阻塞终止——它是"批量蒸馏"（积够 methodKeepEvery 才触发），
+    // 少量残留不会再有 method-keeper 触发，若纳入会令 scheduler 永不终止（闲置空转）。
+    const leftoverVerify = (await buildVerifyCandidates()).length > 0
     if (unsolved.length === 0 && !leftoverVerify && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
       scheduler.running = false
       await releaseProjectLock()
@@ -2409,7 +2420,12 @@ export function apply(ctx) {
       const dir = dirs.find(function (d) { return d.id === dirId })
       if (q && dir) {
         if (typeof meta.survival === 'number') dir.survival = clamp01(meta.survival)
-        if (meta.status) dir.status = String(meta.status)
+        if (meta.status) {
+          // 只有 success/dead-end 是方向的调度终态；'continue' 表示方向仍可续轮，必须保持 active，
+          // 否则 validatePlan / hasSchedulableWork / fallbackScheduler 只认 'active' 会漏调度 → 方向永久卡死。
+          const st = String(meta.status)
+          if (st === 'success' || st === 'dead-end') dir.status = st
+        }
         if (meta.dead_end_reason) dir.dead_end_reason = String(meta.dead_end_reason)
         if (meta.round) dir.round = Number(meta.round)
         // 轮次上限：达到 solverMaxRounds 且仍未成功/死路 → 强制死路（新协议路径没有 followup 自迭代，必须靠此收口，与旧路径一致）

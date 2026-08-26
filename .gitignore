@@ -5,3 +5,6 @@ VibeMath/
 node_modules/
 .vscode/
 .idea/
+
+# Self-drive recorder runtime log
+_selfdrive_log.json
