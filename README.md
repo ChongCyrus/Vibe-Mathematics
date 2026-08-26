@@ -55,6 +55,8 @@
 > 🔧 **v1.3.4 和谐修复**：重排 `框架图-v4.png` 消除文字/箭头重叠遮挡（子标签不再溢出框、`/compact` 移入独立的"上下文"能力块、底部"产物沉淀·断点续跑"居中排布）；补齐 `agent.cordis.yml` 常驻描述中的"deadlines"一词（v4 并无截止机制），并移除 `实现方案.md` 中不存在的 `vibe_v4_inject`（实际用 `vibe_v4_message`）。
 >
 > 🔧 **v1.3.5 边界 A 落地 + 真实 `/compact`**：`maxParallel` 真正限流（在途上限），`activityTimeoutMs` 作为**心跳门控**（空闲超时才触发 CHECKPOINT 唤醒，推动收敛/停止而非无限烧 token）；并用 DSH 真实 `ctx.compaction.compactIfNeeded(常驻 agent, 'pressure', signal)` 压缩常驻自身上下文（回退到自述指令）。详见 §19。
+>
+> 🔧 **v1.3.6 修复 v4 preset 选择后跳回原 preset**：v4 插件的 `apply` 读取 `ctx.subagents/agents/fs/tools/commands` 却**未声明 `inject`**，被 DSH 守卫以"未声明依赖"拒绝 → 组合无法挂载 → 选择后自动回退。已补 `export const inject = [...]`，并把心跳定时器从全局 `setTimeout/clearTimeout`（插件沙箱里不存在）改为 **`timer` 服务（`ctx.timeout`）**。
 
 ---
 

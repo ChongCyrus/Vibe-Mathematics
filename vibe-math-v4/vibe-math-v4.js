@@ -3,6 +3,10 @@
 // unanimous-consensus verification / context compaction proxy / resume / human
 // intervention). It NEVER assigns tasks: residents message & meet and decide all
 // task allocation among themselves. Consumes HOST subagents/agents/fs/tools/commands.
+// NOTE: must declare `inject` for every service read as a ctx property (the Guard
+// rejects undeclared dependencies), and must use the `timer` Service (ctx.timeout),
+// not global setTimeout/clearTimeout, which do not exist in the plugin runtime.
+export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 export function apply(ctx) {
   const subagents = ctx.subagents
   const agents = ctx.agents
@@ -37,7 +41,7 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
-    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatTimer = null
+    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
     const activityLogCap = 200
 
     // ---- utils ----
@@ -341,12 +345,12 @@ export function apply(ctx) {
         +'\nReply with ONLY a JSON object (```json fence):\n'
         +'{"summary":"<what you do next or a declaration>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","claim_task":"<id|null>"}'
     }
-    function clearHeartbeat(){ if(heartbeatTimer!==null){ try{ clearTimeout(heartbeatTimer) }catch(e){} heartbeatTimer=null } }
+    function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
     function armHeartbeat(){
       clearHeartbeat()
       const ms=Number(params.activityTimeoutMs)||120000
-      if(!(ms>0)) return
-      heartbeatTimer=setTimeout(()=>{ heartbeatTimer=null; scheduleNext().catch(()=>{}) }, ms)
+      if(!(ms>0) || typeof ctx.timeout!=='function') return
+      heartbeatDisposer=ctx.timeout(()=>{ heartbeatDisposer=null; scheduleNext().catch(()=>{}) }, ms)
     }
     // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
     // falling back silently to the resident self-summary directive when the service is absent.

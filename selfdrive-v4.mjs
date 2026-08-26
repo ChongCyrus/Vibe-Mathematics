@@ -21,6 +21,7 @@ const ctx = {
     return undefined
   },
   on(e,fn){ (listeners[e]=listeners[e]||[]).push(fn) }, effect(fn){ const d=fn(); return()=>{ if(typeof d==='function') d() } }, logger:{info(){},warn(){},error(){}},
+  timeout(cb,ms){ const h=setTimeout(cb,ms); return ()=>clearTimeout(h) },
   tools:{register(s){toolRegs.push(s)}}, commands:{register(){}},
   subagents:{ list(){return['spawn']}, async startContinuable({label,request}){ const id='c'+(spawns.length+1); spawns.push({label,request,childId:id}); return {childId:id} }, async followup(parent,childId,blocks,opts){ followups.push({childId,blocks}) }, interrupt(){} },
   agents:{ roots(){return[]}, get(id){ return id==='sess-A' ? ROOT : undefined } },
