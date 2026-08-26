@@ -68,7 +68,7 @@ async function driveOne(){
     else { // normal
       nWakes++
       if(!verifyTriggered){ verifyTriggered = true; reply = { summary:'推进方向，建议验证 '+verifyTarget+'.', solved:false, propose_verify: verifyTarget } }
-      else if(!meetProposed){ meetProposed = true; reply = { summary:'我认为已接近解决，建议开会表决。', solved:false, propose_verify:null, propose_meeting:'是否认为原问题已解决？' } }
+      else if(!meetProposed){ meetProposed = true; reply = { summary:'我认为已接近解决，建议开会表决。', solved:false, propose_verify:null, propose_meeting:'是否认为原问题已解决？', propose_task:'进一步验证关键引理', task_desc:'由常驻协作验证并完善证明', contextPct: 82 } }
       else { reply = { summary:'继续推进。', solved:false, propose_verify:null } }
     }
     fireEnd({ id: fu.childId, runId:'w'+followupIdx, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
@@ -103,5 +103,9 @@ assert(verifiedExists, 'unanimous TRUE → Verified/命题/' + verifyTarget + '.
 // check per-resident proposition library (target resident)
 const prop = readFileSync(join(WS,'VibeMath','Projects','default','Propos','r-3','p-r-3.md'),'utf8')
 assert(prop.includes('- 价值程度: 0.6') && prop.includes('- 动机用途计划'), 'resident proposition carries 价值程度 + 动机用途计划')
+// task board: a resident proposed a task → it lands on the board (open)
+const tasks = await callTool('vibe_v4_list_tasks', {})
+assert(Array.isArray(tasks.tasks) && tasks.tasks.some(t=>t.title.includes('进一步验证关键引理')), 'task board has proposed open task')
+// context / compact: resident reported high context (82) → framework flagged needCompact + will compact
 console.log('=== V4 SELF-DRIVE RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 rmSync(WS,{recursive:true,force:true}); process.exit(failed>0?1:0)

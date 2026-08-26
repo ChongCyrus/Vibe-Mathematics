@@ -26,6 +26,7 @@ export function apply(ctx) {
     const DEFAULT_PARAMS = {
       residentCount: 4, compactThreshold: 66, compactAfterRounds: 8,
       maxParallel: 3, activityTimeoutMs: 120000, verdictMaxRounds: 3,
+      meetingKeepEvery: 5,   // 每积累 N 个新产物自动触发一次同步会议
       provider: '', model: '', residentPersona: '',
     }
     let params = Object.assign({}, DEFAULT_PARAMS)
@@ -35,7 +36,7 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
-    let lastActivityAt = now()
+    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0
     const activityLogCap = 200
 
     // ---- utils ----
@@ -111,22 +112,24 @@ export function apply(ctx) {
         +'This is your round (#'+r.rounds+'). You decide what to do — there is NO external assignment. Typical actions:\n'
         +'- advance your direction; verify your own claims; record valuable artifacts to YOUR library (vibe_v4_publish_progress / record_proposition / record_method / record_subproblem), each with 价值程度 / 动机用途计划 / 自身概率估计;\n'
         +'- message a specific resident (vibe_v4_send_message) or broadcast;\n'
+        +'- propose / claim / complete a shared task (vibe_v4_propose_task / vibe_v4_claim_task / vibe_v4_task_done / vibe_v4_list_tasks) — the task board is how you coordinate work;\n'
         +'- call a meeting (vibe_v4_meeting) to coordinate / allocate tasks / propose a verification;\n'
-        +'- propose an object for unanimous verification (set propose_verify in your reply).\n'
+        +'- propose an object for unanimous verification (set propose_verify in your reply);\n'
+        +'- report your context usage (vibe_v4_report_context) so the framework compacts you when needed.\n'
         +'You may READ any other resident\'s Progress/Propos/Methods/Subproblems (read-only via vibe_v4_read_progress / fs); you only WRITE your own '+r.rId+' library.\n'
         +'Rules:\n- Only Verified/ is established. Verification requires ALL residents unanimous; you trust only unanimous results.\n'
         +'- If the ORIGINAL problem is solved, set solved=true (we stop only when ALL residents agree).\n'
         +'New items:\n'+ (await inboxText(r.rId))
         +'\nReply with ONLY a JSON object in a ```json fence (no prose outside):\n'
-        +'{"summary":"<what you did this round, 1-3 sentences>","solved":false,"propose_verify":"<a target id like p-xxx / m-xxx / s-xxx, or null>"}'
+        +'{"summary":"<what you did this round, 1-3 sentences>","solved":false,"propose_verify":"<id|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","contextPct":40}'
     }
     function meetingPrompt(r, st){
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'You are resident '+r.rId+'. A meeting is in progress (agenda: '+st.agenda+').'
         +(st.type==='verify'?('\nThe group is verifying object: '+st.targetId+'. Give your independent verdict.'):'')
-        +'\nGive your input. If the agenda is about whether the original problem is solved, set voteSolved.\n'
+        +'\nGive your input. You may: propose a task (propose_task), claim an open task (claim_task), propose an object for unanimous verification (propose_verify), or vote on whether the original problem is solved (voteSolved).\n'
         +'Reply with ONLY a JSON object (```json fence):\n'
-        +'{"input":"<your contribution>","voteSolved":true,"propose_verify":"<id or null>"}'
+        +'{"input":"<your contribution>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
       const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+v.verdict+' ('+v.confidence+') '+v.reason).join('\n')
@@ -140,7 +143,7 @@ export function apply(ctx) {
     }
 
     // ---- resident lifecycle ----
-    function newResident(dir){ const rId='r-'+(residents.size+1); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:''} }
+    function newResident(dir){ const rId='r-'+(residents.size+1); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
       const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:{}},signal:makeSignal(60000)})
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
@@ -151,7 +154,17 @@ export function apply(ctx) {
       if(!r.childId) return false
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
       r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
-      try { await subagents.followup(rootAgent,r.childId,[textBlock(promptText)],{source:{kind:'user'},signal:makeSignal(60000)}); return true }
+      // context / /compact: if the resident reports high context (or reached the round proxy),
+      // prepend a compact directive — it condenses its working state to a self-summary that the
+      // framework uses as the next context seed (equivalent to /compact's "consolidate & forget").
+      let prompt = promptText
+      if(r.needCompact || (Number(r.contextPct)>=Number(params.compactThreshold)) || (r.roundsSinceCompact>=Number(params.compactAfterRounds))){
+        prompt = '[CONTEXT COMPACT — your conversation is at/near the limit. Do NOT re-derive history.\n' +
+          'Condense your current working state into ONE tight self-summary (findings so far, active direction, key artifacts you recorded, next concrete steps, open questions), then answer this round in the normal JSON format as usual.\n' +
+          'Set "contextPct": 15 (your post-compact usage) and "compacted": true in the reply so the framework records the condensed seed.]\n\n' + promptText
+        r.needCompact = true
+      }
+      try { await subagents.followup(rootAgent,r.childId,[textBlock(prompt)],{source:{kind:'user'},signal:makeSignal(60000)}); return true }
       catch(e){ console.error('vibe-v4 wake '+r.rId+' failed: '+String((e&&e.message)||e)); busy.delete(r.rId); return false }
     }
     function byChild(childId){ for(const [,r] of residents){ if(r.childId===childId) return r } return undefined }
@@ -159,9 +172,23 @@ export function apply(ctx) {
     // ---- artifact writers (resident-facing) ----
     async function publishProgress(rId,content){ const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
     async function recordProposition(rId,o){ const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
-    async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
-    async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
-    function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,insight:r.insight?r.insight.slice(0,80):''})) }
+    async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
+    async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
+    // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
+    function bumpArtifacts(){ artifactCount+=1; if(!meetingState && !verifyState && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
+    function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
+
+    // ---- task board (residents propose / claim / complete; framework wakes the claimer) ----
+    async function writeTaskboard(){ const lines=['# 任务板','']; for(const t of taskboard){ lines.push('- ['+t.status+'] '+t.title+(t.claimer?('（认领:'+t.claimer+'）'):'')+(t.proposer?('（提议:'+t.proposer+'）'):'')+(t.description?('：'+t.description):'')) } await writeText('Shared/taskboard.md',lines.join('\n')) }
+    async function proposeTask(title,description,proposer){ const id='t-'+shortId(); taskboard.push({id,title:String(title),description:String(description||''),status:'open',proposer:proposer||'',claimer:'',source:''}); await saveTaskboard(); logActivity('task','proposed '+id+'「'+title+'」'); return {ok:true,id} }
+    async function claimTask(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false,message:'no such task'}; if(t.status!=='open') return {ok:false,message:'task already '+t.status}; t.status='claimed'; t.claimer=claimer; await saveTaskboard(); logActivity('task',claimer+' claimed '+id); 
+      // wake the claimer to work on it (framework moves the task, resident decides how)
+      const r=residents.get(claimer); if(r && !busy.has(claimer)){ currentResident=claimer; await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll() }
+      return {ok:true} }
+    async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); logActivity('task','done '+id); return {ok:true} }
+    async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
+    function listTasks(){ return taskboard.filter(t=>t.status!=='done') }
+    async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=cl(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
 
     // ---- messaging ----
     async function postMessage(from,to,content){
@@ -196,6 +223,12 @@ export function apply(ctx) {
       await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
       meetings.push({id:st.id,agenda:st.agenda,at:now(),inputs:st.inputs})
       logDecision('meeting',st.agenda)
+      // handle what the meeting produced: task proposals/claims, verify targets, stop vote
+      for(const [id,iv] of Object.entries(st.inputs)){
+        if(iv.propose_task) await proposeTask(iv.propose_task, iv.task_desc||'', id)
+        if(iv.claim_task) await claimTask(iv.claim_task, id)
+        if(iv.propose_verify) pendingVerify={targetId:iv.propose_verify,targetType:guessTargetType(iv.propose_verify),proposer:id,at:now()}
+      }
       const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
       const allSolved=votes.length>0 && votes.every(v=>v===true)
       logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':''))
@@ -303,7 +336,7 @@ export function apply(ctx) {
       const parsed=parseReply(output)
       const kind=wakeKind.get(r.rId)||'normal'
       if(kind==='meeting' && meetingState){
-        meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null}
+        meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
         if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
         await saveAll(); await continueMeetingRound(); return
       }
@@ -316,7 +349,14 @@ export function apply(ctx) {
       // normal turn
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
       if(typeof parsed.solved==='boolean') reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()})
+      // context / compact: record the condensed seed + post-compact usage, clear the flag
+      if(typeof parsed.contextPct==='number'){ r.contextPct=cl(parsed.contextPct) }
+      if(parsed.compacted===true || (r.needCompact && parsed.summary)){ r.contextSeed=String(parsed.summary||''); r.contextPct=Math.min(r.contextPct||15,25); r.roundsSinceCompact=0; r.needCompact=false; logActivity('compact',r.rId+' consolidated context') }
       if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
+      // task actions via reply (a resident may propose or claim a task in its round)
+      if(parsed.propose_task) await proposeTask(parsed.propose_task, parsed.task_desc||'', r.rId)
+      if(parsed.claim_task) await claimTask(parsed.claim_task, r.rId)
+      if(parsed.task_done) await taskDone(parsed.task_done, r.rId)
       // a resident may self-trigger a meeting (resident-driven coordination, closest to the philosophy)
       if(parsed.propose_meeting && !meetingState){ await startMeeting(String(parsed.propose_meeting),'general',null); await saveAll(); return }
       await saveAll(); await scheduleNext()
@@ -362,7 +402,8 @@ export function apply(ctx) {
       setPause, initAbort, postMessage, startMeeting, saveAll,
       currentResident:()=>currentResident,
       useResident:(id)=>{ currentResident=id },
-      publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents,
+      publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents, reportContext,
+      proposeTask, claimTask, taskDone, listTasks,
       readProgress: async (rid)=>({text:(await readText('Progress/'+rid+'/progress.md'))||''}),
       frameworkRoot:frameworkRoot, currentProject:()=>currentProject, problemText:()=>problemText,
       residentCount:()=>residents.size,
@@ -392,7 +433,7 @@ export function apply(ctx) {
   registerTool('vibe_v4_list_members','List residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
   registerTool('vibe_v4_add_member','Add a resident.',objParams({direction:{type:'string'}}),(s,a)=>s.addMember(a.direction))
   registerTool('vibe_v4_remove_member','Close a resident.',objParams({id:{type:'string'}},['id']),(s,a)=>s.removeMember(a.id))
-  registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
+  registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
   // resident-facing tools: route to the CURRENT (last-woken) resident of the session
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a)=>s.postMessage(s.currentResident(),a.to,a.content))
   registerTool('vibe_v4_publish_progress','(resident) Append to your own progress markdown.',objParams({content:{type:'string'}},['content']),(s,a)=>s.publishProgress(s.currentResident(),a.content))
@@ -401,6 +442,13 @@ export function apply(ctx) {
   registerTool('vibe_v4_record_subproblem','(resident) Record a sub-problem to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a)=>s.recordSubproblem(s.currentResident(),a))
   registerTool('vibe_v4_read_progress','(resident) Read another resident\'s progress (read-only).',objParams({id:{type:'string'}},['id']),(s,a)=>({ok:true,text:(s.readProgress(a.id))}))
   registerTool('vibe_v4_list_residents','(resident) List fellow residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
+  // task board (residents; board is the residents' own allocation mechanism)
+  registerTool('vibe_v4_propose_task','(resident) Propose a task to the shared task board.',objParams({title:{type:'string'},description:{type:'string'}},['title']),(s,a)=>s.proposeTask(a.title,a.description,s.currentResident()))
+  registerTool('vibe_v4_claim_task','(resident) Claim an open task from the board (framework then wakes you to work it).',objParams({id:{type:'string'}},['id']),(s,a)=>s.claimTask(a.id,s.currentResident()))
+  registerTool('vibe_v4_task_done','(resident) Mark a claimed task done.',objParams({id:{type:'string'},claimer:{type:'string'}},['id']),(s,a)=>s.taskDone(a.id,a.claimer||s.currentResident()))
+  registerTool('vibe_v4_list_tasks','(resident) List open tasks.',objParams({}),(s)=>({ok:true,tasks:s.listTasks()}))
+  // context / compact (resident reports its context usage so the framework can /compact-equivalent)
+  registerTool('vibe_v4_report_context','(resident) Report your context usage %; the framework compacts (self-summary) when it reaches compactThreshold.',objParams({pct:{type:'number'}},['pct']),(s,a)=>s.reportContext(s.currentResident(),a.pct))
   registerTool('vibe_v4_claim_write','Reserved: shared-file write lock (framework-managed).',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
   registerTool('vibe_v4_release_write','Reserved: shared-file write lock release.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
 
