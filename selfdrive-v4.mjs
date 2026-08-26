@@ -32,6 +32,7 @@ async function callTool(n,a,agent){ const s=toolRegs.find(x=>x.name===n); if(!s)
 // a resident agent object whose parent chain resolves to the root session (so it
 // routes to the SAME session as ROOT), enabling per-resident tool routing tests.
 function resAgent(childId){ return { id: childId, session:{ id: childId, header:{ cwd:WS, parentSession:'sess-A' } } } }
+const rIdOfChild = (()=>{ const m={}; return (cid)=>{ for(const sp of spawns) m[sp.childId]=sp.label; return m[cid] } })()
 function fireEnd(info){ for(const h of (listeners['subagent/end']||[])) h(info) }
 const JSONX = o => '```json\n'+JSON.stringify(o)+'\n```'
 function classWake(promptText){ if(/meeting is in progress/i.test(promptText)) return 'meeting'; if(/verifying object/i.test(promptText)) return 'verify'; return 'normal' }
@@ -184,6 +185,11 @@ await waitFor(()=>spawns.length===sc6Base+2, 2000)
 await callTool('vibe_v4_remove_member', { id:'r-1' })
 const addRes = await callTool('vibe_v4_add_member', { direction:'new' })
 assert(addRes.ok===true && addRes.id==='r-3', 'C1: addMember after removeMember gets non-colliding id (got '+(addRes&&addRes.id)+')')
+
+console.log('-- V4 self-drive: B1 verdictMaxRounds & meetingKeepEvery settable + shown --')
+await callTool('vibe_v4_set', { verdictMaxRounds: 1, meetingKeepEvery: 3 })
+const b1st = await callTool('vibe_v4_status', {})
+assert(/verdictMaxRounds=1/.test(b1st.params) && /meetingKeepEvery=3/.test(b1st.params), 'B1: verdictMaxRounds & meetingKeepEvery shown in status (params='+b1st.params+')')
 
 console.log('=== V4 SELF-DRIVE RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 rmSync(WS,{recursive:true,force:true}); process.exit(failed>0?1:0)

@@ -49,6 +49,8 @@
 > 说明：V4 去掉 v3 的中央规划器与确定性角色（explorer/solver/verifier/planner/method-keeper），把"研究者"本身作为主体。详见 `vibe-math-v4/实现方案.md`。
 >
 > 🔧 **v1.3.2 审计修复**：修复上下文压缩按占比失效（`contextPct` 单位错配，现按百分比保存）、常驻工具按"调用者身份"路由（各常驻库归属正确）、`vibe_v4_read_progress` 真正返回文本、跨进程断点续跑重建常驻、`message(all)` 广播真正投递、`addMember` 增开无 id 碰撞。详见 `vibe-math-v4/实现方案.md` §17。
+>
+> 🔧 **v1.3.3 审计修复**：非全票验证把平均概率写回源卡（兑现"留库附概率"）、方法型验证标 `类型: 方法`（不再误标命题）、同进程 abort→resume 重建常驻、记录命题也触发自动同步会议、唤醒信号改用 `activityTimeoutMs`、`verdictMaxRounds`/`meetingKeepEvery` 可调且展示。详见 §18。
 
 ---
 

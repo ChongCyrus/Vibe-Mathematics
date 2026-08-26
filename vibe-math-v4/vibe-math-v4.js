@@ -86,10 +86,10 @@ export function apply(ctx) {
       await writeJson('State/mailboxes.json', Object.fromEntries(mailboxes))
       await writeJson('State/taskboard.json', taskboard)
       await writeJson('State/decisions.json', decisions)
-      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,activityLog,processEpoch})
+      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,activityLog,processEpoch,artifactCount})
     }
     async function loadAll(){
-      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||'' }
+      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||''; artifactCount=s.artifactCount||0 }
       const rm=await readJson('State/residents.json'); if(rm&&typeof rm==='object') residents=new Map(Object.entries(rm))
       const mb=await readJson('State/mailboxes.json'); if(mb&&typeof mb==='object') mailboxes=new Map(Object.entries(mb))
       const tb=await readJson('State/taskboard.json'); if(Array.isArray(tb)) taskboard=tb
@@ -149,7 +149,7 @@ export function apply(ctx) {
     let residentSeq = 0
     function newResident(dir){ const rId='r-'+(++residentSeq); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
-      const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:{}},signal:makeSignal(60000)})
+      const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:{}},signal:makeSignal(params.activityTimeoutMs||60000)})
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
       childOwner.set(started.childId,sessionId); busy.add(r.rId); wakeKind.set(r.rId,'normal'); currentResident=r.rId
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
@@ -168,14 +168,14 @@ export function apply(ctx) {
           'Set "contextPct": 15 (your post-compact usage) and "compacted": true in the reply so the framework records the condensed seed.]\n\n' + promptText
         r.needCompact = true
       }
-      try { await subagents.followup(rootAgent,r.childId,[textBlock(prompt)],{source:{kind:'user'},signal:makeSignal(60000)}); return true }
+      try { await subagents.followup(rootAgent,r.childId,[textBlock(prompt)],{source:{kind:'user'},signal:makeSignal(params.activityTimeoutMs||60000)}); return true }
       catch(e){ console.error('vibe-v4 wake '+r.rId+' failed: '+String((e&&e.message)||e)); busy.delete(r.rId); return false }
     }
     function byChild(childId){ for(const [,r] of residents){ if(r.childId===childId) return r } return undefined }
 
     // ---- artifact writers (resident-facing) ----
     async function publishProgress(rId,content){ const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
-    async function recordProposition(rId,o){ const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
+    async function recordProposition(rId,o){ const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
     async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
     async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
@@ -272,7 +272,7 @@ export function apply(ctx) {
       if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
       if(vs.round+1<params.verdictMaxRounds){ vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate'); await saveAll(); await scheduleNext(); return }
       const avg=vals.length? vals.reduce((a,x)=>a+(x.verdict==='TRUE'?x.confidence:x.verdict==='FALSE'?1-x.confidence:0.5),0)/vals.length : 0.5
-      await writeDebateDoc(vs,false,avg); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
+      await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
     async function closeVerify(vs,isTrue){
@@ -289,12 +289,13 @@ export function apply(ctx) {
       await writeText('Shared/debates/'+vs.targetId+'.md', lines.join('\n'))
     }
     async function writeVerifiedCard(vs,isTrue){
-      const dir= vs.targetType==='subproblem'?'问题':'命题'
-      const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+(vs.targetType==='subproblem'?'问题':'命题')+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致\n## 陈述\n参见来源卡。\n'
+      const isSub=vs.targetType==='subproblem'
+      const dir= isSub?'问题':'命题'
+      const type= isSub?'问题': vs.targetType==='method'?'方法':'命题'
+      const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+type+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致\n## 陈述\n参见来源卡。\n'
       await writeText('Verified/'+dir+'/'+vs.targetId+'.md', text)
     }
-    async function rewriteSource(target,isTrue){
-      // find & update the source card status/prob; best effort across per-resident libs
+    async function findSourceRel(target){
       let rel=null
       for(const [rid] of residents){
         for(const base of ['Propos','Methods','Subproblems']){
@@ -302,7 +303,19 @@ export function apply(ctx) {
         }
         if(rel) break
       }
-      if(!rel) rel='Propos/'+target+'.md'
+      return rel || ('Propos/'+target+'.md')
+    }
+    // non-unanimous verification: keep the object in its library but write back the
+    // average probability (design §8: "留库附概率"), so the card reflects the consensus estimate.
+    async function rewriteSourceProb(target,prob){
+      const rel=await findSourceRel(target)
+      let text=(await readText(rel))||''
+      text=text.replace(/(^|\n)- 概率:.*/m,'$1- 概率: '+Number(prob).toFixed(2))
+      await writeText(rel,text)
+    }
+    async function rewriteSource(target,isTrue){
+      // find & update the source card status/prob; best effort across per-resident libs
+      const rel=await findSourceRel(target)
       let text=(await readText(rel))||''
       text=text.replace(/(^|\n)- 状态:.*/m,'$1'+(isTrue?'- 状态: 已验证·真':'- 状态: 已验证·假'))
              .replace(/(^|\n)- 概率:.*/m,'$1'+(isTrue?'- 概率: 1':'- 概率: 0'))
@@ -385,14 +398,14 @@ export function apply(ctx) {
       if(residentCount) params.residentCount=Number(residentCount)||4
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
-      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0
+      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
     }
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs(); await loadAll()
-      if(phase==='idle' && !running) return {ok:false,message:'nothing to resume'}
+      if(phase==='idle' && !running && residents.size===0) return {ok:false,message:'nothing to resume'}
       // If the persisted State came from a DIFFERENT process (crash/restart), the saved
       // childIds are stale; clear them so residents re-spawn (their libraries persist on
       // disk and re-seed the resumed run). Same-process pause→resume keeps continuable ids.
@@ -405,7 +418,7 @@ export function apply(ctx) {
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs'].map(k=>k+'='+params[k]).join(', ') } }
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds'].map(k=>k+'='+params[k]).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage}:null, meetings:meetings.length,
@@ -413,7 +426,7 @@ export function apply(ctx) {
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
     function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=upd[k] } return {ok:true} }
-    function initAbort(){ running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } }; return {ok:true,message:'aborted'} }
+    async function initAbort(){ running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
     function setPause(){ running=false; return {ok:true,message:'paused'} }
 
     return {
@@ -454,7 +467,7 @@ export function apply(ctx) {
   registerTool('vibe_v4_list_members','List residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
   registerTool('vibe_v4_add_member','Add a resident.',objParams({direction:{type:'string'}}),(s,a)=>s.addMember(a.direction))
   registerTool('vibe_v4_remove_member','Close a resident.',objParams({id:{type:'string'}},['id']),(s,a)=>s.removeMember(a.id))
-  registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
+  registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>s.postMessage(s.residentIdOf(x),a.to,a.content))
@@ -484,7 +497,7 @@ export function apply(ctx) {
       if(cmd==='start') r=await s.start({problem:rest.join(' ')})
       else if(cmd==='resume') r=await s.resume()
       else if(cmd==='pause') r=s.setPause()
-      else if(cmd==='abort') r=s.initAbort()
+      else if(cmd==='abort') r=await s.initAbort()
       else if(cmd==='status') r=s.status()
       else if(cmd==='report') r=s.report()
       else if(cmd==='meeting') r=await s.startMeeting(rest.join(' '))
