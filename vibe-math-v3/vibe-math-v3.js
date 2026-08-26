@@ -172,6 +172,7 @@ export function apply(ctx) {
   let lastPlanSummary = null      // { at, summary, actions, outcomes } for the next brief
   let projectLock = { sessionId: '', at: 0 }
   let lastIndexWrite = 0          // State/index.json 写入节流（每 5s 至多一次；工具/init 强制时立即）
+  let archivedJ = {}              // qid -> [md 段]：重派生时被替换方向的 journal 归档（论文式历史保留）
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
@@ -566,11 +567,14 @@ export function apply(ctx) {
   async function saveProposition(p) { await writeText('Propos/' + categoryOf(p) + '/' + p.id + '.md', composePropositionMd(p)) }
   async function saveMethod(m, global) { if (global) { await writeTextAbs(vibeRoot() + '/Methods/' + m.id + '.md', composeMethodMd(m)) } else { await writeText('Methods/' + m.id + '.md', composeMethodMd(m)) } }
   async function saveVerified(card) { await writeText('Verified/' + (card.类型 === '问题' ? '问题' : '命题') + '/' + card.id + '.md', composeVerifiedMd(card)) }
+  // 研究日志 = 当前方向 + 已归档方向（重派生替换时旧方向的 journal 保留在 已归档 区）
   async function writeJournal(qid) {
     const dirs = dirState.get(qid) || []
     const lines = []
     lines.push('# 研究日志｜' + qid)
     lines.push('')
+    const arch = archivedJ[qid] || []
+    for (const seg of arch) { lines.push(seg); lines.push('') }
     for (const d of dirs) {
       lines.push('## 方向 ' + d.id + '｜' + d.title + '｜存活率' + (d.survival != null ? d.survival : '?') + '｜状态' + d.status)
       if (d.core_assumption) { lines.push(''); lines.push('**核心假设**：' + d.core_assumption) }
@@ -586,6 +590,26 @@ export function apply(ctx) {
       lines.push('')
     }
     await writeText('Progress/' + qid + '.md', lines.join('\n').trimEnd() + '\n')
+  }
+  // 把将被替换的旧方向归档为"已归档方向"段（保留论文式历史，重派生不丢记录）
+  async function archiveDirections(qid, oldDirs) {
+    const withJournal = oldDirs.filter(function (d) { return d.journal && d.journal.length > 0 })
+    if (withJournal.length === 0) return
+    const segs = []
+    for (const d of withJournal) {
+      const lines = []
+      lines.push('## 已归档方向 ' + d.id + '｜' + d.title + '｜状态' + (d.status || '') + '（共 ' + d.round + ' 轮）')
+      if (d.lessons && d.lessons.length) lines.push('**教训**：' + d.lessons.join('；'))
+      if (d.dead_end_reason) lines.push('**归档原因**：' + d.dead_end_reason)
+      for (const j of (d.journal || [])) {
+        lines.push('')
+        lines.push('### 第 ' + j.round + ' 轮｜' + (j.agent || '') + '｜' + (j.at || ''))
+        lines.push(j.prose || '')
+      }
+      segs.push(lines.join('\n'))
+    }
+    archivedJ[qid] = (archivedJ[qid] || []).concat(segs)
+    await writeJson('State/archived_journals.json', archivedJ)
   }
   function getDirState(qid) { if (!dirState.has(qid)) dirState.set(qid, []); return dirState.get(qid) }
   async function saveDirState() { await writeJson('State/directions.json', Object.fromEntries(dirState)) }
@@ -649,7 +673,7 @@ export function apply(ctx) {
   function allPropos() { return Array.from(propos.values()) }
   function depResolved(id) {
     if (problems.has(id)) { const q = problems.get(id); return q.状态 === '已解决' || q.优先级 === 'never' }
-    if (propos.has(id)) { const p = propos.get(id); return p.概率 === 1 || p.概率 === 0 }
+    if (propos.has(id)) { const p = propos.get(id); return p.概率 === 1 || p.概率 === 0 || p.优先级 === 'never' } // never = 主动弃权，视为依赖已满足，避免等待依赖死锁
     return true // unknown dependency: treat as resolved (conservative)
   }
   function problemDepReady(q) { return (q.依赖 || []).every(function (d) { return depResolved(d) }) }
@@ -676,6 +700,7 @@ export function apply(ctx) {
     const ml = await readJson('State/method_log.json'); if (ml) methodLog = Object.assign({ pendingInventions: [], keepCount: 0, lastKeepAt: 0 }, ml)
     const pl = await readJson('State/project_lock.json'); if (pl) projectLock = Object.assign({ sessionId: '', at: 0 }, pl)
     const lp = await readJson('State/last_plan.json'); if (lp) lastPlanSummary = lp
+    const aj = await readJson('State/archived_journals.json'); if (aj && typeof aj === 'object') archivedJ = aj
   }
   async function saveAll() {
     await writeJson('State/scheduler_state.json', scheduler)
@@ -687,6 +712,7 @@ export function apply(ctx) {
     await writeJson('State/plans.json', { queued: planQueue })
     await writeJson('State/method_log.json', methodLog)
     await writeJson('State/project_lock.json', projectLock)
+    await writeJson('State/archived_journals.json', archivedJ)
     if (lastPlanSummary) await writeJson('State/last_plan.json', lastPlanSummary)
     scheduler.lastCheckpoint = now()
   }
@@ -716,6 +742,7 @@ export function apply(ctx) {
       activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
       propositions: { total: propos.size, resolved: allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length },
+      verifyPending: (await buildVerifyCandidates()).length,
       methods: { project: methods.size, global: globalMethods.size, pendingInventions: methodLog.pendingInventions.length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
@@ -862,7 +889,9 @@ export function apply(ctx) {
     const list = []
     for (const m of methods.values()) list.push('- ' + m.id + '「' + m.标题 + '」(' + m.类型 + ', 状态=' + m.状态 + (m.可信断言 && m.可信断言.length ? ', 可信断言=' + m.可信断言.join(',') : '') + ')')
     for (const m of globalMethods.values()) list.push('- ' + m.id + '「' + m.标题 + '」(全局, ' + m.类型 + ', 状态=' + m.状态 + ')')
-    return list.length ? ('\nAVAILABLE METHODS (Methods/, 含全局):\n' + list.join('\n') + '\n') : ''
+    // 方法库可能很大：只注入前 20 条索引，防止提示词膨胀（完整索引可读 Methods/ 目录）
+    const shown = list.slice(0, 20)
+    return shown.length ? ('\nAVAILABLE METHODS (Methods/, 含全局, 前 ' + shown.length + ' 条; 完整列表见 Methods/ 目录):\n' + shown.join('\n') + '\n') : ''
   }
   function explorerPrompt(q) {
     return personaText('explorerPersona') + 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.陈述 + '\n' +
@@ -1529,13 +1558,16 @@ export function apply(ctx) {
     delete agentRegistry[childId]
     const parsed = parseJson(output)
     const dirs = (parsed && parsed.directions) || []
-    await consumeMethodFeedback(parsed)
+    await consumeMethodFeedback(parsed, { qid: meta.qid })
     if (dirs.length === 0) { logActivity('explorer', 'problem ' + meta.qid + ' returned no directions (output head: ' + String(output || '').slice(0, 200) + ')'); await saveAll(); return }
     explorerRetries[meta.qid] = 0
     const q = problems.get(meta.qid); if (!q) return
     const list = dirs.map(function (d) {
       return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || '', core_assumption: d.core_assumption || '', feasibility: clamp01(d.feasibility), status: 'active', round: 0, survival: clamp01(d.feasibility), routes: [], lessons: [], blockers: [], lemmas: [], journal: [], dead_end_reason: '' }
     })
+    // 重派生替换方向前：把旧方向的 journal 归档到日志（论文式历史保留）
+    const oldDirs = dirState.get(meta.qid)
+    if (oldDirs && oldDirs.length > 0) await archiveDirections(meta.qid, oldDirs)
     dirState.set(meta.qid, list)
     await saveDirState(); await writeJournal(meta.qid)
     logActivity('explorer', 'problem ' + meta.qid + ' → ' + list.length + ' directions')
@@ -1566,7 +1598,7 @@ export function apply(ctx) {
       if (parsed.dead_end_reason) prose.push('**死路原因**：' + parsed.dead_end_reason)
       if (parsed.solution) prose.push('**完整解法**：' + parsed.solution)
       if (prose.length) { dir.journal = dir.journal || []; dir.journal.push({ round: meta.round, at: fmtTime(), agent: 'solver:' + qid + ':' + dirId, prose: prose.join('\n') }) }
-      await consumeMethodFeedback(parsed)
+      await consumeMethodFeedback(parsed, { qid: qid, dirId: dirId })
     }
     if (status === 'success') {
       if (parsed && parsed.solution) {
@@ -1675,8 +1707,10 @@ export function apply(ctx) {
   }
 
   // ================= method library (需求 2) =================
-  async function consumeMethodFeedback(parsed) {
+  // ctx = { qid, dirId }：应用记录带上"用在哪"（问题/方向），方法卡的可追溯性更好
+  async function consumeMethodFeedback(parsed, ctx) {
     if (!parsed) return
+    ctx = ctx || {}
     if (Array.isArray(parsed.methods_used)) {
       for (const mu of parsed.methods_used) {
         if (!mu || !mu.id) continue
@@ -1684,16 +1718,16 @@ export function apply(ctx) {
         if (!m) { logActivity('method', 'methods_used referenced unknown method ' + mu.id); continue }
         if (methods.has(mu.id)) {
           m.applications = m.applications || []
-          m.applications.push({ at: fmtTime(), 问题: '', 方向: '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
+          m.applications.push({ at: fmtTime(), 问题: ctx.qid || '', 方向: ctx.dirId || '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
           await saveMethod(m, false)
-          logActivity('method', 'application record appended to ' + mu.id)
+          logActivity('method', 'application record appended to ' + mu.id + (ctx.qid ? ' (问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '') + ')' : ''))
         }
       }
     }
     if (Array.isArray(parsed.new_inventions)) {
       for (const inv of parsed.new_inventions) {
         if (!inv || !inv.标题) continue
-        methodLog.pendingInventions.push(Object.assign({ at: now(), 来源: parsed.__source || '' }, inv))
+        methodLog.pendingInventions.push(Object.assign({ at: now(), 来源: parsed.__source || (ctx.qid ? ('问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '')) : '') }, inv))
         logActivity('method', 'new invention queued: ' + inv.类型 + '「' + inv.标题 + '」')
       }
     }
@@ -1704,7 +1738,7 @@ export function apply(ctx) {
     const interval = Number(params.methodKeepIntervalMs) || 0
     if (interval > 0 && (now() - methodLog.lastKeepAt) >= interval) return true
     const every = Number(params.methodKeepEvery) || 0
-    if (every > 0 && (methodLog.keepCount >= every || methodLog.pendingInventions.length >= every)) return true
+    if (every > 0 && methodLog.pendingInventions.length >= every) return true
     return false
   }
   async function maybeMethodKeepFallback() {
@@ -1764,8 +1798,10 @@ export function apply(ctx) {
         logActivity('method', 'method ' + imp.id + ' improved (v' + m.improvements.length + ')')
       }
     }
-    // 消费已沉淀的发明（只移除被 new_methods 覆盖的？简化：全部清空——Method Keeper 已全量处理）
-    if (parsed.new_methods && parsed.new_methods.length > 0) methodLog.pendingInventions = []
+    // 消费已沉淀的发明：Method Keeper 有有效输出（新建或改进）即视为已处理本轮 pending。
+    // 修复：仅返回 improvements 而无可新建方法时也必须清空，否则 pending 永不归零导致反复整理。
+    const hasOutput = (Array.isArray(parsed.new_methods) && parsed.new_methods.length > 0) || (Array.isArray(parsed.improvements) && parsed.improvements.length > 0)
+    if (hasOutput) methodLog.pendingInventions = []
     methodLog.keepCount += 1
     methodLog.lastKeepAt = now()
     await saveAll()
@@ -1948,7 +1984,9 @@ export function apply(ctx) {
             const sp = propos.get(q.来源命题)
             const isProof = String(sol.title || '').indexOf('【证明】') === 0
             const list = isProof ? (sp.proofs = sp.proofs || []) : (sp.refutes = sp.refutes || [])
-            const srcIdx = list.findIndex(function (x) { return x.prob === sol.prob && x.status === '未定论' })
+            // 内容比对定位源条目（sol.text 去掉【证明/证伪】前缀），避免同概率条目错配
+            const solText = String(sol.text || '').replace(/^【(证明|证伪)】/, '').trim()
+            const srcIdx = list.findIndex(function (x) { return x.status === '未定论' && String(x.text || '').trim() === solText })
             if (srcIdx !== -1) { list[srcIdx].prob = v; list[srcIdx].status = '已验' }
             else list.push({ title: '晋升验证回写', prob: v, status: '已验', text: strongestReason(t, v >= 0.5 ? 1 : 0) || sol.text })
             await saveProposition(sp)
@@ -2056,6 +2094,7 @@ export function apply(ctx) {
       frameworkRoot: frameworkRoot(),
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
       propositions: { total: propos.size, resolved: allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length },
+      verifyPending: (await buildVerifyCandidates()).length,
       methods: { project: methods.size, global: globalMethods.size, pendingInventions: methodLog.pendingInventions.length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       registeredAgents: Object.keys(agentRegistry).length,
@@ -2098,7 +2137,7 @@ export function apply(ctx) {
     if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0
     await loadSettings(); await migrateLegacyParams(); await loadState(); await loadKnowledgeBase(); await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }

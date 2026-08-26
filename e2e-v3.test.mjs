@@ -438,6 +438,37 @@ const subMd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Problems',
 assert(subMd.includes('## 来源与动机') && subMd.includes('回填'), 'q_sub card has 来源与动机 section (产生原因 + 回填计划)')
 await callTool('vibe_math_set_mode', { mode: 'auto' }, ROOT_A)
 
+// ================= Scenario K: journal archive on re-derive + method-keeper improvements-only clears pending =================
+console.log('\n-- Scenario K: journal archive + method-keeper improvements-only --')
+// K1: solver round 3 → dead-end → planner re-derives explorer → journal archives old direction d1
+fireEnd({ id: solF.childId, runId: 'sF3', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"status":"dead-end","dead_end_reason":"方向走到头","lessons":["不再尝试该路线"]}\n```' }] })
+await waitAndFirePlan('```json\n{"summary":"re-explore qF","plan":[{"action":"spawn","role":"explorer","target":"qF","reason":"all directions dead"}]}\n```')
+assert(await waitFor('re-derive explorer qF', () => allSpawnsByLabel('explorer:qF').length >= 2), 're-derive explorer:qF spawned (2nd)')
+const exF2 = allSpawnsByLabel('explorer:qF')[1]
+fireEnd({ id: exF2.childId, runId: 'eF2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"directions":[{"id":"d2","title":"新方向","method":"zeta 函数法","core_assumption":"","feasibility":0.4}],"new_inventions":[{"类型":"工具","标题":"zeta 估值技巧","内容描述":"用黎曼 zeta 函数估计素数相关和的技巧","是否已入库":false}]}\n```' }] })
+assert(await waitFor('journal archived old direction', () => {
+  const j = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Progress', 'qF.md'), 'utf8')
+  return j.includes('## 已归档方向 d1') && j.includes('不再尝试该路线')
+}), 'Progress/qF.md archives old direction d1 (journal history preserved on re-derive)')
+// K2: method keeper returns improvements-only → pending inventions cleared (no re-trigger loop)
+const mlK = JSON.parse(readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'State', 'method_log.json'), 'utf8'))
+assert(mlK.pendingInventions.length === 1, 'pending inventions queued from re-derive explorer (1)')
+await waitAndFirePlan('```json\n{"summary":"keep methods","plan":[{"action":"spawn","role":"method-keeper","reason":"pending inventions"}]}\n```')
+assert(await waitFor('method-keeper 2nd spawn', () => allSpawnsByLabel('method-keeper').length >= 2), 'method-keeper spawned again')
+const keep2 = allSpawnsByLabel('method-keeper')[1]
+fireEnd({ id: keep2.childId, runId: 'k2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"improvements":[{"id":"mG","改进内容":"补充 zeta 应用说明","原因":"新发明并入现有工具"}]}\n```' }] })
+assert(await waitFor('pending cleared after improvements-only', () => {
+  try {
+    const ml2 = JSON.parse(readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'State', 'method_log.json'), 'utf8'))
+    return ml2.pendingInventions.length === 0
+  } catch (e) { return false }
+}), 'improvements-only keeper round clears pending inventions (no re-trigger loop)')
+const mGmd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Methods', 'mG.md'), 'utf8')
+assert(mGmd.includes('## 改进历史') && mGmd.includes('zeta 应用说明'), 'mG improved (改进历史 appended)')
+// application records now carry 问题/方向 context
+const mGafter = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Methods', 'mG.md'), 'utf8')
+assert(mGafter.includes('问题 qF') && mGafter.includes('方向 d1'), 'application record carries 问题/方向 context')
+
 // ---------- cleanup ----------
 await callTool('vibe_math_pause', {}, ROOT_A)
 rmSync(WS, { recursive: true, force: true })
