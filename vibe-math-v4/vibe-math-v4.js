@@ -36,7 +36,7 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
-    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0
+    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = ''
     const activityLogCap = 200
 
     // ---- utils ----
@@ -46,6 +46,9 @@ export function apply(ctx) {
     function clamp01(v){ const n=Number(v); if(!Number.isFinite(n)) return 0.5; return Math.max(0,Math.min(1,n)) }
     function fmtTime(ts){ try { return new Date(ts||now()).toISOString().replace('T',' ').slice(0,19) } catch(e){ return String(ts||'') } }
     function cl(x){ return clamp01(Number(x)) }
+    // contextPct is a PERCENT (0-100); never clamp to 0-1 or the compactThreshold
+    // comparison (e.g. 66) becomes `1.0 >= 66` and never fires.
+    function clPct(x){ const n=Number(x); if(!Number.isFinite(n)) return 0; return Math.max(0,Math.min(100,n)) }
     function textBlock(t){ return { type:'text', text:String(t) } }
     function blocksToText(b){ if(!b) return ''; let out=''; for(const x of b){ if(x&&x.type==='text'&&typeof x.text==='string') out+=x.text+'\n' } return out.trim() }
     function logActivity(event,detail){ activityLog.push({at:now(),event,detail:String(detail||'')}); if(activityLog.length>activityLogCap) activityLog.shift() }
@@ -83,10 +86,10 @@ export function apply(ctx) {
       await writeJson('State/mailboxes.json', Object.fromEntries(mailboxes))
       await writeJson('State/taskboard.json', taskboard)
       await writeJson('State/decisions.json', decisions)
-      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,activityLog})
+      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,activityLog,processEpoch})
     }
     async function loadAll(){
-      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); activityLog=s.activityLog||activityLog }
+      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||'' }
       const rm=await readJson('State/residents.json'); if(rm&&typeof rm==='object') residents=new Map(Object.entries(rm))
       const mb=await readJson('State/mailboxes.json'); if(mb&&typeof mb==='object') mailboxes=new Map(Object.entries(mb))
       const tb=await readJson('State/taskboard.json'); if(Array.isArray(tb)) taskboard=tb
@@ -143,7 +146,8 @@ export function apply(ctx) {
     }
 
     // ---- resident lifecycle ----
-    function newResident(dir){ const rId='r-'+(residents.size+1); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
+    let residentSeq = 0
+    function newResident(dir){ const rId='r-'+(++residentSeq); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
       const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:{}},signal:makeSignal(60000)})
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
@@ -177,6 +181,11 @@ export function apply(ctx) {
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
     function bumpArtifacts(){ artifactCount+=1; if(!meetingState && !verifyState && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
+    // identify WHICH resident is calling a resident-facing tool: match the caller's
+    // subagent id to a resident's childId. Fall back to the last-woken resident when
+    // the caller is the host/assistant (or an unknown agent). This makes per-resident
+    // libraries correct under concurrency (e.g. all brainstorm residents in flight).
+    function residentOfAgent(agent){ try { const id=agent&&agent.id?String(agent.id):''; if(!id) return ''; for(const [,r] of residents){ if(r.childId===id) return r.rId } } catch(e){} return '' }
 
     // ---- task board (residents propose / claim / complete; framework wakes the claimer) ----
     async function writeTaskboard(){ const lines=['# 任务板','']; for(const t of taskboard){ lines.push('- ['+t.status+'] '+t.title+(t.claimer?('（认领:'+t.claimer+'）'):'')+(t.proposer?('（提议:'+t.proposer+'）'):'')+(t.description?('：'+t.description):'')) } await writeText('Shared/taskboard.md',lines.join('\n')) }
@@ -188,7 +197,7 @@ export function apply(ctx) {
     async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); logActivity('task','done '+id); return {ok:true} }
     async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
     function listTasks(){ return taskboard.filter(t=>t.status!=='done') }
-    async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=cl(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
+    async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=clPct(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
 
     // ---- messaging ----
     async function postMessage(from,to,content){
@@ -199,6 +208,11 @@ export function apply(ctx) {
         await saveAll(); logActivity('message',from+'→'+to); return {ok:true}
       }
       const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb); await saveAll(); logActivity('message',from+'→'+to+' (queued)'); return {ok:true}
+    }
+    async function broadcast(content){
+      let n=0
+      for(const [,r] of residents){ const res=await postMessage('facilitator',r.rId,content); if(res&&res.ok) n++ }
+      logActivity('broadcast','to '+n+' resident(s)'); await saveAll(); return {ok:true,message:'broadcast to '+n+' resident(s)'}
     }
 
     // ---- meeting ----
@@ -350,7 +364,7 @@ export function apply(ctx) {
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
       if(typeof parsed.solved==='boolean') reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()})
       // context / compact: record the condensed seed + post-compact usage, clear the flag
-      if(typeof parsed.contextPct==='number'){ r.contextPct=cl(parsed.contextPct) }
+      if(typeof parsed.contextPct==='number'){ r.contextPct=clPct(parsed.contextPct) }
       if(parsed.compacted===true || (r.needCompact && parsed.summary)){ r.contextSeed=String(parsed.summary||''); r.contextPct=Math.min(r.contextPct||15,25); r.roundsSinceCompact=0; r.needCompact=false; logActivity('compact',r.rId+' consolidated context') }
       if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
       // task actions via reply (a resident may propose or claim a task in its round)
@@ -371,7 +385,7 @@ export function apply(ctx) {
       if(residentCount) params.residentCount=Number(residentCount)||4
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
-      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null
+      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
@@ -379,9 +393,15 @@ export function apply(ctx) {
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs(); await loadAll()
       if(phase==='idle' && !running) return {ok:false,message:'nothing to resume'}
+      // If the persisted State came from a DIFFERENT process (crash/restart), the saved
+      // childIds are stale; clear them so residents re-spawn (their libraries persist on
+      // disk and re-seed the resumed run). Same-process pause→resume keeps continuable ids.
+      const crossProcess = persistedEpoch !== processEpoch
+      if(crossProcess){ for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.roundsSinceCompact=0 } }
       for(const [,r] of residents){ if(!r.childId){ await spawnResident(r) } }
       if(!running){ running=true; autoDone=false; if(phase==='idle') phase='active' }
-      logActivity('resume','restarted'); await saveAll(); return {ok:true,message:'resumed',project:currentProject}
+      if(crossProcess && phase==='active') phase='brainstorm'   // let re-spawned residents re-bootstrap together
+      logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
@@ -399,8 +419,9 @@ export function apply(ctx) {
     return {
       sessionId, running:()=>running, autoDone:()=>autoDone, phase:()=>phase,
       onResidentEnd, start, resume, status, report, addMember, removeMember, setParams,
-      setPause, initAbort, postMessage, startMeeting, saveAll,
+      setPause, initAbort, postMessage, startMeeting, saveAll, broadcast,
       currentResident:()=>currentResident,
+      residentIdOf:(agent)=>{ const m=residentOfAgent(agent); return m||currentResident },
       useResident:(id)=>{ currentResident=id },
       publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents, reportContext,
       proposeTask, claimTask, taskDone, listTasks,
@@ -417,7 +438,7 @@ export function apply(ctx) {
     tools.register({ name, description, parameters,
       output:{ schema:{ type:'string' }, render:(_a,v)=>[{type:'text',text:String(v)}] },
       execute: async (args, exec)=>{
-        try { const s=getSession(exec&&exec.agent); if(!s) return JSON.stringify({ok:false,error:'no session'}); return JSON.stringify(await fn(s,args||{})) }
+        try { const s=getSession(exec&&exec.agent); if(!s) return JSON.stringify({ok:false,error:'no session'}); return JSON.stringify(await fn(s,args||{},exec&&exec.agent)) }
         catch(e){ return JSON.stringify({ok:false,error:String((e&&e.message)||e)}) }
       } })
   }
@@ -428,27 +449,28 @@ export function apply(ctx) {
   registerTool('vibe_v4_abort','Abort V4 and interrupt residents.',objParams({}),(s)=>s.initAbort())
   registerTool('vibe_v4_status','Show V4 status.',objParams({}),(s)=>s.status())
   registerTool('vibe_v4_report','Return the V4 progress report.',objParams({}),(s)=>s.report())
-  registerTool('vibe_v4_message','Inject a message to a resident (or all).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a)=>{ const to=a.to||'all'; if(to==='all'){ return {ok:true,message:'broadcast: '+(a.content)} } return s.postMessage('facilitator',to,a.content) })
+  registerTool('vibe_v4_message','Inject a message to a resident (or all).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a)=>{ const to=a.to||'all'; if(to==='all') return s.broadcast(a.content); return s.postMessage('facilitator',to,a.content) })
   registerTool('vibe_v4_meeting','Start a meeting (coordinate / allocate / propose verification).',objParams({agenda:{type:'string'}},['agenda']),(s,a)=>s.startMeeting(a.agenda))
   registerTool('vibe_v4_list_members','List residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
   registerTool('vibe_v4_add_member','Add a resident.',objParams({direction:{type:'string'}}),(s,a)=>s.addMember(a.direction))
   registerTool('vibe_v4_remove_member','Close a resident.',objParams({id:{type:'string'}},['id']),(s,a)=>s.removeMember(a.id))
   registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
-  // resident-facing tools: route to the CURRENT (last-woken) resident of the session
-  registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a)=>s.postMessage(s.currentResident(),a.to,a.content))
-  registerTool('vibe_v4_publish_progress','(resident) Append to your own progress markdown.',objParams({content:{type:'string'}},['content']),(s,a)=>s.publishProgress(s.currentResident(),a.content))
-  registerTool('vibe_v4_record_proposition','(resident) Record a proposition to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},prob:{type:'number'},value:{type:'number'},motivation:{type:'string'}}),(s,a)=>s.recordProposition(s.currentResident(),a))
-  registerTool('vibe_v4_record_method','(resident) Record a method/theory to your library.',objParams({id:{type:'string'},title:{type:'string'},type:{type:'string'},content:{type:'string'},notation:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a)=>s.recordMethod(s.currentResident(),a))
-  registerTool('vibe_v4_record_subproblem','(resident) Record a sub-problem to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a)=>s.recordSubproblem(s.currentResident(),a))
-  registerTool('vibe_v4_read_progress','(resident) Read another resident\'s progress (read-only).',objParams({id:{type:'string'}},['id']),(s,a)=>({ok:true,text:(s.readProgress(a.id))}))
+  // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
+  // fall back to the last-woken resident when called by the host/assistant.
+  registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>s.postMessage(s.residentIdOf(x),a.to,a.content))
+  registerTool('vibe_v4_publish_progress','(resident) Append to your own progress markdown.',objParams({content:{type:'string'}},['content']),(s,a,x)=>s.publishProgress(s.residentIdOf(x),a.content))
+  registerTool('vibe_v4_record_proposition','(resident) Record a proposition to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},prob:{type:'number'},value:{type:'number'},motivation:{type:'string'}}),(s,a,x)=>s.recordProposition(s.residentIdOf(x),a))
+  registerTool('vibe_v4_record_method','(resident) Record a method/theory to your library.',objParams({id:{type:'string'},title:{type:'string'},type:{type:'string'},content:{type:'string'},notation:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a,x)=>s.recordMethod(s.residentIdOf(x),a))
+  registerTool('vibe_v4_record_subproblem','(resident) Record a sub-problem to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a,x)=>s.recordSubproblem(s.residentIdOf(x),a))
+  registerTool('vibe_v4_read_progress','(resident) Read another resident\'s progress (read-only).',objParams({id:{type:'string'}},['id']),async (s,a)=>{ const rp=await s.readProgress(a.id); return {ok:true,text:(rp&&rp.text)||''} })
   registerTool('vibe_v4_list_residents','(resident) List fellow residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
   // task board (residents; board is the residents' own allocation mechanism)
-  registerTool('vibe_v4_propose_task','(resident) Propose a task to the shared task board.',objParams({title:{type:'string'},description:{type:'string'}},['title']),(s,a)=>s.proposeTask(a.title,a.description,s.currentResident()))
-  registerTool('vibe_v4_claim_task','(resident) Claim an open task from the board (framework then wakes you to work it).',objParams({id:{type:'string'}},['id']),(s,a)=>s.claimTask(a.id,s.currentResident()))
-  registerTool('vibe_v4_task_done','(resident) Mark a claimed task done.',objParams({id:{type:'string'},claimer:{type:'string'}},['id']),(s,a)=>s.taskDone(a.id,a.claimer||s.currentResident()))
+  registerTool('vibe_v4_propose_task','(resident) Propose a task to the shared task board.',objParams({title:{type:'string'},description:{type:'string'}},['title']),(s,a,x)=>s.proposeTask(a.title,a.description,s.residentIdOf(x)))
+  registerTool('vibe_v4_claim_task','(resident) Claim an open task from the board (framework then wakes you to work it).',objParams({id:{type:'string'}},['id']),(s,a,x)=>s.claimTask(a.id,s.residentIdOf(x)))
+  registerTool('vibe_v4_task_done','(resident) Mark a claimed task done.',objParams({id:{type:'string'},claimer:{type:'string'}},['id']),(s,a,x)=>s.taskDone(a.id,a.claimer||s.residentIdOf(x)))
   registerTool('vibe_v4_list_tasks','(resident) List open tasks.',objParams({}),(s)=>({ok:true,tasks:s.listTasks()}))
   // context / compact (resident reports its context usage so the framework can /compact-equivalent)
-  registerTool('vibe_v4_report_context','(resident) Report your context usage %; the framework compacts (self-summary) when it reaches compactThreshold.',objParams({pct:{type:'number'}},['pct']),(s,a)=>s.reportContext(s.currentResident(),a.pct))
+  registerTool('vibe_v4_report_context','(resident) Report your context usage %; the framework compacts (self-summary) when it reaches compactThreshold.',objParams({pct:{type:'number'}},['pct']),(s,a,x)=>s.reportContext(s.residentIdOf(x),a.pct))
   registerTool('vibe_v4_claim_write','Reserved: shared-file write lock (framework-managed).',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
   registerTool('vibe_v4_release_write','Reserved: shared-file write lock release.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
 

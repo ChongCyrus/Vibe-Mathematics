@@ -23,12 +23,15 @@ const ctx = {
   on(e,fn){ (listeners[e]=listeners[e]||[]).push(fn) }, effect(fn){ const d=fn(); return()=>{ if(typeof d==='function') d() } }, logger:{info(){},warn(){},error(){}},
   tools:{register(s){toolRegs.push(s)}}, commands:{register(){}},
   subagents:{ list(){return['spawn']}, async startContinuable({label,request}){ const id='c'+(spawns.length+1); spawns.push({label,request,childId:id}); return {childId:id} }, async followup(parent,childId,blocks,opts){ followups.push({childId,blocks}) }, interrupt(){} },
-  agents:{ roots(){return[]}, get(){return undefined} },
+  agents:{ roots(){return[]}, get(id){ return id==='sess-A' ? ROOT : undefined } },
   fs:{ async resolve(rel,opts){ const b=(opts&&opts.cwd)||WS; let p=(typeof rel==='string'&&isAbsolute(rel))?rel.replace(/\//g,'\\'):join(b,...String(rel).split('/')); return {targetKey:p,displayPath:p} }, async stat(t){ return existsSync(t.targetKey)?{version:'v1',type:'file',size:1}:undefined }, async readText(t){ return readFileSync(t.targetKey,'utf8') }, async writeText(t,c){ mkdirSync(dirname(t.targetKey),{recursive:true}); writeFileSync(t.targetKey,c,'utf8') }, async listDir(t){ if(!existsSync(t.targetKey)) return []; return readdirSync(t.targetKey,{withFileTypes:true}).map(e=>({name:e.name,type:e.isDirectory()?'directory':'file'})) } },
 }
 const mod = await import(PLUGIN.href+'?t='+Date.now()); const plugin = mod.default||mod; plugin.apply(ctx)
 const ROOT = { id:'sess-A', options:{provider:'mock',model:'m'}, session:{id:'sess-A',header:{cwd:WS,parentSession:undefined}}, followup(){}, ctx:undefined }
-async function callTool(n,a){ const s=toolRegs.find(x=>x.name===n); if(!s) throw new Error('no tool '+n); return JSON.parse(await s.execute(a||{}, {agent:ROOT})) }
+async function callTool(n,a,agent){ const s=toolRegs.find(x=>x.name===n); if(!s) throw new Error('no tool '+n); return JSON.parse(await s.execute(a||{}, {agent:agent||ROOT})) }
+// a resident agent object whose parent chain resolves to the root session (so it
+// routes to the SAME session as ROOT), enabling per-resident tool routing tests.
+function resAgent(childId){ return { id: childId, session:{ id: childId, header:{ cwd:WS, parentSession:'sess-A' } } } }
 function fireEnd(info){ for(const h of (listeners['subagent/end']||[])) h(info) }
 const JSONX = o => '```json\n'+JSON.stringify(o)+'\n```'
 function classWake(promptText){ if(/meeting is in progress/i.test(promptText)) return 'meeting'; if(/verifying object/i.test(promptText)) return 'verify'; return 'normal' }
@@ -106,6 +109,81 @@ assert(prop.includes('- 价值程度: 0.6') && prop.includes('- 动机用途计�
 // task board: a resident proposed a task → it lands on the board (open)
 const tasks = await callTool('vibe_v4_list_tasks', {})
 assert(Array.isArray(tasks.tasks) && tasks.tasks.some(t=>t.title.includes('进一步验证关键引理')), 'task board has proposed open task')
-// context / compact: resident reported high context (82) → framework flagged needCompact + will compact
+
+// ============================================================
+// EXTRA COVERAGE — the bugs the happy-path cannot catch.
+// ============================================================
+let fuIdx = followups.length
+async function nextFollowup(ms=4000){ const s=Date.now(); while(Date.now()-s<ms){ if(fuIdx<followups.length){ return followups[fuIdx++] } await sleep(40) } return null }
+
+console.log('-- V4 self-drive: A1 context-percent + compact directive --')
+const sc1Base = spawns.length
+await callTool('vibe_v4_start', { problem: '压缩测试', residentCount: 1 })
+await waitFor(()=>spawns.length===sc1Base+1, 2000)
+await callTool('vibe_v4_set', { compactAfterRounds: 2 })
+const c1 = spawns[spawns.length-1] // r-1
+fireEnd({ id: c1.childId, runId:'br', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+let fu = await nextFollowup()
+assert(fu!==null && /researcher/i.test(fu.blocks[0].text), 'A1: got a fairness wake after brainstorm')
+// round 1: report high context (82) but no meeting/verify → framework should store it as a PERCENT
+fireEnd({ id: fu.childId, runId:'w1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'do', solved:false, contextPct:82})}] })
+let st1 = await callTool('vibe_v4_status', {})
+const rr1 = st1.residents.find(x=>x.id==='r-1')
+assert(rr1 && rr1.contextPct===82, 'A1: contextPct stored as percent 82 (got '+(rr1&&rr1.contextPct)+')')
+// round 2: the next wake must carry the [CONTEXT COMPACT] directive (82 >= 66)
+fu = await nextFollowup()
+assert(fu!==null && /CONTEXT COMPACT/.test(fu.blocks[0].text), 'A1: [CONTEXT COMPACT] directive injected when contextPct>=threshold')
+fireEnd({ id: fu.childId, runId:'w2', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'condensed', solved:false, contextPct:10, compacted:true})}] })
+st1 = await callTool('vibe_v4_status', {})
+const rr2 = st1.residents.find(x=>x.id==='r-1')
+assert(rr2 && rr2.contextPct<=15, 'A1: contextPct reset to ~10 after compact (got '+(rr2&&rr2.contextPct)+')')
+
+console.log('-- V4 self-drive: A2 per-resident routing + A3 readProgress --')
+const sc2Base = spawns.length
+await callTool('vibe_v4_start', { problem: '路由测试', residentCount: 2 })
+await waitFor(()=>spawns.length===sc2Base+2, 2000)
+const latest = spawns.slice(sc2Base) // [r-1, r-2]
+await callTool('vibe_v4_record_proposition', { id:'p-routetest', title:'T', statement:'s', prob:0.5, value:0.5, motivation:'m' }, resAgent(latest[0].childId))
+assert(existsSync(join(WS,'VibeMath','Projects','default','Propos','r-1','p-routetest.md')), 'A2: proposition recorded to r-1 (the caller)')
+assert(!existsSync(join(WS,'VibeMath','Projects','default','Propos','r-2','p-routetest.md')), 'A2: NOT recorded to r-2 (previous currentResident trap)')
+await callTool('vibe_v4_publish_progress', { content:'from r2' }, resAgent(latest[1].childId))
+const pr2 = readFileSync(join(WS,'VibeMath','Projects','default','Progress','r-2','progress.md'),'utf8')
+assert(pr2.includes('from r2'), 'A2: r-2 progress written to its own library')
+const rp = await callTool('vibe_v4_read_progress', { id:'r-2' })
+assert(typeof rp.text==='string' && rp.text.includes('from r2'), 'A3: readProgress returns real text string (got '+(typeof rp.text)+')')
+
+console.log('-- V4 self-drive: A4 resume re-spawns after cross-process --')
+const vib = WS.replace(/\\/g,'/')+'/VibeMath/Projects/default'
+mkdirSync(vib+'/State', { recursive: true })
+writeFileSync(vib+'/State/residents.json', JSON.stringify({ 'r-1':{rId:'r-1',childId:'STALE-CHILD',direction:'d',status:'active',rounds:3,roundsSinceCompact:0,lastActiveAt:0,insight:'x',contextPct:40,contextSeed:'',needCompact:false} }))
+writeFileSync(vib+'/State/session.json', JSON.stringify({ running:true, autoDone:false, phase:'active', problemId:'p', problemText:'prove', runId:'run', meetings:[], reports:[], lastActivityAt:Date.now(), activityLog:[], processEpoch:'OLD-EPOCH' }))
+const beforeRespawn = spawns.length
+const rres = await callTool('vibe_v4_resume', {})
+assert(rres.ok===true, 'A4: resume returns ok')
+assert(spawns.length>beforeRespawn, 'A4: cross-process resume re-spawns residents (stale childId cleared; +'+(spawns.length-beforeRespawn)+')')
+
+console.log('-- V4 self-drive: B1 broadcast(all) actually delivers --')
+const sc5Base = spawns.length
+await callTool('vibe_v4_start', { problem: '广播测试', residentCount: 2 })
+await waitFor(()=>spawns.length===sc5Base+2, 2000)
+// finish brainstorm so the two residents become idle, then broadcast should wake them
+for(const sp of spawns.slice(sc5Base)){ fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins '+sp.label, solved:false})}] }) }
+await sleep(250)
+const beforeBroadcast = followups.length
+const bres = await callTool('vibe_v4_message', { to:'all', content:'全体注意' })
+await sleep(250)
+const newFollowups = followups.length - beforeBroadcast
+let mailboxHit = false
+try { const mb = JSON.parse(readFileSync(join(WS,'VibeMath','Projects','default','State','mailboxes.json'),'utf8')); mailboxHit = Object.values(mb).some(arr=>Array.isArray(arr)&&arr.some(m=>String(m.content||'').includes('全体注意'))) } catch(e){}
+assert(bres.ok===true && /to 2 resident\(s\)/.test(bres.message) && (newFollowups>=1 || mailboxHit), 'B1: broadcast(all) actually delivered (message='+bres.message+', wake='+newFollowups+', mailboxHit='+mailboxHit+')')
+
+console.log('-- V4 self-drive: C1 addMember after removeMember has no id collision --')
+const sc6Base = spawns.length
+await callTool('vibe_v4_start', { problem:'增删测试', residentCount:2 })
+await waitFor(()=>spawns.length===sc6Base+2, 2000)
+await callTool('vibe_v4_remove_member', { id:'r-1' })
+const addRes = await callTool('vibe_v4_add_member', { direction:'new' })
+assert(addRes.ok===true && addRes.id==='r-3', 'C1: addMember after removeMember gets non-colliding id (got '+(addRes&&addRes.id)+')')
+
 console.log('=== V4 SELF-DRIVE RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 rmSync(WS,{recursive:true,force:true}); process.exit(failed>0?1:0)
