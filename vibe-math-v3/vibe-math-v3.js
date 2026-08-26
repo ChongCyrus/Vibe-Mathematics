@@ -904,6 +904,7 @@ export function apply(ctx) {
     return '\n2) OBJECT MODELS（md 卡片，软规范：头部锚点行 + 正文自由叙述）：\n' +
       '- 问题卡 Problems/<id>.md：{ 标题, ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划（由调度器按规划代理的计划自动更新：一句话说明下一轮安排）, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
       '- 命题卡 Propos/<分类>/<id>.md：{ 标题, ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], ## 陈述（完整）, ## 证明尝试（### 证明 N｜…｜概率X｜状态Y）, ## 证伪尝试（### 证伪 N｜…｜概率X｜状态Y）}。\n' +
+      '- 证明/证伪尝试语义：`## 证明尝试`=为证实而写的论证；`## 证伪尝试`=专门反驳/反例的论证。**失败的"找反例未果"/sanity check 是支持性证据，不属于证伪尝试**；不要写入 `## 证伪尝试`（否则系统会当作待验证的反驳去验证）。对仍未完成的证明/证伪，明确标注缺口而非伪装完成。\n' +
       '- 方法卡 Methods/<id>.md：{ 标题, ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
       '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n'
   }
@@ -916,28 +917,42 @@ export function apply(ctx) {
   function kcOutputQuality() {
     return '\n5) OUTPUT QUALITY RULES：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」。你的机器回复是一个 JSON 对象（```json 围栏内），JSON 之外不要再输出其他文本——任何要写进 md 的内容都通过文件工具写入，不要当作聊天气泡输出。'
   }
-  // 写 md 工作流：优先级最高的内容落地方式（与 syncMeta/applyAgentWrites/claimWrite 的字段契约严格一致）
-  function kcWriteMd() {
-    return '\n6) WRITE-INTO-MD WORKFLOW（优先推荐）：把研究内容直接写进你的归属 Markdown 文件，而不是塞进回复 JSON。你的角色决定归属文件：\n' +
-      '- 求解器：把该方向的完整叙述（本轮进展/子路线/可行性信号/教训/完整解法文本）写进 `Progress/<问题id>/<方向id>.md`；聚合索引 `Progress/<问题id>.md` 由调度器维护，不要动它。\n' +
-      '- 新引理：写一张完整命题卡到 `Propos/<分类>/<p-id>.md`，含锚点 `- 标题:`、`- ID/类型/状态/概率/优先级` 与 `## 陈述`；证明写进 `### 证明 1｜标题｜概率X｜状态Y` 段落（完整证明文本是验证必需，否则验证器只能验裸命题）。\n' +
-      '- 方法整理代理：写 `Methods/<m-id>.md`，含 `- 标题/ID/类型/状态/可信断言/适用场景` 与 `## 核心内容`/`## 应用记录`/`## 改进历史`。\n' +
+  // 写文件共用规则（仅供真正写 md 的代理：solver / method-keeper）：写锁、上报、回退；不含具体归属文件（按角色注入）
+  function kcWriteRules() {
+    return '\nWRITE-INTO-MD WORKFLOW（优先推荐）：把研究内容直接写进你的归属 Markdown 文件，而不是塞进回复 JSON。\n' +
       '- **并发写安全**：写任何文件前先 `vibe_math_claim_write({target:"<相对项目根的路径>"})` 申请写锁（同一文件同一时刻只允许一个代理写；返回 busy 请稍后重试），写完 `vibe_math_release_write({target})`。不同方向是不同文件，天然不冲突。\n' +
-      '- **写完必须上报**：用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报轻量元数据（方向状态/存活率/引理 id+证明/方法卡 id/新发明/解法），让调度器更新索引与调度——内容留在 md，只有调度元数据与**待验证的证明**才进机读接口。\n' +
+      '- **写完必须上报**：用 `vibe_math_sync_meta({meta:{kind:"solver|methods", ...}})` 上报轻量元数据（方向状态/存活率/引理 id+证明/方法卡 id/新发明/解法），让调度器更新索引与调度——内容留在 md，只有调度元数据与**待验证的证明**才进机读接口。\n' +
       '- **分类一致性**：你写引理卡到 `Propos/<分类>/`，sync_meta 里该引理的 `分类` 字段必须严格等于那个目录名（否则调度器会按别处去查，找不到你写的卡）。\n' +
-      '- 若你的环境无法真正写文件（文件工具不可用/被拒），回退：把要写的内容放进回复 JSON 的 `__writes` 数组（`[{"path":"<目标>","content":"<全文>"}]`）并同样配 `meta`，由调度器落盘。两种方式二选一，不要重复。'
+      '- 若你的环境无法真正写文件（文件工具不可用/被拒），回退：把要写的内容放进回复 JSON 的 `__writes` 数组（`[{"path":"<目标>","content":"<全文>"}]`）并同样配 `meta`，由调度器落盘。两种方式二选一，不要重复。\n'
   }
-  function defaultKnowledgeContext() {
-    return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
-      kcTrustLayers() + kcObjectModels() + kcFolders() + kcMethodLibrary() + kcOutputQuality() + kcWriteMd()
+  // 求解器专属：方向叙述 + 引理命题卡（带有完整证明）
+  function kcSolverFiles() {
+    return '你的归属文件：\n' +
+      '- 求解器：把该方向的完整叙述（本轮进展/子路线/可行性信号/教训/完整解法文本）写进 `Progress/<问题id>/<方向id>.md`；聚合索引 `Progress/<问题id>.md` 由调度器维护，不要动它。\n' +
+      '- 新引理：写一张完整命题卡到 `Propos/<分类>/<p-id>.md`，含锚点 `- 标题:`、`- ID/类型/状态/概率/优先级` 与 `## 陈述`；证明写进 `### 证明 1｜标题｜概率X｜状态Y` 段落（完整证明文本是验证必需，否则验证器只能验裸命题）。\n'
   }
-  // 验证器只返回 Result/Reason，不写文件——去掉与文件工作流（第6节）及方法上报（第4节）相关的指令，避免无关且矛盾的提示。
-  function defaultVerifierKnowledgeContext() {
+  // 方法整理代理专属：方法卡
+  function kcKeeperFiles() {
+    return '你的归属文件：\n' +
+      '- 方法整理代理：写 `Methods/<m-id>.md`，含 `- 标题/ID/类型/状态/可信断言/适用场景` 与 `## 核心内容`/`## 应用记录`/`## 改进历史`。\n'
+  }
+  // 基础核心（所有代理都需：可信层级 / 对象模型 / 文件夹 / 输出质量）
+  function coreKnowledgeContext() {
     return 'KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):\n' +
       kcTrustLayers() + kcObjectModels() + kcFolders() + kcOutputQuality()
   }
+  // 研究类角色（explorer / solver / method-keeper）：再加方法库规则；explorer 不写文件所以不带写-文件段
+  function researchKnowledgeContext() { return coreKnowledgeContext() + kcMethodLibrary() }
+  // 验证器：只返回 Result/Reason，不需要写文件与方法上报规则
+  function verifierKnowledgeContext() { return coreKnowledgeContext() }
+  function solverKnowledgeContext() { return researchKnowledgeContext() + kcWriteRules() + kcSolverFiles() }
+  function methodKeeperKnowledgeContext() { return researchKnowledgeContext() + kcWriteRules() + kcKeeperFiles() }
   function knowledgeContextText(role) {
-    const k = params.knowledgeContext ? String(params.knowledgeContext) : (role === 'verifier' ? defaultVerifierKnowledgeContext() : defaultKnowledgeContext())
+    const k = params.knowledgeContext ? String(params.knowledgeContext)
+      : (role === 'verifier' ? verifierKnowledgeContext()
+        : role === 'explorer' ? researchKnowledgeContext()
+          : role === 'method-keeper' ? methodKeeperKnowledgeContext()
+            : solverKnowledgeContext())
     return k ? ('\n' + k + '\n') : ''
   }
   function capabilitiesText(role) {
@@ -955,7 +970,9 @@ export function apply(ctx) {
       ? ('- You may use external tools (' + toolParts.join(', ') + ') to assist; ' + ((maxCalls && Number(maxCalls) > 0) ? ('call such external tools AT MOST ' + maxCalls + ' times this round.\n') : 'no per-round limit by default.\n'))
       : '- External tools: none enabled for you this round.\n'
     t += '- You may READ any file under Verified/ as a known, trusted dependency.\n'
-    t += '- You should BASE your reasoning on Propos/ (propositions with proofs/refutations and probabilities), Methods/ (reusable theories/tools), Reliable/ (trusted references), and Verified/.\n'
+    t += (role === 'verifier'
+      ? '- You should BASE your verification on Verified/ and on Propos/ objects already marked 已验证·真/假; verify the TARGET against the rigorous standard, not against Methods/ or unproven claims.\n'
+      : '- You should BASE your reasoning on Propos/ (propositions with proofs/refutations and probabilities), Methods/ (reusable theories/tools), Reliable/ (trusted references), and Verified/.\n')
     t += (role === 'verifier'
       ? '- You ONLY return Result/Reason JSON — you do not write files and you do not use the WRITE-INTO-MD workflow.\n'
       : (role === 'explorer'
@@ -974,14 +991,14 @@ export function apply(ctx) {
   }
   function explorerPrompt(q) {
     return personaText('explorerPersona') + 'You are a research mathematician orchestrating strategy for one problem.\n\nPROBLEM (id: ' + q.id + '): ' + q.陈述 + '\n' +
-      knowledgeContextText() +
+      knowledgeContextText('explorer') +
       methodsIndexText() +
       capabilitiesText('explorer') +
-      '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. First check the AVAILABLE METHODS list — if a listed method/system applies, plan to use it (you will reference its id in methods_used). ' +
+      '\nDo a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/extreme cases, map to similar known problems. First check the AVAILABLE METHODS list — if a listed method/system underlies a direction you will propose, reference its id in methods_used (this is a REFERENCE, not an application — you are only suggesting the direction builds on it, not claiming you used it). ' +
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
       'Record each direction with its core assumption and an initial feasibility estimate. Every direction must be self-contained: title / method / core_assumption written completely, defining every object they mention — no 断章取义.\n\n' +
-      'feasibility ∈ [0,1]. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
-      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
+      'feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
+      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
   }
   function rederivePrompt(q, prog) {
     const prior = prog.map(function (d) {
@@ -989,7 +1006,7 @@ export function apply(ctx) {
         (d.routes && d.routes.length ? ' | routes: ' + d.routes.map(function (r) { return r.title + '[' + (r.feasibility_signal || '') + ']' }).join('; ') : '')
     }).join('\n')
     return personaText('explorerPersona') + 'You are a research mathematician re-deriving strategy for a problem whose prior directions stalled or failed.\n\nPROBLEM (id: ' + q.id + '): ' + q.陈述 + '\n\nPRIOR DIRECTIONS (with blockers):\n' + prior + '\n' +
-      knowledgeContextText() +
+      knowledgeContextText('explorer') +
       methodsIndexText() +
       capabilitiesText('explorer') +
       '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven dead ends (unless a new tool/idea changes that). ' +
@@ -1019,7 +1036,7 @@ export function apply(ctx) {
     let head = personaText('solverPersona') + 'You are a dedicated solver agent working ONE solution direction of a math problem (agent_self_iteration).\n\n'
     head += 'PROBLEM (id: ' + q.id + '): ' + q.陈述 + '\nDIRECTION: ' + dir.title + ' (method: ' + dir.method + '; core assumption: ' + dir.core_assumption + ')\nROUND: ' + round + ' of ' + params.solverMaxRounds + '\n'
     if (round > 1 || (progressText && progressText.length)) head += '\nYOUR PRIOR PROGRESS / OTHER DIRECTIONS:\n' + progressText + '\n'
-    head += knowledgeContextText()
+    head += knowledgeContextText('solver')
     head += methodsIndexText()
     head += capabilitiesText('solver')
     head += '\nStart from the last recorded node of direction ' + dir.id + ' (inherit progress, or branch a sub-route under it). Consult AVAILABLE METHODS first — reuse a listed method/system when it fits (report it in methods_used). Each round you MUST produce, even if incomplete:\n' +
@@ -1031,6 +1048,8 @@ export function apply(ctx) {
     head += '\nIf you encounter an EXTREMELY complex auxiliary conjecture/sub-problem q_sub: list it in "sub_questions" as a PROBLEM-class object with its COMPLETE statement (every object/definition/notation fully defined — 不断章取义), together with p_{q-tmp}: a PROPOSITION-class TEMPORARY ASSUMPTION answering q_sub. TEMPORARILY ASSUME p_{q-tmp} holds and continue the main line — every later proposition/conclusion depending on it MUST be stated as "若 <p_{q-tmp} 的完整陈述> 成立，则：..." (complete definitions).\n'
     head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 概率 / prob / solution_prob / survival you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ count as certain.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; write the full solution prose into your direction Progress file and put the solution into the `solution_text` field of the meta.\n'
+    head += '\nSTATUS SEMANTICS — report the truth, do not hedge: `success` = you produced a complete, self-consistent solution; `dead-end` = the direction is MATHEMATICALLY dead (a decisive blocker / a core sub-assumption refuted / a step proven impossible); `continue` = still viable and you made real progress this round. Do NOT use `dead-end` merely because you ran out of time — capping rounds is the controller\'s decision (solverMaxRounds), not yours; if you progressed but didn\'t finish, report `continue` with the new survival.\n'
+    head += '\nLEMMA RULES: every lemma you register MUST carry a complete proof in `lemmas[].proof` (and in the card\'s `## 证明尝试`). If a claim is only partly argued, do NOT register it as a finished lemma — either prove it fully or record it as an explicit gap/conjecture stating the missing step, so the verifier knows exactly what is (and is not) being claimed. Incomplete "lemmas" waste verification and can mislead.\n'
     head += '\nOUTPUT CONTRACT — pick ONE channel. Write content into Markdown; only lightweight scheduling metadata (and verification-required proofs) cross the machine reply.\n' +
       'CHANNEL A (recommended, you can write files): write the full round narrative into `Progress/' + q.id + '/' + dir.id + '.md` and each new lemma card into `Propos/<分类>/<id>.md`, then reply ONLY this metadata object:\n' +
       '{"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '","round":' + round + ',"survival":0.5,"status":"continue|success|dead-end","dead_end_reason":"... or null","lemmas":[{"id":"p-...","title":"...","statement":"...","proof":"<完整证明文本，供验证器核验>","prob":0.6,"分类":"<引理卡目录名，必须与你要写入的 Propos/<分类>/ 目录严格一致>","优先级":1}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}],"solution_prob":0.85,"solution_text":"<完整解法文本，或 null>","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}}\n' +
@@ -1049,9 +1068,11 @@ export function apply(ctx) {
       knowledgeContextText('verifier') +
       capabilitiesText('verifier') +
       '\nResult ∈ [0,1] = your probability that the TARGET is CORRECT: 1 ONLY when you are fully certain (for a bare proposition: Reason must be a complete proof; for a proof/refutation/solution: you verified every step and Reason confirms the whole chain); 0 ONLY when you are certain it is wrong (Reason must be a rigorous complete refutation / pinpoint the fatal flaw); otherwise a value strictly between 0 and 1.\n' +
+      '\nCalibration: 0.5 means "genuinely undecided — there is a real unresolved gap"; it is NOT a safe hedge, so do not default to 0.5. Give the number your honest confidence from the evidence actually supports.\n' +
+      '\n**Reason is MANDATORY and MUST be non-empty**: name the exact step you verified, or the potential counterexample / fatal flaw, or (for 0.5) the precise gap that blocks a decision. A Result with an empty Reason is non-contributory and will be ignored; never return {"Result":0.5} with no justification.\n' +
       '\nCitations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证·真/假). Never cite an unverified or refuted object as a fact — if you need a sub-claim of a refuted card, re-derive it yourself.\n' +
-      '\nIndependently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence"}'
+      '\nIndependently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:\n' +
+      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>"}'
   }
   function verifierDebatePrompt(r, transcript) {
     return personaText('verifierPersona') + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + verifierTargetText(r) + '\n' +
@@ -1059,9 +1080,10 @@ export function apply(ctx) {
       capabilitiesText('verifier') +
       '\nFULL DEBATE HISTORY SO FAR (每轮所有评审轮流发言的记录):\n' + transcript + '\n' +
       '\nRespond to the others (agree / rebut / add new evidence, referencing earlier rounds if needed). If you changed your Result because of them, state the reason explicitly. ' +
-      'Remember: formal/notation-level flaws in an otherwise correct proof should lower confidence only slightly — a mathematically correct argument is not "uncertain" because of typos; near-consensus is not a deadlock.\n' +
-      'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null"}'
+      'Remember: formal/notation-level flaws in an otherwise correct proof should lower confidence only slightly — a mathematically correct argument is not "uncertain" because of typos; near-consensus is not a deadlock. Undue swing to 0.5 is discouraged: a bare review merits 0.5 ONLY if there is a genuine undecidable gap, never as a hedge.\n' +
+      '\nReason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0.5) is ignored as non-contributory, so always justify your number.\n' +
+      '\nReply with ONLY a single JSON object in a ```json code fence, no prose outside it:\n' +
+      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null"}'
   }
   function plannerPrompt(brief) {
     return personaText('plannerPersona') + 'You are the SCHEDULING PLANNER of a multi-agent mathematical research system. Your job: autonomously choose the OPTIMAL schedule — you may lay out the NEXT ' + params.planningHorizon + ' agent-task calls in one plan (they will be executed in order, beyond-capacity ones queued for later ticks).\n\n' +
@@ -1074,13 +1096,13 @@ export function apply(ctx) {
       '- {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).\n' +
       '- {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.\n' +
       '- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.\n' +
-      '\nHARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; schedule at most ' + params.planningHorizon + ' actions.\n' +
+      '\nHARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most ' + params.planningHorizon + ' actions.\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
       '{"summary":"one-line plan rationale","plan":[{"action":"...","role":"...","target":"...","direction":"...","childId":"...","reason":"..."}]}'
   }
   function methodKeeperPrompt(digest) {
     return personaText('methodKeeperPersona') + 'You are the METHOD KEEPER of a mathematical research system. Your job: distill reusable THEORIES, FRAMEWORKS, TOOLS, METHODS, IDEAS (including experiential ones) invented during solving into the theory library, so future work can apply and extend them — like inventing group theory while solving an equation, or functional analysis while studying variational problems.\n\n' +
-      knowledgeContextText() +
+      knowledgeContextText('method-keeper') +
       '\nRECENT WORK DIGEST:\n' + digest + '\n\n' +
       'For each pending invention decide: create a NEW method card, or fold it into an EXISTING method (as an improvement). Only list 可信断言 for claims already verified (ids from Verified/) — everything else stays 经验 (experiential). You may propose 上级体系/子方法 links to organize methods into systems.\n' +
       'OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.\n' +
@@ -1363,6 +1385,7 @@ export function apply(ctx) {
         id: q.id, 状态: q.状态, 优先级: q.优先级, 依赖: q.依赖, 依赖就绪: problemDepReady(q),
         方向数: dirs.length,
         活跃方向: dirs.filter(function (d) { return d.status === 'active' }).map(function (d) { return d.id }),
+        running_solver_dirs: dirs.filter(function (d) { return d.status === 'active' && Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === d.id && m.role === 'solver' }) }).map(function (d) { return d.id }),
         最高存活率: dirs.length ? Math.max.apply(null, dirs.map(function (d) { return Number(d.survival) || 0 })) : null,
         解法数: (q.solutions || []).length,
       })
@@ -1825,10 +1848,14 @@ export function apply(ctx) {
           continue
         }
         if (methods.has(mu.id)) {
-          m.applications = m.applications || []
-          m.applications.push({ at: fmtTime(), 问题: ctx.qid || '', 方向: ctx.dirId || '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
-          await saveMethod(m, false)
-          logActivity('method', 'application record appended to ' + mu.id + (ctx.qid ? ' (问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '') + ')' : ''))
+          // 只记录"有实际问题/方向上下文"的引用；method-keeper 纯整理时的引用（qid/dirId 皆空）不当作应用，
+          // 避免把"整理时引用该方法"误记为"实际应用"，从而污染应用计数并触发错误的全局晋升。
+          if (ctx.dirId || ctx.qid) {
+            m.applications = m.applications || []
+            m.applications.push({ at: fmtTime(), 问题: ctx.qid || '', 方向: ctx.dirId || '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
+            await saveMethod(m, false)
+            logActivity('method', 'application record appended to ' + mu.id + ' (问题 ' + ctx.qid + ' 方向 ' + ctx.dirId + ')')
+          }
         }
       }
     }
