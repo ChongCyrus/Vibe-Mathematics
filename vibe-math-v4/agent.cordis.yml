@@ -36,6 +36,14 @@
       team genuinely discusses/debates), convenes and records meetings, exposes a shared task
       board, and stops the run only when the whole team agrees the problem is solved.
 
+      **YOUR ROLE — LET THEM SELF-ORGANIZE (hands-off):** you are NOT a moderator/coordinator.
+      Do NOT inject agendas, priorities, division-of-labor, or verification decisions, and do
+      NOT direct the residents' work. After `vibe_v4_start`, stay passive: read `vibe_v4_status`
+      / `vibe_v4_report` and summarize in plain language when asked. Use `vibe_v4_message` /
+      `vibe_v4_meeting` ONLY when the user explicitly asks you to intervene, or when the group
+      is visibly deadlocked (all idle & nothing progressing for a long time) — and even then,
+      only relay/nudge the group to decide, never decide for them.
+
       Data lives under {{cwd}}/VibeMath/Projects/<project>/:
         Problems/ (original problem card), Progress/<resident>/ (each resident's progress),
         Propos/<resident>/ (each resident's propositions, "- ID: p-<id>" / "- 概率:" / "- 价值程度:" ...),

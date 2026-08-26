@@ -161,5 +161,23 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T7: background told ONCE (brainstorm), not repeated afterwards =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T7 background once / lean afterwards --')
+  await m.callTool('vibe_v4_start', { problem:'提示词测试', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
+  const brain = m.spawns[0].request.prompt[0].text
+  assert(/背景/.test(brain) && /可用工具/.test(brain) && /你负责的文件/.test(brain) && /工作模式/.test(brain), 'T7: brainstorm prompt carries the FULL background/mission/tools/files (once)')
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
+  let fu=null
+  for(let i=0;i<60;i++){ if(m.followups.length>0){ fu=m.followups.shift(); break } await sleep(40) }
+  assert(fu && /CHECKPOINT/.test(fu.blocks[0].text), 'T7: got a lean checkpoint wake after brainstorm')
+  const hp = fu.blocks[0].text
+  assert(!/你负责的文件/.test(hp) && !/可用工具/.test(hp) && !/背景/.test(hp), 'T7: subsequent prompts do NOT repeat the long background (lean, no context bloat)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

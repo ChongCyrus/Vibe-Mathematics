@@ -169,23 +169,18 @@ export function apply(ctx) {
     }
     async function normalPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +contextBrief(r,'recap')+'\n'
-        +'## 你的第 '+r.rounds+' 轮\n'
-        +'这一轮你自己决定做什么：推进你的方向、验证你的结论、给某常驻发消息、提议/认领任务、或发起会议/验证。**一切由你和团队讨论决定，没有外部派活。**\n'
-        +'动手前先**读读别人的库**（Read-only）知道大家做到哪、对齐事实、避免重复；然后**直接把你的进展/新结论用 fs 写进你自己的文件**。\n'
-        +'若你有话要对团队说（想让大家看到、讨论），在回复的 "input" 里写出来——它会被转发给其他常驻（如同一场群聊）。\n'
+        +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。\n'
         +'\n团队成员：\n'+banner()+'\n'
         +'New items:\n'+ (await inboxText(r.rId)) +'\n'
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or empty string>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
+        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
     }
     function meetingPrompt(r, st){
       const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +contextBrief(r,'recap')+'\n'
-        +'## 会议进行中 —— A meeting is in progress (agenda: '+st.agenda+').'
-        +(st.type==='verify'?('\n团队正在验证对象：'+st.targetId+'（'+st.targetType+'）。请先看他人意见，再给独立判断。'):'')
-        +'\n这是一场**真实讨论**：下面已有人发言（框架把各常驻的 input 转给你），请先看，然后**加入讨论/补充/反驳/表决**。'
+        +'Resident '+r.rId+' — 团队会议进行中。 A meeting is in progress (agenda: '+st.agenda+').'
+        +(st.type==='verify'?('\n团队正在验证对象：'+st.targetId+'（'+st.targetType+'，提出者 '+st.targetOwner+'）。请先看他人意见，再给独立判断。'):'')
+        +'\n这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。'
         +(prior?('\n\n### 已有发言（他人 input，已转发给你）\n'+prior):'\n（目前还没人发言，你先说。）')
         +'\n\n你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。'
         +'\nReply with ONLY a JSON object:\n'
@@ -194,8 +189,7 @@ export function apply(ctx) {
     function verifyPrompt(r, vs){
       const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+v.verdict+' ('+v.confidence+') '+v.reason).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +contextBrief(r,'recap')+'\n'
-        +'## 团队验证 —— The group is verifying object '+vs.targetId+'（'+vs.targetType+'）。\n'
+        +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
         +'只有**全体常驻一致判真（或一致判假）**才算数。请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
         +(vs.stage==='debate'&&others?('### 他人意见（已转发给你）\n'+others+'\n'):'')
@@ -294,15 +288,16 @@ export function apply(ctx) {
     }
     async function continueMeetingRound(){
       if(!meetingState) return
-      const ids=Array.from(residents.keys()); const allAsked=ids.every(id=>meetingState.asked.indexOf(id)!==-1)
-      if(allAsked){ await finalizeMeeting(); return }
-      // only wake IDLE residents (never double-wake a busy one; in-flight ones re-trigger this on end)
-      const id=ids.find(x=>meetingState.asked.indexOf(x)===-1 && !busy.has(x)); if(!id) return
-      meetingState.asked.push(id); const r=residents.get(id)
+      const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>meetingState.inputs[id]!==undefined)
+      if(allSpoke){ await finalizeMeeting(); return }
+      // only wake IDLE un-spoken residents; in-flight ones re-trigger this on end.
+      const id=ids.find(x=>meetingState.inputs[x]===undefined && !busy.has(x)); if(!id) return
+      const r=residents.get(id)
       await wakeResident(r, meetingPrompt(r,meetingState), 'meeting'); await saveAll()
     }
     async function finalizeMeeting(){
       const st=meetingState
+      const ids=Array.from(residents.keys()); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
       const lines=['# 会议 '+st.id+'｜'+fmtTime(),'','**议程**：'+st.agenda,'']
       for(const [id,iv] of Object.entries(st.inputs)){ lines.push('### '+id); lines.push(iv.input||''); lines.push('') }
       await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
@@ -315,8 +310,8 @@ export function apply(ctx) {
         if(iv.propose_verify) pendingVerify={targetId:iv.propose_verify,targetType:guessTargetType(iv.propose_verify),proposer:id,at:now()}
       }
       const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
-      const allSolved=votes.length>0 && votes.every(v=>v===true)
-      logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':''))
+      const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
+      logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (not all spoke / not unanimous)'))
       if(allSolved){ running=false; autoDone=true; phase='done'; logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
       meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
@@ -325,33 +320,34 @@ export function apply(ctx) {
     async function beginVerify(pv){
       clearHeartbeat()
       pendingVerify=null
-      verifyState={targetId:pv.targetId,targetType:pv.targetType,stage:'independent',round:0,asked:[],verdicts:{},transcript:[]}
+      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},transcript:[]}
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
     }
     async function continueVerifyRound(){
       if(!verifyState) return
-      const ids=Array.from(residents.keys()); const allAsked=ids.every(id=>verifyState.asked.indexOf(id)!==-1)
-      if(allAsked){ await finalizeVerify(); return }
-      // only wake IDLE residents (never double-wake; in-flight ones re-trigger this on end)
-      const id=ids.find(x=>verifyState.asked.indexOf(x)===-1 && !busy.has(x)); if(!id) return
-      verifyState.asked.push(id); const r=residents.get(id)
+      const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>verifyState.verdicts[id]!==undefined)
+      if(allVoted){ await finalizeVerify(); return }
+      const id=ids.find(x=>verifyState.verdicts[x]===undefined && !busy.has(x)); if(!id) return
+      const r=residents.get(id)
       await wakeResident(r, verifyPrompt(r,verifyState), verifyState.stage==='independent'?'verif-ind':'verif-deb'); await saveAll()
     }
     async function finalizeVerify(){
-      const vs=verifyState; const vals=Object.values(vs.verdicts)
-      const allTrue=vals.length>0 && vals.every(x=>x.verdict==='TRUE')
-      const allFalse=vals.length>0 && vals.every(x=>x.verdict==='FALSE')
+      const vs=verifyState; const expected=Array.from(residents.keys()).length
+      const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
+      const vals=Object.values(vs.verdicts)
+      const allTrue = allVoted && vals.every(x=>x.verdict==='TRUE')
+      const allFalse = allVoted && vals.every(x=>x.verdict==='FALSE')
       if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
       if(vs.round+1<params.verdictMaxRounds){ vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate'); await saveAll(); await scheduleNext(); return }
       const avg=vals.length? vals.reduce((a,x)=>a+(x.verdict==='TRUE'?x.confidence:x.verdict==='FALSE'?1-x.confidence:0.5),0)/vals.length : 0.5
-      await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
+      await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
     async function closeVerify(vs,isTrue){
       await writeDebateDoc(vs,true,isTrue?1:0)
       const target=vs.targetId
       await writeVerifiedCard(vs,isTrue)
-      await rewriteSource(target,isTrue)
+      await rewriteSource(target,isTrue,vs.targetOwner)
       logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
@@ -367,27 +363,27 @@ export function apply(ctx) {
       const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+type+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致\n## 陈述\n参见来源卡。\n'
       await writeText('Verified/'+dir+'/'+vs.targetId+'.md', text)
     }
-    async function findSourceRel(target){
-      let rel=null
-      for(const [rid] of residents){
+    async function findSourceRel(target, owner){
+      // Prefer the OWNER's library (avoids id collisions across residents), then others.
+      const order = owner ? [owner, ...Array.from(residents.keys()).filter(k=>k!==owner)] : Array.from(residents.keys())
+      for(const rid of order){
         for(const base of ['Propos','Methods','Subproblems']){
-          const cand=base+'/'+rid+'/'+target+'.md'; if((await readText(cand))!==undefined){ rel=cand; break }
+          const cand=base+'/'+rid+'/'+target+'.md'; if((await readText(cand))!==undefined){ return cand }
         }
-        if(rel) break
       }
-      return rel || ('Propos/'+target+'.md')
+      return 'Propos/'+target+'.md'
     }
     // non-unanimous verification: keep the object in its library but write back the
     // average probability (design §8: "留库附概率"), so the card reflects the consensus estimate.
-    async function rewriteSourceProb(target,prob){
-      const rel=await findSourceRel(target)
+    async function rewriteSourceProb(target,prob,owner){
+      const rel=await findSourceRel(target,owner)
       let text=(await readText(rel))||''
       text=text.replace(/(^|\n)- 概率:.*/m,'$1- 概率: '+Number(prob).toFixed(2))
       await writeText(rel,text)
     }
-    async function rewriteSource(target,isTrue){
+    async function rewriteSource(target,isTrue,owner){
       // find & update the source card status/prob; best effort across per-resident libs
-      const rel=await findSourceRel(target)
+      const rel=await findSourceRel(target,owner)
       let text=(await readText(rel))||''
       text=text.replace(/(^|\n)- 状态:.*/m,'$1'+(isTrue?'- 状态: 已验证·真':'- 状态: 已验证·假'))
              .replace(/(^|\n)- 概率:.*/m,'$1'+(isTrue?'- 概率: 1':'- 概率: 0'))
@@ -402,8 +398,7 @@ export function apply(ctx) {
     // of infinite token-burning, matching the "framework never assigns work" philosophy.
     function heartbeatPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +contextBrief(r,'recap')+'\n'
-        +'## CHECKPOINT（空闲）—— 团队在等待方向。\n'
+        +'Resident researcher '+r.rId+' — CHECKPOINT（空闲）：团队在等待方向。'
         +'请用一句话说明你下一步做什么；若你已无产出、或认为问题已解决/接近解决，请**提议开会（propose_meeting）**、**提议验证（propose_verify）**、或**声明 solved=true**，让团队能做出决定——不要产出填充性工作。\n'
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you do next or a declaration>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","claim_task":"<id|null>"}'

@@ -58,7 +58,9 @@
 >
 > 🔧 **v1.3.6 修复 v4 preset 选择后跳回原 preset**：v4 插件的 `apply` 读取 `ctx.subagents/agents/fs/tools/commands` 却**未声明 `inject`**，被 DSH 守卫以"未声明依赖"拒绝 → 组合无法挂载 → 选择后自动回退。已补 `export const inject = [...]`，并把心跳定时器从全局 `setTimeout/clearTimeout`（插件沙箱里不存在）改为 **`timer` 服务（`ctx.timeout`）**。
 >
-> 🔧 **v1.3.7 哲学回归（清晰提示词 + 真实交流群 + 直接写文件）**：常驻每轮统一注入 `contextBrief`（背景/使命、工作模式、你负责的文件与格式、可用工具及功能、规则），并明确"只写自己、可读任何人的库、应主动读别人对齐事实"；会议把其他常驻实际发言（input）转给每个人看（能补充/反驳/表决），常驻日常轮的 `input` 经 `relayToGroup` 转发到其它常驻邮箱（像群聊）；常驻**直接用 fs 写自己的 md**（按格式），`vibe_v4_*` 记录工具只是可选便利；去掉"typical actions"式固定约束，改为"你自己决定做什么；优先级/分工由团队讨论涌现"。详见 §20。
+> 🔧 **v1.3.7 哲学回归（清晰提示词 + 真实交流群 + 直接写文件）**：常驻首轮注入完整 `contextBrief`（背景/使命、工作模式、文件与格式、工具、规则）；会议把其他常驻实际发言（input）转给每个人看，常驻日常轮的 `input` 经 `relayToGroup` 转发到其它常驻邮箱（像群聊）；常驻**直接用 fs 写自己的 md**；去固定约束改为团队讨论涌现。详见 §20。
+>
+> 🔧 **v1.3.8 基于真实测试的诊断修复**：**① 共识验证真正"全体一致"**——`finalizeVerify` 现在要求**全体在册常驻都投了票**才可判"一致"，否则辩论或保留为未定论（实测曾出现 2/4 投票却被判"全体一致为真"，已修）；**② 会议必须全体发言**——`continueMeetingRound` 按"是否已发言"收口，`allSolved`（stop）要求全员发言+全票 true，杜绝缺席成员被带偏；**③ 背景只在首轮讲一次**——`contextBrief` 只在 `brainstormPrompt`（首轮）注入完整版，后续 normal/meeting/verify/CHECKPOINT 用极简当前状态，不再每轮重复长背景（省上下文）；**④ 验证目标按提出者精确定位**（`targetOwner` + `findSourceRel` 优先提出者库，避免同名 id 撞车）；**⑤ 主代理放权**——persona 明确"让常驻自组织（hands-off）"，不注议程/优先级/分工/验证决定，只 read status/report，用户明确要求或明显僵死时才 message/meeting 且只促成不决定。详见 §21。
 
 ---
 
