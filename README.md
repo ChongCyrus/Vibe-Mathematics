@@ -219,7 +219,8 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
    ├─ vibe_math_setting.json          # 该项目默认参数
    ├─ Problems/<id>.md                 # 问题清单：每问题一个 md（软规范锚点：ID/类型/状态/优先级/依赖/被依赖/来源/计划
    │                                   #   + ## 陈述 / ## 来源与动机（后生问题：产生流程/动机/回填计划）/ ## 解法候选）
-   ├─ Progress/<id>.md                 # 研究日志：每问题一个 md，按方向按轮续写（论文式叙述）
+   ├─ Progress/<id>.md                 # 聚合研究日志索引（各方向摘要 + 引理索引 + 各轮记录）
+   ├─ Progress/<id>/<方向id>.md         # 每方向一个独立文件（代理自组织直接写，方向间无并发冲突）
    ├─ Propos/<分类>/<id>.md            # 命题库：每命题一个 md（陈述/证明尝试/证伪尝试，软规范锚点 + 自由叙述）
    ├─ Methods/<id>.md                  # 【通用理论发明库】方法卡：理论体系/框架/工具/方法/思想（含应用记录/改进历史/体系层级）
    ├─ Verified/命题/<id>.md            # 绝对可信：调度器生成的已验证命题卡（只读）
@@ -233,7 +234,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
 **铁律（v1/v2 通用）**：调度器是**唯一文件写者**（子代理只返回结构化 JSON，从不写文件）。
-**v3 铁律**：只有 `Verified/` 与验证器判真/假的对象**绝对可信**；其余 md（未定论命题、研究日志、方法库未验证断言）仅作经验参考；调度器只解析软规范锚点行与条目标题行，从不解析正文散文；每文件同一时刻仅一个写者。
+**v3 铁律**：只有 `Verified/` 与验证器判真/假的对象**绝对可信**；其余 md（未定论命题、研究日志、方法库未验证断言）仅作经验参考；调度器只解析软规范锚点行与条目标题行，从不解析正文散文。**v3 支持代理直接写 md**（自组织定位各自归属文件，如求解器写 `Progress/<id>/<方向id>.md`、新引理写 `Propos/<分类>/<id>.md`、方法整理代理写 `Methods/<id>.md`）；并发安全靠**写锁**——写任何文件前调 `vibe_math_claim_write`、写完 `vibe_math_release_write`（同一文件同一时刻只允许一个代理写），内容留在 md，轻量元数据经 `vibe_math_sync_meta` 上报给调度器。
 
 ---
 
@@ -278,6 +279,8 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `vibe_math_index`（v3） | 从 md 知识库重建机器索引（`State/index.json`） |
 | `vibe_math_method_add` / `vibe_math_method_list`（v3） | 手动添加 / 列出方法卡（项目 + 全局） |
 | `vibe_math_lock_status`（v3） | 查看项目锁占用 |
+| `vibe_math_claim_write` / `vibe_math_release_write`（v3） | 申请 / 释放某个 md 文件的**写锁**（代理直接写文件前调用；同一文件同一时刻只允许一个代理写，防并发冲突） |
+| `vibe_math_sync_meta`（v3） | 代理把内容写进 md 后上报**轻量元数据**（方向状态/存活率/引理 id/方法卡 id/新发明），让调度器同步索引——内容留在 md，不进 JSON |
 
 斜杠命令（与工具等价）：`/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents`（v3 另有 `methods|index|plan|lock`）
 

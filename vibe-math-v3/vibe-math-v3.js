@@ -59,6 +59,7 @@ export function apply(ctx) {
   // ================= per-session registry =================
   const sessions = new Map() // rootAgentId -> Session
   const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+  const fileOwner = {} // 进程级写锁：fileKey -> { childId, sessionId, at } —— 防任何代理（跨会话）并发写同一 md 文件
   // Process epoch: PROCESS-level (one per apply, shared by every session), written to
   // State/process_epoch.json at init; a DIFFERENT persisted epoch means a previous DSH
   // process wrote this state (in-flight children are gone), while an equal epoch means
@@ -567,7 +568,27 @@ export function apply(ctx) {
   async function saveProposition(p) { await writeText('Propos/' + categoryOf(p) + '/' + p.id + '.md', composePropositionMd(p)) }
   async function saveMethod(m, global) { if (global) { await writeTextAbs(vibeRoot() + '/Methods/' + m.id + '.md', composeMethodMd(m)) } else { await writeText('Methods/' + m.id + '.md', composeMethodMd(m)) } }
   async function saveVerified(card) { await writeText('Verified/' + (card.类型 === '问题' ? '问题' : '命题') + '/' + card.id + '.md', composeVerifiedMd(card)) }
-  // 研究日志 = 当前方向 + 已归档方向（重派生替换时旧方向的 journal 保留在 已归档 区）
+  async function ensureProgressDir(qid) { const base = frameworkRoot(); return await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/Progress/' + qid) + ' | Out-Null') }
+  // 单个方向的完整日志文本（供"每方向一个文件"与聚合复用）
+  function directionMdText(qid, d, standalone) {
+    const lines = []
+    if (standalone) { lines.push('# 研究方向日志｜' + qid + ' / ' + d.id); lines.push('') }
+    lines.push('- 方向: ' + d.title)
+    lines.push('- 存活率: ' + (d.survival != null ? d.survival : '?') + '；状态: ' + d.status + (d.round ? '；轮次: ' + d.round : ''))
+    if (d.method) lines.push('- 方法: ' + d.method)
+    if (d.core_assumption) lines.push('- 核心假设: ' + d.core_assumption)
+    if (d.dead_end_reason) lines.push('- 死路原因: ' + d.dead_end_reason)
+    if (d.lemmas && d.lemmas.length) lines.push('- 引理索引: ' + d.lemmas.map(function (l) { return '「' + l.title + '」(' + l.id + ')' }).join('；'))
+    lines.push('')
+    for (const j of (d.journal || [])) {
+      lines.push('### 第 ' + j.round + ' 轮｜' + (j.agent || '') + '｜' + (j.at || ''))
+      lines.push(j.prose || '')
+      lines.push('')
+    }
+    return lines.join('\n').trimEnd() + '\n'
+  }
+  // 研究日志 = 每方向一个独立文件（由代理直接写：Progress/<qid>/<dirId>.md，方向间无并发冲突）
+  //            + 聚合索引（Progress/<qid>.md，由调度器从 dirState 汇总，不覆盖各方向文件）
   async function writeJournal(qid) {
     const dirs = dirState.get(qid) || []
     const lines = []
@@ -579,9 +600,10 @@ export function apply(ctx) {
       lines.push('## 方向 ' + d.id + '｜' + d.title + '｜存活率' + (d.survival != null ? d.survival : '?') + '｜状态' + d.status)
       if (d.core_assumption) { lines.push(''); lines.push('**核心假设**：' + d.core_assumption) }
       if (d.method) { lines.push('**方法**：' + d.method) }
-      if (d.blockers && d.blockers.length) { lines.push('**阻碍**：' + d.blockers.join('；')) }
-      if (d.lessons && d.lessons.length) { lines.push('**教训**：' + d.lessons.join('；')) }
-      if (d.lemmas && d.lemmas.length) { lines.push('**引理**：' + d.lemmas.map(function (l) { return '「' + l.title + '」(' + l.id + ')' }).join('；')) }
+      if (d.dead_end_reason) { lines.push('**死路原因**：' + d.dead_end_reason) }
+      // 引理只在摘要给"索引"（id+标题），完整叙述在各方向文件 Progress/<qid>/<dirId>.md（由代理或调度器写入）
+      if (d.lemmas && d.lemmas.length) { lines.push('**引理索引**：' + d.lemmas.map(function (l) { return '「' + l.title + '」(' + l.id + ')' }).join('；')) }
+      lines.push('**完整叙述**：见 `Progress/' + qid + '/' + d.id + '.md`')
       for (const j of (d.journal || [])) {
         lines.push('')
         lines.push('### 第 ' + j.round + ' 轮｜' + (j.agent || '') + '｜' + (j.at || ''))
@@ -590,6 +612,24 @@ export function apply(ctx) {
       lines.push('')
     }
     await writeText('Progress/' + qid + '.md', lines.join('\n').trimEnd() + '\n')
+  }
+  // 代理直接写内容：模拟/落盘代理声称写的文件（__writes），真实环境代理用 write 工具自己写，此处为调度器兜底落盘
+  async function applyAgentWrites(writes) {
+    if (!Array.isArray(writes)) return { ok: true, applied: 0 }
+    let applied = 0
+    for (const w of writes) {
+      if (!w || !w.path) continue
+      const safe = String(w.path).replace(/\\/g, '/').replace(/\.\./g, '')
+      if (!/^(Problems|Progress|Propos|Methods|Notes)\//.test(safe)) continue // 只允许知识库路径，防越界
+      const content = (w.content != null) ? String(w.content) : ''
+      // Progress/<qid>/<dir>.md 需要 Progress/<qid>/ 子目录
+      const m = /^Progress\/([^/]+)\//.exec(safe)
+      if (m) { const base = frameworkRoot(); await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/Progress/' + m[1]) + ' | Out-Null') }
+      const t = await fs.resolve(safe, { cwd: frameworkRoot() })
+      if (await fs.stat(t) !== undefined) { await fs.writeText(t, content, undefined, undefined, getPolicy()); applied += 1 }
+      else { await writeText(safe, content); applied += 1 }
+    }
+    return { ok: true, applied: applied }
   }
   // 把将被替换的旧方向归档为"已归档方向"段（保留论文式历史，重派生不丢记录）
   async function archiveDirections(qid, oldDirs) {
@@ -863,8 +903,13 @@ export function apply(ctx) {
       '- 方法卡 Methods/<id>.md：{ ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
       '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n' +
       '\n3) FOLDERS：Problems/ 问题清单；Progress/ 研究日志（每问题一个 md，按方向按轮续写）；Propos/ 命题库；Methods/ 理论发明库；Verified/ 绝对可信（只读）；Reliable/ 可信参考文献（只读）；Notes/ 自由笔记；Logs/ 审计；State/ 调度器私有——不要读也不要改。\n' +
-      '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。\n' +
-      '\n5) OUTPUT REQUIREMENTS：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」；只输出规定的 JSON（```json 围栏内），JSON 之外不写任何内容。'
+      '\n4) METHOD LIBRARY RULES：开工前先查 Methods/（含全局 VibeMath/Methods/），有可复用方法/体系则引用其 ID；用后必须在 methods_used 上报（含效果与改进建议）；本轮新发明/经验性总结必须在 new_inventions 上报（类型：理论体系|框架|工具|方法|思想|范式|技巧）——若与某张已有方法卡同类，在内容描述里注明"可并入 m-xxx"以便 Method Keeper 合并而非重复建卡。**重要区分**：methods_used 只能填**已存在方法卡的 ID**（形如 m-abc12345，来自 AVAILABLE METHODS 列表）；你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（由 Method Keeper 蒸馏建卡）；千万不要把方法名/标题文字当 id 填进 methods_used。\n' +
+      '\n5) OUTPUT REQUIREMENTS：完整性、不断章取义——任何输出的问题/命题/结论都要给出完整陈述并补全所依赖的对象/环境/背景定义；引用必须给出处（文件路径 + ID + 锚点/节），事实只引 Verified/；若结论依赖临时假设 p，必须显式写「若 <p 完整陈述> 成立，则：…」；只输出规定的 JSON（```json 围栏内），JSON 之外不写任何内容。' +
+      '\n\n6) WRITE-INTO-MD WORKFLOW（推荐，代理自组织直接写 md）：框架允许你**直接写 Markdown**，把研究内容落到对应路径的 md 文件里，而不是全部塞进 JSON。做法（你拥有 file 工具）：\n' +
+      '- 每个角色有明确的"归属文件"：求解器写该方向的完整叙述到 `Progress/<问题id>/<方向id>.md`；新引理写一张完整命题卡到 `Propos/<分类>/<p-id>.md`（含锚点 `# 命题｜标题`、`- ID/状态/概率/优先级` 与 `## 陈述`/`## 证明尝试`）；方法整理代理写 `Methods/<m-id>.md`（锚点 `- ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`）。\n' +
+      '- **并发写安全**：写任何文件前先 `vibe_math_claim_write({target:"<相对项目根的路径>"})` 申请写锁（同一文件同一时刻只允许一个代理写；若返回 busy 请稍后重试），写完 `vibe_math_release_write({target})`。不同方向是不同文件，天然不冲突。\n' +
+      '- 写完内容后，用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报**轻量元数据**（方向状态/存活率/引理 id/方法卡 id/新发明清单），让调度器更新索引与调度——内容留在 md，元数据才进机读接口。\n' +
+      '- 若你所在环境无法写文件（工具不可用/被拒），再回退到"把内容放进下面的 JSON 字段"由调度器落盘。两种方式二选一即可，不要重复。'
   }
   function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
   function capabilitiesText(role) {
@@ -953,7 +998,8 @@ export function apply(ctx) {
     head += '\nIMPORTANT — PROBABILITY RULES FOR NEW RESULTS: any 概率 / solution_probability / survival_probability you output for NEW results must be strictly BETWEEN 0 and 1 (they await independent verifier confirmation). NEVER mark your own fresh lemma or solution as 1 or 0 — that is the verifiers\' job. Only facts already recorded in Verified/ count as certain.\n'
     head += '\nIf you obtain a COMPLETE solution: adversarially self-check (construct counterexamples, test boundary conditions) BEFORE declaring success; put the full solution text in "solution".\n'
     head += '\nRespond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
-      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}]}'
+      '{"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分析":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}],"methods_used":[{"id":"<已有方法卡的ID，形如 m-abc12345，必须是 AVAILABLE METHODS 中出现的 id>","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}]}\n' +
+      '区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。'
     return head
   }
   function verifierTargetText(r) {
@@ -1557,6 +1603,12 @@ export function apply(ctx) {
   async function handleExplorer(childId, meta, output) {
     delete agentRegistry[childId]
     const parsed = parseJson(output)
+    // 新协议（代理直接写 md + sync_meta）：__writes 落盘，meta.kind==='directions' 走元数据同步
+    if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'directions'))) {
+      await applyAgentWrites(parsed.__writes)
+      if (parsed.meta && parsed.meta.kind === 'directions') await syncMeta(parsed.meta, { id: childId })
+      await saveAll(); return
+    }
     const dirs = (parsed && parsed.directions) || []
     await consumeMethodFeedback(parsed, { qid: meta.qid })
     if (dirs.length === 0) { logActivity('explorer', 'problem ' + meta.qid + ' returned no directions (output head: ' + String(output || '').slice(0, 200) + ')'); await saveAll(); return }
@@ -1575,6 +1627,13 @@ export function apply(ctx) {
   async function handleSolver(childId, meta, output, stopReason) {
     const qid = meta.qid; const dirId = meta.direction
     const parsed = parseJson(output)
+    // 新协议（代理直接写 md + sync_meta）：__writes 落盘，meta.kind==='solver' 走元数据同步
+    if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'solver'))) {
+      delete agentRegistry[childId]
+      await applyAgentWrites(parsed.__writes)
+      if (parsed.meta && parsed.meta.kind === 'solver') await syncMeta(parsed.meta, { id: childId })
+      await saveAll(); return
+    }
     const q = problems.get(qid); if (!q) { delete agentRegistry[childId]; return }
     const dirs = getDirState(qid)
     const dir = dirs.find(function (d) { return d.id === dirId })
@@ -1753,21 +1812,32 @@ export function apply(ctx) {
     logActivity('method', 'method keeper spawned (' + why + '), pending inventions: ' + methodLog.pendingInventions.length)
   }
   async function buildMethodDigest() {
+    // 精简摘要：只给标题/类型/来源 + 一句摘要，避免 pending 全文压垮 Method Keeper
     const lines = []
-    lines.push('- 待沉淀发明 ' + methodLog.pendingInventions.length + ' 条：')
-    for (const inv of methodLog.pendingInventions.slice(-12)) lines.push('  * [' + (inv.类型 || '') + '] ' + (inv.标题 || '') + ' — ' + (inv.内容描述 || ''))
-    const recentProps = allPropos().slice(-8).map(function (p) { return '  * 命题 ' + p.id + '「' + p.标题 + '」概率=' + p.概率 + ' 状态=' + p.状态 })
-    if (recentProps.length) { lines.push('- 最近命题：'); lines.push.apply(lines, recentProps) }
+    lines.push('- 待沉淀发明 ' + methodLog.pendingInventions.length + ' 条（仅列标题/类型/来源）：')
+    for (const inv of methodLog.pendingInventions.slice(-16)) {
+      const desc = String(inv.内容描述 || '').slice(0, 60)
+      lines.push('  * [' + (inv.类型 || '') + '] ' + (inv.标题 || '') + (inv.来源 ? '（' + inv.来源 + '）' : '') + (desc ? '：' + desc + '…' : ''))
+    }
+    const recentProps = allPropos().slice(-6).map(function (p) { return p.id + '「' + p.标题 + '」概率=' + p.概率 })
+    if (recentProps.length) lines.push('- 最近命题：' + recentProps.join('；'))
     const recentDirs = []
     for (const [qid, dirs] of dirState) {
-      for (const d of dirs.slice(-2)) if (d.lessons && d.lessons.length) recentDirs.push('  * ' + qid + '/' + d.id + '「' + d.title + '」教训：' + d.lessons.join('；'))
+      for (const d of dirs.slice(-1)) if (d.lessons && d.lessons.length) recentDirs.push(qid + '/' + d.id + '「' + d.title + '」教训摘要：' + d.lessons.join('；').slice(0, 80))
     }
-    if (recentDirs.length) { lines.push('- 最近方向教训：'); lines.push.apply(lines, recentDirs) }
+    if (recentDirs.length) { lines.push('- 最近方向教训（摘要）：'); lines.push.apply(lines, recentDirs) }
     return lines.join('\n')
   }
   async function handleMethodKeeper(childId, meta, output) {
     delete agentRegistry[childId]
     const parsed = parseJson(output)
+    // 新协议（Method Keeper 直接写方法卡 md + sync_meta）：__writes 落盘，meta.kind==='methods' 登记
+    if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'methods'))) {
+      await applyAgentWrites(parsed.__writes)
+      if (parsed.meta && parsed.meta.kind === 'methods') await syncMeta(parsed.meta, { id: childId })
+      if (parsed.meta && Array.isArray(parsed.meta.created) && parsed.meta.created.length > 0) methodLog.pendingInventions = []
+      await saveAll(); return
+    }
     if (!parsed) { logActivity('method', 'method keeper returned nothing usable'); await saveAll(); return }
     let created = 0
     if (Array.isArray(parsed.new_methods)) {
@@ -1801,7 +1871,24 @@ export function apply(ctx) {
     // 消费已沉淀的发明：Method Keeper 有有效输出（新建或改进）即视为已处理本轮 pending。
     // 修复：仅返回 improvements 而无可新建方法时也必须清空，否则 pending 永不归零导致反复整理。
     const hasOutput = (Array.isArray(parsed.new_methods) && parsed.new_methods.length > 0) || (Array.isArray(parsed.improvements) && parsed.improvements.length > 0)
-    if (hasOutput) methodLog.pendingInventions = []
+    // 兜底建卡：Method Keeper 未产出（输出不合规/空对象/模型未能蒸馏）时，把 pending 发明直接建成草稿方法卡，
+    // 保证"发明不因一次梳理失败而永久滞留"；草稿卡状态=经验、来源=草稿沉淀，后续可被 Method Keeper 再整理。
+    let fallback = 0
+    if (!hasOutput && methodLog.pendingInventions.length > 0) {
+      for (const inv of methodLog.pendingInventions.slice(-20)) {
+        if (!inv || !inv.标题) continue
+        const id = 'm-' + shortId()
+        const m = {
+          id: id, 标题: String(inv.标题), 类型: inv.类型 || '方法', 状态: '经验',
+          可信断言: [], 上级体系: [], 子方法: [], 相关: [],
+          适用场景: '', 核心内容: String(inv.内容描述 || ''), 定义与记号: '',
+          applications: [], improvements: [{ v: 1, 原因: '草稿沉淀', text: 'Method Keeper 未产出，按发明清单兜底建卡（来源：' + (inv.来源 || '') + '）' }], 来源: '草稿沉淀(' + (inv.来源 || '') + ')',
+        }
+        if (!methods.has(id)) { methods.set(id, m); await saveMethod(m, false); fallback += 1 }
+      }
+      if (fallback > 0) logActivity('method', 'method keeper 未产出，兜底建 ' + fallback + ' 张草稿方法卡（防发明滞留）')
+    }
+    if (hasOutput || fallback > 0) methodLog.pendingInventions = []
     methodLog.keepCount += 1
     methodLog.lastKeepAt = now()
     await saveAll()
@@ -2180,6 +2267,89 @@ export function apply(ctx) {
   registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { if (methods.has(args.id)) return { ok: false, message: 'method id already exists' }; const m = { id: args.id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: 'Methods/' + m.id + '.md' } })
   registerTool('vibe_math_method_list', 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.', objParams({}), async function () { const all = Array.from(methods.values()); const g = Array.from(globalMethods.values()); return { ok: true, count: all.length, globalCount: g.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: false } }).concat(g.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: true } })) } })
   registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), async function () { return { ok: true, project: currentProject, lock: projectLock } })
+  registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await claimWrite(String(args.target || ''), agent) })
+  registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root). Call after you finished writing it.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await releaseWrite(String(args.target || ''), agent) })
+  registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after you wrote content to Markdown files (direction status/survival, registered lemma ids, methods_used/new_inventions, new method cards). Content itself stays in the md files; this only keeps the scheduler index/state in sync.', objParams({ meta: { type: 'object' } }, ['meta']), async function (args, agent) { return await syncMeta(args.meta || {}, agent) })
+
+  // ---- 代理直接写 md 的写锁 + 轻元数据同步（任务2：代理自组织写各自对应路径的 md，避免并发写同一文件） ----
+  async function claimWrite(target, agent) {
+    const childId = (agent && agent.id) ? String(agent.id) : 'scheduler'
+    const key = String(target || '').replace(/\\/g, '/')
+    if (!key) return { ok: false, message: 'target required' }
+    const owner = fileOwner[key]
+    if (owner && owner.childId !== childId && (now() - (owner.at || 0)) < 60000) {
+      return { ok: false, busy: owner.childId, message: '文件 "' + key + '" 正被其他代理写入，请稍后（写锁）' }
+    }
+    fileOwner[key] = { childId: childId, sessionId: sessionId, at: now() }
+    logActivity('write-lock', 'claim ' + key + ' by ' + childId)
+    return { ok: true, key: key, path: frameworkRoot() + '/' + key, hint: '现在可写入 ' + frameworkRoot() + '/' + key + '；写完请 release_write' }
+  }
+  async function releaseWrite(target, agent) {
+    const childId = (agent && agent.id) ? String(agent.id) : 'scheduler'
+    const key = String(target || '').replace(/\\/g, '/')
+    const owner = fileOwner[key]
+    if (owner && owner.childId !== childId) return { ok: false, message: '写锁不属于此代理，无法释放' }
+    delete fileOwner[key]
+    logActivity('write-lock', 'release ' + key + ' by ' + childId)
+    return { ok: true, key: key }
+  }
+  // 元数据同步：代理把内容写进 md 后，用极简字段让调度器更新索引/状态（content 不进 JSON）
+  async function syncMeta(meta, agent) {
+    if (!meta || typeof meta !== 'object') return { ok: false, message: 'meta object required' }
+    const kind = String(meta.kind || '')
+    if (kind === 'directions') {
+      // explorer 写好了方向定义：更新 dirState 元数据（id/title/存活率/状态）
+      const qid = String(meta.qid || '')
+      if (qid && Array.isArray(meta.directions)) {
+        const list = (meta.directions || []).map(function (d) {
+          const old = (getDirState(qid) || []).find(function (x) { return x.id === d.id })
+          return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || old?.method || '', core_assumption: d.core_assumption || old?.core_assumption || '', feasibility: clamp01(d.feasibility != null ? d.feasibility : (old ? old.survival : 0.5)), status: 'active', round: old ? old.round : 0, survival: clamp01(d.survival != null ? d.survival : (old ? old.survival : 0.5)), routes: old?.routes || [], lessons: old?.lessons || [], blockers: old?.blockers || [], lemmas: old?.lemmas || [], journal: old?.journal || [], dead_end_reason: '' }
+        })
+        dirState.set(qid, list)
+        await saveDirState(); await writeJournal(qid)
+        await consumeMethodFeedback(meta, { qid: qid })
+        logActivity('explorer', 'problem ' + qid + ' → ' + list.length + ' directions (meta sync)')
+      }
+      return { ok: true }
+    }
+    if (kind === 'solver') {
+      const qid = String(meta.qid || ''); const dirId = String(meta.dirId || '')
+      const q = problems.get(qid)
+      const dirs = getDirState(qid)
+      const dir = dirs.find(function (d) { return d.id === dirId })
+      if (q && dir) {
+        if (typeof meta.survival === 'number') dir.survival = clamp01(meta.survival)
+        if (meta.status) dir.status = String(meta.status)
+        if (meta.dead_end_reason) dir.dead_end_reason = String(meta.dead_end_reason)
+        if (meta.round) dir.round = Number(meta.round)
+        // 引理注册（id 由代理在命题卡里自定）
+        if (Array.isArray(meta.lemmas)) {
+          for (const l of meta.lemmas) {
+            if (!l || (!l.id && !l.title)) continue
+            const pid = l.id || ('p-' + shortId())
+            if (!propos.has(pid)) { propos.set(pid, { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(l.prob != null ? l.prob : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: l.分类 || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }); await saveProposition(propos.get(pid)) }
+            if (!(dir.lemmas || []).some(function (x) { return x.id === pid })) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: pid, title: l.title || pid }) }
+          }
+        }
+        // 解法上报（prob 由代理写进 Problems/<qid>.md；这里只登记）
+        if (meta.solution_prob != null && meta.solution_text) {
+          q.solutions = q.solutions || []
+          const p = clamp01(meta.solution_prob)
+          q.solutions.push({ title: '解法 ' + (q.solutions.length + 1), prob: p >= 1 ? 0.99 : (p <= 0 ? 0.01 : p), status: '未定论', text: String(meta.solution_text).slice(0, 2000) })
+        }
+        await saveProblem(q); await saveDirState(); await writeJournal(qid)
+        await consumeMethodFeedback(meta, { qid: qid, dirId: dirId })
+        logActivity('solver', qid + '/' + dirId + ' meta sync (status=' + (meta.status || '') + ', survival=' + dir.survival + ')')
+      }
+      return { ok: true }
+    }
+    if (kind === 'methods') {
+      if (Array.isArray(meta.used)) for (const mu of meta.used) await consumeMethodFeedback({ methods_used: mu ? [mu] : [] }, { qid: '', dirId: '' })
+      if (Array.isArray(meta.created)) for (const mid of meta.created) { if (!methods.has(mid)) { methods.set(mid, { id: mid, 标题: mid, 类型: '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: '', 核心内容: '', 定义与记号: '', applications: [], improvements: [], 来源: 'agent-written' }); await saveMethod(methods.get(mid), false) } }
+      return { ok: true }
+    }
+    return { ok: false, message: 'unknown meta kind: ' + kind }
+  }
 
   // ================= slash command /vibe =================
   async function dispatchVibeCommand(cmd, args) {
@@ -2268,6 +2438,9 @@ export function apply(ctx) {
   registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), 'vibe_math_method_add')
   registerTool('vibe_math_method_list', 'List methods from Methods/ (+ global VibeMath/Methods/).', objParams({}), 'vibe_math_method_list')
   registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), 'vibe_math_lock_status')
+  registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly.', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_claim_write')
+  registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root).', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_release_write')
+  registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after writing content to Markdown files.', objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({

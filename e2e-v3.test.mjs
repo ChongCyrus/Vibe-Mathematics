@@ -124,7 +124,7 @@ const plugin = mod.default || mod
 plugin.apply(ctx)
 
 console.log('tool registrations:', toolRegs.length)
-assert(toolRegs.length === 27, '27 tools registered once (not per session)')
+assert(toolRegs.length === 30, '30 tools registered once (not per session)')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')
 
 async function callTool(name, args, agent) {
@@ -468,6 +468,34 @@ assert(mGmd.includes('## 改进历史') && mGmd.includes('zeta 应用说明'), '
 // application records now carry 问题/方向 context
 const mGafter = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Methods', 'mG.md'), 'utf8')
 assert(mGafter.includes('问题 qF') && mGafter.includes('方向 d1'), 'application record carries 问题/方向 context')
+
+// ================= Scenario L: agent-direct-write protocol (write lock + __writes/meta) =================
+console.log('\n-- Scenario L: agent-direct-write (write lock + new channel) --')
+// L1: write lock — one file, one owner at a time
+const c1 = await callTool('vibe_math_claim_write', { target: 'Progress/qF/dL.md' }, ROOT_A)
+assert(c1.ok === true && c1.path.includes('Progress/qF/dL.md'), 'claim_write succeeds (owner=scheduler)')
+const c2 = await callTool('vibe_math_claim_write', { target: 'Progress/qF/dL.md' }, ROOT_B)
+assert(c2.ok === false && c2.busy !== undefined, 'second agent claim on same file is rejected (write lock)')
+const r1 = await callTool('vibe_math_release_write', { target: 'Progress/qF/dL.md' }, ROOT_A)
+assert(r1.ok === true, 'release_write succeeds')
+const c3 = await callTool('vibe_math_claim_write', { target: 'Progress/qF/dL.md' }, ROOT_B)
+assert(c3.ok === true, 'file reclaimable after release')
+await callTool('vibe_math_release_write', { target: 'Progress/qF/dL.md' }, ROOT_B)
+// L2: solver writes content directly via __writes + sync_meta
+await waitAndFirePlan('```json\n{"summary":"solve qF d2 directly","plan":[{"action":"spawn","role":"solver","target":"qF","direction":"d2","reason":"agent-direct-write"}]}\n```')
+assert(await waitFor('solver qF:d2 (direct)', () => allSpawnsByLabel('solver:qF:d2').length >= 1), 'solver:qF:d2 spawned (direct channel)')
+const solL = allSpawnsByLabel('solver:qF:d2')[0]
+fireEnd({ id: solL.childId, runId: 'sL', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"__writes":[{"path":"Progress/qF/d2.md","content":"# 研究方向日志｜qF / d2\\n- 方向: 新方向2\\n## 本轮（代理自写）\\n代理直接把研究叙述写进了方向文件。"}],"meta":{"kind":"solver","qid":"qF","dirId":"d2","status":"continue","survival":0.6,"lemmas":[{"id":"pL1","title":"新引理L","分类":"分析","statement":"设 A 为正定矩阵，则其特征值全为正。","prob":0.7}]}}\n```' }] })
+assert(await waitFor('direction file written by agent', () => {
+  const f = join(WS, 'VibeMath', 'Projects', 'projf', 'Progress', 'qF', 'd2.md')
+  return existsSync(f) && readFileSync(f, 'utf8').includes('代理直接把研究叙述写进了方向文件')
+}), 'agent-direct-write: Progress/qF/d2.md written from __writes (content live in md, not JSON)')
+assert(await waitFor('lemma registered via meta', () => existsSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Propos', '分析', 'pL1.md'))), 'agent-direct-write: lemma pL1 registered to Propos/分析/pL1.md via sync_meta')
+const dirsL = JSON.parse(readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'State', 'directions.json'), 'utf8'))
+const d2 = (dirsL.qF || []).find(d => d.id === 'd2')
+assert(d2 && Math.abs(d2.survival - 0.6) < 1e-9, 'dirState d2 survival updated to 0.6 via sync_meta')
+const aggL = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Progress', 'qF.md'), 'utf8')
+assert(aggL.includes('## 方向 d2') && aggL.includes('**引理索引**'), 'aggregate Progress/qF.md updated (direction summary + lemma index)')
 
 // ---------- cleanup ----------
 await callTool('vibe_math_pause', {}, ROOT_A)
