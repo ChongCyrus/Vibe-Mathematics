@@ -908,7 +908,7 @@ export function apply(ctx) {
       '\n\n6) WRITE-INTO-MD WORKFLOW（推荐，代理自组织直接写 md）：框架允许你**直接写 Markdown**，把研究内容落到对应路径的 md 文件里，而不是全部塞进 JSON。做法（你拥有 file 工具）：\n' +
       '- 每个角色有明确的"归属文件"：求解器写该方向的完整叙述到 `Progress/<问题id>/<方向id>.md`；新引理写一张完整命题卡到 `Propos/<分类>/<p-id>.md`（含锚点 `# 命题｜标题`、`- ID/状态/概率/优先级` 与 `## 陈述`/`## 证明尝试`）；方法整理代理写 `Methods/<m-id>.md`（锚点 `- ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`）。\n' +
       '- **并发写安全**：写任何文件前先 `vibe_math_claim_write({target:"<相对项目根的路径>"})` 申请写锁（同一文件同一时刻只允许一个代理写；若返回 busy 请稍后重试），写完 `vibe_math_release_write({target})`。不同方向是不同文件，天然不冲突。\n' +
-      '- 写完内容后，用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报**轻量元数据**（方向状态/存活率/引理 id/方法卡 id/新发明清单），让调度器更新索引与调度——内容留在 md，元数据才进机读接口。\n' +
+      '- 写完内容后，用 `vibe_math_sync_meta({meta:{kind:"solver|directions|methods", ...}})` 上报**轻量元数据**（方向状态/存活率/引理 id 及**证明 proof**/方法卡 id/新发明清单），让调度器更新索引与调度——内容留在 md，只有调度元数据与**待验证的证明**才进机读接口（证明是验证必需，必须随 lemmas 上报，否则验证器无法核验）。\n' +
       '- 若你所在环境无法写文件（工具不可用/被拒），再回退到"把内容放进下面的 JSON 字段"由调度器落盘。两种方式二选一即可，不要重复。'
   }
   function knowledgeContextText() { const k = params.knowledgeContext ? String(params.knowledgeContext) : defaultKnowledgeContext(); return k ? ('\n' + k + '\n') : '' }
@@ -1774,7 +1774,12 @@ export function apply(ctx) {
       for (const mu of parsed.methods_used) {
         if (!mu || !mu.id) continue
         const m = methods.get(mu.id) || globalMethods.get(mu.id)
-        if (!m) { logActivity('method', 'methods_used referenced unknown method ' + mu.id); continue }
+        if (!m) {
+          // 未知 id：solver 引用了一个尚未入卡的方法/技巧 → 作为待沉淀发明记录，防引用丢失（Method Keeper 将据此建卡）
+          methodLog.pendingInventions.push({ at: now(), 来源: ctx.qid ? ('问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '')) : '', 类型: '方法', 标题: String(mu.id), 内容描述: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
+          logActivity('method', 'methods_used referenced unknown method ' + mu.id + ' → queued as pending invention')
+          continue
+        }
         if (methods.has(mu.id)) {
           m.applications = m.applications || []
           m.applications.push({ at: fmtTime(), 问题: ctx.qid || '', 方向: ctx.dirId || '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
@@ -2283,6 +2288,9 @@ export function apply(ctx) {
     if (owner && owner.childId !== childId && (now() - (owner.at || 0)) < 60000) {
       return { ok: false, busy: owner.childId, message: '文件 "' + key + '" 正被其他代理写入，请稍后（写锁）' }
     }
+    // 确保目标父目录存在（如 Progress/<qid>/ 供方向文件写入）
+    const pm = /^(Progress|Propos|Methods)\/([^/]+)\//.exec(key)
+    if (pm) { const base = frameworkRoot(); await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/' + pm[1] + '/' + pm[2]) + ' | Out-Null') }
     fileOwner[key] = { childId: childId, sessionId: sessionId, at: now() }
     logActivity('write-lock', 'claim ' + key + ' by ' + childId)
     return { ok: true, key: key, path: frameworkRoot() + '/' + key, hint: '现在可写入 ' + frameworkRoot() + '/' + key + '；写完请 release_write' }
@@ -2304,6 +2312,9 @@ export function apply(ctx) {
       // explorer 写好了方向定义：更新 dirState 元数据（id/title/存活率/状态）
       const qid = String(meta.qid || '')
       if (qid && Array.isArray(meta.directions)) {
+        // 重派生替换方向前：把旧方向的 journal 归档到日志（与旧 JSON handleExplorer 一致）
+        const oldDirs = dirState.get(qid)
+        if (oldDirs && oldDirs.length > 0) await archiveDirections(qid, oldDirs)
         const list = (meta.directions || []).map(function (d) {
           const old = (getDirState(qid) || []).find(function (x) { return x.id === d.id })
           return { id: d.id || ('d_' + shortId()), title: d.title || '', method: d.method || old?.method || '', core_assumption: d.core_assumption || old?.core_assumption || '', feasibility: clamp01(d.feasibility != null ? d.feasibility : (old ? old.survival : 0.5)), status: 'active', round: old ? old.round : 0, survival: clamp01(d.survival != null ? d.survival : (old ? old.survival : 0.5)), routes: old?.routes || [], lessons: old?.lessons || [], blockers: old?.blockers || [], lemmas: old?.lemmas || [], journal: old?.journal || [], dead_end_reason: '' }
@@ -2313,6 +2324,7 @@ export function apply(ctx) {
         await consumeMethodFeedback(meta, { qid: qid })
         logActivity('explorer', 'problem ' + qid + ' → ' + list.length + ' directions (meta sync)')
       }
+      await saveAll()
       return { ok: true }
     }
     if (kind === 'solver') {
@@ -2332,6 +2344,8 @@ export function apply(ctx) {
             const pid = l.id || ('p-' + shortId())
             if (!propos.has(pid)) {
               const pn = { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(l.prob != null ? l.prob : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: l.分类 || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }
+              // 引理证明文本（验证必需）由代理在 sync_meta 的 l.proof 上报（结构化，非长叙述）；无则验证器只能验裸命题
+              if (l.proof) { pn.proofs = [{ title: (l.title || pid) + '（证明）', prob: clamp01(l.prob != null ? l.prob : 0.7), status: '未定论', text: String(l.proof) }] }
               propos.set(pid, pn)
               // 若代理已直接写了该命题卡，保留其内容（不覆盖）；否则写一张标准卡兜底（保证可被索引/验证）
               const rel = 'Propos/' + categoryOf(pn) + '/' + pid + '.md'
@@ -2350,11 +2364,20 @@ export function apply(ctx) {
         await consumeMethodFeedback(meta, { qid: qid, dirId: dirId })
         logActivity('solver', qid + '/' + dirId + ' meta sync (status=' + (meta.status || '') + ', survival=' + dir.survival + ')')
       }
+      await saveAll()
       return { ok: true }
     }
     if (kind === 'methods') {
       if (Array.isArray(meta.used)) for (const mu of meta.used) await consumeMethodFeedback({ methods_used: mu ? [mu] : [] }, { qid: '', dirId: '' })
-      if (Array.isArray(meta.created)) for (const mid of meta.created) { if (!methods.has(mid)) { methods.set(mid, { id: mid, 标题: mid, 类型: '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: '', 核心内容: '', 定义与记号: '', applications: [], improvements: [], 来源: 'agent-written' }); await saveMethod(methods.get(mid), false) } }
+      if (Array.isArray(meta.created)) for (const mid of meta.created) {
+        if (!methods.has(mid)) {
+          const mm = { id: mid, 标题: mid, 类型: '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: '', 核心内容: '', 定义与记号: '', applications: [], improvements: [], 来源: 'agent-written' }
+          methods.set(mid, mm)
+          // 若代理已直接写了方法卡文件则保留其内容；否则写一张标准卡兜底
+          if ((await readText('Methods/' + mid + '.md')) === undefined) await saveMethod(mm, false)
+        }
+      }
+      await saveAll()
       return { ok: true }
     }
     return { ok: false, message: 'unknown meta kind: ' + kind }

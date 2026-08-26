@@ -497,6 +497,18 @@ assert(d2 && Math.abs(d2.survival - 0.6) < 1e-9, 'dirState d2 survival updated t
 const aggL = readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'Progress', 'qF.md'), 'utf8')
 assert(aggL.includes('## 方向 d2') && aggL.includes('**引理索引**'), 'aggregate Progress/qF.md updated (direction summary + lemma index)')
 
+// ================= Scenario M: proof reachable for verification + unknown methods_used => pending invention =================
+console.log('\n-- Scenario M: lemma proof via sync_meta + unknown methods_used --')
+const sm = await callTool('vibe_math_sync_meta', { meta: { kind: 'solver', qid: 'qF', dirId: 'd2', status: 'continue', lemmas: [{ id: 'pM', title: '带证明引理', 分类: '分析', statement: '任意有限个互异时频平移线性无关特例成立。', proof: '这是一段完整证明过程，验证器据此核验。' }], methods_used: [{ id: '某新技巧名', 效果: '用了', 建议: '' }] } }, ROOT_A)
+assert(sm.ok === true, 'sync_meta ok')
+assert(await waitFor('proof lemma card with proof', () => {
+  const f = join(WS, 'VibeMath', 'Projects', 'projf', 'Propos', '分析', 'pM.md')
+  return existsSync(f) && readFileSync(f, 'utf8').includes('## 证明尝试') && readFileSync(f, 'utf8').includes('完整证明过程')
+}), 'lemma with proof registered (proof text reachable for verification)')
+assert(await waitFor('unknown methods_used -> pending invention', () => {
+  try { const ml = JSON.parse(readFileSync(join(WS, 'VibeMath', 'Projects', 'projf', 'State', 'method_log.json'), 'utf8')); return ml.pendingInventions.some(i => i.标题 === '某新技巧名') } catch (e) { return false }
+}), 'unknown methods_used referenced as pending invention (not lost)')
+
 // ---------- cleanup ----------
 await callTool('vibe_math_pause', {}, ROOT_A)
 rmSync(WS, { recursive: true, force: true })
