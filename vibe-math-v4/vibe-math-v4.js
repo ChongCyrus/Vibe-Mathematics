@@ -194,11 +194,11 @@ export function apply(ctx) {
         +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
-      const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+(v.verdict==='TRUE'?'判真':v.verdict==='FALSE'?'判假':'不确定')+' (正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+') '+v.reason).join('\n')
+      const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
-        +'请给出你对「该对象为真」的正确概率 `verdict`，取值范围 **0–1**：**1 = 绝对为真（判真）**, **0 = 绝对为假（判假）**, **0.5 = 完全不确定**, 介于其间按倾向。\n'
-        +'只有**全体常驻一致判真（正确概率 verdict 为 1）或一致判假（正确概率 verdict 为 0）**才算数；否则该对象留库并附上全组平均正确概率（不写入 Verified/）。\n'
+        +'请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。\n'
+        +'判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
         +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
         +(vs.stage==='debate'&&others?('### 他人意见（已转发给你）\n'+others+'\n'):'')
@@ -345,8 +345,9 @@ export function apply(ctx) {
       const vs=verifyState; const expected=Array.from(residents.keys()).length
       const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
       const vals=Object.values(vs.verdicts)
-      const allTrue = allVoted && vals.every(x=>x.verdict==='TRUE')
-      const allFalse = allVoted && vals.every(x=>x.verdict==='FALSE')
+      // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
+      const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
+      const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
       if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
       if(vs.round+1<params.verdictMaxRounds){ vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate'); await saveAll(); await scheduleNext(); return }
       const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
@@ -363,7 +364,7 @@ export function apply(ctx) {
     }
     async function writeDebateDoc(vs,done,val){
       const lines=['# 验证辩论｜'+vs.targetId+'('+vs.targetType+')｜'+fmtTime(),'',(done?('**结论**：'+(val===1?'全体一致为真':'全体一致为假')):('**未达成全体一致**，平均概率 '+val.toFixed(2))),'','## 各常驻意见']
-      for(const [k,v] of Object.entries(vs.verdicts)){ lines.push('### '+k+'｜'+(v.verdict==='TRUE'?'判真':v.verdict==='FALSE'?'判假':'不确定')+'｜正确概率 '+(v.prob!=null?Number(v.prob).toFixed(2):'0.50')); lines.push(v.reason||''); lines.push('') }
+      for(const [k,v] of Object.entries(vs.verdicts)){ lines.push('### '+k+'｜正确概率 '+(v.prob!=null?Number(v.prob).toFixed(2):'0.50')); lines.push(v.reason||''); lines.push('') }
       await writeText('Shared/debates/'+vs.targetId+'.md', lines.join('\n'))
     }
     async function writeVerifiedCard(vs,isTrue){
@@ -432,7 +433,9 @@ export function apply(ctx) {
         const signal = makeSignal(params.activityTimeoutMs||60000)
         const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
         if(result && (result.shadowedSeqs||[]).length>0){
-          r.roundsSinceCompact=0; r.needCompact=false; r.contextPct=Math.min(r.contextPct||15,25)
+          // the resident's real session was compacted → its context is now a summary.
+          // Flag needCompact so the NEXT wake re-anchors the core rules (they may have been blurred).
+          r.roundsSinceCompact=0; r.needCompact=true; r.contextPct=Math.min(r.contextPct||15,25)
           logActivity('compact', r.rId+' real /compact (shadowed '+result.shadowedSeqs.length+' items, ~'+String(result.shadowedTokenCount||0)+' tokens)')
         }
       } catch(e){ /* real compaction unavailable/failed; the soft directive already covers it */ }
@@ -502,8 +505,8 @@ export function apply(ctx) {
         else if(/^TRUE$/i.test(String(v.verdict))){ p=1 }
         else if(/^FALSE$/i.test(String(v.verdict))){ p=0 }
         else { p=clamp01(Number(v.confidence)) }
-        const verdict= p>0.5?'TRUE': p<0.5?'FALSE':'UNCERTAIN'
-        verifyState.verdicts[r.rId]={verdict,prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
+        // verdict is a PURE 0-1 probability (a degree); no binary TRUE/FALSE classification.
+        verifyState.verdicts[r.rId]={prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
         await saveAll(); await continueVerifyRound(); return
       }
       // normal turn
@@ -542,7 +545,7 @@ export function apply(ctx) {
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
     }
     async function resume(){
-      currentProject=await readCurrentProject(); await ensureDirs(); await loadAll()
+      currentProject=await readCurrentProject(); await ensureDirs(); await loadAll(); await loadSettings()
       if(phase==='idle' && !running && residents.size===0) return {ok:false,message:'nothing to resume'}
       // If the persisted State came from a DIFFERENT process (crash/restart), the saved
       // childIds are stale; clear them so residents re-spawn (their libraries persist on
@@ -573,7 +576,10 @@ export function apply(ctx) {
       if(cfg && cfg.project && String(cfg.project).trim()) currentProject=String(cfg.project).trim()
       if(cfg && cfg.problem) problemText=String(cfg.problem)
       if(cfg && cfg.params && typeof cfg.params==='object') for(const k of Object.keys(cfg.params)) if(k in params) params[k]=cfg.params[k]
-      await writeCurrentProject(); await ensureDirs(); await saveSettings(); await saveAll()
+      await writeCurrentProject(); await ensureDirs(); await saveSettings()
+      // create the problem card so the project is complete BEFORE the run starts
+      if(problemText){ const pid=slugify(problemText.slice(0,40))||'problem'; await writeText('Problems/'+pid+'.md','# 问题｜'+pid+'\n- ID: '+pid+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n') }
+      await saveAll()
       return {ok:true,project:currentProject,problem:problemText?problemText.slice(0,60):'',params:Object.keys(params).map(k=>k+'='+params[k]).join(', ')}
     }
     async function initAbort(){ clearHeartbeat(); running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
@@ -656,6 +662,7 @@ export function apply(ctx) {
       else if(cmd==='members') r={ok:true,residents:s.listResidents()}
       else if(cmd==='add') r=await s.addMember(rest.join(' '))
       else if(cmd==='remove') r=await s.removeMember(rest[0]||'')
+      else if(cmd==='set'){ const upd={}; for(const tok of rest){ const eq=tok.indexOf('='); if(eq>0){ const k=tok.slice(0,eq); const rv=tok.slice(eq+1); const n=Number(rv); upd[k]=Number.isFinite(n)?n:rv } } r=s.setParams(upd) }
       else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message|meeting|members|add|remove|set'}
       return {kind:'success',text:JSON.stringify(r,null,2)}
     },
