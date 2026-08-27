@@ -51,16 +51,16 @@
         task board / debates), Verified/ (read-only, ONLY after unanimous consensus),
         State/ (framework-private), Reliable/ (references), Notes/.
 
-      Main controls:
-        - vibe_v4_start {problem, residentCount?, seedDirections?} — spawn residents, brainstorm, begin.
-        - vibe_v4_resume — resume a persisted run.
-        - vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
+      Main controls (recommended flow: configure FIRST, then start):
+        - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
+        - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, verdictMaxRounds} — tune params (persisted to the settings file).
+        - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
         - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
         - vibe_v4_list_members — list residents.
-        - vibe_v4_set {compactAfterRounds, compactThreshold, residentCount, maxParallel, activityTimeoutMs}.
-      A /v4 slash command mirrors the main controls.
+      A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set).
 
       TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
       trustworthy; everything else — unverified resident claims, Progress/, Method claims —

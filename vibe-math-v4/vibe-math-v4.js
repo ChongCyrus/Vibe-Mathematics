@@ -157,6 +157,13 @@ export function apply(ctx) {
       s.push('- 退出时**只**输出一个 JSON 对象（放在 ```json 代码围栏内；围栏外不要有文字）。')
       return s.join('\n')
     }
+    // A SHORT core-rules recap, re-injected ONLY right after a compaction so the resident
+    // never loses the ground rules (they are told fully once at brainstorm, but a /compact
+    // could blank them).
+    function coreRulesBrief(){
+      const base=frameworkRoot()
+      return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
+    }
     function brainstormPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
         +contextBrief(r,'full')+'\n'
@@ -187,14 +194,16 @@ export function apply(ctx) {
         +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
-      const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+v.verdict+' ('+v.confidence+') '+v.reason).join('\n')
+      const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': '+(v.verdict==='TRUE'?'判真':v.verdict==='FALSE'?'判假':'不确定')+' (正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+') '+v.reason).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
-        +'只有**全体常驻一致判真（或一致判假）**才算数。请给出你**诚实独立的判断**'
+        +'请给出你对「该对象为真」的正确概率 `verdict`，取值范围 **0–1**：**1 = 绝对为真（判真）**, **0 = 绝对为假（判假）**, **0.5 = 完全不确定**, 介于其间按倾向。\n'
+        +'只有**全体常驻一致判真（正确概率 verdict 为 1）或一致判假（正确概率 verdict 为 0）**才算数；否则该对象留库并附上全组平均正确概率（不写入 Verified/）。\n'
+        +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
         +(vs.stage==='debate'&&others?('### 他人意见（已转发给你）\n'+others+'\n'):'')
         +'\nReply with ONLY a JSON object:\n'
-        +'{"vote":{"verdict":"TRUE","confidence":0.8,"reason":"<your logic>"}}'
+        +'{"vote":{"verdict":0.9,"reason":"<your logic>"}}'
     }
 
     // ---- resident lifecycle ----
@@ -216,7 +225,8 @@ export function apply(ctx) {
       // framework uses as the next context seed (equivalent to /compact's "consolidate & forget").
       let prompt = promptText
       if(r.needCompact || (Number(r.contextPct)>=Number(params.compactThreshold)) || (r.roundsSinceCompact>=Number(params.compactAfterRounds))){
-        prompt = '[CONTEXT COMPACT — your conversation is at/near the limit. Do NOT re-derive history.\n' +
+        prompt = coreRulesBrief() + '\n' +
+          '[CONTEXT COMPACT — your conversation is at/near the limit. Do NOT re-derive history.\n' +
           'Condense your current working state into ONE tight self-summary (findings so far, active direction, key artifacts you recorded, next concrete steps, open questions), then answer this round in the normal JSON format as usual.\n' +
           'Set "contextPct": 15 (your post-compact usage) and "compacted": true in the reply so the framework records the condensed seed.]\n\n' + promptText
         r.needCompact = true
@@ -311,7 +321,7 @@ export function apply(ctx) {
       }
       const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
       const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
-      logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (not all spoke / not unanimous)'))
+      logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
       if(allSolved){ running=false; autoDone=true; phase='done'; logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
       meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
@@ -339,7 +349,7 @@ export function apply(ctx) {
       const allFalse = allVoted && vals.every(x=>x.verdict==='FALSE')
       if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
       if(vs.round+1<params.verdictMaxRounds){ vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate'); await saveAll(); await scheduleNext(); return }
-      const avg=vals.length? vals.reduce((a,x)=>a+(x.verdict==='TRUE'?x.confidence:x.verdict==='FALSE'?1-x.confidence:0.5),0)/vals.length : 0.5
+      const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
       await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
@@ -353,7 +363,7 @@ export function apply(ctx) {
     }
     async function writeDebateDoc(vs,done,val){
       const lines=['# 验证辩论｜'+vs.targetId+'('+vs.targetType+')｜'+fmtTime(),'',(done?('**结论**：'+(val===1?'全体一致为真':'全体一致为假')):('**未达成全体一致**，平均概率 '+val.toFixed(2))),'','## 各常驻意见']
-      for(const [k,v] of Object.entries(vs.verdicts)){ lines.push('### '+k+'｜'+v.verdict+'｜'+v.confidence); lines.push(v.reason||''); lines.push('') }
+      for(const [k,v] of Object.entries(vs.verdicts)){ lines.push('### '+k+'｜'+(v.verdict==='TRUE'?'判真':v.verdict==='FALSE'?'判假':'不确定')+'｜正确概率 '+(v.prob!=null?Number(v.prob).toFixed(2):'0.50')); lines.push(v.reason||''); lines.push('') }
       await writeText('Shared/debates/'+vs.targetId+'.md', lines.join('\n'))
     }
     async function writeVerifiedCard(vs,isTrue){
@@ -485,8 +495,15 @@ export function apply(ctx) {
       }
       if((kind==='verif-ind'||kind==='verif-deb') && verifyState){
         const v=(parsed&&parsed.vote)||{}
-        const verdict=String(v.verdict)==='TRUE'?'TRUE':String(v.verdict)==='FALSE'?'FALSE':'UNCERTAIN'
-        verifyState.verdicts[r.rId]={verdict,confidence:cl(v.confidence!=null?v.confidence:0.5),reason:String(v.reason||parsed.summary||'')}
+        // verdict = 0-1 probability the object is TRUE (1=绝对真, 0=绝对假, 0.5=不确定);
+        // also accept legacy 'TRUE'/'FALSE' strings.
+        let p
+        if(typeof v.verdict==='number'){ p=clamp01(v.verdict) }
+        else if(/^TRUE$/i.test(String(v.verdict))){ p=1 }
+        else if(/^FALSE$/i.test(String(v.verdict))){ p=0 }
+        else { p=clamp01(Number(v.confidence)) }
+        const verdict= p>0.5?'TRUE': p<0.5?'FALSE':'UNCERTAIN'
+        verifyState.verdicts[r.rId]={verdict,prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
         await saveAll(); await continueVerifyRound(); return
       }
       // normal turn
@@ -510,10 +527,12 @@ export function apply(ctx) {
 
     // ---- controls ----
     async function start({problem,residentCount,seedDirections}){
-      if(!problem) return {ok:false,message:'problem text required'}
+      await loadSettings()
       currentProject=await readCurrentProject(); if(!currentProject||currentProject==='default'){ currentProject='default'; }
       await ensureDirs()
-      problemText=String(problem); problemId=slugify(String(problem).slice(0,40))||'problem'
+      if(problem) problemText=String(problem)
+      if(!problemText) return {ok:false,message:'problem text required (pass problem, or use vibe_v4_configure first)'}
+      problemId=slugify(problemText.slice(0,40))||'problem'
       if(residentCount) params.residentCount=Number(residentCount)||4
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
@@ -544,14 +563,26 @@ export function apply(ctx) {
       recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
-    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=upd[k] } return {ok:true} }
+    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=upd[k] } saveSettings().catch(()=>{}); return {ok:true} }
+    // ---- create / configure (no auto-start) + settings-file persistence ----
+    async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params) params[k]=s[k] } } }
+    async function saveSettings(){ await writeJson('State/settings.json', params) }
+    // Create/configure a project and set params/problem WITHOUT starting any resident.
+    // The intended flow: vibe_v4_configure {project?, problem?, params?}  →  vibe_v4_start {}.
+    async function configure(cfg){
+      if(cfg && cfg.project && String(cfg.project).trim()) currentProject=String(cfg.project).trim()
+      if(cfg && cfg.problem) problemText=String(cfg.problem)
+      if(cfg && cfg.params && typeof cfg.params==='object') for(const k of Object.keys(cfg.params)) if(k in params) params[k]=cfg.params[k]
+      await writeCurrentProject(); await ensureDirs(); await saveSettings(); await saveAll()
+      return {ok:true,project:currentProject,problem:problemText?problemText.slice(0,60):'',params:Object.keys(params).map(k=>k+'='+params[k]).join(', ')}
+    }
     async function initAbort(){ clearHeartbeat(); running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
     function setPause(){ clearHeartbeat(); running=false; return {ok:true,message:'paused'} }
 
     return {
       sessionId, running:()=>running, autoDone:()=>autoDone, phase:()=>phase,
       onResidentEnd, start, resume, status, report, addMember, removeMember, setParams,
-      setPause, initAbort, postMessage, startMeeting, saveAll, broadcast,
+      setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
       residentIdOf:(agent)=>{ const m=residentOfAgent(agent); return m||currentResident },
       useResident:(id)=>{ currentResident=id },
@@ -575,7 +606,8 @@ export function apply(ctx) {
       } })
   }
   // host/assistant-facing
-  registerTool('vibe_v4_start','Start V4: spawn N resident subagents (brainstorm then self-organize).',objParams({problem:{type:'string'},residentCount:{type:'integer'},seedDirections:{type:'array',items:{type:'string'}}},['problem']),(s,a)=>s.start(a))
+  registerTool('vibe_v4_configure','Create/configure a project: set project name, problem, and params WITHOUT starting a run. Use this FIRST, then vibe_v4_start to actually spawn residents.',objParams({project:{type:'string'},problem:{type:'string'},params:{type:'object'}}),(s,a)=>s.configure(a))
+  registerTool('vibe_v4_start','Start V4: spawn N resident subagents (brainstorm then self-organize).',objParams({problem:{type:'string'},residentCount:{type:'integer'},seedDirections:{type:'array',items:{type:'string'}}}),(s,a)=>s.start(a))
   registerTool('vibe_v4_resume','Resume a persisted V4 run.',objParams({}),(s)=>s.resume())
   registerTool('vibe_v4_pause','Pause V4.',objParams({}),(s)=>s.setPause())
   registerTool('vibe_v4_abort','Abort V4 and interrupt residents.',objParams({}),(s)=>s.initAbort())
@@ -608,12 +640,13 @@ export function apply(ctx) {
 
   commands.register({
     name:'v4', description:'control the Vibe Math V4 framework',
-    input:{hint:'[start|resume|pause|abort|status|report|meeting|members|add|remove|set]'},
+    input:{hint:'[configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set]'},
     handler: async function(inv){
       const s=getSession(inv&&inv.agent); if(!s) return {kind:'success',text:JSON.stringify({ok:false,error:'no session'})}
       const line=String(inv&&inv.rawInput?inv.rawInput:'').trim(); const parts=line.split(/\s+/); const cmd=parts[0]||''; const rest=parts.slice(1)
       let r
-      if(cmd==='start') r=await s.start({problem:rest.join(' ')})
+      if(cmd==='configure') r=await s.configure({project:rest[0]||'', problem:parts.slice(2).join(' ')})
+      else if(cmd==='start') r=await s.start({})
       else if(cmd==='resume') r=await s.resume()
       else if(cmd==='pause') r=s.setPause()
       else if(cmd==='abort') r=await s.initAbort()
@@ -623,7 +656,7 @@ export function apply(ctx) {
       else if(cmd==='members') r={ok:true,residents:s.listResidents()}
       else if(cmd==='add') r=await s.addMember(rest.join(' '))
       else if(cmd==='remove') r=await s.removeMember(rest[0]||'')
-      else r={ok:false,usage:'start|resume|pause|abort|status|report|message|meeting|members|add|remove|set'}
+      else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message|meeting|members|add|remove|set'}
       return {kind:'success',text:JSON.stringify(r,null,2)}
     },
   })

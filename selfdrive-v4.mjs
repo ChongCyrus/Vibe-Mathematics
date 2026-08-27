@@ -70,7 +70,7 @@ async function driveOne(){
     const promptText = (fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     const kind = classWake(promptText)
     let reply
-    if(kind==='verify'){ vWakes++; reply = { vote:{ verdict:'TRUE', confidence:0.9, reason:'核对：该对象由完整论证支撑，成立。' } } }
+    if(kind==='verify'){ vWakes++; reply = { vote:{ verdict:1, reason:'核对：该对象由完整论证支撑，成立。' } } }
     else if(kind==='meeting'){ mWakes++; reply = { input:'我同意：原问题已解决。', voteSolved:true, propose_verify:null } }
     else { // normal
       nWakes++

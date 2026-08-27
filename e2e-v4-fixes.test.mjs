@@ -179,5 +179,47 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T8: configure-then-start (no auto-start) + project name + settings =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T8 configure-then-start + project name + settings --')
+  const cfg = await m.callTool('vibe_v4_configure', { project:'myproj', problem:'测试问题ABC', params:{ residentCount:2, activityTimeoutMs:40 } })
+  assert(cfg.ok===true && m.spawns.length===0, 'T8: vibe_v4_configure does NOT auto-start/spawn (spawns='+m.spawns.length+')')
+  assert(cfg.project==='myproj', 'T8: project name set via configure (project='+cfg.project+')')
+  const st = await m.callTool('vibe_v4_status', {})
+  assert(/residentCount=2/.test(st.params), 'T8: params set via configure persisted to settings (status='+st.params+')')
+  const st2 = await m.callTool('vibe_v4_start', {})
+  await waitFor(()=>m.spawns.length>=2, 2000)
+  assert(st2.ok===true && m.spawns.length>=2, 'T8: vibe_v4_start (no problem arg) starts with configured problem (spawns='+m.spawns.length+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T9: numeric verdict (0-1) classifies TRUE/FALSE =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T9 numeric verdict 0-1 --')
+  await m.callTool('vibe_v4_start', { problem:'数值verdict', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { verdictMaxRounds:1, activityTimeoutMs:40 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-num', title:'n', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  let fi=0, proposed=false
+  for(let i=0;i<300;i++){
+    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
+    let reply
+    if(k==='verify'){ reply={ vote:{ verdict: rid==='r-1'?0.9:0.1, reason:'基于独立判断' } } }
+    else if(k==='meeting'){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-num'}) }
+    m.fireEnd({ id: fu.childId, runId:'t9-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(30)
+  }
+  const src = readFileSync(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-num.md'),'utf8')
+  const probLine = src.split('\n').find(l=>/^- 概率:/.test(l))
+  assert(/^- 概率: 0\.5/.test(probLine), 'T9: numeric verdicts (0.9/0.1, non-unanimous) kept unverified with avg 0.5 (line='+probLine+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)
