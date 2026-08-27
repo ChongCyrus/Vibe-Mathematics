@@ -221,5 +221,84 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T10: model/provider inheritance + tool permissions wired to spawn =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T10 model/provider inheritance + tool permissions --')
+  const cfg = await m.callTool('vibe_v4_configure', { problem:'权限与继承', params:{ residentCount:2, provider:'deepseek', model:'deepseek-reasoner', toolAllow:['fs','vibe_v4_send_message'], toolDeny:[] } })
+  assert(cfg.ok===true, 'T10: configure accepts model/provider/toolAllow/toolDeny params')
+  const st = await m.callTool('vibe_v4_status', {})
+  assert(/provider=deepseek/.test(st.params) && /model=deepseek-reasoner/.test(st.params), 'T10: new params exposed in status (status='+st.params+')')
+  await m.callTool('vibe_v4_start', {})
+  await waitFor(()=>m.spawns.length>=2)
+  const sp = m.spawns[0]
+  assert(sp.request.agentOptions && sp.request.agentOptions.provider==='deepseek', 'T10: provider override wired to resident agentOptions (startContinuable)')
+  assert(sp.request.agentOptions && sp.request.agentOptions.model==='deepseek-reasoner', 'T10: model override wired to resident agentOptions')
+  assert(sp.request.toolFilter && Array.isArray(sp.request.toolFilter.allow) && sp.request.toolFilter.allow.includes('fs'), 'T10: toolAllow wired to scoped toolFilter (restrict)')
+  assert(!('deny' in (sp.request.toolFilter||{})), 'T10: empty toolDeny does not emit a deny key')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T11: model/provider/tools by default inherit (no filter) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T11 default = inherit parent route + all tools --')
+  await m.callTool('vibe_v4_configure', { problem:'默认继承', params:{ residentCount:1 } })
+  await m.callTool('vibe_v4_start', {})
+  await waitFor(()=>m.spawns.length>=1)
+  const sp = m.spawns[0]
+  assert(sp.request.agentOptions && !('provider' in sp.request.agentOptions) && !('model' in sp.request.agentOptions), 'T11: empty model/provider leaves agentOptions empty → resident inherits the parent route')
+  assert(sp.request.toolFilter===undefined, 'T11: empty toolAllow/toolDeny emits no toolFilter → resident inherits all tools')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T12: theory/framework-building told in the initial prompt =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T12 autonomous theory/framework-building guidance --')
+  await m.callTool('vibe_v4_start', { problem:'自主发明理论', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  const p = m.spawns[0].request.prompt[0].text
+  assert(/可自主发明理论/.test(p) && /群论/.test(p) && /泛函分析/.test(p), 'T12: initial prompt tells residents they may invent a general theory/framework (group theory / functional analysis analogy)')
+  assert(/不强迫/.test(p), 'T12: it is encouraged but explicitly NOT forced (自主)')
+  assert(/不断完善/.test(p) && /用[处费]|价值/.test(p), 'T12: explains to refine/generalise it and state its value/frameworks use')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T13: compact/rules-recap does NOT leak into meeting wakes =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T13 compact/rules-recap gated to normal rounds (no leak) --')
+  await m.callTool('vibe_v4_start', { problem:'紧凑泄漏', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, compactThreshold:66, compactAfterRounds:999, verdictMaxRounds:1 })
+  const rc = m.spawns[0].childId
+  m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  let fi=0, proposedMeeting=false, sawNormalDirective=false, checkedMeeting=false, directiveInMeeting=false
+  for(let i=0;i<400;i++){
+    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone){ break }; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    const k=/meeting is in progress/i.test(pt)?'meeting':/verifying object/i.test(pt)?'verify':'normal'
+    let reply
+    if(k==='meeting'){
+      checkedMeeting=true
+      if(/\[核心规则重申\]|CONTEXT COMPACT/.test(pt)) directiveInMeeting=true
+      reply={input:'讨论', voteSolved:false}
+    } else if(k==='verify'){ reply={ vote:{verdict:0.5, reason:'x'} } }
+    else {
+      if(/\[核心规则重申\]|CONTEXT COMPACT/.test(pt)) sawNormalDirective=true
+      if(!proposedMeeting){ proposedMeeting=true; reply={summary:'建议开会校准',solved:false,propose_meeting:'校准目标',contextPct:40} }
+      else { reply={summary:'推进',solved:false,contextPct:80} }
+    }
+    m.fireEnd({ id: fu.childId, runId:'t13-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(30)
+  }
+  assert(sawNormalDirective, 'T13: compact directive + core-rules recap injected on a NORMAL research round when contextPct>=threshold')
+  assert(checkedMeeting, 'T13: a meeting round was actually driven')
+  assert(!directiveInMeeting, 'T13: the compact directive / rules recap does NOT leak into meeting wakes (needCompact cleared)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

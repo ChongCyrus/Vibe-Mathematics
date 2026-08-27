@@ -65,6 +65,8 @@
 > 🔧 **v1.3.9 进一步按哲学打磨**：**① 会议议程来源**确认是非 bug（r-1 的 `propose_meeting` 发起）；**② 压缩后重申核心规则**——每次压缩触发时在提示开头重申短核心规则（治"压缩遗忘规则"），其余轮仍极简；**③ 验证 `verdict` 明确为 0–1 正确概率**——1=绝对为真/判真、0=绝对为假/判假、0.5=不确定，"全体一致判真(verdict=1)/判假(verdict=0)才算数"，未全票留库附平均正确概率（兼容旧字符串）；**④ 创建项目不立即启动**——新增 `vibe_v4_configure {project?, problem?, params?}` 只建/配项目与参数（持久化 `State/settings.json`）不唤醒常驻，随后 `vibe_v4_start` 才启动；支持设置**项目名**。详见 §22。
 >
 > 🔧 **v1.4.0 verdict 改为纯概率数值 + 全面审计修复**：**① `verdict` 是纯 0–1 正确概率（程度），不再二分类**——仅当**全体一致给 1（真）或全体一致给 0（假）**才按真/假写入 Verified/，否则只作为概率数值保留、附全组平均正确概率（0.97 不再算"真"，属更严格的绝对一致口径）；**② 审计修复**：`resume` 补 `loadSettings()`（跨进程不再重置参数）、`configure` 直接写出问题卡、补上缺失的 `/v4 set` 分支、真实 `/compact` 成功后置 `needCompact` 以**重申核心规则**。详见 §23。
+>
+> 🔧 **v1.4.1 自主发明理论 + 模型/工具权限参数 + 压缩重申泄漏修复**：**① 初始提示**告知常驻可（不强迫）**自主构建新的理论框架/工具**——抽象化/一般化出更一般的结构并不断完善、推得定理性质（类比群论/泛函分析的发明），并阐明对原问题的价值；**② 补齐"模型继承 + 工具权限"参数**——`model`/`provider`（空 = 常驻继承主代理的 LLM 路由，此前为声明未用）与 `toolAllow`/`toolDeny`（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`，空 = 继承全部工具）真正接入 `spawnResident`；**③ 修复"[核心规则重申]+[CONTEXT COMPACT]"在提示开头重复泄漏**——根因是压缩指令被注入到 meeting/verify 唤醒而其回复从不释放 `needCompact`，标志卡死后每轮重复；现**只对 normal 研究轮注入完整压缩指令**、`needCompact` 只重申一次并立即清位、`postmark` 在**所有分支**统一记账，杜绝泄漏；**④ 会议发言顺序轮换**——不再是 r-1 永远先发言看不到别人，各常驻轮流先发言；**⑤ 解释 HRT 收敛**——三名常驻诚实给出"HRT-4 很可能为假（0.8+，未确立）+ 完整必要筛 + 机制 + 判定方程 + 未决点"，无 Verified/、无人 declare solved，run 被外部暂停而非框架强收口，符合"诚实、不编造、框架不强加"哲学。详见 §24。
 
 ---
 
@@ -483,6 +485,23 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `indexAutoRebuild` | true | 每次写盘后自动重建 `State/index.json`（false = 手动 `vibe_math_index`） |
 | `projectLockTimeoutMs` | 60000 | 项目锁等待超时（同项目同一时刻只允许一个会话调度） |
 | `methodKeeperPersona` | 空 | 注入方法整理代理提示词开头的人格/要求 |
+
+### v4（常驻自组织 · 实验）默认值
+
+`vibe_v4_set` 可调（持久化到 `State/settings.json`）：
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `residentCount` | 4 | 常驻数（可 `vibe_v4_add_member` 增减） |
+| `compactThreshold` | 66 | 常驻上下文占比达此值触发软压缩（自述指令） |
+| `compactAfterRounds` | 8 | 常驻每累计 N 轮（未压缩）触发一次软压缩 |
+| `meetingKeepEvery` | 5 | 每积累 N 个新产物自动触发一次同步会议 |
+| `maxParallel` | 3 | 同时唤醒的常驻上限（框架侧并发闸，非指派） |
+| `activityTimeoutMs` | 120000 | 空闲心跳间隔（超时才触发 CHECKPOINT 唤醒，推动收敛） |
+| `verdictMaxRounds` | 3 | 验证在独立初评后进入辩论的最大轮数 |
+| `provider` / `model` | 空 | **常驻 LLM 路由**（空 = 常驻继承主代理的 provider/model；此前声明未用，v1.4.1 真正接入） |
+| `residentPersona` | 空 | 注入每个常驻提示词开头的人格/要求 |
+| `toolAllow` / `toolDeny` | `[]` | **常驻工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具） |
 
 ---
 

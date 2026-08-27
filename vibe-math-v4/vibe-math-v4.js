@@ -32,7 +32,13 @@ export function apply(ctx) {
       residentCount: 4, compactThreshold: 66, compactAfterRounds: 8,
       maxParallel: 3, activityTimeoutMs: 120000, verdictMaxRounds: 3,
       meetingKeepEvery: 5,   // 每积累 N 个新产物自动触发一次同步会议
+      // model/provider inheritance: '' = the resident inherits the parent (main assistant)
+      // route (provider + model). Set them to override the resident's LLM backend/model.
       provider: '', model: '', residentPersona: '',
+      // tool permissions: an allow/deny list of tool names applied via startContinuable's
+      // toolFilter (scoped tools.restrict() in the child). Empty = inherit all tools.
+      // CAUTION: only set one of these; an empty allow:[] would deny EVERY tool.
+      toolAllow: [], toolDeny: [],
     }
     let params = Object.assign({}, DEFAULT_PARAMS)
     let running = false, autoDone = false, phase = 'idle'
@@ -59,6 +65,19 @@ export function apply(ctx) {
     function logActivity(event,detail){ activityLog.push({at:now(),event,detail:String(detail||'')}); if(activityLog.length>activityLogCap) activityLog.shift() }
     function logDecision(kind,detail){ decisions.push({at:now(),kind,detail:String(detail||'')}) }
     function pickProvider(){ try { const n=subagents.list?subagents.list():[]; if(n.indexOf('spawn')!==-1) return 'spawn'; if(n.indexOf('fork')!==-1) return 'fork' } catch(e){} return 'spawn' }
+    // Per-resident model/provider inheritance: when params.provider / params.model are set,
+    // the resident uses that exact route; when left '' the resident inherits the parent's
+    // (main assistant) route — the documented DSH default (resolveChildAgentOptions merges
+    // requested over parent). No override is applied for empty values.
+    function residentAgentOptions(){ const ao={}; if(params.provider) ao.provider=params.provider; if(params.model) ao.model=params.model; return ao }
+    // Tool permission (scoped toolFilter). Only emit a filter when allow or deny has entries;
+    // an empty object is rejected by DSH ("must declare allow and/or deny").
+    function residentToolFilter(){
+      const allow=Array.isArray(params.toolAllow)?params.toolAllow.filter(x=>String(x).trim()):[]
+      const deny=Array.isArray(params.toolDeny)?params.toolDeny.filter(x=>String(x).trim()):[]
+      if(allow.length===0 && deny.length===0) return undefined
+      const f={}; if(allow.length) f.allow=allow; if(deny.length) f.deny=deny; return f
+    }
     function makeSignal(ms){ return AbortSignal.timeout(ms||30000) }
     function workspaceRoot(){ try { if(rootAgent&&rootAgent.session&&rootAgent.session.header&&rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch(e){} if(sandboxPolicy&&sandboxPolicy.workspaceRoot) return sandboxPolicy.workspaceRoot; return '.' }
     function vibeRoot(){ return (workspaceRoot()+'/VibeMath').replace(/\\/g,'/') }
@@ -150,6 +169,12 @@ export function apply(ctx) {
       s.push('### 可用工具')
       s.push(toolList())
       s.push('')
+      if(level==='full'){
+        s.push('### 可自主发明理论/工具（鼓励，但不强迫）')
+        s.push('请注意：你可以（但**不强迫**，完全视实际需要而定）尝试自主构建新的理论框架或工具——例如对某种系统做抽象化、一般化，抽离/推广出更一般的结构或理论框架；然后不断完善这个理论框架，在该框架下推得各种定理、性质、结论，以利于该框架下问题的解决。这就像为解决方程问题发明了群论、为分析需要建立了泛函分析框架——它比单纯解决当前问题更有学术价值，因为你直接得到了一类更普遍的方法/理论体系。')
+        s.push('若你发明了这样的理论/工具，请**阐明它对原问题的用处、价值**；后续可根据需要不断**完善、一般化、推广**它。把这类成果记入你的 Methods/<你>/ 库。')
+        s.push('')
+      }
       s.push('### 规则')
       s.push('- 只有 Verified/（或卡片标"已验证·真/假"）算已确立；其余都是你的实验性工作，请区分"猜想/已知"。')
       s.push('- 验证必须**全组一致**（全真或全假）；你只信全票结果。未全票的对象留在库里带概率。')
@@ -210,7 +235,8 @@ export function apply(ctx) {
     let residentSeq = 0
     function newResident(dir){ const rId='r-'+(++residentSeq); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
-      const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:{}},signal:makeSignal(params.activityTimeoutMs||60000)})
+      const ao=residentAgentOptions(); const tf=residentToolFilter()
+      const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:ao,...(tf?{toolFilter:tf}:{})},signal:makeSignal(params.activityTimeoutMs||60000)})
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
       childOwner.set(started.childId,sessionId); busy.add(r.rId); wakeKind.set(r.rId,'normal'); currentResident=r.rId
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
@@ -220,16 +246,28 @@ export function apply(ctx) {
       clearHeartbeat()
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
       r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
-      // context / /compact: if the resident reports high context (or reached the round proxy),
-      // prepend a compact directive — it condenses its working state to a self-summary that the
-      // framework uses as the next context seed (equivalent to /compact's "consolidate & forget").
+      // Context compaction has TWO distinct needs. Confusing them is the bug that made
+      // '[核心规则重申]+[CONTEXT COMPACT]' repeat at the start of nearly every prompt:
+      //   (a) r.needCompact (set by a REAL /compact) => the resident's rules may be blurred, so
+      //       re-anchor the short core rules on the next wake of ANY kind, then CLEAR the flag.
+      //       (Short recap only; no self-summary directive — the real compact already condensed.)
+      //   (b) soft-compact trigger (contextPct>=threshold OR roundsSinceCompact>=afterRounds) =>
+      //       the resident's context genuinely grew; ask it to self-summary. ONLY on a normal
+      //       research round (kind==='normal'): a meeting/verify reply has no contextPct/compacted
+      //       fields, so a directive injected there is never acknowledged and would repeat forever.
       let prompt = promptText
-      if(r.needCompact || (Number(r.contextPct)>=Number(params.compactThreshold)) || (r.roundsSinceCompact>=Number(params.compactAfterRounds))){
+      const isNormal = (kind||'normal')==='normal'
+      const wantSoft = isNormal && (Number(r.contextPct)>=Number(params.compactThreshold) || Number(r.roundsSinceCompact)>=Number(params.compactAfterRounds))
+      const wantReanchor = r.needCompact
+      if(wantSoft){
         prompt = coreRulesBrief() + '\n' +
           '[CONTEXT COMPACT — your conversation is at/near the limit. Do NOT re-derive history.\n' +
           'Condense your current working state into ONE tight self-summary (findings so far, active direction, key artifacts you recorded, next concrete steps, open questions), then answer this round in the normal JSON format as usual.\n' +
           'Set "contextPct": 15 (your post-compact usage) and "compacted": true in the reply so the framework records the condensed seed.]\n\n' + promptText
         r.needCompact = true
+      } else if(wantReanchor){
+        prompt = coreRulesBrief() + '\n' + prompt
+        r.needCompact = false
       }
       try { await subagents.followup(rootAgent,r.childId,[textBlock(prompt)],{source:{kind:'user'},signal:makeSignal(params.activityTimeoutMs||60000)}); return true }
       catch(e){ console.error('vibe-v4 wake '+r.rId+' failed: '+String((e&&e.message)||e)); busy.delete(r.rId); return false }
@@ -261,6 +299,18 @@ export function apply(ctx) {
     async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
     function listTasks(){ return taskboard.filter(t=>t.status!=='done') }
     async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=clPct(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
+    // Apply context/compact bookkeeping from a resident's reply, so the flag can clear even when
+    // the reply came through a meeting/verify branch (defensive) as well as the normal branch.
+    function postmark(r, parsed){
+      if(typeof parsed.contextPct==='number') r.contextPct=clPct(parsed.contextPct)
+      if(parsed.compacted===true || (r.needCompact && parsed.summary)){
+        r.contextSeed=String(parsed.summary||r.contextSeed||'')
+        r.contextPct=Math.min(r.contextPct||15,25)
+        r.roundsSinceCompact=0
+        r.needCompact=false
+        logActivity('compact', r.rId+' consolidated context')
+      }
+    }
 
     // ---- messaging ----
     async function postMessage(from,to,content){
@@ -293,15 +343,21 @@ export function apply(ctx) {
     async function startMeeting(agenda,type,targetId){
       if(meetingState) return {ok:false,message:'meeting already in progress'}
       clearHeartbeat()
-      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[]}
+      const ids=Array.from(residents.keys())
+      // Rotate the per-meeting speaking order so the SAME resident isn't always the "first speaker
+      // who sees no one else's contribution"; a real discussion lets each member lead sometimes.
+      const rot=Math.floor(Math.random()*Math.max(1,ids.length))
+      const order=ids.slice(rot).concat(ids.slice(0,rot))
+      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order}
       logActivity('meeting','start: '+agenda); await saveAll(); await scheduleNext(); return {ok:true,id:meetingState.id}
     }
     async function continueMeetingRound(){
       if(!meetingState) return
       const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>meetingState.inputs[id]!==undefined)
       if(allSpoke){ await finalizeMeeting(); return }
-      // only wake IDLE un-spoken residents; in-flight ones re-trigger this on end.
-      const id=ids.find(x=>meetingState.inputs[x]===undefined && !busy.has(x)); if(!id) return
+      // only wake IDLE un-spoken residents (rotated order); in-flight ones re-trigger this on end.
+      const order=meetingState.order||ids
+      const id=order.find(x=>meetingState.inputs[x]===undefined && !busy.has(x)); if(!id) return
       const r=residents.get(id)
       await wakeResident(r, meetingPrompt(r,meetingState), 'meeting'); await saveAll()
     }
@@ -490,6 +546,7 @@ export function apply(ctx) {
       realCompact(r).catch(()=>{})   // best-effort real DSH /compact of this resident while idle
       const output=blocksToText(info&&info.lastAssistantMessage)
       const parsed=parseReply(output)
+      postmark(r, parsed)   // context/compact bookkeeping, regardless of wake kind (clears any leak)
       const kind=wakeKind.get(r.rId)||'normal'
       if(kind==='meeting' && meetingState){
         meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
@@ -512,9 +569,6 @@ export function apply(ctx) {
       // normal turn
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
       if(typeof parsed.solved==='boolean') reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()})
-      // context / compact: record the condensed seed + post-compact usage, clear the flag
-      if(typeof parsed.contextPct==='number'){ r.contextPct=clPct(parsed.contextPct) }
-      if(parsed.compacted===true || (r.needCompact && parsed.summary)){ r.contextSeed=String(parsed.summary||''); r.contextPct=Math.min(r.contextPct||15,25); r.roundsSinceCompact=0; r.needCompact=false; logActivity('compact',r.rId+' consolidated context') }
       if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
       // group-conversation relay: the resident may choose to speak to the whole team (input) —
       // forward it to the others so this is a real discussion group, not private monologues.
@@ -559,14 +613,22 @@ export function apply(ctx) {
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds'].map(k=>k+'='+params[k]).join(', ') } }
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage}:null, meetings:meetings.length,
       recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
-    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=upd[k] } saveSettings().catch(()=>{}); return {ok:true} }
+    // Normalize one parameter value to its intended type so a string from /v4 set or configure
+    // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
+    function normalizeParam(k, v){
+      const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery']
+      if(INT_KEYS.includes(k)){ const n=Number(v); return Number.isFinite(n)?n:v }
+      if(k==='toolAllow'||k==='toolDeny'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
+      return v
+    }
+    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=normalizeParam(k, upd[k]) } saveSettings().catch(()=>{}); return {ok:true} }
     // ---- create / configure (no auto-start) + settings-file persistence ----
     async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params) params[k]=s[k] } } }
     async function saveSettings(){ await writeJson('State/settings.json', params) }
@@ -575,7 +637,7 @@ export function apply(ctx) {
     async function configure(cfg){
       if(cfg && cfg.project && String(cfg.project).trim()) currentProject=String(cfg.project).trim()
       if(cfg && cfg.problem) problemText=String(cfg.problem)
-      if(cfg && cfg.params && typeof cfg.params==='object') for(const k of Object.keys(cfg.params)) if(k in params) params[k]=cfg.params[k]
+      if(cfg && cfg.params && typeof cfg.params==='object') setParams(cfg.params)
       await writeCurrentProject(); await ensureDirs(); await saveSettings()
       // create the problem card so the project is complete BEFORE the run starts
       if(problemText){ const pid=slugify(problemText.slice(0,40))||'problem'; await writeText('Problems/'+pid+'.md','# 问题｜'+pid+'\n- ID: '+pid+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n') }
@@ -624,7 +686,10 @@ export function apply(ctx) {
   registerTool('vibe_v4_list_members','List residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
   registerTool('vibe_v4_add_member','Add a resident.',objParams({direction:{type:'string'}}),(s,a)=>s.addMember(a.direction))
   registerTool('vibe_v4_remove_member','Close a resident.',objParams({id:{type:'string'}},['id']),(s,a)=>s.removeMember(a.id))
-  registerTool('vibe_v4_set','Set V4 parameters.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'}}),(s,a)=>{ s.setParams(a); return {ok:true} })
+  // model/provider inheritance: set model/provider to override the residents' LLM route (''=inherit
+  // the main assistant's route). toolAllow/toolDeny are per-resident tool permissions (scoped
+  // restrict). residentPersona prepends a persona line to every resident prompt.
+  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}}}),(s,a)=>{ s.setParams(a); return {ok:true} })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>s.postMessage(s.residentIdOf(x),a.to,a.content))

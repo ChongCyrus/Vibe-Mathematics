@@ -36,6 +36,13 @@
       team genuinely discusses/debates), convenes and records meetings, exposes a shared task
       board, and stops the run only when the whole team agrees the problem is solved.
 
+      At brainstorm, residents are told they MAY (but are never forced to) autonomously build a
+      NEW general theory/framework/tool — by abstracting/generalising a structure (like inventing
+      group theory to solve polynomial equations, or building functional analysis as a general
+      framework). If they do, they must state its value to the original problem and may refine /
+      generalise it over time; such artifacts go in their Methods/<resident>/ library. This is an
+      encouragement, not an assignment.
+
       **YOUR ROLE — LET THEM SELF-ORGANIZE (hands-off):** you are NOT a moderator/coordinator.
       Do NOT inject agendas, priorities, division-of-labor, or verification decisions, and do
       NOT direct the residents' work. After `vibe_v4_start`, stay passive: read `vibe_v4_status`
@@ -54,7 +61,7 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
         - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, verdictMaxRounds} — tune params (persisted to the settings file).
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools).
         - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
