@@ -47,6 +47,7 @@ function makeCtx(WS, spawns, followups, interrupts) {
         list() { return ['spawn'] },
         async startContinuable({ label, request }) { const childId = 'child-' + (spawns.length + 1) + '-' + Math.random().toString(36).slice(2, 6); spawns.push({ label, childId, request }); return { childId } },
         async followup(parent, childId, blocks, opts) { followups.push({ childId, parent, blocks }) },
+        async sendMessage(parent, childId, blocks, opts) { followups.push({ childId, parent, blocks }) },
         interrupt(childId, authority) { interrupts.push(childId) },
       },
       agents: { roots() { return [] }, get(id) { return undefined } },

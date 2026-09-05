@@ -80,6 +80,7 @@ const ctx = {
       return { childId }
     },
     async followup(parent, childId, blocks, opts) { followups.push({ parent, childId, blocks, opts }) },
+    async sendMessage(parent, childId, blocks, opts) { followups.push({ parent, childId, blocks, opts }) },
     interrupt(childId, authority) { interrupts.push({ childId, authority }) },
   },
   agents: {

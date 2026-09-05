@@ -22,7 +22,9 @@ function makeCtx(){
     on(e,fn){ (listeners[e]=listeners[e]||[]).push(fn) }, effect(fn){ const d=fn(); return()=>{ if(typeof d==='function') d() } }, logger:{info(){},warn(){},error(){}},
     timeout(cb,ms){ const h=setTimeout(cb,ms); return ()=>clearTimeout(h) },
     tools:{register(s){toolRegs.push(s)}}, commands:{register(){}},
-    subagents:{ list(){return['spawn']}, async startContinuable({label,request}){ const id='c'+(spawns.length+1); spawns.push({label,request,childId:id}); return {childId:id} }, async followup(parent,childId,blocks,opts){ followups.push({childId,blocks}) }, interrupt(){} },
+    // Real DSH exposes ONLY subagents.sendMessage for continuable wakes (followup is an Agent method, not
+    // a subagents service method). Deliberately NO followup here so a regression to subagents.followup fails.
+    subagents:{ list(){return['spawn']}, async startContinuable({label,request}){ const id='c'+(spawns.length+1); spawns.push({label,request,childId:id}); return {childId:id} }, async sendMessage(parent,childId,blocks,opts){ followups.push({childId,blocks}) }, interrupt(){} },
     agents:{ roots(){return[]}, get(id){ return id==='sess-A' ? ROOT : undefined } },
     fs:{ async resolve(rel,opts){ const b=(opts&&opts.cwd)||WS; return {targetKey:join(b,...String(rel).split('/')),displayPath:'x'} }, async stat(t){ return existsSync(t.targetKey)?{version:'v1',type:'file',size:1}:undefined }, async readText(t){ return readFileSync(t.targetKey,'utf8') }, async writeText(t,c){ mkdirSync(dirname(t.targetKey),{recursive:true}); writeFileSync(t.targetKey,c,'utf8') }, async listDir(t){ return [] } },
   }

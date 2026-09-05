@@ -444,7 +444,19 @@ export function apply(ctx) {
     scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
     await saveAll(); return started.childId
   }
-  async function followupChild(childId, promptText) { await subagents.followup(rootAgent, childId, [textBlock(promptText)], { source: { kind: 'user' }, signal: makeSignal(30000) }); scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1; await saveAll() }
+  // DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}); subagents.followup
+  // does NOT exist on the subagents service (it is only Agent.followup). Calling the missing method threw
+  // TypeError and made every wake fail silently. Prefer sendMessage, fall back to a legacy followup.
+  async function followupChild(childId, promptText) {
+    const blocks = [textBlock(promptText)]
+    try {
+      if (typeof subagents.sendMessage === 'function') await subagents.sendMessage(rootAgent, childId, blocks, { signal: makeSignal(30000) })
+      else if (typeof subagents.followup === 'function') await subagents.followup(rootAgent, childId, blocks, { source: { kind: 'user' }, signal: makeSignal(30000) })
+      else throw new Error('no subagent continuation API')
+    } catch (e) { console.error('vibe-math-v2: wake ' + childId + ' failed: ' + String((e && e.message) || e)); throw e }
+    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    await saveAll()
+  }
   async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
 
   // ================= prompts =================

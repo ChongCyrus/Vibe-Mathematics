@@ -280,7 +280,21 @@ export function apply(ctx) {
         prompt = coreRulesBrief() + '\n' + prompt
         r.needCompact = false
       }
-      try { await subagents.followup(rootAgent,r.childId,[textBlock(prompt)],{source:{kind:'user'},signal:makeSignal(params.activityTimeoutMs||60000)}); return true }
+      // The DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}),
+      // NOT subagents.followup (which is only Agent.followup, and does NOT exist on the subagents
+      // service). Using a non-existent method threw TypeError and made EVERY wake fail silently →
+      // the group went idle forever. Prefer sendMessage; fall back to a legacy followup if a host
+      // still exposes it (older deployments), so this works across versions.
+      try {
+        if(typeof subagents.sendMessage==='function'){
+          await subagents.sendMessage(rootAgent, r.childId, [textBlock(prompt)], {signal: makeSignal(params.activityTimeoutMs||60000)})
+        } else if(typeof subagents.followup==='function'){
+          await subagents.followup(rootAgent, r.childId, [textBlock(prompt)], {source:{kind:'user'},signal:makeSignal(params.activityTimeoutMs||60000)})
+        } else {
+          throw new Error('no subagent continuation API (need sendMessage or followup)')
+        }
+        return true
+      }
       catch(e){ console.error('vibe-v4 wake '+r.rId+' failed: '+String((e&&e.message)||e)); busy.delete(r.rId); return false }
     }
     function byChild(childId){ for(const [,r] of residents){ if(r.childId===childId) return r } return undefined }
@@ -596,6 +610,13 @@ export function apply(ctx) {
     async function onResidentEnd(childId, info){
       const r=byChild(childId); if(!r) return
       busy.delete(r.rId)
+      // Any resident turn that COMPLETED is real activity for the stall clock (B). Residents frequently
+      // write their libraries via direct fs (not the record* tools), so relying only on
+      // bumpArtifacts/markProgress would leave lastProgressAt stale and B would fire against an active
+      // team. We count only a clean 'completed' turn: an error/max-tokens/refusal did NOT meaningfully
+      // advance the work, so it must NOT mask a truly stalled group (B can then convene a recovery
+      // meeting). A completed turn also refreshes the meeting/verify deadlock clock through lastInputAt.
+      if(info && info.stopReason==='completed') markProgress()
       realCompact(r).catch(()=>{})   // best-effort real DSH /compact of this resident while idle
       const output=blocksToText(info&&info.lastAssistantMessage)
       const parsed=parseReply(output)

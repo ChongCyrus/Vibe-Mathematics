@@ -113,7 +113,9 @@ async function checkHostCapabilities(ctx, logger) {
   // 2) capability self-check (the authoritative mounting gate; also covers hosts whose version
   //    could not be read). subagents / agents / tools / commands / fs shapes + v4 capabilities.
   const checks = [
-    ['subagents', ['startContinuable', 'followup', 'interrupt']],
+    // subagents 服务的续做/唤醒方法是 sendMessage(sender, targetId, content, {signal})；
+    // followup 不是 subagents 服务的方法（它只是 Agent 对象方法）。同时探测两者，能用一个即可。
+    ['subagents', ['startContinuable', 'interrupt']],
     ['agents', ['roots']],
     ['tools', ['register']],
     ['commands', ['register']],
@@ -127,6 +129,10 @@ async function checkHostCapabilities(ctx, logger) {
     if (s === undefined) { problems.push('宿主缺少服务 ' + svc); continue }
     for (let j = 0; j < methods.length; j++) {
       if (typeof s[methods[j]] !== 'function') problems.push(svc + '.' + methods[j] + ' 不可用（宿主版本可能过旧）')
+    }
+    // subagents continuation (wake) API: sendMessage (modern) OR followup (legacy) must exist.
+    if (svc === 'subagents' && typeof s.sendMessage !== 'function' && typeof s.followup !== 'function') {
+      problems.push('subagents 缺少续做/唤醒方法（需 sendMessage 或 followup 至少其一）')
     }
   }
   // fs API shape: DSH 0.1.1 起 resolve 返回 {targetKey, displayPath} 对象（旧版返回字符串路径）
