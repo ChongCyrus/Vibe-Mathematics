@@ -24,7 +24,7 @@
 //     are preserved and reported via the logger.
 //   - same version: no-op (idempotent). Missing files are ALWAYS restored.
 //   - force a full refresh at any time: delete the preset dirs and restart DSH.
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -195,7 +195,41 @@ export async function apply(ctx) {
       }
     }
 
+    // Clean up preset dirs that this bundle NO LONGER manages (e.g. vibe-math-v1 after it was
+    // removed at v2.0.0). The copy loop only adds/updates PRESETS; it never deletes a preset that
+    // was dropped, so an old removed preset would linger in the picker forever. Here we remove the
+    // files this installer previously recorded as package-owned under a prefix that is no longer in
+    // PRESETS, then drop the dir if it became empty. User-owned files (provenance 'user') are kept.
+    const currentPrefixes = new Set(PRESETS.map(p => p.src + '/'))
+    let removedFiles = 0
+    let removedDirs = []
+    const stale = new Map() // prefix -> [keys]
+    for (const key of Object.keys(prevFiles)) {
+      const slash = key.indexOf('/')
+      if (slash === -1) continue
+      const prefix = key.slice(0, slash + 1)
+      if (currentPrefixes.has(prefix)) continue
+      if (!stale.has(prefix)) stale.set(prefix, [])
+      stale.get(prefix).push(key)
+    }
+    for (const [prefix, keys] of stale) {
+      let dirEmpty = true
+      for (const key of keys) {
+        const rec = (prevFiles[key] && typeof prevFiles[key] === 'object') ? prevFiles[key] : { provenance: 'package' }
+        if (rec.provenance === 'user') { dirEmpty = false; continue }   // 用户文件 → 保留
+        const f = join(presetRoot, key)
+        if (existsSync(f)) { try { unlinkSync(f); removedFiles += 1 } catch (e) {} }
+        if (existsSync(f)) dirEmpty = false
+      }
+      const dir = join(presetRoot, prefix.slice(0, -1))
+      if (dirEmpty && existsSync(dir)) { try { rmdirSync(dir); removedDirs.push(dir) } catch (e) {} }
+    }
+
     writeState(stateFile, { version: pkgVersion, files: nextFiles, updatedAt: Date.now() })
+
+    if (removedFiles > 0 || removedDirs.length > 0) {
+      logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped.')
+    }
 
     if (isUpgrade) {
       logger?.info?.('[dsh-vibe-math] preset auto-update: version ' + (state.version || '(none)') + ' → ' + pkgVersion +
