@@ -587,7 +587,7 @@ export function apply(ctx) {
         if(msgs.length===0) continue
         const m=msgs.shift(); const r=residents.get(to); if(!r){ continue }
         if(!busy.has(to)){ currentResident=to; await wakeResident(r, (await normalPrompt(r))+'\n\n[MESSAGE from '+m.from+']\n'+m.content,'normal'); await saveAll(); return true }
-        msgs.push(m); return false
+        msgs.push(m); continue   // recipient busy → keep the message queued, try another mailbox (avoid starving others)
       }
       return false
     }
@@ -649,12 +649,14 @@ export function apply(ctx) {
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
       residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0; clearHeartbeat()
+      lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
     }
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs(); await loadAll(); await loadSettings()
+      lastActivityAt=now(); lastProgressAt=now()   // pause must not count as stall time; a resumed run gets a fresh clock
       if(phase==='idle' && !running && residents.size===0) return {ok:false,message:'nothing to resume'}
       // If the persisted State came from a DIFFERENT process (crash/restart), the saved
       // childIds are stale; clear them so residents re-spawn (their libraries persist on
@@ -668,11 +670,14 @@ export function apply(ctx) {
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
+      meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify?pendingVerify.targetId:null,
       params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
-      verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage}:null, meetings:meetings.length,
-      recentActivity: activityLog.slice(-8) } }
+      meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+residents.size}:null,
+      verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
+      pendingVerify: pendingVerify?pendingVerify.targetId:null,
+      meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
     // Normalize one parameter value to its intended type so a string from /v4 set or configure
