@@ -1,12 +1,11 @@
-// Comprehensive BUSINESS-LOGIC E2E for vibe-math v1+v2 (0.3.19).
-// Covers flows the two existing suites do not:
+// Comprehensive BUSINESS-LOGIC E2E for vibe-math v2 (0.3.19).
+// Covers flows the other suites do not:
 //   B1 v2 q_sub three-object registration (sub-problem + judge problem + p-tmp proposition)
 //   B2 v2 verifier disagreement -> debate round 2 (followup with FULL history) -> consensus -> verdict
 //   B3 v2 manual gate spawn -> decide reject -> direction marked dead-end
 //   B4 v2 abort -> children interrupted, direction stays active (resumable)
 //   B5 v2 params persist to vibe_math_setting.json and re-load
 //   B6 v2 cross-process stale: different processEpoch on resume clears stale tasks
-//   B7 v1 full pipeline: brainstorm -> solver -> verify -> verdict -> Temp_Validated -> promote -> decider solves
 // Run: node e2e-business.test.mjs
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -195,53 +194,7 @@ if (existsSync(epochFile)) {
   assert(res6.ok === true, 'resume succeeds after stale epoch')
 }
 
-// ================= v1 suite =================
-console.log('\n########## v1 FULL PIPELINE ##########')
-const WS1 = mkdtempSync(join(tmpdir(), 'vibe-biz-v1-'))
-const spawns1 = [], followups1 = [], interrupts1 = []
-const h1 = makeCtx(WS1, spawns1, followups1, interrupts1)
-const mod1 = await import(new URL('./vibe-math-v1/vibe-math.js', import.meta.url).href + '?t=' + Date.now())
-const plugin1 = mod1.default || mod1
-plugin1.apply(h1.ctx)
-const ROOT1 = makeRoot('sess-v1', WS1)
-const call1 = async (name, args) => { const s = h1.toolRegs.find(x => x.name === name); return JSON.parse(await s.execute(args || {}, { agent: ROOT1 })) }
-
-// ---- B7: v1 full pipeline ----
-console.log('\n-- B7: v1 brainstorm -> solver -> verify -> promote -> decider --')
-await call1('vibe_math_new_project', { name: 'v1p' })
-await call1('vibe_math_add_problem', { id: 'v1q', description: 'v1 problem' })
-await call1('vibe_math_start', {})
-await wait(2600)
-const br1 = spawns1.find(s => s.label.startsWith('brainstorm:'))
-assert(br1 !== undefined, 'brainstorm spawned')
-h1.fireEnd({ id: br1.childId, runId: 'b1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"directions":[{"id":"d1","title":"V1 Dir","method":"m","core_assumption":"c","feasibility":0.7}]}\n```' }] })
-await wait(300)
-const sv1 = spawns1.find(s => s.label.startsWith('solver:'))
-assert(sv1 !== undefined, 'solver spawned after brainstorm')
-h1.fireEnd({ id: sv1.childId, runId: 's1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"status":"success","solution":"V1 COMPLETE SOLUTION","lemmas":[],"findings":[],"sub_routes":[],"aux_hypotheses":[],"survival_probability":1}\n```' }] })
-await wait(2600)
-const vf1 = spawns1.filter(s => s.label.startsWith('verifier:'))
-assert(vf1.length >= 3, 'verifiers spawned (' + vf1.length + ')')
-for (const v of vf1) {
-  h1.fireEnd({ id: v.childId, runId: 'v-' + v.childId, provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"verdict":"true","reason":"verified","strictness":"strict"}\n```' }] })
-}
-await wait(400)
-// promoted to Verified
-const verifiedDir = join(WS1, 'VibeMath', 'Projects', 'v1p', 'Verified')
-await wait(2600)
-const verifiedFiles = existsSync(verifiedDir) ? readdirSync(verifiedDir) : []
-assert(verifiedFiles.length >= 1, 'verified unit promoted to Verified (' + verifiedFiles.join(',') + ')')
-// decider should run and solve the problem
-await wait(2600)
-const dc1 = spawns1.find(s => s.label.startsWith('decider:'))
-assert(dc1 !== undefined, 'decider spawned')
-h1.fireEnd({ id: dc1.childId, runId: 'dc1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"solves_qid":"v1q"}\n```' }] })
-await wait(400)
-const qsCsv = readFileSync(join(WS1, 'VibeMath', 'Projects', 'v1p', 'qs', 'qs.csv'), 'utf8')
-assert(qsCsv.includes('v1q,') && qsCsv.includes('solved'), 'problem marked solved by decider')
-
 // cleanup
 rmSync(WS2, { recursive: true, force: true })
-rmSync(WS1, { recursive: true, force: true })
-console.log('\n=== RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
+console.log('=== RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed === 0 ? 0 : 1)

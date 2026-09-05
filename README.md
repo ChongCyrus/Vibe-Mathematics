@@ -1,32 +1,25 @@
-# Vibe Mathematics — 多代理数学问题求解与验证框架（四架构）
+# Vibe Mathematics — 多代理数学问题求解与验证框架（三架构）
 
 [![npm](https://img.shields.io/npm/v/dsh-vibe-math)](https://www.npmjs.com/package/dsh-vibe-math)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
 
-> 运行在 **DeepSeek Harness** 内的一组 **agent preset**（`vibe-math-v1` / `vibe-math-v2` / `vibe-math-v3` / `vibe-math-v4`），
-> 用多代理协作自动求解数学问题并对结论做多代理交叉验证。四个预设共享「**断点续跑**、
-> **中途人工干预**、**进度汇报**、**自然语言驱动**」底座能力，但采用四代不同的求解架构：
+> 运行在 **DeepSeek Harness** 内的一组 **agent preset**（`vibe-math-v2` / `vibe-math-v3` / `vibe-math-v4`），
+> 用多代理协作自动求解数学问题并对结论做多代理交叉验证。三个预设共享「**断点续跑**、
+> **中途人工干预**、**进度汇报**、**自然语言驱动**」底座能力，但采用三代不同的求解架构：
 > **💡 `vibe-math-v2` 与 `vibe-math-v3` 同级主推**——两者都是成熟可用、正在维护的主推架构，根据你的实际需求自行选择（详见下方「怎么选」）；`vibe-math-v4` 是最新的「常驻自组织合作研究」架构（实验性）。
 >
-> - **`vibe-math-v1`（经典流水线）⚠️ 将弃用**：「广度探索 → 深度迭代 → 交叉验证 → 知识沉淀」闭环；
 > - **`vibe-math-v2`（概率驱动 · JSON 数据层）✅ 主推**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度 + 代码启发式调度；
 > - **`vibe-math-v3`（第三代 · 论文式 md + 规划代理 + 方法库）✅ 主推**：全部知识以 **Markdown 论文/研究报告式** 存储与续写（`Problems/` 问题清单+依赖+来源动机、`Progress/` 研究日志、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）；调度前由**规划代理**自主制定接下来 N 步计划；解决过程中发明的理论/框架/工具/方法/思想由 **Method Keeper** 沉淀为可复用方法体系（如发明群论、泛函分析那样）。
 > - **`vibe-math-v4`（第四代 · 常驻自组织合作研究）🧪 实验性**：一组**持久化常驻子代理**互相**留言 + 开会**，自主决定一切任务安排（无中央调度）；各自沉淀进度/命题/方法/子问题库并互相查阅；验证**仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率；上下文达阈值自动 `/compact`；仅当全体一致认为原问题已解决才停止。
 
-安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**四个** agent preset。
+安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**三个** agent preset。
 
 ---
 
-## 🧩 架构图（v1 + v2 + v3）
+## 🧩 架构图（v2 + v3 + v4）
 
-> 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)；可编辑生成脚本：[v1](docs/generate_framework_diagram.py) / [v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py)。
-
-### Vibe Math V1（经典流水线）⚠️ 早期架构 · 将弃用 · 不建议新项目使用
-
-![Vibe Math V1 架构图](示例图/框架图-v1.png)
-
-**一句话流水线**：`qs.csv` → Brainstorm 拆方向 → 每方向一个 Solver 多轮迭代（卡死则 Derive 派生新方向）→ 输出拆成最小验证单元 → ≥3 个 Verifier 独立审查 → 辩论 → 裁决 → 通过晋升 `Verified/` → Decider 回写 `qs.csv`；全程状态落盘 `VibeMath_State/`，`resume` 断点续跑，`manual` 模式在派发/裁决/晋升处挂起人工决策。
+> 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)；可编辑生成脚本：[v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py) / [v4](docs/generate_framework_diagram_v4.py)。
 
 ### Vibe Math V2（概率驱动 · JSON 数据层）✅ 主推
 
@@ -72,7 +65,7 @@
 
 ## ✨ 功能特色
 
-- **多代理自动求解**：主代理把问题交给调度器，调度器派发 explorer / solver / verifier（v1/v2/v3）与 **planner（规划代理，v3）**、**method-keeper（方法整理代理，v3）** 等子代理协同求解，**你无需逐节点手操**。
+- **多代理自动求解**：主代理把问题交给调度器，调度器派发 explorer / solver / verifier（v2/v3）与 **planner（规划代理，v3）**、**method-keeper（方法整理代理，v3）** 等子代理协同求解，**你无需逐节点手操**。
 - **多代理交叉验证**：每个结论交给 ≥3 个「严苛审稿人」**独立审查 → 辩论（交流群）→ 裁决**（v3 默认**近共识裁决**：同侧且均值 ≥0.85/≤0.15 取均值，避免"0.9 vs 1"被误判成 0.5）。
 - **论文式 Markdown 知识库（v3）**：问题清单（含问题间依赖、后生问题产生原因与计划）、研究日志、命题、方法库全部以 md 论文/研究报告式书写与续写（方向重派生时旧方向的日志自动归档保留）；**只有 `Verified/` 与验证器判真/假的对象绝对可信**，其余 md（含方法库未验证断言）仅作经验参考。
 - **通用理论发明库（v3）**：解决过程中发明的理论体系/框架/工具/方法/思想（含经验性总结）经 `methods_used`/`new_inventions` 上报，由 **Method Keeper** 沉淀为 `Methods/` 方法卡（可组成体系层级、跨项目复用），像"解决方程时发明群论"一样形成系统化方法理论体系。
@@ -100,8 +93,8 @@ dsh plugin --profile <你的 profile> add dsh-vibe-math
 dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-安装时插件会自动把三个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v1/`、`vibe-math-v2/` 与 `vibe-math-v3/`。
-之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**主推**）、**Vibe Math V2**（v2，**主推**）或 **Vibe Math**（v1）即可——v2 与 v3 同级主推，按实际需求自选（见「怎么选」）；v1 作为早期架构保留兼容，**可能在将来版本中被遗弃、不再维护**。
+安装时插件会自动把三个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v2/`、`vibe-math-v3/` 与 `vibe-math-v4/`。
+之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**主推**）、**Vibe Math V2**（v2，**主推**）或 **Vibe Math V4**（v4，常驻自组织）即可——v2 与 v3 同级主推，按实际需求自选（见「怎么选」）。
 **升级包版本后重启 DSH，未手动改过的 preset 文件会自动更新到新版本**（细节见文末「v2/v3」安装器说明）。
 
 ### 方式 B：作为 agent preset 手动安装
@@ -109,12 +102,12 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 1. 把本仓库对应目录的文件复制到 preset 目录：
 
    ```
-   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v1\   ← 复制 vibe-math-v1/ 下的 agent.cordis.yml / preset.yml / vibe-math.js
    C:\Users\<你>\.dsh\.agent-presets\vibe-math-v2\   ← 复制 vibe-math-v2/ 下的 agent.cordis.yml / preset.yml / vibe-math-v2.js
    C:\Users\<你>\.dsh\.agent-presets\vibe-math-v3\   ← 复制 vibe-math-v3/ 下的 agent.cordis.yml / preset.yml / vibe-math-v3.js
+   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v4\   ← 复制 vibe-math-v4/ 下的 agent.cordis.yml / preset.yml / vibe-math-v4.js
    ```
 
-2. 新建一个会话，在 preset 选择器里选 **「Vibe Math」** / **「Vibe Math V2」** / **「Vibe Math V3」**。
+2. 新建一个会话，在 preset 选择器里选 **「Vibe Math V2」** / **「Vibe Math V3」** / **「Vibe Math V4」**。
 3. 会话启动后即可使用：工具列表里会出现 `vibe_math_*` 工具，输入框键入 `/vibe` 有自动补全。
 
 > 修改 preset 文件后需**重启 DSH 进程**再开新会话（preset 的 standing mount 会缓存到进程退出）。
@@ -123,8 +116,8 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 - **形态依赖**：三个 preset 依赖 DSH 的标准 **agent-preset 机制**（`~/.dsh/.agent-presets/<id>/` + preset picker）与 **bundle patch 机制**（`cordis.patch.yml` 注入安装器）。
 - **宿主插件行**：`agent.cordis.yml` 引用宿主提供的 `@deepseek-ai/dsh-*` 插件行（persona、agent-instructions、tool-bash/pwsh、tool-fs/fs-search、tool-jobs、skill-filesystem、tool-skill、tool-goal、plan-mode、compaction、subagent/workflow、ask-user、todo、web 等，约 21 个唯一包名）。宿主缺行会导致 preset 挂载失败（会话启动时报错）。
-- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / followup / interrupt）、`agents`（roots）、`tools`（register）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir）、可选 `subprocess` / `sandboxPolicy`。这些 API 形状随 DSH 版本演进；本项目**已充分测试并确认适配 `dsh-v0.1.1-rc.2`**（`package.json` 的 `dsh.testedVersion`；`minVersion` 为 `0.1.0-rc.7`）。**注意：v3 需要 DSH 0.1.1 起的 fs API 形状**（`fs.resolve` 返回 `{targetKey, displayPath}` 对象；v1/v2 亦兼容 0.1.0-rc.7+）。
-- **运行时自检**：安装器（bundle 插件）每次启动时对上述服务与关键 API 做**能力自检**（DSH 不暴露版本号，故按能力而非版本检测；含 `fs.resolve` 返回形状检测）；不满足时打 warning 并提示升级 DSH。preset 挂载失败时先看 DSH 日志里的自检 warning。
+- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / followup / interrupt）、`agents`（roots）、`tools`（register）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir）、可选 `subprocess` / `sandboxPolicy`。这些 API 形状随 DSH 版本演进；本项目**已充分测试并确认适配 `dsh-v0.1.2-rc.1`**（`package.json` 的 `dsh.testedVersion`；`minVersion` 为 `0.1.2-rc.1`）。**注意：DSH 0.1.2 起 `subagents.startContinuable` 的 `agentOptions` / `toolFilter` 需要宿主 provider 声明对应 capability**（spawn / fork 进程内 provider 均支持，v4 指定常驻模型/路由与工具权限依赖于此）。
+- **运行时自检**：安装器（bundle 插件）每次启动时对上述服务与关键 API 做**能力自检**（DSH 不暴露版本号，故按能力而非版本检测；含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测）；不满足时打 warning 并提示升级 DSH。preset 挂载失败时先看 DSH 日志里的自检 warning。
 - **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin update dsh-vibe-math`，重启 DSH 后安装器会自动把 preset 更新到新版本（见上文「安装」说明）。
 
 ---
@@ -145,39 +138,21 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 >
 > 两者都成熟可用、持续维护，且都支持断点续跑、人工/自动干预、进度汇报、多会话隔离、命题晋升、近共识/加权裁决等核心能力；切换成本低（同一套 `vibe_math_*` 工具与 `/vibe` 命令、同一套参数体系）。
 >
-> **⚠️ `vibe-math-v1` 是早期流水线架构，仅作参考/兼容保留，可能在将来的版本中被遗弃、不再维护。** 新项目请直接使用 v2 或 v3。
+> **⚠️ `vibe-math-v2` 与 `vibe-math-v3` 是成熟主推架构；`vibe-math-v4` 是实验性的常驻自组织架构，** 均可选择；老 `vibe-math-v1` 已被移除（本包仅含 v2/v3/v4）。
 
-| | **v1（经典 · 将弃用）** | **v2（概率驱动 · 主推）** | **v3（论文式 md · 主推）** | **v4（常驻自组织 · 实验）** |
-|---|---|---|---|---|
-| 定位 | 早期流水线架构（保留兼容） | **主推**（JSON 数据层） | **主推**（第三代） | **实验性**（第四代） |
-| 核心思想 | 流水线：拆方向 → 逐方向求解 → 拆最小单元 → 多验证器辩论 → 晋升 `Verified/` | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度 | **论文式 md 知识库 + 规划代理调度 + 通用理论发明库** | **持久化常驻子代理自组织**：互相留言 + 开会决定一切任务，无中央调度 |
-| 数据 | `qs/qs.csv` + `Progress_Logs/` | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` | `Problems/` + **按常驻 id 归属**的 `Progress|Propos|Methods|Subproblems/<id>/` + `Shared/`（会议/任务板/辩论）+ `Verified/` |
-| 角色 | brainstorm / solver / derive / verifier / decider | explorer → 逐方向 solver → verifier | **planner（规划代理）** → explorer → 逐方向 solver → verifier → **method-keeper（方法整理代理）** | **N 个常驻研究者**（continuable），由它们互相通信/开会分工，无固定角色 |
-| 调度方式 | 代码流水线 | 代码启发式（优先级 + 概率） | **规划代理产出 N 步计划**（校验后执行，失败回退启发式） | **无中央调度**：任务由常驻互相留言/开会（框架只做媒介，不指派） |
-| 收口规则 | 验证通过晋升 `Verified/`，decider 判定解决 | 解法/证明达概率 `1` 即收口，`never` 永不调度 | 同 v2（近共识裁决修复 flat 误判） | **仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率 |
-| 停止 | 全解或卡死 | 全解或卡死 | 全解/无候选 | **仅当全体常驻一致认为原问题已解决**才停止 |
-| 上下文 | 无 | 无 | 无 | **常驻上下文达阈值自动 `/compact`**（可调） |
-| 特设能力 | 子问题分支（Aux_Hypothesis） | 命题「价值/关键性」自动晋升问题清单；`reportMode file/push/both`；`priorityAdjust` | **方法库沉淀循环**（`methods_used`/`new_inventions` → Method Keeper）；**计划审批门/方法晋升门**；**项目锁**；后生问题「来源与动机」一等公民 | **常驻各自沉淀 + 互相阅读**；**全体一致验证**；**随时增开/关闭常驻、留言干预**；**断点续跑** |
+| | **v2（概率驱动 · 主推）** | **v3（论文式 md · 主推）** | **v4（常驻自组织 · 实验）** |
+|---|---|---|---|
+| 定位 | **主推**（JSON 数据层） | **主推**（第三代） | **实验性**（第四代） |
+| 核心思想 | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度 | **论文式 md 知识库 + 规划代理调度 + 通用理论发明库** | **持久化常驻子代理自组织**：互相留言 + 开会决定一切任务，无中央调度 |
+| 数据 | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` | `Problems/` + **按常驻 id 归属**的 `Progress|Propos|Methods|Subproblems/<id>/` + `Shared/`（会议/任务板/辩论）+ `Verified/` |
+| 角色 | explorer → 逐方向 solver → verifier | **planner（规划代理）** → explorer → 逐方向 solver → verifier → **method-keeper（方法整理代理）** | **N 个常驻研究者**（continuable），由它们互相通信/开会分工，无固定角色 |
+| 调度方式 | 代码启发式（优先级 + 概率） | **规划代理产出 N 步计划**（校验后执行，失败回退启发式） | **无中央调度**：任务由常驻互相留言/开会（框架只做媒介，不指派） |
+| 收口规则 | 解法/证明达概率 `1` 即收口，`never` 永不调度 | 同 v2（近共识裁决修复 flat 误判） | **仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率 |
+| 停止 | 全解或卡死 | 全解/无候选 | **仅当全体常驻一致认为原问题已解决**才停止 |
+| 上下文 | 无 | 无 | **常驻上下文达阈值自动 `/compact`**（可调） |
+| 特设能力 | 命题「价值/关键性」自动晋升问题清单；`reportMode file/push/both`；`priorityAdjust` | **方法库沉淀循环**（`methods_used`/`new_inventions` → Method Keeper）；**计划审批门/方法晋升门**；**项目锁**；后生问题「来源与动机」一等公民 | **常驻各自沉淀 + 互相阅读**；**全体一致验证**；**随时增开/关闭常驻、留言干预**；**断点续跑** |
 
-四者都支持：断点续跑（`vibe_math_resume` / `vibe_v4_resume`）、人工/自动模式切换、`vibe_math_*` / `vibe_v4_*` 工具集与 `/vibe` `/v4` 命令、按项目隔离、子代理权限调控。**v2 与 v3 均为同级主推**——偏好结构化 JSON 数据与确定性调度选 v2，偏好论文式 md、规划代理与理论发明库选 v3；v4 是最新的「常驻自组织合作研究」实验架构。
-
----
-
-## 🧠 架构与分工（v1 · 经典）⚠️ 早期架构 · 将弃用 · 不建议新项目使用
-
-框架 = **一个主代理（助手）+ 一个代码调度器 + 五类子代理**。
-
-| 角色 | 类型 | 职责 |
-|---|---|---|
-| **主代理** | LLM（会话里的那个助手） | **自然语言接口 + 汇报者 + 助手**。它**自己不求解、不调度**，只负责：把你的话翻译成 `vibe_math_*` 工具调用、汇报进展、问答式配置参数、执行调控命令。 |
-| **调度器** | 插件代码（非模型） | 唯一主控：读 `qs.csv`、派发子代理、写文件、推进状态机。**所有调度靠编程，不靠代理**。 |
-| **Brainstorm 子代理** | 子代理 | 元认知头脑风暴：约束分解、边界测试、相似问题映射，把问题拆成多个「大相径庭」的求解方向。 |
-| **Solver 子代理** | 子代理 | 每个方向一个专属求解器，**同一会话内多轮迭代**，产出引理（含证明）、子路线、存活概率、完整解法。 |
-| **Derive 子代理** | 子代理 | 当某问题的所有方向都走进死路仍未解决时，基于历史痛点**派生 1~3 个全新方向**。 |
-| **Verifier 子代理** | 子代理 | 每个验证单元 ≥3 个独立「严苛审稿人」，独立审查 → 辩论（交流群）→ 裁决。 |
-| **Decider 子代理** | 子代理 | `Verified/` 出现新结论时，判断它是否解决了某未解决问题，回写 `qs.csv` 并重命名解法文件。 |
-
-> 一句话分工：**主代理负责“和人对话”，调度器负责“干活”，子代理负责“动脑”。**
+三者都支持：断点续跑（`vibe_math_resume` / `vibe_v4_resume`）、人工/自动模式切换、`vibe_math_*` / `vibe_v4_*` 工具集与 `/vibe` `/v4` 命令、按项目隔离、子代理权限调控。**v2 与 v3 均为同级主推**——偏好结构化 JSON 数据与确定性调度选 v2，偏好论文式 md、规划代理与理论发明库选 v3；v4 是最新的「常驻自组织合作研究」实验架构。
 
 ---
 
@@ -201,24 +176,6 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 
 ## 📁 目录结构
-
-### v1（经典）
-
-```
-<会话工作区>/VibeMath/
-├─ current.json                        # 当前项目
-├─ vibe_math_setting.json             # （可选，全局回退）默认参数 JSONC，含注释
-└─ Projects/<项目>/
-   ├─ vibe_math_setting.json          # 该项目默认参数
-   ├─ qs/qs.csv                        # 问题清单：id,description,priority,status,deps
-   ├─ Verified/                        # 已验证可信知识库（绝对可信）
-   ├─ Pending_Verification/            # 待验证原始输出
-   ├─ Under_Verification/              # 拆解后的最小验证单元
-   ├─ Temp/                            # 临时工作区
-   ├─ Temp_Validated/                  # 已验证、待晋升
-   ├─ Progress_Logs/                   # 每问题进度 + 辩论日志 + 定期报告
-   └─ VibeMath_State/                  # 调度器私有持久状态（断点恢复用）
-```
 
 ### v2（概率驱动 · 主推）
 
@@ -262,7 +219,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
    └─ State/                           # 调度器私有持久状态（agents/tasks/plans/verifier_accuracy/index/项目锁/进程纪元）
 ```
 
-**铁律（v1/v2 通用）**：调度器是**唯一文件写者**（子代理只返回结构化 JSON，从不写文件）。
+**铁律（v2 通用）**：调度器是**唯一文件写者**（子代理只返回结构化 JSON，从不写文件）。
 **v3 铁律**：只有 `Verified/` 与验证器判真/假的对象**绝对可信**；其余 md（未定论命题、研究日志、方法库未验证断言）仅作经验参考；调度器只解析软规范锚点行与条目标题行，从不解析正文散文。**v3 支持代理直接写 md**（自组织定位各自归属文件，如求解器写 `Progress/<id>/<方向id>.md`、新引理写 `Propos/<分类>/<id>.md`、方法整理代理写 `Methods/<id>.md`）；并发安全靠**写锁**——写任何文件前调 `vibe_math_claim_write`、写完 `vibe_math_release_write`（同一文件同一时刻只允许一个代理写），内容留在 md，轻量元数据经 `vibe_math_sync_meta` 上报给调度器。
 
 ---
@@ -419,25 +376,6 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ## ⚙️ 参数速查表
 
-### v1（经典）默认值
-
-| 参数 | 默认 | 说明 |
-|---|---|---|
-| `mode` | `auto` | `auto` / `manual` |
-| `maxParallelThreshold` | 4 | 全局最大并发子代理数 |
-| `solverMaxRounds` | 20 | 每个求解方向最大迭代轮数 |
-| `verifierCount` | 3 | 每验证单元独立验证器数（≥3） |
-| `debateMaxRounds` | 5 | 验证辩论最大轮数 |
-| `verdictMode` | `direct-veto` | `direct-veto` / `weighted-vote` |
-| `provider` / `model` | 空 | 子代理模型（空 = 继承根代理） |
-| `solverPersona` / `verifierPersona` | 空 | 注入求解器/验证器的额外要求 |
-| `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具（硬性 toolFilter） |
-| `verifierToolAllow` / `verifierToolDeny` | `[]` | 验证器允许/禁止的工具 |
-| `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | 每轮外部工具调用上限（0=不限，软性） |
-| `reportIntervalMs` | 0 | 0 = 仅事件驱动（有代理状态更新等事件才写报告）；>0 = 定时自动写（毫秒） |
-| `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
-| `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
-
 ### v2（概率驱动 · 主推）默认值
 
 | 参数 | 默认 | 说明 |
@@ -507,29 +445,24 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ## 📝 断点续跑 & 人工干预（两大硬性需求）
 
-- **断点续跑**：所有状态落盘（v1/v2：`VibeMath_State/*.json`；v3：`State/*.json`），每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` 即可续跑。v2/v3 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。**v3 的 md 知识库本身就是叙事断点**——代理 resume 时从研究日志/问题卡/命题卡尾部续写。
-- **中途人工干预**：`manual` 模式在关键节点挂起决策（v1：brainstorm/solver 派发、验证裁决、晋升 Verified；v2：explorer/solver 派发、验证裁决；v3：**计划审批门**（规划代理产出计划后等你 approve/reject）、验证裁决门、**方法晋升门**（项目方法 → 全局库））；可随时 `set_mode auto` 切回自动（自动放行所有挂起决策）；可对任意子代理 `message_agent` / `interrupt_agent`。
-- **进度汇报**：默认**事件驱动** —— 只有代理状态更新等事件发生时才会写报告（v1/v2：`Progress_Logs/report.json`；v3：`Progress_Logs/report.json` + `Logs/报告.md` 论文式人读摘要；`reportMode` 可 `file`/`push`/`both`，`push` 通过 `rootAgent.followup()` 唤醒主代理主动汇报）；只有把 `reportIntervalMs` 设为 >0 才启动定时自动汇报（间隔毫秒）。
+- **断点续跑**：所有状态落盘（v2：`VibeMath_State/*.json`；v3：`State/*.json`），每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` 即可续跑。v2/v3 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。**v3 的 md 知识库本身就是叙事断点**——代理 resume 时从研究日志/问题卡/命题卡尾部续写。
+- **中途人工干预**：`manual` 模式在关键节点挂起决策（v2：explorer/solver 派发、验证裁决；v3：**计划审批门**（规划代理产出计划后等你 approve/reject）、验证裁决门、**方法晋升门**（项目方法 → 全局库））；可随时 `set_mode auto` 切回自动（自动放行所有挂起决策）；可对任意子代理 `message_agent` / `interrupt_agent`。
+- **进度汇报**：默认**事件驱动** —— 只有代理状态更新等事件发生时才会写报告（v2：`Progress_Logs/report.json`；v3：`Progress_Logs/report.json` + `Logs/报告.md` 论文式人读摘要；`reportMode` 可 `file`/`push`/`both`，`push` 通过 `rootAgent.followup()` 唤醒主代理主动汇报）；只有把 `reportIntervalMs` 设为 >0 才启动定时自动汇报（间隔毫秒）。
 
 ---
 
 ## 📚 规格文档
 
-- **v1（经典）**：[`vibe-math-v1/实现方案-多代理数学问题求解与验证框架.md`](vibe-math-v1/实现方案-多代理数学问题求解与验证框架.md)
 - **v2（概率驱动）**：[`vibe-math-v2/实现方案.md`](vibe-math-v2/实现方案.md)
 - **v3（论文式 md + 规划代理 + 方法库）**：[`vibe-math-v3/实现方案.md`](vibe-math-v3/实现方案.md)
+- **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](vibe-math-v4/实现方案.md)
 
 ---
 
 ## ⚠️ 已知边界（有意简化）
 
-**v1**：
-- `Pending_Verification` 按文件逐个拆解，未做跨文件的“去重 / 引用整合”（不损正确性）。
-- `weighted-vote` 会记录每个验证器的历史准确率 + 严谨性权重，但最终裁决仍遵循“证伪优先 / 全 Uncertain→False”（数值权重仅用于审计）。
-- manual 模式在第一个未决关键节点暂停整条主循环。
-
 **v2**：
-- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——版本升级会自动替换**未被手动修改**的 preset 文件（哈希一致才覆盖）；你改过的文件会被保留并在日志中提示。无记录的老安装首次会一次性刷新到当前版本。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v1`、`vibe-math-v2` 与 `vibe-math-v3` 目录后重启 DSH。
+- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——版本升级会自动替换**未被手动修改**的 preset 文件（哈希一致才覆盖）；你改过的文件会被保留并在日志中提示。无记录的老安装首次会一次性刷新到当前版本。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v2`、`vibe-math-v3` 与 `vibe-math-v4` 目录后重启 DSH。
 - `flat` 裁决在辩论不一致时直接判 `0.5`（高置信分歧如 0.9 vs 1 也会被误判 0.5——**v3 已用近共识规则修复**）；`forced` 按历史准确率+置信度加权。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
 - 三个 preset 文件互相独立、可共存；同一会话同时只能选一个预设。

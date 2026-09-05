@@ -1,14 +1,16 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
 // When this bundle is installed (e.g. `dsh plugin add dsh-vibe-math` or from the
-// dsh-market), this plugin copies ALL FOUR agent presets out of the package into
-// the DSH preset root, so the user immediately gets four presets in the picker:
-//   vibe-math-v1/  (classic pipeline architecture)
+// dsh-market), this plugin copies ALL THREE agent presets out of the package into
+// the DSH preset root, so the user immediately gets three presets in the picker:
 //   vibe-math-v2/  (probability-driven architecture)
 //   vibe-math-v3/  (THIRD-generation: paper-style Markdown knowledge base +
 //                   planner-agent scheduling + universal theory/method library)
 //   vibe-math-v4/  (FOURTH-generation: persistent self-organizing resident
 //                   subagents — message bus / meetings / unanimous-consensus
-//                   verification / per-resident libraries) [new]
+//                   verification / per-resident libraries)
+//
+// (vibe-math-v1 — the classic pipeline — was removed at v2.0.0; this bundle now
+//  ships v2/v3/v4 only.)
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
 //   - baseline (no state file — e.g. upgrading from an installer that predates
@@ -31,11 +33,6 @@ import { fileURLToPath } from 'node:url'
 export const name = 'vibe-math-preset-installer'
 
 const PRESETS = [
-  {
-    src: 'vibe-math-v1',
-    dst: 'vibe-math-v1',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math.js', '实现方案-多代理数学问题求解与验证框架.md'],
-  },
   {
     src: 'vibe-math-v2',
     dst: 'vibe-math-v2',
@@ -77,8 +74,7 @@ function writeState(path, state) {
 }
 
 // DSH 适配性自检（能力检测，而非版本号——DSH 不向插件暴露版本）。
-// 检查三个 preset 运行时需要的宿主服务与关键 API 形状是否可用，
-// 缺失时打 warning 提示宿主版本可能过旧 / 缺少对应插件行。
+// 检查 preset 运行时需要的宿主服务与关键 API 形状是否可用，缺失时打 warning。
 async function checkHostCapabilities(ctx, logger) {
   const problems = []
   const checks = [
@@ -104,14 +100,29 @@ async function checkHostCapabilities(ctx, logger) {
     if (f && typeof f.resolve === 'function') {
       const r = await f.resolve('x', { cwd: process.cwd() })
       if (typeof r !== 'object' || r === null || typeof r.targetKey !== 'string') {
-        problems.push('fs.resolve 返回形状不符（期望 {targetKey, displayPath}，v3 预设要求 DSH ≥ 0.1.1）')
+        problems.push('fs.resolve 返回形状不符（期望 {targetKey, displayPath}，v3/v4 预设要求 DSH ≥ 0.1.1）')
       }
     }
   } catch (e) { problems.push('fs.resolve 能力检测失败：' + String((e && e.message) || e)) }
+  // v4 依赖 subagents.startContinuable 的 agentOptions / toolFilter 能力（DSH 0.1.2 起由
+  // dsh-subagent 声明 SubagentCapabilities.agentOptions；spawn/fork 进程内 provider 均支持。
+  // 缺省 provider 名按 spawn 探测；探测失败不视为致命（等价于回退到再试一次、只警告）。
+  try {
+    const sa = (ctx && ctx.get) ? ctx.get('subagents') : undefined
+    if (sa && typeof sa.list === 'function') {
+      const names = (sa.list ? sa.list() : [])
+      const name = names.indexOf('spawn') !== -1 ? 'spawn' : (names[0] || '')
+      if (name && typeof sa.getProvider === 'function') {
+        const cap = (sa.getProvider(name) || {}).capabilities
+        if (cap && cap.agentOptions === false) problems.push('subagents provider "' + name + '" 不支持 agentOptions（v4 指定常驻模型/路由需要）')
+        if (cap && cap.toolFilter === false) problems.push('subagents provider "' + name + '" 不支持 toolFilter（v4 常驻工具权限需要）')
+      }
+    }
+  } catch (e) { /* 探测失败不致命 */ }
   if (problems.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。三个 preset 依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.1-rc.2，见 package.json 的 dsh.minVersion/testedVersion）。')
+    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4 预设依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.2-rc.1，见 package.json 的 dsh.minVersion/testedVersion）。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.1-rc.2）。')
+    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.2-rc.1）。')
   }
 }
 
