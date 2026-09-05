@@ -40,6 +40,7 @@
 **一句话流水线**：起始产生 N 个**常驻子代理**（continuable，持久上下文）先各自头脑风暴、产出初始见解/方向 → 此后**所有任务安排由它们互相留言 + 集体开会自主决定**（框架只做消息总线/会议/任务板/产物沉淀，**绝不分配任务**）；每个常驻把有价值的产物按**价值程度 / 动机用途计划 / 自身概率估计**沉淀到**自己**的 `Progress/<id>/`、`Propos/<id>/`、`Methods/<id>/`、`Subproblems/<id>/` 库，并**可互相阅读**；验证由它们**自行商议**发起，**仅当全体常驻一致（真或假）**才写入 `Verified/`，否则留库附概率；常驻上下文量达阈值（默认 66%）自动 `/compact`；**仅当全体一致认为原问题已解决**才停止；可随时人工干预/增开/关闭常驻，支持断点续跑。
 
 > 说明：V4 去掉 v3 的中央规划器与确定性角色（explorer/solver/verifier/planner/method-keeper），把"研究者"本身作为主体。详见 `vibe-math-v4/实现方案.md`。
+> 保活机制（分级保活 A+B）：团伙空闲超 `activityTimeoutMs` 会收到**自驱动** CHECKPOINT（建议继续解决/发消息/提议任务，而非"是否要停止"），唤醒失败会自动重新武装心跳；若团队空闲且**无新产物**超过 `stallAutoMeetingMs`（默认 6 分钟），框架会自动召集一次同步会议让常驻们自行决定下一步——因此小组不会"跑完就永久停滞"（框架只促成、从不指派任务）。
 
 ---
 
@@ -416,7 +417,8 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `compactAfterRounds` | 8 | 常驻每累计 N 轮（未压缩）触发一次软压缩 |
 | `meetingKeepEvery` | 5 | 每积累 N 个新产物自动触发一次同步会议 |
 | `maxParallel` | 3 | 同时唤醒的常驻上限（框架侧并发闸，非指派） |
-| `activityTimeoutMs` | 120000 | 空闲心跳间隔（超时才触发 CHECKPOINT 唤醒，推动收敛） |
+| `activityTimeoutMs` | 120000 | 空闲心跳间隔（超时才触发**自驱动** CHECKPOINT 唤醒，推动常驻继续推进；唤醒失败会自动重新武装心跳，保证小组永不永久停死） |
+| `stallAutoMeetingMs` | 360000 | **停滞自动同步会议阈值**（分级保活 B）：团队空闲且无新产物超过该时长时，框架自动召集一次同步会议，让常驻们自行决定下一步路线/分工（框架只促成，不指派） |
 | `verdictMaxRounds` | 3 | 验证在独立初评后进入辩论的最大轮数 |
 | `provider` / `model` | 空 | **常驻 LLM 路由**（空 = 常驻继承主代理的 provider/model；此前声明未用，v1.4.1 真正接入） |
 | `residentPersona` | 空 | 注入每个常驻提示词开头的人格/要求 |

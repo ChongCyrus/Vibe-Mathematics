@@ -32,6 +32,7 @@ export function apply(ctx) {
       residentCount: 4, compactThreshold: 66, compactAfterRounds: 8,
       maxParallel: 3, activityTimeoutMs: 120000, verdictMaxRounds: 3,
       meetingKeepEvery: 5,   // 每积累 N 个新产物自动触发一次同步会议
+      stallAutoMeetingMs: 360000,   // 团队空闲且无新产物的"停滞阈值"：超过则自动召集同步会议（分级保活 B）
       // model/provider inheritance: '' = the resident inherits the parent (main assistant)
       // route (provider + model). Set them to override the resident's LLM backend/model.
       provider: '', model: '', residentPersona: '',
@@ -47,7 +48,7 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
-    let lastActivityAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
+    let lastActivityAt = now(), lastProgressAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
     const activityLogCap = 200
 
     // ---- utils ----
@@ -64,6 +65,11 @@ export function apply(ctx) {
     function blocksToText(b){ if(!b) return ''; let out=''; for(const x of b){ if(x&&x.type==='text'&&typeof x.text==='string') out+=x.text+'\n' } return out.trim() }
     function logActivity(event,detail){ activityLog.push({at:now(),event,detail:String(detail||'')}); if(activityLog.length>activityLogCap) activityLog.shift() }
     function logDecision(kind,detail){ decisions.push({at:now(),kind,detail:String(detail||'')}) }
+    // Record that the project made real progress (new artifact, meeting, verify, task, or a
+    // resident speaking to the group). The stall auto-sync meeting (B) fires only when this has
+    // NOT advanced for stallAutoMeetingMs, so a group that is genuinely producing keeps working
+    // and only a truly stalled group gets a coordination meeting to reboot itself.
+    function markProgress(){ lastProgressAt = now(); }
     function pickProvider(){ try { const n=subagents.list?subagents.list():[]; if(n.indexOf('spawn')!==-1) return 'spawn'; if(n.indexOf('fork')!==-1) return 'fork' } catch(e){} return 'spawn' }
     // Per-resident model/provider inheritance: when params.provider / params.model are set,
     // the resident uses that exact route; when left '' the resident inherits the parent's
@@ -110,10 +116,10 @@ export function apply(ctx) {
       await writeJson('State/mailboxes.json', Object.fromEntries(mailboxes))
       await writeJson('State/taskboard.json', taskboard)
       await writeJson('State/decisions.json', decisions)
-      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,activityLog,processEpoch,artifactCount})
+      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,lastProgressAt,activityLog,processEpoch,artifactCount})
     }
     async function loadAll(){
-      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||''; artifactCount=s.artifactCount||0 }
+      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); lastProgressAt=s.lastProgressAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||''; artifactCount=s.artifactCount||0 }
       const rm=await readJson('State/residents.json'); if(rm&&typeof rm==='object') residents=new Map(Object.entries(rm))
       const mb=await readJson('State/mailboxes.json'); if(mb&&typeof mb==='object') mailboxes=new Map(Object.entries(mb))
       const tb=await readJson('State/taskboard.json'); if(Array.isArray(tb)) taskboard=tb
@@ -280,7 +286,7 @@ export function apply(ctx) {
     async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
     async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
-    function bumpArtifacts(){ artifactCount+=1; if(!meetingState && !verifyState && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
+    function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
     // identify WHICH resident is calling a resident-facing tool: match the caller's
     // subagent id to a resident's childId. Fall back to the last-woken resident when
@@ -290,12 +296,12 @@ export function apply(ctx) {
 
     // ---- task board (residents propose / claim / complete; framework wakes the claimer) ----
     async function writeTaskboard(){ const lines=['# 任务板','']; for(const t of taskboard){ lines.push('- ['+t.status+'] '+t.title+(t.claimer?('（认领:'+t.claimer+'）'):'')+(t.proposer?('（提议:'+t.proposer+'）'):'')+(t.description?('：'+t.description):'')) } await writeText('Shared/taskboard.md',lines.join('\n')) }
-    async function proposeTask(title,description,proposer){ const id='t-'+shortId(); taskboard.push({id,title:String(title),description:String(description||''),status:'open',proposer:proposer||'',claimer:'',source:''}); await saveTaskboard(); logActivity('task','proposed '+id+'「'+title+'」'); return {ok:true,id} }
-    async function claimTask(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false,message:'no such task'}; if(t.status!=='open') return {ok:false,message:'task already '+t.status}; t.status='claimed'; t.claimer=claimer; await saveTaskboard(); logActivity('task',claimer+' claimed '+id); 
+    async function proposeTask(title,description,proposer){ const id='t-'+shortId(); taskboard.push({id,title:String(title),description:String(description||''),status:'open',proposer:proposer||'',claimer:'',source:''}); await saveTaskboard(); markProgress(); logActivity('task','proposed '+id+'「'+title+'」'); return {ok:true,id} }
+    async function claimTask(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false,message:'no such task'}; if(t.status!=='open') return {ok:false,message:'task already '+t.status}; t.status='claimed'; t.claimer=claimer; await saveTaskboard(); markProgress(); logActivity('task',claimer+' claimed '+id); 
       // wake the claimer to work on it (framework moves the task, resident decides how)
       const r=residents.get(claimer); if(r && !busy.has(claimer)){ currentResident=claimer; await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll() }
       return {ok:true} }
-    async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); logActivity('task','done '+id); return {ok:true} }
+    async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); markProgress(); logActivity('task','done '+id); return {ok:true} }
     async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
     function listTasks(){ return taskboard.filter(t=>t.status!=='done') }
     async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=clPct(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
@@ -318,7 +324,7 @@ export function apply(ctx) {
       if(!busy.has(to)){
         currentResident=r.rId
         await wakeResident(r, (await normalPrompt(r))+'\n\n[NEW MESSAGE from '+from+']\n'+content,'normal')
-        await saveAll(); logActivity('message',from+'→'+to); return {ok:true}
+        await saveAll(); markProgress(); logActivity('message',from+'→'+to); return {ok:true}
       }
       const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb); await saveAll(); logActivity('message',from+'→'+to+' (queued)'); return {ok:true}
     }
@@ -336,7 +342,7 @@ export function apply(ctx) {
         if(r.rId===from) continue
         const mb=mailboxes.get(r.rId)||[]; mb.push({from,at:now(),content:'[群聊] '+text}); mailboxes.set(r.rId,mb)
       }
-      logActivity('relay',from+' → 团队: '+text.slice(0,60)); await saveAll()
+      logActivity('relay',from+' → 团队: '+text.slice(0,60)); markProgress(); await saveAll()
     }
 
     // ---- meeting ----
@@ -349,6 +355,7 @@ export function apply(ctx) {
       const rot=Math.floor(Math.random()*Math.max(1,ids.length))
       const order=ids.slice(rot).concat(ids.slice(0,rot))
       meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order}
+      markProgress();
       logActivity('meeting','start: '+agenda); await saveAll(); await scheduleNext(); return {ok:true,id:meetingState.id}
     }
     async function continueMeetingRound(){
@@ -359,7 +366,8 @@ export function apply(ctx) {
       const order=meetingState.order||ids
       const id=order.find(x=>meetingState.inputs[x]===undefined && !busy.has(x)); if(!id) return
       const r=residents.get(id)
-      await wakeResident(r, meetingPrompt(r,meetingState), 'meeting'); await saveAll()
+      const ok = await wakeResident(r, meetingPrompt(r,meetingState), 'meeting'); await saveAll()
+      if(!ok) armHeartbeat()   // a failed meeting wake must NOT silently hang the meeting
     }
     async function finalizeMeeting(){
       const st=meetingState
@@ -387,6 +395,7 @@ export function apply(ctx) {
       clearHeartbeat()
       pendingVerify=null
       verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},transcript:[]}
+      markProgress();
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
     }
     async function continueVerifyRound(){
@@ -395,7 +404,8 @@ export function apply(ctx) {
       if(allVoted){ await finalizeVerify(); return }
       const id=ids.find(x=>verifyState.verdicts[x]===undefined && !busy.has(x)); if(!id) return
       const r=residents.get(id)
-      await wakeResident(r, verifyPrompt(r,verifyState), verifyState.stage==='independent'?'verif-ind':'verif-deb'); await saveAll()
+      const ok = await wakeResident(r, verifyPrompt(r,verifyState), verifyState.stage==='independent'?'verif-ind':'verif-deb'); await saveAll()
+      if(!ok) armHeartbeat()   // a failed verify wake must NOT silently hang the verification
     }
     async function finalizeVerify(){
       const vs=verifyState; const expected=Array.from(residents.keys()).length
@@ -460,15 +470,15 @@ export function apply(ctx) {
 
     // ---- heartbeat / liveness helpers (boundary-A: event-driven + gated heartbeat) ----
     // A checkpoint wake is NOT "keep working forever": it nudges the least-recently-active
-    // resident, after an idle timeout, to either make concrete progress or push the group
-    // toward a decision (meeting / verify / solved). This adds convergence pressure instead
-    // of infinite token-burning, matching the "framework never assigns work" philosophy.
+    // resident, after an idle timeout, to CONTINUE the work itself (self-drive), and only to
+    // propose a meeting/verify/solved when it truly has nothing left. This keeps the group moving
+    // on its own (framework never assigns work) but adds convergence pressure instead of letting
+    // a stalled group sit idle forever.
     function heartbeatPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'Resident researcher '+r.rId+' — CHECKPOINT（空闲）：团队在等待方向。'
-        +'请用一句话说明你下一步做什么；若你已无产出、或认为问题已解决/接近解决，请**提议开会（propose_meeting）**、**提议验证（propose_verify）**、或**声明 solved=true**，让团队能做出决定——不要产出填充性工作。\n'
+        +'Resident researcher '+r.rId+' — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**\n'
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you do next or a declaration>","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","claim_task":"<id|null>"}'
+        +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<id|null>","contextPct":40}'
     }
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
     function armHeartbeat(){
@@ -509,14 +519,30 @@ export function apply(ctx) {
       // maxParallel: don't start a new wake when the in-flight cap is reached
       const mp=Number(params.maxParallel)||0
       if(mp>0 && busy.size>=mp){ armHeartbeat(); return }
-      // heartbeat / coordination wake of the least-recently-active resident, ONLY after idle timeout
+      // B) stall auto-sync meeting (分级保活 B): the group has been idle with NO progress for
+      //    stallAutoMeetingMs → convene a sync meeting so the residents coordinate their next move
+      //    (framework convenes & records; residents decide — never assigns work). Only when no
+      //    meeting/verify/pending work is already active.
+      if(phase==='active' && !meetingState && !verifyState && !pendingVerify){
+        const stallMs=Number(params.stallAutoMeetingMs)||((Number(params.activityTimeoutMs)||120000)*3)
+        if(now()-lastProgressAt>=stallMs){
+          await startMeeting('团队较长时间没有新进展。请你们自行讨论：当前问题是否已解决、开放难点是什么、谁负责哪部分、下一步如何推进，并自主决定是否继续。框架只负责转达与记录，不替你们决定。','general',null)
+          return
+        }
+      }
+      // A) heartbeat / coordination: wake the least-recently-active resident after an idle timeout
+      //    to SELF-DRIVE (continue solving / message / propose task / meeting / verify). On a failed
+      //    wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops the group.
       clearHeartbeat()
       let target=null, oldest=-1
       for(const [,r] of residents){ if(busy.has(r.rId)) continue; const idle=now()-r.lastActiveAt; if(idle>oldest){ oldest=idle; target=r } }
       const atOs=Number(params.activityTimeoutMs)||120000
       if(target && oldest>=atOs){
-        // an idle timeout has elapsed: checkpoint wake (event-driven work is unchanged)
-        await wakeResident(target, await heartbeatPrompt(target), 'normal'); await saveAll(); return
+        let ok=false
+        try { ok = await wakeResident(target, await heartbeatPrompt(target), 'normal') } catch(e){ ok=false }
+        await saveAll()
+        if(!ok) armHeartbeat()   // wake failed → re-arm so the group never permanently stops
+        return
       }
       // everyone is busy or not idle-enough: arm a heartbeat to re-check later (no infinite spin)
       armHeartbeat()
@@ -613,7 +639,7 @@ export function apply(ctx) {
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage}:null, meetings:meetings.length,
@@ -623,7 +649,7 @@ export function apply(ctx) {
     // Normalize one parameter value to its intended type so a string from /v4 set or configure
     // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
     function normalizeParam(k, v){
-      const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery']
+      const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery','stallAutoMeetingMs']
       if(INT_KEYS.includes(k)){ const n=Number(v); return Number.isFinite(n)?n:v }
       if(k==='toolAllow'||k==='toolDeny'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
       return v
@@ -689,7 +715,7 @@ export function apply(ctx) {
   // model/provider inheritance: set model/provider to override the residents' LLM route (''=inherit
   // the main assistant's route). toolAllow/toolDeny are per-resident tool permissions (scoped
   // restrict). residentPersona prepends a persona line to every resident prompt.
-  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}}}),(s,a)=>{ s.setParams(a); return {ok:true} })
+  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}}}),(s,a)=>{ s.setParams(a); return {ok:true} })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>s.postMessage(s.residentIdOf(x),a.to,a.content))

@@ -300,5 +300,47 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T14: stall auto-sync meeting (分级保活 B) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T14 stall auto-sync meeting reboots a stalled group --')
+  await m.callTool('vibe_v4_start', { problem:'停滞自动会议', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  // stallAutoMeetingMs tiny → as soon as the group is idle with no progress, an auto-sync meeting fires
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, stallAutoMeetingMs:1, meetingKeepEvery:9999 })
+  const rc = m.spawns[0].childId
+  m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  // drive followups; detect the auto-convened sync meeting
+  let sawAutoMeeting=false, fi=0
+  for(let i=0;i<200;i++){
+    if(fi>=m.followups.length){ await sleep(30); break }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    if(/meeting is in progress/i.test(pt) && /没有新进展/.test(pt)){ sawAutoMeeting=true; break }
+    m.fireEnd({ id: fu.childId, runId:'t14-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'讨论', voteSolved:false})}] })
+  }
+  assert(sawAutoMeeting, 'T14: an idle group with no progress auto-convenes a sync meeting (分级保活 B)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T15: self-drive heartbeat prompt (分级保活 A) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T15 self-drive heartbeat nudge (not a passive stop prompt) --')
+  await m.callTool('vibe_v4_start', { problem:'自驱心跳', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  // activity timeout small → heartbeat fires; stall large → the stall meeting must NOT preempt A
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, stallAutoMeetingMs:9999999, compactAfterRounds:999 })
+  const rc = m.spawns[0].childId
+  m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  for(let i=0;i<60;i++){ if(m.followups.length>0){ const fu=m.followups.shift(); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; if(/CHECKPOINT/.test(pt)){
+    assert(/继续解决|自主推进/.test(pt), 'T15: heartbeat prompt nudges the resident to CONTINUE solving (self-drive)')
+    assert(!/请用一句话说明你下一步做什么/.test(pt), 'T15: heartbeat prompt is NOT the old passive "state your next step"')
+    break
+  } else { m.fireEnd({ id: fu.childId, runId:'t15-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }) } } await sleep(40) }
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)
