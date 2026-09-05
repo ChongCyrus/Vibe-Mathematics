@@ -25,6 +25,7 @@
 //   - same version: no-op (idempotent). Missing files are ALWAYS restored.
 //   - force a full refresh at any time: delete the preset dirs and restart DSH.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -75,8 +76,42 @@ function writeState(path, state) {
 
 // DSH 适配性自检（能力检测，而非版本号——DSH 不向插件暴露版本）。
 // 检查 preset 运行时需要的宿主服务与关键 API 形状是否可用，缺失时打 warning。
+// Best-effort DSH host-version detection. DSH does NOT expose its version through a documented
+// service/context property or a guaranteed env var, so we probe in order: an explicit env var
+// (future-proofing), then the installed @deepseek-ai/dsh package.json. This is layout-dependent
+// (works for a typical global install where @deepseek-ai/dsh is a sibling of this plugin); when it
+// cannot resolve, the capability self-check below is still the authoritative gate.
+const __require = createRequire(import.meta.url)
+function detectDshVersion() {
+  try { const v = process.env.DSH_VERSION; if (v && String(v).trim()) return String(v).trim() } catch (e) {}
+  try {
+    const p = __require.resolve('@deepseek-ai/dsh/package.json')
+    const v = (JSON.parse(readFileSync(p, 'utf8')).version || '').trim()
+    if (v) return v
+  } catch (e) { /* host package not resolvable from here — rely on capability check */ }
+  return undefined
+}
+
 async function checkHostCapabilities(ctx, logger) {
   const problems = []
+  // 1) DSH version compatibility (best-effort, only when the version is detectable).
+  //    Declared under package.json dsh.compatibility.dshReleases (per the DSH STORE contract):
+  //    each full DSH release maps to 'compatible' | 'incompatible' | 'unknown'. A version that is
+  //    absent or 'unknown' is a soft warning; 'incompatible' is a hard "please use X" message.
+  let dshRel = {}
+  try { const m = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')); dshRel = (m.dsh && m.dsh.compatibility && m.dsh.compatibility.dshReleases) || {} } catch (e) {}
+  const supported = Object.keys(dshRel).sort()
+  const dshVersion = detectDshVersion()
+  if (dshVersion) {
+    const status = dshRel[dshVersion]
+    if (status === 'incompatible') {
+      problems.push('当前 DSH 版本 v' + dshVersion + ' 被本包声明为 incompatible；请使用 ' + supported.join(' / ') + '。')
+    } else if (status === undefined || status === 'unknown') {
+      problems.push('当前 DSH 版本 v' + dshVersion + ' 尚未被本包声明为兼容（dshReleases 仅声明 ' + supported.join(' / ') + '）；建议使用 ' + supported.join(' / ') + '，或将该版本在 dshReleases 中标注后再自行验证。')
+    }
+  }
+  // 2) capability self-check (the authoritative mounting gate; also covers hosts whose version
+  //    could not be read). subagents / agents / tools / commands / fs shapes + v4 capabilities.
   const checks = [
     ['subagents', ['startContinuable', 'followup', 'interrupt']],
     ['agents', ['roots']],
@@ -120,9 +155,9 @@ async function checkHostCapabilities(ctx, logger) {
     }
   } catch (e) { /* 探测失败不致命 */ }
   if (problems.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 宿主能力自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4 预设依赖这些宿主服务/API，旧版 DSH 可能无法挂载，建议升级 DSH（本项目已充分测试并确认适配 dsh-v0.1.2-rc.1，见 package.json 的 dsh.minVersion/testedVersion）。')
+    logger?.warn?.('[dsh-vibe-math] 宿主自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4 预设依赖这些宿主服务/API，旧版或未经声明兼容的 DSH 可能无法挂载' + (dshVersion ? '（当前检测到 DSH v' + dshVersion + '，本包适配 ' + (supported.length ? supported.join(' / ') : '(未声明)') + '）' : '') + '。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主能力自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用（已确认适配 DSH 0.1.2-rc.1）。')
+    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (dshVersion ? '（当前 DSH v' + dshVersion + '，本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
   }
 }
 
