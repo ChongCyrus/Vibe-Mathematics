@@ -70,6 +70,11 @@ export function apply(ctx) {
     // NOT advanced for stallAutoMeetingMs, so a group that is genuinely producing keeps working
     // and only a truly stalled group gets a coordination meeting to reboot itself.
     function markProgress(){ lastProgressAt = now(); }
+    // How long a meeting/verify may run without collecting a new input/verdict before we treat it as
+    // deadlocked and abandon it. A meeting round's own signal window is activityTimeoutMs, so a
+    // resident should speak within that; 2× that without ANY new input/verdict means the meeting/verify
+    // is stuck and must not keep the whole group blocked.
+    function recoverStallMs(){ return (Number(params.activityTimeoutMs)||120000) * 2 }
     function pickProvider(){ try { const n=subagents.list?subagents.list():[]; if(n.indexOf('spawn')!==-1) return 'spawn'; if(n.indexOf('fork')!==-1) return 'fork' } catch(e){} return 'spawn' }
     // Per-resident model/provider inheritance: when params.provider / params.model are set,
     // the resident uses that exact route; when left '' the resident inherits the parent's
@@ -354,19 +359,29 @@ export function apply(ctx) {
       // who sees no one else's contribution"; a real discussion lets each member lead sometimes.
       const rot=Math.floor(Math.random()*Math.max(1,ids.length))
       const order=ids.slice(rot).concat(ids.slice(0,rot))
-      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order}
+      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order,at:now(),lastInputAt:now()}
       markProgress();
       logActivity('meeting','start: '+agenda); await saveAll(); await scheduleNext(); return {ok:true,id:meetingState.id}
     }
     async function continueMeetingRound(){
       if(!meetingState) return
-      const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>meetingState.inputs[id]!==undefined)
+      const st=meetingState
+      // STUCK watchdog: a meeting that has been active but collected NO new input for a long while
+      // is deadlocked (e.g. an in-flight/hung resident, a run of failed wakes). Abandoning it returns
+      // the group to normal self-organization (A heartbeat / B auto-sync can then re-drive) instead of
+      // permanently blocking the whole group behind a broken meeting.
+      if(now()-(st.lastInputAt||st.at||now())>=recoverStallMs()){
+        meetingState=null; wakeKind.clear(); logActivity('meeting','abandoned (stuck: no resident spoke)')
+        await saveAll(); await scheduleNext(); return
+      }
+      const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>st.inputs[id]!==undefined)
       if(allSpoke){ await finalizeMeeting(); return }
       // only wake IDLE un-spoken residents (rotated order); in-flight ones re-trigger this on end.
-      const order=meetingState.order||ids
-      const id=order.find(x=>meetingState.inputs[x]===undefined && !busy.has(x)); if(!id) return
+      const order=st.order||ids
+      const id=order.find(x=>st.inputs[x]===undefined && !busy.has(x))
+      if(!id){ armHeartbeat(); return }   // no idle un-spoken resident (a busy/hung one): re-check later
       const r=residents.get(id)
-      const ok = await wakeResident(r, meetingPrompt(r,meetingState), 'meeting'); await saveAll()
+      const ok = await wakeResident(r, meetingPrompt(r,st), 'meeting'); await saveAll()
       if(!ok) armHeartbeat()   // a failed meeting wake must NOT silently hang the meeting
     }
     async function finalizeMeeting(){
@@ -394,17 +409,27 @@ export function apply(ctx) {
     async function beginVerify(pv){
       clearHeartbeat()
       pendingVerify=null
-      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},transcript:[]}
+      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},transcript:[],at:now(),lastVerdictAt:now()}
       markProgress();
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
     }
     async function continueVerifyRound(){
       if(!verifyState) return
-      const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>verifyState.verdicts[id]!==undefined)
+      const vs=verifyState
+      // STUCK watchdog: a verification that has been active but collected no new verdict for a long
+      // while is deadlocked (e.g. an in-flight/hung resident). Abandoning it keeps the object as an
+      // unverified probability (no unanimous consensus was reachable) and returns the group to normal
+      // scheduling instead of blocking the whole team behind a broken verification.
+      if(now()-(vs.lastVerdictAt||vs.at||now())>=recoverStallMs()){
+        verifyState=null; wakeKind.clear(); logActivity('verify',vs.targetId+' abandoned (stuck: no unanimous verdict reachable)')
+        await saveAll(); await scheduleNext(); return
+      }
+      const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>vs.verdicts[id]!==undefined)
       if(allVoted){ await finalizeVerify(); return }
-      const id=ids.find(x=>verifyState.verdicts[x]===undefined && !busy.has(x)); if(!id) return
+      const id=ids.find(x=>vs.verdicts[x]===undefined && !busy.has(x))
+      if(!id){ armHeartbeat(); return }   // no idle un-voted resident (a busy/hung one): re-check later
       const r=residents.get(id)
-      const ok = await wakeResident(r, verifyPrompt(r,verifyState), verifyState.stage==='independent'?'verif-ind':'verif-deb'); await saveAll()
+      const ok = await wakeResident(r, verifyPrompt(r,vs), vs.stage==='independent'?'verif-ind':'verif-deb'); await saveAll()
       if(!ok) armHeartbeat()   // a failed verify wake must NOT silently hang the verification
     }
     async function finalizeVerify(){
@@ -578,6 +603,7 @@ export function apply(ctx) {
       const kind=wakeKind.get(r.rId)||'normal'
       if(kind==='meeting' && meetingState){
         meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
+        meetingState.lastInputAt=now()
         if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
         await saveAll(); await continueMeetingRound(); return
       }
@@ -592,6 +618,7 @@ export function apply(ctx) {
         else { p=clamp01(Number(v.confidence)) }
         // verdict is a PURE 0-1 probability (a degree); no binary TRUE/FALSE classification.
         verifyState.verdicts[r.rId]={prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
+        verifyState.lastVerdictAt=now()
         await saveAll(); await continueVerifyRound(); return
       }
       // normal turn
