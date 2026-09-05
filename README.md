@@ -40,26 +40,6 @@
 **一句话流水线**：起始产生 N 个**常驻子代理**（continuable，持久上下文）先各自头脑风暴、产出初始见解/方向 → 此后**所有任务安排由它们互相留言 + 集体开会自主决定**（框架只做消息总线/会议/任务板/产物沉淀，**绝不分配任务**）；每个常驻把有价值的产物按**价值程度 / 动机用途计划 / 自身概率估计**沉淀到**自己**的 `Progress/<id>/`、`Propos/<id>/`、`Methods/<id>/`、`Subproblems/<id>/` 库，并**可互相阅读**；验证由它们**自行商议**发起，**仅当全体常驻一致（真或假）**才写入 `Verified/`，否则留库附概率；常驻上下文量达阈值（默认 66%）自动 `/compact`；**仅当全体一致认为原问题已解决**才停止；可随时人工干预/增开/关闭常驻，支持断点续跑。
 
 > 说明：V4 去掉 v3 的中央规划器与确定性角色（explorer/solver/verifier/planner/method-keeper），把"研究者"本身作为主体。详见 `vibe-math-v4/实现方案.md`。
->
-> 🔧 **v1.3.2 审计修复**：修复上下文压缩按占比失效（`contextPct` 单位错配，现按百分比保存）、常驻工具按"调用者身份"路由（各常驻库归属正确）、`vibe_v4_read_progress` 真正返回文本、跨进程断点续跑重建常驻、`message(all)` 广播真正投递、`addMember` 增开无 id 碰撞。详见 `vibe-math-v4/实现方案.md` §17。
->
-> 🔧 **v1.3.3 审计修复**：非全票验证把平均概率写回源卡（兑现"留库附概率"）、方法型验证标 `类型: 方法`（不再误标命题）、同进程 abort→resume 重建常驻、记录命题也触发自动同步会议、唤醒信号改用 `activityTimeoutMs`、`verdictMaxRounds`/`meetingKeepEvery` 可调且展示。详见 §18。
->
-> 🔧 **v1.3.4 和谐修复**：重排 `框架图-v4.png` 消除文字/箭头重叠遮挡（子标签不再溢出框、`/compact` 移入独立的"上下文"能力块、底部"产物沉淀·断点续跑"居中排布）；补齐 `agent.cordis.yml` 常驻描述中的"deadlines"一词（v4 并无截止机制），并移除 `实现方案.md` 中不存在的 `vibe_v4_inject`（实际用 `vibe_v4_message`）。
->
-> 🔧 **v1.3.5 边界 A 落地 + 真实 `/compact`**：`maxParallel` 真正限流（在途上限），`activityTimeoutMs` 作为**心跳门控**（空闲超时才触发 CHECKPOINT 唤醒，推动收敛/停止而非无限烧 token）；并用 DSH 真实 `ctx.compaction.compactIfNeeded(常驻 agent, 'pressure', signal)` 压缩常驻自身上下文（回退到自述指令）。详见 §19。
->
-> 🔧 **v1.3.6 修复 v4 preset 选择后跳回原 preset**：v4 插件的 `apply` 读取 `ctx.subagents/agents/fs/tools/commands` 却**未声明 `inject`**，被 DSH 守卫以"未声明依赖"拒绝 → 组合无法挂载 → 选择后自动回退。已补 `export const inject = [...]`，并把心跳定时器从全局 `setTimeout/clearTimeout`（插件沙箱里不存在）改为 **`timer` 服务（`ctx.timeout`）**。
->
-> 🔧 **v1.3.7 哲学回归（清晰提示词 + 真实交流群 + 直接写文件）**：常驻首轮注入完整 `contextBrief`（背景/使命、工作模式、文件与格式、工具、规则）；会议把其他常驻实际发言（input）转给每个人看，常驻日常轮的 `input` 经 `relayToGroup` 转发到其它常驻邮箱（像群聊）；常驻**直接用 fs 写自己的 md**；去固定约束改为团队讨论涌现。详见 §20。
->
-> 🔧 **v1.3.8 基于真实测试的诊断修复**：**① 共识验证真正"全体一致"**——`finalizeVerify` 现在要求**全体在册常驻都投了票**才可判"一致"，否则辩论或保留为未定论（实测曾出现 2/4 投票却被判"全体一致为真"，已修）；**② 会议必须全体发言**——`continueMeetingRound` 按"是否已发言"收口，`allSolved`（stop）要求全员发言+全票 true，杜绝缺席成员被带偏；**③ 背景只在首轮讲一次**——`contextBrief` 只在 `brainstormPrompt`（首轮）注入完整版，后续 normal/meeting/verify/CHECKPOINT 用极简当前状态，不再每轮重复长背景（省上下文）；**④ 验证目标按提出者精确定位**（`targetOwner` + `findSourceRel` 优先提出者库，避免同名 id 撞车）；**⑤ 主代理放权**——persona 明确"让常驻自组织（hands-off）"，不注议程/优先级/分工/验证决定，只 read status/report，用户明确要求或明显僵死时才 message/meeting 且只促成不决定。详见 §21。
->
-> 🔧 **v1.3.9 进一步按哲学打磨**：**① 会议议程来源**确认是非 bug（r-1 的 `propose_meeting` 发起）；**② 压缩后重申核心规则**——每次压缩触发时在提示开头重申短核心规则（治"压缩遗忘规则"），其余轮仍极简；**③ 验证 `verdict` 明确为 0–1 正确概率**——1=绝对为真/判真、0=绝对为假/判假、0.5=不确定，"全体一致判真(verdict=1)/判假(verdict=0)才算数"，未全票留库附平均正确概率（兼容旧字符串）；**④ 创建项目不立即启动**——新增 `vibe_v4_configure {project?, problem?, params?}` 只建/配项目与参数（持久化 `State/settings.json`）不唤醒常驻，随后 `vibe_v4_start` 才启动；支持设置**项目名**。详见 §22。
->
-> 🔧 **v1.4.0 verdict 改为纯概率数值 + 全面审计修复**：**① `verdict` 是纯 0–1 正确概率（程度），不再二分类**——仅当**全体一致给 1（真）或全体一致给 0（假）**才按真/假写入 Verified/，否则只作为概率数值保留、附全组平均正确概率（0.97 不再算"真"，属更严格的绝对一致口径）；**② 审计修复**：`resume` 补 `loadSettings()`（跨进程不再重置参数）、`configure` 直接写出问题卡、补上缺失的 `/v4 set` 分支、真实 `/compact` 成功后置 `needCompact` 以**重申核心规则**。详见 §23。
->
-> 🔧 **v1.4.1 自主发明理论 + 模型/工具权限参数 + 压缩重申泄漏修复**：**① 初始提示**告知常驻可（不强迫）**自主构建新的理论框架/工具**——抽象化/一般化出更一般的结构并不断完善、推得定理性质（类比群论/泛函分析的发明），并阐明对原问题的价值；**② 补齐"模型继承 + 工具权限"参数**——`model`/`provider`（空 = 常驻继承主代理的 LLM 路由，此前为声明未用）与 `toolAllow`/`toolDeny`（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`，空 = 继承全部工具）真正接入 `spawnResident`；**③ 修复"[核心规则重申]+[CONTEXT COMPACT]"在提示开头重复泄漏**——根因是压缩指令被注入到 meeting/verify 唤醒而其回复从不释放 `needCompact`，标志卡死后每轮重复；现**只对 normal 研究轮注入完整压缩指令**、`needCompact` 只重申一次并立即清位、`postmark` 在**所有分支**统一记账，杜绝泄漏；**④ 会议发言顺序轮换**——不再是 r-1 永远先发言看不到别人，各常驻轮流先发言；**⑤ 解释 HRT 收敛**——三名常驻诚实给出"HRT-4 很可能为假（0.8+，未确立）+ 完整必要筛 + 机制 + 判定方程 + 未决点"，无 Verified/、无人 declare solved，run 被外部暂停而非框架强收口，符合"诚实、不编造、框架不强加"哲学。详见 §24。
 
 ---
 
