@@ -132,7 +132,7 @@ export function apply(ctx) {
     function residentLibraries(){
       const base=frameworkRoot()
       return '你的资料库根目录：'+base+'/\n'
-        +'  Progress/<你>/progress.md —— 你的研究日志（叙述，可追加）。\n'
+        +'  Progress/<你>/progress.md —— 你的研究日志（叙述，可追加。主要内容是尝试过的各方法、路线、历程、进度，当前研究进展/进度、将来的计划与打算，及各路线、过程中遇到的障碍及其原因，对各路线、方法的看法、可行性评估，自己研究过程中的一些有价值看法、感想、猜想、理解。以及其它各种你认为有价值的值得记录的事物、经验、方法/想法、创新等都可进行记录）。\n'
         +'  Propos/<你>/<id>.md —— 你的命题/引理。格式：\n'
         +'    - ID: p-<id>; - 状态: 未定论; - 概率: <0-1>; - 价值程度: <0-1>; - 动机用途计划: <为何重要/打算怎么用>\n'
         +'    然后 ## 陈述 <陈述>；## 证明尝试；## 证伪尝试。\n'
@@ -522,8 +522,9 @@ export function apply(ctx) {
       // B) stall auto-sync meeting (分级保活 B): the group has been idle with NO progress for
       //    stallAutoMeetingMs → convene a sync meeting so the residents coordinate their next move
       //    (framework convenes & records; residents decide — never assigns work). Only when no
-      //    meeting/verify/pending work is already active.
-      if(phase==='active' && !meetingState && !verifyState && !pendingVerify){
+      //    meeting/verify/pending work is active AND no resident is currently working (so it never
+      //    preempts an in-flight round).
+      if(phase==='active' && !meetingState && !verifyState && !pendingVerify && busy.size===0){
         const stallMs=Number(params.stallAutoMeetingMs)||((Number(params.activityTimeoutMs)||120000)*3)
         if(now()-lastProgressAt>=stallMs){
           await startMeeting('团队较长时间没有新进展。请你们自行讨论：当前问题是否已解决、开放难点是什么、谁负责哪部分、下一步如何推进，并自主决定是否继续。框架只负责转达与记录，不替你们决定。','general',null)
@@ -531,8 +532,9 @@ export function apply(ctx) {
         }
       }
       // A) heartbeat / coordination: wake the least-recently-active resident after an idle timeout
-      //    to SELF-DRIVE (continue solving / message / propose task / meeting / verify). On a failed
-      //    wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops the group.
+      //    to SELF-DRIVE (continue solving / message / propose task / meeting / verify). On a FAILED
+      //    wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops the group
+      //    (a successful wake re-drives scheduleNext through its own onResidentEnd, which re-arms).
       clearHeartbeat()
       let target=null, oldest=-1
       for(const [,r] of residents){ if(busy.has(r.rId)) continue; const idle=now()-r.lastActiveAt; if(idle>oldest){ oldest=idle; target=r } }
