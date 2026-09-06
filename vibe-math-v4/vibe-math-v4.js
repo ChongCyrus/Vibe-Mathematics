@@ -419,7 +419,7 @@ export function apply(ctx) {
       const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
       const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
       logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
-      if(allSolved){ running=false; autoDone=true; phase='done'; logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
+      if(allSolved){ running=false; autoDone=true; phase='done'; clearHeartbeat(); logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
       meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
     }
 
@@ -705,6 +705,7 @@ export function apply(ctx) {
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
       residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0; clearHeartbeat()
+      busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
