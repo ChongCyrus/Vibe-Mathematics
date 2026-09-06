@@ -727,10 +727,19 @@ export function apply(ctx) {
       // disk and re-seed the resumed run). Same-process pause→resume keeps continuable ids.
       const crossProcess = persistedEpoch !== processEpoch
       if(crossProcess){ for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.roundsSinceCompact=0 } }
+      // ANY re-spawn (cross-process OR a same-process abort that already cleared childIds) must get a FRESH
+      // coordination/concurrency state and a brainstorm phase. Otherwise: re-spawned brainstorm residents run
+      // under phase='active' (brainstorm summary never written), and a LATE subagent/end from an interrupted
+      // OLD resident (same rId) deletes the NEW resident's busy mark → A-fill can wake it mid-brainstorm.
+      const needRespawn = Array.from(residents.values()).some(r=>!r.childId)
+      if(needRespawn){
+        for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.insight=''; r.roundsSinceCompact=0 }
+        busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=null; verifyState=null; meetingState=null
+      }
       for(const [,r] of residents){ if(!r.childId){ await spawnResident(r) } }
       if(!running){ running=true; autoDone=false; if(phase==='idle') phase='active' }
-      if(crossProcess && phase==='active') phase='brainstorm'   // let re-spawned residents re-bootstrap together
-      logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
+      if(needRespawn && phase!=='brainstorm') phase='brainstorm'   // let re-spawned residents re-bootstrap together
+      logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':needRespawn?' (re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,

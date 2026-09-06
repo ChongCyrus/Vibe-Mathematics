@@ -102,10 +102,24 @@ function makeCtx(){
   await m.callTool('vibe_v4_start', { problem:'abort-resume', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
   await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
+  // complete the first brainstorm so the run is phase=active before abort (mirrors a real long run)
+  for(const sp of m.spawns.slice(0,2)){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   await m.callTool('vibe_v4_abort', {})
   const before = m.spawns.length
   const r = await m.callTool('vibe_v4_resume', {})
   assert(r.ok===true && m.spawns.length>before, 'T3 A3: same-process abort->resume re-spawns residents (childIds cleared; +'+(m.spawns.length-before)+')')
+  // after resume the run must be back in brainstorm (re-bootstrap); the re-spawned residents are the
+  // ONLY busy entries (fresh spawns, in flight) — NOT leftover ghosts from the interrupted old run.
+  const st1=await m.callTool('vibe_v4_status', {})
+  assert(st1.phase==='brainstorm', 'T3 A3: after abort->resume the phase is brainstorm (re-bootstrap, got '+st1.phase+')')
+  const resumedSpawns=m.spawns.slice(before)
+  const busyIds=resumedSpawns.map(sp=>sp.label)
+  assert(st1.busy.length===busyIds.length && st1.busy.every(b=>busyIds.includes(b)), 'T3 A3: busy contains exactly the fresh re-spawned residents (busy='+JSON.stringify(st1.busy)+')')
+  for(const sp of resumedSpawns){ m.fireEnd({ id: sp.childId, runId:'br2-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins2', solved:false})}] }); await sleep(50) }
+  const st2=await m.callTool('vibe_v4_status', {})
+  assert(st2.phase==='active', 'T3 A3: completing re-spawned brainstorms drives phase to active (got '+st2.phase+')')
+  let brSum=false; try { const t=readFileSync(join(m.WS,'VibeMath','Projects','default','Shared','meetings','brainstorm.md'),'utf8'); brSum=t.length>0 } catch(e){}
+  assert(brSum, 'T3 A3: brainstorm summary written after abort->resume re-bootstrap')
   rmSync(m.WS,{recursive:true,force:true})
 }
 
