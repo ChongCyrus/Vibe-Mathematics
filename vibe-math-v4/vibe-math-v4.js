@@ -253,7 +253,7 @@ export function apply(ctx) {
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
     }
     async function wakeResident(r, promptText, kind){
-      if(!r.childId) return false
+      if(!r || !r.childId) return false   // a removed resident must never be woken (rune: crash on r.childId)
       clearHeartbeat()
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
       r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
@@ -305,7 +305,7 @@ export function apply(ctx) {
     async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
     async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
-    function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
+    function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && !pendingMeeting && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
     // identify WHICH resident is calling a resident-facing tool: match the caller's
     // subagent id to a resident's childId. Fall back to the last-woken resident when
@@ -370,7 +370,11 @@ export function apply(ctx) {
       // A meeting must NOT preempt an active or pending verification (unanimous-consensus is the
       // group's truth-making step; preempting it would let every round resurface the same conflict).
       // Wait instead of stealing the floor: park the request and resume it after the verify settles.
-      if(verifyState || pendingVerify){ pendingMeeting = { agenda, type:type||'general', targetId:targetId||null }; return {ok:true,deferred:true,during:'verify'} }
+      if(verifyState || pendingVerify){
+        // Keep the FIRST deferred request (never overwrite an earlier one with a later agenda).
+        if(!pendingMeeting) pendingMeeting = { agenda, type:type||'general', targetId:targetId||null }
+        return {ok:true,deferred:true,during:'verify'}
+      }
       clearHeartbeat()
       const ids=Array.from(residents.keys())
       // Rotate the per-meeting speaking order so the SAME resident isn't always the "first speaker
@@ -739,7 +743,14 @@ export function apply(ctx) {
       pendingVerify: pendingVerify?pendingVerify.targetId:null,
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
-    async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); await saveAll(); return {ok:true} }
+    async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id)
+      // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
+      // drop its meeting speech / verify verdict / deferred-meeting / pending-verify if it owned them, and
+      // prune it from the meeting's speaking order so the find() there never selects a ghost.
+      if(meetingState){ delete meetingState.inputs[id]; meetingState.order=(meetingState.order||[]).filter(x=>x!==id) }
+      if(verifyState){ delete verifyState.verdicts[id] }
+      if(pendingVerify && pendingVerify.proposer===id) pendingVerify=null
+      await saveAll(); return {ok:true} }
     // Normalize one parameter value to its intended type so a string from /v4 set or configure
     // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
     function normalizeParam(k, v){

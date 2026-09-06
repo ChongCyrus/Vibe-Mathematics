@@ -395,5 +395,41 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T18: removeMember during an active meeting does not crash / hang consensus =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T18 removeMember during active meeting (no crash / no ghost wake) --')
+  await m.callTool('vibe_v4_start', { problem:'会议中移除', residentCount:3 })
+  await waitFor(()=>m.spawns.length>=3)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1 })
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  // convene a meeting explicitly, then remove a member mid-meeting and ensure no crash / no ghost-wake freeze
+  const meet=await m.callTool('vibe_v4_meeting', { agenda:'分工讨论' })
+  assert(meet.ok===true, 'T18: a meeting is explicitly convened')
+  let consumed=0, progressed=false, removed=false
+  for(let i=0;i<200;i++){
+    if(consumed<m.followups.length){
+      const fu=m.followups[consumed]; consumed++
+      const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+      // the FIRST meeting wake is where we remove a member mid-meeting
+      if(!removed && /meeting is in progress/i.test(pt)){ removed=true; await m.callTool('vibe_v4_remove_member', { id:'r-2' }) }
+      if(/meeting is in progress/i.test(pt) || /researcher/i.test(pt)) progressed=true
+      let reply
+      if(/verifying object/i.test(pt)){ reply={vote:{verdict:0.5, reason:'x'}} }
+      else if(/meeting is in progress/i.test(pt)){ reply={input:'继续讨论', voteSolved:false} }
+      else { reply={summary:'继续', solved:false} }
+      m.fireEnd({ id: fu.childId, runId:'w2-'+consumed, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+      await sleep(20)
+    } else await sleep(30)
+    const st=await m.callTool('vibe_v4_status', {})
+    if(st.running===false || st.autoDone) break
+  }
+  assert(removed, 'T18: removed a member mid-meeting')
+  assert(progressed, 'T18: after mid-meeting removal the group still drives resident wakes (no ghost-wake freeze)')
+  const fres=await m.callTool('vibe_v4_report', {})
+  assert(fres && fres.ok===true, 'T18: session still responds to report after mid-meeting removal (no crash)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)
