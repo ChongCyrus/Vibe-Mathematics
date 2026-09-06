@@ -120,6 +120,12 @@ function makeCtx(){
   assert(st2.phase==='active', 'T3 A3: completing re-spawned brainstorms drives phase to active (got '+st2.phase+')')
   let brSum=false; try { const t=readFileSync(join(m.WS,'VibeMath','Projects','default','Shared','meetings','brainstorm.md'),'utf8'); brSum=t.length>0 } catch(e){}
   assert(brSum, 'T3 A3: brainstorm summary written after abort->resume re-bootstrap')
+  // After a cross-process-style resume the resident id counter must be synced, so addMember yields a
+  // NON-colliding id (r-3) instead of silently overwriting r-1.
+  const addRes=await m.callTool('vibe_v4_add_member', { direction:'新成员' })
+  assert(addRes.ok===true && addRes.id==='r-3', 'T3 A3: addMember after resume gets a non-colliding id (got '+(addRes&&addRes.id)+')')
+  const st3=await m.callTool('vibe_v4_status', {})
+  assert(st3.residents.length===3, 'T3 A3: all 3 residents exist after addMember (no overwrite; got '+st3.residents.length+')')
   rmSync(m.WS,{recursive:true,force:true})
 }
 

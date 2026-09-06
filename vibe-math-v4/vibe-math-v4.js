@@ -257,7 +257,7 @@ export function apply(ctx) {
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
     }
     async function wakeResident(r, promptText, kind){
-      if(!r || !r.childId) return false   // a removed resident must never be woken (rune: crash on r.childId)
+      if(!r || !r.childId) return false   // a removed resident must never be woken (else r.childId would crash)
       clearHeartbeat()
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
       r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
@@ -732,6 +732,10 @@ export function apply(ctx) {
     }
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs(); await loadAll(); await loadSettings()
+      // After loadAll the residentSeq counter is still whatever THIS process had (0 on a fresh process),
+      // but persisted residents may already be r-1..r-N. Sync it to the max existing id so a later
+      // addMember never collides with an existing resident (it would silently overwrite it).
+      for(const key of residents.keys()){ const mm=/^r-(\d+)$/.exec(String(key)); if(mm) residentSeq=Math.max(residentSeq, Number(mm[1])) }
       lastActivityAt=now(); lastProgressAt=now()   // pause must not count as stall time; a resumed run gets a fresh clock
       if(phase==='idle' && !running && residents.size===0) return {ok:false,message:'nothing to resume'}
       // If the persisted State came from a DIFFERENT process (crash/restart), the saved
