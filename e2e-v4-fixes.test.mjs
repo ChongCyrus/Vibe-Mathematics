@@ -910,5 +910,102 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T33: resume while already running is a no-op (no stale-disk clobber) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T33 resume-while-running no-ops (no stale snapshot clobber) --')
+  await m.callTool('vibe_v4_start', { problem:'运行中恢复', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40 })
+  const before=m.spawns.length
+  const r=await m.callTool('vibe_v4_resume', {})
+  assert(r.ok===true, 'T33: resume returns ok (no-op form) while the run is live (message='+(r&&r.message)+')')
+  const st=await m.callTool('vibe_v4_status', {})
+  assert(st.running===true && st.residentCount===2 && m.spawns.length===before, 'T33: no re-spawn & no clobber while running (spawns='+m.spawns.length+', residents='+st.residentCount+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T34: configure refuses while a run is running (no mid-run project switch) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T34 configure while running is refused (state stays in one project tree) --')
+  await m.callTool('vibe_v4_start', { problem:'运行中配置', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  const cfg=await m.callTool('vibe_v4_configure', { project:'other-proj', problem:'换问题' })
+  assert(cfg.ok===false, 'T34: configure during a live run is refused (message='+(cfg&&cfg.message)+')')
+  const st=await m.callTool('vibe_v4_status', {})
+  assert(st.project==='default' && st.running===true, 'T34: project unchanged after refused configure (project='+st.project+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T35: abort clears coordination state (truthful status, no ghost parked meeting) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T35 abort wipes meeting/verify/parked/busy state --')
+  await m.callTool('vibe_v4_start', { problem:'中止清理', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 })
+  const mt=await m.callTool('vibe_v4_meeting', { agenda:'将被中止的会议' })   // parked: still brainstorming
+  assert(mt.deferred===true, 'T35: meeting parked during brainstorm')
+  let st0=await m.callTool('vibe_v4_status', {})
+  assert(st0.parkedMeeting==='将被中止的会议' && st0.busy.length===1, 'T35: parked meeting + busy resident before abort')
+  await m.callTool('vibe_v4_abort', {})
+  const st1=await m.callTool('vibe_v4_status', {})
+  assert(st1.running===false && st1.parkedMeeting===null && st1.meetingInProgress===false && st1.busy.length===0, 'T35: after abort no ghost meeting/parked/busy state (parkedMeeting='+st1.parkedMeeting+', busy='+JSON.stringify(st1.busy)+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T36: claiming a task while paused records it but does NOT wake the claimer =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T36 claim while paused is recorded, no zombie wake --')
+  await m.callTool('vibe_v4_start', { problem:'暂停认领', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 })   // quiet A-fill
+  const cid=m.spawns[0].childId
+  m.fireEnd({ id: cid, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  const pt=await m.callTool('vibe_v4_propose_task', { title:'T36任务', description:'d' })
+  assert(pt.ok===true && pt.id, 'T36: task proposed (id='+pt.id+')')
+  await m.callTool('vibe_v4_pause', {})
+  const base=m.followups.length
+  const cl=await m.callToolAs('vibe_v4_claim_task', { id:pt.id }, cid)
+  assert(cl.ok===true, 'T36: claim accepted while paused (recorded on the board)')
+  await sleep(250)
+  assert(m.followups.length===base, 'T36: NO wake started for the paused claimer (followups stayed '+base+'; a paused run must not start new work)')
+  const tasks=await m.callTool('vibe_v4_list_tasks', {})
+  const tt=(tasks.tasks||[]).find(t=>t.id===pt.id)
+  assert(tt && tt.status==='claimed' && tt.claimer==='r-1', 'T36: task is claimed by r-1 on the board (status='+(tt&&tt.status)+', claimer='+(tt&&tt.claimer)+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T37: State session.json keeps a small meeting index (transcript stays on disk) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T37 meetings persisted as a small index (no transcript copy in session.json) --')
+  await m.callTool('vibe_v4_start', { problem:'会议索引', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1 })
+  const cid=m.spawns[0].childId
+  m.fireEnd({ id: cid, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  await m.callTool('vibe_v4_meeting', { agenda:'索引测试' })
+  let fi=0, concluded=false
+  for(let i=0;i<200;i++){
+    if(fi>=m.followups.length){ await sleep(20); if(concluded) break; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/meeting is in progress/i.test(pt)){ concluded=true; reply={input:'讨论', voteSolved:false} }
+    else reply={summary:'x', solved:false}
+    m.fireEnd({ id: fu.childId, runId:'t37-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(20)
+  }
+  assert(concluded, 'T37: meeting was driven to conclusion')
+  const sess=JSON.parse(readFileSync(join(m.WS,'VibeMath','Projects','default','State','session.json'),'utf8'))
+  const last=(sess.meetings||[]).pop()
+  assert(last && typeof last.id==='string' && typeof last.agenda==='string' && !('inputs' in last), 'T37: persisted meeting entry is a small index (id/agenda, no inputs copy)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

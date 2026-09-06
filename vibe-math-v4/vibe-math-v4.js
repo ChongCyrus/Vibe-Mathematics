@@ -338,8 +338,10 @@ export function apply(ctx) {
     async function writeTaskboard(){ const lines=['# 任务板','']; for(const t of taskboard){ lines.push('- ['+t.status+'] '+t.title+(t.claimer?('（认领:'+t.claimer+'）'):'')+(t.proposer?('（提议:'+t.proposer+'）'):'')+(t.description?('：'+t.description):'')) } await writeText('Shared/taskboard.md',lines.join('\n')) }
     async function proposeTask(title,description,proposer){ const id='t-'+shortId(); taskboard.push({id,title:String(title),description:String(description||''),status:'open',proposer:proposer||'',claimer:'',source:''}); await saveTaskboard(); markProgress(); logActivity('task','proposed '+id+'「'+title+'」'); return {ok:true,id} }
     async function claimTask(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false,message:'no such task'}; if(t.status!=='open') return {ok:false,message:'task already '+t.status}; t.status='claimed'; t.claimer=claimer; await saveTaskboard(); markProgress(); logActivity('task',claimer+' claimed '+id); 
-      // wake the claimer to work on it (framework moves the task, resident decides how)
-      const r=residents.get(claimer); if(r && !busy.has(claimer)){ currentResident=claimer; await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll() }
+      // wake the claimer to work on it (framework moves the task, resident decides how).
+      // NOT while paused/stopped: a paused run must not start new work — the claim is recorded on the
+      // board and the resident (who claimed it) picks it up again after resume.
+      const r=residents.get(claimer); if(r && !busy.has(claimer) && running && !autoDone){ currentResident=claimer; await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll() }
       return {ok:true} }
     async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); markProgress(); logActivity('task','done '+id); return {ok:true} }
     async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
@@ -348,7 +350,7 @@ export function apply(ctx) {
     // Apply context/compact bookkeeping from a resident's reply, so the flag can clear even when
     // the reply came through a meeting/verify branch (defensive) as well as the normal branch.
     function postmark(r, parsed){
-      if(typeof parsed.contextPct==='number') r.contextPct=clPct(parsed.contextPct)
+      const cp=Number(parsed.contextPct); if(Number.isFinite(cp)) r.contextPct=clPct(cp)   // tolerate numeric strings ("40")
       if(parsed.compacted===true || (r.needCompact && parsed.summary)){
         r.contextSeed=String(parsed.summary||r.contextSeed||'')
         r.contextPct=Math.min(r.contextPct||15,25)
@@ -444,7 +446,10 @@ export function apply(ctx) {
         const lines=['# 会议 '+st.id+'｜'+fmtTime(),'','**议程**：'+st.agenda,'']
         for(const [id,iv] of Object.entries(st.inputs)){ lines.push('### '+id); lines.push(iv.input||''); lines.push('') }
         await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
-        meetings.push({id:st.id,agenda:st.agenda,at:now(),inputs:st.inputs})
+        // the full transcript lives on disk (Shared/meetings/<id>.md); the State array keeps a small
+        // index (id/agenda/at) so session.json does not carry a second copy of every transcript and
+        // rewrite it on EVERY saveAll during long runs (reports below are capped for the same reason).
+        meetings.push({id:st.id,agenda:st.agenda,at:now()}); if(meetings.length>200) meetings.shift()
         logDecision('meeting',st.agenda)
         // handle what the meeting produced: task proposals/claims, verify targets, stop vote
         for(const [id,iv] of Object.entries(st.inputs)){
@@ -823,7 +828,7 @@ export function apply(ctx) {
       }
       // normal turn
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
-      if(typeof parsed.solved==='boolean') reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()})
+      if(typeof parsed.solved==='boolean'){ reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()}); if(reports.length>100) reports.shift() }   // solved-signal ring (not surfaced in status/report)
       if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
       // group-conversation relay: the resident may choose to speak to the whole team (input) —
       // forward it to the others so this is a real discussion group, not private monologues.
@@ -865,7 +870,15 @@ export function apply(ctx) {
       await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
     }
     async function resume(){
-      currentProject=await readCurrentProject(); await ensureDirs(); await loadAll(); await loadSettings()
+      currentProject=await readCurrentProject(); await ensureDirs()
+      // Resume is only meaningful for a stopped/paused/crashed run. If THIS process is already driving
+      // a live run whose disk state belongs to it, loadAll below would overwrite the in-memory state
+      // with a slightly stale snapshot (busy marks, wake round counters, mailbox contents from the last
+      // saveAll) — a silent clobber for a useless "kick". No-op instead. A cross-process restart is
+      // always allowed: its disk epoch differs, so the in-memory state is empty/stale anyway.
+      const pre=await readJson('State/session.json')
+      if(running && !autoDone && pre && pre.processEpoch===processEpoch) return {ok:true,message:'already running (no-op)'}
+      await loadAll(); await loadSettings()
       // A run the group CONCLUDED (unanimous voteSolved → autoDone) must not be silently revived into
       // a zombie that keeps waking residents with no consensus that it should still run. The group
       // decided it is done; continuing means a NEW run (vibe_v4_start / vibe_v4_configure).
@@ -953,6 +966,11 @@ export function apply(ctx) {
     // Create/configure a project and set params/problem WITHOUT starting any resident.
     // The intended flow: vibe_v4_configure {project?, problem?, params?}  →  vibe_v4_start {}.
     async function configure(cfg){
+      // configure is the PRE-START setup tool (project/problem/params). Switching the project while a
+      // run is LIVE would split the run's state across two trees: residents' briefs & libraries point
+      // at the OLD frameworkRoot while every subsequent saveAll/transcript/Verified card would go to the
+      // NEW project. Params tuning mid-run belongs to vibe_v4_set.
+      if(running && !autoDone) return {ok:false,message:'cannot configure while a run is running (pause or abort first; use vibe_v4_set to tune params)'}
       if(cfg && cfg.project && String(cfg.project).trim()) currentProject=String(cfg.project).trim()
       if(cfg && cfg.problem) problemText=String(cfg.problem)
       if(cfg && cfg.params && typeof cfg.params==='object') setParams(cfg.params)
@@ -962,7 +980,13 @@ export function apply(ctx) {
       await saveAll()
       return {ok:true,project:currentProject,problem:problemText?problemText.slice(0,60):'',params:Object.keys(params).map(k=>k+'='+params[k]).join(', ')}
     }
-    async function initAbort(){ clearHeartbeat(); running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 } await saveAll(); return {ok:true,message:'aborted'} }
+    async function initAbort(){ clearHeartbeat(); running=false; phase='idle'; autoDone=false; for(const [,r] of residents){ if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } r.childId=''; r.lastActiveAt=0; r.roundsSinceCompact=0 }
+      // Wipe the coordination state too: an aborted run must not report an in-flight meeting/verify,
+      // a parked meeting, a verify queue, or busy residents (their childIds are gone, so no end event
+      // can ever clear those marks). resume()/start() re-initialize anyway; this keeps status truthful
+      // between abort and the next action.
+      meetingState=null; verifyState=null; pendingMeeting=null; pendingVerify=[]; busy=new Set(); wakeKind=new Map(); currentResident=''; finalizeLock=null
+      await saveAll(); return {ok:true,message:'aborted'} }
     function setPause(){ clearHeartbeat(); running=false; return {ok:true,message:'paused'} }
 
     return {
