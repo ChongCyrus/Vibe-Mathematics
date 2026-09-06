@@ -230,14 +230,18 @@ export function apply(ctx) {
         +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
-      const others=Object.entries(vs.verdicts).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
+      // In a DEBATE round, show the PREVIOUS round's opinions (kept in vs.history) so the resident can
+      // see others' stances and give a fresh independent judgement; in the first (independent) round no
+      // others' opinions exist yet. vs.verdicts only ever holds the CURRENT round's votes.
+      const src = (vs.stage==='debate' && vs.history && Object.keys(vs.history).length>0) ? vs.history : (vs.stage==='debate' ? vs.verdicts : {})
+      const others=Object.entries(src).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
         +'请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。\n'
         +'判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
         +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
-        +(vs.stage==='debate'&&others?('### 他人意见（已转发给你）\n'+others+'\n'):'')
+        +(vs.stage==='debate'&&others?('### 他人上一轮意见（已转发给你）\n'+others+'\n'):'')
         +'\nReply with ONLY a JSON object:\n'
         +'{"vote":{"verdict":0.9,"reason":"<your logic>"}}'
     }
@@ -431,7 +435,7 @@ export function apply(ctx) {
     async function beginVerify(pv){
       clearHeartbeat()
       pendingVerify=null
-      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},transcript:[],at:now(),lastVerdictAt:now()}
+      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},history:{},transcript:[],at:now(),lastVerdictAt:now()}
       markProgress();
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
     }
@@ -462,7 +466,15 @@ export function apply(ctx) {
       const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
       const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
       if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
-      if(vs.round+1<params.verdictMaxRounds){ vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate'); await saveAll(); await scheduleNext(); return }
+      if(vs.round+1<params.verdictMaxRounds){
+        // Move to a REAL debate round: snapshot the current votes into history (so the next round's
+        // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
+        // give a fresh independent judgement after seeing the debate. Without the clear, allVoted stays
+        // true and the debate rounds burn through with NOBODY being re-asked (a silent no-op).
+        vs.history=Object.assign({}, vs.verdicts); vs.verdicts={}
+        vs.lastVerdictAt=now()   // fresh deadlock window for the re-vote round
+        vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); await scheduleNext(); return
+      }
       const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
       await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()

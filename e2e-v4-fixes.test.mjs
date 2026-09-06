@@ -445,5 +445,39 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T19: debate round actually re-asks residents (verdicts cleared; history shown) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T19 debate round re-votes (verdictMaxRounds>1 actually re-asks) --')
+  await m.callTool('vibe_v4_start', { problem:'辩论轮', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { verdictMaxRounds: 2, activityTimeoutMs: 40 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-deb', title:'辩论', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(60) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  // Track per-round verify wakes: round-1 (independent, no "上一轮意见") vs round-2 (debate, carries history).
+  let fi=0, proposed=false, sawDebate=false, round1Verify=0, round2Verify=0
+  for(let i=0;i<400;i++){
+    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){
+      const isDeb = /上一轮意见/.test(pt)
+      if(isDeb){ sawDebate=true; round2Verify++ } else round1Verify++
+      // round 1: disagree (0.9 vs 0.1). round 2 (debate): both reconsider → unanimous 1 → Verified.
+      reply = { vote:{ verdict: isDeb ? 1 : (rid==='r-1'?0.9:0.1), reason: isDeb ? '经辩论确认，论证完备。' : (rid==='r-1'?'支持':'反对') } }
+    }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-deb'}) }
+    m.fireEnd({ id: fu.childId, runId:'t19-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(25)
+  }
+  assert(round1Verify>=1, 'T19: round-1 (independent) verify wakes happened ('+round1Verify+')')
+  assert(sawDebate && round2Verify>=2, 'T19: a DEBATE round actually re-asked the residents after round-1 disagreement (round2Verify='+round2Verify+', debate prompt carries 上一轮意见)')
+  let verified=false; try { verified=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-deb.md')) } catch(e){}
+  assert(verified, 'T19: unanimous TRUE reached in the debate round → Verified/命题/p-deb.md written')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)
