@@ -603,5 +603,34 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T23: same-object verify is not re-run back-to-back (beginVerify drop-at-start) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T23 same-object verify not re-run back-to-back (test9 p-r3-04 double) --')
+  await m.callTool('vibe_v4_start', { problem:'排队去重', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40, verdictMaxRounds: 1 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-q', title:'q', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  let fi=0, proposed=false, verifyRounds=0
+  // Drive to unanimous TRUE on p-q; then keep driving. While the FIRST verify of p-q is in flight we
+  // cannot inject a second wake stream from the mock, so we emulate the queued-propose via the second
+  // resident's own normal wake right after the first verify closes but inside the dedup window — the
+  // framework must drop it at propose time (maybeQueueVerify) AND at beginVerify if it slipped through.
+  for(let i=0;i<500;i++){
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){ verifyRounds++; reply={ vote:{verdict:1, reason:'ok'} } }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-q'}) }
+    m.fireEnd({ id: fu.childId, runId:'t23-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-q.md')), 'T23: p-q verified to a Verified card')
+  assert(verifyRounds<=3, 'T23: p-q not re-verified end-to-end after closing (verify wakes='+verifyRounds+', expected <=2 rounds of votes + maybe 1 stray)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

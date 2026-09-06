@@ -405,17 +405,10 @@ export function apply(ctx) {
       const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>st.inputs[id]!==undefined)
       if(allSpoke){ await finalizeMeeting(); return }
       // only wake IDLE un-spoken residents (rotated order); in-flight ones re-trigger this on end.
+      // NOTE: we deliberately do NOT flush mailboxes here — drafting an un-spoken resident into a normal
+      // mail round would delay the meeting and can starve the consensus past its watchdog if the mail
+      // backlog is large. Mail is delivered on scheduleNext passes when no consensus is in progress.
       const order=st.order||ids
-      // Bounded mailbox flush BETWEEN meeting rounds: if an idle resident has queued messages, let it
-      // read/answer them before being drafted into the meeting, otherwise a long chain of meetings &
-      // verifies can starve the mailboxes for many minutes (test9: 33 msgs sat undelivered >12 min).
-      // The mail recipient completes as a normal round; its onResidentEnd re-enters scheduleNext → the
-      // meeting continues (watchdog still bounds it). Only flush when there IS an idle un-spoken target,
-      // so we never burn the meeting's own turn budget on unrelated mail.
-      if(order.find(x=>st.inputs[x]===undefined && !busy.has(x))){
-        const flushed=await deliverNextMailbox()
-        if(flushed){ await saveAll(); armHeartbeat(); return }
-      }
       const id=order.find(x=>st.inputs[x]===undefined && !busy.has(x))
       if(!id){ armHeartbeat(); return }   // no idle un-spoken resident (a busy/hung one): re-check later
       const r=residents.get(id)
@@ -425,6 +418,7 @@ export function apply(ctx) {
     async function finalizeMeeting(){
       if(finalizeLock) return   // reentry guard: two onResidentEnd may both see allSpoke → only finalize once
       finalizeLock='meeting'
+      let doSchedule=false
       try {
         const st=meetingState
         const ids=Array.from(residents.keys()); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
@@ -443,13 +437,27 @@ export function apply(ctx) {
         const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
         logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
         if(allSolved){ running=false; autoDone=true; phase='done'; clearHeartbeat(); logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
-        meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
-      } finally { finalizeLock=null }
+        meetingState=null; wakeKind.clear(); await saveAll()
+        doSchedule=true
+      } finally { finalizeLock=null }   // release BEFORE scheduling so a chained verify/meeting is not swallowed
+      if(doSchedule) await scheduleNext()
     }
 
     // ---- verification (unanimous) ----
     async function beginVerify(pv){
       clearHeartbeat()
+      // Re-check dedup at ACTUAL start, not just at propose time: a resident may propose object X while
+      // X is already being verified (it does not know). That proposal sits in pendingVerify; when the
+      // current X verify closes, beginVerify would run X end-to-end a SECOND time (test9: p-r3-04 was
+      // verified twice back-to-back). Drop it if X was closed within the dedup window.
+      const tgt=pv&&pv.targetId?String(pv.targetId):''
+      if(tgt){
+        const last=verifiedRecently.get(tgt)
+        if(last!==undefined && (now()-last) < recoverStallMs()){
+          logActivity('verify',tgt+' queued verify dropped at start (just verified at '+fmtTime(last)+')')
+          pendingVerify=null; await saveAll(); await scheduleNext(); return
+        }
+      }
       pendingVerify=null
       verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},history:{},transcript:[],at:now(),lastVerdictAt:now()}
       markProgress();
@@ -468,11 +476,9 @@ export function apply(ctx) {
       }
       const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>vs.verdicts[id]!==undefined)
       if(allVoted){ await finalizeVerify(); return }
-      // Bounded mailbox flush BETWEEN verify rounds (same rationale as the meeting flush above).
-      if(ids.find(x=>vs.verdicts[x]===undefined && !busy.has(x))){
-        const flushed=await deliverNextMailbox()
-        if(flushed){ await saveAll(); armHeartbeat(); return }
-      }
+      // NOTE: we deliberately do NOT flush mailboxes here — drafting an un-voted resident into a normal
+      // mail round would delay its verdict and can starve the verify past its watchdog when the backlog
+      // is large. Mail is delivered on scheduleNext passes when no consensus is in progress.
       const id=ids.find(x=>vs.verdicts[x]===undefined && !busy.has(x))
       if(!id){ armHeartbeat(); return }   // no idle un-voted resident (a busy/hung one): re-check later
       const r=residents.get(id)
@@ -482,6 +488,7 @@ export function apply(ctx) {
     async function finalizeVerify(){
       if(finalizeLock) return   // reentry guard (two onResidentEnd may both see allVoted)
       finalizeLock='verify'
+      let doSchedule=false
       try {
         const vs=verifyState; const expected=Array.from(residents.keys()).length
         const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
@@ -489,20 +496,23 @@ export function apply(ctx) {
         // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
         const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
         const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
-        if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
-        if(vs.round+1<params.verdictMaxRounds){
+        if(allTrue||allFalse){ await closeVerify(vs,allTrue); doSchedule=true }
+        else if(vs.round+1<params.verdictMaxRounds){
           // Move to a REAL debate round: snapshot the current votes into history (so the next round's
           // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
           // give a fresh independent judgement after seeing the debate. Without the clear, allVoted stays
           // true and the debate rounds burn through with NOBODY being re-asked (a silent no-op).
           vs.history=Object.assign({}, vs.verdicts); vs.verdicts={}
           vs.lastVerdictAt=now()   // fresh deadlock window for the re-vote round
-          vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); await scheduleNext(); return
+          vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); doSchedule=true
         }
-        const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
-        await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
-        verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
-      } finally { finalizeLock=null }
+        else {
+          const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
+          await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
+          verifyState=null; wakeKind.clear(); await saveAll(); doSchedule=true
+        }
+      } finally { finalizeLock=null }   // release BEFORE scheduling (chained verifies must not be swallowed)
+      if(doSchedule) await scheduleNext()
     }
     async function closeVerify(vs,isTrue){
       await writeDebateDoc(vs,true,isTrue?1:0)
@@ -511,7 +521,9 @@ export function apply(ctx) {
       await rewriteSource(target,isTrue,vs.targetOwner)
       verifiedRecently.set(target, now())   // dedup: block an immediate re-proposal of the same object
       logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus')
-      verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+      verifyState=null; wakeKind.clear(); await saveAll()
+      // scheduling is done by finalizeVerify AFTER it releases finalizeLock (so a chained verify is
+      // never swallowed by the still-held reentry lock)
     }
     // Queue a verify proposal UNLESS the same object was just verified (closed as 真/假). In parallel
     // self-organization several residents may independently propose the same target while a verify is
@@ -586,8 +598,8 @@ export function apply(ctx) {
       const esc=field.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
       // one-per-line: `- 状态: ...\n`  OR  inline: `; - 状态: ...;` / `- 状态: ...; - 概率:`
       const re=new RegExp('(^|\\n|;\\s*)-\\s*'+esc+':[^;\\n]*','gm')
-      if(re.test(text)) return text.replace(re,'$1- '+field+': '+newValue)
-      return text
+      const replaced=text.replace(re,'$1- '+field+': '+newValue)
+      return replaced===text ? text : replaced
     }
     // non-unanimous verification: keep the object in its library but write back the
     // average probability (design §8: "留库附概率"), so the card reflects the consensus estimate.
@@ -849,7 +861,14 @@ export function apply(ctx) {
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
       pendingVerify: pendingVerify?pendingVerify.targetId:null,
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
-    async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r); return {ok:true,id:r.rId,direction:r.direction} }
+    async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r)
+      // Mid-meeting additions must join the meeting's speaking order; otherwise allSpoke (over CURRENT
+      // residents) can never be true for the new member (not in the snapshot order) and the meeting is
+      // only ever released by the stuck watchdog instead of finalizing with everyone's input.
+      if(meetingState){ if(!Array.isArray(meetingState.order)) meetingState.order=Array.from(residents.keys()); if(!meetingState.order.includes(r.rId)) meetingState.order.push(r.rId) }
+      // Mid-verify additions are automatically asked to vote (continueVerifyRound recomputes ids from
+      // the live residents map), so no extra handling is needed there.
+      return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id)
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
       // drop its meeting speech / verify verdict / deferred-meeting / pending-verify if it owned them, and
