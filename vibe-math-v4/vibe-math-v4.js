@@ -48,6 +48,8 @@ export function apply(ctx) {
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     let meetingState = null, verifyState = null, pendingVerify = null, pendingMeeting = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
+    let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
+    const verifiedRecently = new Map()   // targetId -> timestamp when it was closed as Verified (dedup re-propose)
     let lastActivityAt = now(), lastProgressAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
     const activityLogCap = 200
 
@@ -404,6 +406,16 @@ export function apply(ctx) {
       if(allSpoke){ await finalizeMeeting(); return }
       // only wake IDLE un-spoken residents (rotated order); in-flight ones re-trigger this on end.
       const order=st.order||ids
+      // Bounded mailbox flush BETWEEN meeting rounds: if an idle resident has queued messages, let it
+      // read/answer them before being drafted into the meeting, otherwise a long chain of meetings &
+      // verifies can starve the mailboxes for many minutes (test9: 33 msgs sat undelivered >12 min).
+      // The mail recipient completes as a normal round; its onResidentEnd re-enters scheduleNext → the
+      // meeting continues (watchdog still bounds it). Only flush when there IS an idle un-spoken target,
+      // so we never burn the meeting's own turn budget on unrelated mail.
+      if(order.find(x=>st.inputs[x]===undefined && !busy.has(x))){
+        const flushed=await deliverNextMailbox()
+        if(flushed){ await saveAll(); armHeartbeat(); return }
+      }
       const id=order.find(x=>st.inputs[x]===undefined && !busy.has(x))
       if(!id){ armHeartbeat(); return }   // no idle un-spoken resident (a busy/hung one): re-check later
       const r=residents.get(id)
@@ -411,24 +423,28 @@ export function apply(ctx) {
       if(!ok) armHeartbeat()   // a failed meeting wake must NOT silently hang the meeting
     }
     async function finalizeMeeting(){
-      const st=meetingState
-      const ids=Array.from(residents.keys()); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
-      const lines=['# 会议 '+st.id+'｜'+fmtTime(),'','**议程**：'+st.agenda,'']
-      for(const [id,iv] of Object.entries(st.inputs)){ lines.push('### '+id); lines.push(iv.input||''); lines.push('') }
-      await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
-      meetings.push({id:st.id,agenda:st.agenda,at:now(),inputs:st.inputs})
-      logDecision('meeting',st.agenda)
-      // handle what the meeting produced: task proposals/claims, verify targets, stop vote
-      for(const [id,iv] of Object.entries(st.inputs)){
-        if(iv.propose_task) await proposeTask(iv.propose_task, iv.task_desc||'', id)
-        if(iv.claim_task) await claimTask(iv.claim_task, id)
-        if(iv.propose_verify) pendingVerify={targetId:iv.propose_verify,targetType:guessTargetType(iv.propose_verify),proposer:id,at:now()}
-      }
-      const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
-      const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
-      logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
-      if(allSolved){ running=false; autoDone=true; phase='done'; clearHeartbeat(); logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
-      meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+      if(finalizeLock) return   // reentry guard: two onResidentEnd may both see allSpoke → only finalize once
+      finalizeLock='meeting'
+      try {
+        const st=meetingState
+        const ids=Array.from(residents.keys()); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
+        const lines=['# 会议 '+st.id+'｜'+fmtTime(),'','**议程**：'+st.agenda,'']
+        for(const [id,iv] of Object.entries(st.inputs)){ lines.push('### '+id); lines.push(iv.input||''); lines.push('') }
+        await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
+        meetings.push({id:st.id,agenda:st.agenda,at:now(),inputs:st.inputs})
+        logDecision('meeting',st.agenda)
+        // handle what the meeting produced: task proposals/claims, verify targets, stop vote
+        for(const [id,iv] of Object.entries(st.inputs)){
+          if(iv.propose_task) await proposeTask(iv.propose_task, iv.task_desc||'', id)
+          if(iv.claim_task) await claimTask(iv.claim_task, id)
+          if(iv.propose_verify) maybeQueueVerify(iv.propose_verify, id)
+        }
+        const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
+        const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
+        logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
+        if(allSolved){ running=false; autoDone=true; phase='done'; clearHeartbeat(); logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
+        meetingState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+      } finally { finalizeLock=null }
     }
 
     // ---- verification (unanimous) ----
@@ -452,6 +468,11 @@ export function apply(ctx) {
       }
       const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>vs.verdicts[id]!==undefined)
       if(allVoted){ await finalizeVerify(); return }
+      // Bounded mailbox flush BETWEEN verify rounds (same rationale as the meeting flush above).
+      if(ids.find(x=>vs.verdicts[x]===undefined && !busy.has(x))){
+        const flushed=await deliverNextMailbox()
+        if(flushed){ await saveAll(); armHeartbeat(); return }
+      }
       const id=ids.find(x=>vs.verdicts[x]===undefined && !busy.has(x))
       if(!id){ armHeartbeat(); return }   // no idle un-voted resident (a busy/hung one): re-check later
       const r=residents.get(id)
@@ -459,33 +480,54 @@ export function apply(ctx) {
       if(!ok) armHeartbeat()   // a failed verify wake must NOT silently hang the verification
     }
     async function finalizeVerify(){
-      const vs=verifyState; const expected=Array.from(residents.keys()).length
-      const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
-      const vals=Object.values(vs.verdicts)
-      // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
-      const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
-      const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
-      if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
-      if(vs.round+1<params.verdictMaxRounds){
-        // Move to a REAL debate round: snapshot the current votes into history (so the next round's
-        // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
-        // give a fresh independent judgement after seeing the debate. Without the clear, allVoted stays
-        // true and the debate rounds burn through with NOBODY being re-asked (a silent no-op).
-        vs.history=Object.assign({}, vs.verdicts); vs.verdicts={}
-        vs.lastVerdictAt=now()   // fresh deadlock window for the re-vote round
-        vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); await scheduleNext(); return
-      }
-      const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
-      await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
-      verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+      if(finalizeLock) return   // reentry guard (two onResidentEnd may both see allVoted)
+      finalizeLock='verify'
+      try {
+        const vs=verifyState; const expected=Array.from(residents.keys()).length
+        const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
+        const vals=Object.values(vs.verdicts)
+        // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
+        const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
+        const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
+        if(allTrue||allFalse){ await closeVerify(vs,allTrue); return }
+        if(vs.round+1<params.verdictMaxRounds){
+          // Move to a REAL debate round: snapshot the current votes into history (so the next round's
+          // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
+          // give a fresh independent judgement after seeing the debate. Without the clear, allVoted stays
+          // true and the debate rounds burn through with NOBODY being re-asked (a silent no-op).
+          vs.history=Object.assign({}, vs.verdicts); vs.verdicts={}
+          vs.lastVerdictAt=now()   // fresh deadlock window for the re-vote round
+          vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); await scheduleNext(); return
+        }
+        const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
+        await writeDebateDoc(vs,false,avg); await rewriteSourceProb(vs.targetId, avg, vs.targetOwner); logActivity('verify',vs.targetId+' NOT unanimous → kept unverified (avg '+avg.toFixed(2)+')')
+        verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+      } finally { finalizeLock=null }
     }
     async function closeVerify(vs,isTrue){
       await writeDebateDoc(vs,true,isTrue?1:0)
       const target=vs.targetId
       await writeVerifiedCard(vs,isTrue)
       await rewriteSource(target,isTrue,vs.targetOwner)
+      verifiedRecently.set(target, now())   // dedup: block an immediate re-proposal of the same object
       logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus')
       verifyState=null; wakeKind.clear(); await saveAll(); await scheduleNext()
+    }
+    // Queue a verify proposal UNLESS the same object was just verified (closed as 真/假). In parallel
+    // self-organization several residents may independently propose the same target while a verify is
+    // already settling; without the guard the object gets re-verified end-to-end a second time (test9:
+    // p-r3-04 was Verified twice back-to-back). A resident who genuinely extends the object later can
+    // still re-propose after the dedup window (recoverStallMs) has passed.
+    function maybeQueueVerify(target, proposer){
+      const t=String(target||'').trim()
+      if(!t) return false
+      const last=verifiedRecently.get(t)
+      if(last!==undefined && (now()-last) < recoverStallMs()){
+        logActivity('verify',t+' re-propose ignored (just verified at '+fmtTime(last)+')')
+        return false
+      }
+      pendingVerify={targetId:t,targetType:guessTargetType(t),proposer:proposer||'',at:now()}
+      return true
     }
     async function writeDebateDoc(vs,done,val){
       const lines=['# 验证辩论｜'+vs.targetId+'('+vs.targetType+')｜'+fmtTime(),'',(done?('**结论**：'+(val===1?'全体一致为真':'全体一致为假')):('**未达成全体一致**，平均概率 '+val.toFixed(2))),'','## 各常驻意见']
@@ -499,31 +541,71 @@ export function apply(ctx) {
       const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+type+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致\n## 陈述\n参见来源卡。\n'
       await writeText('Verified/'+dir+'/'+vs.targetId+'.md', text)
     }
+    // Does `content` declare the target as its card ID? Accept both the exact `- ID: <id>` and the
+    // compact single-line form (`- ID: <id>; - 状态: ...`). Residents write cards by hand via fs with
+    // varying formats and (crucially) sometimes put a DIFFERENT file name than the declared ID (e.g.
+    // Propos/r-3/p-01.md declares "- ID: p-r3-01"). Matching only on the file name then silently loses
+    // the verified-status write-back, so we scan candidates' declared ID too.
+    function cardDeclaresId(content, target){
+      if(!content || !target) return false
+      const m=/-\s*ID:\s*([^;\n]+)/.exec(content)
+      return !!(m && String(m[1]).trim()===String(target).trim())
+    }
     async function findSourceRel(target, owner){
-      // Prefer the OWNER's library (avoids id collisions across residents), then others.
+      // 1) exact file name in the owner's library (fast path), then every resident's library
       const order = owner ? [owner, ...Array.from(residents.keys()).filter(k=>k!==owner)] : Array.from(residents.keys())
       for(const rid of order){
         for(const base of ['Propos','Methods','Subproblems']){
-          const cand=base+'/'+rid+'/'+target+'.md'; if((await readText(cand))!==undefined){ return cand }
+          const cand=base+'/'+rid+'/'+target+'.md'
+          const t0=await readText(cand); if(t0!==undefined) return cand
         }
       }
-      return 'Propos/'+target+'.md'
+      // 2) declared-ID scan: residents sometimes name the file differently from the declared card ID
+      //    (e.g. p-01.md declares ID p-r3-01). Look inside every card of every library for the target ID.
+      try {
+        for(const rid of order){
+          for(const base of ['Propos','Methods','Subproblems']){
+            const dirT=await fs.resolve(base+'/'+rid, {cwd: frameworkRoot()})
+            if(await fs.stat(dirT)===undefined) continue
+            const entries=await fs.listDir(dirT)
+            for(const e of entries||[]){
+              if(!e || e.type!=='file' || !/\.md$/.test(String(e.name))) continue
+              const c=await readText(base+'/'+rid+'/'+e.name)
+              if(c!==undefined && cardDeclaresId(c,target)) return base+'/'+rid+'/'+e.name
+            }
+          }
+        }
+      } catch(e){ /* scanning is best-effort */ }
+      return null   // NOT 'Propos/'+target+'.md': writing there would create a stray empty card
+    }
+    // Update the `- 状态:` / `- 概率:` fields of a source card. Residents hand-write cards in two
+    // shapes: one field per line, or one line with `; `-separated fields. Accept both by allowing the
+    // anchor anywhere on a line and consuming up to the next `;` when fields share the line.
+    function rewriteCardField(text, field, newValue){
+      if(!text) return text
+      const esc=field.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+      // one-per-line: `- 状态: ...\n`  OR  inline: `; - 状态: ...;` / `- 状态: ...; - 概率:`
+      const re=new RegExp('(^|\\n|;\\s*)-\\s*'+esc+':[^;\\n]*','gm')
+      if(re.test(text)) return text.replace(re,'$1- '+field+': '+newValue)
+      return text
     }
     // non-unanimous verification: keep the object in its library but write back the
     // average probability (design §8: "留库附概率"), so the card reflects the consensus estimate.
     async function rewriteSourceProb(target,prob,owner){
       const rel=await findSourceRel(target,owner)
+      if(!rel){ logActivity('verify',target+' source card NOT found; avg prob '+Number(prob).toFixed(2)+' not written back'); return }
       let text=(await readText(rel))||''
-      text=text.replace(/(^|\n)- 概率:.*/m,'$1- 概率: '+Number(prob).toFixed(2))
-      await writeText(rel,text)
+      const next=rewriteCardField(text,'概率',Number(prob).toFixed(2))
+      await writeText(rel,next||text)
     }
     async function rewriteSource(target,isTrue,owner){
       // find & update the source card status/prob; best effort across per-resident libs
       const rel=await findSourceRel(target,owner)
+      if(!rel){ logActivity('verify',target+' source card NOT found; verified status not written back'); return }
       let text=(await readText(rel))||''
-      text=text.replace(/(^|\n)- 状态:.*/m,'$1'+(isTrue?'- 状态: 已验证·真':'- 状态: 已验证·假'))
-             .replace(/(^|\n)- 概率:.*/m,'$1'+(isTrue?'- 概率: 1':'- 概率: 0'))
-      await writeText(rel,text)
+      let next=rewriteCardField(text,'状态',isTrue?'已验证·真':'已验证·假')
+      next=rewriteCardField(next,'概率',isTrue?'1':'0')
+      await writeText(rel,next||text)
     }
     function guessTargetType(id){ if(/^p-/.test(id)) return 'proposition'; if(/^m-/.test(id)) return 'method'; if(/^s-/.test(id)) return 'subproblem'; return 'proposition' }
 
@@ -674,7 +756,7 @@ export function apply(ctx) {
       if(kind==='meeting' && meetingState){
         meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
         meetingState.lastInputAt=now()
-        if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
+        if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
         await saveAll(); await continueMeetingRound(); return
       }
       if((kind==='verif-ind'||kind==='verif-deb') && verifyState){
@@ -694,7 +776,7 @@ export function apply(ctx) {
       // normal turn
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
       if(typeof parsed.solved==='boolean') reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()})
-      if(parsed.propose_verify) pendingVerify={targetId:parsed.propose_verify,targetType:guessTargetType(parsed.propose_verify),proposer:r.rId,at:now()}
+      if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
       // group-conversation relay: the resident may choose to speak to the whole team (input) —
       // forward it to the others so this is a real discussion group, not private monologues.
       if(typeof parsed.input==='string' && parsed.input.trim()) await relayToGroup(r.rId, parsed.input.trim())
@@ -724,7 +806,7 @@ export function apply(ctx) {
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
       residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0; clearHeartbeat()
-      busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
+      busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
@@ -750,7 +832,7 @@ export function apply(ctx) {
       const needRespawn = Array.from(residents.values()).some(r=>!r.childId)
       if(needRespawn){
         for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.insight=''; r.roundsSinceCompact=0 }
-        busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=null; verifyState=null; meetingState=null
+        busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=null; verifyState=null; meetingState=null; finalizeLock=null; verifiedRecently.clear()
       }
       for(const [,r] of residents){ if(!r.childId){ await spawnResident(r) } }
       if(!running){ running=true; autoDone=false; if(phase==='idle') phase='active' }

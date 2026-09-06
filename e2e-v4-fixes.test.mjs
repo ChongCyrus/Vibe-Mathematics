@@ -26,7 +26,7 @@ function makeCtx(){
     // a subagents service method). Deliberately NO followup here so a regression to subagents.followup fails.
     subagents:{ list(){return['spawn']}, async startContinuable({label,request}){ const id='c'+(spawns.length+1); spawns.push({label,request,childId:id}); return {childId:id} }, async sendMessage(parent,childId,blocks,opts){ followups.push({childId,blocks}) }, interrupt(){} },
     agents:{ roots(){return[]}, get(id){ return id==='sess-A' ? ROOT : undefined } },
-    fs:{ async resolve(rel,opts){ const b=(opts&&opts.cwd)||WS; return {targetKey:join(b,...String(rel).split('/')),displayPath:'x'} }, async stat(t){ return existsSync(t.targetKey)?{version:'v1',type:'file',size:1}:undefined }, async readText(t){ return readFileSync(t.targetKey,'utf8') }, async writeText(t,c){ mkdirSync(dirname(t.targetKey),{recursive:true}); writeFileSync(t.targetKey,c,'utf8') }, async listDir(t){ return [] } },
+    fs:{ async resolve(rel,opts){ const b=(opts&&opts.cwd)||WS; return {targetKey:join(b,...String(rel).split('/')),displayPath:'x'} }, async stat(t){ return existsSync(t.targetKey)?{version:'v1',type:'file',size:1}:undefined }, async readText(t){ return readFileSync(t.targetKey,'utf8') }, async writeText(t,c){ mkdirSync(dirname(t.targetKey),{recursive:true}); writeFileSync(t.targetKey,c,'utf8') }, async listDir(t){ if(!existsSync(t.targetKey)) return []; const fsmod=await import('node:fs'); const pathmod=await import('node:path'); return fsmod.readdirSync(t.targetKey,{withFileTypes:true}).map(e=>({name:e.name,type:e.isDirectory()?'directory':'file'})) } },
   }
   ROOT = { id:'sess-A', options:{provider:'mock',model:'m'}, session:{id:'sess-A',header:{cwd:WS,parentSession:undefined}}, followup(){}, ctx:undefined }
   return { WS, ctx, toolRegs, spawns, followups,
@@ -482,6 +482,124 @@ function makeCtx(){
   assert(sawDebate && round2Verify>=2, 'T19: a DEBATE round actually re-asked the residents after round-1 disagreement (round2Verify='+round2Verify+', debate prompt carries 上一轮意见)')
   let verified=false; try { verified=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-deb.md')) } catch(e){}
   assert(verified, 'T19: unanimous TRUE reached in the debate round → Verified/命题/p-deb.md written')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T20: verified write-back finds card by declared ID (filename differs) + inline fields =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T20 verified write-back resolves declared-ID card & inline field format --')
+  await m.callTool('vibe_v4_start', { problem:'回写测试', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40, verdictMaxRounds: 1 })
+  // Resident writes a card DIRECTLY via fs: file name card-x.md but the declared ID is p-x, and the
+  // metadata is the compact single-line `; `-separated format (both are real resident habits).
+  const proj = join(m.WS,'VibeMath','Projects','default')
+  mkdirSync(join(proj,'Propos','r-1'), { recursive: true })
+  writeFileSync(join(proj,'Propos','r-1','card-x.md'), '- ID: p-x; - 状态: 未定论; - 概率: 0.5; - 价值程度: 0.5; - 动机用途计划: m\n\n## 陈述\nS\n## 证明尝试\n## 证伪尝试\n', 'utf8')
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
+  let fi=0, proposed=false
+  for(let i=0;i<300;i++){
+    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){ reply={ vote:{verdict:1, reason:'ok'} } }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-x'}) }
+    m.fireEnd({ id: fu.childId, runId:'t20-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(25)
+  }
+  let cardText=''; try { cardText=readFileSync(join(proj,'Propos','r-1','card-x.md'),'utf8') } catch(e){}
+  assert(/已验证·真/.test(cardText), 'T20: declared-ID card (file card-x.md, ID p-x) got 已验证·真 written back (inline format)')
+  assert(/概率: 1/.test(cardText), 'T20: declared-ID card probability updated to 1')
+  assert(!existsSync(join(proj,'Propos','p-x.md')), 'T20: no stray top-level empty Propos/p-x.md created')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T21: finalizeMeeting/Verify reentry does not duplicate side effects =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T21 consensus finalize reentry (no duplicated tasks/meetings/stop) --')
+  await m.callTool('vibe_v4_start', { problem:'重入测试', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  await m.callTool('vibe_v4_meeting', { agenda:'表决' })
+  // Drain all meeting wakes. On the LAST two speaker completions fire the ends back-to-back in the same
+  // tick so two onResidentEnd run concurrently through finalizeMeeting (the reentry race from test9).
+  let consumed=0, meetingRounds=0
+  const flushUntil = async ()=> {
+    for(let i=0;i<400;i++){
+      if(consumed>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) return; continue }
+      const fu=m.followups[consumed]; consumed++
+      const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+      if(/meeting is in progress/i.test(pt)) meetingRounds++
+      let reply
+      if(/verifying object/i.test(pt)) reply={ vote:{verdict:0.5, reason:'x'} }
+      else if(/meeting is in progress/i.test(pt)){ reply={ input:'同意解决', voteSolved:true, propose_task: meetingRounds===1?'并入终审意见':null, task_desc:'定稿' } }
+      else reply={ summary:'x', solved:false }
+      m.fireEnd({ id: fu.childId, runId:'t21-'+consumed, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+      // fire the NEXT queued followup immediately in the same tick (no await) when present → concurrency
+      if(m.followups.length>consumed){
+        const fu2=m.followups[consumed]; consumed++
+        const pt2=(fu2.blocks&&fu2.blocks[0]&&fu2.blocks[0].text)||''
+        let reply2
+        if(/meeting is in progress/i.test(pt2)){ reply2={ input:'同意', voteSolved:true, propose_task:null } }
+        else if(/verifying object/i.test(pt2)){ reply2={ vote:{verdict:0.5, reason:'x'} } }
+        else reply2={ summary:'x', solved:false }
+        m.fireEnd({ id: fu2.childId, runId:'t21b-'+consumed, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply2)}] })
+      }
+      await sleep(10)
+    }
+  }
+  await flushUntil()
+  const st=await m.callTool('vibe_v4_status', {})
+  // With unanimous voteSolved, the run should stop EXACTLY once, with ONE identical finalize side effect.
+  const tasks=await m.callTool('vibe_v4_list_tasks', {})
+  const dup = (tasks.tasks||[]).filter(t=>t.title==='并入终审意见').length
+  assert(dup===1, 'T21: identical task proposed exactly once across concurrent finalize (dup='+dup+')')
+  assert(st.autoDone===true && st.running===false, 'T21: unanimous meeting stops the run (autoDone='+st.autoDone+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T22: re-propose of a just-verified object is deduped (then allowed after window) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T22 duplicate verify of just-verified object is deduped --')
+  await m.callTool('vibe_v4_start', { problem:'去重验证', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40, verdictMaxRounds: 1 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-dup', title:'d', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  // Count verify cycles on p-dup: first proposal -> unanimous TRUE (all vote 1) -> Verified.
+  let fi=0, proposed=false, verifyWakes=0
+  const drain = async ()=> {
+    for(let i=0;i<400;i++){
+      if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+      const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+      let reply
+      if(/verifying object/i.test(pt)){ verifyWakes++; reply={ vote:{verdict:1, reason:'ok'} } }
+      else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+      else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-dup'}) }
+      m.fireEnd({ id: fu.childId, runId:'t22-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+      await sleep(15)
+    }
+  }
+  await drain()
+  const firstWakes = verifyWakes
+  assert(firstWakes>=2 && existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-dup.md')), 'T22: first verify ran to Verified (wakes='+firstWakes+')')
+  // Immediately re-propose the SAME object (normal round) — dedup window must ignore it.
+  const before = m.followups.length
+  const rr = await m.callTool('vibe_v4_status', {})
+  // deliver a normal round that tries to propose p-dup again
+  let consumed=0; const findNormal = async ()=> { for(let i=0;i<60;i++){ if(m.followups.length>consumed){ const fu=m.followups[consumed]; consumed++; if(!/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')) return fu } else await sleep(20) } return null }
+  const fuN = await findNormal()
+  if(fuN){ m.fireEnd({ id: fuN.childId, runId:'t22r', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'再次验证', solved:false, propose_verify:'p-dup'})}] }) }
+  await sleep(120)
+  // verifyWakes should NOT have grown while inside the dedup window (recoverStallMs=80ms here)
+  const wakesAfterDup = verifyWakes
+  const st2=await m.callTool('vibe_v4_status', {})
+  assert(st2.pendingVerify===null || st2.pendingVerify!=='p-dup', 'T22: re-propose inside dedup window is ignored (pendingVerify='+st2.pendingVerify+', wakes='+wakesAfterDup+')')
   rmSync(m.WS,{recursive:true,force:true})
 }
 
