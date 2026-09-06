@@ -799,5 +799,116 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T29: duplicate subagent/end for the SAME turn is ignored (no double side effects) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T29 duplicate end event ignored (task/relay run once) --')
+  await m.callTool('vibe_v4_start', { problem:'重复结束', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, compactAfterRounds:999 })
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
+  // get a normal wake for r-1, then deliver the SAME end twice in the same tick
+  let fi=0, wake=null
+  for(let i=0;i<120;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(!/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ wake=fu; break } } else await sleep(25) }
+  assert(wake!==null, 'T29: got a normal wake')
+  const endInfo = { id: wake.childId, runId:'t29-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'我提议任务', input:'团队注意', solved:false, propose_task:'T29唯一任务', task_desc:'测试'})}] }
+  m.fireEnd(endInfo); m.fireEnd(endInfo)   // duplicate end, same tick
+  await sleep(200)
+  const tasks=await m.callTool('vibe_v4_list_tasks', {})
+  const n=(tasks.tasks||[]).filter(t=>t.title==='T29唯一任务').length
+  assert(n===1, 'T29: a duplicate end event proposes the task EXACTLY once (got '+n+'; without the guard every side effect runs twice)')
+  let relayCount=0
+  try { const mb=JSON.parse(readFileSync(join(m.WS,'VibeMath','Projects','default','State','mailboxes.json'),'utf8')); relayCount=Object.values(mb).reduce((a,arr)=>a+(Array.isArray(arr)?arr.filter(x=>/团队注意/.test(String(x.content||''))).length:0),0) } catch(e){}
+  assert(relayCount===1, 'T29: duplicate end relays the group message exactly once (relay='+relayCount+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T30: resident writers refuse an empty/unknown resident (no stray top-level cards) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T30 resident tools with no resident refuse (no stray Progress// or Propos// files) --')
+  await m.callTool('vibe_v4_start', { problem:'无主写入', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_remove_member', { id:'r-1' })   // currentResident resets to '' (no residents left)
+  const proj = join(m.WS,'VibeMath','Projects','default')
+  const pr=await m.callTool('vibe_v4_publish_progress', { content:'无主内容' })   // host/ROOT agent, no current resident
+  const rec=await m.callTool('vibe_v4_record_proposition', { id:'p-orphan', title:'o', statement:'s' })
+  assert(pr.ok===false, 'T30: publishProgress with no resident is refused (got ok='+pr.ok+')')
+  assert(rec.ok===false, 'T30: recordProposition with no resident is refused (got ok='+rec.ok+')')
+  assert(!existsSync(join(proj,'Progress','progress.md')), 'T30: no stray Progress/progress.md at the library root')
+  assert(!existsSync(join(proj,'Propos','p-orphan.md')), 'T30: no stray top-level Propos/p-orphan.md created')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T31: a REMOVED member's queued verify proposal still runs (kept, judged by current members) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T31 removed proposer\'s queued verify is kept & executed --')
+  await m.callTool('vibe_v4_start', { problem:'移除者的排队提议', residentCount:3 })
+  await waitFor(()=>m.spawns.length>=3)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1, compactAfterRounds:999 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-y', title:'y', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-x', title:'x', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[1].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  let fi=0, proposedY=false, xProposed=false, removed=false, votesY=0, votesX=0
+  for(let i=0;i<900;i++){
+    if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-x.md')) && existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-y.md'))) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/.test(pt)){
+      const isY=/p-y/.test(pt), isX=/p-x/.test(pt)
+      if(rid==='r-3' && isY && !removed){
+        // r-3 (the p-x proposer) is mid-vote on p-y and never completes → remove it; p-x must STILL run
+        removed=true
+        await m.callTool('vibe_v4_remove_member', { id:'r-3' })
+        continue
+      }
+      if(isY) votesY++; if(isX) votesX++
+      reply={ vote:{verdict:1, reason:'ok'} }
+    }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else {
+      if(!proposedY){ proposedY=true; reply={summary:'先验证y', solved:false, propose_verify:'p-y'} }        // first normal wake: p-y
+      else if(rid==='r-3' && !xProposed){ xProposed=true; reply={summary:'再验证x', solved:false, propose_verify:'p-x'} } // r-3's normal wake queues p-x
+      else { reply={summary:'继续', solved:false} }
+    }
+    m.fireEnd({ id: fu.childId, runId:'t31-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(removed && xProposed, 'T31: r-3 proposed p-x and was removed mid-verify (removed='+removed+', xProposed='+xProposed+')')
+  const cardY=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-y.md'))
+  const cardX=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-x.md'))
+  assert(cardY && cardX, 'T31: the removed proposer\'s queued p-x STILL got verified by the remaining members (p-y='+cardY+', p-x='+cardX+'; dropping it would silently lose the proposal)')
+  assert(votesY>=1 && votesX>=2, 'T31: both verifies ran full vote cycles (votesY='+votesY+', votesX='+votesX+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T32: meeting convened during brainstorm is parked & starts after brainstorm =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T32 meeting during brainstorm parks (pendingMeeting) and runs after bootstrap --')
+  await m.callTool('vibe_v4_start', { problem:'风暴期会议', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 })   // quiet A-fill: only the parked meeting may drive
+  const mt=await m.callTool('vibe_v4_meeting', { agenda:'风暴期的协调' })
+  assert(mt.ok===true && mt.deferred===true, 'T32: meeting during brainstorm is deferred (deferred='+mt.deferred+')')
+  let st0=await m.callTool('vibe_v4_status', {})
+  assert(st0.meetingInProgress===false && st0.parkedMeeting==='风暴期的协调', 'T32: meeting not started yet; parkedMeeting visible (parkedMeeting='+st0.parkedMeeting+')')
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  let fi=0, sawMeeting=false
+  for(let i=0;i<250;i++){
+    if(fi>=m.followups.length){ await sleep(20); if(sawMeeting) break; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    if(/meeting is in progress/i.test(pt)){ sawMeeting=true; m.fireEnd({ id: fu.childId, runId:'t32-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'讨论', voteSolved:false})}] }); await sleep(30); break }
+    m.fireEnd({ id: fu.childId, runId:'t32b-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] })
+    await sleep(15)
+  }
+  assert(sawMeeting, 'T32: after brainstorm completes, the parked meeting actually starts (no silent abandon)')
+  const st1=await m.callTool('vibe_v4_status', {})
+  assert(st1.parkedMeeting===null, 'T32: parked meeting consumed after start')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

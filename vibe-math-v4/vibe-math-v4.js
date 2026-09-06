@@ -233,7 +233,7 @@ export function apply(ctx) {
         +'\n团队成员：\n'+banner()+'\n'
         +'New items:\n'+ (await inboxText(r.rId)) +'\n'
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
+        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
     }
     function meetingPrompt(r, st){
       const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
@@ -321,10 +321,10 @@ export function apply(ctx) {
     function byChild(childId){ for(const [,r] of residents){ if(r.childId===childId) return r } return undefined }
 
     // ---- artifact writers (resident-facing) ----
-    async function publishProgress(rId,content){ const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
-    async function recordProposition(rId,o){ const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
-    async function recordMethod(rId,o){ const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
-    async function recordSubproblem(rId,o){ const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
+    async function publishProgress(rId,content){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
+    async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
+    async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
+    async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
     function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && !pendingMeeting && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
@@ -653,7 +653,7 @@ export function apply(ctx) {
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**\n'
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","claim_task":"<id|null>","contextPct":40}'
+        +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40}'
     }
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
     function armHeartbeat(){
@@ -774,7 +774,13 @@ export function apply(ctx) {
     // ---- resident end handler ----
     async function onResidentEnd(childId, info){
       const r=byChild(childId); if(!r) return
-      busy.delete(r.rId)
+      // A turn that is NOT marked busy is a duplicate/stale end (the same subagent/end delivered twice,
+      // or an end for a turn already settled). Without this guard every side effect below — task
+      // proposal, group relay, verify queueing, meetings.push — would run a SECOND time (the
+      // duplicate-task/duplicate-stop class from test9 reappears whenever a host re-delivers an end).
+      // Every legitimate end corresponds to a busy turn: busy is added at spawn/wake and cleared only
+      // here, on wake failure, on removeMember, or on respawn (whose stale childIds no longer match).
+      if(!busy.delete(r.rId)) return
       // Any resident turn that COMPLETED is real activity for the stall clock (B). Residents frequently
       // write their libraries via direct fs (not the record* tools), so relying only on
       // bumpArtifacts/markProgress would leave lastProgressAt stale and B would fire against an active
@@ -897,12 +903,14 @@ export function apply(ctx) {
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
       meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null, pendingVerifyCount: pendingVerify.length,
+      parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
       params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+residents.size}:null,
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
       pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null,
+      parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r)
       // Mid-meeting additions must join the meeting's speaking order; otherwise allSpoke (over CURRENT
@@ -914,11 +922,14 @@ export function apply(ctx) {
       return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
-      // drop its meeting speech / verify verdict / pending-verify proposals if it owned them, and
-      // prune it from the meeting's speaking order so the find() there never selects a ghost.
+      // drop its meeting speech / verify verdict and prune it from the meeting's speaking order so the
+      // find() there never selects a ghost. Its QUEUED verify proposals are deliberately KEPT: a
+      // proposal is a statement about an OBJECT the group can judge on its merits with its CURRENT
+      // members (allVoted recomputes over the live residents), and dropping the queue entry would also
+      // erase the intent of any OTHER member who independently proposed the same target (dedup keeps
+      // only the first entry, which may belong to the removed member).
       if(meetingState){ delete meetingState.inputs[id]; meetingState.order=(meetingState.order||[]).filter(x=>x!==id) }
       if(verifyState){ delete verifyState.verdicts[id] }
-      if(pendingVerify.length) pendingVerify = pendingVerify.filter(p=>p.proposer!==id)
       await saveAll()
       // Re-drive the scheduler right away. If the removed member was the ONLY turn in flight (e.g. the
       // last unspoken meeting speaker / the last unvoted voter, interrupted mid-turn), NO subagent/end
@@ -959,7 +970,7 @@ export function apply(ctx) {
       onResidentEnd, start, resume, status, report, addMember, removeMember, setParams,
       setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
-      residentIdOf:(agent)=>{ const m=residentOfAgent(agent); return m||currentResident },
+      residentIdOf:(agent)=>{ const m=residentOfAgent(agent); if(m) return m; const c=currentResident; return (c && residents.has(c)) ? c : '' },
       useResident:(id)=>{ currentResident=id },
       publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents, reportContext,
       proposeTask, claimTask, taskDone, listTasks,
