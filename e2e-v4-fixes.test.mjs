@@ -2,7 +2,7 @@
 // (A1 non-unanimous write-back, A2 method label, A3 abort->resume, B2 recordProposition
 // auto-sync). Each scenario runs on a FRESH mock host instance, so the shared
 // followups-array accumulation that makes the self-drive flaky does not apply.
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 const PLUGIN = new URL('./vibe-math-v4/vibe-math-v4.js', import.meta.url)
@@ -629,6 +629,173 @@ function makeCtx(){
   }
   assert(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-q.md')), 'T23: p-q verified to a Verified card')
   assert(verifyRounds<=3, 'T23: p-q not re-verified end-to-end after closing (verify wakes='+verifyRounds+', expected <=2 rounds of votes + maybe 1 stray)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T24: resume() of a concluded (autoDone) run refuses instead of reviving it =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T24 resume after unanimous stop is refused (no zombie revival) --')
+  await m.callTool('vibe_v4_start', { problem:'完成后再恢复', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1 })
+  const rc = m.spawns[0].childId
+  m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  // single resident convenes & unanimously votes solved → run concludes (autoDone)
+  await m.callTool('vibe_v4_meeting', { agenda:'表决是否完成' })
+  let fi=0, votedSolved=false
+  for(let i=0;i<200;i++){
+    if(fi>=m.followups.length){ await sleep(30); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone) break; continue }
+    const fu=m.followups[fi++]
+    m.fireEnd({ id: fu.childId, runId:'t24-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'我确认已解决', voteSolved:true})}] })
+    votedSolved=true
+    await sleep(30)
+  }
+  assert(votedSolved, 'T24: a meeting vote ran before the stop')
+  const st0=await m.callTool('vibe_v4_status', {})
+  assert(st0.autoDone===true && st0.running===false, 'T24: run concluded (autoDone=true, running=false)')
+  const spawnsBefore=m.spawns.length
+  const rr=await m.callTool('vibe_v4_resume', {})
+  assert(rr.ok===false, 'T24: resume of an autoDone run is refused (message='+(rr&&rr.message)+')')
+  const st1=await m.callTool('vibe_v4_status', {})
+  assert(st1.autoDone===true && st1.running===false && m.spawns.length===spawnsBefore, 'T24: run stays concluded after refused resume (no re-spawn, no revival)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T25: multiple verify proposals in ONE meeting all get verified (FIFO, no loss) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T25 two different verify proposals in one meeting are BOTH honored (FIFO queue) --')
+  await m.callTool('vibe_v4_start', { problem:'会议多提议', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-aa', title:'a', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-bb', title:'b', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[1].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  await m.callTool('vibe_v4_meeting', { agenda:'讨论验证对象' })
+  let fi=0, meetingDone=false
+  let verifyA=0, verifyB=0
+  for(let i=0;i<600;i++){
+    if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){
+      if(/p-aa/.test(pt)) verifyA++; if(/p-bb/.test(pt)) verifyB++
+      reply={ vote:{verdict:1, reason:'ok'} }
+    }
+    else if(/meeting is in progress/i.test(pt)){
+      meetingDone=true
+      // each member proposes ITS OWN verification target in the same meeting
+      reply={ input:'建议验证'+(rid==='r-1'?'p-aa':'p-bb'), propose_verify: rid==='r-1'?'p-aa':'p-bb', voteSolved:null }
+    }
+    else { reply={summary:'继续', solved:false} }
+    m.fireEnd({ id: fu.childId, runId:'t25-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(meetingDone, 'T25: the meeting was driven')
+  const cardA=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-aa.md'))
+  const cardB=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-bb.md'))
+  assert(cardA && cardB, 'T25: BOTH objects proposed in one meeting got verified end-to-end (p-aa='+cardA+', p-bb='+cardB+'; single-slot pendingVerify would have dropped the earlier one)')
+  assert(verifyA>=2 && verifyB>=2, 'T25: each target got its own full vote cycle (p-aa wakes='+verifyA+', p-bb wakes='+verifyB+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T26: removeMember of the in-flight last unvoted voter re-drives the verify =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T26 removeMember mid-verify re-drives consensus (no frozen verify) --')
+  await m.callTool('vibe_v4_start', { problem:'投票中移除', residentCount:3 })
+  await waitFor(()=>m.spawns.length>=3)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-rm', title:'r', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  let fi=0, proposed=false, removed=false, votes=0
+  for(let i=0;i<700;i++){
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-rm.md'))) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){
+      if(rid==='r-3' && !removed){
+        // the target resident is mid-vote and never completes: remove it (interrupt no-op in the mock)
+        removed=true
+        await m.callTool('vibe_v4_remove_member', { id:'r-3' })
+        continue   // do NOT fire its end — no subagent/end will ever arrive; the framework must re-drive
+      }
+      votes++; reply={ vote:{verdict:1, reason:'ok'} }
+    }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-rm'}) }
+    m.fireEnd({ id: fu.childId, runId:'t26-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(removed, 'T26: removed r-3 while it was mid-vote (in flight, end never fired)')
+  const card=existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-rm.md'))
+  assert(card, 'T26: the verify CONCLUDED after removing the in-flight voter (unanimous among remaining) — no freeze')
+  const st=await m.callTool('vibe_v4_status', {})
+  assert(st.verifyInProgress===false && votes>=2, 'T26: verify closed & session healthy (votes='+votes+', verifyInProgress='+st.verifyInProgress+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T27: quoted numeric verdict "0.9" is parsed as 0.9 (not silently 0.5) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T27 quoted numeric verdict ("0.9") parsed as a number --')
+  await m.callTool('vibe_v4_start', { problem:'字符串数值', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { verdictMaxRounds:1, activityTimeoutMs:40 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-qs', title:'q', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  let fi=0, proposed=false
+  for(let i=0;i<300;i++){
+    if(fi>=m.followups.length){ await sleep(30); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){ reply={ vote:{ verdict: rid==='r-1' ? '0.9' : 0.1, reason:'判断' } } }   // r-1 quotes the number
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'p-qs'}) }
+    m.fireEnd({ id: fu.childId, runId:'t27-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(20)
+  }
+  const src = readFileSync(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-qs.md'),'utf8')
+  const probLine = src.split('\n').find(l=>/^- 概率:/.test(l))
+  // if "0.9" were misread as 0.5 (old fallback), avg = (0.5+0.1)/2 = 0.3; correctly parsed avg = 0.5
+  assert(/^- 概率: 0\.5/.test(probLine), 'T27: quoted "0.9" verdict counts as 0.9 → non-unanimous avg 0.5 written (line='+probLine+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T28: pause freezes an in-progress meeting; resume continues it (fresh watchdog) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T28 pause freezes consensus wakes; resume continues & finalizes the meeting --')
+  await m.callTool('vibe_v4_start', { problem:'暂停会议', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 })   // keep heartbeat quiet: only the meeting drives
+  const rc = m.spawns[0].childId
+  m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  await m.callTool('vibe_v4_meeting', { agenda:'暂停期间的会议' })
+  let fi=0, meetingWake=null
+  for(let i=0;i<200;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(/meeting is in progress/i.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ meetingWake=fu; break } } else await sleep(20) }
+  assert(meetingWake!==null, 'T28: meeting wake arrived')
+  const pa=await m.callTool('vibe_v4_pause', {})
+  assert(pa.ok===true, 'T28: pause accepted')
+  const base = m.followups.length
+  // the in-flight meeting turn completes DURING the pause: its input is recorded but NO new wake may start
+  m.fireEnd({ id: meetingWake.childId, runId:'t28-m', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'讨论中', voteSolved:false})}] })
+  await sleep(250)
+  assert(m.followups.length===base, 'T28: while paused, NO new consensus wake started after the in-flight turn ended (frozen; followups='+m.followups.length+')')
+  const res=await m.callTool('vibe_v4_resume', {})
+  assert(res.ok===true, 'T28: resume accepted')
+  let mtDone=false
+  for(let i=0;i<75;i++){ const st=await m.callTool('vibe_v4_status',{}); if(st.meetingInProgress===false){ mtDone=true; break } await sleep(40) }
+  assert(mtDone, 'T28: the frozen meeting concluded after resume (meetingInProgress cleared)')
+  let mtFile=false
+  try { mtFile=readdirSync(join(m.WS,'VibeMath','Projects','default','Shared','meetings')).some(n=>n.startsWith('mt-')) } catch(e){}
+  assert(mtFile, 'T28: the frozen meeting concluded after resume (meeting transcript written, watchdog clock refreshed)')
   rmSync(m.WS,{recursive:true,force:true})
 }
 

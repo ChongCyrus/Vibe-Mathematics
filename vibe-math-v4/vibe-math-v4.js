@@ -46,7 +46,7 @@ export function apply(ctx) {
     let residents = new Map(), mailboxes = new Map(), taskboard = [], decisions = []
     let meetings = [], reports = [], activityLog = []
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
-    let meetingState = null, verifyState = null, pendingVerify = null, pendingMeeting = null
+    let meetingState = null, verifyState = null, pendingVerify = [], pendingMeeting = null   // pendingVerify: FIFO queue (several residents may independently propose different objects before any verify runs — a single slot silently DROPPED all but the last proposal)
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
     let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
     const verifiedRecently = new Map()   // targetId -> timestamp when it was closed as Verified (dedup re-propose)
@@ -102,7 +102,22 @@ export function apply(ctx) {
     async function fsTarget(rel){ return await fs.resolve(rel,{cwd:frameworkRoot()}) }
     async function readText(rel){ try { const t=await fsTarget(rel); if(await fs.stat(t)===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeText(rel,content){ try { const t=await fsTarget(rel); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
-    async function writeJson(rel,obj){ return await writeText(rel,JSON.stringify(obj,null,2)) }
+    // State files (taskboard/residents/session/mailboxes/decisions) are written by MANY concurrent
+    // flows (parallel resident turns + end handlers + tools). Two near-simultaneous writers of the
+    // SAME file each stringified their snapshot BEFORE their fs.writeText landed, so the writer with
+    // the OLDER snapshot could land LAST and silently erase the other's entry (e.g. two residents
+    // proposing tasks in the same tick → one task vanished from taskboard.json until the next save).
+    // Fix: serialize writes PER FILE, and defer JSON.stringify until the write actually runs (so the
+    // snapshot always reflects the newest in-memory state at execution time — late writers win with
+    // the FULL state, never with a stale subset).
+    const jsonQueues = new Map()   // rel -> tail promise (per-session file write chain)
+    function writeJson(rel,obj){
+      const key='j:'+rel
+      const prev=jsonQueues.get(key)||Promise.resolve(true)
+      const run=prev.catch(()=>{}).then(async ()=>{ try { const t=await fsTarget(rel); await fs.writeText(t,JSON.stringify(obj,null,2),undefined,undefined,getPolicy()); return true } catch(e){ return false } })
+      jsonQueues.set(key,run.catch(()=>{}))
+      return run
+    }
     async function readJson(rel){ const t=await readText(rel); if(t===undefined||t==='') return undefined; try { return JSON.parse(t) } catch(e){ return undefined } }
     async function ensureDirs(){ const base=frameworkRoot(); const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Reliable','Notes','State']; return await runShell('New-Item -Force -ItemType Directory -Path '+[vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)).map(psQuote).join(',')+' | Out-Null') }
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
@@ -373,13 +388,17 @@ export function apply(ctx) {
     // ---- meeting ----
     async function startMeeting(agenda,type,targetId){
       if(meetingState) return {ok:false,message:'meeting already in progress'}
-      // A meeting must NOT preempt an active or pending verification (unanimous-consensus is the
-      // group's truth-making step; preempting it would let every round resurface the same conflict).
-      // Wait instead of stealing the floor: park the request and resume it after the verify settles.
-      if(verifyState || pendingVerify){
-        // Keep the FIRST deferred request (never overwrite an earlier one with a later agenda).
+      // Park-and-resume (never lose a coordination request, never create a zombie): while a
+      // verification holds the floor, while the group is still brainstorming (members are busy in
+      // their first rounds — a meeting started there could not be serviced and the old code let its
+      // stall watchdog silently ABANDON it minutes later), or while the run is paused, the meeting
+      // request is parked in pendingMeeting (FIRST request wins) and starts as soon as the floor is
+      // free. A never-started session (no residents to talk) and a concluded run (autoDone) refuse
+      // instead — convening there previously created a meeting nobody could ever be woken into.
+      if(!running || autoDone || phase==='brainstorm' || verifyState || pendingVerify.length>0){
+        if(autoDone || (!running && residents.size===0)) return {ok:false,message:'run is not active (use vibe_v4_start or vibe_v4_resume first)'}
         if(!pendingMeeting) pendingMeeting = { agenda, type:type||'general', targetId:targetId||null }
-        return {ok:true,deferred:true,during:'verify'}
+        return {ok:true,deferred:true,during: phase==='brainstorm'?'brainstorm':(!running?'paused':'verify')}
       }
       clearHeartbeat()
       const ids=Array.from(residents.keys())
@@ -447,18 +466,18 @@ export function apply(ctx) {
     async function beginVerify(pv){
       clearHeartbeat()
       // Re-check dedup at ACTUAL start, not just at propose time: a resident may propose object X while
-      // X is already being verified (it does not know). That proposal sits in pendingVerify; when the
-      // current X verify closes, beginVerify would run X end-to-end a SECOND time (test9: p-r3-04 was
-      // verified twice back-to-back). Drop it if X was closed within the dedup window.
+      // X is already being verified (it does not know). That proposal sits in the pendingVerify queue;
+      // when the current X verify closes, beginVerify would run X end-to-end a SECOND time (test9:
+      // p-r3-04 was verified twice back-to-back). Drop it if X was closed within the dedup window.
+      // (pv was already popped from the FIFO queue by scheduleNext — nothing else to clear here.)
       const tgt=pv&&pv.targetId?String(pv.targetId):''
       if(tgt){
         const last=verifiedRecently.get(tgt)
         if(last!==undefined && (now()-last) < recoverStallMs()){
           logActivity('verify',tgt+' queued verify dropped at start (just verified at '+fmtTime(last)+')')
-          pendingVerify=null; await saveAll(); await scheduleNext(); return
+          await saveAll(); await scheduleNext(); return
         }
       }
-      pendingVerify=null
       verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},history:{},transcript:[],at:now(),lastVerdictAt:now()}
       markProgress();
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
@@ -526,10 +545,12 @@ export function apply(ctx) {
       // never swallowed by the still-held reentry lock)
     }
     // Queue a verify proposal UNLESS the same object was just verified (closed as 真/假). In parallel
-    // self-organization several residents may independently propose the same target while a verify is
-    // already settling; without the guard the object gets re-verified end-to-end a second time (test9:
-    // p-r3-04 was Verified twice back-to-back). A resident who genuinely extends the object later can
-    // still re-propose after the dedup window (recoverStallMs) has passed.
+    // self-organization several residents may independently propose targets while a verify is already
+    // settling — sometimes the SAME object (test9: p-r3-04 was Verified twice back-to-back), sometimes
+    // DIFFERENT objects (e.g. a sync meeting where each member proposes its own target). pendingVerify
+    // is therefore a FIFO queue with per-target dedup: every distinct proposal is honored in order, and
+    // duplicates collapse to one entry. A resident who genuinely extends the object later can still
+    // re-propose after the dedup window (recoverStallMs) has passed.
     function maybeQueueVerify(target, proposer){
       const t=String(target||'').trim()
       if(!t) return false
@@ -538,7 +559,8 @@ export function apply(ctx) {
         logActivity('verify',t+' re-propose ignored (just verified at '+fmtTime(last)+')')
         return false
       }
-      pendingVerify={targetId:t,targetType:guessTargetType(t),proposer:proposer||'',at:now()}
+      if(pendingVerify.some(p=>String(p.targetId)===t)) return true   // already queued → keep ONE entry
+      pendingVerify.push({targetId:t,targetType:guessTargetType(t),proposer:proposer||'',at:now()})
       return true
     }
     async function writeDebateDoc(vs,done,val){
@@ -666,9 +688,9 @@ export function apply(ctx) {
       if(phase==='brainstorm'){ await maybeFinishBrainstorm(); return }
       if(meetingState){ await continueMeetingRound(); return }
       if(verifyState){ await continueVerifyRound(); return }
-      if(pendingVerify){ const pv=pendingVerify; await beginVerify(pv); return }
+      if(pendingVerify.length){ const pv=pendingVerify.shift(); await beginVerify(pv); return }
       // A meeting requested while a verify held the floor is parked in pendingMeeting; once the
-      // verify has truly settled (no verifyState / pendingVerify), resume it before anything else.
+      // verify queue has truly drained (no verifyState / pendingVerify), resume it before anything else.
       if(pendingMeeting){ const pm=pendingMeeting; pendingMeeting=null; await startMeeting(pm.agenda, pm.type, pm.targetId); return }
       // mailbox delivery
       const delivered=await deliverNextMailbox(); if(delivered) return
@@ -680,7 +702,7 @@ export function apply(ctx) {
       //    (framework convenes & records; residents decide — never assigns work). Only when no
       //    meeting/verify/pending work is active AND no resident is currently working (so it never
       //    preempts an in-flight round).
-      if(phase==='active' && !meetingState && !verifyState && !pendingVerify && busy.size===0){
+      if(phase==='active' && !meetingState && !verifyState && pendingVerify.length===0 && busy.size===0){
         const stallMs=Number(params.stallAutoMeetingMs)||((Number(params.activityTimeoutMs)||120000)*3)
         if(now()-lastProgressAt>=stallMs){
           await startMeeting('团队较长时间没有新进展。请你们自行讨论：当前问题是否已解决、开放难点是什么、谁负责哪部分、下一步如何推进，并自主决定是否继续。框架只负责转达与记录，不替你们决定。','general',null)
@@ -769,21 +791,29 @@ export function apply(ctx) {
         meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
         meetingState.lastInputAt=now()
         if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
-        await saveAll(); await continueMeetingRound(); return
+        await saveAll()
+        // PAUSE/stop: record the in-flight input/verdict but do NOT start any NEW consensus wake —
+        // a paused run must stay paused (resume() refreshes the consensus clocks and re-drives).
+        if(!running || autoDone) return
+        await continueMeetingRound(); return
       }
       if((kind==='verif-ind'||kind==='verif-deb') && verifyState){
         const v=(parsed&&parsed.vote)||{}
         // verdict = 0-1 probability the object is TRUE (1=绝对真, 0=绝对假, 0.5=不确定);
-        // also accept legacy 'TRUE'/'FALSE' strings.
+        // also accept legacy 'TRUE'/'FALSE' strings AND quoted numeric strings ("0.9"), which LLMs
+        // occasionally emit — without this a confident "0.9" was silently misread as 0.5 (uncertainty).
         let p
         if(typeof v.verdict==='number'){ p=clamp01(v.verdict) }
         else if(/^TRUE$/i.test(String(v.verdict))){ p=1 }
         else if(/^FALSE$/i.test(String(v.verdict))){ p=0 }
+        else if(typeof v.verdict==='string' && v.verdict.trim()!=='' && Number.isFinite(Number(v.verdict))){ p=clamp01(Number(v.verdict)) }
         else { p=clamp01(Number(v.confidence)) }
         // verdict is a PURE 0-1 probability (a degree); no binary TRUE/FALSE classification.
         verifyState.verdicts[r.rId]={prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
         verifyState.lastVerdictAt=now()
-        await saveAll(); await continueVerifyRound(); return
+        await saveAll()
+        if(!running || autoDone) return   // pause: freeze (resume refreshes the clocks and re-drives)
+        await continueVerifyRound(); return
       }
       // normal turn
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
@@ -817,7 +847,11 @@ export function apply(ctx) {
       if(residentCount) params.residentCount=Number(residentCount)||4
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
-      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=null; residentSeq=0; artifactCount=0; clearHeartbeat()
+      // A reused session may still have OLD residents in flight from a previous run (start is a FRESH
+      // run that reuses the same r-1.. library paths). Interrupt them BEFORE resetting, otherwise their
+      // still-running turns keep writing into the same per-resident files the new run is about to use.
+      for(const [,or] of residents){ if(or.childId){ try{ subagents.interrupt(or.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } }
+      residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=[]; residentSeq=0; artifactCount=0; clearHeartbeat()
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
@@ -826,6 +860,10 @@ export function apply(ctx) {
     }
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs(); await loadAll(); await loadSettings()
+      // A run the group CONCLUDED (unanimous voteSolved → autoDone) must not be silently revived into
+      // a zombie that keeps waking residents with no consensus that it should still run. The group
+      // decided it is done; continuing means a NEW run (vibe_v4_start / vibe_v4_configure).
+      if(autoDone) return {ok:false,message:'This run already concluded (all residents agreed solved). Start a fresh run with vibe_v4_start (vibe_v4_configure a new problem first if needed).'}
       // After loadAll the residentSeq counter is still whatever THIS process had (0 on a fresh process),
       // but persisted residents may already be r-1..r-N. Sync it to the max existing id so a later
       // addMember never collides with an existing resident (it would silently overwrite it).
@@ -844,22 +882,27 @@ export function apply(ctx) {
       const needRespawn = Array.from(residents.values()).some(r=>!r.childId)
       if(needRespawn){
         for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.insight=''; r.roundsSinceCompact=0 }
-        busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=null; verifyState=null; meetingState=null; finalizeLock=null; verifiedRecently.clear()
+        busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=[]; verifyState=null; meetingState=null; finalizeLock=null; verifiedRecently.clear()
       }
       for(const [,r] of residents){ if(!r.childId){ await spawnResident(r) } }
       if(!running){ running=true; autoDone=false; if(phase==='idle') phase='active' }
       if(needRespawn && phase!=='brainstorm') phase='brainstorm'   // let re-spawned residents re-bootstrap together
+      // A pause froze an in-progress meeting/verify with its watchdog clock still running: refresh the
+      // clocks so a resumed consensus gets a full fresh stall window instead of being abandoned the
+      // instant it is serviced again (a short pause must never silently kill a real discussion).
+      if(meetingState && meetingState.lastInputAt) meetingState.lastInputAt=now()
+      if(verifyState && verifyState.lastVerdictAt) verifyState.lastVerdictAt=now()
       logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':needRespawn?' (re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
-      meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify?pendingVerify.targetId:null,
+      meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null, pendingVerifyCount: pendingVerify.length,
       params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+residents.size}:null,
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
-      pendingVerify: pendingVerify?pendingVerify.targetId:null,
+      pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null,
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
     async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r)
       // Mid-meeting additions must join the meeting's speaking order; otherwise allSpoke (over CURRENT
@@ -869,14 +912,21 @@ export function apply(ctx) {
       // Mid-verify additions are automatically asked to vote (continueVerifyRound recomputes ids from
       // the live residents map), so no extra handling is needed there.
       return {ok:true,id:r.rId,direction:r.direction} }
-    async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id)
+    async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
-      // drop its meeting speech / verify verdict / deferred-meeting / pending-verify if it owned them, and
+      // drop its meeting speech / verify verdict / pending-verify proposals if it owned them, and
       // prune it from the meeting's speaking order so the find() there never selects a ghost.
       if(meetingState){ delete meetingState.inputs[id]; meetingState.order=(meetingState.order||[]).filter(x=>x!==id) }
       if(verifyState){ delete verifyState.verdicts[id] }
-      if(pendingVerify && pendingVerify.proposer===id) pendingVerify=null
-      await saveAll(); return {ok:true} }
+      if(pendingVerify.length) pendingVerify = pendingVerify.filter(p=>p.proposer!==id)
+      await saveAll()
+      // Re-drive the scheduler right away. If the removed member was the ONLY turn in flight (e.g. the
+      // last unspoken meeting speaker / the last unvoted voter, interrupted mid-turn), NO subagent/end
+      // will ever arrive to trigger the next pass, and while a consensus is being serviced no heartbeat
+      // is armed either — without this kick the meeting/verify would freeze forever behind members that
+      // can already conclude. scheduleNext no-ops safely when the run is paused/stopped.
+      await scheduleNext()
+      return {ok:true} }
     // Normalize one parameter value to its intended type so a string from /v4 set or configure
     // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
     function normalizeParam(k, v){
