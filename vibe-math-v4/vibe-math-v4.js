@@ -604,7 +604,10 @@ export function apply(ctx) {
         await saveAll()
         if(!ok) continue             // a failed wake must NOT stop the fill; try the next idle resident
       }
-      if(started>0) { return }       // at least one started; their onResidentEnd re-drives scheduleNext
+      if(started>0) { armHeartbeat(); return }   // started some; re-drive comes via onResidentEnd, BUT also arm a
+      // safety-net heartbeat so a woken resident whose subagent/end NEVER arrives (a hung normal round) does not
+      // freeze the group. Below mp, the next scheduleNext will re-fill; if all woken residents are stuck busy the
+      // heartbeat just re-arms harmlessly. (Meeting/verify already have recoverStallMs watchdogs; normal A-fill did not.)
       // everyone is busy or not idle-enough: arm a heartbeat to re-check later (no infinite spin)
       armHeartbeat()
     }
