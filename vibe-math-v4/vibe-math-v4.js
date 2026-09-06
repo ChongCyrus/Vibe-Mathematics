@@ -76,7 +76,12 @@ export function apply(ctx) {
     // deadlocked and abandon it. A meeting round's own signal window is activityTimeoutMs, so a
     // resident should speak within that; 2× that without ANY new input/verdict means the meeting/verify
     // is stuck and must not keep the whole group blocked.
-    function recoverStallMs(){ return (Number(params.activityTimeoutMs)||120000) * 2 }
+    // Positive duration with a safe fallback: a NEGATIVE/NaN activityTimeoutMs or stallAutoMeetingMs
+    // (misconfigured via vibe_v4_set) would otherwise make recoverStallMs negative → every meeting/
+    // verify watchdog fires INSTANTLY (abandoning all consensus) and A-fill's idle window would never
+    // elapse (waking everyone every pass). Guard every duration read with this.
+    function posMs(v,def){ const n=Number(v); return (Number.isFinite(n)&&n>0)?n:(def||120000) }
+    function recoverStallMs(){ return posMs(params.activityTimeoutMs,120000) * 2 }
     function pickProvider(){ try { const n=subagents.list?subagents.list():[]; if(n.indexOf('spawn')!==-1) return 'spawn'; if(n.indexOf('fork')!==-1) return 'fork' } catch(e){} return 'spawn' }
     // Per-resident model/provider inheritance: when params.provider / params.model are set,
     // the resident uses that exact route; when left '' the resident inherits the parent's
@@ -91,11 +96,20 @@ export function apply(ctx) {
       if(allow.length===0 && deny.length===0) return undefined
       const f={}; if(allow.length) f.allow=allow; if(deny.length) f.deny=deny; return f
     }
-    function makeSignal(ms){ return AbortSignal.timeout(ms||30000) }
+    function makeSignal(ms){ return AbortSignal.timeout(posMs(ms,30000)) }
     function workspaceRoot(){ try { if(rootAgent&&rootAgent.session&&rootAgent.session.header&&rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch(e){} if(sandboxPolicy&&sandboxPolicy.workspaceRoot) return sandboxPolicy.workspaceRoot; return '.' }
     function vibeRoot(){ return (workspaceRoot()+'/VibeMath').replace(/\\/g,'/') }
     function frameworkRoot(){ return vibeRoot()+'/Projects/'+currentProject }
     function slugify(s){ const t=String(s==null?'':s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g,'-').replace(/^-+|-+$/g,''); return t||'project' }
+    // Object ids (verify targets, recorded cards) become FILE NAMES and DIRECTORY PATHS
+    // (Verified/命题/<id>.md, Shared/debates/<id>.md, Propos/<r>/<id>.md, source-card scans).
+    // A hostile/sloppy id containing path separators ('../../x') or Windows-forbidden chars would
+    // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
+    // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
+    function idSafe(s){
+      const t=String(s==null?'':s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').replace(/-{2,}/g,'-').replace(/^[.\-]+|[.\-]+$/g,'')
+      return t||'id'
+    }
     function getPolicy(){ try { if(sandboxPolicy&&rootAgent&&rootAgent.session) return sandboxPolicy.resolve({session:rootAgent.session}) } catch(e){} try { if(sandboxPolicy) return sandboxPolicy.resolve({}) } catch(e){} return undefined }
     function psQuote(p){ return "'"+String(p).replace(/'/g,"''")+"'" }
     async function runShell(script,cwd){ if(subprocess===undefined) return {ok:false,error:'no-subprocess'}; try { const h=subprocess.spawn({argv:['powershell','-NoProfile','-NonInteractive','-Command',script],cwd:cwd||workspaceRoot(),stdio:{stdin:'ignore',stdout:'inherit',stderr:'inherit'},graceMs:20000}); const o=await h.done; return {ok:o.exitCode===0,exitCode:o.exitCode} } catch(e){ return {ok:false,error:String((e&&e.message)||e)} } }
@@ -322,9 +336,9 @@ export function apply(ctx) {
 
     // ---- artifact writers (resident-facing) ----
     async function publishProgress(rId,content){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
-    async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
-    async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
-    async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id||('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
+    async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
+    async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
+    async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
     function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && !pendingMeeting && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
@@ -370,9 +384,9 @@ export function apply(ctx) {
       }
       const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb); await saveAll(); logActivity('message',from+'→'+to+' (queued)'); return {ok:true}
     }
-    async function broadcast(content){
+    async function broadcast(content, from){
       let n=0
-      for(const [,r] of residents){ const res=await postMessage('facilitator',r.rId,content); if(res&&res.ok) n++ }
+      for(const [,r] of residents){ if(from && r.rId===from) continue; const res=await postMessage(from||'facilitator',r.rId,content); if(res&&res.ok) n++ }
       logActivity('broadcast','to '+n+' resident(s)'); await saveAll(); return {ok:true,message:'broadcast to '+n+' resident(s)'}
     }
     // group conversation relay: when a resident "speaks" (input in its round), forward its
@@ -460,7 +474,13 @@ export function apply(ctx) {
         const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
         const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
         logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
-        if(allSolved){ running=false; autoDone=true; phase='done'; clearHeartbeat(); logActivity('stop','all residents agree: problem solved'); await saveAll(); return }
+        if(allSolved){
+          running=false; autoDone=true; phase='done'; clearHeartbeat()
+          // symmetric with initAbort: the STOP path must also release the coordination state, else
+          // status keeps reporting a phantom in-progress meeting (and stale wake kinds) forever.
+          meetingState=null; wakeKind.clear(); pendingMeeting=null; verifyState=null; pendingVerify=[]
+          logActivity('stop','all residents agree: problem solved'); await saveAll(); return
+        }
         meetingState=null; wakeKind.clear(); await saveAll()
         doSchedule=true
       } finally { finalizeLock=null }   // release BEFORE scheduling so a chained verify/meeting is not swallowed
@@ -557,8 +577,8 @@ export function apply(ctx) {
     // duplicates collapse to one entry. A resident who genuinely extends the object later can still
     // re-propose after the dedup window (recoverStallMs) has passed.
     function maybeQueueVerify(target, proposer){
-      const t=String(target||'').trim()
-      if(!t) return false
+      const t=idSafe(target)   // sanitize BEFORE it becomes file names / dedup keys / status output
+      if(!t || t==='id') return false
       const last=verifiedRecently.get(t)
       if(last!==undefined && (now()-last) < recoverStallMs()){
         logActivity('verify',t+' re-propose ignored (just verified at '+fmtTime(last)+')')
@@ -663,8 +683,8 @@ export function apply(ctx) {
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
     function armHeartbeat(){
       clearHeartbeat()
-      const ms=Number(params.activityTimeoutMs)||120000
-      if(!(ms>0) || typeof ctx.timeout!=='function') return
+      const ms=posMs(params.activityTimeoutMs,120000)
+      if(typeof ctx.timeout!=='function') return
       heartbeatDisposer=ctx.timeout(()=>{ heartbeatDisposer=null; scheduleNext().catch(()=>{}) }, ms)
     }
     // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
@@ -708,7 +728,7 @@ export function apply(ctx) {
       //    meeting/verify/pending work is active AND no resident is currently working (so it never
       //    preempts an in-flight round).
       if(phase==='active' && !meetingState && !verifyState && pendingVerify.length===0 && busy.size===0){
-        const stallMs=Number(params.stallAutoMeetingMs)||((Number(params.activityTimeoutMs)||120000)*3)
+        const stallMs=posMs(params.stallAutoMeetingMs, posMs(params.activityTimeoutMs,120000)*3)
         if(now()-lastProgressAt>=stallMs){
           await startMeeting('团队较长时间没有新进展。请你们自行讨论：当前问题是否已解决、开放难点是什么、谁负责哪部分、下一步如何推进，并自主决定是否继续。框架只负责转达与记录，不替你们决定。','general',null)
           return
@@ -721,7 +741,7 @@ export function apply(ctx) {
       //    On a FAILED wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops
       //    the group (a successful wake re-drives scheduleNext through its own onResidentEnd, which re-arms).
       clearHeartbeat()
-      const atOs=Number(params.activityTimeoutMs)||120000
+      const atOs=posMs(params.activityTimeoutMs,120000)
       // `mp` (maxParallel) is already declared above in this function scope.
       // Collect idle (not busy) residents sorted by idle time, oldest-first (round-robin fairness).
       const idleCandidates = Array.from(residents.values())
@@ -764,7 +784,7 @@ export function apply(ctx) {
       let delivered=false
       for(const [to,msgs] of mailboxes){
         if(msgs.length===0) continue
-        const r=residents.get(to); if(!r){ continue }
+        const r=residents.get(to); if(!r){ mailboxes.delete(to); continue }   // stale recipient → drop the entry
         if(busy.has(to)) continue   // recipient busy → leave the message queued for a later pass
         const mp=Number(params.maxParallel)||0
         if(mp>0 && busy.size>=mp) break   // concurrency cap reached → stop delivering more now
@@ -856,6 +876,7 @@ export function apply(ctx) {
       if(!problemText) return {ok:false,message:'problem text required (pass problem, or use vibe_v4_configure first)'}
       problemId=slugify(problemText.slice(0,40))||'problem'
       if(residentCount) params.residentCount=Number(residentCount)||4
+      if(!(Number(params.residentCount)>=1)) params.residentCount=DEFAULT_PARAMS.residentCount   // a 0/negative count (settings misconfig) would spawn nobody & idle forever
       running=true; autoDone=false; phase='brainstorm'
       await writeText('Problems/'+problemId+'.md','# 问题｜'+problemId+'\n- ID: '+problemId+'\n- 类型: 问题\n- 状态: 求解中\n- 优先级: 1\n- 依赖: []\n\n## 陈述\n'+problemText+'\n')
       // A reused session may still have OLD residents in flight from a previous run (start is a FRESH
@@ -925,7 +946,12 @@ export function apply(ctx) {
       pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
-    async function addMember(direction){ const r=newResident(direction||''); await spawnResident(r)
+    async function addMember(direction){
+      // Adding a member starts a REAL resident turn (spawnResident → brainstorm) — refuse unless the
+      // run is live: on a concluded (autoDone) or never-started/paused run the new member would work
+      // with nobody to coordinate (zombie work on a project the group already declared done).
+      if(!running || autoDone) return {ok:false,message:'no active run to join (start or resume first)'}
+      const r=newResident(direction||''); await spawnResident(r)
       // Mid-meeting additions must join the meeting's speaking order; otherwise allSpoke (over CURRENT
       // residents) can never be true for the new member (not in the snapshot order) and the meeting is
       // only ever released by the stuck watchdog instead of finalizing with everyone's input.
@@ -994,6 +1020,9 @@ export function apply(ctx) {
       onResidentEnd, start, resume, status, report, addMember, removeMember, setParams,
       setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
+      // safety kick: drive one scheduler pass (used when an end handler errored, so an exceptional
+      // turn can never leave the group with no end-event and no heartbeat to continue it)
+      nudge:()=>scheduleNext().catch(()=>{}),
       residentIdOf:(agent)=>{ const m=residentOfAgent(agent); if(m) return m; const c=currentResident; return (c && residents.has(c)) ? c : '' },
       useResident:(id)=>{ currentResident=id },
       publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents, reportContext,
@@ -1034,7 +1063,7 @@ export function apply(ctx) {
   registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}}}),(s,a)=>{ s.setParams(a); return {ok:true} })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
-  registerTool('vibe_v4_send_message','(resident) Send a message to another resident.',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>s.postMessage(s.residentIdOf(x),a.to,a.content))
+  registerTool('vibe_v4_send_message','(resident) Send a message to another resident (to=all broadcasts to the whole team).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>{ const from=s.residentIdOf(x); if(!from) return {ok:false,message:'no such resident'}; if(String(a.to)==='all') return s.broadcast(a.content, from); return s.postMessage(from,a.to,a.content) })
   registerTool('vibe_v4_publish_progress','(resident) Append to your own progress markdown.',objParams({content:{type:'string'}},['content']),(s,a,x)=>s.publishProgress(s.residentIdOf(x),a.content))
   registerTool('vibe_v4_record_proposition','(resident) Record a proposition to your library.',objParams({id:{type:'string'},title:{type:'string'},statement:{type:'string'},prob:{type:'number'},value:{type:'number'},motivation:{type:'string'}}),(s,a,x)=>s.recordProposition(s.residentIdOf(x),a))
   registerTool('vibe_v4_record_method','(resident) Record a method/theory to your library.',objParams({id:{type:'string'},title:{type:'string'},type:{type:'string'},content:{type:'string'},notation:{type:'string'},value:{type:'number'},motivation:{type:'string'}}),(s,a,x)=>s.recordMethod(s.residentIdOf(x),a))
@@ -1077,6 +1106,6 @@ export function apply(ctx) {
 
   ctx.on('subagent/end', function(info){
     const sid=childOwner.get(info.id); const s=sid!==undefined?sessions.get(sid):undefined
-    if(s) s.onResidentEnd(info.id, info).catch(e=>console.error('vibe-v4 end: '+String((e&&e.stack)||e)))
+    if(s) s.onResidentEnd(info.id, info).catch(e=>{ console.error('vibe-v4 end: '+String((e&&e.stack)||e)); if(s.nudge) s.nudge() })
   })
 }

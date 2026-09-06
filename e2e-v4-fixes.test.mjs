@@ -1007,5 +1007,114 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T38: unanimous stop clears coordination state; addMember refused on done run =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T38 stop clears meeting state & addMember is refused after stop --')
+  await m.callTool('vibe_v4_start', { problem:'停后清理', residentCount:1 })
+  await waitFor(()=>m.spawns.length>=1)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1 })
+  const cid=m.spawns[0].childId
+  m.fireEnd({ id: cid, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
+  await sleep(80)
+  await m.callTool('vibe_v4_meeting', { agenda:'全体一致停止' })
+  let fi=0, stopped=false
+  for(let i=0;i<250;i++){
+    if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone){ stopped=true; break } continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/meeting is in progress/i.test(pt)){ reply={input:'确认解决', voteSolved:true} }
+    else reply={summary:'x', solved:false}
+    m.fireEnd({ id: fu.childId, runId:'t38-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(20)
+  }
+  assert(stopped, 'T38: run reached unanimous stop')
+  const st=await m.callTool('vibe_v4_status', {})
+  assert(st.autoDone===true && st.running===false && st.meetingInProgress===false && st.parkedMeeting===null && st.busy.length===0, 'T38: after stop no phantom meeting/parked/busy state (meetingInProgress='+st.meetingInProgress+', busy='+JSON.stringify(st.busy)+')')
+  const before=m.spawns.length
+  const am=await m.callTool('vibe_v4_add_member', { direction:'新人' })
+  assert(am.ok===false && m.spawns.length===before, 'T38: addMember refused on a concluded run (no zombie resident work; message='+(am&&am.message)+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T39: hostile ids in verify targets / record tools cannot escape the project tree =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T39 path-traversal ids sanitized (no writes outside the project tree) --')
+  await m.callTool('vibe_v4_start', { problem:'路径消毒', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1 })
+  const proj = join(m.WS,'VibeMath','Projects','default')
+  // a record tool handed a traversal id must land inside the caller's library, sanitized
+  const rec=await m.callToolAs('vibe_v4_record_proposition', { id:'../../esc-probe', title:'t', statement:'s' }, m.spawns[0].childId)
+  assert(rec.ok===true && /^Propos\/r-1\/esc-probe\.md$/.test(rec.file||''), 'T39: record id sanitized into the owner library (file='+(rec&&rec.file)+')')
+  assert(!existsSync(join(m.WS,'esc-probe.md')) && existsSync(join(proj,'Propos','r-1','esc-probe.md')), 'T39: no traversal write outside the project')
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
+  // a verify proposal with a traversal id must be sanitized before it becomes a file name
+  let fi=0, proposed=false
+  for(let i=0;i<350;i++){
+    if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(proj,'Verified','命题','p-esc.md'))) break; continue }
+    const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){ reply={ vote:{verdict:1, reason:'ok'} } }
+    else if(/meeting is in progress/i.test(pt)){ reply={input:'x', voteSolved:null} }
+    else { reply = proposed ? {summary:'继续',solved:false} : (proposed=true,{summary:'建议验证',solved:false,propose_verify:'../../p-esc'}) }
+    m.fireEnd({ id: fu.childId, runId:'t39-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(proposed, 'T39: traversal verify target was proposed')
+  assert(existsSync(join(proj,'Verified','命题','p-esc.md')), 'T39: sanitized target verified inside Verified/命题 (p-esc.md)')
+  assert(!existsSync(join(m.WS,'p-esc.md')) && !existsSync(join(m.WS,'VibeMath','p-esc.md')) && !existsSync(join(proj,'..','..','p-esc.md')), 'T39: NO file written outside the project tree by the verify flow')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T40: resident tool send_message to=all broadcasts (matches toolList claim) =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T40 resident to=all broadcast works (self excluded) --')
+  await m.callTool('vibe_v4_start', { problem:'常驻广播', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 })   // quiet: only the broadcast may drive
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(60) }
+  const base=m.followups.length
+  const br=await m.callToolAs('vibe_v4_send_message', { to:'all', content:'常驻全体公告' }, m.spawns[0].childId)
+  assert(br.ok===true && /to 1 resident/.test(br.message||''), 'T40: r-1 broadcast delivered to the OTHER resident only (message='+(br&&br.message)+')')
+  await sleep(150)
+  const got=m.followups.slice(base).some(f=>/常驻全体公告/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
+  let selfGot=0
+  for(const f of m.followups.slice(base)){ for(const sp of m.spawns) if(sp.childId===f.childId && sp.label==='r-1') selfGot++ }
+  assert(got, 'T40: the other resident received the broadcast wake')
+  assert(selfGot===0, 'T40: the broadcasting resident was NOT woken for its own broadcast (selfGot='+selfGot+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T41: negative/NaN duration params cannot nuke the watchdogs or A-fill =====
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T41 negative duration params are sanitized (no instant consensus abandon) --')
+  await m.callTool('vibe_v4_start', { problem:'负数参数', residentCount:2 })
+  await waitFor(()=>m.spawns.length>=2)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:-50, stallAutoMeetingMs:-5, verdictMaxRounds:1 })
+  await m.callToolAs('vibe_v4_record_proposition', { id:'p-neg', title:'n', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
+  // propose the verify target through a MEETING (heartbeat self-drive is irrelevant with -50ms params)
+  await m.callTool('vibe_v4_meeting', { agenda:'提议验证p-neg' })
+  const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
+  let fi=0, proposed=false, verifyWakes=0
+  for(let i=0;i<500;i++){
+    if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-neg.md'))) break; continue }
+    const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    let reply
+    if(/verifying object/i.test(pt)){ verifyWakes++; reply={ vote:{verdict:1, reason:'ok'} } }
+    else if(/meeting is in progress/i.test(pt)){ reply = proposed ? {input:'同意', voteSolved:null} : (proposed=true,{input:'我建议验证p-neg', voteSolved:null, propose_verify:'p-neg'}) }
+    else { reply={summary:'继续',solved:false} }
+    m.fireEnd({ id: fu.childId, runId:'t41-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    await sleep(10)
+  }
+  assert(verifyWakes>=2, 'T41: the verify actually ran vote cycles (wakes='+verifyWakes+'; a negative watchdog would abandon it instantly)')
+  assert(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-neg.md')), 'T41: unanimous TRUE reached despite negative duration params (sanitized to safe fallbacks)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)
