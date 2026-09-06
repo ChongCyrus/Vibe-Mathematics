@@ -46,7 +46,7 @@ export function apply(ctx) {
     let residents = new Map(), mailboxes = new Map(), taskboard = [], decisions = []
     let meetings = [], reports = [], activityLog = []
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
-    let meetingState = null, verifyState = null, pendingVerify = null
+    let meetingState = null, verifyState = null, pendingVerify = null, pendingMeeting = null
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
     let lastActivityAt = now(), lastProgressAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
     const activityLogCap = 200
@@ -367,6 +367,10 @@ export function apply(ctx) {
     // ---- meeting ----
     async function startMeeting(agenda,type,targetId){
       if(meetingState) return {ok:false,message:'meeting already in progress'}
+      // A meeting must NOT preempt an active or pending verification (unanimous-consensus is the
+      // group's truth-making step; preempting it would let every round resurface the same conflict).
+      // Wait instead of stealing the floor: park the request and resume it after the verify settles.
+      if(verifyState || pendingVerify){ pendingMeeting = { agenda, type:type||'general', targetId:targetId||null }; return {ok:true,deferred:true,during:'verify'} }
       clearHeartbeat()
       const ids=Array.from(residents.keys())
       // Rotate the per-meeting speaking order so the SAME resident isn't always the "first speaker
@@ -553,6 +557,9 @@ export function apply(ctx) {
       if(meetingState){ await continueMeetingRound(); return }
       if(verifyState){ await continueVerifyRound(); return }
       if(pendingVerify){ const pv=pendingVerify; await beginVerify(pv); return }
+      // A meeting requested while a verify held the floor is parked in pendingMeeting; once the
+      // verify has truly settled (no verifyState / pendingVerify), resume it before anything else.
+      if(pendingMeeting){ const pm=pendingMeeting; pendingMeeting=null; await startMeeting(pm.agenda, pm.type, pm.targetId); return }
       // mailbox delivery
       const delivered=await deliverNextMailbox(); if(delivered) return
       // maxParallel: don't start a new wake when the in-flight cap is reached
@@ -570,21 +577,34 @@ export function apply(ctx) {
           return
         }
       }
-      // A) heartbeat / coordination: wake the least-recently-active resident after an idle timeout
-      //    to SELF-DRIVE (continue solving / message / propose task / meeting / verify). On a FAILED
-      //    wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops the group
-      //    (a successful wake re-drives scheduleNext through its own onResidentEnd, which re-arms).
+      // A) heartbeat / coordination: wake IDLE residents after an idle timeout to SELF-DRIVE (continue
+      //    solving / message / propose task / meeting / verify). This is a CONCURRENCY FILL, not a
+      //    single nudge: scheduleNext should wake up to `maxParallel` idle residents in one pass so the
+      //    group can progress in parallel (design §A: "同一时刻可唤醒多个空闲常驻，受 maxParallel 上限").
+      //    On a FAILED wake we re-arm the heartbeat so a single follow-up error NEVER permanently stops
+      //    the group (a successful wake re-drives scheduleNext through its own onResidentEnd, which re-arms).
       clearHeartbeat()
-      let target=null, oldest=-1
-      for(const [,r] of residents){ if(busy.has(r.rId)) continue; const idle=now()-r.lastActiveAt; if(idle>oldest){ oldest=idle; target=r } }
       const atOs=Number(params.activityTimeoutMs)||120000
-      if(target && oldest>=atOs){
+      // `mp` (maxParallel) is already declared above in this function scope.
+      // Collect idle (not busy) residents sorted by idle time, oldest-first (round-robin fairness).
+      const idleCandidates = Array.from(residents.values())
+        .filter(r=>!busy.has(r.rId))
+        .sort((a,b)=>(now()-b.lastActiveAt)-(now()-a.lastActiveAt))
+      // Fill the concurrency budget: keep waking the most-idle resident until either everyone idle is
+      // started OR the in-flight cap (maxParallel) is reached. This turns the previous "one at a time"
+      // serialization into genuine parallel progress.
+      let started=0
+      for(const r of idleCandidates){
+        const free = mp>0 ? (mp - busy.size) : Number.MAX_SAFE_INTEGER
+        if(free<=0) break            // concurrency cap reached → stop filling
+        if((now()-r.lastActiveAt)<atOs) break   // the remaining are all busy-or-not-idle-enough
         let ok=false
-        try { ok = await wakeResident(target, await heartbeatPrompt(target), 'normal') } catch(e){ ok=false }
+        try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){ ok=false }
+        if(ok) started++
         await saveAll()
-        if(!ok) armHeartbeat()   // wake failed → re-arm so the group never permanently stops
-        return
+        if(!ok) continue             // a failed wake must NOT stop the fill; try the next idle resident
       }
+      if(started>0) { return }       // at least one started; their onResidentEnd re-drives scheduleNext
       // everyone is busy or not idle-enough: arm a heartbeat to re-check later (no infinite spin)
       armHeartbeat()
     }
@@ -597,13 +617,23 @@ export function apply(ctx) {
       await writeText('Shared/meetings/brainstorm.md', lines.join('\n'))
     }
     async function deliverNextMailbox(){
+      // Deliver queued messages to ALL currently-idle recipients in one pass (parallel), bounded by the
+      // same maxParallel concurrency cap, so a group chat (relayToGroup → many non-busy recipients) is
+      // not serialized one-message-at-a-time. Returns true if anything was delivered. A busy recipient
+      // keeps its message queued (avoid starving others).
+      let delivered=false
       for(const [to,msgs] of mailboxes){
         if(msgs.length===0) continue
-        const m=msgs.shift(); const r=residents.get(to); if(!r){ continue }
-        if(!busy.has(to)){ currentResident=to; await wakeResident(r, (await normalPrompt(r))+'\n\n[MESSAGE from '+m.from+']\n'+m.content,'normal'); await saveAll(); return true }
-        msgs.push(m); continue   // recipient busy → keep the message queued, try another mailbox (avoid starving others)
+        const r=residents.get(to); if(!r){ continue }
+        if(busy.has(to)) continue   // recipient busy → leave the message queued for a later pass
+        const mp=Number(params.maxParallel)||0
+        if(mp>0 && busy.size>=mp) break   // concurrency cap reached → stop delivering more now
+        const m=msgs.shift()
+        currentResident=to
+        const ok = await wakeResident(r, (await normalPrompt(r))+'\n\n[MESSAGE from '+m.from+']\n'+m.content,'normal')
+        await saveAll(); if(!ok) msgs.unshift(m); delivered=delivered||ok
       }
-      return false
+      return delivered
     }
 
     // ---- resident end handler ----
@@ -653,8 +683,13 @@ export function apply(ctx) {
       if(parsed.propose_task) await proposeTask(parsed.propose_task, parsed.task_desc||'', r.rId)
       if(parsed.claim_task) await claimTask(parsed.claim_task, r.rId)
       if(parsed.task_done) await taskDone(parsed.task_done, r.rId)
-      // a resident may self-trigger a meeting (resident-driven coordination, closest to the philosophy)
-      if(parsed.propose_meeting && !meetingState){ await startMeeting(String(parsed.propose_meeting),'general',null); await saveAll(); return }
+      // a resident may self-trigger a meeting (resident-driven coordination, closest to the philosophy).
+      // If a verify is holding the floor the meeting is deferred (pendingMeeting) and we fall through
+      // so the pending verify (or mailbox/heartbeat) still advances rather than being stuck behind it.
+      if(parsed.propose_meeting && !meetingState){
+        const mr=await startMeeting(String(parsed.propose_meeting),'general',null); await saveAll()
+        if(mr && !mr.deferred) return
+      }
       await saveAll(); await scheduleNext()
     }
 

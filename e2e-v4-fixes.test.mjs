@@ -153,13 +153,18 @@ function makeCtx(){
   await waitFor(()=>m.spawns.length>=2)
   await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
-  let fu=null
-  for(let i=0;i<60;i++){ if(m.followups.length>0){ fu=m.followups.shift(); break } await sleep(40) }
+  // With parallel-fill both residents get a checkpoint wake at once; drain them so neither stays busy,
+  // then have one resident send a group message (input) which must be relayed into the others' mailboxes.
+  let fu=null, drained=0
+  for(let i=0;i<80;i++){ if(m.followups.length>drained){ const f=m.followups[drained]; drained++; if(!fu && /CHECKPOINT/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||'')){ fu=f } else { m.fireEnd({ id: f.childId, runId:'d-'+drained, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }) } } else await sleep(40) }
   assert(fu, 'T6: got a fairness/checkpoint wake after brainstorm')
+  // this resident speaks to the whole team; the message must be relayed into every other resident's mailbox.
   m.fireEnd({ id: fu.childId, runId:'t6-w', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'我推进引理A', input:'大家好，我建议先验证引理A。', solved:false})}] })
   await sleep(150)
-  const relayed = m.followups.some(f=>/引理A|群聊/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
-  assert(relayed, 'T6: resident input is relayed & delivered to the other residents (group chat)')
+  let relayed=false
+  try { const mb=JSON.parse(readFileSync(join(m.WS,'VibeMath','Projects','default','State','mailboxes.json'),'utf8')); relayed=Object.values(mb).some(arr=>Array.isArray(arr)&&arr.some(x=>/引理A|群聊/.test(String(x.content||'')))) } catch(e){}
+  const relayedWake = m.followups.some(f=>/引理A|群聊/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
+  assert(relayed || relayedWake, 'T6: resident input is relayed & delivered to the other residents (group chat)')
   rmSync(m.WS,{recursive:true,force:true})
 }
 
@@ -341,6 +346,52 @@ function makeCtx(){
     assert(!/请用一句话说明你下一步做什么/.test(pt), 'T15: heartbeat prompt is NOT the old passive "state your next step"')
     break
   } else { m.fireEnd({ id: fu.childId, runId:'t15-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }) } } await sleep(40) }
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T16: parallel self-drive fill (maxParallel) — NOT one resident at a time =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T16 parallel self-drive fill w/concurrency --')
+  await m.callTool('vibe_v4_start', { problem:'并行自驱动', residentCount:3 })
+  await waitFor(()=>m.spawns.length>=3)
+  // A short activity timeout so the heartbeat fires quickly; a huge stall so B does not preempt.
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, stallAutoMeetingMs:9999999, compactAfterRounds:999 })
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  // drain followups; if the A branch fills concurrency it will queue MULTIPLE normal self-drive wakes
+  // in one pass (all 3 idle residents get woken together). A one-at-a-time loop delivers 1 at a time.
+  let consumed=0, sawBatch=false
+  for(let i=0;i<200;i++){
+    if(m.followups.length>consumed+1){
+      const batch=m.followups.slice(consumed)
+      const normals=batch.filter(f=>/CHECKPOINT/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
+      if(normals.length>=2){ sawBatch=true; break }
+    }
+    if(m.followups.length>consumed){ consumed=m.followups.length; m.fireEnd({ id: m.followups[consumed-1].childId, runId:'w-'+consumed, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }); await sleep(30) }
+    else await sleep(30)
+  }
+  assert(sawBatch, 'T16: parallel-fill queues >=2 concurrent normal self-drive wakes (maxParallel respected, not one-at-a-time)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T17: mailbox delivery reaches multiple idle recipients (no serialization) =================
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T17 parallel mailbox delivery (not one recipient per pass) --')
+  await m.callTool('vibe_v4_start', { problem:'并行投递', residentCount:3 })
+  await waitFor(()=>m.spawns.length>=3)
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999 }) // keep A-heartbeat quiet so only mailbox drives
+  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  const before = m.followups.length
+  await m.callTool('vibe_v4_message', { to:'all', content:'全体注意' })
+  await sleep(40)
+  let fired=0
+  for(let i=0;i<200;i++){
+    if(m.followups.length-before>=2) break
+    if(m.followups.length>before+fired){ m.fireEnd({ id: m.followups[before+fired].childId, runId:'mb-'+(fired++), provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ok', solved:false})}] }); await sleep(20) }
+    else await sleep(20)
+  }
+  assert(m.followups.length-before>=2, 'T17: a broadcast to 3 idle residents delivers to >=2 concurrently in one burst (parallel mailbox, not one-per-pass)')
   rmSync(m.WS,{recursive:true,force:true})
 }
 

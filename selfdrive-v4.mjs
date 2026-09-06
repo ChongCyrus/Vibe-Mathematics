@@ -55,6 +55,31 @@ let verifyTriggered = false
 let step = 0
 const MAX = 300
 let autoDoneSeen = false
+// A parallel-fill wake means MULTIPLE residents are in-flight at once; in real DSH each completes
+// independently and fires its own subagent/end. So the driver must DRAIN every queued followup per
+// pass and reply by the wake's ACTUAL kind (verify/meeting/normal), not by a global one-shot order.
+async function drainFollowups(budget){
+  let fired = false
+  for(let i=0;i<budget;i++){
+    if(followupIdx>=followups.length) break
+    const fu = followups[followupIdx]; followupIdx++
+    const promptText = (fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
+    const kind = classWake(promptText)
+    let reply
+    if(kind==='verify'){ vWakes++; reply = { vote:{ verdict:1, reason:'核对：该对象由完整论证支撑，成立。' } } }
+    else if(kind==='meeting'){ mWakes++; reply = { input:'我同意：原问题已解决。', voteSolved:true, propose_verify:null } }
+    else { // normal
+      const rId = rIdOfChild(fu.childId)
+      nWakes++
+      if(!verifyTriggered){ verifyTriggered = true; reply = { summary:'推进方向，建议验证 '+verifyTarget+'.', solved:false, propose_verify: verifyTarget } }
+      else if(!meetProposed){ meetProposed = true; reply = { summary:'我认为已接近解决，建议开会表决。', solved:false, propose_verify:null, propose_meeting:'是否认为原问题已解决？', propose_task:'进一步验证关键引理', task_desc:'由常驻协作验证并完善证明', contextPct: 82 } }
+      else { reply = { summary:'继续推进。', solved:false, propose_verify:null } }
+    }
+    fireEnd({ id: fu.childId, runId:'w'+followupIdx, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
+    fired = true
+  }
+  return fired
+}
 async function driveOne(){
   // process next brainstorm spawn if any
   if(spawnIdx < spawns.length){
@@ -66,22 +91,9 @@ async function driveOne(){
     fireEnd({ id: sp.childId, runId: 'br-'+rId, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({ summary: '我的见解：用积分构造矛盾；' + rId, solved:false })}] })
     return true
   }
-  // next followup (normal/meeting/verify)
+  // next followups: drain ALL that are queued this pass (parallel in-flight batch)
   if(followups.length > followupIdx){
-    const fu = followups[followupIdx]; followupIdx++
-    const promptText = (fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
-    const kind = classWake(promptText)
-    let reply
-    if(kind==='verify'){ vWakes++; reply = { vote:{ verdict:1, reason:'核对：该对象由完整论证支撑，成立。' } } }
-    else if(kind==='meeting'){ mWakes++; reply = { input:'我同意：原问题已解决。', voteSolved:true, propose_verify:null } }
-    else { // normal
-      nWakes++
-      if(!verifyTriggered){ verifyTriggered = true; reply = { summary:'推进方向，建议验证 '+verifyTarget+'.', solved:false, propose_verify: verifyTarget } }
-      else if(!meetProposed){ meetProposed = true; reply = { summary:'我认为已接近解决，建议开会表决。', solved:false, propose_verify:null, propose_meeting:'是否认为原问题已解决？', propose_task:'进一步验证关键引理', task_desc:'由常驻协作验证并完善证明', contextPct: 82 } }
-      else { reply = { summary:'继续推进。', solved:false, propose_verify:null } }
-    }
-    fireEnd({ id: fu.childId, runId:'w'+followupIdx, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
-    return true
+    return await drainFollowups(6)   // generous batch cap; real turns complete independently
   }
   return false
 }
@@ -93,9 +105,9 @@ for(step=0; step<MAX; step++){
   const did = await driveOne()
   const s0 = await callTool('vibe_v4_status', {})
   if(s0.autoDone){ autoDoneSeen = true; break }
-  if(did){ await sleep(130); continue }
+  if(did){ await sleep(30); continue }
   // no new wake: gentle settle
-  await sleep(200)
+  await sleep(120)
   const s2 = await callTool('vibe_v4_status', {})
   if(s2.autoDone){ autoDoneSeen = true; break }
 }
