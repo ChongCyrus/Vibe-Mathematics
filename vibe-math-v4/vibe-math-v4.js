@@ -747,11 +747,35 @@ export function apply(ctx) {
       // fallback: a host that keeps the child registered through the end notification
       try { return agents.get(childId) } catch(e){ return undefined }
     }
+    /**
+     * Resolve the compaction service a CHILD AGENT should use — i.e. through that
+     * agent's own context, not this plugin's.
+     *
+     * Each preset group declares `isolate: { compaction: true, toolResultPruner: true }`
+     * (copied verbatim from DSH's own `standard` preset, whose comment states the realm's
+     * purpose: "What a preset chooses is whether its agent compacts at all, which is
+     * `compaction-basic` below"). A row sitting OUTSIDE that realm resolves the HOST ROOT
+     * instance instead, so this plugin's calls would ignore the preset's own compaction
+     * config, and the sub-agent's step-boundary compaction (which runs from inside the
+     * realm) would use a different instance than the framework's calls here.
+     *
+     * `Agent.ctx` is documented as "Agent-scoped context; its contributions are
+     * agent-local" (dsh-agent/lib/types/runtime-types.d.ts:148), so the child's own
+     * context resolves the preset plane the child actually lives on. This keeps the
+     * plugin row where it is (nothing else moves in or out of the realm) while making
+     * both compaction paths agree on one instance.
+     */
+    function compactionForAgent(agent){
+      try { const c = agent && agent.ctx ? agent.ctx.get('compaction') : undefined; if(c && c.compactIfNeeded) return c } catch(e){}
+      // fallback: this plugin's own plane (host root for a row outside the realm)
+      return compactionOf()
+    }
     async function realCompact(r){
       if(!r || !r.childId) return
-      const compaction=compactionOf(); if(compaction===undefined || !compaction.compactIfNeeded) return
       const agent = liveAgentOf(r.childId)
       if(!agent || !agent.session) return
+      const compaction = compactionForAgent(agent)
+      if(compaction===undefined || !compaction.compactIfNeeded) return
       try {
         const signal = makeSignal(params.activityTimeoutMs||60000)
         const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
