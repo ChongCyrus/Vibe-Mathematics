@@ -223,6 +223,9 @@ const spawnsFor = (root) => spawns.filter(s => s.rootId === root.id)
 
 let votePlan = new Map()   // memberId -> verdict number for the next verify prompts
 let replyOverride = new Map()   // memberId -> the exact reply its NEXT wake must produce
+// Roots whose MEETING prompts the driver must NOT answer, so the meeting stays in flight
+// (case 10b needs a live meeting to test that a verification cannot preempt it).
+const hushed = new Set()
 // Handle queued sends. `delivered` collects what was actually sent for the case under
 // test, because the queue is consumed here and assertions must not read it afterwards.
 // Wakes belonging to OTHER roots are skipped over rather than allowed to block: a case
@@ -231,7 +234,8 @@ let replyOverride = new Map()   // memberId -> the exact reply its NEXT wake mus
 async function drainWakes(budget, root) {
   let n = 0
   while (n < budget) {
-    const idx = wakes.findIndex(w => !root || w.rootId === root.id)
+    const idx = wakes.findIndex(w => (!root || w.rootId === root.id)
+      && !(hushed.has(w.rootId) && /【研究所会议/.test(w.prompt)))
     if (idx === -1) break
     const w = wakes.splice(idx, 1)[0]
     const owner = memberOfChild(w.childId)
@@ -792,6 +796,44 @@ for (const w of delivered) record('meeting-proposal', w.owner, w.prompt)
 assert(/【研究所·致全体表决者 from r-1】[^\n]*提议开会/.test(propText),
   'the meeting proposal is relayed SIGNED BY ITS TRUE PROPOSER r-1, not by whoever was woken last')
 await endCase(RI)
+
+// =============== CASE 10b: meetings and verifications are mutually exclusive ======
+section('10b a verification proposed DURING a meeting must queue, never preempt it')
+const RN = makeRoot()
+await callTool('vibe_v5_start', { problem: '会议与验证互斥测试', researcherCount: 1 }, RN)
+for (const sp of spawnsFor(RN)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(RN)
+await callTool('vibe_v5_set', { maxParallel: 8 }, RN)
+await callTool('vibe_v5_record_proposition', { id: 'p-mid', statement: '会议期间提出的对象', value: 0.6, motive: 'm', p: 0.7 }, childAgent(childOf(RN, 'r-1')))
+// Convene a meeting and stop before it has collected every input, so it stays in flight.
+hushed.add(RN.id)
+delivered.length = 0
+const convened = await callTool('vibe_v5_meeting', { agenda: '先开这个会', kind: 'sync' }, childAgent(childOf(RN, 'acad')))
+assert(convened.ok === true, 'a meeting was convened (' + JSON.stringify(convened).slice(0, 80) + ')')
+await settle(); await drainWakes(1, RN)
+const during = await callTool('vibe_v5_status', {}, RN)
+assert(!!during.meeting, 'the meeting is still in flight (not everyone has spoken)')
+// A member proposing a verification mid-meeting must NOT start a second, concurrent
+// consensus process: the design says meetings and verifications never overlap, and a
+// verification that preempts a meeting starves the meeting's watchdog clock.
+const propMid = await callTool('vibe_v5_propose_verify', { target: 'p-mid', kind: 'proposition', reason: '想在会上定' }, childAgent(childOf(RN, 'r-1')))
+assert(propMid.ok === true, 'the proposal is accepted (' + JSON.stringify(propMid).slice(0, 90) + ')')
+await settle()
+const afterProp = await callTool('vibe_v5_status', {}, RN)
+assert(!!afterProp.meeting, 'the meeting is STILL in flight after the proposal')
+assert(afterProp.verify === null,
+  'NO verification started while the meeting was in flight (got ' + JSON.stringify(afterProp.verify && afterProp.verify.target) + ')')
+assert((afterProp.verifyQueue || []).indexOf('p-mid') !== -1,
+  'the proposal is QUEUED instead (queue=' + JSON.stringify(afterProp.verifyQueue) + ')')
+// Once the meeting ends, the queued proposal must run — queueing must not drop it.
+hushed.delete(RN.id)
+await settleInstitute(RN)
+const afterMtg = await callTool('vibe_v5_status', {}, RN)
+assert(afterMtg.meeting === null, 'the meeting finished')
+assert(afterMtg.verify !== null || afterMtg.undecided.indexOf('p-mid') !== -1 || afterMtg.verified.indexOf('p-mid') !== -1,
+  'the queued proposal was started after the meeting ended (verify=' + JSON.stringify(afterMtg.verify && afterMtg.verify.target)
+  + ', queue=' + JSON.stringify(afterMtg.verifyQueue) + ')')
+await endCase(RN)
 
 // =============== CASE 11: no unpaced re-wake loop ===============================
 section('11 a task owner is pushed on a PACED cadence, not in a tight loop')

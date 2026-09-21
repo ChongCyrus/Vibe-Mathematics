@@ -263,6 +263,13 @@ const probes = [
     from: "        if ((now() - (lastActiveAt.get(m.id) || 0)) < idleMs) continue",
     to: "        if (false) continue",
   },
+  {
+    name: 'verify-preempts-a-live-meeting',
+    ref: 'prompt-v5-integrity.test.mjs',
+    guarantee: '㉝ a verification proposed during a meeting must QUEUE, never start concurrently (the two are mutually exclusive)',
+    from: "      if (meeting) return\n      // Only one begin may be in flight.",
+    to: "      // Only one begin may be in flight.",
+  },
 ]
 
 let probesPassed = 0

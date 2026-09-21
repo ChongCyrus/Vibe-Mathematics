@@ -18,17 +18,19 @@
 ### 提示词原文
 
 ```text
-【第 45 轮 —— 常驻研究员 r-2】
+【第 9 轮 —— 常驻研究员 r-2】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
 ------------
-[状态] 你是 r-2（常驻研究员）｜轮次 45｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-2（常驻研究员）｜轮次 9｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
+[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
   ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
     你最熟同余
+  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
+    所办决定
 ------------
 结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
 {
@@ -65,67 +67,16 @@
 ### 提示词原文
 
 ```text
-【第 46 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 46｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [3] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
 [新到的消息]
   【所办分派】任务 t-2「所办指派」分派给你。理由：所办决定｜验收标准：给出结论。默认应当执行；若你认为方向有误，请说明理由（会被广播给全所）。若你有异议，请在 JSON 里填 reject_assign。
 
-【第 47 轮 —— 常驻研究员 r-2】
+【第 10 轮 —— 常驻研究员 r-2】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
 ------------
-[状态] 你是 r-2（常驻研究员）｜轮次 47｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-2（常驻研究员）｜轮次 10｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
 [任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
   ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
@@ -161,20 +112,20 @@
 
 ---
 
-## [4] kind=`inbox-office-assign` owner=`r-2`
+## [3] kind=`inbox-office-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
 ### 提示词原文
 
 ```text
-【第 48 轮 —— 常驻研究员 r-2】
+【第 11 轮 —— 常驻研究员 r-2】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
 ------------
-[状态] 你是 r-2（常驻研究员）｜轮次 48｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-2（常驻研究员）｜轮次 11｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
 [任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
   ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
@@ -210,897 +161,7 @@
 
 ---
 
-## [5] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 49 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 49｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [6] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 50 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 50｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [7] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 51 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 51｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [8] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 52 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 52｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [9] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 53 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 53｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [10] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 54 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 54｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [11] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 55 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 55｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [12] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 56 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 56｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [13] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 57 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 57｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [14] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 58 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 58｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [15] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 59 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 59｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [16] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 60 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 60｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [17] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 61 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 61｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [18] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 62 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 62｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [19] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 63 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 63｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [20] kind=`inbox-office-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 64 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 64｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [21] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 65 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 65｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [22] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 66 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 66｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [23] kind=`inbox-office-nudge` owner=`r-2`
+## [4] kind=`inbox-office-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -1110,13 +171,13 @@
 [新到的消息]
   【督办 from office】所办督办：所办督办一下
 
-【第 67 轮 —— 常驻研究员 r-2】
+【第 12 轮 —— 常驻研究员 r-2】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
 ------------
-[状态] 你是 r-2（常驻研究员）｜轮次 67｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-2（常驻研究员）｜轮次 12｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
 [任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
   ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
@@ -1152,848 +213,7 @@
 
 ---
 
-## [24] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 68 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 68｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [25] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 69 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 69｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [26] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 70 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 70｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [27] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 71 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 71｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [28] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 72 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 72｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [29] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 73 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 73｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [30] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 74 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 74｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [31] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 75 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 75｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [32] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 76 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 76｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [33] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 77 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 77｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [34] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 78 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 78｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [35] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 79 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 79｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [36] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 80 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 80｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [37] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 81 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 81｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [38] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 82 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 82｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [39] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 83 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 83｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [40] kind=`inbox-office-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 84 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 84｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 2｜可认领 0｜我负责 t-1「核验模 9 情形」、t-2「所办指派」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-  ▸ 我的任务 t-2：所办指派｜验收：给出结论｜由 office 分派
-    所办决定
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [41] kind=`notice-task` owner=`r-1`
+## [5] kind=`notice-task` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2041,7 +261,7 @@
 
 ---
 
-## [42] kind=`founding` owner=`acad`
+## [6] kind=`founding` owner=`acad`
 
 - charter: 5618 字符
 
@@ -2263,7 +483,7 @@
 
 ---
 
-## [43] kind=`founding` owner=`r-1`
+## [7] kind=`founding` owner=`r-1`
 
 - charter: 5524 字符
 
@@ -2476,7 +696,7 @@
 
 ---
 
-## [44] kind=`founding` owner=`r-2`
+## [8] kind=`founding` owner=`r-2`
 
 - charter: 5528 字符
 
@@ -2689,7 +909,7 @@
 
 ---
 
-## [45] kind=`founding` owner=`r-3`
+## [9] kind=`founding` owner=`r-3`
 
 - charter: 5532 字符
 
@@ -2902,7 +1122,7 @@
 
 ---
 
-## [46] kind=`founding-temp` owner=`t-1`
+## [10] kind=`founding-temp` owner=`t-1`
 
 - charter: 4462 字符
 
@@ -3092,7 +1312,7 @@
 
 ---
 
-## [47] kind=`founding-leaderless` owner=`r-1`
+## [11] kind=`founding-leaderless` owner=`r-1`
 
 - charter: 4744 字符
 
@@ -3138,7 +1358,7 @@
 
 ---
 
-## [48] kind=`founding-leaderless` owner=`r-2`
+## [12] kind=`founding-leaderless` owner=`r-2`
 
 - charter: 4748 字符
 
@@ -3184,7 +1404,7 @@
 
 ---
 
-## [49] kind=`resume` owner=`acad`
+## [13] kind=`resume` owner=`acad`
 
 - charter: 5591 字符
 
@@ -3199,52 +1419,52 @@
 
 恢复说明：
   
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:35｜acad
 acad：初始见解。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:35｜acad
 acad：初始见解。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:21｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:36｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:36｜acad
 acad：初始见解。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:37｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:37｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:22｜acad
+### 2026-09-21 12:26:37｜acad
 acad：继续推进。
 
-### 2026-09-21 11:58:25｜acad
+### 2026-09-21 12:26:37｜acad
 acad：初始见解。
 
-### 2026-09-21 11:58:25｜acad
+### 2026-09-21 12:26:38｜acad
 acad：初始见解。
 
-### 2026-09-21 11:58:26｜acad
+### 2026-09-21 12:26:38｜acad
 acad：初始见解。
 
 
@@ -3284,7 +1504,7 @@ acad：初始见解。
 
 ---
 
-## [50] kind=`resume` owner=`r-1`
+## [14] kind=`resume` owner=`r-1`
 
 - charter: 5497 字符
 
@@ -3299,52 +1519,55 @@ acad：初始见解。
 
 恢复说明：
   
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:35｜r-1
 r-1：初始见解。
 
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:35｜r-1
 r-1：初始见解。
 
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:21｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:22｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:22｜r-1
+### 2026-09-21 12:26:36｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:22｜r-1
+### 2026-09-21 12:26:36｜r-1
+r-1：继续推进。
+
+### 2026-09-21 12:26:36｜r-1
 r-1：初始见解。
 
-### 2026-09-21 11:58:22｜r-1
+### 2026-09-21 12:26:37｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:25｜r-1
+### 2026-09-21 12:26:37｜r-1
 r-1：初始见解。
 
-### 2026-09-21 11:58:25｜r-1
+### 2026-09-21 12:26:38｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:25｜r-1
+### 2026-09-21 12:26:38｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:25｜r-1
+### 2026-09-21 12:26:38｜r-1
 r-1：继续推进。
 
-### 2026-09-21 11:58:25｜r-1
+### 2026-09-21 12:26:38｜r-1
 r-1：初始见解。
 
-### 2026-09-21 11:58:26｜r-1
+### 2026-09-21 12:26:38｜r-1
 r-1：初始见解。
 
 
@@ -3380,7 +1603,7 @@ r-1：初始见解。
 
 ---
 
-## [51] kind=`resume` owner=`r-2`
+## [15] kind=`resume` owner=`r-2`
 
 - charter: 5501 字符
 
@@ -3395,298 +1618,67 @@ r-1：初始见解。
 
 恢复说明：
   
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:35｜r-2
 r-2：初始见解。
 
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:35｜r-2
 r-2：初始见解。
 
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:21｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:36｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：初始见解。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:22｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:23｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:24｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
-r-2：继续推进。
-
-### 2026-09-21 11:58:25｜r-2
+### 2026-09-21 12:26:37｜r-2
 r-2：初始见解。
 
-### 2026-09-21 11:58:25｜r-2
+### 2026-09-21 12:26:38｜r-2
 r-2：初始见解。
 
-### 2026-09-21 11:58:25｜r-2
+### 2026-09-21 12:26:38｜r-2
 r-2：继续推进。
 
-### 2026-09-21 11:58:26｜r-2
+### 2026-09-21 12:26:38｜r-2
 r-2：初始见解。
 
 
@@ -3722,7 +1714,7 @@ r-2：初始见解。
 
 ---
 
-## [52] kind=`normal` owner=`acad`
+## [16] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3772,7 +1764,7 @@ r-2：初始见解。
 
 ---
 
-## [53] kind=`normal` owner=`r-2`
+## [17] kind=`normal` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3819,7 +1811,7 @@ r-2：初始见解。
 
 ---
 
-## [54] kind=`normal` owner=`r-1`
+## [18] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3865,7 +1857,7 @@ r-2：初始见解。
 
 ---
 
-## [55] kind=`normal` owner=`acad`
+## [19] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3915,53 +1907,7 @@ r-2：初始见解。
 
 ---
 
-## [56] kind=`normal` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【心跳检查 —— 常驻研究员 r-2】
-
-所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
-读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
-或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
-如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [57] kind=`normal` owner=`r-1`
+## [20] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4007,7 +1953,53 @@ r-2：初始见解。
 
 ---
 
-## [58] kind=`normal` owner=`acad`
+## [21] kind=`normal` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【心跳检查 —— 常驻研究员 r-2】
+
+所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
+读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
+或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
+如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [22] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4057,53 +2049,7 @@ r-2：初始见解。
 
 ---
 
-## [59] kind=`normal` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【心跳检查 —— 常驻研究员 r-2】
-
-所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
-读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
-或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
-如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [60] kind=`normal` owner=`r-1`
+## [23] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4149,7 +2095,53 @@ r-2：初始见解。
 
 ---
 
-## [61] kind=`normal` owner=`acad`
+## [24] kind=`normal` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【心跳检查 —— 常驻研究员 r-2】
+
+所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
+读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
+或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
+如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [25] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4199,53 +2191,7 @@ r-2：初始见解。
 
 ---
 
-## [62] kind=`checkpoint` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【心跳检查 —— 常驻研究员 r-2】
-
-所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
-读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
-或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
-如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 4｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [63] kind=`checkpoint` owner=`r-1`
+## [26] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4291,7 +2237,53 @@ r-2：初始见解。
 
 ---
 
-## [64] kind=`checkpoint` owner=`acad`
+## [27] kind=`checkpoint` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【心跳检查 —— 常驻研究员 r-2】
+
+所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
+读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
+或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
+如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 4｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [28] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4341,53 +2333,7 @@ r-2：初始见解。
 
 ---
 
-## [65] kind=`checkpoint` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【心跳检查 —— 常驻研究员 r-2】
-
-所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
-读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
-或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
-如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 5｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [66] kind=`checkpoint` owner=`r-1`
+## [29] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4433,7 +2379,53 @@ r-2：初始见解。
 
 ---
 
-## [67] kind=`checkpoint` owner=`acad`
+## [30] kind=`checkpoint` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【心跳检查 —— 常驻研究员 r-2】
+
+所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
+读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
+或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
+如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 5｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [31] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4483,53 +2475,7 @@ r-2：初始见解。
 
 ---
 
-## [68] kind=`checkpoint` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【心跳检查 —— 常驻研究员 r-2】
-
-所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
-读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
-或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
-如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 6｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [69] kind=`checkpoint` owner=`r-1`
+## [32] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4575,7 +2521,53 @@ r-2：初始见解。
 
 ---
 
-## [70] kind=`checkpoint` owner=`acad`
+## [33] kind=`checkpoint` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【心跳检查 —— 常驻研究员 r-2】
+
+所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
+读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
+或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
+如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 6｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [34] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4629,7 +2621,7 @@ r-2：初始见解。
 
 ---
 
-## [71] kind=`checkpoint` owner=`r-2`
+## [35] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4640,7 +2632,7 @@ r-2：初始见解。
 [CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
 请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
 
-【心跳检查 —— 常驻研究员 r-2】
+【心跳检查 —— 常驻研究员 r-1】
 
 所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：
 读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；
@@ -4648,7 +2640,7 @@ r-2：初始见解。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
 ------------
-[状态] 你是 r-2（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-1（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
 ------------
 结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
@@ -4679,7 +2671,7 @@ r-2：初始见解。
 
 ---
 
-## [72] kind=`verify` owner=`acad`
+## [36] kind=`verify` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4711,7 +2703,7 @@ r-2：初始见解。
 
 ---
 
-## [73] kind=`verify` owner=`r-1`
+## [37] kind=`verify` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4743,7 +2735,7 @@ r-2：初始见解。
 
 ---
 
-## [74] kind=`verify` owner=`r-2`
+## [38] kind=`verify` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -4775,7 +2767,7 @@ r-2：初始见解。
 
 ---
 
-## [75] kind=`verify-debate` owner=`acad`
+## [39] kind=`verify-debate` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4813,7 +2805,7 @@ r-2：初始见解。
 
 ---
 
-## [76] kind=`verify-debate` owner=`r-1`
+## [40] kind=`verify-debate` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4851,7 +2843,7 @@ r-2：初始见解。
 
 ---
 
-## [77] kind=`verify-debate` owner=`r-2`
+## [41] kind=`verify-debate` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -4889,57 +2881,7 @@ r-2：初始见解。
 
 ---
 
-## [78] kind=`meeting` owner=`r-1`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【研究所会议 mt-1 进行中 —— 常驻研究员 r-1】
-
-议程：分工与下一步（类型：sync）
-
-（你是本次会议的第一位发言者，目前还没有别人发言。）
-
-请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
-（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
-如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
-一致认为是真时，本所才会停下来。
-
-------------
-[状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
-[在册] acad、r-1
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [79] kind=`meeting` owner=`acad`
+## [42] kind=`meeting` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -4993,7 +2935,57 @@ r-2：初始见解。
 
 ---
 
-## [80] kind=`meeting-proposal` owner=`acad`
+## [43] kind=`meeting` owner=`r-1`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【研究所会议 mt-1 进行中 —— 常驻研究员 r-1】
+
+议程：分工与下一步（类型：sync）
+
+（你是本次会议的第一位发言者，目前还没有别人发言。）
+
+请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
+（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
+如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
+一致认为是真时，本所才会停下来。
+
+------------
+[状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
+[在册] acad、r-1
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [44] kind=`meeting-proposal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -5047,7 +3039,7 @@ r-2：初始见解。
 
 ---
 
-## [81] kind=`inbox-dm` owner=`r-2`
+## [45] kind=`inbox-dm` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5094,7 +3086,7 @@ r-2：初始见解。
 
 ---
 
-## [82] kind=`inbox-voters` owner=`acad`
+## [46] kind=`inbox-voters` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -5148,7 +3140,7 @@ r-2：初始见解。
 
 ---
 
-## [83] kind=`inbox-voters` owner=`r-2`
+## [47] kind=`inbox-voters` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5195,7 +3187,7 @@ r-2：初始见解。
 
 ---
 
-## [84] kind=`inbox-chat` owner=`acad`
+## [48] kind=`inbox-chat` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -5249,7 +3241,7 @@ r-2：初始见解。
 
 ---
 
-## [85] kind=`inbox-chat` owner=`r-2`
+## [49] kind=`inbox-chat` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5296,7 +3288,7 @@ r-2：初始见解。
 
 ---
 
-## [86] kind=`inbox-office` owner=`acad`
+## [50] kind=`inbox-office` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -5350,7 +3342,7 @@ r-2：初始见解。
 
 ---
 
-## [87] kind=`inbox-office` owner=`r-1`
+## [51] kind=`inbox-office` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -5397,7 +3389,7 @@ r-2：初始见解。
 
 ---
 
-## [88] kind=`inbox-office` owner=`r-2`
+## [52] kind=`inbox-office` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5444,7 +3436,7 @@ r-2：初始见解。
 
 ---
 
-## [89] kind=`inbox-assign` owner=`r-2`
+## [53] kind=`inbox-assign` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5491,7 +3483,7 @@ r-2：初始见解。
 
 ---
 
-## [90] kind=`inbox-assign` owner=`r-2`
+## [54] kind=`inbox-assign` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5541,7 +3533,7 @@ r-2：初始见解。
 
 ---
 
-## [91] kind=`inbox-assign` owner=`r-2`
+## [55] kind=`inbox-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -5592,13 +3584,16 @@ r-2：初始见解。
 
 ---
 
-## [92] kind=`inbox-assign` owner=`r-2`
+## [56] kind=`inbox-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
 ### 提示词原文
 
 ```text
+[新到的消息]
+  【督办 from acad】院士督办：进度偏慢｜建议的下一步：先交一份模 9 表
+
 【第 8 轮 —— 常驻研究员 r-2】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
@@ -5639,1718 +3634,7 @@ r-2：初始见解。
 
 ---
 
-## [93] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 9 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 9｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [94] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 10 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 10｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [95] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 11 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 11｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [96] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 12 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 12｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [97] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 13 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 13｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [98] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 14 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 14｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [99] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 15 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 15｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [100] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 16 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 16｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [101] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 17 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 17｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [102] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 18 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 18｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [103] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 19 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 19｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [104] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 20 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 20｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [105] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 21 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 21｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [106] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 22 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 22｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [107] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 23 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 23｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [108] kind=`inbox-assign` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 24 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 24｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [109] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 25 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 25｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [110] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 26 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 26｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [111] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[新到的消息]
-  【督办 from acad】院士督办：进度偏慢｜建议的下一步：先交一份模 9 表
-
-【第 27 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 27｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [112] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 28 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 28｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [113] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 29 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 29｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [114] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 30 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 30｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [115] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 31 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 31｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [116] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 32 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 32｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [117] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 33 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 33｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [118] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 34 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 34｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [119] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 35 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 35｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [120] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 36 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 36｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [121] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 37 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 37｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [122] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 38 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 38｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [123] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
-[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
-请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
-
-【第 39 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 39｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [124] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 40 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 40｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [125] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 41 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 41｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [126] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 42 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 42｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [127] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 43 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 43｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [128] kind=`inbox-nudge` owner=`r-2`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【第 44 轮 —— 常驻研究员 r-2】
-
-请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
-结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
-
-------------
-[状态] 你是 r-2（常驻研究员）｜轮次 44｜法定票数 m=3｜有表决权者 3 人
-[在册] acad、r-1、r-2
-[任务板] 进行中 1｜可认领 0｜我负责 t-1「核验模 9 情形」
-  ▸ 我的任务 t-1：核验模 9 情形｜验收：给出模 9 全表｜由 acad 分派
-    你最熟同余
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [129] kind=`notice` owner=`r-1`
+## [57] kind=`notice` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -7397,7 +3681,7 @@ r-2：初始见解。
 
 ---
 
-## [130] kind=`notice-claim` owner=`r-1`
+## [58] kind=`notice-claim` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -7444,7 +3728,7 @@ r-2：初始见解。
 
 ---
 
-## [131] kind=`after-failure` owner=`r-2`
+## [59] kind=`after-failure` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -7499,13 +3783,13 @@ r-2：初始见解。
 - `founding`: 4
 - `founding-leaderless`: 2
 - `founding-temp`: 1
-- `inbox-assign`: 20
+- `inbox-assign`: 2
 - `inbox-chat`: 2
 - `inbox-dm`: 1
-- `inbox-nudge`: 20
+- `inbox-nudge`: 2
 - `inbox-office`: 3
-- `inbox-office-assign`: 20
-- `inbox-office-nudge`: 20
+- `inbox-office-assign`: 2
+- `inbox-office-nudge`: 2
 - `inbox-voters`: 2
 - `meeting`: 2
 - `meeting-proposal`: 1
@@ -7517,4 +3801,4 @@ r-2：初始见解。
 - `verify`: 3
 - `verify-debate`: 3
 
-- 合计：131 条提示词
+- 合计：59 条提示词

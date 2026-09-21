@@ -2254,6 +2254,16 @@ export function apply(ctx) {
     let beginLock = false
     async function armNextVerify() {
       dbg.arm += 1
+      // A MEETING and a VERIFICATION never run at the same time. `startMeeting` already
+      // parks a meeting while a verification is in flight; this is the missing mirror for
+      // the other direction. Without it, a member replying `propose_verify` while a
+      // meeting was live started a second consensus process immediately, because
+      // `maybeQueueVerify` calls this directly (bypassing schedulePass, whose meeting
+      // check is what used to hide the asymmetry). The meeting's watchdog clock would
+      // then be starved while two coordination processes competed for the same members.
+      // The proposal stays in the queue; schedulePass reaches this again once the
+      // meeting is over.
+      if (meeting) return
       // Only one begin may be in flight. Without this, two callers (a scheduling pass
       // and a fresh proposal) could both pass the `currentVerify()` check before either
       // has published its verdict record and would start the SAME object twice.
