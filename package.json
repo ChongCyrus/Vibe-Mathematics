@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, recommended: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0).",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -16,8 +16,10 @@
     "installer.js",
     "cordis.patch.yml",
     "RELEASE-NOTES-2.0.22.md",
+    "AUDIT-CHECKLIST.md",
     "RELEASE-NOTES-2.1.0.md",
     "RELEASE-NOTES-2.2.0.md",
+    "RELEASE-NOTES-2.2.1.md",
     "selfdrive-v5.mjs",
     "e2e-v5-round2.test.mjs",
     "prompt-v5-integrity.test.mjs",
@@ -71,7 +73,7 @@
     },
     "minVersion": "0.1.2-rc.1",
     "testedVersion": "0.1.5-rc.2",
-    "compatNote": "依赖宿主提供的 subagents/agents/tools/commands/fs 服务与 @deepseek-ai/dsh-* 插件行；可选 subprocess/sandboxPolicy/compaction。persona 行同时携带 prefix 与 text 两个键，以兼容 0.1.3-alpha.2 的 schema 更名（prefix 必填）与 0.1.2 及更早的 text 键。已在 dsh-v0.1.5-rc.2（@deepseek-ai/dsh-persona 0.1.5-rc.2）上逐行校验全部预设行并通过（v2/v3/v4；v1 已于 v2.0.0 移除）。注意：DSH 0.1.2 起 subagents.startContinuable 的 agentOptions/toolFilter 需要宿主 provider 声明对应 capability（spawn/fork 进程内 provider 均支持），安装器启动时会做能力自检并在旧版宿主上告警。2026 兼容性修复：v2/v3 工具权限名表原先硬编码 web/fetch/bash（未注册名会使 tools.restrict() 抛错、子代理无法建立），现按真实注册名并加带守卫的重试；v4 真实 /compact 原先在 subagent/end 里查 agents.get()（该事件触发时子代理已移出注册表，属死代码），现改为在 subagent/start 捕获 Agent 引用；三套预设的可选服务改为惰性读取，不再在 apply() 快照；v4 的 tools/commands 注册补入 ctx.effect；安装器自检新增 subprocess/sandboxPolicy/compaction。v2.1.0 新增 v5 研究所体系：状态存于宿主 host-only 会话投影单元（键 vibeMathV5），因此自检新增 sessionProjections/sessions（均为可选；缺失时 v5 回退到加固 JSON 状态文件）。v5 不依赖任何 npm 实验包，纯 preset 内单文件实现。v2.2.0 修复实测发现的提示词身份错乱：状态块改为显式接收它所描述的成员，创建成员时先落盘进编制再构造入职提示词，章程快照冻结在入职时，重建会话不再自称“刚入职”，所办调用不再被误判成某位研究员，框架反馈改为独立发送者投递，一次提示词不再重复投递同一条消息，并新增 prompt-v5-integrity 提示词完整性套件 + 可人工复核的提示词语料（随包发布）。",
+    "compatNote": "依赖宿主提供的 subagents/agents/tools/commands/fs 服务与 @deepseek-ai/dsh-* 插件行；可选 subprocess/sandboxPolicy/compaction。persona 行同时携带 prefix 与 text 两个键，以兼容 0.1.3-alpha.2 的 schema 更名（prefix 必填）与 0.1.2 及更早的 text 键。已在 dsh-v0.1.5-rc.2（@deepseek-ai/dsh-persona 0.1.5-rc.2）上逐行校验全部预设行并通过（v2/v3/v4；v1 已于 v2.0.0 移除）。注意：DSH 0.1.2 起 subagents.startContinuable 的 agentOptions/toolFilter 需要宿主 provider 声明对应 capability（spawn/fork 进程内 provider 均支持），安装器启动时会做能力自检并在旧版宿主上告警。2026 兼容性修复：v2/v3 工具权限名表原先硬编码 web/fetch/bash（未注册名会使 tools.restrict() 抛错、子代理无法建立），现按真实注册名并加带守卫的重试；v4 真实 /compact 原先在 subagent/end 里查 agents.get()（该事件触发时子代理已移出注册表，属死代码），现改为在 subagent/start 捕获 Agent 引用；三套预设的可选服务改为惰性读取，不再在 apply() 快照；v4 的 tools/commands 注册补入 ctx.effect；安装器自检新增 subprocess/sandboxPolicy/compaction。v2.1.0 新增 v5 研究所体系：状态存于宿主 host-only 会话投影单元（键 vibeMathV5），因此自检新增 sessionProjections/sessions（均为可选；缺失时 v5 回退到加固 JSON 状态文件）。v5 不依赖任何 npm 实验包，纯 preset 内单文件实现。v2.2.1 把「全面检查必查清单」(AUDIT-CHECKLIST.md) 作为随包强制流程发布，提示词/交互正确性列为第一优先审计维度。v2.2.0 修复实测发现的提示词身份错乱：状态块改为显式接收它所描述的成员，创建成员时先落盘进编制再构造入职提示词，章程快照冻结在入职时，重建会话不再自称“刚入职”，所办调用不再被误判成某位研究员，框架反馈改为独立发送者投递，一次提示词不再重复投递同一条消息，并新增 prompt-v5-integrity 提示词完整性套件 + 可人工复核的提示词语料（随包发布）。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",
