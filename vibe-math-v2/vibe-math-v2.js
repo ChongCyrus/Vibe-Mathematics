@@ -112,7 +112,7 @@ export function apply(ctx) {
     maxExplorerRetries: 3,        // explorer 重派生上限（拆方向失败重试次数）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
-  let scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }
+  let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导，不再作为字段
   let agentRegistry = {}
   let decisionQueue = []
   let verifierAccuracy = {}
@@ -223,9 +223,36 @@ export function apply(ctx) {
 
   // ================= subprocess =================
   function psQuote(p) { return "'" + String(p).replace(/'/g, "''") + "'" }
-  async function runShell(script, cwd) { if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }; try { const handle = subprocess.spawn({ argv: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script], cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 }); const outcome = await handle.done; return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode } } catch (e) { return { ok: false, error: String((e && e.message) || e) } } }
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verification_logs', 'Progress_Logs', 'VibeMath_State']; const paths = [vibeRoot() + '/Projects'].concat(dirs.map(function (d) { return base + '/' + d })); const list = paths.map(psQuote).join(','); return await runShell('New-Item -Force -ItemType Directory -Path ' + list + ' | Out-Null') }
-  async function removeFile(rel) { const base = frameworkRoot(); return await runShell('Remove-Item -Force -LiteralPath ' + psQuote(base + '/' + rel) + ' -ErrorAction SilentlyContinue') }
+  /** POSIX 单引号引用：把 ' 换成 '\'' 以安全嵌入任意路径。 */
+  function shQuote(p) { return "'" + String(p).replace(/'/g, "'\\''") + "'" }
+  /**
+   * 执行一段 shell 脚本。**按平台选择解释器**：此前硬编码 powershell，而预设用
+   * `disabled: !!js process.platform !== 'win32'` 在非 Windows 上关掉了 tool-pwsh 行——
+   * 即插件会调用一个自己声明不提供的二进制，且返回值无人检查，表现为静默失效。
+   * Windows 用 powershell（保留原行为），其余平台用 /bin/sh。
+   */
+  function isWindows() { return process.platform === 'win32' }
+  function mkdirCmd(paths) {
+    if (isWindows()) return 'New-Item -Force -ItemType Directory -Path ' + paths.map(psQuote).join(',') + ' | Out-Null'
+    return 'mkdir -p ' + paths.map(shQuote).join(' ')
+  }
+  function rmCmd(path) {
+    if (isWindows()) return 'Remove-Item -Force -LiteralPath ' + psQuote(path) + ' -ErrorAction SilentlyContinue'
+    return 'rm -f ' + shQuote(path)
+  }
+  async function runShell(script, cwd) {
+    if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }
+    try {
+      const argv = isWindows()
+        ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', script]
+        : ['/bin/sh', '-c', script]
+      const handle = subprocess.spawn({ argv: argv, cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 })
+      const outcome = await handle.done
+      return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode }
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
+  }
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verification_logs', 'Progress_Logs', 'VibeMath_State']; const paths = [vibeRoot() + '/Projects'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
+  async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
 
   // ================= settings =================
   function sanitizeParams(obj) {
@@ -233,10 +260,25 @@ export function apply(ctx) {
     const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
+    // 整数字段的下界：0 会让对应功能**静默失效**而不是报错——例如 maxParallelThreshold=0 使所有派发
+    // 闸门 (activeCount >= 0) 恒真，此后永不派发任何代理，而 status 仍显示 running:true；
+    // solverMaxRounds=0 让每个方向立刻判死。这里把会让调度停滞/失能的键抬到最小可用值；
+    // 未列出的键（如 activityLogCap / max*ToolCalls，取 0 表示不限）保持原样。
+    const INT_FLOOR = {
+      maxParallelThreshold: 1, solverMaxRounds: 1, verifierCount: 2, debateMaxRounds: 1,
+      directionsPerSolver: 1, tickIntervalMs: 200, reportIntervalMs: 1000, maxExplorerRetries: 1,
+    }
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
       const v = obj[k]
-      if (intFields.indexOf(k) !== -1) { const n = Number(v); out[k] = Number.isFinite(n) ? Math.floor(n) : DEFAULT_PARAMS[k] }
+      if (intFields.indexOf(k) !== -1) {
+        const n = Number(v)
+        if (!Number.isFinite(n)) { out[k] = DEFAULT_PARAMS[k]; continue }
+        let iv = Math.floor(n)
+        const floor = INT_FLOOR[k]
+        if (floor !== undefined && iv < floor) iv = floor
+        out[k] = iv
+      }
       else if (numFields.indexOf(k) !== -1) { const n = Number(v); out[k] = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : DEFAULT_PARAMS[k] }
       else if (arrayFields.indexOf(k) !== -1) { out[k] = Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string' }) : DEFAULT_PARAMS[k] }
       else if (k === 'mode') { out[k] = (v === 'manual' || v === 'auto') ? v : DEFAULT_PARAMS[k] }
@@ -268,12 +310,21 @@ export function apply(ctx) {
     lines.push('  // 位置：<项目>/vibe_math_setting.json（全局回退：<工作区>/VibeMath/vibe_math_setting.json）。')
     lines.push('  // 本文件是参数的唯一持久化来源：vibe_math_set_params / set_mode 会立即写回此文件；全局文件仅作项目文件不存在时的回退默认。')
     const keys = Object.keys(src).sort()
+    // 只输出有值的键。JSON.stringify(undefined) 返回 undefined（不是字符串），直接拼接会写出
+    // `"k": undefined` —— 非法 JSON，本插件自己的 loadSettings() 随后会解析失败并整份忽略，
+    // 用户的参数设置因此静默丢失。逗号也按"实际写出的条目"计算，否则跳过一个键会留下尾随逗号。
+    const emitted = []
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i]
       const v = src[k]
+      if (v === undefined) continue
       const schema = PARAM_SCHEMA.find(function (p) { return p.name === k })
       const desc = schema ? schema.description : ''
-      const comma = i === keys.length - 1 ? '' : ','
+      emitted.push([k, v, desc])
+    }
+    for (let i = 0; i < emitted.length; i++) {
+      const k = emitted[i][0], v = emitted[i][1], desc = emitted[i][2]
+      const comma = i === emitted.length - 1 ? '' : ','
       lines.push('  // ' + k + (desc ? ' — ' + desc : ''))
       lines.push('  ' + JSON.stringify(k) + ': ' + JSON.stringify(v) + comma)
     }
@@ -285,8 +336,24 @@ export function apply(ctx) {
   async function createTemplate(where) { const isGlobal = where !== 'project'; const path = isGlobal ? (vibeRoot() + '/vibe_math_setting.json') : (frameworkRoot() + '/vibe_math_setting.json'); const content = settingsTemplateFrom(DEFAULT_PARAMS); const ok = isGlobal ? await writeTextAbs(path, content) : await writeText('vibe_math_setting.json', content); return { ok: ok, path: path, where: isGlobal ? 'global' : 'project' } }
 
   // ================= persistence =================
+  /**
+   * 并发计数**从 registry 推导**，不再独立维护/持久化。
+   *
+   * 此前 `scheduler.activeCount` 是手写的累加器：spawn +1、每次 followup 也 +1，只在
+   * `onChildEnd` 里 -1，而 `onChildEnd` 开头 `if (meta === undefined) return` 会跳过那次减法。
+   * 于是任何一次 `subagent/end` 丢失、或 end 到达时该 child 已不在 `agentRegistry`
+   * （resume 清 registry、跨进程重启残留……）都会让 +1 永远没人抵消。计数单调增长，
+   * 一旦 ≥ maxParallelThreshold，所有派发闸门（activeCount >= maxParallelThreshold）恒真，
+   * 系统再也不派任何代理 —— 而 running 仍是 true、status 照常响应，故障完全静默。
+   * 计数还会写进 scheduler_state.json，所以同进程 resume 会把这个坏值一路带下去。
+   *
+   * 从 registry 长度推导后，两者不可能不一致，"丢一次 end 就永久停摆"这一类故障从根上消失。
+   */
+  function activeCount() { return Object.keys(agentRegistry).length }
   async function loadState() {
-    const s = await readJson('VibeMath_State/scheduler_state.json'); if (s) scheduler = Object.assign({}, scheduler, s)
+    const s = await readJson('VibeMath_State/scheduler_state.json')
+    // 丢弃历史持久化的 activeCount：旧值可能已经漂移，绝不能覆盖推导值（见 activeCount()）。
+    if (s) { const restored = Object.assign({}, s); delete restored.activeCount; scheduler = Object.assign({}, scheduler, restored) }
     const r = await readJson('VibeMath_State/agent_registry.json'); if (r) agentRegistry = r
     const dq = await readJson('VibeMath_State/decision_queue.json'); if (dq) decisionQueue = dq
     const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = va
@@ -340,8 +407,15 @@ export function apply(ctx) {
   async function saveProgress(qid, progObj) { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return; q.progress = progObj; await writeQs(qs) }
 
   // ================= data layer: Propos =================
-  function categoryOf(p) { const t = (p && p.细类型) || {}; const keys = Object.keys(t); return (keys.length > 0 && typeof t[keys[0]] === 'object') ? keys[0] : '未分类' }
-  function proposFile(cat) { return 'Propos/' + String(cat) + '_Propos.json' }
+  // categoryOf 的结果会直接成为文件名的一部分（Propos/<分类>_Propos.json，见 proposFile）。
+  // 模型提供一个含路径分隔符或 ".." 的"细类型"键就能把文件写到 Propos/ 之外，所以这里做文件名消毒
+  // （只替换分隔符与控制字符、剥掉首尾点，不改动中文分类名本身）。
+  function safeCatName(s) {
+    const t = String(s == null ? '' : s).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^[.\s]+|[.\s]+$/g, '')
+    return t || '未分类'
+  }
+  function categoryOf(p) { const t = (p && p.细类型) || {}; const keys = Object.keys(t); return (keys.length > 0 && typeof t[keys[0]] === 'object') ? safeCatName(keys[0]) : '未分类' }
+  function proposFile(cat) { return 'Propos/' + safeCatName(cat) + '_Propos.json' }
   async function proposFiles() { return await listFiles('Propos') }
   async function readProposCategory(cat) { const a = await readJson(proposFile(cat)); return Array.isArray(a) ? a : [] }
   async function getPropos() {
@@ -384,7 +458,7 @@ export function apply(ctx) {
     return {
       ok: true, at: now(), project: currentProject, frameworkRoot: frameworkRoot(),
       running: scheduler.running, mode: params.mode,
-      activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
@@ -437,11 +511,16 @@ export function apply(ctx) {
     let started
     try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
     catch (e) {
-      if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math-v2: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e }
+      // 失败必须"fail closed"：此前带 toolFilter 失败会删掉过滤器重试，等于静默丢弃用户配置的
+      // solverAllowNetwork / solverAllowScripts / solverToolDeny，让子代理拿到**无限制**的网络与
+      // 脚本权限——与操作者意图正好相反（实现方案与 v2的额外要求 都把这几项定义为操作者可控的硬约束）。
+      // 现在把失败如实抛出，由调用方记录；宁可这一轮不派代理，也不越权。
+      if (request.toolFilter) console.error('vibe-math-v2: startContinuable with toolFilter failed (NOT retrying without the permission filter, to avoid silently granting unrestricted tools): ' + String((e && e.message) || e))
+      throw e
     }
     agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
     childOwner.set(started.childId, sessionId)
-    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    // 并发计数由 agentRegistry 推导，此处无需手工 +1（见 activeCount()）。
     await saveAll(); return started.childId
   }
   // DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}); subagents.followup
@@ -454,7 +533,7 @@ export function apply(ctx) {
       else if (typeof subagents.followup === 'function') await subagents.followup(rootAgent, childId, blocks, { source: { kind: 'user' }, signal: makeSignal(30000) })
       else throw new Error('no subagent continuation API')
     } catch (e) { console.error('vibe-math-v2: wake ' + childId + ' failed: ' + String((e && e.message) || e)); throw e }
-    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    // 不再手工累加并发计数：唤醒的是 registry 里已登记的 child，计数已由 registry 长度体现。
     await saveAll()
   }
   async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
@@ -630,8 +709,20 @@ export function apply(ctx) {
 
   // ================= scheduler core =================
   function scheduleTick() { tick().catch(function (e) { console.error('vibe-math-v2 tick error: ' + String((e && e.stack) || e)) }) }
+  function dropStaleGate() {
+    const g = scheduler.gate
+    if (!g) return
+    const d = decisionQueue.find(function (x) { return x.id === g.decisionId })
+    if (d === undefined || d.status !== 'pending') {
+      logActivity('gate', 'cleared stale gate (' + g.node + '/' + g.decisionId + ' is ' + (d === undefined ? 'gone' : d.status) + ')')
+      scheduler.gate = null
+    }
+  }
   async function tick() {
-    if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return
+    if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return
+    // 自愈：gate 指向的决策若已不存在或已 resolved，就清掉再继续，而不是永久早退。
+    dropStaleGate()
+    if (scheduler.gate) return
     tickInFlight = true
     lastTickAt = now()
     try {
@@ -744,7 +835,7 @@ export function apply(ctx) {
   }
   // note 3 + user 价值 field: promote high-value unresolved propositions into qs.json
   async function processPromote() {
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     const qs = await getQs()
     const qDescriptions = qs.map(function (q) { return q.概述 })
     const propos = await getPropos()
@@ -772,7 +863,7 @@ export function apply(ctx) {
   async function processVerify() {
     const candidates = await buildVerifyCandidates()
     for (let i = 0; i < candidates.length; i++) {
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       const c = candidates[i]
       const rId = c.rId
       if (tasks['verify:' + rId]) continue
@@ -801,6 +892,7 @@ export function apply(ctx) {
     for (let i = 0; i < propos.length; i++) {
       const p = propos[i]
       if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
+      if (p.已验证) continue // 收敛闸门：该命题已由「判断命题」解法裁决过（见 settleVerdict 点5 联动），不再重复入选
       if (p.在问题清单) continue // 已晋升：其证明/证伪经晋升问题的解法验证，避免同一内容双重验证
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       if (proofs.length === 0 && refutes.length === 0) {
@@ -816,7 +908,7 @@ export function apply(ctx) {
   }
   async function backfillVerifiers(t) {
     while (t.children.length < t.expectedCount) {
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       const index = t.children.length
       const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
       t.children.push(childId)
@@ -833,16 +925,16 @@ export function apply(ctx) {
         if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
       }
       if (t.status !== 'spawning') continue
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       await backfillVerifiers(t)
     }
   }
   async function processSolve() {
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     const qs = await getQs()
     const unsolved = qs.filter(function (q) { return !q.已解决 && q.优先级 !== 'never' }).sort(function (a, b) { return (a.优先级 === 'never' ? 999 : Number(a.优先级)) - (b.优先级 === 'never' ? 999 : Number(b.优先级)) })
     for (let i = 0; i < unsolved.length; i++) {
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       const q = unsolved[i]
       const busy = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && (m.role === 'explorer' || m.role === 'solver') })
       if (busy) continue
@@ -863,7 +955,7 @@ export function apply(ctx) {
       } else {
         // spawn solvers for each active direction
         for (let j = 0; j < prog.directions.length; j++) {
-          if (scheduler.activeCount >= params.maxParallelThreshold) break
+          if (activeCount() >= params.maxParallelThreshold) break
           const dir = prog.directions[j]
           if (dir.status === 'success' || dir.status === 'dead-end') continue
           const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
@@ -1044,7 +1136,7 @@ export function apply(ctx) {
   async function advanceVerification(t, round) {
     if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
       if (!scheduler.running) { t.status = 'paused'; return } // resume will re-advance this task
-      if (scheduler.activeCount >= params.maxParallelThreshold) { t.status = 'paused'; return } // 并发门：等有空闲槽位再辩论（reconcileVerify 会重推进）
+      if (activeCount() >= params.maxParallelThreshold) { t.status = 'paused'; return } // 并发门：等有空闲槽位再辩论（reconcileVerify 会重推进）
       t.round = round + 1
       const roundTranscript = buildTranscript(t)
       t.history = t.history || []
@@ -1176,6 +1268,13 @@ export function apply(ctx) {
             const ap = await findProposition(q.判断命题)
             if (ap) {
               ap.布尔估计 = v
+              // 收敛闸门：本条路径只在 v=1/0 时才写入证明/证伪条目，中间裁决（flat 默认给出
+              // 0.5，forced 给出加权浮点）会让 ap 停留在"中间布尔估计 + 两个列表皆空"的状态——
+              // 而这正是 buildVerifyCandidates 认定"裸命题需要验证"的条件。若不在此标记，该命题
+              // 会在每个 tick 重新入选、重开一轮完整辩论；又因 processVerify 每 tick 只跑一个验证，
+              // 其它对象被无限饿死，终止条件（所有问题已解决）永不可达。标记后不再重复消耗验证配额，
+              // 裁决值仍保留在 布尔估计 中。
+              ap.已验证 = true
               if (v === 1) { ap.证明列表 = ap.证明列表 || []; ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
               else if (v === 0) { ap.证伪列表 = ap.证伪列表 || []; ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
               await upsertProposition(ap)
@@ -1241,7 +1340,6 @@ export function apply(ctx) {
   async function onChildEnd(info) {
     const meta = agentRegistry[info.id]
     if (meta === undefined) return
-    scheduler.activeCount = Math.max(0, scheduler.activeCount - 1)
     const output = blocksToText(info.lastAssistantMessage)
     try {
       if (meta.role === 'explorer') await handleExplorer(info.id, meta, output)
@@ -1269,7 +1367,7 @@ export function apply(ctx) {
         logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
         agentRegistry = {}; tasks = {}
       }
-      scheduler.activeCount = 0 // 仅清空 registry/tasks 时归零；同进程 resume 保留存活计数（并发门才准确）
+      // 并发计数由 agentRegistry 推导：清空 registry 后自然归零，无需显式赋值。
     }
     await writeJson('VibeMath_State/process_epoch.json', processEpoch)
     await saveAll()
@@ -1278,7 +1376,7 @@ export function apply(ctx) {
   async function startScheduler() { const r = await init(true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
@@ -1287,7 +1385,15 @@ export function apply(ctx) {
       try {
         if (d.node === 'spawn') { await spawnChild(d.data.label, d.data.promptText, d.data.meta); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
         else if (d.node === 'verdict') { await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
-      } catch (e) { console.error('vibe-math-v2: auto-resolve decision failed: ' + String((e && e.message) || e)) }
+      } catch (e) {
+        // 副作用失败必须把该决策落到终态，否则它会永远保持 pending：此后每次切 auto 都在同一个
+        // 决策上重新抛错，而 gate 又指向它 —— 调度永久卡死。标为 resolved(auto-failed) 并让它过去，
+        // 由 activity log 留下证据；宁可这一次节点未执行，也不能让整条管线停摆。
+        console.error('vibe-math-v2: auto-resolve decision failed: ' + String((e && e.message) || e))
+        d.status = 'resolved'
+        d.resolution = { action: 'auto-failed', auto: true, error: String((e && e.message) || e) }
+        logActivity('gate', 'auto-resolve failed for ' + d.id + ' (' + d.node + '), marked resolved to avoid a permanent stall: ' + String((e && e.message) || e))
+      }
     }
     if (pending.length > 0) { scheduler.gate = null; logActivity('mode', 'switched to auto — auto-resolved ' + pending.length + ' pending decision(s)'); await saveAll(); scheduleTick() }
   }
@@ -1296,7 +1402,7 @@ export function apply(ctx) {
     return {
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
       project: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects'),
-      mode: params.mode, activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      mode: params.mode, activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       frameworkRoot: frameworkRoot(),
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
@@ -1314,7 +1420,7 @@ export function apply(ctx) {
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
     if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false
     await loadSettings(); await migrateLegacyParams(); await loadState(); await saveAll()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
   }
@@ -1457,6 +1563,10 @@ export function apply(ctx) {
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) })
+    // 注意：这里**不要**回收 childOwner 条目。这条映射在子代理 end 之后仍会被后续事件路由
+    // 用到：曾试过在此处回收、也试过在 onChildEnd 末尾回收，两次都导致 e2e-regression 的
+    // verdict 收口失效（"problem solved after verdict 1"）。代价是每个历史子代理留下一条
+    // 小记录（有界增长，实测不影响功能），远小于"验证无法收口"的代价。
   })
 
   // tick timer (registered once; ticks every running session at its own pace)
