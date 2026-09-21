@@ -1,8 +1,9 @@
 # The dsh-vibe-math merged bundle patch. Installing this bundle (dsh plugin add
 # dsh-vibe-math / dsh-market) runs ONE plugin row: the preset installer, which
-# copies the agent presets (vibe-math-v2 + vibe-math-v3 + vibe-math-v4) into the
-# DSH preset root. The presets themselves register the vibe_math_* tools — nothing
-# is injected into the profile composition directly.
+# copies the agent presets (vibe-math-v2 + vibe-math-v3 + vibe-math-v4 +
+# vibe-math-v5) into the DSH preset root. The presets themselves register the
+# vibe_math_* / vibe_v4_* / vibe_v5_* tools — nothing is injected into the profile
+# composition directly.
 
 - insert:
     - id: vibe-math-preset-installer

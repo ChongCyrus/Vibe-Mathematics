@@ -895,11 +895,6 @@ export function apply(ctx) {
     // records the true sender in the message body. Delivery is per-recipient (the
     // faithful port of DSH's mailbox, where every message has exactly one
     // targetId), so one member's acknowledgement can never consume another's copy.
-    function nextSeq(kind, n) {
-      const c = Object.assign({}, inst().counters)
-      c[kind] = Math.max(Number(c[kind]) || 0, 0) + (n || 1)
-      return c[kind]
-    }
     async function say(from, opts) {
       const text = String((opts && opts.text) || '').trim()
       if (!text) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'empty message' }
@@ -2578,12 +2573,12 @@ export function apply(ctx) {
     async function handleReply(member, parsed, kind) {
       const p = parsed || {}
       postmark(member, p)
-      // (1) speech
-      const s = p.say
-      if (typeof s === 'string' && s.trim()) await say(member.id, { to: 'all', text: s, kind: 'chat' })
-      else if (s && typeof s === 'object' && s.text) {
-        const to = String(s.to || 'all')
-        await say(member.id, { to, text: String(s.text), kind: to === 'all' ? 'chat' : 'dm' })
+      // (1) speech  (named `speech`, not `s`: `s` is the session API in this scope)
+      const speech = p.say
+      if (typeof speech === 'string' && speech.trim()) await say(member.id, { to: 'all', text: speech, kind: 'chat' })
+      else if (speech && typeof speech === 'object' && speech.text) {
+        const to = String(speech.to || 'all')
+        await say(member.id, { to, text: String(speech.text), kind: to === 'all' ? 'chat' : 'dm' })
       }
       // (2) progress log
       if (typeof p.progress === 'string' && p.progress.trim()) await publishProgress(member.id, p.progress)

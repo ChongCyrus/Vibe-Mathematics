@@ -1,4 +1,4 @@
-# Vibe Mathematics — 多代理数学问题求解与验证框架（三架构）
+# Vibe Mathematics — 多代理数学问题求解与验证框架（四架构）
 
 [![npm](https://img.shields.io/npm/v/dsh-vibe-math)](https://www.npmjs.com/package/dsh-vibe-math)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -17,7 +17,7 @@
 
 ---
 
-## 🧩 架构图（v2 + v3 + v4）
+## 🧩 架构图（v2 + v3 + v4 + v5）
 
 > 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)；可编辑生成脚本：[v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py) / [v4](docs/generate_framework_diagram_v4.py)。
 
@@ -44,6 +44,31 @@
 
 ---
 
+### Vibe Math V5（研究所体系）🧪 实验性 · 最新
+
+**一句话定位**：把 v4 的"一群互相留言的常驻"升级为一座**研究所**——有**院士**（领头人）、**常驻研究员**、**临时工**三类职员，有所内**公共规章**，有**群聊与会议**，有**自主雇佣/解雇**，并且**任何结论都必须由至少 m 名有表决权者一致给出布尔概率 1 或 0 才能写入 `Verified/`**。
+
+| 职位 | 代号 | 职权 |
+|---|---|---|
+| **院士**（领头人） | `acad` | **组织与协调中心**：建立全所视图、把问题拆解成任务并**分派**、设定优先级、召集并主持会议、督导进度、调配临时工、对外汇报。**一票与他人等重，不能单方面定论。** |
+| **常驻研究员** | `r-<n>` | 有表决权；**可自主雇佣/解雇自己的临时工**。 |
+| **临时工** | `t-<n>` | 为特定任务临时雇入；可读/可想/可发言/可写自己的成果库/可认领或被分派任务；**没有表决权**。 |
+| 所办（主助手） | —— | **不参与研究、不投票**。只汇报、转达人的指令，并代持平台要求的创建权。 |
+
+**求真规则（V5 的核心变更）**：一个对象进入 `Verified/` 必须**同时**满足 ① 至少有 **m = min(`quorumCap`, 有表决权人数)** 名有表决权者投出**布尔概率值**；② 这些票**全部**是 `1`（绝对为真）或**全部**是 `0`（绝对为假）。
+票是 `[0,1]` 的数值，**严格介于 0 与 1 之间 = 弃权/存疑**（不计入 m，但计入全组平均概率）；**任何一张反向布尔票都会阻塞定论**——少数派无法靠别人弃权把结论推过去；未达门槛的对象**留在原库**并附平均概率与完整辩论录，**不强行裁决**。表决两段式：先【独立初评】，未定论再【公开辩论】后重投，轮次上限 `verdictMaxRounds`。
+
+**与 v4 的关键差异**：
+- **有领头人**：v4 无中央调度、一切靠讨论涌现；v5 在**所内**设有院士这一成员负责组织与分派（**框架仍然绝不指派**——指派者是院士，同样受 m 票约束）。
+- **求真门槛从"全体一致"改为"≥ m 一致"**（`quorumMode: "all-unanimous"` 可切回 v4 口径）。
+- **状态存于会话日志的 host-only 投影单元**（键 `vibeMathV5`），由 DSH 负责 checkpoint/恢复；v4 的 `State/*.json` 直写、损坏静默覆盖、并发丢写、跨进程陈旧快照这一整类问题在构造上被消除。
+- **不引入任何 npm 实验包**：v5 是 preset 内的单个 `.js` 文件。
+- **会议与验证互斥**：验证进行中会议请求会暂存，验证做完再补开。
+
+详见 `vibe-math-v5/实现方案.md` 与 `RELEASE-NOTES-2.1.0.md`。
+
+---
+
 ## ✨ 功能特色
 
 - **多代理自动求解**：主代理把问题交给调度器，调度器派发 explorer / solver / verifier（v2/v3）与 **planner（规划代理，v3）**、**method-keeper（方法整理代理，v3）** 等子代理协同求解，**你无需逐节点手操**。
@@ -66,7 +91,7 @@
 
 两种安装方式，任选其一（也可并存）：
 
-### 方式 A：作为插件包一键安装（推荐，同时装出三个预设）
+### 方式 A：作为插件包一键安装（推荐，同时装出四个预设）
 
 ```sh
 dsh plugin --profile <你的 profile> add dsh-vibe-math
@@ -105,7 +130,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧭 三个预设怎么选
+## 🧭 四个预设怎么选
 
 > **💡 `vibe-math-v2` 与 `vibe-math-v3` 同级主推，按你的实际需求自行选择：**
 >
@@ -424,6 +449,35 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | `provider` / `model` | 空 | **常驻 LLM 路由**（空 = 常驻继承主代理的 provider/model；此前声明未用，v1.4.1 真正接入） |
 | `residentPersona` | 空 | 注入每个常驻提示词开头的人格/要求 |
 | `toolAllow` / `toolDeny` | `[]` | **常驻工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具） |
+
+### v5（研究所体系 · 实验）默认值
+
+`vibe_v5_set` 可调（持久化在会话日志投影里）：
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `academician` | `true` | 是否设院士（1 名） |
+| `academicianLeads` | `true` | 是否启用院士的组织/分派职权（关掉则退化为 v4 式纯自组织，只有所办能协调） |
+| `memberMayRejectAssign` | `true` | 成员可否**据理反对**院士的分派（反对不阻塞执行，但理由会广播给院士与全所） |
+| `researcherCount` | 3 | 常驻研究员数（建所时） |
+| `quorumCap` | 3 | m 的上限；实际 **m = min(quorumCap, 在册有表决权人数)** |
+| `quorumMode` | `'m-unanimous'` | v5 口径；切 `'all-unanimous'` 回到 v4 的"全体一致" |
+| `verdictMaxRounds` | 3 | 独立初评后进入公开辩论的最大轮数 |
+| `maxTempPerMember` | 3 | 每位院士/研究员**同时**在册的临时工上限（按在册计，非累计——所以换人不受限） |
+| `maxTempTotal` | 12 | 全所同时在册临时工上限 |
+| `compactThreshold` | 66 | 成员上下文占比（0–100）达此值触发压缩 |
+| `compactAfterRounds` | 8 | 或每累计 N 轮触发一次软压缩 |
+| `maxParallel` | 3 | 同时唤醒的成员上限（框架侧并发闸） |
+| `activityTimeoutMs` | 120000 | 空闲兜底心跳间隔（主驱动是一次性活动等待，不轮询） |
+| `stallAutoMeetingMs` | 360000 | 停滞自动召集同步会议的阈值 |
+| `chatDigestMs` / `chatDigestMax` | 45000 / 12 | 群聊摘要合批的时间窗与条数上限（私信/会议/表决不合批） |
+| `meetingKeepEvery` | 5 | 每积累 N 个新产物自动发起一次同步会议 |
+| `provider` / `model` | 空 | 成员 LLM 路由（空 = 继承所办/主代理路由） |
+| `toolAllow` / `toolDeny` | `[]` | 常驻员工工具权限（⚠️ 空 `allow:[]` 会拒绝一切工具） |
+| `tempToolAllow` / `tempToolDeny` | `[]` | 临时工的工具权限（比常驻更窄） |
+| `staffPersona` | 空 | 追加到每个成员章程前的人格/要求 |
+
+常用控制：`vibe_v5_configure`（先配置）→ `vibe_v5_start`（开工）→ `vibe_v5_report` / `vibe_v5_status`；`vibe_v5_message` / `vibe_v5_meeting` / `vibe_v5_members` / `vibe_v5_hire` / `vibe_v5_fire` / `vibe_v5_pause` / `vibe_v5_resume` / `vibe_v5_stop`；斜杠命令 `/v5`。
 
 ---
 
