@@ -9,7 +9,11 @@ const PLUGIN = new URL('./vibe-math-v4/vibe-math-v4.js', import.meta.url)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; console.error('  FAIL - ' + m) } }
-async function waitFor(pred, t=4000){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },40) }) }
+// Poll faster and cap lower. Every condition here flips within a few ms of a fired
+// subagent/end (the mock has no ctx.timeout, so no scheduling is timer-bound), and the
+// old 40ms/4000ms pair meant every unsatisfied poll burned up to 4s. 10ms/900ms keeps a
+// generous ~90x margin over the observed settle time while cutting the tail drastically.
+async function waitFor(pred, t=900){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },10) }) }
 const JSONX = o => '```json\n'+JSON.stringify(o)+'\n```'
 
 function makeCtx(){

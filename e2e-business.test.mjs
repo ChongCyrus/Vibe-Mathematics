@@ -7,7 +7,7 @@
 //   B5 v2 params persist to vibe_math_setting.json and re-load
 //   B6 v2 cross-process stale: different processEpoch on resume clears stale tasks
 // Run: node e2e-business.test.mjs
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
