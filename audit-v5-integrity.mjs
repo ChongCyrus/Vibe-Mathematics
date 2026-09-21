@@ -205,6 +205,65 @@ else {
 }
 notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5rows.filter(r => r.name !== 'cordis:group' && !r.name.startsWith('./') && !v4names.has(r.name)).length)
 
+// ---- 7. requirements traceability against the plan ---------------------
+// "No missing logic" is only checkable mechanically if the SPEC is machine-readable.
+// The plan's §15 names every tool and §16 every parameter, so compare those sets
+// against the implementation: a name in the plan but not the code is an unimplemented
+// requirement, and a name in the code but not the plan is undocumented surface.
+{
+  const plan = readFileSync(new URL('./vibe-math-v5/实现方案.md', import.meta.url), 'utf8')
+  const planTools = new Set()
+  for (const m of plan.matchAll(/\bvibe_v5_[a-z_]+/g)) planTools.add(m[0])
+  const codeTools = new Set()
+  for (const m of raw.matchAll(/registerTool\(\s*'(vibe_v5_[a-z_]+)'/g)) codeTools.add(m[1])
+  // documented-but-wildcarded placeholders are not real tools
+  const IGNORE = new Set(['vibe_v5_', 'vibe_v5_record_'])
+  for (const t of planTools) {
+    if (IGNORE.has(t)) continue
+    if (!codeTools.has(t)) findings.push('plan names tool ' + t + ' but the plugin never registers it')
+  }
+  const undocumented = [...codeTools].filter(t => !planTools.has(t))
+  if (undocumented.length) notes.push('tools registered but not named in the plan: ' + undocumented.join(', '))
+  notes.push('plan tools: ' + planTools.size + '; registered tools: ' + codeTools.size)
+
+  // Parameters: only the §16 default table, NOT the §15 tool tables (whose rows also
+  // begin with a backticked name).
+  const declared2 = new Set()
+  if (dpBlock) for (const m of dpBlock[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*:/gm)) declared2.add(m[1])
+  const sec16 = /##\s*16\.[\s\S]*?(?=\n##\s*17\.)/.exec(plan)
+  const paramRows = new Set()
+  if (sec16) {
+    for (const m of sec16[0].matchAll(/^\|\s*`([A-Za-z][\w]*)`(?:\s*\/\s*`([A-Za-z][\w]*)`)?\s*\|/gm)) {
+      paramRows.add(m[1])
+      if (m[2]) paramRows.add(m[2])
+    }
+  } else findings.push('could not locate the plan\'s §16 parameter table')
+  for (const p of paramRows) {
+    if (!declared2.has(p)) findings.push('plan documents parameter `' + p + '` but DEFAULT_PARAMS does not declare it')
+  }
+  notes.push('plan §16 parameter rows: ' + paramRows.size)
+
+  // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
+  // still exist so a future edit cannot quietly drop a guard.
+  const GATES = [
+    ['temp workers cannot vote', "if (m.kind === 'temp') return   // no vote"],
+    ['temp workers cannot hire', "if (caller.kind === 'temp') return { ok: false, code: 'V5_NOT_VOTER'"],
+    ['only the academician assigns', "code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can assign tasks'"],
+    ['only the academician sets priorities', "code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can set priorities'"],
+    ['permanent-staff changes need the office', "code: 'V5_NOT_ACADEMICIAN', message: '解聘常驻研究员只能向所办提议，由所办批准（成员不能直接执行）'"],
+    ['assignment objections are broadcast', 'if (p.reject_assign && typeof p.reject_assign === \'object\' && params.memberMayRejectAssign)'],
+    ['the academician has no extra vote weight', 'const E = voters().map((m) => m.id)'],
+    ['members may reject an assignment', "memberMayRejectAssign: true,"],
+    ['the charter states the progress definition', "'  · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。'"],
+    ['the charter describes the academician as organizer', "'  【四、你的组织职责与边界（院士）】'"],
+    ['the framework never assigns on its own', "agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？'"],
+  ]
+  for (const [label, needle] of GATES) {
+    if (!raw.includes(needle)) findings.push('philosophy gate missing from the implementation: ' + label)
+  }
+  notes.push('philosophy gates checked: ' + GATES.length)
+}
+
 // ---- report ------------------------------------------------------------
 console.log('-- V5 integrity audit --')
 for (const n of notes) console.log('  note: ' + n)
