@@ -112,23 +112,34 @@ async function checkHostCapabilities(ctx, logger) {
   }
   // 2) capability self-check (the authoritative mounting gate; also covers hosts whose version
   //    could not be read). subagents / agents / tools / commands / fs shapes + v4 capabilities.
+  // `required: true` services are the mounting gate; the rest are optional services the presets
+  // read with ctx.get(). Their absence does not stop a mount but degrades SILENTLY, so report
+  // them instead of letting the field discover them: without `subprocess` no directory-creation
+  // shell runs, without `sandboxPolicy` writes carry no explicit fence, without `compaction` the
+  // v4 real /compact path is inert.
   const checks = [
     // subagents 服务的续做/唤醒方法是 sendMessage(sender, targetId, content, {signal})；
     // followup 不是 subagents 服务的方法（它只是 Agent 对象方法）。同时探测两者，能用一个即可。
-    ['subagents', ['startContinuable', 'interrupt']],
-    ['agents', ['roots']],
-    ['tools', ['register']],
-    ['commands', ['register']],
-    ['fs', ['resolve', 'stat', 'readText', 'writeText', 'listDir']],
+    { svc: 'subagents', methods: ['startContinuable', 'interrupt'], required: true },
+    { svc: 'agents', methods: ['roots'], required: true },
+    { svc: 'tools', methods: ['register'], required: true },
+    { svc: 'commands', methods: ['register'], required: true },
+    { svc: 'fs', methods: ['resolve', 'stat', 'readText', 'writeText', 'listDir'], required: true },
+    { svc: 'subprocess', methods: ['spawn'], required: false },
+    { svc: 'sandboxPolicy', methods: ['resolve'], required: false },
+    { svc: 'compaction', methods: ['compactIfNeeded'], required: false },
   ]
+  const degradations = []
   for (let i = 0; i < checks.length; i++) {
-    const svc = checks[i][0]
-    const methods = checks[i][1]
+    const svc = checks[i].svc
+    const methods = checks[i].methods
+    const required = checks[i].required === true
+    const report = required ? ((m) => problems.push(m)) : ((m) => degradations.push(m))
     let s
     try { s = (ctx && ctx.get) ? ctx.get(svc) : undefined } catch (e) { s = undefined }
-    if (s === undefined) { problems.push('宿主缺少服务 ' + svc); continue }
+    if (s === undefined) { report('宿主缺少服务 ' + svc); continue }
     for (let j = 0; j < methods.length; j++) {
-      if (typeof s[methods[j]] !== 'function') problems.push(svc + '.' + methods[j] + ' 不可用（宿主版本可能过旧）')
+      if (typeof s[methods[j]] !== 'function') report(svc + '.' + methods[j] + ' 不可用（宿主版本可能过旧）')
     }
     // subagents continuation (wake) API: sendMessage (modern) OR followup (legacy) must exist.
     if (svc === 'subagents' && typeof s.sendMessage !== 'function' && typeof s.followup !== 'function') {
@@ -160,10 +171,13 @@ async function checkHostCapabilities(ctx, logger) {
       }
     }
   } catch (e) { /* 探测失败不致命 */ }
+  if (degradations.length > 0) {
+    logger?.warn?.('[dsh-vibe-math] 可选宿主服务缺失，功能会静默降级（不影响挂载）：' + degradations.join('；') + '。subprocess 缺失则无法用 shell 创建目录树（仅靠 fs 自动建父目录兜底）；sandboxPolicy 缺失则插件写入不带显式围栏；compaction 缺失则 v4 的真实 /compact 路径不生效。')
+  }
   if (problems.length > 0) {
     logger?.warn?.('[dsh-vibe-math] 宿主自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4 预设依赖这些宿主服务/API，旧版或未经声明兼容的 DSH 可能无法挂载' + (dshVersion ? '（当前检测到 DSH v' + dshVersion + '，本包适配 ' + (supported.length ? supported.join(' / ') : '(未声明)') + '）' : '') + '。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (dshVersion ? '（当前 DSH v' + dshVersion + '，本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
+    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (degradations.length === 0 ? '，可选服务 subprocess / sandboxPolicy / compaction 亦齐备' : '（可选服务有缺失，见上方警告）') + (dshVersion ? '（当前 DSH v' + dshVersion + '，本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
   }
 }
 

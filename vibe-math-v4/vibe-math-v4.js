@@ -13,9 +13,15 @@ export function apply(ctx) {
   const fs = ctx.fs
   const tools = ctx.tools
   const commands = ctx.commands
-  const subprocess = ctx.get('subprocess')
-  const sandboxPolicy = ctx.get('sandboxPolicy')
-  const compaction = ctx.get('compaction')   // @deepseek-ai/dsh-compaction (CompactionEngine); optional
+  // Optional services are resolved LAZILY at call time, never snapshotted in apply().
+  // A `ctx.get()` snapshot taken here is order-sensitive: if the service has not been
+  // provided yet when this preset subtree mounts, the snapshot stays undefined for the
+  // whole session, so `runShell` would report 'no-subprocess' forever and `ensureDirs()`
+  // would silently stop creating the project tree (only masked by fs.writeText's
+  // automatic parent creation). Reading on demand removes that dependency on mount order.
+  const subprocessOf = () => { try { return ctx.get('subprocess') } catch(e){ return undefined } }
+  const sandboxPolicyOf = () => { try { return ctx.get('sandboxPolicy') } catch(e){ return undefined } }
+  const compactionOf = () => { try { return ctx.get('compaction') } catch(e){ return undefined } }
 
   const sessions = new Map()      // rootAgentId -> Session
   const childOwner = new Map()    // childId -> rootAgentId
@@ -97,7 +103,7 @@ export function apply(ctx) {
       const f={}; if(allow.length) f.allow=allow; if(deny.length) f.deny=deny; return f
     }
     function makeSignal(ms){ return AbortSignal.timeout(posMs(ms,30000)) }
-    function workspaceRoot(){ try { if(rootAgent&&rootAgent.session&&rootAgent.session.header&&rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch(e){} if(sandboxPolicy&&sandboxPolicy.workspaceRoot) return sandboxPolicy.workspaceRoot; return '.' }
+    function workspaceRoot(){ try { if(rootAgent&&rootAgent.session&&rootAgent.session.header&&rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch(e){} const sp=sandboxPolicyOf(); if(sp&&sp.workspaceRoot) return sp.workspaceRoot; return '.' }
     function vibeRoot(){ return (workspaceRoot()+'/VibeMath').replace(/\\/g,'/') }
     function frameworkRoot(){ return vibeRoot()+'/Projects/'+currentProject }
     function slugify(s){ const t=String(s==null?'':s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g,'-').replace(/^-+|-+$/g,''); return t||'project' }
@@ -110,7 +116,9 @@ export function apply(ctx) {
       const t=String(s==null?'':s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').replace(/-{2,}/g,'-').replace(/^[.\-]+|[.\-]+$/g,'')
       return t||'id'
     }
-    function getPolicy(){ try { if(sandboxPolicy&&rootAgent&&rootAgent.session) return sandboxPolicy.resolve({session:rootAgent.session}) } catch(e){} try { if(sandboxPolicy) return sandboxPolicy.resolve({}) } catch(e){} return undefined }
+    let warnedNoPolicy = false
+    function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
+    function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
     function psQuote(p){ return "'"+String(p).replace(/'/g,"''")+"'" }
     /** POSIX 单引号引用：把 ' 换成 '\'' 以安全嵌入任意路径。 */
     function shQuote(p){ return "'"+String(p).replace(/'/g,"'\\''")+"'" }
@@ -125,7 +133,7 @@ export function apply(ctx) {
       return 'mkdir -p '+paths.map(shQuote).join(' ')
     }
     async function runShell(script,cwd){
-      if(subprocess===undefined) return {ok:false,error:'no-subprocess'}
+      const subprocess=subprocessOf(); if(subprocess===undefined) return {ok:false,error:'no-subprocess'}
       try {
         const argv = isWindows()
           ? ['powershell','-NoProfile','-NonInteractive','-Command',script]
@@ -720,11 +728,29 @@ export function apply(ctx) {
     }
     // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
     // falling back silently to the resident self-summary directive when the service is absent.
+    //
+    // WHY THE LIVE-AGENT CACHE EXISTS: `subagent/end` fires AFTER the child's Activation has
+    // been torn down. The host's teardown order is
+    //   dsh-subagent/lib/index.js:1231  await activation.handle.dispose()
+    //   dsh-agent/lib/index.js:508      this.store.delete(entry.id)      <- child leaves the registry
+    //   dsh-subagent/lib/index.js:1241  activation.observer.settle(...)  <- ONLY NOW is subagent/end emitted
+    // so `agents.get(childId)` inside an end handler ALWAYS returns undefined. Looking the child
+    // up there made this entire path dead code. Instead we capture the live Agent when
+    // `subagent/start` fires (the child is still registered then) and hold it in a WeakRef so a
+    // resident that is never released cannot pin its Agent forever.
+    const liveAgents = new Map()   // childId -> WeakRef<Agent>
+    function rememberAgent(childId, agent){ if(childId && agent){ try { liveAgents.set(childId, new WeakRef(agent)) } catch(e){ liveAgents.set(childId, { deref:()=>agent }) } } }
+    function forgetAgent(childId){ liveAgents.delete(childId) }
+    function liveAgentOf(childId){
+      const ref=liveAgents.get(childId)
+      if(ref){ const a=typeof ref.deref==='function'?ref.deref():undefined; if(a) return a }
+      // fallback: a host that keeps the child registered through the end notification
+      try { return agents.get(childId) } catch(e){ return undefined }
+    }
     async function realCompact(r){
       if(!r || !r.childId) return
-      if(compaction===undefined || !compaction.compactIfNeeded) return
-      let agent
-      try { agent = agents.get(r.childId) } catch(e){ agent = undefined }
+      const compaction=compactionOf(); if(compaction===undefined || !compaction.compactIfNeeded) return
+      const agent = liveAgentOf(r.childId)
       if(!agent || !agent.session) return
       try {
         const signal = makeSignal(params.activityTimeoutMs||60000)
@@ -1066,6 +1092,9 @@ export function apply(ctx) {
     return {
       sessionId, running:()=>running, autoDone:()=>autoDone, phase:()=>phase,
       onResidentEnd, start, resume, status, report, addMember, removeMember, setParams,
+      // live-Agent cache for the real /compact path (see `liveAgents`): the child is
+      // captured at subagent/start and released once its end handler has run.
+      rememberAgent, forgetAgent,
       setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
       // safety kick: drive one scheduler pass (used when an end handler errored, so an exceptional
@@ -1085,12 +1114,17 @@ export function apply(ctx) {
   // ================= apply-level registration (ONCE) =================
   function objParams(props, required){ return { type:'object', properties:props, additionalProperties:false, required:required||[] } }
   function registerTool(name, description, parameters, fn){
-    tools.register({ name, description, parameters,
+    // tools.register() returns a Cordis effect disposer. Both v2 and v3 keep the
+    // registration inside ctx.effect() so it is wound back when the preset subtree
+    // unloads; v4 used to drop the disposer, so a second mount of this preset in the
+    // same process collided on the already-registered tool names and the entries
+    // survived an unload. Route it through ctx.effect() like the other two.
+    ctx.effect(() => tools.register({ name, description, parameters,
       output:{ schema:{ type:'string' }, render:(_a,v)=>[{type:'text',text:String(v)}] },
       execute: async (args, exec)=>{
         try { const s=getSession(exec&&exec.agent); if(!s) return JSON.stringify({ok:false,error:'no session'}); return JSON.stringify(await fn(s,args||{},exec&&exec.agent)) }
         catch(e){ return JSON.stringify({ok:false,error:String((e&&e.message)||e)}) }
-      } })
+      } }))
   }
   // host/assistant-facing
   registerTool('vibe_v4_configure','Create/configure a project: set project name, problem, and params WITHOUT starting a run. Use this FIRST, then vibe_v4_start to actually spawn residents.',objParams({project:{type:'string'},problem:{type:'string'},params:{type:'object'}}),(s,a)=>s.configure(a))
@@ -1128,7 +1162,9 @@ export function apply(ctx) {
   registerTool('vibe_v4_claim_write','Reserved: shared-file write lock (framework-managed).',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
   registerTool('vibe_v4_release_write','Reserved: shared-file write lock release.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
 
-  commands.register({
+  // Same lifecycle rule as registerTool: commands.register() returns a disposer, so the
+  // registration belongs to this fiber and must be unwound with it.
+  ctx.effect(() => commands.register({
     name:'v4', description:'control the Vibe Math V4 framework',
     input:{hint:'[configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set]'},
     handler: async function(inv){
@@ -1150,10 +1186,29 @@ export function apply(ctx) {
       else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message|meeting|members|add|remove|set'}
       return {kind:'success',text:JSON.stringify(r,null,2)}
     },
+  }))
+
+  // Capture the live child Agent while it is still registered. `subagent/end` is
+  // emitted only AFTER the child's Activation teardown has removed it from the agent
+  // registry (dsh-subagent:1231 dispose -> dsh-agent:508 store.delete ->
+  // dsh-subagent:1241 settle/emit), so an end-time `agents.get(childId)` can never
+  // resolve. See `liveAgents` in the session body.
+  ctx.on('subagent/start', function(info){
+    if(!info || !info.id) return
+    const sid=childOwner.get(info.id); const s=sid!==undefined?sessions.get(sid):undefined
+    if(!s) return
+    let agent
+    try { agent = agents.get(info.id) } catch(e){ agent = undefined }
+    if(agent) s.rememberAgent(info.id, agent)
   })
 
   ctx.on('subagent/end', function(info){
     const sid=childOwner.get(info.id); const s=sid!==undefined?sessions.get(sid):undefined
-    if(s) s.onResidentEnd(info.id, info).catch(e=>{ console.error('vibe-v4 end: '+String((e&&e.stack)||e)); if(s.nudge) s.nudge() })
+    if(s) s.onResidentEnd(info.id, info)
+      .catch(e=>{ console.error('vibe-v4 end: '+String((e&&e.stack)||e)); if(s.nudge) s.nudge() })
+      // Release the captured live Agent only AFTER this end has been processed, so the
+      // real /compact inside onResidentEnd still sees it. The WeakRef means a missed
+      // release only delays collection rather than leaking the Agent.
+      .finally(()=>{ if(s.forgetAgent) s.forgetAgent(info.id) })
   })
 }

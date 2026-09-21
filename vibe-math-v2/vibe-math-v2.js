@@ -32,8 +32,13 @@ export function apply(ctx) {
   const fs = ctx.fs
   const tools = ctx.tools
   const commands = ctx.commands
-  const subprocess = ctx.get('subprocess')
-  const sandboxPolicy = ctx.get('sandboxPolicy')
+  // Optional services are resolved LAZILY at call time, never snapshotted in apply().
+  // A snapshot taken here is order-sensitive: if the service has not been provided yet
+  // when this preset subtree mounts, it stays undefined for the whole session, so
+  // `runShell` would report 'no-subprocess' forever and every mkdir would silently do
+  // nothing (masked only by fs.writeText creating parents automatically).
+  const subprocessOf = () => { try { return ctx.get('subprocess') } catch (e) { return undefined } }
+  const sandboxPolicyOf = () => { try { return ctx.get('sandboxPolicy') } catch (e) { return undefined } }
 
   // ================= per-session registry =================
   const sessions = new Map() // rootAgentId -> Session
@@ -131,13 +136,19 @@ export function apply(ctx) {
   function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
   function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
   function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
-  function workspaceRoot() { try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) {} if (sandboxPolicy && sandboxPolicy.workspaceRoot) return sandboxPolicy.workspaceRoot; return '.' }
+  function workspaceRoot() { try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) {} const sp = sandboxPolicyOf(); if (sp && sp.workspaceRoot) return sp.workspaceRoot; return '.' }
   function vibeRoot() { return (workspaceRoot() + '/VibeMath').replace(/\\/g, '/') }
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
   function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
   function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
-  function getPolicy() { try { if (sandboxPolicy && rootAgent && rootAgent.session) return sandboxPolicy.resolve({ session: rootAgent.session }) } catch (e) {} try { if (sandboxPolicy) return sandboxPolicy.resolve({}) } catch (e) {} return undefined }
+  let warnedNoPolicy = false
+  function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: sandboxPolicy unavailable; writes go out with no explicit policy') } }
+  // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
+  // deliberately reported (once): with no session it resolves the policy's CONFIGURED root
+  // (dsh-sandbox-policy: resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())),
+  // which is not necessarily this session's workspace — a silently different fence.
+  function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return sp.resolve({ session: rootAgent.session }) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch (e) { warnNoPolicyOnce() } return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
   function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
   function parseJson(text) {
@@ -241,6 +252,7 @@ export function apply(ctx) {
     return 'rm -f ' + shQuote(path)
   }
   async function runShell(script, cwd) {
+    const subprocess = subprocessOf()
     if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }
     try {
       const argv = isWindows()
@@ -502,8 +514,44 @@ export function apply(ctx) {
   // ================= child spawn / followup =================
   function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
-  const NETWORK_TOOLS = ['web_search', 'web', 'fetch']
-  const SCRIPT_TOOLS = ['bash', 'pwsh']
+  // Tool names for the permission filter, taken from the names the host ACTUALLY
+  // registers (dsh-tool-web registers 'web_search'/'web_fetch'; 'web'/'fetch' are
+  // only presentation card/kind fields, not tool names), and split by platform
+  // because each preset's composition gates them:
+  //   dsh-tool-bash  disabled: process.platform === 'win32'
+  //   dsh-tool-pwsh  disabled: process.platform !== 'win32'
+  // dsh-tools' restrict() THROWS on any name outside its registered set, and the
+  // host applies the filter when establishing a continuable child
+  // (dsh-subagent: childCtx.tools.restrict(...)), so a stale name meant the child
+  // was never created at all.
+  const IS_WINDOWS = process.platform === 'win32'
+  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
+  // 'web_fetch' is only registered when the composition enables fetch (the v4
+  // preset sets `fetch: false`), so it is a candidate that sanitizeToolFilter drops.
+  const NETWORK_TOOLS = ['web_search', 'web_fetch']
+  /**
+   * Drop filter names this host does not register. `known` comes from the host's
+   * own rejection message, which lists every registered global tool, so this
+   * never guesses. Returns undefined when nothing usable remains.
+   */
+  function sanitizeToolFilter(filter, known) {
+    if (!filter || !(known instanceof Set) || known.size === 0) return filter
+    const out = {}
+    for (const key of ['allow', 'deny']) {
+      const list = filter[key]
+      if (!Array.isArray(list)) continue
+      const kept = list.filter(function (n) { return known.has(String(n).trim()) })
+      if (kept.length > 0) out[key] = kept
+    }
+    return (out.allow || out.deny) ? out : undefined
+  }
+  /** The host names the offending tools and then lists the registered ones. */
+  function registeredToolsFromError(message) {
+    const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+    if (!m) return undefined
+    const names = m[1].split(',').map(function (s) { return s.trim() }).filter(Boolean)
+    return names.length > 0 ? new Set(names) : undefined
+  }
   function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const net = role === 'solver' ? params.solverAllowNetwork : role === 'verifier' ? params.verifierAllowNetwork : undefined; const scr = role === 'solver' ? params.solverAllowScripts : role === 'verifier' ? params.verifierAllowScripts : undefined; let a = Array.isArray(allow) ? allow.slice() : []; let d = Array.isArray(deny) ? deny.slice() : []; if (net === false) d = d.concat(NETWORK_TOOLS); else if (net === true && a.length > 0) a = a.concat(NETWORK_TOOLS); if (scr === false) d = d.concat(SCRIPT_TOOLS); else if (scr === true && a.length > 0) a = a.concat(SCRIPT_TOOLS); const f = {}; if (a.length > 0) f.allow = a; if (d.length > 0) f.deny = d; return (f.allow || f.deny) ? f : undefined }
   async function spawnChild(label, promptText, meta) {
     const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
@@ -511,12 +559,30 @@ export function apply(ctx) {
     let started
     try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
     catch (e) {
-      // 失败必须"fail closed"：此前带 toolFilter 失败会删掉过滤器重试，等于静默丢弃用户配置的
-      // solverAllowNetwork / solverAllowScripts / solverToolDeny，让子代理拿到**无限制**的网络与
-      // 脚本权限——与操作者意图正好相反（实现方案与 v2的额外要求 都把这几项定义为操作者可控的硬约束）。
-      // 现在把失败如实抛出，由调用方记录；宁可这一轮不派代理，也不越权。
-      if (request.toolFilter) console.error('vibe-math-v2: startContinuable with toolFilter failed (NOT retrying without the permission filter, to avoid silently granting unrestricted tools): ' + String((e && e.message) || e))
-      throw e
+      const message = String((e && e.message) || e)
+      // The host rejected the filter because it names tools this deployment does
+      // not register. It tells us exactly which names are valid, so drop the
+      // invalid ones and retry ONCE. This is NOT the old fail-open behaviour:
+      // every name the user asked to deny that DOES exist is still denied, and a
+      // deny-list can only ever shrink to names that do not exist here.
+      // (The old behaviour deleted the whole filter, silently granting network
+      // and script access the operator had explicitly forbidden.)
+      const known = registeredToolsFromError(message)
+      const retryFilter = request.toolFilter ? sanitizeToolFilter(request.toolFilter, known) : undefined
+      const changed = request.toolFilter && JSON.stringify(retryFilter) !== JSON.stringify(request.toolFilter)
+      if (!changed) {
+        if (request.toolFilter) console.error('vibe-math-v2: startContinuable with toolFilter failed (NOT retrying without the permission filter, to avoid silently granting unrestricted tools): ' + message)
+        throw e
+      }
+      console.error('vibe-math-v2: tool permission filter named tools this host does not register; retrying with only registered names (denied-tool intent preserved). dropped=' + JSON.stringify(request.toolFilter) + ' kept=' + JSON.stringify(retryFilter))
+      const retryRequest = Object.assign({}, request)
+      if (retryFilter) retryRequest.toolFilter = retryFilter
+      else delete retryRequest.toolFilter
+      try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
+      catch (e2) {
+        console.error('vibe-math-v2: startContinuable retry with sanitized toolFilter also failed: ' + String((e2 && e2.message) || e2))
+        throw e2
+      }
     }
     agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
     childOwner.set(started.childId, sessionId)
