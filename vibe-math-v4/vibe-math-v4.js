@@ -112,7 +112,29 @@ export function apply(ctx) {
     }
     function getPolicy(){ try { if(sandboxPolicy&&rootAgent&&rootAgent.session) return sandboxPolicy.resolve({session:rootAgent.session}) } catch(e){} try { if(sandboxPolicy) return sandboxPolicy.resolve({}) } catch(e){} return undefined }
     function psQuote(p){ return "'"+String(p).replace(/'/g,"''")+"'" }
-    async function runShell(script,cwd){ if(subprocess===undefined) return {ok:false,error:'no-subprocess'}; try { const h=subprocess.spawn({argv:['powershell','-NoProfile','-NonInteractive','-Command',script],cwd:cwd||workspaceRoot(),stdio:{stdin:'ignore',stdout:'inherit',stderr:'inherit'},graceMs:20000}); const o=await h.done; return {ok:o.exitCode===0,exitCode:o.exitCode} } catch(e){ return {ok:false,error:String((e&&e.message)||e)} } }
+    /** POSIX 单引号引用：把 ' 换成 '\'' 以安全嵌入任意路径。 */
+    function shQuote(p){ return "'"+String(p).replace(/'/g,"'\\''")+"'" }
+    /**
+     * 执行一段 shell 脚本。**按平台选择解释器**：此前硬编码 powershell，而预设用
+     * `disabled: !!js process.platform !== 'win32'` 在非 Windows 上关掉了 tool-pwsh 行——
+     * 插件会调用一个自己声明不提供的二进制，且返回值无人检查，表现为静默失效。
+     */
+    function isWindows(){ return process.platform === 'win32' }
+    function mkdirCmd(paths){
+      if(isWindows()) return 'New-Item -Force -ItemType Directory -Path '+paths.map(psQuote).join(',')+' | Out-Null'
+      return 'mkdir -p '+paths.map(shQuote).join(' ')
+    }
+    async function runShell(script,cwd){
+      if(subprocess===undefined) return {ok:false,error:'no-subprocess'}
+      try {
+        const argv = isWindows()
+          ? ['powershell','-NoProfile','-NonInteractive','-Command',script]
+          : ['/bin/sh','-c',script]
+        const h=subprocess.spawn({argv:argv,cwd:cwd||workspaceRoot(),stdio:{stdin:'ignore',stdout:'inherit',stderr:'inherit'},graceMs:20000})
+        const o=await h.done
+        return {ok:o.exitCode===0,exitCode:o.exitCode}
+      } catch(e){ return {ok:false,error:String((e&&e.message)||e)} }
+    }
     async function fsTarget(rel){ return await fs.resolve(rel,{cwd:frameworkRoot()}) }
     async function readText(rel){ try { const t=await fsTarget(rel); if(await fs.stat(t)===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeText(rel,content){ try { const t=await fsTarget(rel); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
@@ -133,7 +155,7 @@ export function apply(ctx) {
       return run
     }
     async function readJson(rel){ const t=await readText(rel); if(t===undefined||t==='') return undefined; try { return JSON.parse(t) } catch(e){ return undefined } }
-    async function ensureDirs(){ const base=frameworkRoot(); const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Reliable','Notes','State']; return await runShell('New-Item -Force -ItemType Directory -Path '+[vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)).map(psQuote).join(',')+' | Out-Null') }
+    async function ensureDirs(){ const base=frameworkRoot(); const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Reliable','Notes','State']; return await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)))) }
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
     async function readCurrentProject(){ try { const t=await readTextAbs(vibeRoot()+'/.current'); if(t) return String(t).trim() } catch(e){} return currentProject }
@@ -339,7 +361,16 @@ export function apply(ctx) {
     async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
     async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
     async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
-    // auto-sync meeting: every meetingKeepEvery new artifacts, convene a general coordination meeting
+    // auto-sync meeting: every meetingKeepEvery artifact records, convene a general coordination meeting.
+    //
+    // ⚠ 已知设计缺口（有意保留，未修）：计数口径**只有** record_* 三个便捷工具的调用。而提示词明确
+    // 告诉常驻："vibe_v4_publish_progress/record_* 只是便捷记录器（可选；推荐直接用 fs 写自己的文件）"，
+    // 所以一个完全按推荐方式（fs 直写）工作的团队不会让 artifactCount 增长，
+    // `artifactCount % meetingKeepEvery === 0` 永不成立 —— 文档承诺的"每积累 N 个新产物自动同步
+    // 一次"在推荐工作流下不可达（此时只有"停滞看门狗"那条时间触发路径会开会）。
+    // 试过把"完成的常驻轮次"也计入，但那会改变开会节奏，令 e2e-v4-fixes T4 与 selfdrive-v4 的
+    // 时序断言失败（两套测试都按当前节奏写死了预期）。这属于**设计参数取舍**，需要维护者决定：
+    // 要么改计数口径并同步调整测试预期，要么把"便捷记录器可选"的措辞改为"建议使用以便触发周期同步"。
     function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && !pendingMeeting && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
     function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
     // identify WHICH resident is calling a resident-facing tool: match the caller's
@@ -981,13 +1012,30 @@ export function apply(ctx) {
     // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
     function normalizeParam(k, v){
       const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery','stallAutoMeetingMs']
-      if(INT_KEYS.includes(k)){ const n=Number(v); return Number.isFinite(n)?n:v }
+      if(INT_KEYS.includes(k)){ const n=Number(v); if(!Number.isFinite(n)) return v; return Math.floor(n) }
       if(k==='toolAllow'||k==='toolDeny'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
       return v
     }
-    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params) params[k]=normalizeParam(k, upd[k]) } saveSettings().catch(()=>{}); return {ok:true} }
+    /**
+     * 并发闸门相关参数的下界。
+     *
+     * `maxParallel` 在调度里被当成"0 或负数 = 不限流"（见 scheduleNext 的 `mp>0` 守卫与
+     * `free = mp>0 ? mp-busy.size : MAX_SAFE_INTEGER`），所以用户设成 0 会让闸门**完全失效**、
+     * 一次唤醒全部常驻，与"同时唤醒的常驻上限"语义正好相反 —— 这里抬到最小合法值 1。
+     * `residentCount` 同理（0 会一个常驻都不建）。
+     *
+     * 注意**不要**给 activityTimeoutMs / compactThreshold 之类加下界：文档明确建议测试时把
+     * activityTimeoutMs 设成 40ms 这种小值，钳制它会破坏受支持的配置。
+     */
+    const INT_MIN = { maxParallel: 1, residentCount: 1 }
+    function clampInt(k, n){
+      const min = INT_MIN[k]
+      if(min===undefined) return n
+      return n < min ? min : n
+    }
+    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } saveSettings().catch(()=>{}); return {ok:true} }
     // ---- create / configure (no auto-start) + settings-file persistence ----
-    async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params) params[k]=s[k] } } }
+    async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params){ const nv=normalizeParam(k, s[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } } }
     async function saveSettings(){ await writeJson('State/settings.json', params) }
     // Create/configure a project and set params/problem WITHOUT starting any resident.
     // The intended flow: vibe_v4_configure {project?, problem?, params?}  →  vibe_v4_start {}.
