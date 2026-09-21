@@ -387,6 +387,19 @@ await settleAllSpawns()   // the new temp's founding turn must complete, or it b
 const fireForeign = await callTool('vibe_v5_fire', { id: reHire.id, reason: 'x' }, childAgent(childOf('r-3')))
 assert(fireForeign.ok === false, 'a researcher CANNOT fire someone else\'s temp worker')
 
+// ---------- human-readable mirrors are write-only snapshots ----------
+const rosterMirror = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Institutes.md')
+assert(existsSync(rosterMirror), 'the human-readable roster mirror (Institutes.md) was written')
+if (existsSync(rosterMirror)) {
+  const rosterText = readFileSync(rosterMirror, 'utf8')
+  assert(rosterText.includes(hired.id) && /已除名/.test(rosterText), 'the roster mirror lists the dismissed member under 已除名 (ids are never reused)')
+  assert(new RegExp('m = ' + stT.quorum.m).test(rosterText), 'the roster mirror states the live quorum m')
+}
+const boardMirror = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'TaskBoard.md')
+assert(existsSync(boardMirror), 'the human-readable task board mirror (Shared/TaskBoard.md) was written')
+assert(existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'README.md')),
+  'State/ carries a README stating that the authoritative state is the session-log projection')
+
 // ---------- the institute stops only on a unanimous solve vote ----------
 solvePlan = false
 const mtg = await callTool('vibe_v5_meeting', { agenda: '是否已解决原问题？', kind: 'solve-vote' }, childAgent(childOf('acad')))

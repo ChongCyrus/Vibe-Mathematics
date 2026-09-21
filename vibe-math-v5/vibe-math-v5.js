@@ -1063,6 +1063,7 @@ export function apply(ctx) {
       roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
       await putMember(member)
       await mkdirs()
+      await writeRosterMirror()
       return member
     }
     // Deliver one prompt to a member. MUST use `subagents.sendMessage` — the
@@ -1737,6 +1738,34 @@ export function apply(ctx) {
       }
       await writeTextRel('Shared/TaskBoard.md', lines.join('\n'))
     }
+    // The roster mirror (§8.4): a human-readable staffing table. Like the task-board
+    // mirror it is WRITE-ONLY — the authoritative roster is the session-log projection,
+    // so losing or hand-editing this file can never corrupt the institute.
+    async function writeRosterMirror() {
+      const s = inst()
+      const lines = ['# 研究所编制表（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
+        '> 权威状态在会话日志投影里；本文件只是快照，勿手改。', '']
+      lines.push('- 求真门槛：m = ' + quorumM() + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
+      lines.push('- 阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
+      lines.push('')
+      lines.push('| 代号 | 职位 | 状态 | 雇主 | 方向/用途 | 轮次 | 上下文% |')
+      lines.push('|---|---|---|---|---|---|---|')
+      if (!s.members.length) lines.push('| （暂无成员） | | | | | | |')
+      for (const m of s.members) {
+        lines.push('| ' + m.id + ' | ' + kindLabel(m.kind) + ' | ' + m.phase + ' | ' + (m.hiredBy || '—') + ' | ' +
+          String(m.direction || '—').replace(/\|/g, '/').slice(0, 80) + ' | ' + (rounds.get(m.id) || 0) + ' | ' +
+          (contextPct.get(m.id) || 0) + ' |')
+      }
+      lines.push('')
+      if (s.members.some((m) => m.phase === 'dismissed')) {
+        lines.push('## 已除名（代号永不复用）')
+        for (const m of s.members.filter((x) => x.phase === 'dismissed')) {
+          lines.push('- ' + m.id + '（' + kindLabel(m.kind) + '）｜' + fmtTime(m.dismissedAt) + '｜原因：' + (m.dismissReason || '未说明'))
+        }
+        lines.push('')
+      }
+      await writeTextRel('Institutes.md', lines.join('\n'))
+    }
 
     // ---- consensus verification (m-vote boolean) --------------------------
     function verifyRecords() { return Object.keys(inst().verdicts) }
@@ -1947,26 +1976,39 @@ export function apply(ctx) {
         if (!asked) armHeartbeat()
         return
       }
-      const j = judgeVerdict(vs)
-      if (j.outcome === 'true' || j.outcome === 'false') { await closeVerify(vs, j.outcome === 'true', j); return }
-      if (vs.round >= Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))) {
-        await finalizeUndecided(vs, j); return
+      // Only ONE settle may run at a time: two concurrent subagent/end handlers can both
+      // observe "every voter has answered" and would otherwise close the SAME object
+      // twice — a duplicate Verified card and a duplicate debate record. The lock is
+      // released BEFORE the trailing scheduling pass, so a chained verification is
+      // never swallowed by a still-held lock (v4 §26).
+      if (finalizeLock) return
+      finalizeLock = 'verify'
+      try {
+        const j = judgeVerdict(vs)
+        if (j.outcome === 'true' || j.outcome === 'false') {
+          await closeVerify(vs, j.outcome === 'true', j)
+        } else if (vs.round >= Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))) {
+          await finalizeUndecided(vs, j)
+        } else {
+          // Move to a REAL debate round: snapshot this round's votes into `history`
+          // (so the next prompt can show what others thought), then CLEAR `votes` so every
+          // voter is genuinely re-asked. Without the clear, "all voted" stays true and the
+          // debate rounds burn through with NOBODY being re-asked (v4 §8 implementation note).
+          const next = Object.assign({}, vs, {
+            history: Object.assign({}, vs.votes),
+            votes: {},
+            stage: 'debate',
+            round: vs.round + 1,
+            lastVoteAt: now(),
+          })
+          await putVerdict(vs.target, next)
+          await saveChatLine('【求真表决】' + vs.target + ' 第 ' + vs.round + ' 轮未定论（' + j.reason + '）。' +
+            '公开辩论并重新表决：' + Object.entries(next.history).map(([k, v]) => k + '=' + Number(v.prob)).join('、'))
+          await askVoters(next)
+        }
+      } finally {
+        finalizeLock = null
       }
-      // Move to a REAL debate round: snapshot this round's votes into `history`
-      // (so the next prompt can show what others thought), then CLEAR `votes` so every
-      // voter is genuinely re-asked. Without the clear, "all voted" stays true and the
-      // debate rounds burn through with NOBODY being re-asked (v4 §8 implementation note).
-      const next = Object.assign({}, vs, {
-        history: Object.assign({}, vs.votes),
-        votes: {},
-        stage: 'debate',
-        round: vs.round + 1,
-        lastVoteAt: now(),
-      })
-      await putVerdict(vs.target, next)
-      await saveChatLine('【求真表决】' + vs.target + ' 第 ' + vs.round + ' 轮未定论（' + j.reason + '）。' +
-        '公开辩论并重新表决：' + Object.entries(next.history).map(([k, v]) => k + '=' + Number(v.prob)).join('、'))
-      await askVoters(next)
       await scheduleNext()
     }
     async function finalizeUndecided(vs, j) {
@@ -2196,6 +2238,10 @@ export function apply(ctx) {
     }
     async function continueMeetingRound() {
       if (!meeting) return
+      // Same reentrancy guard as verification: two concurrent end handlers can both see
+      // the last speaker arrive and would otherwise finalize the meeting twice
+      // (duplicate transcript tail, duplicate task/verify fan-out, duplicate solve vote).
+      if (finalizeLock) return
       const stale = now() - Number(meeting.lastInputAt || meeting.startedAt || now())
       if (stale >= recoverStallMs()) {
         const abandoned = meeting
@@ -2214,7 +2260,12 @@ export function apply(ctx) {
         if (!asked) armHeartbeat()
         return
       }
-      await finalizeMeeting(meeting)
+      finalizeLock = 'meeting'
+      try {
+        await finalizeMeeting(meeting)
+      } finally {
+        finalizeLock = null
+      }
     }
     async function appendMeetingTail(mn, text) {
       const rel = 'Shared/Meetings/' + mn.id + '.md'
@@ -2383,6 +2434,7 @@ export function apply(ctx) {
       await putMember(Object.assign({}, target, {
         phase: 'dismissed', dismissedAt: now(), dismissReason: reason, childId: '',
       }))
+      await writeRosterMirror()
       await saveChatLine('【解雇】' + id + ' 已由 ' + (office ? '所办' : callerId) + ' 解雇（原因：' + (reason || '未说明') +
         '）。代号永不复用；其未完成任务已收回' + (reclaimed.length ? '（' + reclaimed.join('、') + '）' : '') + '。')
       await markProgress()
@@ -2816,6 +2868,18 @@ export function apply(ctx) {
           '',
         ].join('\n'))
       }
+      await writeStateReadme()
+      return {
+        ok: true, project, institute: instituteName,
+        problem: inst().problem.statement ? inst().problem.statement.slice(0, 80) : '',
+        params: visibleParams(),
+        note: '现在可以 vibe_v5_start 开工',
+      }
+    }
+    // State/ holds only human-readable mirrors. Say so IN the directory, so a user who
+    // finds State/<institute>.v5state.json (the degraded fallback) or the mirror files
+    // does not mistake them for the authoritative state and hand-edit them.
+    async function writeStateReadme() {
       await writeTextRel('State/README.md', [
         '# 关于 State/',
         '',
@@ -2823,13 +2887,11 @@ export function apply(ctx) {
         '本目录只存放人可读的镜像/说明，**请勿手改**；改动不会影响真正的状态。',
         '要查看状态请用 `vibe_v5_status` / `vibe_v5_report`。',
         '',
+        '唯一例外：当宿主没有 `sessionProjections` 服务时，v5 会回退到',
+        '`State/<institute>.v5state.json`（加固 JSON 后端），此时它才是权威源。',
+        '安装器会在启动自检里报告这一降级。',
+        '',
       ].join('\n'))
-      return {
-        ok: true, project, institute: instituteName,
-        problem: inst().problem.statement ? inst().problem.statement.slice(0, 80) : '',
-        params: visibleParams(),
-        note: '现在可以 vibe_v5_start 开工',
-      }
     }
     function slugify(s) {
       const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')
@@ -2855,6 +2917,7 @@ export function apply(ctx) {
       syncParamsFromState()
       runId = inst().runId
       await mkdirs()
+      await writeStateReadme()
       if (inst().problem.statement) {
         await writeTextRel('Problems/' + (inst().problem.id || 'problem') + '.md', [
           '# 问题｜' + (inst().problem.id || 'problem'), '- ID: ' + (inst().problem.id || 'problem'),
