@@ -9,7 +9,7 @@
 //   5. leftover development markers / TODO scaffolding
 // Run: node audit-v5-integrity.mjs   (exit 1 on any finding)
 // ============================================================
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 
 const FILE = new URL('./vibe-math-v5/vibe-math-v5.js', import.meta.url)
 const raw = readFileSync(FILE, 'utf8')
@@ -257,11 +257,76 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['the charter states the progress definition', "'  · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。'"],
     ['the charter describes the academician as organizer', "'  【四、你的组织职责与边界（院士）】'"],
     ['the framework never assigns on its own', "agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？'"],
+
+    // ── PROMPT / INTERACTION CORRECTNESS GATES ─────────────────────────────
+    // The 2026-09 field test shipped a framework whose every member brief named the WRONG
+    // member. These gates keep the structural fixes in place, and the companion
+    // prompt-v5-integrity.test.mjs asserts the TEXT those fixes produce.
+    ['the status block takes the member it describes', 'function briefBlock(member) {'],
+    ['an unknown identity fails loudly instead of being guessed', "throw v5err('V5_INTERNAL', 'briefBlock: a member is required"],
+    ['the status block is built from that member, never a global', 'function stateBlock(member) {\n      return briefBlock(member)\n    }'],
+    ['the joiner is committed to the roster BEFORE its brief is built', "member.phase = 'active'\n      member.childId = ''\n      await putMember(member)"],
+    ['the charter is frozen at hire and reused on resume', 'const persona = member.persona || memberPersona(member)'],
+    ['a rebuilt session is framed as a rebuild', "const resume = mode === 'resume'"],
+    ['leadership text follows the live roster', 'function academicianId() {'],
+    ['no charter invents a leader when there is none', "本所当前**没有在册院士**"],
+    ['the office resolves as the office, never as a guessed member', "try { if (rootOf(agent) === agent) return 'office' } catch (e) { /* fall through */ }"],
+    ['the mailbox is acked BEFORE the round prompt is built', 'if (pending.length) await ackPending(pending)\n      const base = typeof baseFn === \'function\' ? baseFn() : baseFn'],
+    ['framework feedback has its own sender (never a self-message)', "return await say('framework', { to: memberId, kind: 'notice', text: String(text) })"],
+    ['an assignment is framed by its true origin', "if (m.kind === 'assign') return (m.from === 'office' ? '【所办分派】' : '【院士分派】') + m.text"],
+    ['a nudge is framed as supervision, not as an assignment', "to, kind: 'nudge',"],
+    ['a voters-only broadcast is framed as such', "if (m.kind === 'voters') return '【研究所·致全体表决者 from ' + m.from + '】' + m.text"],
+    ['relayed messages carry their true sender', "await say(callerId, { to: 'voters', kind: 'voters', text: '提议开会：「' + agenda + '」（' + kind + '）' })"],
+    ['a member that failed to provision stays visible', "b.push('[未就位] ' + absent.map((m) => m.id + '（' + m.phase + '）').join('、'))"],
+    ['the objection channel is documented in the reply spec', '"reject_assign": {"task_id":"t-3"'],
+    ['the task-done channel is documented in the reply spec', '"task_done": "t-3",'],
+    ['the meeting input channel is documented in the reply spec', '"input": "本轮会议/辩论的发言正文'],
+    ['the work push is paced, not an unbounded loop', 'if ((now() - (lastActiveAt.get(m.id) || 0)) < idleMs) continue'],
   ]
   for (const [label, needle] of GATES) {
     if (!raw.includes(needle)) findings.push('philosophy gate missing from the implementation: ' + label)
   }
   notes.push('philosophy gates checked: ' + GATES.length)
+
+  // The prompt corpus is a SHIPPED deliverable, not a build artifact: a human must be able
+  // to read the exact text every member receives without decoding session logs.
+  const REPO_ROOT = new URL('.', import.meta.url)
+  const needFiles = [
+    ['the prompt-integrity suite is shipped', 'prompt-v5-integrity.test.mjs'],
+    ['the machine-readable prompt corpus is shipped', 'prompt-corpus-v5/prompt-corpus-v5.json'],
+    ['the human-readable prompt corpus is shipped', 'prompt-corpus-v5/prompt-corpus-v5.md'],
+  ]
+  for (const [label, rel] of needFiles) {
+    let ok = false
+    try { ok = existsSync(new URL(rel, REPO_ROOT)) } catch (e) { ok = false }
+    if (!ok) findings.push('missing shipped prompt-correctness artifact: ' + label + ' (' + rel + ')')
+  }
+  notes.push('prompt-correctness artifacts checked: ' + needFiles.length)
+
+  // The corpus must actually contain the interactions a reviewer needs to see, and must
+  // never contain a wrong-identity brief.
+  try {
+    const corpusPath = new URL('prompt-corpus-v5/prompt-corpus-v5.json', REPO_ROOT)
+    const c = JSON.parse(readFileSync(corpusPath, 'utf8'))
+    const kinds = new Set((c.prompts || []).map(p => p.kind))
+    const need = ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
+      'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
+      'inbox-office', 'inbox-assign', 'inbox-nudge', 'inbox-office-assign', 'inbox-office-nudge',
+      'notice', 'notice-claim', 'after-failure']
+    for (const k of need) if (!kinds.has(k)) findings.push('the prompt corpus is missing a ' + k + ' prompt')
+    const all = (c.prompts || []).map(p => p.prompt + '\n' + (p.charter || '')).join('\n')
+    if (/你是 \?/.test(all)) findings.push('the prompt corpus contains a wrong-identity "你是 ?" brief')
+    if (/\[状态\][^\n]*你是\s+(\S+?)[^\n]*\n/.test(all)) {
+      // every [状态] line must name a real member id, never a placeholder
+      for (const m of all.match(/\[状态\][^\n]*/g) || []) {
+        const id = (/\[状态\]\s*你是\s+(\S+?)（/.exec(m) || [])[1]
+        if (!id || id === '?' || id === 'undefined') findings.push('the prompt corpus has a bad identity line: ' + m.slice(0, 60))
+      }
+    }
+    notes.push('prompt corpus: ' + (c.total || 0) + ' prompts, ' + kinds.size + ' kinds')
+  } catch (e) {
+    findings.push('the prompt corpus could not be read/parsed: ' + String((e && e.message) || e))
+  }
 }
 
 // ---- report ------------------------------------------------------------

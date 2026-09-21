@@ -20,7 +20,13 @@ import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFil
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 
-const PLUGIN = new URL('./vibe-math-v5/vibe-math-v5.js', import.meta.url)
+// V5_PLUGIN lets a sensitivity probe point this suite at a deliberately broken copy.
+// Without it every probe against this suite silently tested the UNMUTATED plugin and was
+// reported as a "detection" only because the probe's own spawn failed — i.e. the whole
+// e2e block of the sensitivity audit was vacuous.
+const PLUGIN = process.env.V5_PLUGIN
+  ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
+  : new URL('./vibe-math-v5/vibe-math-v5.js', import.meta.url)
 let passed = 0, failed = 0
 const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }

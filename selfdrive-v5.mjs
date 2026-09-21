@@ -208,34 +208,60 @@ async function settleSpawn(sp) {
 }
 async function settleAllSpawns() { for (const sp of spawns.slice()) await settleSpawn(sp) }
 
+// Answer ONE queued wake, according to the prompt's actual kind.
+async function answerWake(w) {
+  const prompt = (w.blocks && w.blocks[0] && w.blocks[0].text) || ''
+  const kind = wakeKindOf(prompt)
+  const who = memberLabelOf(w.childId)
+  let reply
+  if (kind === 'verify') {
+    // Read the target from the JSON spec line the prompt ends with — parsing the
+    // Chinese prose line would swallow the full-width colon into the id.
+    const tm = /"target"\s*:\s*"([^"]+)"/.exec(prompt)
+    const target = tm ? tm[1] : (verifyProposals[verifyProposals.length - 1] || 'p-r-1')
+    const v = plannedVotes && plannedVotes.has(who) ? plannedVotes.get(who) : 0.5
+    reply = { verdict: { target, verdict: v, reason: who + ' 的判断：' + (v === 1 ? '成立' : v === 0 ? '不成立' : '不确定') }, contextPct: 20 }
+  } else if (kind === 'meeting') {
+    reply = { input: who + '：我的意见已写在 Progress/ 里。', vote_solved: solvePlan === true, solved: solvePlan === true, contextPct: 20 }
+  } else {
+    reply = { progress: who + '：本轮继续推进最小反例路线。', solved: false, contextPct: 20 }
+  }
+  fireEnd(w.childId, reply)
+  await settleAll()
+  return kind
+}
 // Drive every queued wake: answer by the prompt's actual kind.
 async function drainWakes(budget = 40) {
   let n = 0
-  while (wakes.length && n < budget) {
-    const w = wakes.shift()
-    const prompt = (w.blocks && w.blocks[0] && w.blocks[0].text) || ''
-    const kind = wakeKindOf(prompt)
-    const who = memberLabelOf(w.childId)
-    let reply
-    if (kind === 'verify') {
-      // Read the target from the JSON spec line the prompt ends with — parsing the
-      // Chinese prose line would swallow the full-width colon into the id.
-      const tm = /"target"\s*:\s*"([^"]+)"/.exec(prompt)
-      const target = tm ? tm[1] : (verifyProposals[verifyProposals.length - 1] || 'p-r-1')
-      const v = plannedVotes && plannedVotes.has(who) ? plannedVotes.get(who) : 0.5
-      reply = { verdict: { target, verdict: v, reason: who + ' 的判断：' + (v === 1 ? '成立' : v === 0 ? '不成立' : '不确定') }, contextPct: 20 }
-    } else if (kind === 'meeting') {
-      reply = { input: who + '：我的意见已写在 Progress/ 里。', vote_solved: solvePlan === true, solved: solvePlan === true, contextPct: 20 }
-    } else {
-      reply = { progress: who + '：本轮继续推进最小反例路线。', solved: false, contextPct: 20 }
-    }
-    fireEnd(w.childId, reply)
-    n++
-    await settleAll()
-  }
+  while (wakes.length && n < budget) { await answerWake(wakes.shift()); n++ }
   return n
 }
 let solvePlan = null
+
+// Answer exactly ONE voting round: keep pulling wakes (heartbeats and work prompts also
+// sit in the queue) until `n` VERIFY prompts have been answered, then stop.
+//
+// A fixed `drainWakes(n)` budget is not enough — it can stop before every voter has
+// answered, and an assertion like "this must not be verified yet" then passes vacuously
+// however badly the quorum rule is broken. (Proven: weakening the m floor left this suite
+// GREEN.) Equally, a helper that loops until the verification CLOSES would silently burn
+// through every debate round, so this stops the moment the last voter of one round has
+// answered.
+async function drainVerifyRound(n) {
+  let answered = 0
+  for (let guard = 0; guard < n * 6 && answered < n; guard++) {
+    const idx = wakes.findIndex(w => wakeKindOf((w.blocks && w.blocks[0] && w.blocks[0].text) || '') === 'verify')
+    if (idx === -1) {
+      if (!wakes.length) break
+      await answerWake(wakes.shift())
+      continue
+    }
+    const w = wakes.splice(idx, 1)[0]
+    await answerWake(w)
+    answered++
+  }
+  return answered
+}
 
 // ============================================================
 console.log('-- V5 self-drive --')
@@ -309,22 +335,27 @@ if (sv.verify) {
 
   // Round: only ONE boolean vote (< m) must NOT verify.
   plannedVotes = new Map([['acad', 0.9], ['r-1', 1], ['r-2', 0.5], ['r-3', 0.7]])
-  await drainWakes(4)   // exactly one round of 4 voters
+  assert(await drainVerifyRound(4) === 4, 'all four voters answered round 1')
+  await settleAll()
   let sA = await callTool('vibe_v5_status', {})
   assert(sA.verified.indexOf(target) === -1, 'a single boolean vote (m-1=2 short) does NOT verify')
   assert(!!sA.verify, 'the verification is still open (abstentions do not settle it)')
+  assert(sA.verify && sA.verify.stage === 'debate', 'the round really completed and moved to the DEBATE stage (got ' + (sA.verify && sA.verify.stage) + ')')
 
   // Debate round: 1 vs 0 conflict must NOT verify.
   plannedVotes = new Map([['acad', 0], ['r-1', 1], ['r-2', 1], ['r-3', 1]])
-  await drainWakes(4)
+  assert(await drainVerifyRound(4) === 4, 'all four voters answered the debate round')
+  await settleAll()
   let sB = await callTool('vibe_v5_status', {})
   assert(sB.verified.indexOf(target) === -1, 'a conflicting 1/0 assertion BLOCKS the verdict (no minority override)')
+  assert(!!sB.verify, 'the verification survived the conflicting round (not silently forced)')
 
   // Final: three unanimous TRUE votes (m=3) DO verify.
   plannedVotes = new Map([['acad', 1], ['r-1', 1], ['r-2', 1], ['r-3', 1]])
-  await drainWakes(4)
+  await drainVerifyRound(4)
+  await settleAll()
   let sC = await callTool('vibe_v5_status', {})
-  if (!sC.verified.includes(target)) { await drainWakes(4); sC = await callTool('vibe_v5_status', {}) }
+  if (!sC.verified.includes(target)) { await drainWakes(8); sC = await callTool('vibe_v5_status', {}) }
   assert(sC.verified.indexOf(target) !== -1, 'THREE unanimous TRUE votes (m=3) DID verify ' + target)
   const verifiedCard = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Verified', '命题', target + '.md')
   assert(existsSync(verifiedCard), 'Verified/命题/' + target + '.md was written')

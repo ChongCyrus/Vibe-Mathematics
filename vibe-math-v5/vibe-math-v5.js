@@ -13,6 +13,18 @@
 // consensus tally, context compaction and resume. It NEVER assigns tasks — the
 // academician does, as a member who is himself bound by the same m-vote rule.
 //
+// WHAT A MEMBER READS IS THE PRODUCT. Every prompt builder takes the member it addresses
+// and derives the [状态] block, the roster, the quorum and the charter from THAT member —
+// never from a "the last member we touched" global. A prompt naming the wrong identity is
+// a fatal bug no tool-level assertion can see, so:
+//   · `briefBlock` FAILS LOUDLY when it is not told which member it describes;
+//   · `spawnMember` commits the member to the ACTIVE roster BEFORE building its brief;
+//   · the charter is frozen at hire (it says "你入职时的在册编制") and reused on resume;
+//   · a rebuilt session is framed as a rebuild, never as an induction;
+//   · framing names the TRUE sender and kind, and framework feedback has its own sender.
+// `prompt-v5-integrity.test.mjs` asserts all of that against the real prompt text and
+// writes the full corpus to `prompt-corpus-v5/` for human review (实现方案.md §14.5).
+//
 // Durable state lives in a HOST-ONLY session projection unit (key `vibeMathV5`):
 // institute events are appended to the session log, never enter the model history
 // (zero context cost), are checkpointed by DSH, and are replayed on restore — which
@@ -520,6 +532,14 @@ export function apply(ctx) {
       return Math.max(1, Math.min(cap, voterCount()))
     }
     function byChild(childId) { return inst().members.find((m) => m.childId === childId) }
+    // The live academician's id, or '' when the office founded the institute with
+    // `academician: false`. Every piece of charter text that talks about "the leader"
+    // must go through this: a hard-coded 'acad' told members to report to a leader who
+    // does not exist, and described organizational duties nobody holds.
+    function academicianId() {
+      const a = activeMembers().find((m) => m.kind === 'academician')
+      return a ? a.id : ''
+    }
 
     // ---- the institute charter (public regulations) -----------------------
     // Written into every member's `persona` at hire time. `persona` is part of the
@@ -569,28 +589,47 @@ export function apply(ctx) {
       '   ③ 推荐**直接用 fs 写你自己的文件**；vibe_v5_record_* 只是便捷记录器，不是必需。',
     ].join('\n')
 
-    const ORG_COMMON = [
-      '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
-      '  本所的领头人是**院士 ' + 'acad' + '**。它以**全所视角**组织与协调：',
-      '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
-      '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
-      '       分派是它的职责，不是越权；',
-      '    ③ **设定优先级**：多个方向并行时，它有责任指明"先做什么、什么可以缓、什么该放弃"；',
-      '    ④ **协调资源**：决定临时工往哪里调配；建议增聘/解聘常驻研究员；',
-      '    ⑤ **主持会议**：由它召集正式会议、设定议程、维持讨论不跑偏，并把结论落实为任务；',
-      '    ⑥ **督导进度**：定期检查各成员的 Progress/ 与会议发言，催办停滞的方向、纠正偏离、',
-      '       在成员之间牵线；',
-      '    ⑦ **对外代表**：通过所办向外部汇报与提要求。',
-      '',
-      '  对**你**（非院士）的要求：',
-      '    · **主动汇报**：把你这一轮的进展、发现、卡点写进你自己的 Progress/，并把关键结论在',
-      '      群聊里说出来——院士需要这些信息才能统筹；',
-      '    · **接受分派，但不要盲从**：院士分派给你的任务，默认应当执行；如果你认为方向错了、',
-      '      信息过时、或你有更好的路线，**先说清理由再决定**——本所允许并鼓励有理据的反对。',
-      '      真正的原则是：组织由院士负责，但**判断属于每个人自己**；',
-      '    · **有异议走会议**：若你与院士在方向上持续分歧，提议开会，让全所讨论；',
-      '    · **不要重复劳动**：做之前先看任务板和别人的库；发现别人已在做同一件事，告诉院士。',
-    ].join('\n')
+    // Computed per hire (a FUNCTION, not a frozen const): the text names the live
+    // academician, and must describe a leaderless institute honestly when the office
+    // founded one with `academician: false`.
+    function orgCommon() {
+      const a = academicianId()
+      const L = [
+        '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
+      ]
+      if (a) {
+        L.push(
+          '  本所的领头人是**院士 ' + a + '**。它以**全所视角**组织与协调：',
+          '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
+          '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
+          '       分派是它的职责，不是越权；',
+          '    ③ **设定优先级**：多个方向并行时，它有责任指明"先做什么、什么可以缓、什么该放弃"；',
+          '    ④ **协调资源**：决定临时工往哪里调配；建议增聘/解聘常驻研究员；',
+          '    ⑤ **主持会议**：由它召集正式会议、设定议程、维持讨论不跑偏，并把结论落实为任务；',
+          '    ⑥ **督导进度**：定期检查各成员的 Progress/ 与会议发言，催办停滞的方向、纠正偏离、',
+          '       在成员之间牵线；',
+          '    ⑦ **对外代表**：通过所办向外部汇报与提要求。',
+          '',
+          '  对**你**（非院士）的要求：',
+          '    · **主动汇报**：把你这一轮的进展、发现、卡点写进你自己的 Progress/，并把关键结论在',
+          '      群聊里说出来——院士需要这些信息才能统筹；',
+          '    · **接受分派，但不要盲从**：院士分派给你的任务，默认应当执行；如果你认为方向错了、',
+          '      信息过时、或你有更好的路线，**先说清理由再决定**——本所允许并鼓励有理据的反对。',
+          '      真正的原则是：组织由院士负责，但**判断属于每个人自己**；',
+          '    · **有异议走会议**：若你与院士在方向上持续分歧，提议开会，让全所讨论；',
+          '    · **不要重复劳动**：做之前先看任务板和别人的库；发现别人已在做同一件事，告诉院士。')
+      } else {
+        L.push(
+          '  本所当前**没有在册院士**（所办以无领头人方式建所）：组织与协调由**全体有表决权者',
+          '  共同商议**，通过群聊、提议开会（vibe_v5_meeting）与任务板完成。请特别注意：',
+          '    · 没有谁替你分派工作——**方向要你们自己讨论出来**，并把讨论结果落到任务板上；',
+          '    · 提议开会需要有人附议/由所办确认（只有院士或所办能直接召开）；',
+          '    · **主动汇报**：把你的进展、发现、卡点写进你自己的 Progress/ 并说在群聊里，',
+          '      否则别人无从与你协作；',
+          '    · **不要重复劳动**：做之前先看任务板和别人的库；发现重复，直接在群聊里指出。')
+      }
+      return L.join('\n')
+    }
 
     const ACAD_ORG = [
       '  【四、你的组织职责与边界（院士）】',
@@ -620,6 +659,10 @@ export function apply(ctx) {
     function charterFor(member) {
       const kind = member.kind
       const m = quorumM()
+      // The leader's REAL id (or '' when the office founded a leaderless institute).
+      // Charter text must never name a leader who is not on staff: a member told to
+      // "report to the academician" when there is none has no one to report to.
+      const acadId = academicianId()
       const L = []
       // ── opening ──────────────────────────────────────────────────────────
       if (kind === 'academician') {
@@ -639,19 +682,26 @@ export function apply(ctx) {
         L.push('你的任务期至：' + (member.term || '雇主另行通知') + '。任务完成后请主动告知雇主。')
         L.push('')
       }
-      L.push('本所没有**外部**派活：做什么、往哪走，由所内自己决定。所内的组织与协调由**院士**牵头——')
-      L.push('它统筹全局、把工作拆解成分派下去、设定优先级、主持会议、督导进度；你则在自己的方向上')
-      L.push('深入钻研，把进展与判断汇报给它和全所。请记住这条分工：**组织由院士负责，但判断属于')
-      L.push('你自己**——它分派的是工作，不是结论。')
+      if (acadId || kind === 'academician') {
+        L.push('本所没有**外部**派活：做什么、往哪走，由所内自己决定。所内的组织与协调由**院士**牵头——')
+        L.push('它统筹全局、把工作拆解成分派下去、设定优先级、主持会议、督导进度；你则在自己的方向上')
+        L.push('深入钻研，把进展与判断汇报给它和全所。请记住这条分工：**组织由院士负责，但判断属于')
+        L.push('你自己**——它分派的是工作，不是结论。')
+      } else {
+        L.push('本所没有**外部**派活：做什么、往哪走，由所内自己决定。本所当前**没有在册院士**，')
+        L.push('组织与协调由**全体有表决权者共同商议**（所办代表外部）；但请守住同一条分工：')
+        L.push('**组织归集体，判断属于你自己**——讨论决定的是工作，不是结论。')
+      }
       L.push('')
       L.push('────────────────────────────────────────')
       // ── 一、roster ───────────────────────────────────────────────────────
       L.push('【一、所内编制与你的同事】')
       if (kind === 'temp') {
-        L.push('  · **院士 acad** —— 本所领头人，组织与协调中心。它统筹全所、分派任务、主持')
-        L.push('    会议、督导进度，也可以直接分派任务给你。')
+        if (acadId) L.push('  · **院士 ' + acadId + '** —— 本所领头人，组织与协调中心。它统筹全所、分派任务、主持')
+        if (acadId) L.push('    会议、督导进度，也可以直接分派任务给你。')
         L.push('  · **常驻研究员** —— 本所有表决权者。你是临时雇入的协作人员。')
-        L.push('  · 你的雇主：' + (member.hiredBy || '?') + '。它给你派活；院士也可以给你派活。')
+        L.push('  · 你的雇主：' + (member.hiredBy || '?') + '。它给你派活' + (acadId ? '；院士也可以给你派活。' : '。'))
+        if (!acadId) L.push('  · 本所当前**没有在册院士**；组织与协调由全体有表决权者共同商议。')
       } else if (kind === 'academician') {
         L.push('  · **院士 ' + member.id + '（你）** —— 本所领头人，本所的**组织与协调中心**。你亲自参与')
         L.push('    研究，同时向全所负责：建立全所视图、拆解并分派工作、设定优先级、主持会议、')
@@ -663,23 +713,28 @@ export function apply(ctx) {
         L.push('    可写自己的成果库、可认领或被分派任务，但**没有表决权**。')
         L.push('  · **所办（对外接口）** —— 不参与研究、不投票。代表本所与外部沟通并转达外部指令。')
       } else {
-        L.push('  · **院士 acad** —— 本所领头人，本所的**组织与协调中心**。它亲自参与研究，同时')
-        L.push('    向全所负责：建立全所视图、把原问题拆解成工作并**分派**给合适的成员（含临时工）、')
-        L.push('    设定优先级与路线取舍、召集并主持会议、督导进度与催办停滞、调配临时工。')
-        L.push('    但它的一票与你**等重**，不能单方面定论。')
-        L.push('  · **常驻研究员（含你）** —— 有表决权。可自主雇佣/解雇自己的临时工。')
-        L.push('    向院士汇报进展、接受其组织与分派。')
-        L.push('  · **临时工** —— 由某位研究员或院士为特定任务临时雇入。可读、可想、可发言、')
+        if (acadId) {
+          L.push('  · **院士 ' + acadId + '** —— 本所领头人，本所的**组织与协调中心**。它亲自参与研究，同时')
+          L.push('    向全所负责：建立全所视图、把原问题拆解成工作并**分派**给合适的成员（含临时工）、')
+          L.push('    设定优先级与路线取舍、召集并主持会议、督导进度与催办停滞、调配临时工。')
+          L.push('    但它的一票与你**等重**，不能单方面定论。')
+          L.push('  · **常驻研究员（含你）** —— 有表决权。可自主雇佣/解雇自己的临时工。')
+          L.push('    向院士汇报进展、接受其组织与分派。')
+        } else {
+          L.push('  · **常驻研究员（含你）** —— 有表决权。可自主雇佣/解雇自己的临时工。')
+          L.push('    本所当前**没有在册院士**：方向由你们共同商议决定，不要等别人来派活。')
+        }
+        L.push('  · **临时工** —— 由某位研究员' + (acadId ? '或院士' : '') + '为特定任务临时雇入。可读、可想、可发言、')
         L.push('    可写自己的成果库、可认领或被分派任务，但**没有表决权**。')
         L.push('  · **所办（对外接口）** —— 不参与研究、不投票。代表本所与外部沟通并转达外部指令。')
       }
-      L.push('  你入职时的在册编制：')
+      L.push('  你入职时的在册编制（这是一份**快照**，此后可能变化）：')
       L.push(rosterLine())
-      L.push('  （权威的在册名单以每轮提示里的状态块为准；编制可能变化。）')
+      L.push('  （权威的在册名单与法定票数 m 以每轮提示里的状态块为准；编制可能变化。）')
       L.push('')
       // ── 二、general rules ────────────────────────────────────────────────
       L.push('【二、通用规章（全员必读）】')
-      L.push('  1. 本所一切任务安排由成员讨论与院士组织决定；没有**外部**给你派活。')
+      L.push('  1. 本所一切任务安排由成员讨论' + (acadId ? '与院士组织' : '共同') + '决定；没有**外部**给你派活。')
       L.push('  2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。')
       L.push('     其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——')
       L.push('     都只是经验性参考，引用时必须注明"未验证"。')
@@ -688,8 +743,13 @@ export function apply(ctx) {
       L.push('     价值程度、动机用途计划、你自己对"该对象为真"的概率估计。')
       L.push('  5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。')
       L.push('  6. 请主动读同事的库，对齐事实、避免重复劳动、发现冲突。')
-      L.push('  7. **主动向院士汇报**：它需要你的进展、发现与卡点才能统筹全所；把关键结论在群聊里')
-      L.push('     说出来，把细节留在你自己的 Progress/ 里。')
+      if (acadId) {
+        L.push('  7. **主动向院士汇报**：它需要你的进展、发现与卡点才能统筹全所；把关键结论在群聊里')
+        L.push('     说出来，把细节留在你自己的 Progress/ 里。')
+      } else {
+        L.push('  7. **主动在群聊里汇报**：本所没有院士替你统筹，你不说别人就无从与你协作；把关键')
+        L.push('     结论说出来，把细节留在你自己的 Progress/ 里。')
+      }
       L.push('')
       // ── 三、libraries ───────────────────────────────────────────────────
       L.push('【三、你的资料库、progress 与卡片格式】')
@@ -702,29 +762,39 @@ export function apply(ctx) {
       if (kind === 'academician') {
         L.push(ACAD_ORG)
       } else {
-        L.push('【四、所内的组织与协调（院士领头）】')
-        L.push(ORG_COMMON)
-        if (kind === 'temp') {
+        L.push('【四、所内的组织与协调' + (acadId ? '（院士领头）' : '（无院士：集体商议）') + '】')
+        L.push(orgCommon())
+        if (kind === 'temp' && acadId) {
           L.push('    · **院士也可以直接分派任务给你**（它统筹全所）。雇主与院士的分派都应执行；')
           L.push('      若你认为分派有误，先说清理由。')
+        } else if (kind === 'temp') {
+          L.push('    · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。')
         }
       }
       L.push('')
-      L.push('  【重要】分派**不改变求真规则**：院士分派任务、设定优先级，但**不能**因此让任何结论')
-      L.push('  变得"正确"。任何对象要进 Verified/，仍然必须满足 m 票布尔一致（见【五】）。院士自己')
-      L.push('  的一票与别人**等重**。')
+      if (acadId || kind === 'academician') {
+        L.push('  【重要】分派**不改变求真规则**：院士分派任务、设定优先级，但**不能**因此让任何结论')
+        L.push('  变得"正确"。任何对象要进 Verified/，仍然必须满足 m 票布尔一致（见【五】）。院士自己')
+        L.push('  的一票与别人**等重**。')
+      } else {
+        L.push('  【重要】组织工作**不改变求真规则**：谁开任务、谁定优先级，都**不能**因此让任何结论')
+        L.push('  变得"正确"。任何对象要进 Verified/，仍然必须满足 m 票布尔一致（见【五】）。任何人的')
+        L.push('  一票都与别人**等重**。')
+      }
       L.push('')
       // ── 五、voting ──────────────────────────────────────────────────────
       L.push('【五、表决与定论（求真门槛）】')
       if (kind === 'temp') {
-        L.push('  · 本所结论由有表决权者（院士与常驻研究员）按 m 票布尔一致决定。**你没有表决权**，')
+        L.push('  · 本所结论由有表决权者（' + (acadId ? '院士与' : '') + '常驻研究员）按 m 票布尔一致决定。**你没有表决权**，')
         L.push('    但你的判断很重要——请把你的意见和理由清楚地告诉雇主或在群聊里说出来，供他们')
         L.push('    参考。若你认为某个结论该被验证，可以提议。')
       } else {
         L.push('  · 任何命题 / 论断 / 方法 / 子问题的结论，要进入 Verified/，必须满足：')
-        L.push('      (a) 至少有 m = ' + m + ' 名有表决权者（院士 + 常驻研究员）投出**布尔概率值**；')
+        L.push('      (a) 至少有 m = ' + m + ' 名有表决权者（' + (acadId ? '院士 + ' : '') + '常驻研究员）投出**布尔概率值**；')
         L.push('      (b) 这些票**全部**是 1（绝对为真）或**全部**是 0（绝对为假）；')
         L.push('      (c) 若同时出现 1 和 0（分歧），或投布尔票者不足 m 人 → 不能定论。')
+        L.push('  · m 随在册有表决权者人数变化（m = min(所办设定的上限, 人数)）；本规章里的 m 是')
+        L.push('    **你入职时的值**，请始终以每轮状态块里的 m 为准。')
         L.push('  · 你的票是一个 [0,1] 的数值概率：1 = 你认为绝对为真；0 = 你认为绝对为假；')
         L.push('    介于 0 与 1 之间表示你不确定——这会被记为"弃权/存疑"，**不计入**上述 m 票，')
         L.push('    但会连同你的理由一起进入辩论录，并参与"全组平均概率"的计算。')
@@ -756,7 +826,7 @@ export function apply(ctx) {
       // ── 七、hire / fire ─────────────────────────────────────────────────
       L.push('【七、雇佣与解雇】')
       if (kind === 'temp') {
-        L.push('  · 你可以建议雇主雇佣或解雇他人，但雇佣/解雇的决定权在雇主与院士。')
+        L.push('  · 你可以建议雇主雇佣或解雇他人，但雇佣/解雇的决定权在雇主' + (acadId ? '与院士' : '') + '。')
       } else {
         L.push('  · 你可以自主雇佣临时工：当你需要某个具体任务的帮助时，用 vibe_v5_hire 申请，')
         L.push('    说明用途与初始任务。框架会代为创建，成功后你会拿到它的代号，之后你可以直接')
@@ -764,10 +834,12 @@ export function apply(ctx) {
         L.push('  · 你也可以自主解雇**你雇的**临时工：用 vibe_v5_fire 说明理由即可。解雇后它的')
         L.push('    当前工作会被停止，未完成任务会被收回，它将不再是本所成员，也不再收到任何消息。')
         L.push('    它的档案会留在所史里（代号永不复用）。')
-        L.push('  · 解雇别人雇的临时工，或增聘/解聘常驻研究员，只能向全所提议，由院士/所办决定。')
+        L.push('  · 解雇别人雇的临时工，或增聘/解聘常驻研究员，只能向全所提议，由' + (acadId ? '院士/' : '') + '所办决定。')
         L.push('  · 请节约用人：临时工是有成本的。任务完成、且你不再需要它时，请主动解雇。')
-        L.push('  · **院士统筹全所的用人**：它可以决定把临时工调配到哪个方向，也可以解雇任何临时工；')
-        L.push('    若它把你的临时工调走了，请配合——全所效率优先于个人便利。')
+        if (acadId) {
+          L.push('  · **院士统筹全所的用人**：它可以决定把临时工调配到哪个方向，也可以解雇任何临时工；')
+          L.push('    若它把你的临时工调走了，请配合——全所效率优先于个人便利。')
+        }
       }
       L.push('')
       // ── 八、task board ──────────────────────────────────────────────────
@@ -776,10 +848,17 @@ export function apply(ctx) {
       L.push('  · 任务只有在它的**全部依赖都已完成**之后才能被认领。')
       L.push('  · 认领即拥有；完成后标记完成，或释放回板上，或重新打开。')
       L.push('  · 每次修改都基于版本号比较交换：拿着过期副本去改会被拒绝，所以改之前先读最新版。')
-      L.push('  · **院士可以直接分派任务**（vibe_v5_assign）：它可以把任务指派给指定成员（含临时工），')
-      L.push('    并说明理由与验收标准。被分派者默认应当执行，但有权先说明理由再决定。')
-      L.push('  · **优先级由院士牵头决定**：院士可以调整任务的优先级；你若认为安排有误，说出来。')
-      L.push('  · 除院士的分派之外，任务是**协调工具**而非派活指令：认领与否、做什么，主要靠你们自己。')
+      if (acadId) {
+        L.push('  · **院士可以直接分派任务**（vibe_v5_assign）：它可以把任务指派给指定成员（含临时工），')
+        L.push('    并说明理由与验收标准。被分派者默认应当执行，但有权先说明理由再决定。')
+        L.push('  · **优先级由院士牵头决定**：院士可以调整任务的优先级；你若认为安排有误，说出来。')
+        L.push('  · 除院士的分派之外，任务是**协调工具**而非派活指令：认领与否、做什么，主要靠你们自己。')
+      } else {
+        L.push('  · 任务是**协调工具**而非派活指令：本所没有院士，认领与否、做什么，靠你们自己协商')
+        L.push('    决定；所办也可以直接分派任务（vibe_v5_assign）。被分派者默认应当执行，但有权先')
+        L.push('    说明理由再决定。')
+        L.push('  · **优先级由集体协商决定**；所办可以协助调整。')
+      }
       L.push('')
       // ── 九、context ─────────────────────────────────────────────────────
       L.push('【九、上下文与纪律】')
@@ -799,12 +878,26 @@ export function apply(ctx) {
 
     // A minimal per-round status block: everything VOLATILE lives here rather than in
     // the immutable persona (roster, current m, pending chat, this round's ask).
+    //
+    // `member` is the member this block DESCRIBES and MUST be the one the prompt is
+    // addressed to. It is a required parameter on purpose: this block used to read a
+    // mutable "currentMember" global, and because the founding path assigned that global
+    // only AFTER the subagent had already been started, every member's induction brief
+    // named the PREVIOUSLY founded member (the academician was told it was "?"). The
+    // model's whole self-model, its library path and its vote were therefore wrong.
     function briefBlock(member) {
+      if (!member || typeof member.id !== 'string' || !member.id) {
+        throw v5err('V5_INTERNAL', 'briefBlock: a member is required (a status block must never be built for an unknown identity)')
+      }
       const ms = activeMembers()
       const b = []
       b.push('[状态] 你是 ' + member.id + '（' + kindLabel(member.kind) + '）｜轮次 ' + (rounds.get(member.id) || 0) +
         '｜法定票数 m=' + quorumM() + '｜有表决权者 ' + voterCount() + ' 人')
-      b.push('[在册] ' + ms.map((x) => x.id + (x.phase === 'active' ? '' : '(' + x.phase + ')')).join('、'))
+      b.push('[在册] ' + (ms.length ? ms.map((x) => x.id).join('、') : '（无）'))
+      // Members that are on the books but NOT on the floor. Silently omitting them made a
+      // failed provision invisible to the whole institute.
+      const absent = inst().members.filter((m) => m.phase !== 'active' && m.phase !== 'dismissed')
+      if (absent.length) b.push('[未就位] ' + absent.map((m) => m.id + '（' + m.phase + '）').join('、'))
       const tasks = inst().tasks.filter((t) => t.status !== 'deleted')
       const mine = tasks.filter((t) => t.ownerId === member.id && t.status === 'in_progress')
       const ready = tasks.filter((t) => t.status === 'pending' && taskReady(t))
@@ -939,6 +1032,17 @@ export function apply(ctx) {
       scheduleNext().catch(() => {})
       return { ok: true, delivered: targets.length, to: targets.map((t) => t.id).join(',') }
     }
+    // A framework NOTICE to one member. This must NOT be sent as the member itself:
+    // `say()` refuses a self-addressed message (V5_SELF_MESSAGE), so the previous
+    // `say(member.id, {to: member.id, …})` calls returned an error object that nobody
+    // checked and the member never received the feedback ("claim failed", "verdict must
+    // be a number"). The framework is a first-class sender with its own framing.
+    async function notice(memberId, text) {
+      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND' }
+      const m = memberById(memberId)
+      if (!m || m.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + memberId + '" not found' }
+      return await say('framework', { to: memberId, kind: 'notice', text: String(text) })
+    }
     // Pending = durable messages addressed to this member and not yet acknowledged.
     // (Acknowledging is what removes them, so the queue is exactly "queued minus delivered".)
     function pendingFor(memberId) {
@@ -955,10 +1059,16 @@ export function apply(ctx) {
     function frameLine(m) {
       if (m.kind === 'chat') return '【研究所·群聊】' + m.from + '：' + m.text
       if (m.kind === 'dm') return '【研究所·私信 from ' + m.from + '】' + m.text
+      if (m.kind === 'voters') return '【研究所·致全体表决者 from ' + m.from + '】' + m.text
       if (m.kind === 'office') return '【所办通知】' + m.text
       if (m.kind === 'meeting') return '【研究所·会议】' + m.text
       if (m.kind === 'verify') return '【研究所·表决】' + m.text
-      if (m.kind === 'assign') return '【院士分派】' + m.text
+      // An assignment is framed by its TRUE origin: the office can assign too, and
+      // labelling an office assignment "院士分派" told the assignee to answer to
+      // someone who never asked.
+      if (m.kind === 'assign') return (m.from === 'office' ? '【所办分派】' : '【院士分派】') + m.text
+      if (m.kind === 'nudge') return '【督办 from ' + m.from + '】' + m.text
+      if (m.kind === 'notice') return '【框架提示】' + m.text
       return '【研究所·' + m.kind + ' from ' + m.from + '】' + m.text
     }
     // Batch plain chat so a chatty institute cannot cause a wake storm; anything
@@ -1048,39 +1158,75 @@ export function apply(ctx) {
       } catch (e) { /* ignore */ }
       return 'spawn'
     }
-    async function spawnMember(member, initialTask) {
+    // Bring a member into being. ORDER IS LOAD-BEARING and is the fix for the
+    // "every brief describes the wrong person" bug:
+    //   1. commit the member as ACTIVE first, so that everything derived from
+    //      `activeMembers()` — the [状态]/[在册] block, the quorum m, the voter count and
+    //      the charter's induction roster — describes the institute WITH this member in
+    //      it. Committing after the spawn made a joiner's own brief omit itself and
+    //      report m/P from before it joined.
+    //   2. mark it busy, so the scheduler cannot try to wake a half-born member.
+    //   3. build the persona and the founding prompt (both pure, both identity-checked).
+    //   4. create its directories and write the mirrors BEFORE its first turn, so the
+    //      member finds its own Progress/Propos/Methods/Subproblems already in place.
+    //   5. only then start the child.
+    // `mode` is 'founding' for a genuinely new member and 'resume' for one whose child
+    // session is being rebuilt: the latter must NOT be told it "just joined the
+    // institute" and must not be shown the induction blurb.
+    async function spawnMember(member, initialTask, mode) {
       const provider = member.provider || pickProvider()
       const ao = memberAgentOptions()
       const tf = memberToolFilter(member)
-      const persona = memberPersona(member)
-      member.persona = persona
-      const started = await subagents.startContinuable({
-        provider,
-        label: 'vibe5 ' + member.id + ' (' + kindLabel(member.kind) + ')',
-        request: Object.assign({
-          prompt: [textBlock(initialPrompt(member, initialTask))],
-          parent: rootAgent,
-          persona,
-        }, Object.keys(ao).length ? { agentOptions: ao } : {}, tf ? { toolFilter: tf } : {}),
-        signal: makeSignal(params.activityTimeoutMs),
-      })
-      member.childId = started.childId
+      const kind = mode === 'resume' ? 'resume' : 'initial'
       member.phase = 'active'
+      member.childId = ''
+      await putMember(member)
+      busy.add(member.id)
+      wakeKind.set(member.id, kind)
+      currentMember = member.id
+      lastActiveAt.set(member.id, now())
+      rounds.set(member.id, (rounds.get(member.id) || 0) + 1)
+      roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
+      // The charter is FROZEN at hire time (it is the durable "seal" record and it says
+      // "你入职时的在册编制"). Rebuilding it on resume would silently rewrite that
+      // hire-time snapshot into a resume-time one and make the sentence untrue.
+      const persona = member.persona || memberPersona(member)
+      member.persona = persona
+      const prompt = initialPrompt(member, initialTask, mode)
+      await putMember(member)
+      await mkdirs()
+      await writeRosterMirror()
+      let started
+      try {
+        started = await subagents.startContinuable({
+          provider,
+          label: 'vibe5 ' + member.id + ' (' + kindLabel(member.kind) + ')',
+          request: Object.assign({
+            prompt: [textBlock(prompt)],
+            parent: rootAgent,
+            persona,
+          }, Object.keys(ao).length ? { agentOptions: ao } : {}, tf ? { toolFilter: tf } : {}),
+          signal: makeSignal(params.activityTimeoutMs),
+        })
+      } catch (e) {
+        // Roll the in-memory marks back so a failed provisioning leaves no phantom
+        // "busy, round 1" member behind; the member record itself goes to `failed` and
+        // the caller's catch reports it.
+        busy.delete(member.id)
+        wakeKind.delete(member.id)
+        rounds.delete(member.id)
+        roundsSinceCompact.delete(member.id)
+        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: String((e && e.message) || e) }))
+        throw e
+      }
+      member.childId = started.childId
       childOwner.set(started.childId, sessionId)
       // Register the FOUNDING turn as in-flight, exactly like a normal wake does.
       // Without this the child's first `subagent/end` has no token to match, so
       // onMemberEnd would ignore it: the founding round would never be processed and
       // the member would be re-woken with a heartbeat prompt instead of a brainstorm.
       inflight.set(started.childId, shortId())
-      busy.add(member.id)
-      wakeKind.set(member.id, 'initial')
-      currentMember = member.id
-      lastActiveAt.set(member.id, now())
-      rounds.set(member.id, (rounds.get(member.id) || 0) + 1)
-      roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
       await putMember(member)
-      await mkdirs()
-      await writeRosterMirror()
       return member
     }
     // Deliver one prompt to a member. MUST use `subagents.sendMessage` — the
@@ -1140,14 +1286,27 @@ export function apply(ctx) {
         return false
       }
     }
+    // WHICH member (or office) is calling a tool. The answer must be DERIVED, never
+    // guessed: the previous fallback answered "whoever this session woke last" whenever
+    // the caller was not a member child — so the OFFICE (the session root, i.e. the
+    // human/host) was impersonated as a random member. Concretely, the office calling
+    // vibe_v5_assign was resolved to a researcher and refused with V5_NOT_ACADEMICIAN,
+    // and its assignments/nudges would have been signed by the wrong person.
     function memberIdOfAgent(agent) {
       const id = sessionIdOf(agent)
-      if (id === undefined) return memberById(currentMember) ? currentMember : ''
-      const m = byChild(id)
-      if (m) return m.id
-      // The office (root agent) or the host calling a member tool: fall back to the
-      // last-woken member only while it still genuinely exists (v4 §28-T30: a stale
-      // '' fallback used to write stray cards at the library root).
+      if (id !== undefined) {
+        const m = byChild(id)
+        if (m) return m.id
+        // Not one of our member children. If it is a session ROOT it is the office —
+        // 'office' rather than '' so the framing records a real, non-member sender.
+        try { if (rootOf(agent) === agent) return 'office' } catch (e) { /* fall through */ }
+        // An unrelated child agent: report no member. Member-only writes refuse with
+        // V5_MEMBER_NOT_FOUND (that guard is what makes guessing unnecessary), and the
+        // office-capable tools treat '' as the office.
+        return ''
+      }
+      // No session id at all (a synthetic exec context). Only here may we fall back to
+      // the last-woken member, and only while it still genuinely exists.
       const c = currentMember
       return (c && memberById(c)) ? c : ''
     }
@@ -1182,7 +1341,11 @@ export function apply(ctx) {
       }
       L.push('  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},')
       L.push('  "task_claim": "t-3",')
+      L.push('  "task_done": "t-3",')
       L.push('  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},')
+      L.push('  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",')
+      L.push('  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给')
+      L.push('             全体表决者（任务仍会执行，但你的理由不会被埋掉），')
       if (kind !== 'temp') {
         L.push('  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），')
         L.push('  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），')
@@ -1194,21 +1357,33 @@ export function apply(ctx) {
       L.push('}')
       return L.join('\n')
     }
-    function stateBlock() {
-      return briefBlock(memberById(currentMember) || activeMembers()[0] || { id: currentMember || '?', kind: 'researcher' })
+    // Every prompt builder below passes the member it is addressing. There is
+    // deliberately NO fallback to "the last member we happened to touch": guessing the
+    // identity is what produced the wrong-identity briefs in the first place.
+    function stateBlock(member) {
+      return briefBlock(member)
     }
-    function initialPrompt(member, initialTask) {
+    function initialPrompt(member, initialTask, mode) {
       const L = []
-      L.push('【入职首轮 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
+      const resume = mode === 'resume'
+      L.push(resume
+        ? '【会话重建 —— ' + kindLabel(member.kind) + ' ' + member.id + '】'
+        : '【入职首轮 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('')
-      L.push('你刚刚加入本所。请你先**独立**想清楚：面对这个问题，你打算从哪个方向切入？')
-      L.push('给出你的初始见解、思路与可行的方向；如果已有具体想法，可以顺手记进你自己的 '
-        + 'Progress/ 与成果库。')
+      if (resume) {
+        L.push('你的常驻会话已被重建（进程重启或被所办停止后恢复），现在继续工作。')
+        L.push('请**先读回你自己的 Progress/ 与成果库**，确认你在哪、做到哪一步、下一步做什么，')
+        L.push('然后接着推进——不要从头再来，也不要重新做已经做过的事。')
+      } else {
+        L.push('你刚刚加入本所。请你先**独立**想清楚：面对这个问题，你打算从哪个方向切入？')
+        L.push('给出你的初始见解、思路与可行的方向；如果已有具体想法，可以顺手记进你自己的 '
+          + 'Progress/ 与成果库。')
+      }
       L.push('')
-      if (initialTask) { L.push('你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
-      if (member.direction) { L.push('给你的起点方向：' + member.direction); L.push('') }
+      if (initialTask) { L.push(resume ? '恢复说明：' : '你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
+      if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
       L.push('------------')
-      L.push(stateBlock())
+      L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
       return L.join('\n')
@@ -1226,14 +1401,14 @@ export function apply(ctx) {
       }
       L.push('')
       L.push('------------')
-      L.push(stateBlock())
+      L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
       return L.join('\n')
     }
     function checkpointPrompt(member) {
       const L = []
-      L.push('【心跳检查 —— ' + member.id + '】')
+      L.push('【心跳检查 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('')
       L.push('所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：')
       L.push('读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；')
@@ -1241,14 +1416,14 @@ export function apply(ctx) {
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
       L.push('')
       L.push('------------')
-      L.push(stateBlock())
+      L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
       return L.join('\n')
     }
     function meetingPrompt(member, mn) {
       const L = []
-      L.push('【研究所会议 ' + mn.id + ' 进行中 —— ' + member.id + '】')
+      L.push('【研究所会议 ' + mn.id + ' 进行中 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('')
       L.push('议程：' + mn.agenda + '（类型：' + mn.kind + '）')
       L.push('')
@@ -1262,18 +1437,19 @@ export function apply(ctx) {
         L.push('')
       }
       L.push('请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。')
+      L.push('（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）')
       L.push('如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都')
       L.push('一致认为是真时，本所才会停下来。')
       L.push('')
       L.push('------------')
-      L.push(stateBlock())
+      L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
       return L.join('\n')
     }
     function verifyPrompt(member, vs) {
       const L = []
-      L.push('【求真表决 —— ' + member.id + ' 就对象 ' + vs.target + ' 投票】')
+      L.push('【求真表决 —— ' + kindLabel(member.kind) + ' ' + member.id + ' 就对象 ' + vs.target + ' 投票】')
       L.push('')
       L.push('本所正在对下列对象发起共识验证：')
       L.push('  对象：' + vs.target + '（类型：' + kindLabel2(vs.kind) + '）')
@@ -1297,7 +1473,7 @@ export function apply(ctx) {
       L.push('本所宁可留下未定论，也不要一个骗人的结论。')
       L.push('')
       L.push('------------')
-      L.push(stateBlock())
+      L.push(stateBlock(member))
       L.push('------------')
       L.push('结束时请**只**输出一个 JSON 对象（```json 围栏内）：')
       L.push('{"verdict":{"target":"' + vs.target + '","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}')
@@ -1708,10 +1884,12 @@ export function apply(ctx) {
       const withMeta = Object.assign({}, after, { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance })
       await putTask(withMeta)
       await writeTaskboardMirror()
-      await say(isOffice(memberId) ? 'office' : memberId, {
+      const assignerIsOffice = isOffice(memberId)
+      await say(assignerIsOffice ? 'office' : memberId, {
         to, kind: 'assign',
         text: '任务 ' + taskId + '「' + withMeta.subject + '」分派给你。理由：' + why + '｜验收标准：' + acceptance +
-          '。默认应当执行；若你认为方向有误，请说明理由（会被广播给院士与全所）。',
+          '。默认应当执行；若你认为方向有误，请说明理由（会被广播给全所）。' +
+          '若你有异议，请在 JSON 里填 reject_assign。',
       })
       await wakeIfIdle(target)
       return { ok: true, task: taskView(withMeta) }
@@ -1773,8 +1951,12 @@ export function apply(ctx) {
       lines.push('')
       lines.push('| 代号 | 职位 | 状态 | 雇主 | 方向/用途 | 轮次 | 上下文% |')
       lines.push('|---|---|---|---|---|---|---|')
-      if (!s.members.length) lines.push('| （暂无成员） | | | | | | |')
-      for (const m of s.members) {
+      // Dismissed members belong ONLY in the 已除名 section below. Listing them here too
+      // showed the same person twice and made the roster look like they were still on
+      // staff.
+      const onBooks = s.members.filter((m) => m.phase !== 'dismissed')
+      if (!onBooks.length) lines.push('| （暂无成员） | | | | | | |')
+      for (const m of onBooks) {
         lines.push('| ' + m.id + ' | ' + kindLabel(m.kind) + ' | ' + m.phase + ' | ' + (m.hiredBy || '—') + ' | ' +
           String(m.direction || '—').replace(/\|/g, '/').slice(0, 80) + ' | ' + (rounds.get(m.id) || 0) + ' | ' +
           (contextPct.get(m.id) || 0) + ' |')
@@ -2149,7 +2331,7 @@ export function apply(ctx) {
       if (member.kind === 'temp') {
         // Temp workers have no vote — but their judgement still matters, so it is
         // relayed to the group instead of being silently dropped.
-        await say(memberId, { to: 'voters', kind: 'dm', text: '（临时工 ' + memberId + ' 的参考意见，无表决权）对 ' + target + '：' + String(reason || '') })
+        await say(memberId, { to: 'voters', kind: 'voters', text: '（临时工 ' + memberId + ' 的参考意见，无表决权）对 ' + target + '：' + String(reason || '') })
         return { ok: false, code: 'V5_NOT_VOTER', message: '临时工没有表决权；你的意见已转达给表决者' }
       }
       const vs = currentVerify()
@@ -2203,8 +2385,12 @@ export function apply(ctx) {
       if (!office && !(academician && params.academicianLeads)) {
         // Everyone else may only PROPOSE; the request is relayed to the academician
         // and the office instead of silently doing nothing.
-        if (currentMember) {
-          await say(currentMember, { to: 'voters', kind: 'dm', text: '提议开会：「' + agenda + '」（' + kind + '）' })
+        //
+        // The relay must carry the TRUE proposer. It used to be sent as `currentMember`
+        // — "whoever this session last woke" — so a proposal by r-1 arrived signed by
+        // r-2 and the voters replied to the wrong person.
+        if (callerId) {
+          await say(callerId, { to: 'voters', kind: 'voters', text: '提议开会：「' + agenda + '」（' + kind + '）' })
         }
         return { ok: true, proposed: true, message: '已向院士/所办提议开会（只有院士或所办可以直接召开）' }
       }
@@ -2494,23 +2680,35 @@ export function apply(ctx) {
       const target = memberById(to)
       if (!target || target.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + to + '" not found' }
       const why = String(args.why || '').trim()
-      await say(isOffice(callerId) ? 'office' : callerId, {
-        to, kind: 'assign',
-        text: '院士督办：' + (why || '(未说明)') + (args.next_step ? '｜建议的下一步：' + String(args.next_step) : ''),
+      // A nudge is SUPERVISION, not an assignment, and it must name its true origin:
+      // an office nudge previously arrived labelled "院士督办" under the 【院士分派】
+      // prefix, so the member was told the academician had spoken when it had not.
+      const office = isOffice(callerId)
+      await say(office ? 'office' : callerId, {
+        to, kind: 'nudge',
+        text: (office ? '所办督办' : '院士督办') + '：' + (why || '(未说明)') +
+          (args.next_step ? '｜建议的下一步：' + String(args.next_step) : ''),
       })
       await wakeIfIdle(target)
       return { ok: true, nudged: to }
     }
 
     // ---- inbox-aware waking -------------------------------------------------
-    async function promptFor(member, base) {
+    // The mailbox is drained BEFORE the round prompt is built, and the round prompt is
+    // therefore passed as a THUNK. Order matters: `promptFor` used to receive an already
+    // built prompt (which had already embedded the pending mail through
+    // briefBlock's [新到的消息/通知]) and then prepended the same messages again, so a
+    // member read every newly delivered message TWICE in one prompt — once in the
+    // prepended inbox block and once inside its own [状态] block.
+    async function promptFor(member, baseFn) {
       const pending = pendingFor(member.id)
       const inbox = pending.length ? composeInbox(pending) : ''
       if (pending.length) await ackPending(pending)
+      const base = typeof baseFn === 'function' ? baseFn() : baseFn
       return (inbox ? inbox + '\n\n' : '') + base
     }
-    async function wakeWithInbox(member, base, kind) {
-      return await wakeMember(member, await promptFor(member, base), kind)
+    async function wakeWithInbox(member, baseFn, kind) {
+      return await wakeMember(member, await promptFor(member, baseFn), kind)
     }
 
     // ---- scheduling / graded keep-alive (ported and upgraded from v4 §25) ---
@@ -2567,15 +2765,23 @@ export function apply(ctx) {
         return
       }
       const budget = Math.max(1, Math.floor(Number(params.maxParallel) || 3))
+      const idleMs = posMs(params.activityTimeoutMs, 120000)
       let filled = 0
-      // (a) members with work they already own or were assigned
+      // (a) members with work they already own or were assigned.
+      // PACED by the same idle window the heartbeat uses. Without the gate this branch
+      // re-woke a task owner the instant its turn ended — and because every reply drives
+      // another scheduling pass, a single unfinished task turned into an unbounded
+      // wake -> turn -> wake chain that no parameter could slow down and that no pause
+      // could interrupt between turns. New traffic still gets through immediately: the
+      // addressed-mail branch below is not paced.
       const tasks = inst().tasks
       for (const t of tasks) {
         if (filled >= budget) break
         if (t.status !== 'in_progress' || !t.ownerId) continue
         const m = memberById(t.ownerId)
         if (!m || m.phase !== 'active' || busy.has(m.id)) continue
-        const ok = await wakeWithInbox(m, normalPrompt(m), 'normal')
+        if ((now() - (lastActiveAt.get(m.id) || 0)) < idleMs) continue
+        const ok = await wakeWithInbox(m, () => normalPrompt(m), 'normal')
         if (ok) filled += 1
         else armHeartbeat()
       }
@@ -2586,7 +2792,7 @@ export function apply(ctx) {
         if (filled >= budget) break
         const d = deliveryDecision(m.id)
         if (!d.deliver || !d.urgent) continue
-        const ok = await wakeWithInbox(m, normalPrompt(m), 'normal')
+        const ok = await wakeWithInbox(m, () => normalPrompt(m), 'normal')
         if (ok) filled += 1
         else armHeartbeat()
       }
@@ -2596,7 +2802,7 @@ export function apply(ctx) {
       if (chatDue.length) {
         for (const m of chatDue) {
           if (filled >= budget) break
-          const ok = await wakeWithInbox(m, normalPrompt(m), 'normal')
+          const ok = await wakeWithInbox(m, () => normalPrompt(m), 'normal')
           if (ok) filled += 1
         }
         if (filled) { armHeartbeat(); return }
@@ -2612,13 +2818,18 @@ export function apply(ctx) {
         return
       }
       // (e) heartbeat: push the longest-idle member to make progress rather than just
-      // asking "are we done" (v4's original heartbeat invited stagnation).
-      const idleMs = posMs(params.activityTimeoutMs, 120000)
+      // asking "are we done" (v4's original heartbeat invited stagnation). A member that
+      // owns in-progress work gets a WORK round (its task block in [状态] tells it what
+      // it owes); an otherwise idle member gets the heartbeat that asks it to advance the
+      // problem by itself.
       if (busy.size < budget && idle.length) {
         const candidates = idle.slice().sort((a, b) => (lastActiveAt.get(a.id) || 0) - (lastActiveAt.get(b.id) || 0))
         const pick = candidates[0]
         if (pick && (now() - (lastActiveAt.get(pick.id) || 0)) >= idleMs) {
-          const ok = await wakeWithInbox(pick, checkpointPrompt(pick), 'checkpoint')
+          const owns = inst().tasks.some((t) => t.ownerId === pick.id && t.status === 'in_progress')
+          const ok = await wakeWithInbox(pick,
+            () => (owns ? normalPrompt(pick) : checkpointPrompt(pick)),
+            owns ? 'normal' : 'checkpoint')
           // ALWAYS re-arm after a wake, even on success. A wake whose turn never ends
           // (a host that drops the delivery, a child that vanished) would otherwise
           // leave nothing to schedule the next pass and the institute would freeze
@@ -2682,7 +2893,10 @@ export function apply(ctx) {
       if (typeof speech === 'string' && speech.trim()) await say(member.id, { to: 'all', text: speech, kind: 'chat' })
       else if (speech && typeof speech === 'object' && speech.text) {
         const to = String(speech.to || 'all')
-        await say(member.id, { to, text: String(speech.text), kind: to === 'all' ? 'chat' : 'dm' })
+        // A "to: voters" broadcast is not a private message: framing it 私信 told the
+        // voters they had been singled out when the whole voting body was addressed.
+        const kind = to === 'all' ? 'chat' : to === 'voters' ? 'voters' : 'dm'
+        await say(member.id, { to, text: String(speech.text), kind })
       }
       // (2) progress log
       if (typeof p.progress === 'string' && p.progress.trim()) await publishProgress(member.id, p.progress)
@@ -2699,28 +2913,48 @@ export function apply(ctx) {
       if (p.task_create && typeof p.task_create === 'object') await taskCreate(member.id, p.task_create)
       if (p.task_claim) {
         const t = inst().tasks.find((x) => x.id === String(p.task_claim))
-        if (t) await taskUpdate(member.id, { task_id: t.id, expected_revision: t.revision, action: 'claim' })
-        else await say(member.id, { to: member.id, kind: 'dm', text: '（框架）认领失败：没有任务 ' + String(p.task_claim) })
+        if (t) {
+          const r = await taskUpdate(member.id, { task_id: t.id, expected_revision: t.revision, action: 'claim' })
+          // Report a REFUSED claim back to the claimer: silently doing nothing left the
+          // member believing it owned a task it does not own (and the notice used to be
+          // dropped as a self-message).
+          if (r && r.ok === false) await notice(member.id, '认领 ' + t.id + ' 失败（' + (r.code || '') + '）：' + (r.message || ''))
+        } else await notice(member.id, '认领失败：没有任务 ' + String(p.task_claim))
       }
-      if (p.task_update && typeof p.task_update === 'object') await taskUpdate(member.id, p.task_update)
+      if (p.task_update && typeof p.task_update === 'object') {
+        const r = await taskUpdate(member.id, p.task_update)
+        if (r && r.ok === false) await notice(member.id, 'task_update 未生效（' + (r.code || '') + '）：' + (r.message || ''))
+      }
       if (p.task_done) {
         const t = inst().tasks.find((x) => x.id === String(p.task_done))
-        if (t) await taskUpdate(member.id, { task_id: t.id, expected_revision: t.revision, action: 'complete' })
+        if (t) {
+          const r = await taskUpdate(member.id, { task_id: t.id, expected_revision: t.revision, action: 'complete' })
+          if (r && r.ok === false) await notice(member.id, '完成任务 ' + t.id + ' 失败（' + (r.code || '') + '）：' + (r.message || ''))
+        } else await notice(member.id, '标记完成失败：没有任务 ' + String(p.task_done))
       }
       // (5) verification
       if (p.propose_verify) {
         const pv = typeof p.propose_verify === 'string' ? { target: p.propose_verify } : p.propose_verify
-        if (pv && pv.target) await maybeQueueVerify(pv.target, pv.kind, member.id, pv.reason)
+        if (pv && pv.target) {
+          const r = await maybeQueueVerify(pv.target, pv.kind, member.id, pv.reason)
+          if (r && r.ok === false) await notice(member.id, '提议验证 ' + String(pv.target) + ' 未受理（' + (r.code || '') + '）：' + (r.message || ''))
+        }
       }
       if (p.verdict && typeof p.verdict === 'object') {
         const n = normVerdictNumber(p.verdict.verdict)
-        if (n === undefined) await say(member.id, { to: member.id, kind: 'dm', text: '（框架）verdict 必须是 0-1 的数值' })
-        else await castVerdict(member.id, String(p.verdict.target || ''), n, p.verdict.reason)
+        if (n === undefined) await notice(member.id, 'verdict 必须是 0-1 的数值；本轮的票未被记录。')
+        else {
+          const r = await castVerdict(member.id, String(p.verdict.target || ''), n, p.verdict.reason)
+          if (r && r.ok === false) await notice(member.id, '本轮的票未被记录（' + (r.code || '') + '）：' + (r.message || ''))
+        }
       }
       // (6) meetings
       if (p.propose_meeting) {
         const pm = typeof p.propose_meeting === 'string' ? { agenda: p.propose_meeting } : p.propose_meeting
-        if (pm && pm.agenda) await startMeeting(member.id, pm)
+        if (pm && pm.agenda) {
+          const r = await startMeeting(member.id, pm)
+          if (r && r.ok === false) await notice(member.id, '提议开会未受理（' + (r.code || '') + '）：' + (r.message || ''))
+        }
       }
       if (p.convene_meeting && typeof p.convene_meeting === 'object' && isAcademician(member.id) && params.academicianLeads) {
         await startMeeting(member.id, p.convene_meeting)
@@ -2736,9 +2970,9 @@ export function apply(ctx) {
       if (p.reject_assign && typeof p.reject_assign === 'object' && params.memberMayRejectAssign) {
         const ra = p.reject_assign
         await say(member.id, {
-          to: 'voters', kind: 'dm',
+          to: 'voters', kind: 'voters',
           text: '【反对分派】我对任务 ' + String(ra.task_id || '(未指明)') + ' 有异议：' + String(ra.why || '(未说明理由)') +
-            '。任务仍会执行，但请院士与全所知悉我的理由。',
+            '。任务仍会执行，但请' + (academicianId() ? '院士与全所' : '全所') + '知悉我的理由。',
         })
       }
       // (10) solve votes / personal judgement
@@ -2990,8 +3224,11 @@ export function apply(ctx) {
         '从已知的相近结论出发，看能否推广或加强得到所需结果。',
       ]
       const spawned = []
-      // The academician is founded FIRST so that its charter/roster is accurate and so
-      // it can begin overseeing the founding round.
+      // The academician is founded FIRST so it is on the roster for every later member's
+      // induction brief, and so it can begin overseeing the founding round. Each member
+      // is committed to the ACTIVE roster before its own brief is built (see
+      // spawnMember), so every founding brief describes a roster that includes its
+      // reader.
       if (params.academician) {
         const m = await newMember('academician', { direction: '统领全所：统筹全局、拆解并分派工作、设定优先级、督导进度。' })
         try {
@@ -3059,8 +3296,7 @@ export function apply(ctx) {
         if (m.childId) continue
         try {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
-          await spawnMember(m, '你的会话已重建。请先读回你自己的 Progress/ 摘要（如下），恢复工作状态，然后继续推进：\n\n'
-            + (seedText ? seedText.slice(-4000) : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）'))
+          await spawnMember(m, seedText ? seedText.slice(-4000) : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）', 'resume')
           respawned += 1
         } catch (e) {
           await putMember(Object.assign({}, m, { phase: 'failed', error: String((e && e.message) || e) }))
@@ -3199,7 +3435,7 @@ export function apply(ctx) {
     // structure, so members may only propose it; the office decides and executes.
     async function addResearcher(callerId, direction) {
       if (!isOffice(callerId)) {
-        await say(callerId, { to: 'voters', kind: 'dm', text: '提议增聘一名常驻研究员（方向：' + String(direction || '未指定') + '）' })
+        await say(callerId, { to: 'voters', kind: 'voters', text: '提议增聘一名常驻研究员（方向：' + String(direction || '未指定') + '）' })
         return { ok: true, proposed: true, message: '已向所办提议增聘常驻研究员（编制变更需所办批准）' }
       }
       if (!running || autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute is not running' }
@@ -3315,7 +3551,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
     const from = s.memberIdOfAgent(x)
     if (!from) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
-    return s.say(from, { to: a.to || 'all', text: a.text, kind: a.to ? 'dm' : 'chat' })
+    const to = a.to || 'all'
+    return s.say(from, { to, text: a.text, kind: to === 'voters' ? 'voters' : (a.to ? 'dm' : 'chat') })
   })
   registerTool('vibe_v5_wait', '(member) Wait for the next institute change (roster/task/mail/status) WITHOUT polling. Returns immediately with noProgress when nobody else is running or provisioning. timeout_ms: 10000-3600000 (default 30000).', objParams({ timeout_ms: I, reason: S }), async (s, a, x) => {
     const me = s.memberIdOfAgent(x)
