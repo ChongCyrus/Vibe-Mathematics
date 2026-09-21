@@ -157,6 +157,54 @@ if (evBlock) {
   notes.push('event types declared: ' + keys.length)
 }
 
+// ---- 6. composition sanity --------------------------------------------
+// The v5 preset is a composition, and a typo in a row `name` is a mounting failure that
+// no unit test of the plugin can catch (the mock calls apply() directly and never goes
+// through the loader). v4 is a proven-good composition mounted on the same hosts, so any
+// package row v5 names that v4 does not is either a genuine new dependency or a typo —
+// and a new dependency must be justified, so surface it for review.
+function packageRows(yaml) {
+  const rows = []
+  const lines = yaml.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const idm = /^\s*-\s*id:\s*(\S+)\s*$/.exec(lines[i])
+    if (!idm) continue
+    const row = { id: idm[1], name: '', disabled: false, line: i + 1 }
+    for (let j = i + 1; j < lines.length && j < i + 12; j++) {
+      if (/^\s*-\s*id:\s*\S+\s*$/.test(lines[j])) break
+      const nm = /^\s*name:\s*'?([^'\n]+?)'?\s*$/.exec(lines[j])
+      if (nm && !row.name) row.name = nm[1].trim()
+      if (/^\s*disabled:\s*true/.test(lines[j])) row.disabled = true
+    }
+    if (row.name) rows.push(row)
+  }
+  return rows
+}
+const v5yaml = readFileSync(new URL('./vibe-math-v5/agent.cordis.yml', import.meta.url), 'utf8')
+const v4yaml = readFileSync(new URL('./vibe-math-v4/agent.cordis.yml', import.meta.url), 'utf8')
+const v5rows = packageRows(v5yaml)
+const v4names = new Set(packageRows(v4yaml).map(r => r.name))
+const RELATIVE_OK = new Set(['./vibe-math-v5.js'])
+if (!v5rows.length) findings.push('composition: no rows parsed out of agent.cordis.yml (is the file still YAML?)')
+for (const r of v5rows) {
+  if (r.name === 'cordis:group') continue
+  if (r.name.startsWith('./')) {
+    if (!RELATIVE_OK.has(r.name)) findings.push('composition line ' + r.line + ': relative row name "' + r.name + '" has no matching file in the preset directory')
+    continue
+  }
+  if (!v4names.has(r.name)) findings.push('composition line ' + r.line + ': row "' + r.id + '" names "' + r.name + '", which v4 does not — verify the package/name is correct')
+}
+// the preset must reference its own plugin row, and that file must exist
+if (!v5rows.some(r => r.name === './vibe-math-v5.js')) findings.push('composition: the preset never mounts ./vibe-math-v5.js')
+// prefix AND text are required on the persona row for the DSH schema and for back-compat
+const personaBlock = /- id:\s*persona[\s\S]*?(?=\n-\s*id:)/.exec(v5yaml)
+if (!personaBlock) findings.push('composition: no persona row found')
+else {
+  if (!/^\s*prefix:\s*\|/m.test(personaBlock[0])) findings.push('composition: persona row lacks the required `prefix` key')
+  if (!/^\s*text:\s*\|/m.test(personaBlock[0])) findings.push('composition: persona row lacks the legacy `text` key')
+}
+notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5rows.filter(r => r.name !== 'cordis:group' && !r.name.startsWith('./') && !v4names.has(r.name)).length)
+
 // ---- report ------------------------------------------------------------
 console.log('-- V5 integrity audit --')
 for (const n of notes) console.log('  note: ' + n)
