@@ -294,7 +294,10 @@ export function apply(ctx) {
       },
     }
   }
-  function makeFileBackend(readTextAbs, writeTextAbs, statePath) {
+  // `pathOf` is a FUNCTION, not a captured string: the state path depends on the
+  // project/institute, which the first successful load syncs back into this session —
+  // a captured path would keep writing to the pre-load guess forever.
+  function makeFileBackend(readTextAbs, writeTextAbs, pathOf) {
     let mem = initState()
     let chain = Promise.resolve(true)
     let loaded = false
@@ -304,7 +307,7 @@ export function apply(ctx) {
         if (loaded) return mem
         loaded = true
         try {
-          const raw = await readTextAbs(statePath)
+          const raw = await readTextAbs(pathOf())
           if (raw) {
             const parsed = JSON.parse(raw)
             if (parsed && parsed.v === PROJECTION_VERSION) mem = parsed
@@ -320,7 +323,7 @@ export function apply(ctx) {
         // late writer always lands the FULL newest state and can never overwrite with
         // a stale subset (v4 §27 writeJson defect).
         chain = chain.then(async () => {
-          try { await writeTextAbs(statePath, JSON.stringify(snapshot, null, 2)) } catch (e) { /* best effort */ }
+          try { await writeTextAbs(pathOf(), JSON.stringify(snapshot, null, 2)) } catch (e) { /* best effort */ }
           return true
         })
         return mem
@@ -418,6 +421,7 @@ export function apply(ctx) {
     let digestTimer = null
     let lastProgressAt = now()
     let persistedEpoch = ''
+    const dbg = { passes: 0, schedEnter: 0, schedSkip: 0, arm: 0, begin: 0 }
 
     // ---- persistence ------------------------------------------------------
     let backend = null
@@ -456,8 +460,17 @@ export function apply(ctx) {
       const sess = (rootAgent && rootAgent.session) ? rootAgent.session : undefined
       if (proj && sess && typeof proj.stateOf === 'function') backend = makeProjectionBackend(proj, sess)
       else if (proj && sess && typeof proj.register === 'function') backend = makeProjectionBackend(proj, sess)
-      else backend = makeFileBackend(readTextAbs, writeTextAbs, vibeRoot() + '/State/' + instituteName + '.v5state.json')
+      else backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
       return backend
+    }
+    // Every entry point that READS state must await this first. Without it the file
+    // backend's `mem` is still the empty initial state, so a fresh process would report
+    // an empty roster and `resume` would refuse with "no active member to resume" —
+    // i.e. the fallback would silently lose the whole institute across a restart.
+    async function ready() {
+      if (!backend) installBackend()
+      if (backend.kind === 'file' && typeof backend.load === 'function') await backend.load()
+      return true
     }
     function state() {
       if (!backend) installBackend()
@@ -920,6 +933,10 @@ export function apply(ctx) {
       counters.message = n
       await putCounters(counters)
       notifyActivity()
+      // Kick one scheduling pass so an ADDRESSED message (dm/office/assign) wakes its
+      // recipient promptly instead of waiting for the digest window. Plain chat stays
+      // batched because deliveryDecision gates it — the kick only starts the pass.
+      scheduleNext().catch(() => {})
       return { ok: true, delivered: targets.length, to: targets.map((t) => t.id).join(',') }
     }
     // Pending = durable messages addressed to this member and not yet acknowledged.
@@ -1090,7 +1107,13 @@ export function apply(ctx) {
       //   (b) a REAL /compact just ran => the rules may be blurred, so re-anchor the
       //       short core rules once on the next wake of ANY kind and clear the flag.
       let prompt = promptText
-      if ((kind || 'normal') === 'normal') {
+      // Inject the soft-compact directive on every MEMBER RESEARCH round — 'normal'
+      // and 'checkpoint' alike. A member that only ever receives heartbeat checkpoints
+      // would otherwise sit at 100% context forever and never compact. meeting/verify
+      // are excluded because their replies are a different shape, and a directive there
+      // could never be acknowledged.
+      const wake = kind || 'normal'
+      if (wake === 'normal' || wake === 'checkpoint') {
         const soft = (contextPct.get(member.id) || 0) >= Number(params.compactThreshold) ||
           (roundsSinceCompact.get(member.id) || 0) >= Number(params.compactAfterRounds)
         if (soft) {
@@ -1899,13 +1922,15 @@ export function apply(ctx) {
       q.push({ target: t, kind: kind || guessTargetKind(t), proposer: isOffice(proposer) ? 'office' : proposer, reason: String(reason || ''), at: now() })
       await putQueue(q)
       notifyActivity()
-      // A PROPOSAL must actually cause something to happen. Without this kick the
-      // object would sit in the queue until some unrelated event drove a scheduling
-      // pass (and would never start at all if the proposer was the office).
-      await scheduleNext()
-      return { ok: true, queued: t, pendingVerifyCount: q.length }
+      // Start it NOW rather than hoping a scheduling pass reaches it. A pass may already
+      // be in flight and PAST its arming point, in which case a bare `scheduleNext()`
+      // only sets the trampoline flag and the proposal waits for the next iteration.
+      await armNextVerify()
+      if (!hasVerifyInFlight()) await scheduleNext()
+      return { ok: true, queued: t, pendingVerifyCount: q.length, started: hasVerifyInFlight() }
     }
     async function beginVerify(proposal) {
+      dbg.begin += 1
       const target = proposal.target
       const resolved = await resolveTargetStatement(target, proposal.proposer)
       const vs = {
@@ -2044,17 +2069,28 @@ export function apply(ctx) {
       await armNextVerify()
       await scheduleNext()
     }
+    let beginLock = false
     async function armNextVerify() {
+      dbg.arm += 1
+      // Only one begin may be in flight. Without this, two callers (a scheduling pass
+      // and a fresh proposal) could both pass the `currentVerify()` check before either
+      // has published its verdict record and would start the SAME object twice.
+      if (beginLock) return
       if (currentVerify()) return
-      const q = inst().queue.slice()
-      while (q.length) {
-        const p = q.shift()
-        await putQueue(q)
-        const recent = verifiedRecently.get(p.target)
-        if (recent !== undefined && (now() - recent) < recoverStallMs()) continue
-        const vs = await beginVerify(p)
-        await askVoters(vs)
-        return
+      beginLock = true
+      try {
+        const q = inst().queue.slice()
+        while (q.length) {
+          const p = q.shift()
+          await putQueue(q)
+          const recent = verifiedRecently.get(p.target)
+          if (recent !== undefined && (now() - recent) < recoverStallMs()) continue
+          const vs = await beginVerify(p)
+          await askVoters(vs)
+          return
+        }
+      } finally {
+        beginLock = false
       }
     }
     async function writeDebateDoc(vs, done, val) {
@@ -2241,7 +2277,9 @@ export function apply(ctx) {
       // Same reentrancy guard as verification: two concurrent end handlers can both see
       // the last speaker arrive and would otherwise finalize the meeting twice
       // (duplicate transcript tail, duplicate task/verify fan-out, duplicate solve vote).
-      if (finalizeLock) return
+      // Re-arm on the way out: a pass that bails here does no work of its own, so
+      // without a heartbeat nothing would retry it once the lock clears.
+      if (finalizeLock) { armHeartbeat(); return }
       const stale = now() - Number(meeting.lastInputAt || meeting.startedAt || now())
       if (stale >= recoverStallMs()) {
         const abandoned = meeting
@@ -2321,11 +2359,16 @@ export function apply(ctx) {
       await finishRun('全体有表决权者一致认为原问题已解决')
       return true
     }
-    function recordSolveVote(memberId, val) {
+    async function recordSolveVote(memberId, val) {
       const m = memberById(memberId)
       if (!m) return
       if (m.kind === 'temp') return   // no vote
       solveVotes.set(memberId, val === true)
+      // Evaluate the stop condition on EVERY solve vote, not only when a meeting
+      // finalizes. A vote that lands after the meeting closed — a late reply, or an
+      // ordinary round carrying vote_solved — would otherwise be recorded and never
+      // read, leaving a unanimously-concluded institute running forever.
+      await checkSolved()
     }
     async function finishRun(reason) {
       clearHeartbeat()
@@ -2491,8 +2534,9 @@ export function apply(ctx) {
     let scheduling = false
     let reschedule = false
     async function scheduleNext() {
+      dbg.schedEnter += 1
       if (!running || autoDone) return
-      if (scheduling) { reschedule = true; return }
+      if (scheduling) { dbg.schedSkip += 1; reschedule = true; return }
       scheduling = true
       try {
         do {
@@ -2506,6 +2550,7 @@ export function apply(ctx) {
       }
     }
     async function schedulePass() {
+      dbg.passes += 1
       clearHeartbeat()
       syncParamsFromState()
       if (meeting) { await continueMeetingRound(); return }
@@ -2534,6 +2579,7 @@ export function apply(ctx) {
         if (ok) filled += 1
         else armHeartbeat()
       }
+      if (filled > 0) armHeartbeat()
       // (b) urgent mail (anything addressed, or a due chat digest)
       const idle = activeMembers().filter((m) => !busy.has(m.id))
       for (const m of idle) {
@@ -2544,7 +2590,7 @@ export function apply(ctx) {
         if (ok) filled += 1
         else armHeartbeat()
       }
-      if (filled >= budget) { armDigest(); return }
+      if (filled >= budget) { armDigest(); armHeartbeat(); return }
       // (c) due chat digest for otherwise-idle members
       const chatDue = idle.filter((m) => { const d = deliveryDecision(m.id); return d.deliver && !d.urgent })
       if (chatDue.length) {
@@ -2553,7 +2599,7 @@ export function apply(ctx) {
           const ok = await wakeWithInbox(m, normalPrompt(m), 'normal')
           if (ok) filled += 1
         }
-        if (filled) return
+        if (filled) { armHeartbeat(); return }
         armDigest()
       }
       // (d) stalled institute -> convene a coordination meeting (the framework only
@@ -2573,7 +2619,13 @@ export function apply(ctx) {
         const pick = candidates[0]
         if (pick && (now() - (lastActiveAt.get(pick.id) || 0)) >= idleMs) {
           const ok = await wakeWithInbox(pick, checkpointPrompt(pick), 'checkpoint')
-          if (!ok) armHeartbeat()
+          // ALWAYS re-arm after a wake, even on success. A wake whose turn never ends
+          // (a host that drops the delivery, a child that vanished) would otherwise
+          // leave nothing to schedule the next pass and the institute would freeze
+          // permanently — the same failure class as v4 §25. The armed pass is cheap and
+          // cannot double-wake anyone, because every branch checks `busy` first.
+          armHeartbeat()
+          if (!ok) { /* the next armed pass will retry another member */ }
           return
         }
       }
@@ -2690,7 +2742,7 @@ export function apply(ctx) {
         })
       }
       // (10) solve votes / personal judgement
-      if (p.vote_solved !== undefined) recordSolveVote(member.id, p.vote_solved === true)
+      if (p.vote_solved !== undefined) await recordSolveVote(member.id, p.vote_solved === true)
       // (11) meeting input collection (keyed on the LIVE member set, so a member who
       // joined mid-meeting still has to speak and a dismissed one stops blocking it)
       if (kind === 'meeting' && meeting) {
@@ -2726,6 +2778,7 @@ export function apply(ctx) {
       const token = inflight.get(childId)
       if (token === undefined) return
       inflight.delete(childId)
+      await ready()
       const member = byChild(childId)
       if (!member) return
       busy.delete(member.id)
@@ -2805,6 +2858,10 @@ export function apply(ctx) {
       const merged = Object.assign({}, params, patch)
       await patchInstitute({ params: merged })
       params = Object.assign({}, DEFAULT_PARAMS, merged)
+      // An already-armed heartbeat keeps the delay it was armed with, so a lowered
+      // activityTimeoutMs (or a raised maxParallel) would not take effect until some
+      // unrelated event drove a pass. Tuning must apply immediately.
+      if (running && !autoDone) await scheduleNext()
       return { ok: true, params: visibleParams() }
     }
     function visibleParams() {
@@ -3066,6 +3123,7 @@ export function apply(ctx) {
         institute: instituteName, project, key, phase,
         running, autoDone, runId: s.runId,
         backend: backend ? backend.kind : 'uninitialized',
+        debug: Object.assign({ scheduling, reschedule }, dbg),
         quorum: { m: quorumM(), mode: params.quorumMode, voters: voters().map((m) => m.id), voterCount: voterCount() },
         members: s.members.map((m) => ({
           id: m.id, kind: m.kind, phase: m.phase, direction: m.direction, hiredBy: m.hiredBy,
@@ -3177,6 +3235,7 @@ export function apply(ctx) {
       autoDone: () => autoDone,
       state,
       inst,
+      ready,
       // lifecycle
       onMemberEnd, rememberAgent, forgetAgent,
       configure, doStart, resume, setPause, initStop, status, report, setParams,
@@ -3211,6 +3270,7 @@ export function apply(ctx) {
         try {
           const s = getSession(exec && exec.agent)
           if (!s) return JSON.stringify({ ok: false, error: 'no session' })
+          await s.ready()
           return JSON.stringify(await fn(s, args || {}, exec && exec.agent))
         } catch (e) {
           return JSON.stringify({ ok: false, error: String((e && e.message) || e) })
@@ -3315,6 +3375,7 @@ export function apply(ctx) {
     handler: async function (inv) {
       const s = getSession(inv && inv.agent)
       if (!s) return { kind: 'success', text: JSON.stringify({ ok: false, error: 'no session' }) }
+      await s.ready()
       const line = String(inv && inv.rawInput ? inv.rawInput : '').trim()
       const parts = line.split(/\s+/)
       const cmd = parts[0] || ''

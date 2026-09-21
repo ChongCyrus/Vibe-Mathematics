@@ -87,17 +87,53 @@ vibe_v5_members / vibe_v5_hire / vibe_v5_fire / vibe_v5_set
 
 ## 六、验证
 
-- `selfdrive-v5.mjs`：**65 条断言全绿**。用 mock host + **mock 投影注册表**（忠实复现
+- `selfdrive-v5.mjs`：**70 条断言全绿**。用 mock host + **mock 投影注册表**（忠实复现
   `register` / 事件即时折叠 / `stateOf`）驱动真实插件，覆盖建所、章程注入、群聊扇出、
   私信、临时工权限、m 票门限（m−1 不进 / 1 与 0 混合不进 / m 票全 1 才进）、弃权不计 m、
   任务板 CAS 与依赖成环、院士分派与越权拒绝、真实解雇（中断+释放+任务回收+代号不复用）、
   会议互斥与暂存、全体一致才结题等。
-- `audit-v5-sensitivity.mjs`：**10 个敏感性探针全部命中**（故意破坏 m 门限、弃权计数、
+- `e2e-v5-round2.test.mjs`：**53 条断言全绿**，专攻第一套未覆盖的行为路径 ——
+  **加固 JSON 回落后端**、**模拟进程重启**（新宿主 + 新后端读回持久状态并 resume 重建）、
+  重复 `subagent/end` 幂等、雇佣配额（每人上限 / 全所上限）、`quorumMode: all-unanimous`、
+  **名册缩减时 m 重算**、`vibe_v5_wait`（区间校验 / 无人在跑快捷返回 / 被真实活动唤醒）、
+  `read_library`（跨读他人库）、id 消毒抗路径穿越、运行中 configure 守卫、
+  **看门狗放弃卡死验证**、**会议在验证后面暂存并随后真正召开**、
+  **压缩指令只在该出现时出现且不重复**、**会话日志回放复现研究所状态**。
+- `audit-v5-sensitivity.mjs`：**15 个敏感性探针全部命中**（故意破坏 m 门限、弃权计数、
   冲突阻塞、临时工表决权、院士分派门禁、建所回合登记、群聊扇出、辩论轮推进条件、
-  真实释放、全体一致结题 —— 每一条都能让测试变红），证明测试不是空转。
-- 无回归：`selfdrive-v4` 21/21、`e2e-v4-fixes` 120/120、`e2e-v3` 100/100。
+  真实释放、全体一致结题、回落后端加载、解决票再评估、提议确定性启动、begin 互斥、
+  会议锁重武装 —— 每一条都能让测试变红），证明测试不是空转。
+- `audit-v5-integrity.mjs`：静态自检 6 类（未定义调用 / `params` 键 / 会话 API 面 /
+  错误码与文档漂移 / 遗留标记 / 组合行可解析），输出 clean。
+- 无回归：`selfdrive-v4` 21/21、`e2e-v4-fixes` 120/120、`e2e-v3` 100/100、
+  `e2e-multisession` 25/25、`e2e-business` 18/18、`e2e-regression`、`e2e-v3-roundtrip`、
+  `e2e-d9-d13` 及全部历史审计套件均通过；`e2e-installer-test` 通过并发现
+  `vibe-math-v5 (broken=no, persona schema OK)`。
 - 宿主契约已实测：`sessionProjections` 的 host-only 单元可注册、事件即时折叠、
   **不进模型历史**、`checkpoint()` 携带、`restore()` 重折、`hydrate()` 可装载。
+- **真实挂载校验**：把 preset 装进本机 preset root 后用 `agentPresets` 实测 ——
+  roster 发现 `vibe-math-v5(user)`、`broken=no`，**`standingKeyFor('vibe-math-v5')`
+  返回 MOUNTED OK**（该调用会拒绝"包无法解析""配置非法""某行从未激活""服务被发布到进程全局
+  realm"四类失败），且 v5 插件行 `enabled=true`。
+
+### 第二轮审计修复的真实缺陷（9 处）
+
+第二轮针对**第一套测试从未触及的路径**做审计，发现并修复：
+
+| # | 缺陷 | 后果 | 修复 |
+|---|---|---|---|
+| 1 | **回落后端从不加载已持久化的状态**（`state()` 不触发 `load()`） | 无 `sessionProjections` 的宿主上，**进程重启即丢失整座研究所**，`resume` 报 "no active member to resume" | 新增 `ready()`，在所有读状态的入口（工具、命令、`subagent/end`）先 `await` 加载 |
+| 2 | 回落后端把状态写到 `VibeMath/State/` 而非研究所目录下的 `State/` | 与文档/人读镜像描述不一致，多研究所会互相覆盖 | 改为按 `instRoot()/State/<institute>.v5state.json` 动态解析路径 |
+| 3 | **`checkSolved()` 只在会议收尾时被调用** | 一致票落在会议收尾之后（迟到回复 / 普通轮携带 `vote_solved`）会被记录却**永不被读取**——全所一致同意却停不下来 | 每次记录解决票后立即评估停止条件 |
+| 4 | **提议只"踢一下调度器"** | 若已有调度 pass 在途且已过 arm 点，提议会滞留在队列里直到下一轮 trampoline | 提议后**直接 `armNextVerify()`** 确定性启动 |
+| 5 | `beginVerify` 不互斥 | 两个调用者可在任一发布裁决记录前都通过检查，**同一对象被启动两次** | 新增 `beginLock` 独占 |
+| 6 | `continueMeetingRound` 在 `finalizeLock` 被占用时直接返回 | 没有任何东西重新驱动它，会议可能停住 | 退出前 `armHeartbeat()` |
+| 7 | **`vibe_v5_set` 改了 `activityTimeoutMs` 但已武装的心跳仍用旧延迟** | 调参不立即生效（调小后要等旧的长延迟走完） | `setParams` 后立即驱动一次调度 |
+| 8 | **软压缩指令只在 `normal` 轮注入** | 只收到心跳 CHECKPOINT 的成员即使上下文 100% 也**永不压缩** | 改为 `normal` 与 `checkpoint` 都注入（`meeting`/`verify` 仍排除） |
+| 9 | 唤醒成功路径不再武装心跳 | 若宿主丢弃投递或子代理消失，**调度器会永久冻结**（v4 §25 同类故障） | 每次唤醒后都武装一次安全心跳（各分支先查 `busy`，不会重复唤醒） |
+
+另新增 `status().debug`（调度 pass 计数、trampoline 跳过次数、arm/begin 计数），
+便于今后在真实 run 上定位这类"提议未启动"的问题。
 
 ## 七、兼容性
 

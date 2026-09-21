@@ -302,7 +302,8 @@ assert(prop.ok === true, 'proposing verification is accepted')
 // The proposal itself must kick the scheduler, so the object starts verifying without
 // needing any unrelated event to drive a pass.
 let sv = await callTool('vibe_v5_status', {})
-assert(!!sv.verify, 'verification of ' + target + ' is in flight right after proposing (nobody has voted yet)')
+assert(!!sv.verify, 'verification of ' + target + ' is in flight right after proposing (nobody has voted yet) — got ' +
+  JSON.stringify({ verify: sv.verify, queue: sv.verifyQueue, undecided: sv.undecided, running: sv.running, autoDone: sv.autoDone, phase: sv.phase, meeting: sv.meeting, parked: sv.parkedMeeting, tasks: sv.tasks.length }))
 if (sv.verify) {
   assert(sv.verify.m === 3 && sv.verify.P === 4, 'verification reports m=3 over P=4 voters')
 
@@ -356,8 +357,8 @@ assert(ov.ok === true && /编制/.test(ov.overview) && /任务板/.test(ov.overv
 // an assignment objection is broadcast (not silently swallowed)
 fireEnd(childOf('r-2'), { reject_assign: { task_id: asg.task.id, why: '我手上有更紧急的方向' }, contextPct: 20 })
 await settleAll()
-const msgs = (await callTool('vibe_v5_status', {})).chat.pending
-assert(msgs >= 1, 'an assignment objection is broadcast into the institute mail (not dropped)')
+const objectionDelivered = wakes.some(w => JSON.stringify(w.blocks).includes('反对分派'))
+assert(objectionDelivered, 'an assignment objection is broadcast into the institute mail (not dropped)')
 
 // ---------- task board CAS ----------
 const t1 = await callTool('vibe_v5_task_create', { subject: '整理已知特例', description: 'n=3,4,5 的已知结论', write_scopes: ['Members/r-3/Propos'] }, childAgent(childOf('r-3')))
@@ -409,16 +410,17 @@ let sNo = await callTool('vibe_v5_status', {})
 assert(sNo.autoDone === false && sNo.running === true, 'a non-unanimous solve vote does NOT stop the institute')
 
 solvePlan = true
-await callTool('vibe_v5_meeting', { agenda: '再次表决是否已解决', kind: 'solve-vote' }, childAgent(childOf('acad')))
-await drainWakes()
-for (let i = 0; i < 25; i++) {
+const m2 = await callTool('vibe_v5_meeting', { agenda: '再次表决是否已解决', kind: 'solve-vote' }, childAgent(childOf('acad')))
+assert(m2.ok === true, 'the second solve-vote meeting is requested (' + JSON.stringify(m2).slice(0, 100) + ')')
+for (let i = 0; i < 60; i++) {
   const s = await callTool('vibe_v5_status', {})
   if (s.autoDone) break
-  if (!(await drainWakes(4))) break
-  await sleep(10)
+  await drainWakes(6)
+  await sleep(15)
 }
 const sDone = await callTool('vibe_v5_status', {})
-assert(sDone.autoDone === true, 'a unanimous solve vote from every voting member DOES stop the institute')
+assert(sDone.autoDone === true, 'a unanimous solve vote from every voting member DOES stop the institute — ' +
+  JSON.stringify({ autoDone: sDone.autoDone, running: sDone.running, meeting: sDone.meeting, parked: sDone.parkedMeeting, solveVotes: sDone.solveVotes }))
 assert(sDone.running === false, 'scheduling halted after the unanimous solve vote')
 const concl = existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Problems', 'conclusion.md'))
 assert(concl, 'a conclusion record was written on completion')
