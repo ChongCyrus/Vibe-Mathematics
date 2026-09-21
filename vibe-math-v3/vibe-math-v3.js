@@ -297,8 +297,29 @@ export function apply(ctx) {
   async function fsTarget(rel) { return await fs.resolve(rel, { cwd: frameworkRoot() }) }
   async function readText(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
   async function writeText(rel, content) { const t = await fsTarget(rel); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true }
-  async function writeJson(rel, obj) { return await writeText(rel, JSON.stringify(obj, null, 2)) }
-  async function readJson(rel) { const t = await readText(rel); if (t === undefined || t === '') return undefined; try { return JSON.parse(t) } catch (e) { return undefined } }
+  async function writeJson(rel, obj) { if (!assertWritable(rel)) return false; return await writeText(rel, JSON.stringify(obj, null, 2)) }
+  async function readJson(rel) { const t = await readText(rel); if (t === undefined || t === '') return undefined; try { return JSON.parse(t) } catch (e) { noteSuspect(rel); return undefined } }
+  /**
+   * Corruption guard. `readJson` cannot tell "no file yet" from "file present but
+   * unparseable", yet callers treat both as "no data" and then write that emptiness
+   * back — so one externally damaged state file silently reset the user's run.
+   * Any read that hits a present-but-unparseable JSON file records it; `writeJson`
+   * then REFUSES to write that path until the file is fixed or deleted. A missing
+   * file is still created normally, so first-run behaviour is unchanged.
+   */
+  const suspectFiles = new Set()
+  const warnedSuspect = {}
+  function noteSuspect(rel) {
+    suspectFiles.add(rel)
+    if (warnedSuspect[rel]) return
+    warnedSuspect[rel] = true
+    console.error('vibe-math-v3: ' + rel + ' exists but is not parseable JSON — REFUSING to overwrite it so a corrupted file cannot silently erase your data. Fix or delete the file, then retry.')
+  }
+  function assertWritable(rel) {
+    if (!suspectFiles.has(rel)) return true
+    console.error('vibe-math-v3: write to ' + rel + ' blocked (file is unparseable; see the earlier warning)')
+    return false
+  }
   async function listFiles(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'file' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function listDirs(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function listDirsAt(base, rel) { try { const t = await fs.resolve(rel, { cwd: base }); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
@@ -1067,14 +1088,21 @@ export function apply(ctx) {
       const known = registeredToolsFromError(message)
       const retryFilter = request.toolFilter ? sanitizeToolFilter(request.toolFilter, known) : undefined
       const changed = request.toolFilter && JSON.stringify(retryFilter) !== JSON.stringify(request.toolFilter)
+      // FAIL CLOSED on an unusable sanitized filter. Retrying WITHOUT a filter would
+      // start the child unrestricted, which is the opposite of what the operator asked
+      // for; retrying with an empty one would deny every tool. Neither is acceptable,
+      // so report the stale configuration and refuse to spawn this child.
+      if (request.toolFilter && retryFilter === undefined) {
+        console.error('vibe-math-v3: the configured tool permission filter names ONLY tools this host does not register, so it cannot be honored; refusing to spawn WITHOUT a filter (that would grant the very access the operator denied). filter=' + JSON.stringify(request.toolFilter) + ' host said: ' + message)
+        throw e
+      }
       if (!changed) {
         if (request.toolFilter) console.error('vibe-math-v3: startContinuable with toolFilter failed (NOT retrying without the permission filter, to avoid silently granting unrestricted tools): ' + message)
         throw e
       }
       console.error('vibe-math-v3: tool permission filter named tools this host does not register; retrying with only registered names (denied-tool intent preserved). dropped=' + JSON.stringify(request.toolFilter) + ' kept=' + JSON.stringify(retryFilter))
       const retryRequest = Object.assign({}, request)
-      if (retryFilter) retryRequest.toolFilter = retryFilter
-      else delete retryRequest.toolFilter
+      retryRequest.toolFilter = retryFilter
       try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
       catch (e2) {
         console.error('vibe-math-v3: startContinuable retry with sanitized toolFilter also failed: ' + String((e2 && e2.message) || e2))

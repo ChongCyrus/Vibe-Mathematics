@@ -158,11 +158,48 @@ export function apply(ctx) {
     function writeJson(rel,obj){
       const key='j:'+rel
       const prev=jsonQueues.get(key)||Promise.resolve(true)
-      const run=prev.catch(()=>{}).then(async ()=>{ try { const t=await fsTarget(rel); await fs.writeText(t,JSON.stringify(obj,null,2),undefined,undefined,getPolicy()); return true } catch(e){ return false } })
+      const run=prev.catch(()=>{}).then(async ()=>{ try { if(!(await assertWritable(rel))) return false; const t=await fsTarget(rel); await fs.writeText(t,JSON.stringify(obj,null,2),undefined,undefined,getPolicy()); return true } catch(e){ return false } })
       jsonQueues.set(key,run.catch(()=>{}))
       return run
     }
-    async function readJson(rel){ const t=await readText(rel); if(t===undefined||t==='') return undefined; try { return JSON.parse(t) } catch(e){ return undefined } }
+    async function readJson(rel){ const t=await readText(rel); if(t===undefined||t==='') return undefined; try { return JSON.parse(t) } catch(e){ noteSuspect(rel); return undefined } }
+    /**
+     * Corruption guard. `readJson` cannot tell "no file yet" from "file present but
+     * unparseable", yet loadAll() treats both as "no data" and the next saveAll()
+     * writes that emptiness back — so one externally damaged State/*.json silently
+     * reset the whole run (residents, taskboard, mailboxes). Any read that hits a
+     * present-but-unparseable JSON file records it; writeJson then REFUSES to write
+     * that path until the file is fixed or deleted. A missing file is still created
+     * normally, so first-run behaviour is unchanged.
+     */
+    const suspectFiles = new Set()
+    const warnedSuspect = {}
+    function noteSuspect(rel){
+      suspectFiles.add(rel)
+      if(warnedSuspect[rel]) return
+      warnedSuspect[rel]=true
+      console.error('vibe-math-v4: '+rel+' exists but is not parseable JSON — REFUSING to overwrite it so a corrupted file cannot silently erase your run. Fix or delete the file, then retry.')
+    }
+    function assertWritableSync(rel){
+      if(suspectFiles.has(rel)){ console.error('vibe-math-v4: write to '+rel+' blocked (file is unparseable; see the earlier warning)'); return false }
+      return true
+    }
+    /**
+     * Nothing read this path yet, so inspect the file actually on disk before
+     * replacing it. This closes the case where a fresh process never ran loadAll()
+     * (configure/start) and would otherwise write an empty state over a corrupt one
+     * the user might still want to inspect or repair.
+     */
+    async function assertWritable(rel){
+      if(!assertWritableSync(rel)) return false
+      try {
+        const raw=await readText(rel)
+        if(raw!==undefined && raw!==''){
+          try { JSON.parse(raw) } catch(e){ noteSuspect(rel); return false }
+        }
+      } catch(e){}
+      return true
+    }
     async function ensureDirs(){ const base=frameworkRoot(); const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Reliable','Notes','State']; return await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)))) }
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
