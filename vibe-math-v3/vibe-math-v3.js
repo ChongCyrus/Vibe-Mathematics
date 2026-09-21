@@ -147,7 +147,7 @@ export function apply(ctx) {
     projectLockTimeoutMs: 60000,  // 项目锁等待超时
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
-  let scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }
+  let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导（防漂移，同 v2）
   let agentRegistry = {}
   let decisionQueue = []
   let verifierAccuracy = {}
@@ -188,6 +188,21 @@ export function apply(ctx) {
   function frameworkRoot() { return projectRoot(currentProject) }
   function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
   function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
+  /**
+   * 把模型/用户提供的对象 id 消毒成**单个安全文件名**。v4 已有等价的 idSafe（见
+   * vibe-math-v4.js），v3 此前缺这一步：saveProblem/saveProposition/saveVerified 直接
+   * 拼接原始 id，模型给出 `../../x` 之类就能把文件写出项目树（categoryOf 只删 `/`，不删 `..`）。
+   * 这里替换路径分隔符与控制字符、折叠连续连字符，并剥掉首尾的点/连字符，
+   * 保证结果永不为 `.` / `..`、也不含分隔符。
+   */
+  function idSafe(s) {
+    const t = String(s == null ? '' : s).trim()
+      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[.\-]+|[.\-]+$/g, '')
+      .slice(0, 80)
+    return t || 'id'
+  }
   function getPolicy() { try { if (sandboxPolicy && rootAgent && rootAgent.session) return sandboxPolicy.resolve({ session: rootAgent.session }) } catch (e) {} try { if (sandboxPolicy) return sandboxPolicy.resolve({}) } catch (e) {} return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
   function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
@@ -288,9 +303,36 @@ export function apply(ctx) {
 
   // ================= subprocess =================
   function psQuote(p) { return "'" + String(p).replace(/'/g, "''") + "'" }
-  async function runShell(script, cwd) { if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }; try { const handle = subprocess.spawn({ argv: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script], cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 }); const outcome = await handle.done; return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode } } catch (e) { return { ok: false, error: String((e && e.message) || e) } } }
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods'].concat(dirs.map(function (d) { return base + '/' + d })); const list = paths.map(psQuote).join(','); return await runShell('New-Item -Force -ItemType Directory -Path ' + list + ' | Out-Null') }
-  async function removeFile(rel) { const base = frameworkRoot(); return await runShell('Remove-Item -Force -LiteralPath ' + psQuote(base + '/' + rel) + ' -ErrorAction SilentlyContinue') }
+  /** POSIX 单引号引用：把 ' 换成 '\'' 以安全嵌入任意路径。 */
+  function shQuote(p) { return "'" + String(p).replace(/'/g, "'\\''") + "'" }
+  /**
+   * 执行一段 shell 脚本。**按平台选择解释器**：此前硬编码 powershell，而预设用
+   * `disabled: !!js process.platform !== 'win32'` 在非 Windows 上关掉了 tool-pwsh 行——
+   * 也就是说插件会去调用一个自己声明不提供的二进制，且返回值无人检查，表现为静默失效。
+   * Windows 用 powershell（保留原行为），其余平台用 /bin/sh。
+   */
+  function isWindows() { return process.platform === 'win32' }
+  function mkdirCmd(paths) {
+    if (isWindows()) return 'New-Item -Force -ItemType Directory -Path ' + paths.map(psQuote).join(',') + ' | Out-Null'
+    return 'mkdir -p ' + paths.map(shQuote).join(' ')
+  }
+  function rmCmd(path) {
+    if (isWindows()) return 'Remove-Item -Force -LiteralPath ' + psQuote(path) + ' -ErrorAction SilentlyContinue'
+    return 'rm -f ' + shQuote(path)
+  }
+  async function runShell(script, cwd) {
+    if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }
+    try {
+      const argv = isWindows()
+        ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', script]
+        : ['/bin/sh', '-c', script]
+      const handle = subprocess.spawn({ argv: argv, cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 })
+      const outcome = await handle.done
+      return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode }
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
+  }
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
+  async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
 
   // ================= settings =================
   function sanitizeParams(obj) {
@@ -335,12 +377,21 @@ export function apply(ctx) {
     lines.push('  // 位置：<项目>/vibe_math_setting.json（全局回退：<工作区>/VibeMath/vibe_math_setting.json）。')
     lines.push('  // 本文件是参数的唯一持久化来源：vibe_math_set_params / set_mode 会立即写回此文件；全局文件仅作项目文件不存在时的回退默认。')
     const keys = Object.keys(src).sort()
+    // 只输出有值的键（同 v2）：JSON.stringify(undefined) 返回 undefined，直接拼接会写出
+    // `"k": undefined` 这种非法 JSON，本插件自己的 loadSettings() 随后会整份忽略，用户的
+    // 参数设置静默丢失。逗号按实际写出的条目计算，避免跳过键后留下尾随逗号。
+    const emitted = []
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i]
       const v = src[k]
+      if (v === undefined) continue
       const schema = PARAM_SCHEMA.find(function (p) { return p.name === k })
       const desc = schema ? schema.description : ''
-      const comma = i === keys.length - 1 ? '' : ','
+      emitted.push([k, v, desc])
+    }
+    for (let i = 0; i < emitted.length; i++) {
+      const k = emitted[i][0], v = emitted[i][1], desc = emitted[i][2]
+      const comma = i === emitted.length - 1 ? '' : ','
       lines.push('  // ' + k + (desc ? ' — ' + desc : ''))
       lines.push('  ' + JSON.stringify(k) + ': ' + JSON.stringify(v) + comma)
     }
@@ -400,6 +451,41 @@ export function apply(ctx) {
     const end = rest.search(/\n##\s/)
     return (end === -1 ? rest : rest.slice(0, end)).trim()
   }
+  /**
+   * 按顺序切出正文里的所有 `## ` 顶层段。用于"无损往返"：compose 只重新生成自己管理的
+   * 那几段，其余段（例如 经验与教训、或代理自加的任何段）必须原样保留，否则每次调度器
+   * 回写都会把代理写进卡片的内容抹掉（违反 实现方案.md「正文只追加，不覆盖」）。
+   */
+  function parseBodySections(body) {
+    const text = String(body || '')
+    const re = /^##\s+(.+?)\s*$/gm
+    const found = []
+    let m
+    while ((m = re.exec(text)) !== null) found.push({ name: m[1].trim(), from: m.index, bodyFrom: m.index + m[0].length })
+    for (let i = 0; i < found.length; i++) {
+      const to = i + 1 < found.length ? found[i + 1].from : text.length
+      found[i].text = text.slice(found[i].bodyFrom, to).trim()
+    }
+    return found
+  }
+  /** 未被 compose 接管的段：原样保留，避免回写时丢失。 */
+  function extraBodySections(body, managedNames) {
+    return parseBodySections(body)
+      .filter(function (s) { return !managedNames.includes(s.name) })
+      .map(function (s) { return { name: s.name, text: s.text } })
+  }
+  /** 把保留段追加到 compose 输出末尾（无则原样返回），保证正文只增不减。 */
+  function withExtraSections(lines, extras) {
+    if (!Array.isArray(extras) || extras.length === 0) return lines
+    for (let i = 0; i < extras.length; i++) {
+      const s = extras[i]
+      if (!s || !s.name) continue
+      lines.push('## ' + s.name)
+      if (s.text) lines.push(s.text)
+      lines.push('')
+    }
+    return lines
+  }
 
   // ---- compose / parse: Problem ----
   function composeProblemMd(p) {
@@ -428,7 +514,7 @@ export function apply(ctx) {
       lines.push(s.text || '')
       lines.push('')
     }
-    return lines.join('\n').trimEnd() + '\n'
+    return withExtraSections(lines, p.extraSections).join('\n').trimEnd() + '\n'
   }
   function parseProblemMd(id, text) {
     const { head, body } = splitHeader(text)
@@ -441,6 +527,7 @@ export function apply(ctx) {
       来源: a['来源'] || '原始', 计划: a['计划'] || '',
       陈述: section(body, '陈述'), 来源与动机: section(body, '来源与动机'),
       solutions: sols, 判断命题: a['判断命题'] || '', 来源命题: a['来源命题'] || '',
+      extraSections: extraBodySections(body, ['陈述', '来源与动机', '解法候选']),
     }
   }
 
@@ -478,7 +565,7 @@ export function apply(ctx) {
       lines.push(s.text || '')
       lines.push('')
     }
-    return lines.join('\n').trimEnd() + '\n'
+    return withExtraSections(lines, p.extraSections).join('\n').trimEnd() + '\n'
   }
   function parsePropositionMd(id, text) {
     const { head, body } = splitHeader(text)
@@ -493,6 +580,7 @@ export function apply(ctx) {
       价值关键性: a['价值/关键性'] != null ? clamp01(Number(a['价值/关键性'])) : 0.5,
       陈述: section(body, '陈述'), proofs: proofs, refutes: refutes,
       来源问题: a['来源问题'] || '', 来源方向: a['来源方向'] || '',
+      extraSections: extraBodySections(body, ['陈述', '证明尝试', '证伪尝试']),
     }
   }
 
@@ -530,17 +618,39 @@ export function apply(ctx) {
       lines.push(imps[i].text || '')
       lines.push('')
     }
-    return lines.join('\n').trimEnd() + '\n'
+    return withExtraSections(lines, m.extraSections).join('\n').trimEnd() + '\n'
+  }
+  /**
+   * 解析应用记录标题行 `### 应用 N｜<时间>｜问题 <qid> 方向 <dirId>`。
+   * 必须把 问题/方向 取回来：compose 会按本对象的字段重写该标题行，若解析时丢成空串，
+   * 每次回写都会把"用在哪"永久抹掉（实现方案.md 要求记录 问题/方向）。
+   */
+  function parseAppTitle(title) {
+    const t = String(title || '')
+    const mQ = /问题\s*(\S+)/.exec(t)
+    const mD = /方向\s*(\S+)/.exec(t)
+    // `at` = 第一段（时间戳）。取第一个 '｜' 之前的部分。
+    const at = t.split('｜')[0].trim()
+    return { at: at, 问题: mQ ? mQ[1] : '', 方向: mD ? mD[1] : '' }
   }
   function parseMethodMd(id, text) {
     const { head, body } = splitHeader(text)
     const a = parseAnchors(head)
-    const apps = parseEntries(body, /^###\s*应用\s*\d+｜(.*?)$/).map(function (e) { return { at: e.title || '', 问题: '', 方向: '', text: e.text } })
+    const apps = parseEntries(body, /^###\s*应用\s*\d+｜(.*?)$/).map(function (e) {
+      const t = parseAppTitle(e.title)
+      return { at: t.at, 问题: t.问题, 方向: t.方向, text: e.text }
+    })
+    // 改进历史必须真正解析回来：此前硬编码 [] 导致每次 compose 都写成占位符，
+    // 于是"下一次用到该方法"就把代理沉淀的改进历史静默销毁（违反「正文只追加，不覆盖」）。
+    const improvements = parseEntries(body, /^###\s*v(\d+)\s*（(.*?)）\s*$/).map(function (e) {
+      return { v: Number(e.title) || 0, 原因: e.status || '', text: e.text }
+    })
     return {
       id: id, 标题: a['标题'] || id, 类型: a['类型'] || '方法', 状态: a['状态'] || '经验',
       可信断言: safeJson(a['可信断言'], []), 上级体系: safeJson(a['上级体系'], []), 子方法: safeJson(a['子方法'], []), 相关: safeJson(a['相关'], []),
       适用场景: a['适用场景'] || '', 核心内容: section(body, '核心内容'), 定义与记号: section(body, '定义与记号'),
-      applications: apps, improvements: [], 来源: a['来源'] || '',
+      applications: apps, improvements: improvements, 来源: a['来源'] || '',
+      extraSections: extraBodySections(body, ['核心内容', '定义与记号', '应用记录', '改进历史']),
     }
   }
 
@@ -567,11 +677,17 @@ export function apply(ctx) {
 
   // ================= data layer =================
   function categoryOf(p) { const cat = p.分类 || '未分类'; return String(cat).replace(/[\\/:*?"<>|]/g, '_') || '未分类' }
-  async function saveProblem(p) { await writeText('Problems/' + p.id + '.md', composeProblemMd(p)) }
-  async function saveProposition(p) { await writeText('Propos/' + categoryOf(p) + '/' + p.id + '.md', composePropositionMd(p)) }
-  async function saveMethod(m, global) { if (global) { await writeTextAbs(vibeRoot() + '/Methods/' + m.id + '.md', composeMethodMd(m)) } else { await writeText('Methods/' + m.id + '.md', composeMethodMd(m)) } }
-  async function saveVerified(card) { await writeText('Verified/' + (card.类型 === '问题' ? '问题' : '命题') + '/' + card.id + '.md', composeVerifiedMd(card)) }
-  async function ensureProgressDir(qid) { const base = frameworkRoot(); return await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/Progress/' + qid) + ' | Out-Null') }
+  // 路径构造只走这三个 helper：读写两侧必须用同一把"文件名"，否则会出现
+  // "写进 A、又从 B 判断是否存在"的不一致（例如 idSafe 改了文件名而读侧仍用原始 id）。
+  function problemRel(p) { return 'Problems/' + idSafe(p.id) + '.md' }
+  function propositionRel(p) { return 'Propos/' + categoryOf(p) + '/' + idSafe(p.id) + '.md' }
+  function methodRel(m, global) { return global ? (vibeRoot() + '/Methods/' + idSafe(m.id) + '.md') : ('Methods/' + idSafe(m.id) + '.md') }
+  function verifiedRel(card) { return 'Verified/' + (card.类型 === '问题' ? '问题' : '命题') + '/' + idSafe(card.id) + '.md' }
+  async function saveProblem(p) { await writeText(problemRel(p), composeProblemMd(p)) }
+  async function saveProposition(p) { await writeText(propositionRel(p), composePropositionMd(p)) }
+  async function saveMethod(m, global) { if (global) { await writeTextAbs(methodRel(m, true), composeMethodMd(m)) } else { await writeText(methodRel(m, false), composeMethodMd(m)) } }
+  async function saveVerified(card) { await writeText(verifiedRel(card), composeVerifiedMd(card)) }
+  async function ensureProgressDir(qid) { const base = frameworkRoot(); return await runShell(mkdirCmd([base + '/Progress/' + qid])) }
   // 单个方向的完整日志文本（供"每方向一个文件"与聚合复用）
   function directionMdText(qid, d, standalone) {
     const lines = []
@@ -627,7 +743,7 @@ export function apply(ctx) {
       const content = (w.content != null) ? String(w.content) : ''
       // Progress/<qid>/<dir>.md 需要 Progress/<qid>/ 子目录
       const m = /^Progress\/([^/]+)\//.exec(safe)
-      if (m) { const base = frameworkRoot(); await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/Progress/' + m[1]) + ' | Out-Null') }
+      if (m) { const base = frameworkRoot(); await runShell(mkdirCmd([base + '/Progress/' + m[1]])) }
       const t = await fs.resolve(safe, { cwd: frameworkRoot() })
       if (await fs.stat(t) !== undefined) { await fs.writeText(t, content, undefined, undefined, getPolicy()); applied += 1 }
       else { await writeText(safe, content); applied += 1 }
@@ -732,8 +848,20 @@ export function apply(ctx) {
   }
 
   // ================= persistence (scheduler state) =================
+  /**
+   * 并发计数**从 registry 推导**，不再独立维护/持久化（与 v2 同一处修复）。
+   *
+   * 此前 `scheduler.activeCount` 手工累加：spawn +1、每次 followup 也 +1，只在 onChildEnd
+   * 里 -1，而 onChildEnd 开头 `if (meta === undefined) return` 会跳过那次减法。任何一次
+   * `subagent/end` 丢失、或 end 到达时 child 已不在 `agentRegistry`，都会让 +1 永远没人抵消；
+   * 计数单调增长至 ≥ maxParallelThreshold 后所有派发闸门恒真，系统再也不派代理，而 running
+   * 仍为 true、status 照常响应。计数还会写进 scheduler_state.json 一路带下去。
+   */
+  function activeCount() { return Object.keys(agentRegistry).length }
   async function loadState() {
-    const s = await readJson('State/scheduler_state.json'); if (s) scheduler = Object.assign({}, scheduler, s)
+    const s = await readJson('State/scheduler_state.json')
+    // 丢弃历史持久化的 activeCount：旧值可能已漂移，绝不能覆盖推导值。
+    if (s) { const restored = Object.assign({}, s); delete restored.activeCount; scheduler = Object.assign({}, scheduler, restored) }
     const r = await readJson('State/agents.json'); if (r) agentRegistry = r
     const dq = await readJson('State/decision_queue.json'); if (dq) decisionQueue = dq
     const va = await readJson('State/verifier_accuracy.json'); if (va) verifierAccuracy = va
@@ -782,7 +910,7 @@ export function apply(ctx) {
     return {
       ok: true, at: now(), project: currentProject, frameworkRoot: frameworkRoot(),
       running: scheduler.running, mode: params.mode,
-      activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
       propositions: { total: propos.size, resolved: allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length },
       verifyPending: (await buildVerifyCandidates()).length,
@@ -808,7 +936,7 @@ export function apply(ctx) {
     lines.push('# 项目进展报告｜' + currentProject + '｜' + fmtTime())
     lines.push('')
     lines.push('## 总览')
-    lines.push('- 运行中：' + scheduler.running + '；活跃子代理：' + scheduler.activeCount + '/' + params.maxParallelThreshold)
+    lines.push('- 运行中：' + scheduler.running + '；活跃子代理：' + activeCount() + '/' + params.maxParallelThreshold)
     lines.push('- 问题：' + allProblems().filter(function (q) { return q.状态 === '已解决' }).length + '/' + problems.size + ' 已解决；命题：' + allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length + '/' + propos.size + ' 已定论')
     lines.push('- 方法库：项目 ' + methods.size + ' 条，全局 ' + globalMethods.size + ' 条，待沉淀发明 ' + methodLog.pendingInventions.length + ' 条')
     lines.push('- 待执行计划动作：' + planQueue.length + ' 条；待人工决策：' + decisionQueue.filter(function (d) { return d.status === 'pending' }).length + ' 条')
@@ -880,11 +1008,15 @@ export function apply(ctx) {
     let started
     try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
     catch (e) {
-      if (request.toolFilter) { delete request.toolFilter; console.error('vibe-math-v3: startContinuable with toolFilter failed, retrying without it: ' + String((e && e.message) || e)); started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) } else { throw e }
+      // 失败必须"fail closed"（同 v2）：此前带 toolFilter 失败会删掉过滤器重试，等于静默丢弃
+      // 操作者配置的 solverAllowNetwork / solverAllowScripts / solverToolDeny，让子代理拿到
+      // **无限制**的网络与脚本权限——与配置意图正好相反。
+      if (request.toolFilter) console.error('vibe-math-v3: startContinuable with toolFilter failed (NOT retrying without the permission filter, to avoid silently granting unrestricted tools): ' + String((e && e.message) || e))
+      throw e
     }
     agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
     childOwner.set(started.childId, sessionId)
-    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    // 并发计数由 agentRegistry 推导，无需手工 +1。
     await saveAll()
     return started.childId
   }
@@ -898,7 +1030,7 @@ export function apply(ctx) {
       else if (typeof subagents.followup === 'function') await subagents.followup(rootAgent, childId, blocks, { source: { kind: 'user' }, signal: makeSignal(30000) })
       else throw new Error('no subagent continuation API')
     } catch (e) { console.error('vibe-math-v3: wake ' + childId + ' failed: ' + String((e && e.message) || e)); throw e }
-    scheduler.activeCount = Math.max(0, scheduler.activeCount) + 1
+    // 并发计数由 agentRegistry 推导，无需手工 +1。
     await saveAll()
   }
   async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
@@ -1128,7 +1260,30 @@ export function apply(ctx) {
 
   // ================= decisions (manual/auto) =================
   function enqueueDecision(node, contextText, data) { const d = { id: uuid(), node: node, context: contextText, data: data, status: 'pending', resolution: null, createdAt: now() }; decisionQueue.push(d); return d }
-  async function maybeGate(node, contextText, data, autoFn) { if (params.mode === 'auto') return await autoFn(data); const d = enqueueDecision(node, contextText, data); scheduler.gate = { decisionId: d.id, node: node }; logActivity('gate', node + ': ' + contextText); await saveAll(); return { gated: true, decisionId: d.id } }
+  async function maybeGate(node, contextText, data, autoFn) { if (params.mode === 'auto') return await autoFn(data); const d = enqueueDecision(node, contextText, data); setGate(d, node); logActivity('gate', node + ': ' + contextText); await saveAll(); return { gated: true, decisionId: d.id } }
+  /**
+   * 设置唯一闸门，并把被它取代的旧决策**立即结清**。
+   *
+   * gate 是单槽位，而设置点有三处（plan / verdict / method-promote）。若直接覆盖，旧决策会永远
+   * 停留在 `pending`：它既不再有闸门指路（用户看不到该处理它），又会被后续 `set_mode auto` 的
+   * autoResolvePending 扫到并**再次执行其副作用**（例如重放一份计划）。这里在覆盖前把旧决策
+   * 标成 `resolved(superseded)`：不动它的副作用（当时的执行时机已过，安全默认是不执行），
+   * 但保证它不会变成"幽灵待决"。
+   */
+  function setGate(d, node) {
+    try {
+      const prev = scheduler.gate
+      if (prev && prev.decisionId && prev.decisionId !== d.id) {
+        const old = decisionQueue.find(function (x) { return x.id === prev.decisionId })
+        if (old && old.status === 'pending') {
+          old.status = 'resolved'
+          old.resolution = { action: 'superseded', node: prev.node }
+          logActivity('gate', 'superseded pending decision ' + prev.decisionId + ' (' + prev.node + ') by ' + node)
+        }
+      }
+    } catch (e) { /* 结清旧决策失败不应阻止新闸门生效 */ }
+    scheduler.gate = { decisionId: d.id, node: node }
+  }
   async function applyDecision(node, data, resolution) {
     if (node === 'spawn') {
       if (resolution.action === 'approve') { await spawnChild(data.label, data.promptText, data.meta); return { spawned: true } }
@@ -1163,8 +1318,27 @@ export function apply(ctx) {
 
   // ================= scheduler core =================
   function scheduleTick() { tick().catch(function (e) { console.error('vibe-math-v3 tick error: ' + String((e && e.stack) || e)) }) }
+  /**
+   * 自愈：gate 指向的决策若已不存在或已 resolved，就清掉再继续，而不是永久早退。
+   *
+   * gate 被持久化在 scheduler_state.json 里，且设置点不止一处（plan / verdict / method-promote），
+   * 而 resolveDecision 只在 `gate.decisionId === id` 时清除。任何一次"决策已终态但 gate 还指着它"
+   * 的组合（例如另一处 gate 覆盖了它、或副作用抛错后状态只落了一半）都会让 tick 永久早退：
+   * running 仍为 true、status 一切正常，却永不推进。这里每次 tick 先校验一次 gate 的有效性。
+   */
+  function dropStaleGate() {
+    const g = scheduler.gate
+    if (!g) return
+    const d = decisionQueue.find(function (x) { return x.id === g.decisionId })
+    if (d === undefined || d.status !== 'pending') {
+      logActivity('gate', 'cleared stale gate (' + g.node + '/' + g.decisionId + ' is ' + (d === undefined ? 'gone' : d.status) + ')')
+      scheduler.gate = null
+    }
+  }
   async function tick() {
-    if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return; if (scheduler.gate) return
+    if (tickInFlight) return; if (!rootAgent) return; if (!scheduler.running) return
+    dropStaleGate()
+    if (scheduler.gate) return
     tickInFlight = true
     lastTickAt = now()
     try {
@@ -1234,7 +1408,7 @@ export function apply(ctx) {
   }
   // 幂等写卡：内容未变化则不重写（时间戳行不参与比较，避免每 tick 重写与日志刷屏）
   async function writeVerifiedCardIfChanged(card) {
-    const rel = 'Verified/' + (card.类型 === '问题' ? '问题' : '命题') + '/' + card.id + '.md'
+    const rel = verifiedRel(card) // 必须与 saveVerified 用同一路径，否则读侧永远读不到已写出的卡
     const existing = await readText(rel)
     const md = composeVerifiedMd(card)
     const strip = function (s) { return String(s).split('\n').filter(function (l) { return l.indexOf('- 时间:') !== 0 }).join('\n').trim() }
@@ -1285,7 +1459,7 @@ export function apply(ctx) {
   }
   // note 3 + value: promote high-value unresolved propositions into Problems (judge problem)
   async function processPromote() {
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     for (const p of allPropos()) {
       if (p.概率 === 1 || p.概率 === 0 || p.优先级 === 'never') continue
       if (Number(p.价值关键性) < Number(params.promoteValueThreshold)) continue
@@ -1352,7 +1526,7 @@ export function apply(ctx) {
   }
   async function backfillVerifiers(t) {
     while (t.children.length < t.expectedCount) {
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       const index = t.children.length
       const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
       t.children.push(childId)
@@ -1369,7 +1543,7 @@ export function apply(ctx) {
         if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
       }
       if (t.status !== 'spawning') continue
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       await backfillVerifiers(t)
       await saveAll() // 持久化 children（resume 时任务簿记更准确）
     }
@@ -1377,7 +1551,7 @@ export function apply(ctx) {
 
   // ================= planner (需求 3) =================
   function hasSchedulableWork() {
-    if (scheduler.activeCount >= params.maxParallelThreshold) return false
+    if (activeCount() >= params.maxParallelThreshold) return false
     for (const q of allProblems()) {
       if (q.状态 === '已解决' || q.优先级 === 'never') continue
       if (q.状态 === '等待依赖') continue
@@ -1407,7 +1581,7 @@ export function apply(ctx) {
     const cands = (await buildVerifyCandidates()).slice(0, 10).map(function (c) { return { rId: c.rId, kind: c.kind, target: c.pId || c.qid, prob: c.prob, priority: c.priority } })
     return {
       at: now(), horizon: params.planningHorizon,
-      free_slots: Math.max(0, params.maxParallelThreshold - scheduler.activeCount),
+      free_slots: Math.max(0, params.maxParallelThreshold - activeCount()),
       maxParallelThreshold: params.maxParallelThreshold,
       problems: qsList,
       verify_candidates: cands,
@@ -1420,7 +1594,7 @@ export function apply(ctx) {
   }
   async function maybePlan() {
     if (!params.plannerEnabled) { await fallbackScheduler(); return }
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     // 规划代理在途时不再重复调用
     const plannerInFlight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'planner' })
     if (plannerInFlight) return
@@ -1486,7 +1660,7 @@ export function apply(ctx) {
     // manual: 计划审批门在 planner 结果到达后挂起（审批的是真实计划）；auto: 直接入队
     if (params.mode === 'manual') {
       const d = enqueueDecision('plan', 'planner ' + planId + ' 计划 ' + validated.length + ' 个动作，是否放行？', { planId: planId, plan: validated, brief: meta.brief })
-      scheduler.gate = { decisionId: d.id, node: 'plan' }
+      setGate(d, 'plan')
       await saveAll()
       return
     }
@@ -1564,7 +1738,7 @@ export function apply(ctx) {
     }
   }
   async function executePlanQueue() {
-    while (planQueue.length > 0 && scheduler.activeCount < params.maxParallelThreshold) {
+    while (planQueue.length > 0 && activeCount() < params.maxParallelThreshold) {
       const a = planQueue.shift()
       try {
         await executePlanAction(a)
@@ -1638,10 +1812,10 @@ export function apply(ctx) {
     // 1) promote one
     await processPromote()
     // 2) verify candidates
-    if (scheduler.activeCount < params.maxParallelThreshold) {
+    if (activeCount() < params.maxParallelThreshold) {
       const cands = await buildVerifyCandidates()
       for (let i = 0; i < cands.length; i++) {
-        if (scheduler.activeCount >= params.maxParallelThreshold) break
+        if (activeCount() >= params.maxParallelThreshold) break
         const c = cands[i]
         if (verifyTaskBusy(c.rId)) continue
         await createVerifyTask(c)
@@ -1649,10 +1823,10 @@ export function apply(ctx) {
       }
     }
     // 3) solve: explorer / solver spawns (manual → gate)
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     const unsolved = allProblems().filter(function (q) { return !(q.状态 === '已解决' || q.优先级 === 'never' || q.状态 === '等待依赖') }).sort(function (a, b) { return (a.优先级 === 'never' ? 999 : Number(a.优先级)) - (b.优先级 === 'never' ? 999 : Number(b.优先级)) })
     for (let i = 0; i < unsolved.length; i++) {
-      if (scheduler.activeCount >= params.maxParallelThreshold) break
+      if (activeCount() >= params.maxParallelThreshold) break
       const q = unsolved[i]
       const busy = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && (m.role === 'explorer' || m.role === 'solver') })
       if (busy) continue
@@ -1673,7 +1847,7 @@ export function apply(ctx) {
         continue
       }
       for (let j = 0; j < dirs.length; j++) {
-        if (scheduler.activeCount >= params.maxParallelThreshold) break
+        if (activeCount() >= params.maxParallelThreshold) break
         const dir = dirs[j]
         if (dir.status === 'success' || dir.status === 'dead-end') continue
         const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
@@ -1900,7 +2074,7 @@ export function apply(ctx) {
   }
   async function maybeMethodKeepFallback() {
     if (!methodKeepDue()) return
-    if (scheduler.activeCount >= params.maxParallelThreshold) return
+    if (activeCount() >= params.maxParallelThreshold) return
     await spawnMethodKeeper('fallback')
   }
   async function spawnMethodKeeper(why) {
@@ -2047,7 +2221,7 @@ export function apply(ctx) {
   async function advanceVerification(t, round) {
     if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
       if (!scheduler.running) { t.status = 'paused'; return }
-      if (scheduler.activeCount >= params.maxParallelThreshold) { t.status = 'paused'; return }
+      if (activeCount() >= params.maxParallelThreshold) { t.status = 'paused'; return }
       t.round = round + 1
       const roundTranscript = buildTranscript(t)
       t.history = t.history || []
@@ -2076,7 +2250,7 @@ export function apply(ctx) {
     const verdict = finalVerdict(t)
     if (params.mode === 'manual') {
       const d = enqueueDecision('verdict', 'verdict for ' + t.rId + ' (debate finished) = ' + verdict, { rId: t.rId, verdict: verdict, task: JSON.parse(JSON.stringify(t)) })
-      scheduler.gate = { decisionId: d.id, node: 'verdict' }
+      setGate(d, 'verdict')
       t.status = 'awaiting-verdict'
     } else {
       await settleVerdict(t, verdict)
@@ -2212,7 +2386,6 @@ export function apply(ctx) {
     for (const k of Object.keys(fileOwner)) { if (String(fileOwner[k].childId) === endedId) delete fileOwner[k] }
     const meta = agentRegistry[info.id]
     if (meta === undefined) return
-    scheduler.activeCount = Math.max(0, scheduler.activeCount - 1)
     const output = blocksToText(info.lastAssistantMessage)
     try {
       if (meta.role === 'explorer') await handleExplorer(info.id, meta, output)
@@ -2239,7 +2412,6 @@ export function apply(ctx) {
         logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
         agentRegistry = {}; tasks = {}
       }
-      scheduler.activeCount = 0
     }
     await writeJson('State/process_epoch.json', processEpoch)
     await saveAll()
@@ -2261,7 +2433,7 @@ export function apply(ctx) {
   async function startScheduler() { const r = await init(true); if (!r.ok) return r; const lock = await acquireProjectLock(); if (!lock.ok) return lock; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject + '（v3：md 知识库 + 规划代理调度 + 方法库）'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; const lock = await acquireProjectLock(); if (!lock.ok) return lock; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; await releaseProjectLock(); logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); scheduler.activeCount = 0; planQueue = []; await releaseProjectLock(); logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; planQueue = []; await releaseProjectLock(); logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
     for (let i = 0; i < pending.length; i++) {
@@ -2271,7 +2443,14 @@ export function apply(ctx) {
         else if (d.node === 'verdict') { await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
         else if (d.node === 'plan') { planQueue = (d.data.plan || []).slice(); await applyPlanToProblemCards(planQueue); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
         else if (d.node === 'method-promote') { const m = methods.get(d.data.methodId); if (m) await promoteMethodToGlobal(m); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
-      } catch (e) { console.error('vibe-math-v3: auto-resolve decision failed: ' + String((e && e.message) || e)) }
+      } catch (e) {
+        // 副作用失败必须把该决策落到终态（同 v2）：否则它永远保持 pending，此后每次切 auto 都在
+        // 同一个决策上重新抛错，而 gate 又指向它 —— 调度永久卡死且无任何报错指向真因。
+        console.error('vibe-math-v3: auto-resolve decision failed: ' + String((e && e.message) || e))
+        d.status = 'resolved'
+        d.resolution = { action: 'auto-failed', auto: true, error: String((e && e.message) || e) }
+        logActivity('gate', 'auto-resolve failed for ' + d.id + ' (' + d.node + '), marked resolved to avoid a permanent stall: ' + String((e && e.message) || e))
+      }
     }
     if (pending.length > 0) { scheduler.gate = null; logActivity('mode', 'switched to auto — auto-resolved ' + pending.length + ' pending decision(s)'); await saveAll(); scheduleTick() }
   }
@@ -2279,7 +2458,7 @@ export function apply(ctx) {
     return {
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
       project: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects'),
-      mode: params.mode, activeCount: scheduler.activeCount, maxParallelThreshold: params.maxParallelThreshold,
+      mode: params.mode, activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       frameworkRoot: frameworkRoot(),
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
       propositions: { total: propos.size, resolved: allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length },
@@ -2294,6 +2473,13 @@ export function apply(ctx) {
   }
   async function checkTermination() {
     const unsolved = allProblems().filter(function (q) { return !(q.状态 === '已解决' || q.优先级 === 'never') })
+    // "有工作待处理"的判定必须把**挂起的门**算进去。
+    // manual 模式下 planner 产出的计划不是进 planQueue，而是挂成一条 pending decision 并置 scheduler.gate
+    // （见 handlePlanner）；此时 agentRegistry/tasks/planQueue 三者皆空。而 tick() 开头 `if (scheduler.gate) return`
+    // 会让后续 tick 根本走不到这里——也就是说门挂起的这一刻本轮就是"停摆判定"的最后机会。
+    // 若不排除挂起门，停摆分支会把 scheduler.running 置 false；用户随后 approve（它只入队 planQueue）时
+    // tick() 又因 !running 直接返回，被批准的计划永远不执行，直到人工再 resume。
+    const hasPendingGate = scheduler.gate !== null || decisionQueue.some(function (d) { return d.status === 'pending' })
     // 终止前必须无遗留验证对象（未验证命题/证明/解法）；否则会在命题/解法仍未验证时提前停机。
     // 注意：待沉淀发明（pendingInventions）不应阻塞终止——它是"批量蒸馏"（积够 methodKeepEvery 才触发），
     // 少量残留不会再有 method-keeper 触发，若纳入会令 scheduler 永不终止（闲置空转）。
@@ -2303,7 +2489,7 @@ export function apply(ctx) {
       await releaseProjectLock()
       logActivity('stop', 'all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)')
       await saveAll(); await maybeWriteReport(true); await maybePushReport(true)
-    } else if (Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0 && unsolved.length > 0) {
+    } else if (!hasPendingGate && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0 && unsolved.length > 0) {
       let allBlocked = true
       for (let i = 0; i < unsolved.length; i++) {
         const q = unsolved[i]
@@ -2330,7 +2516,7 @@ export function apply(ctx) {
     if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, activeCount: 0, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0
     await loadSettings(); await migrateLegacyParams(); await loadState(); await loadKnowledgeBase(); await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
@@ -2353,11 +2539,11 @@ export function apply(ctx) {
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
-  registerTool('vibe_math_add_problem', 'Add a problem to the current project (creates Problems/<id>.md).', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), async function (args) { if (problems.has(args.id)) return { ok: false, message: 'problem id already exists' }; problems.set(args.id, { id: args.id, 标题: args.id, 状态: '求解中', 优先级: args.priority || 0, 依赖: Array.isArray(args.dependencies) ? args.dependencies : [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: args.description, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(args.id)); await syncDependencies(); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: 'Problems/' + args.id + '.md' } })
+  registerTool('vibe_math_add_problem', 'Add a problem to the current project (creates Problems/<id>.md).', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), async function (args) { if (problems.has(args.id)) return { ok: false, message: 'problem id already exists' }; problems.set(args.id, { id: args.id, 标题: args.id, 状态: '求解中', 优先级: args.priority || 0, 依赖: Array.isArray(args.dependencies) ? args.dependencies : [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: args.description, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(args.id)); await syncDependencies(); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(args.id)) } })
   registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (creates Propos/<分类>/<id>.md).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 概率: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 分类: { type: 'string' } }, ['id', '概述']), async function (args) {
     if (propos.has(args.id)) return { ok: false, message: 'proposition id already exists' }
     const p = { id: args.id, 标题: args.id, 状态: '未定论', 概率: clamp01(args.概率 != null ? args.概率 : 0.5), 优先级: (args.优先级 != null) ? args.优先级 : 1, 依赖: [], 价值关键性: clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), 分类: args.分类 || '未分类', 陈述: args.概述, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }
-    propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: 'Propos/' + categoryOf(p) + '/' + p.id + '.md' }
+    propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: propositionRel(p) }
   })
   registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 标题, 概率, 状态, 优先级, 分类).', objParams({}), async function () { const all = allPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 标题: p.标题, 概率: p.概率, 状态: p.状态, 优先级: p.优先级, 分类: categoryOf(p) } }) } })
   registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, true) })
@@ -2370,7 +2556,7 @@ export function apply(ctx) {
   registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
   registerTool('vibe_math_plan', 'Show the queued plan / last plan result, or force a planning round.', objParams({ force: { type: 'boolean' } }), async function (args) { if (args && args.force && scheduler.running && !scheduler.gate) { await callPlanner(); return { ok: true, message: 'planning triggered', queued: planQueue.length } } return { ok: true, queued: planQueue, lastPlan: lastPlanSummary } })
   registerTool('vibe_math_index', 'Rebuild the machine index (State/index.json) from the Markdown knowledge base.', objParams({}), async function () { await loadKnowledgeBase(); const r = await rebuildIndex(); return { ok: true, index: r, project: currentProject } })
-  registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { if (methods.has(args.id)) return { ok: false, message: 'method id already exists' }; const m = { id: args.id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: 'Methods/' + m.id + '.md' } })
+  registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { if (methods.has(args.id)) return { ok: false, message: 'method id already exists' }; const m = { id: args.id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: methodRel(m, false) } })
   registerTool('vibe_math_method_list', 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.', objParams({}), async function () { const all = Array.from(methods.values()); const g = Array.from(globalMethods.values()); return { ok: true, count: all.length, globalCount: g.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: false } }).concat(g.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: true } })) } })
   registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), async function () { return { ok: true, project: currentProject, lock: projectLock } })
   registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await claimWrite(String(args.target || ''), agent) })
@@ -2378,27 +2564,43 @@ export function apply(ctx) {
   registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after you wrote content to Markdown files (direction status/survival, registered lemma ids, methods_used/new_inventions, new method cards). Content itself stays in the md files; this only keeps the scheduler index/state in sync.', objParams({ meta: { type: 'object' } }, ['meta']), async function (args, agent) { return await syncMeta(args.meta || {}, agent) })
 
   // ---- 代理直接写 md 的写锁 + 轻元数据同步（任务2：代理自组织写各自对应路径的 md，避免并发写同一文件） ----
+  /**
+   * 写锁键 = 归一化后的项目内相对路径。
+   *
+   * 锁表 `fileOwner` 是**进程级**的，而写锁的目的（实现方案：写前 claim_write，防并发写同一 md）
+   * 是"同一文件同一时刻只有一个写者"。因此键必须是**所有会话共享**的——若把 sessionId 掺进键，
+   * 两个会话就能同时持有同一文件的锁，写锁立刻失效（这正是实测中 e2e-v3 Scenario L 抓到的回归）。
+   *
+   * 已知取舍：不同项目里的同名相对路径（如各自的 `Progress/q1/d1.md`）会共用一把锁，可能产生
+   * 一次多余的"文件正被占用"。这是**误拒**而非误准：写锁宁可保守也不能漏。真正的跨项目并发写
+   * 已由项目锁（projectLock，运行调度前获取）挡在前面；相比之下"写锁被绕过"才是必须避免的一侧。
+   */
+  function fileLockKey(target) {
+    return String(target || '').replace(/\\/g, '/')
+  }
   async function claimWrite(target, agent) {
     const childId = (agent && agent.id) ? String(agent.id) : 'scheduler'
     const key = String(target || '').replace(/\\/g, '/')
     if (!key) return { ok: false, message: 'target required' }
-    const owner = fileOwner[key]
+    const lockKey = fileLockKey(key)
+    const owner = fileOwner[lockKey]
     if (owner && owner.childId !== childId && (now() - (owner.at || 0)) < 60000) {
       return { ok: false, busy: owner.childId, message: '文件 "' + key + '" 正被其他代理写入，请稍后（写锁）' }
     }
     // 确保目标父目录存在（如 Progress/<qid>/ 供方向文件写入）
     const pm = /^(Progress|Propos|Methods)\/([^/]+)\//.exec(key)
-    if (pm) { const base = frameworkRoot(); await runShell('New-Item -Force -ItemType Directory -Path ' + psQuote(base + '/' + pm[1] + '/' + pm[2]) + ' | Out-Null') }
-    fileOwner[key] = { childId: childId, sessionId: sessionId, at: now() }
-    logActivity('write-lock', 'claim ' + key + ' by ' + childId)
+    if (pm) { const base = frameworkRoot(); await runShell(mkdirCmd([base + '/' + pm[1] + '/' + pm[2]])) }
+    fileOwner[lockKey] = { childId: childId, sessionId: sessionId, at: now(), key: key }
+    logActivity('write-lock', 'claim ' + currentProject + '/' + key + ' by ' + childId)
     return { ok: true, key: key, path: frameworkRoot() + '/' + key, hint: '现在可写入 ' + frameworkRoot() + '/' + key + '；写完请 release_write' }
   }
   async function releaseWrite(target, agent) {
     const childId = (agent && agent.id) ? String(agent.id) : 'scheduler'
     const key = String(target || '').replace(/\\/g, '/')
-    const owner = fileOwner[key]
+    const lockKey = fileLockKey(key)
+    const owner = fileOwner[lockKey]
     if (owner && owner.childId !== childId) return { ok: false, message: '写锁不属于此代理，无法释放' }
-    delete fileOwner[key]
+    delete fileOwner[lockKey]
     logActivity('write-lock', 'release ' + key + ' by ' + childId)
     return { ok: true, key: key }
   }
@@ -2420,6 +2622,13 @@ export function apply(ctx) {
         dirState.set(qid, list)
         await saveDirState(); await writeJournal(qid)
         await consumeMethodFeedback(meta, { qid: qid })
+        // 重置重派生计数：这是**文档规定的正常返回路径**（explorer 直接写 md + sync_meta
+        // kind:'directions'），而 handleExplorer 里那处 `explorerRetries[qid]=0` 位于
+        // "新协议分支"的 early return 之后，正常路径永远走不到它。若不在这里重置，计数只增不减，
+        // 一旦达到 maxExplorerRetries(默认 3)，hasSchedulableWork/validatePlan 会永久拒绝该问题
+        // 重派生，checkTermination 随即判为 stalled —— 实现方案里"方向耗尽后重新派生"的恢复路径
+        // 就此死掉，即使后来出现了新的可行方向。
+        explorerRetries[qid] = 0
         logActivity('explorer', 'problem ' + qid + ' → ' + list.length + ' directions (meta sync)')
       }
       await saveAll()
@@ -2456,7 +2665,7 @@ export function apply(ctx) {
               if (l.proof) { pn.proofs = [{ title: (l.title || pid) + '（证明）', prob: clamp01(l.prob != null ? l.prob : 0.7), status: '未定论', text: String(l.proof) }] }
               propos.set(pid, pn)
               // 若代理已直接写了该命题卡，保留其内容（不覆盖）；否则写一张标准卡兜底（保证可被索引/验证）
-              const rel = 'Propos/' + categoryOf(pn) + '/' + pid + '.md'
+              const rel = propositionRel(pn) // 与 saveProposition 同一路径
               if ((await readText(rel)) === undefined) await saveProposition(pn)
             }
             if (!(dir.lemmas || []).some(function (x) { return x.id === pid })) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: pid, title: l.title || pid }) }
@@ -2490,7 +2699,7 @@ export function apply(ctx) {
           const mm = { id: mid, 标题: mid, 类型: '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: '', 核心内容: '', 定义与记号: '', applications: [], improvements: [], 来源: 'agent-written' }
           methods.set(mid, mm)
           // 若代理已直接写了方法卡文件则保留其内容；否则写一张标准卡兜底
-          if ((await readText('Methods/' + mid + '.md')) === undefined) await saveMethod(mm, false)
+          if ((await readText(methodRel(mm, false))) === undefined) await saveMethod(mm, false)
         }
       }
       // 改进：把内容写进已有方法卡的 ## 改进历史（与旧 JSON 路径一致）
@@ -2523,8 +2732,8 @@ export function apply(ctx) {
     if (cmd === 'setup') { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
-    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; if (problems.has(id)) return { ok: false, message: 'problem id already exists' }; problems.set(id, { id: id, 标题: id, 状态: '求解中', 优先级: 0, 依赖: [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: desc, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(id)); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: 'Problems/' + id + '.md' } }
-    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 标题: id, 状态: '未定论', 概率: 0.5, 优先级: 1, 依赖: [], 价值关键性: 0.5, 分类: '未分类', 陈述: desc, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }; propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: 'Propos/' + categoryOf(p) + '/' + p.id + '.md' } }
+    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; if (problems.has(id)) return { ok: false, message: 'problem id already exists' }; problems.set(id, { id: id, 标题: id, 状态: '求解中', 优先级: 0, 依赖: [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: desc, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(id)); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(id)) } }
+    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 标题: id, 状态: '未定论', 概率: 0.5, 优先级: 1, 依赖: [], 价值关键性: 0.5, 分类: '未分类', 陈述: desc, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }; propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: propositionRel(p) } }
     if (cmd === 'list-propositions') { const all = allPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 标题: p.标题, 概率: p.概率, 状态: p.状态, 优先级: p.优先级, 分类: categoryOf(p) } }) } }
     if (cmd === 'methods') { const all = Array.from(methods.values()); return { ok: true, count: all.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态 } }) } }
     if (cmd === 'index') { await loadKnowledgeBase(); return await rebuildIndex() }
@@ -2624,6 +2833,9 @@ export function apply(ctx) {
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v3 onChildEnd reject: ' + String((e && e.stack) || e)) })
+    // 注意：这里**不要**回收 childOwner 条目（与 v2 同一结论）。该映射在子代理 end 之后仍会
+    // 被后续事件路由用到；在 v2 上实测过"事件回调里回收"与"onChildEnd 末尾回收"两种写法，
+    // 都会让 verdict 收口失效。代价只是每个历史子代理一条小记录（有界、不影响功能）。
   })
 
   // tick timer (registered once; ticks every running session at its own pace)
