@@ -237,6 +237,22 @@ for (const p of PRESETS) {
   ok(unmanaged.length === 0, `${p.dst}: every shipped file is managed or explicitly exempt`, unmanaged.join(', '))
 }
 
+console.log('=== 9. a recorded version NEWER than this package (a downgrade) says so ===')
+{
+  // The state is at 3.0.0 after case 7, so running pkgB (2.0.0) replaces NEWER preset bytes with
+  // older ones. The policy still replaces them — "the preset directory equals the installed
+  // package" is the contract — but it must never do that quietly.
+  appendFileSync(at(PRESETS[0], 'preset.yml'), '\n# USER EDIT 3\n')
+  const newerBytes = readFileSync(at(PRESETS[0], 'preset.yml'))
+  const logs = await applyFrom(pkgB, home, [])
+  ok(logs.some((l) => l.includes('比本包版本')), 'a downgrade is reported as a warning')
+  ok(isCopyOf(PRESETS[0], 'preset.yml'), '...and the file is still replaced (the directory equals the installed package)')
+  const backup = join(backupRoot, '3.0.0', PRESETS[0].dst, 'preset.yml')
+  ok(existsSync(backup) && readFileSync(backup).equals(newerBytes), 'the replaced newer bytes are backed up under the version they came from')
+  ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '2.0.0', 'the state records the version that is actually installed now')
+  ok(!logs.some((l) => l.includes('preset install/update failed')), 'apply() swallowed no failure')
+}
+
 rmSync(tmp, { recursive: true, force: true })
 
 console.log('')

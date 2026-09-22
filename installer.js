@@ -1,5 +1,5 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
-// When this bundle is installed (e.g. `dsh plugin add dsh-vibe-math` or from the
+// When this bundle is installed (e.g. `dsh plugin --profile <name> add dsh-vibe-math`, or from the
 // dsh-market), this plugin copies ALL FOUR agent presets out of the package into
 // the DSH preset root, so the user immediately gets four presets in the picker:
 //   vibe-math-v2/  (probability-driven architecture)
@@ -395,9 +395,21 @@ export async function apply(ctx) {
       // right "from" version.
       logger?.warn?.('[dsh-vibe-math] 读不到本包版本（package.json 缺失或损坏）：本次不做版本比对，只补回缺失的 preset 文件。')
     }
+    // A recorded version NEWER than this package means this run replaces preset bytes BACKWARDS.
+    // The policy still does it — "the preset directory equals the installed package" is the whole
+    // point — but a silent downgrade (an old bundle still installed in the profile while the presets
+    // were synced from a newer one) is exactly the surprise worth naming.
+    if (isUpgrade) {
+      const recorded = parseSemver(fromVersion)
+      const installed = parseSemver(pkgVersion)
+      if (recorded !== null && installed !== null && compareSemver(recorded, installed) > 0) {
+        logger?.warn?.('[dsh-vibe-math] 记录里的版本（' + fromVersion + '）比本包版本（' + pkgVersion + '）新，本次会把 preset 换回旧字节。' +
+          '若这不是你想要的，请先升级 profile 里的依赖：dsh plugin --profile <name> add dsh-vibe-math@latest，再重启 DSH。')
+      }
+    }
 
     const nextFiles = {}
-    let installed = 0, updated = 0, kept = 0, backedUp = 0
+    let installed = 0, updated = 0, kept = 0
     const replacedEdits = []
     const backupFailures = []
 
@@ -441,9 +453,7 @@ export async function apply(ctx) {
         // replacing: preserve the user's bytes when they are not what this installer last wrote
         // (a legacy state without a hash cannot tell, so it backs the file up rather than risk it)
         if (typeof prevRec.hash !== 'string' || destHash !== prevRec.hash) {
-          const backupResult = backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf)
-          if (backupResult === 'failed') backupFailures.push(key)
-          else backedUp += 1
+          if (backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf) === 'failed') backupFailures.push(key)
           replacedEdits.push(key)
         }
         writeFileSync(d, cur)

@@ -50,7 +50,7 @@ node tests/audit-v5-integrity.mjs            # 静态：v5 完整性/理念门�
 | `e2e-d9-d13.test.mjs` | ≈ 13 s | |
 | `e2e-v3.test.mjs` | ≈ 12 s | |
 | `formal-verify-v3.test.mjs` | ≈ 12 s | |
-| 其余 16 个 | ≤ 6 s | 其中 8 个 < 1 s |
+| 其余 19 个 | ≤ 6 s | 其中 12 个 < 1 s |
 
 ## 3. 已经做过的优化（别再重复踩）
 

@@ -374,7 +374,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
   > **2026 兼容性修复要点**（详见 `docs/COMPAT-AUDIT-ROUND2.md`）：① `tools.restrict()` 对**未注册的工具名抛错**，而 filter 在建立子代理时应用，故权限名表必须只含本部署真正注册的名字——v2/v3 原先硬编码 `web`/`fetch`/`bash`（其中 `bash` 在 Windows 被 `disabled`）会导致"想收紧权限时子代理永远起不来"；② v4 的真实 `/compact` 原先在 `subagent/end` 里查 `agents.get()`，但该事件在子代理**已被移出注册表之后**才触发，属死代码，已改为在 `subagent/start` 捕获引用；③ 可选服务改为**惰性读取**，不再在 `apply()` 快照（否则挂载顺序会让 `subprocess` 永久为 undefined 而静默不建目录）。
 - **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前已声明 `0.1.2-alpha.4` … `0.1.5-rc.2` 共 8 个版本为 `compatible`，实测目标为 `0.1.5-rc.2`）；`engines.node` 为 `^22.19.0 || >=24.0.0`。
 - **运行时自检（能力 + 版本双检）**：安装器（bundle 插件）每次启动时：**① 尽力探测 DSH 版本**（读 `@deepseek-ai/dsh/package.json` 或 `DSH_VERSION` 环境变量；DSH 未通过公开 service/context 暴露版本，故为尽力而为，探测不到就跳过）。若探测到且该版本未被 `dshReleases` 声明为 `compatible`，会给出明确提示；**② 再对宿主服务与关键 API 做能力自检**（这是真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction`/`sessionProjections`/`sessions` 为**可选**（缺失只提示"功能会静默降级"，不影响挂载；`sessionProjections` 缺失时 v5 的研究所状态回退到加固 JSON），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
-- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin update dsh-vibe-math`，重启 DSH 后安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；见上文「安装」说明）。
+- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（`dsh plugin` 的 `--profile` 是必填项；用 `add` 而不是 `update`，因为 profile 里可能把版本钉成精确值，那时 `update` 不会跨过去），重启 DSH 后安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；见上文「安装」说明）。
 
 ---
 
