@@ -26,8 +26,9 @@
  *          prove the guard is a guard: re-run itself on mutated sources and require the matching
  *          invariant to go RED (control run must stay green)
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -133,18 +134,26 @@ function stripComments(src) {
   const out = []
   let i = 0
   let state = 'code' // code | line | block | sq | dq | tpl | regex
-  let prev = '' // last significant code char, to tell a regex literal from division
+  let prev = '' // last significant code token (a single char, or a whole word such as `return`)
+  let word = '' // identifier/keyword accumulator, so `return /re/` is not read as division
+  // A `/` starts a REGEX LITERAL after an operator/keyword, and DIVISION after a value. Tracking only
+  // the previous CHARACTER is not enough: `return /^\s*import/.test(l)` (v3 really contains it) puts
+  // an identifier before the slash. Getting this wrong is exactly the bug X5–X8 guard against.
+  const REGEX_AFTER_KEYWORD = /^(?:return|typeof|case|delete|void|instanceof|in|of|yield|await|new|do|else)$/
   while (i < src.length) {
     const c = src[i]
     const c2 = src[i + 1]
     if (state === 'code') {
       if (c === '/' && c2 === '/') { state = 'line'; out.push('  '); i += 2; continue }
       if (c === '/' && c2 === '*') { state = 'block'; out.push('  '); i += 2; continue }
-      if (c === '/' && /[(,=:[!&|?{};+\-*%~^<>]|^$/.test(prev)) { state = 'regex'; out.push(c); i++; continue }
+      if (c === '/' && (prev === '' || REGEX_AFTER_KEYWORD.test(prev) || /[(,=:[!&|?{};+\-*%~^<>]/.test(prev))) {
+        state = 'regex'; out.push(c); i++; continue
+      }
       if (c === "'") state = 'sq'
       else if (c === '"') state = 'dq'
       else if (c === '`') state = 'tpl'
-      if (!/\s/.test(c)) prev = c
+      if (/[A-Za-z0-9_$]/.test(c)) word += c
+      else { if (word) { prev = word; word = '' } if (!/\s/.test(c)) prev = c }
       out.push(c); i++; continue
     }
     if (state === 'line') {
@@ -442,6 +451,46 @@ for (const P of PRESETS) {
   for (const [label, src] of [['X5', fixtureRegex], ['X6', fixtureUrl], ['X7', fixtureBlock]]) {
     check(stripComments(src).split('\n').length === src.split('\n').length,
       label + ': comment blanking preserves line structure (diagnostics stay aligned)')
+  }
+}
+
+// X8 — the strongest scanner oracle there is: the comment-stripped source of EVERY preset must still
+// PARSE. A scanner that mis-lexes (regex read as division, or a quote inside a regex read as a string
+// start) corrupts real code, and `node --check` sees it. Sensitivity is MEASURED, not assumed:
+//   · the 2.3.2 scanner (no regex support at all) → SyntaxError on all four presets → X8 red;
+//   · the 2.3.3 scanner (regex-aware but no keyword rule) → X8 still green, which is exactly why
+//     X8b below exists (it covers that narrower gap).
+{
+  const dir = mkdtempSync(join(tmpdir(), 'prompt-invariants-strip-'))
+  try {
+    for (const P of PRESETS) {
+      const src = read(P.js)
+      if (!src) continue
+      const f = join(dir, P.tag + '.mjs')
+      writeFileSync(f, stripComments(src))
+      const r = spawnSync(process.execPath, ['--check', f], { encoding: 'utf8' })
+      check(r.status === 0,
+        'X8: the comment-stripped source of ' + P.tag + ' is still valid JS (the scanner must not corrupt code)',
+        String(r.stderr || '').split('\n').filter((l) => l.trim()).slice(-2).join(' ').slice(0, 160))
+    }
+    // X8b: a fixture that needs the KEYWORD rule — a regex AFTER `return` whose character class holds
+    // a quote (v3 really has `return /^\s*…/.test()`, so the rule is not hypothetical). A scanner that
+    // reads that `/` as division enters "string" state at the quote and then leaves the NEXT comment
+    // unblanked. Sensitivity MEASURED: the 2.3.3 scanner fails the second assertion below
+    // (comment-blanked=false) while passing the first; the current scanner passes both.
+    const fixtureKeyword = [
+      'function f(l) { return /["\']/.test(l) }',
+      '// lean_run must stay blanked',
+      'const h = 4 / 2',
+    ].join('\n')
+    const f2 = join(dir, 'fixture.mjs')
+    const stripped = stripComments(fixtureKeyword)
+    writeFileSync(f2, stripped)
+    const r2 = spawnSync(process.execPath, ['--check', f2], { encoding: 'utf8' })
+    check(r2.status === 0, 'X8b: a regex after a KEYWORD (return /…/) does not corrupt the scan', String(r2.stderr || '').slice(0, 120))
+    check(!stripped.includes('lean_run'), 'X8b: and the comment after it is still blanked (the keyword rule is what decides this)')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 

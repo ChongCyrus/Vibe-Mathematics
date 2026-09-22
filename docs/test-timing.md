@@ -14,7 +14,7 @@ node run-tests.mjs --concurrency=6     # 手动指定并发
 node audit-formal-sensitivity.mjs      # 49 条不变式探针，并行（--concurrency=N / --only=<preset> / --list）
 node audit-persona-sensitivity.mjs     # 11 条提示词面探针（串行，本身只要几秒）
 node audit-prompt-invariants.mjs       # 静态：四套的提示词/工具面不变式 + 扫描器自检（< 0.1s）
-node audit-prompt-invariants.mjs --self-probe   # 证明上面那 151 条不变式真的会变红（5 个自探针）
+node audit-prompt-invariants.mjs --self-probe   # 证明上面那 157 条不变式真的会变红（5 个自探针）
 node audit-spec-traceability.mjs       # 静态：规格/README ↔ 代码可追溯（< 0.1s）
 node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁（≈3 s）
 ```
@@ -28,7 +28,7 @@ node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁（�
 | `run-tests.mjs`（23 个套件） | 221.5 s | **111.5 s**（并发 4，speed-up x1.99） | 关键路径 = `e2e-v4-fixes` 98.1 s |
 | `audit-formal-sensitivity.mjs`（49 探针） | 612.0 s | **154.6 s**（并发 4，speed-up x3.96） | 关键路径 = 12 个 v2 探针（每个 ≈32 s） |
 | `audit-persona-sensitivity.mjs`（11 探针） | ≈ 5 s | — | 本身很快，不需要并行 |
-| `audit-prompt-invariants.mjs`（151 条，含 X5–X7 扫描器自检） | 0.3 s | — | 静态 |
+| `audit-prompt-invariants.mjs`（157 条，含 X5–X8b 扫描器自检） | 0.4 s | — | 静态 |
 | `audit-prompt-invariants.mjs --self-probe`（5 探针） | 1.5 s | — | 每个探针 = 一次自我重跑（0.3 s） |
 | `audit-spec-traceability.mjs`（94 条） | 0.3 s | — | 静态 |
 | `audit-v5-integrity.mjs` | ≈ 3 s | — | 静态审计 |

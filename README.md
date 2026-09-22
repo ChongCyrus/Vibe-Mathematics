@@ -817,7 +817,7 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
-- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](audit-prompt-invariants.mjs)（151 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X7 三条自检（注释扫描器必须认正则字面量、字符串里的 `//` 必须保留、抹注释不改变行结构）
+- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
 - **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
 
 ---
