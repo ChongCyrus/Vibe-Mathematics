@@ -864,6 +864,33 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 
 ---
 
+## 🏪 插件市场（dsh-market / awesome-dsh-plugin）里的展示
+
+本包已被 [dsh-market](https://github.com/dsh-market/dsh-market)（DSH 内置插件市场）与
+[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（同一份目录数据的来源）收录，
+条目文件是 `data/plugins/ChongCyrus__Vibe-Mathematics.yml`。**市场读的元数据有两处，都在本仓库/本包内，
+改它们不需要去提 PR**：
+
+| 你要改什么 | 放在哪里 | 什么时候生效 |
+|---|---|---|
+| **卡片/详情页的展示图**（AppStore 式轮播，1–8 张） | 仓库根目录的 [`screenshots.json`](screenshots.json)（`package.json` 旁边）：相对路径（不得越出仓库、不得以 `/` 开头）或 GitHub 托管的 https 绝对地址；**必须是存在的文件** | 目录的**夜间构建**自动抓取——推自己的仓库即可，不用提 PR、不用等维护者 |
+| **声明的 DSH 版本依赖**（卡片上的"兼容 / 不兼容 / 未声明"） | `package.json` 的 **`engines.dsh`**（顶层优先）或 **`dsh.engines.dsh`**；有 `@deepseek-ai/dsh*` 的 `peerDependencies` 时它们会被**一起**求交 | 市场从**已发布的 npm manifest** 读取并缓存（TTL 24h）——发一个新版本，最多一天后卡片更新 |
+| 条目文字 / 分类 | 目录仓库里的那个 YAML（**改它才需要 PR**，且只能改自己那一条） | PR 合并后自动重建站点 |
+
+> ⚠️ **预发布版本的坑**（目录的 contributing 指南专门警告过）：node-semver 只有在范围里**某个比较符与宿主版本
+> 的 `major.minor.patch` 完全相同、且自身带预发布标签**时，才让那个预发布版本满足范围。像 `>=0.1.2-rc.1 <0.2.0`
+> 这种"看起来够宽"的写法**匹配不到** `0.1.5-rc.2`。本包因此写成显式分支
+> `>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.2.0-0`
+> （已用 semver 7.8.5 在默认与 `includePrerelease` 两种语义下逐版本核对：`0.1.2-alpha.4` … `0.1.5-rc.2` 全通过，
+> `0.1.1-*` / `0.2.0-rc.1` / `0.2.0` / `1.0.0` 全拒绝）。
+
+[`audit-market-metadata.test.mjs`](audit-market-metadata.test.mjs) 把这两处钉住（随包发布、进并行回归）：
+两处 DSH 声明必须存在且一致、必须覆盖 `dsh.compatibility` 里所有标记 `compatible` 的版本、必须带显式上限；
+`screenshots.json` 必须是 1–8 张**真实存在**的图片（历史遗留条目曾指向已删除的 `框架图-v1.png`，
+首图被静默丢弃——这类腐烂现在会被测试直接判红），README 里的每张图也必须存在。
+
+---
+
 ## 📄 License
 
 MIT
