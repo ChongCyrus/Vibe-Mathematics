@@ -1040,6 +1040,7 @@ section('14 defect withdrawal covers every id alias AND a host that cannot delet
     assert(!!rec, '★ the defect named by the object id is absorbed')
     assert(!existsSync(aliasProof), '★★ the proof archived under the VERIFICATION id is withdrawn too (every id alias, not just the two named ones)')
     assert(!!rec && (!rec['r-pAlias'] || rec['r-pAlias'].proof === ''), 'the rId record no longer points at a proof')
+    assert(!rec['r-pAlias'] || !rec['r-pAlias'].objectId || rec['r-pAlias'].objectId === 'pAlias', '★★ the rId record owner stamp is the OBJECT id (pAlias), never an r-shaped poisoned anchor (got ' + JSON.stringify(rec['r-pAlias'] && rec['r-pAlias'].objectId) + ')')
   }
 
   // (b) a host whose deletion cannot work: the archived path must not keep reading as the proof.
@@ -1122,6 +1123,41 @@ section('14 defect withdrawal covers every id alias AND a host that cannot delet
     assert(!!recs['r-pAmb-s1'] && recs['r-pAmb-s1'].objectId === 'pAmb-s1',
       '★★ the verification record remembers its object id (authoritative, not re-parsed from the name) — got ' + JSON.stringify(recs['r-pAmb-s1'] && recs['r-pAmb-s1'].objectId))
     assert(!!recs['pAmb'] && !recs['pAmb'].objectId, 'the neighbour record carries no bogus owner stamp')
+  }
+}
+
+// (d) THE RECORD-OWNER FALLBACK must not be hijacked by a hand-edited state file. The state file is
+// user-editable, and a record whose `objectId` is itself r-shaped is not a usable owner: it would make
+// the verification id map to ITSELF, so a defect named by that rId would never reach the object side.
+// This case uses a WORK-ROUND (explorer) reply, which also carries `formal` and runs with NO verification
+// task in memory — i.e. it is the path that actually reads the owner from the record (a verifier reply
+// would take the task-registry path instead, which is authoritative and already covered above).
+{
+  const h = await makeCase('anchor-poison', { noSubprocess: true })
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  const proj = projRoot(h)
+  mkdirSync(join(proj, 'Verified', 'Lean'), { recursive: true })
+  mkdirSync(join(proj, 'Formal'), { recursive: true })
+  const WORK = 'theorem p_x : 2 + 2 = 4 := by decide\n'
+  writeFileSync(join(proj, 'Formal', 'pX.lean'), WORK, 'utf8')
+  writeFileSync(join(proj, 'Verified', 'Lean', 'pX.lean'), WORK, 'utf8')
+  const base = { status: 'passed', file: 'Formal/pX.lean', proof: 'Verified/Lean/pX.lean', decision: 'used', updatedAt: 1 }
+  writeFileSync(join(proj, 'VibeMath_State', 'formal.json'), JSON.stringify({ records: {
+    pX: Object.assign({}, base),
+    'r-pX': Object.assign({}, base, { objectId: 'r-pX' }),   // ← the r-shaped anchor a hand edit could leave
+  }, todo: [] }), 'utf8')
+  await h.call('vibe_math_add_problem', { id: 'qA', description: '锚点污染用例', priority: 1 })
+  await startScheduler(h)
+  await tick(2000)
+  const ex = await waitFor(() => h.spawns.find((s) => s.label.startsWith('explorer:qA')), 60, 200)
+  assert(!!ex, 'anchor-poison: the explorer was spawned (the scheduler is running)')
+  if (ex) {
+    const reply = { directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: 'c', feasibility: 0.6 }], formal: { target: 'r-pX', decision: 'defect', note: 'Lean 少了 n≥1' } }
+    h.fireEnd({ id: ex.childId, runId: 'rp', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n' + JSON.stringify(reply) + '\n```' }] })
+    const rec = await waitFor(() => { const r = (formalStateOf(h).records || {}); return (r['pX'] && r['pX'].decision === 'defect') ? r : undefined }, 40, 150)
+    assert(!!rec, '★★ a work-round defect named by an rId still reaches the OBJECT side when the record carries an r-shaped anchor (the anchor is rejected, not trusted)')
+    const all = formalStateOf(h).records || {}
+    assert(!!all['r-pX'] && all['r-pX'].status === 'attempted', '★★ and the rId record is downgraded as well (both id spaces stay in step)')
   }
 }
 

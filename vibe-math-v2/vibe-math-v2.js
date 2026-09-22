@@ -645,7 +645,8 @@ export function apply(ctx) {
         syncedFrom: objectId,
         // 这条路径**手里就有**权威的对象 id，把它写进记录：`formalObjectIdOf` 在任务表不在内存时
         // （resume 早期）靠它把验证 id 映射回对象，而不是去猜后缀（对象 id 可能自己以 -sN 结尾）。
-        objectId: objectId,
+        // 依旧只在它**确实是对象 id** 时写（调用方也可能把 rId 传进来，例如"归档写在 rId 上"）。
+        ...(formalObjectIdOfIsOwner(objectId) ? { objectId: objectId } : {}),
         updatedAt: now(),
       }))
     }
@@ -658,12 +659,16 @@ export function apply(ctx) {
    *
    * **权威来源优先**（两级，都能跨 resume 生效）：
    *   ① 验证任务自己知道它属于哪个对象（`t.r.pId` / `t.r.qid`）；
-   *   ② 记录里记着的 `objectId`（写记录时由**拿到对象 id 的那条路径**写上，见 `syncVerificationTarget`）。
+   *   ② 记录里记着的 `objectId`（写记录时由**拿到对象 id 的那条路径**写上）。
    * 只靠字符串后缀解析会有歧义：**对象 id 本身以 `-s1`/`-pf1`/`-rf1` 结尾**时（例如命题 `pAmb-s1` 的
    * 验证 id 是 `r-pAmb-s1`），后缀剥离会把对象截成 `pAmb` —— 另一个对象。后果不是"少一条记录"而是
    * **张冠李戴**：忠实性提示词会打印邻居的证明路径、`defect` 回执会降级邻居的记录并**撤回邻居的归档
    * 证明**，而真正的对象仍然 `passed`（实测复现，见 `formal-verify-v2` 的 ambiguity 用例）。
    * 字符串解析只是前两者都不可用时的兜底。
+   *
+   * 记录里的 `objectId` 还要求**自洽**（它自己再映射一次还是它自己）：否则一次"归档写在 rId 上"的
+   * 调用会把 `objectId: 'r-pAlias'` 写进记录，之后（任务表已不在内存时）这个错误的锚点反而会覆盖
+   * 正确的后缀解析结果。
    */
   function formalObjectIdOf(id) {
     const t = safeId(String(id == null ? '' : id))
@@ -673,9 +678,14 @@ export function apply(ctx) {
       if (owner) return safeId(owner)
     }
     const rec = formalRecords()[t]
-    if (rec && rec.objectId) return safeId(rec.objectId)
+    if (rec && rec.objectId && formalObjectIdOfIsOwner(rec.objectId)) return safeId(rec.objectId)
     const m = /^r-(.+?)(?:-(?:s\d+|pf\d+|rf\d+))?$/.exec(t)
     return m ? m[1] : t
+  }
+  /** 一个 id 能否作为"对象 id"落进记录：它不能再被解析成别的 id（对象 id 不以 `r-` 开头）。 */
+  function formalObjectIdOfIsOwner(v) {
+    const s = safeId(String(v == null ? '' : v))
+    return !!s && s.indexOf('r-') !== 0
   }
   /**
    * 门禁/提示词看到的对象状态 = 合并后的记录，**两个方向都要认**，因为 v2 里归档与验证
@@ -709,8 +719,10 @@ export function apply(ctx) {
     if (!t) return []
     const objectId = formalObjectIdOf(t)
     // 记录里写上权威对象 id：验证 id 的那条记录从此**自带**它属于谁，`formalObjectIdOf` 不必再猜
-    // （对象 id 本身可能以 -sN/-pfN/-rfN 结尾，后缀剥离会指向另一个对象）。
-    const withOwner = (t === objectId) ? patch : Object.assign({ objectId: objectId }, patch)
+    // （对象 id 本身可能以 -sN/-pfN/-rfN 结尾，后缀剥离会指向另一个对象）。只有当这个 id **确实
+    // 是对象 id**（不以 r- 开头）时才写，免得把 `objectId:'r-pAlias'` 这种错锚点固化进记录。
+    const withOwner = (t !== objectId && formalObjectIdOfIsOwner(objectId))
+      ? Object.assign({ objectId: objectId }, patch) : patch
     const written = []
     const write = async function (k) {
       if (written.indexOf(k) !== -1) return
