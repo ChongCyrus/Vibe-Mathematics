@@ -895,6 +895,27 @@ const g1 = G.resAgent(G.childOf('r-1'))
 // ===============================================================
 // 14. `require` after a defect: the retraction closes the gate (docs §4.1-3 / §10 item 9)
 // ===============================================================
+// 13b. a plain `used` judgement must NOT withdraw an ESTABLISHED proof (contract §4): only a
+// fidelity defect retracts one. v2 shipped the unconditional downgrade and silently re-closed the gate.
+section('13b a \`used\` reply must NOT downgrade an already-passed object')
+{
+  const arcU = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-usedkeep', content: 'theorem p_usedkeep : 2 + 2 = 4 := by decide\n' }, g1)
+  assert(arcU.passed === true && existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-usedkeep.lean')), 'used-keep: the object starts with a green archived proof')
+  const wU = await workWake(G, 'r-1')
+  G.fireEnd(wU.childId, { summary: '这一轮只是又写了一遍草稿。', formal: { target: 'p-usedkeep', decision: 'used', file: 'Formal/p-usedkeep.lean' }, contextPct: 20 })
+  await sleep(90)
+  const stU = await G.callTool('vibe_v4_status', {})
+  const recU = stU.formal.objects.find((o) => o.target === 'p-usedkeep')
+  assert(!!recU && recU.status === 'passed', '★ a `used` reply does NOT downgrade an already-passed object (got ' + JSON.stringify(recU) + ')')
+  assert(!!recU && recU.proof === 'Verified/Lean/p-usedkeep.lean', '★ and the proof pointer survives the reply')
+  assert(existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-usedkeep.lean')), '★ and the archived proof is still on disk')
+  assert(stU.formal.passed.indexOf('p-usedkeep') !== -1, '★ status still reports it as Lean-passed')
+  const rerunU = await G.callTool('vibe_v4_lean_run', { file: 'Formal/p-usedkeep.lean', target: 'p-usedkeep' }, g1)
+  assert(rerunU.ok === true, 'used-keep: the work file runs green')
+  const recU2 = (await G.callTool('vibe_v4_status', {})).formal.objects.find((o) => o.target === 'p-usedkeep')
+  assert(!!recU2 && recU2.status === 'passed', '★ a plain re-run does not downgrade a passed record (contract §4)')
+}
+
 section("14 'require' withholds the verdict after a defect, even on a unanimous 1")
 const H = await establish()
 await H.callTool('vibe_v4_set', { formalVerify: 'require' })

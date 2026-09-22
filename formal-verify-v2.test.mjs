@@ -1116,6 +1116,52 @@ section('15 the require gate also covers the judge-problem transfer')
 // ---------- 16. the prompt corpus (contract §10.10) ----------
 // A HUMAN must be able to re-read every prompt the framework emitted, not just the assertions
 // about them. Paths are normalised so the dump is deterministic, diffable and machine-free.
+section("15b a \`used\` reply must NOT downgrade an already-passed object")
+{
+  // Contract §4: a fidelity defect WITHDRAWS a proof; a plain `used` judgement merely says "this round
+  // touched the formalization". Letting `used` downgrade an established proof would silently remove the
+  // fidelity branch from every later review prompt and re-close the require gate — the exact class that
+  // was already fixed once for v4's formalSetRun. v3/v4/v5 preserve passed/blocked here; v2 did not.
+  const h = await makeCase('used-keep')
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  await startScheduler(h)
+  const proj = projRoot(h)
+  const proof = await h.call('vibe_math_lean_archive', { kind: 'proof', target: 'pUsedKeep', content: 'theorem p_used_keep : 2 + 2 = 4 := by decide\n' })
+  assert(proof.ok === true && proof.passed === true, 'used-keep: the object starts Lean-passed')
+  const proofFile = join(proj, 'Verified', 'Lean', 'pUsedKeep.lean')
+  assert(existsSync(proofFile), 'used-keep: the archived proof exists before the used reply')
+  await h.call('vibe_math_add_proposition', { id: 'pUsedKeep', 概述: '已有通过证明后再写一次 used 回执', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  const vs = await waitFor(() => { const x = verifiersOf(h, 'r-pUsedKeep'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!vs, 'used-keep: verifiers were spawned for the Lean-passed object')
+  const vp = (h.spawns.find((s) => s.label === 'verifier:r-pUsedKeep:0') || {}).prompt || ''
+  assert(/忠实性审查/.test(vp), 'used-keep: the reviewers were told to audit FIDELITY (the Lean code is the subject)')
+  if (vs) {
+    replyFrom(h, vs[0].childId, { Result: 0.5, Reason: '这一轮只是又写了一遍草稿', formal: { target: 'pUsedKeep', decision: 'used', file: 'Formal/pUsedKeep.lean' } })
+    // The reply is what materialises the canonical verification alias r-<objectId>, so waiting for
+    // THAT is a signal only the reply can produce (the archive already wrote decision:'used').
+    const rec = await waitFor(() => { const r = (formalStateOf(h).records || {}); return (r['r-pUsedKeep'] && r['pUsedKeep']) ? r : undefined }, 40, 150)
+    assert(!!rec, 'used-keep: the `used` reply is absorbed (the canonical verification alias was materialised)')
+    assert(!!rec && rec['pUsedKeep'].status === 'passed', '★★ a `used` reply does NOT downgrade an already-passed object (got ' + (rec && rec['pUsedKeep'] ? rec['pUsedKeep'].status : 'no record') + ')')
+    assert(!!rec && rec['pUsedKeep'].proof === 'Verified/Lean/pUsedKeep.lean', '★★ and its proof pointer survives the reply')
+    assert(!!rec && !!rec['r-pUsedKeep'] && rec['r-pUsedKeep'].status === 'passed', '★★ the verification-id alias keeps passed too (both id spaces)')
+    assert(existsSync(proofFile), '★★ the archived proof is still on disk')
+    const st = await h.call('vibe_math_status', {})
+    const obj = (st.formal.objects || []).find((o) => o.target === 'pUsedKeep')
+    assert(!!obj && obj.status === 'passed', '★★ status still reports the object as Lean-passed (v2 exposes status.formal.objects, not a "passed" array)')
+    // The consequence that actually matters: with 'passed' preserved the require gate stays OPEN, so
+    // driving the round to a unanimous "true" still concludes (a wrongly downgraded object is deferred).
+    const settled = await verifyWithDebate(h, 'r-pUsedKeep', 1, 0)
+    assert(!!settled.first, 'used-keep: the round can still be driven to a verdict')
+    assert(!/pUsedKeep/.test(readIf(join(proj, 'Formal', 'TODO.md')) || ''), '★★ no formal-required TODO was created: the surviving passed status still opens the require gate')
+    // The same rule covers the RUN path (docs §4): a run attributed to the object may not downgrade it.
+    const rerun = await h.call('vibe_math_lean_run', { file: 'Formal/pUsedKeep.lean', target: 'pUsedKeep' })
+    assert(rerun.ok === true, 'used-keep: the object work file runs green (the record assertion below is the point)')
+    const obj2 = ((await h.call('vibe_math_status', {})).formal.objects || []).find((o) => o.target === 'pUsedKeep')
+    assert(!!obj2 && obj2.status === 'passed', '★★ and the record is still passed (a scratch run may not withdraw a proof)')
+  }
+}
+
 section('16 the captured prompt corpus is written for human review')
 {
   // Freeze the scheduler in every case FIRST: a still-running tick loop could emit one more

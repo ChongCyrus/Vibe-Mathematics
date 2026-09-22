@@ -141,13 +141,14 @@
 
 | 事件 | 迁移 |
 |---|---|
-| `lean_run` 成功 | `none`/`attempted` → `attempted`（记录运行结果） |
-| `lean_run` 失败 | `none` → `attempted`（记录失败输出，供代理修复） |
+| `lean_run` 成功 | `none`/`attempted` → `attempted`（记录运行结果）；**已是 `passed`/`blocked` 的保持原状**——一次随手运行不得撤销已成立的证明 |
+| `lean_run` 失败 | `none` → `attempted`（记录失败输出，供代理修复）；同样**不降级** `passed`/`blocked` |
 | `lean_archive{kinds:'proof', target, from|content}` + 该文件最近一次运行 `ok` | → `passed`，写 `Verified/Lean/<id>.lean` |
+| `lean_archive{kinds:'proof', …}` + 该文件最近一次运行**失败** | → `attempted`，`proof` 清空，并**撤回**旧的 `Verified/Lean/<id>.lean`（工作文件刚被新代码覆盖，旧证明已不对应任何代码；§4.1 的删除→复核→覆写同一条路） |
 | `lean_archive{kinds:'blocked', target, note}` | → `blocked`（`note` 必填） |
 | 回执里 `formal:{target, decision:'blocked', note}` | → `blocked`（`note` 必填） |
 | **回执里 `formal:{target, decision:'defect', note}`** | **撤回 `passed`：→ `attempted`，清空 `proof`、删除 `Verified/Lean/<id>.lean`、把 `note` 写入记录与 `Formal/TODO.md`、公告**（`note` 必填） |
-| 回执里 `formal:{target, decision:'used', file}` | → `attempted`（记录文件） |
+| 回执里 `formal:{target, decision:'used', file}` | → `attempted`（记录文件）；**若该对象已是 `passed`/`blocked` 则保持原状**——一次"这一轮碰了形式化"的 `used` 回执**不得**撤销已成立的证明（`proof` 指针与归档文件都不变）。撤销只有 `defect` 一条路（§4.1）。 |
 
 ### 4.1 `defect`：忠实性缺陷**不是**"命题为假"
 

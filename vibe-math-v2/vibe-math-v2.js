@@ -897,10 +897,21 @@ export function apply(ctx) {
       }
       if (decision === 'used') {
         const file = String(f.file || ('Formal/' + target + '.lean'))
-        await putFormalBothIds(target, { status: 'attempted', decision: 'used', file: file, updatedAt: now() })
+        // 契约 §4：`used` 只表示"这一轮碰了形式化/写了草稿"，它**不得**撤销已经成立的证明。
+        // 无条件写 attempted 会静默抹掉 passed：投票提示词丢掉忠实性分支、require 档对一份已跑通的
+        // 归档证明重新关门，而 `proof` 指针还留着（记录自相矛盾）。v3/v4/v5 都保留 passed/blocked——
+        // 这是"四套同构"里最容易被漏掉的一处（AUDIT-CHECKLIST §1.8）。
+        // 两套 id 空间都可能是"更强的那一侧"（对象侧 blocked、验证侧 passed 这类历史状态），
+        // 所以取两者的最强状态：passed > blocked > attempted——保证 `used` 在任何一侧都不降级。
+        const own = formalOf(target).status
+        const merged = formalGateRecord(target).status
+        const status = (own === 'passed' || merged === 'passed') ? 'passed'
+          : ((own === 'blocked' || merged === 'blocked') ? 'blocked' : 'attempted')
+        await putFormalBothIds(target, { status: status, decision: 'used', file: file, updatedAt: now() })
         await writeFormalIndex()
-        logActivity('formal', '【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file)
-        return { ok: true, decision: 'used', target: target, status: 'attempted', file: file }
+        logActivity('formal', '【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file
+          + (status === 'attempted' ? '' : '（保留已有的 ' + status + ' 状态：一次 used 回执不撤销已成立的证明）'))
+        return { ok: true, decision: 'used', target: target, status: status, file: file }
       }
       logActivity('formal', '【形式化】' + who + ' 的 formal.decision 只能是 \'used\' | \'blocked\' | \'defect\'（收到 '
         + String(f.decision) + '），已忽略（V2_INVALID_ARGUMENT）。')

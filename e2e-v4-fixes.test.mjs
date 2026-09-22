@@ -21,6 +21,11 @@ let quietPolls = 0
 function idleTick(){ return ++quietPolls >= IDLE_POLLS }
 function busyTick(){ quietPolls = 0 }
 const JSONX = o => '```json\n'+JSON.stringify(o)+'\n```'
+// Artifacts (cards, state files) are written by ASYNC framework steps, so on a loaded machine they
+// can land a few ms AFTER the drive loop gave up. Wait briefly for the file, then read defensively:
+// a missing artifact must be ONE clean assertion failure, never an unhandled ENOENT that aborts the
+// rest of the suite (observed once during a 4-way parallel sweep).
+async function readArtifact(p, ms=3000){ await waitFor(()=>existsSync(p), ms); try { return readFileSync(p,'utf8') } catch(e){ return '' } }
 
 function makeCtx(){
   const WS = mkdtempSync(join(tmpdir(), 'vibe-v4fix-'))
@@ -69,7 +74,7 @@ function makeCtx(){
     m.fireEnd({ id: fu.childId, runId:'t1-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
     await sleep(30)
   }
-  const src = readFileSync(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-mixed.md'),'utf8')
+  const src = await readArtifact(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-mixed.md'))
   const probLine = src.split('\n').find(l=>/^- 概率: /.test(l))
   const stLine = src.split('\n').find(l=>/^- 状态: /.test(l))
   assert(/^- 概率: 0\.5/.test(probLine), 'T1 A1: non-unanimous verify writes avg prob back (line='+probLine+')')
@@ -99,10 +104,11 @@ function makeCtx(){
     await sleep(30)
   }
   const card = join(m.WS,'VibeMath','Projects','default','Verified','命题','m-meth.md')
+  await waitFor(()=>existsSync(card), 3000)   // the card is written by an async step: allow for a slow machine
   assert(existsSync(card), 'T2 A2: method unanimous verification writes a Verified card')
-  const text = readFileSync(card,'utf8')
+  const text = await readArtifact(card)
   assert(/^- 类型: 方法/.test(text.split('\n').find(l=>/^- 类型: /.test(l))), 'T2 A2: method verified card labeled 类型: 方法 (not 命题)')
-  const methSrc = readFileSync(join(m.WS,'VibeMath','Projects','default','Methods','r-1','m-meth.md'),'utf8')
+  const methSrc = await readArtifact(join(m.WS,'VibeMath','Projects','default','Methods','r-1','m-meth.md'))
   assert(/^- 状态: 已验证·真/.test(methSrc.split('\n').find(l=>/^- 状态: /.test(l))), 'T2 A2: source method card marked 已验证·真')
   rmSync(m.WS,{recursive:true,force:true})
 }
@@ -255,7 +261,7 @@ function makeCtx(){
     m.fireEnd({ id: fu.childId, runId:'t9-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
     await sleep(30)
   }
-  const src = readFileSync(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-num.md'),'utf8')
+  const src = await readArtifact(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-num.md'))
   const probLine = src.split('\n').find(l=>/^- 概率:/.test(l))
   assert(/^- 概率: 0\.5/.test(probLine), 'T9: numeric verdicts (0.9/0.1, non-unanimous) kept unverified with avg 0.5 (line='+probLine+')')
   rmSync(m.WS,{recursive:true,force:true})
@@ -787,7 +793,7 @@ function makeCtx(){
     m.fireEnd({ id: fu.childId, runId:'t27-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX(reply)}] })
     await sleep(20)
   }
-  const src = readFileSync(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-qs.md'),'utf8')
+  const src = await readArtifact(join(m.WS,'VibeMath','Projects','default','Propos','r-1','p-qs.md'))
   const probLine = src.split('\n').find(l=>/^- 概率:/.test(l))
   // if "0.9" were misread as 0.5 (old fallback), avg = (0.5+0.1)/2 = 0.3; correctly parsed avg = 0.5
   assert(/^- 概率: 0\.5/.test(probLine), 'T27: quoted "0.9" verdict counts as 0.9 → non-unanimous avg 0.5 written (line='+probLine+')')
@@ -1028,7 +1034,7 @@ function makeCtx(){
     await sleep(20)
   }
   assert(concluded, 'T37: meeting was driven to conclusion')
-  const sess=JSON.parse(readFileSync(join(m.WS,'VibeMath','Projects','default','State','session.json'),'utf8'))
+  const sess=JSON.parse((await readArtifact(join(m.WS,'VibeMath','Projects','default','State','session.json'))) || '{}')
   const last=(sess.meetings||[]).pop()
   assert(last && typeof last.id==='string' && typeof last.agenda==='string' && !('inputs' in last), 'T37: persisted meeting entry is a small index (id/agenda, no inputs copy)')
   rmSync(m.WS,{recursive:true,force:true})

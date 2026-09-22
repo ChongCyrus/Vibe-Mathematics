@@ -3085,10 +3085,15 @@ export function apply(ctx) {
     if (decision === 'used') {
       const prev = formalOf(target)
       const file = String(f.file || ('Formal/' + target + '.lean'))
-      await putFormal(target, Object.assign({}, prev, { status: prev.status === 'passed' ? 'passed' : 'attempted', decision: 'used', file: file, updatedAt: now() }))
+      // 契约 §4：`used` 只说"这一轮碰了形式化"，**不得**撤销已成立的证明，也不得把一条显式阻塞
+      // （blocked，本身就是放行门禁的记录）打回 attempted 而重新关门。只有 `defect` 能撤销证明。
+      // 只保留 `passed` 是不够的：`blocked` 同样是"门禁已放行"的状态（v2/v4/v5 两者都保留）。
+      const keepStatus = (prev.status === 'passed' || prev.status === 'blocked') ? prev.status : 'attempted'
+      await putFormal(target, Object.assign({}, prev, { status: keepStatus, decision: 'used', file: file, updatedAt: now() }))
       await upsertFormalAnchor(target)
       await rebuildLeanLibIndexes()
-      await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file)
+      await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file
+        + (keepStatus === 'attempted' ? '' : '（保留已有的 ' + keepStatus + ' 状态：一次 used 回执不撤销已成立的证明/已记录的阻塞）'))
       return
     }
     await formalAnnounce('【形式化】' + who + ' 的 formal.decision 只能是 \'used\'、\'blocked\' 或 \'defect\'（收到 ' + String(f.decision) + '），已忽略。')

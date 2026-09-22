@@ -603,6 +603,29 @@ assert(!!w2, 'r-2 was woken and answered')
 const stF2 = await callTool('vibe_v5_status', {}, RF)
 assert(stF2.formal.objects.some(o => o.target === 'p-reply2' && o.status === 'attempted'),
   'a `formal.decision=used` reply records the object as attempted with its file')
+// a plain `used` judgement must NOT withdraw an ESTABLISHED proof (contract §4): only a fidelity
+// defect retracts one. v2 shipped the unconditional downgrade here; all four are asserted behaviourally.
+await callTool('vibe_v5_record_proposition', { id: 'p-usedkeep', statement: '已有通过证明后再写一次 used 回执', value: 0.6, motive: 'm', p: 0.8 }, childAgent(childOf(RF, 'r-1')))
+{
+  const arcU = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-usedkeep', content: 'theorem p_usedkeep : 2 + 2 = 4 := by decide\n' }, RF)
+  assert(arcU.ok === true && arcU.passed === true, 'used-keep: the object starts Lean-passed')
+  const wU = await wakeAndReply(RF, 'r-2', {
+    progress: '这一轮只是又写了一遍草稿。',
+    formal: { target: 'p-usedkeep', decision: 'used', file: 'Formal/p-usedkeep.lean' },
+    contextPct: 20,
+  })
+  assert(!!wU, 'r-2 was woken for the used judgement')
+  const stU = await callTool('vibe_v5_status', {}, RF)
+  const recU = stU.formal.objects.find((o) => o.target === 'p-usedkeep')
+  assert(!!recU && recU.status === 'passed', '★ a `used` reply does NOT downgrade an already-passed object (got ' + JSON.stringify(recU) + ')')
+  assert(!!recU && recU.proof === 'Verified/Lean/p-usedkeep.lean', '★ and the proof pointer survives the reply')
+  assert(existsSync(join(instF, 'Verified', 'Lean', 'p-usedkeep.lean')), '★ and the archived proof is still on disk')
+  assert(stU.formal.passed.indexOf('p-usedkeep') !== -1, '★ status still reports it as Lean-passed')
+  const rerunU = await callTool('vibe_v5_lean_run', { file: 'Formal/p-usedkeep.lean', target: 'p-usedkeep' }, RF)
+  assert(rerunU.ok === true, 'used-keep: the work file runs green')
+  const recU2 = (await callTool('vibe_v5_status', {}, RF)).formal.objects.find((o) => o.target === 'p-usedkeep')
+  assert(!!recU2 && recU2.status === 'passed', '★ a plain re-run does not downgrade a passed record (contract §4)')
+}
 // a blocker with no note must be refused AND reported back to the member
 delivered.length = 0
 const w3 = await wakeAndReply(RF, 'r-1', { formal: { target: 'p-reply3', decision: 'blocked' }, contextPct: 20 })

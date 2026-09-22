@@ -118,24 +118,33 @@ if (process.argv.includes('--self-probe')) {
 }
 
 /**
- * Blank out comments (line + block) while preserving string/template literals, so invariants about
- * "text shown to an agent" do not fire on a COMMENT that quotes an anti-pattern. A naive regex
+ * Blank out comments (line + block) while preserving string/template REGEX literals, so invariants
+ * about "text shown to an agent" do not fire on a COMMENT that quotes an anti-pattern. A naive regex
  * would both miss block comments and mangle strings containing `//` (URLs), so this walks the
  * source as a tiny scanner. Newlines are preserved to keep any line-based diagnostics aligned.
+ *
+ * Regex literals matter: all four presets contain `/[\\/:*?"<>|\u0000-\u001f]+/` — a regex whose
+ * character class contains a DOUBLE QUOTE. Without regex handling the scanner treats that quote as
+ * the start of a string, keeps the state machine wrong for the rest of the file, and then either
+ * leaves a comment in the "code" stream (a spurious invariant failure) or blanks real code (a
+ * missed defect). X5/X6 below are self-checks for exactly that.
  */
 function stripComments(src) {
   const out = []
   let i = 0
-  let state = 'code' // code | line | block | sq | dq | tpl
+  let state = 'code' // code | line | block | sq | dq | tpl | regex
+  let prev = '' // last significant code char, to tell a regex literal from division
   while (i < src.length) {
     const c = src[i]
     const c2 = src[i + 1]
     if (state === 'code') {
       if (c === '/' && c2 === '/') { state = 'line'; out.push('  '); i += 2; continue }
       if (c === '/' && c2 === '*') { state = 'block'; out.push('  '); i += 2; continue }
+      if (c === '/' && /[(,=:[!&|?{};+\-*%~^<>]|^$/.test(prev)) { state = 'regex'; out.push(c); i++; continue }
       if (c === "'") state = 'sq'
       else if (c === '"') state = 'dq'
       else if (c === '`') state = 'tpl'
+      if (!/\s/.test(c)) prev = c
       out.push(c); i++; continue
     }
     if (state === 'line') {
@@ -145,6 +154,22 @@ function stripComments(src) {
     if (state === 'block') {
       if (c === '*' && c2 === '/') { state = 'code'; out.push('  '); i += 2; continue }
       out.push(c === '\n' ? c : ' '); i++; continue
+    }
+    if (state === 'regex') {
+      if (c === '\\') { out.push(c, c2 === undefined ? '' : c2); i += 2; continue }
+      if (c === '[') { state = 'regexClass'; out.push(c); i++; continue }
+      if (c === '/') { // end of the literal: copy it plus any flags
+        out.push(c); i++
+        while (i < src.length && /[a-z]/i.test(src[i])) { out.push(src[i]); i++ }
+        state = 'code'; prev = ')'
+        continue
+      }
+      out.push(c); i++; continue
+    }
+    if (state === 'regexClass') {
+      if (c === '\\') { out.push(c, c2 === undefined ? '' : c2); i += 2; continue }
+      if (c === ']') state = 'regex'
+      out.push(c); i++; continue
     }
     // inside a string/template: copy verbatim, honouring escapes and the closing quote
     if (c === '\\') { out.push(c, c2 === undefined ? '' : c2); i += 2; continue }
@@ -363,18 +388,18 @@ for (const P of PRESETS) {
     // normalizeParams for v5 (only those keys are copied through).
     let accepts = null
     if (P.tag === 'v5') {
-      const fn = code.indexOf('function normalizeParams')
+      const fn = code.search(/function\s+normalizeParams\s*\(/)
       const region = fn < 0 ? '' : balanced(code, code.indexOf('{', fn))
       const names = []
       for (const kind of ['ints', 'bools', 'strs', 'arrs']) {
-        const ai = region.indexOf('const ' + kind + ' = [')
+        const ai = region.search(new RegExp('const\\s+' + kind + '\\s*=\\s*\\['))
         if (ai < 0) continue
         const arr = balanced(region, region.indexOf('[', ai))
         for (const lit of arr.match(/'[A-Za-z_$][\w$]*'/g) || []) names.push(lit.slice(1, -1))
       }
       accepts = names.length ? [...new Set(names)] : null
     } else {
-      const di = code.indexOf('DEFAULT_PARAMS =')
+      const di = code.search(/DEFAULT_PARAMS\s*=\s*\{/)
       accepts = di < 0 ? null : objectKeys(code, di)
     }
     check(accepts !== null && accepts.length > 0, P.tag + ' I14: the parameter accept-set is readable',
@@ -398,6 +423,26 @@ for (const P of PRESETS) {
   const runner = read('run-tests.mjs') || ''
   check(/no suites matched/.test(runner), 'X2: the suite runner fails when no suite matches')
   check(/argv\[i \+ 1\]/.test(runner) && /argv\[\+\+i\]/.test(runner), 'X3: the suite runner accepts both --flag=x and --flag x')
+}
+
+// X5–X7: guard the guard. I1/I13/I14 trust stripComments(), and all four presets contain a regex
+// literal whose character class holds a double quote (`/[\\/:*?"<>|…]+/`). If the scanner mistook
+// that quote for a string start, the rest of the file would be misread — a comment quoting an
+// anti-pattern would look like code (spurious failure) or real code would be blanked (missed bug).
+{
+  const fixtureRegex = 'const t = s.replace(/[\\\\/:*?"<>|]+/g, "-")\n// lean_run is NOT a tool name\nconst b = 1'
+  check(!stripComments(fixtureRegex).includes('lean_run'),
+    'X5: the comment scanner survives a regex literal containing a quote (a following comment stays blanked)')
+  const fixtureUrl = "L.push('see https://example.com/a')\nconst c = 2"
+  check(stripComments(fixtureUrl).includes('https://example.com/a'),
+    'X6: a // inside a STRING is not treated as a comment start (URLs must survive)')
+  const fixtureBlock = "const d = /a\\/b/g\n/* lean_lib quoted in a block comment */\nconst e = 3"
+  check(!stripComments(fixtureBlock).includes('lean_lib'),
+    'X7: an escaped slash inside a regex does not end it early (a block comment after it stays blanked)')
+  for (const [label, src] of [['X5', fixtureRegex], ['X6', fixtureUrl], ['X7', fixtureBlock]]) {
+    check(stripComments(src).split('\n').length === src.split('\n').length,
+      label + ': comment blanking preserves line structure (diagnostics stay aligned)')
+  }
 }
 
 const out = { passed, failed: failures.length, failures, notes }

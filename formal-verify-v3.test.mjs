@@ -1110,6 +1110,60 @@ await callTool('vibe_math_abort', {}, RK)
 // ===============================================================
 // 9. reporting + persistence
 // ===============================================================
+// (d) a plain `used` judgement must NOT withdraw an ESTABLISHED proof (contract §4). Only a
+// fidelity defect retracts a proof; `used` just reports "this round touched the formalization".
+// v2 shipped the unconditional downgrade here and silently re-closed the require gate.
+section('8d a \`used\` reply must NOT downgrade an already-passed object')
+await restart(RG)
+await callTool('vibe_math_add_proposition', { id: 'p-usedkeep', 概述: '已有通过证明后再写一次 used 回执', 概率: 0.6, 分类: '数论' }, RG)
+{
+  const pass = await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'p-usedkeep', content: 'theorem p_usedkeep : 2 + 2 = 4 := by decide\n' }, RG)
+  assert(pass.ok === true && pass.passed === true, 'used-keep: the object starts out Lean-passed')
+  const re = verifyRe('p-usedkeep')
+  assert(await drive(RG, () => unfiredVerifiers(RG, re).length >= 2, 'verifiers for r-p-usedkeep'), 'used-keep: the Lean-passed object is put to a fidelity review')
+  const vs = unfiredVerifiers(RG, re).slice(0, 2)
+  if (vs.length === 2) {
+    for (const v of vs) firedChildren.add(v.childId)
+    fireEnd(vs[0].childId, { Result: 0.5, Reason: '这一轮只是又写了一遍草稿', formal: { target: 'p-usedkeep', decision: 'used', file: 'Formal/p-usedkeep.lean' } })
+    await sleep(150)
+    const st = await callTool('vibe_math_status', {}, RG)
+    const o = st.formal.objects.find((x) => x.target === 'p-usedkeep')
+    assert(!!o && o.status === 'passed', '★ a `used` reply does NOT downgrade an already-passed object (got ' + JSON.stringify(o) + ')')
+    assert(st.formal.passed.indexOf('p-usedkeep') !== -1, '★ and status still reports it as Lean-passed (the fidelity branch stays the reviewers\' subject)')
+    assert(existsSync(join(replyProj, 'Verified', 'Lean', 'p-usedkeep.lean')), '★ and the archived proof is still on disk by that name')
+    fireEnd(vs[1].childId, { Result: 0.5, Reason: '同样只是又写了一遍草稿' })
+    await sleep(250)
+    assert(!/p-usedkeep/.test(readIf(join(replyProj, 'Formal', 'TODO.md')) || ''), '★ no formal-required TODO was created: the surviving passed still opens the require gate')
+    // The same rule covers the RUN path (contract §4): a run attributed to the object may not downgrade it.
+    const rerun = await callTool('vibe_math_lean_run', { file: 'Formal/p-usedkeep.lean', target: 'p-usedkeep' }, RG)
+    assert(rerun.ok === true, 'used-keep: the object work file runs green (the record assertion below is the point)')
+    const o2 = (await callTool('vibe_math_status', {}, RG)).formal.objects.find((x) => x.target === 'p-usedkeep')
+    assert(!!o2 && o2.status === 'passed', '★ and the record is still passed')
+  }
+}
+
+// (e) the same rule for `blocked`: a blocker is a gate-opening record, so a later `used` reply
+// must not push the object back to `attempted` and silently re-close the gate (v3 used to preserve
+// only `passed` here — v2/v4/v5 preserve both).
+await restart(RG)
+await callTool('vibe_math_add_proposition', { id: 'p-usedblocked', 概述: '已记录阻塞后再写一次 used 回执', 概率: 0.6, 分类: '数论' }, RG)
+{
+  const blk = await callTool('vibe_math_lean_archive', { kind: 'blocked', target: 'p-usedblocked', note: '需要大量未形式化的实分析前置知识' }, RG)
+  assert(blk.ok === true && blk.status === 'blocked', 'used-blocked: the object starts with an explicit blocker (the gate is open)')
+  const re = verifyRe('p-usedblocked')
+  assert(await drive(RG, () => unfiredVerifiers(RG, re).length >= 2, 'verifiers for r-p-usedblocked'), 'used-blocked: the object is put to a vote')
+  const vs = unfiredVerifiers(RG, re).slice(0, 2)
+  if (vs.length === 2) {
+    for (const v of vs) firedChildren.add(v.childId)
+    fireEnd(vs[0].childId, { Result: 0.5, Reason: '这一轮只是又写了一遍草稿', formal: { target: 'p-usedblocked', decision: 'used', file: 'Formal/p-usedblocked.lean' } })
+    await sleep(150)
+    const o = (await callTool('vibe_math_status', {}, RG)).formal.objects.find((x) => x.target === 'p-usedblocked')
+    assert(!!o && o.status === 'blocked', '★ a `used` reply does not re-close a gate an explicit blocker opened (got ' + JSON.stringify(o) + ')')
+    fireEnd(vs[1].childId, { Result: 0.5, Reason: '同上' })
+    await sleep(200)
+  }
+}
+
 section('9 the office can audit formal strength')
 {
   const rep = await callTool('vibe_math_report', {}, RF)

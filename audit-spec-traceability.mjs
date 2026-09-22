@@ -160,6 +160,26 @@ for (const P of PRESETS) {
 const contract = read('docs/formal-verification.md') || ''
 for (const prm of LEAN_PARAMS) ok(contract.includes(prm), 'contract documents ' + prm)
 
+// The §4 transition table is the normative statement every preset implements. Two rows were WRONG
+// here (the code was right, the contract was not), and a wrong contract is how the next edit gets
+// written:
+//   · `used` must NOT withdraw an established proof (only a fidelity `defect` does). v2 actually
+//     shipped the downgrade, so the contract literal and reality disagreed in opposite directions.
+//   · a RED re-archive of kind='proof' overwrites the work file, so the old archived proof no longer
+//     corresponds to any code — it must be retracted, not left at the "everyone looks here" path.
+{
+  const usedRow = (contract.split(/\r?\n/).find((l) => /decision:'used'/.test(l)) || '')
+  ok(/不得/.test(usedRow) && /passed/.test(usedRow) && /blocked/.test(usedRow),
+    "contract §4: the `used` row says an existing passed/blocked is PRESERVED (only `defect` retracts)",
+    'row: ' + usedRow.slice(0, 120))
+  const runRows = contract.split(/\r?\n/).filter((l) => /^\|\s*`lean_run`/.test(l))
+  ok(runRows.length >= 2 && runRows.every((l) => /不降级|保持原状/.test(l)),
+    'contract §4: both `lean_run` rows say they do not downgrade an existing passed/blocked',
+    'rows: ' + runRows.map((l) => l.slice(0, 60)).join(' || '))
+  ok(/该文件最近一次运行\*\*失败\*\*/.test(contract) && /撤回/.test(contract),
+    'contract §4: a FAILED proof re-archive is documented as retracting the previous archived proof')
+}
+
 const out = { passed, failed: findings.length, findings, notes }
 if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2))
 else {
