@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1116" width="1720" height="1116" role="img" aria-label="Vibe Math V5 研究所架构图">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1204" width="1720" height="1204" role="img" aria-label="Vibe Math V5 研究所架构图">
 <defs>
   <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7d93a3"/></marker>
   <marker id="bothHuman" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5b4bb8"/></marker>
@@ -7,7 +7,7 @@
   <marker id="bothData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f7a52"/></marker>
   <marker id="bothHouse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b26a00"/></marker>
 </defs>
-<rect width="1720" height="1116" fill="#ffffff"/>
+<rect width="1720" height="1204" fill="#ffffff"/>
 <g font-family="'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC',sans-serif">
 <text x="860" y="40" font-size="27" font-weight="700" fill="#10202e" text-anchor="middle">Vibe Math V5 —— 研究所体系</text>
 <text x="860" y="67" font-size="13" font-weight="400" fill="#5d7788" text-anchor="middle">框架只是媒介：中继消息 · 沉淀产物 · 计数表决 · 管理上下文。它绝不指派任务 —— 组织与分派是所内院士的职责</text>
@@ -70,7 +70,7 @@
 <text x="1431" y="482.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">临时工 t-3</text>
 <text x="1431" y="499.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">由 r-3 雇入 · 可读/可想/可发言/可写自己的库</text>
 <text x="576" y="536" font-size="10.5" font-weight="400" fill="#5d7788" text-anchor="start">所内组织动作（分派 · 优先级 · 督办 · 会议 · 用人）由院士发起，不是框架行为 —— 框架只负责送达</text>
-<rect x="226" y="566" width="1454" height="286" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<rect x="226" y="566" width="1454" height="382" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
 <text x="244" y="593" font-size="15" font-weight="700" fill="#084d80">框架 vibe-v5 —— 只是媒介（middleware）：中继 · 沉淀 · 计数 · 调度</text>
 <text x="244" y="613" font-size="12" fill="#5d7788">每轮发「状态块 + 本轮问句」（规章在 persona 里，不进对话）；成员回一个 JSON：say / progress / record / verdict / task_* / hire / fire / reject_assign / input / vote_solved</text>
 <rect x="248" y="620" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
@@ -103,34 +103,39 @@
 <text x="1430.3333333333333" y="743.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">院士/研究员可雇自己的临时工</text>
 <text x="1430.3333333333333" y="759.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">雇主或院士可真实解雇（释放子会话）</text>
 <text x="1430.3333333333333" y="776.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">代号永不复用 · 按人/全所双配额</text>
-<rect x="248" y="796" width="1410" height="38" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
-<text x="953" y="819.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">调度器优先级：进行中的会议或验证（二者互斥，永不同时）→ 队列中的验证 → 暂存会议 → 已认领/被分派的在办任务（按 activityTimeoutMs 节流）→ 加急邮件 → 群聊摘要 → 停滞自动开会 → 兜底心跳</text>
-<rect x="40" y="876" width="790" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
-<text x="58" y="903" font-size="15" font-weight="700" fill="#125a3c">状态权威源：会话日志的 host-only 投影单元（键 vibeMathV5）</text>
-<text x="58" y="923" font-size="12" fill="#5d7788">副作用只是往会话日志追加事件 —— 不进模型上下文（零 token 成本），checkpoint / restore 交给 DSH</text>
-<rect x="62" y="932" width="360" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
-<text x="242" y="958.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">applyV5Event（纯折叠，只此一份）</text>
-<text x="242" y="974.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">11 类事件：institute / member / task /</text>
-<text x="242" y="990.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">message / delivered / meeting / debate /</text>
-<text x="242" y="1006.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verdict / queue / counters / progress</text>
-<text x="242" y="1022.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">未知或损坏事件 → 跳过并记入 diagnostics：</text>
-<text x="242" y="1038.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">可用性优先，绝不因一条坏事件卡死全场</text>
-<rect x="434" y="932" width="374" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
-<text x="621" y="958.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint / restore / resume</text>
-<text x="621" y="974.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">投影随会话日志一起 checkpoint；restore</text>
-<text x="621" y="990.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">时从快照 + 日志尾部重新折叠 → 跨进程与</text>
-<text x="621" y="1006.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">同进程恢复走同一条代码路径</text>
-<text x="621" y="1022.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">回退：宿主无 sessionProjections 时改用</text>
-<text x="621" y="1038.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">加固 JSON：State/&lt;institute&gt;.v5state.json</text>
-<rect x="852" y="876" width="828" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
-<text x="870" y="903" font-size="15" font-weight="700" fill="#125a3c">文件面：人可读产物（投影之外的一切都只是镜像）</text>
-<text x="870" y="923" font-size="12" fill="#5d7788">共识的权威在投影；文件是工作区与可读产物，手工改坏不会破坏研究所</text>
-<rect x="874" y="932" width="784" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
-<text x="1266" y="967.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Members/&lt;id&gt;/Progress|Propos|Methods|Subproblems/</text>
-<text x="1266" y="982.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">只有本人可写，人人可读（跨读被鼓励）</text>
-<text x="1266" y="998.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/Chat/*.md · Shared/Meetings/&lt;mt-id&gt;.md · Shared/Debates/&lt;obj&gt;.md</text>
-<text x="1266" y="1013.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/TaskBoard.md · Institutes.md（编制镜像）· State/README.md（说明此处非权威）</text>
-<text x="1266" y="1029.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Problems/&lt;id&gt;.md（原问题）· Problems/conclusion.md（结题）· Verified/&lt;类型&gt;/&lt;id&gt;.md（定论，只读）</text>
+<rect x="248" y="796" width="1410" height="76" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="953" y="813.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Lean 形式化验证（可调参数 formalVerify = off / encourage / require）</text>
+<text x="953" y="830.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage：验证时按实现难度决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录</text>
+<text x="953" y="846.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」</text>
+<text x="953" y="863.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">归档：证明 → Verified/Lean/&lt;对象&gt;.lean｜可复用定义 → VibeMath/Formal/Lib/｜已证引理 → VibeMath/Formal/Proved/</text>
+<rect x="248" y="880" width="1410" height="38" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="953" y="903.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">调度器优先级：进行中的会议或验证（二者互斥，永不同时）→ 队列中的验证 → 暂存会议 → 已认领/被分派的在办任务（按 activityTimeoutMs 节流）→ 加急邮件 → 群聊摘要 → 停滞自动开会 → 兜底心跳</text>
+<rect x="40" y="964" width="790" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="991" font-size="15" font-weight="700" fill="#125a3c">状态权威源：会话日志的 host-only 投影单元（键 vibeMathV5）</text>
+<text x="58" y="1011" font-size="12" fill="#5d7788">副作用只是往会话日志追加事件 —— 不进模型上下文（零 token 成本），checkpoint / restore 交给 DSH</text>
+<rect x="62" y="1020" width="360" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="242" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">applyV5Event（纯折叠，只此一份）</text>
+<text x="242" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">11 类事件：institute / member / task /</text>
+<text x="242" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">message / delivered / meeting / debate /</text>
+<text x="242" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verdict / queue / counters / progress</text>
+<text x="242" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">未知或损坏事件 → 跳过并记入 diagnostics：</text>
+<text x="242" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">可用性优先，绝不因一条坏事件卡死全场</text>
+<rect x="434" y="1020" width="374" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="621" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint / restore / resume</text>
+<text x="621" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">投影随会话日志一起 checkpoint；restore</text>
+<text x="621" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">时从快照 + 日志尾部重新折叠 → 跨进程与</text>
+<text x="621" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">同进程恢复走同一条代码路径</text>
+<text x="621" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">回退：宿主无 sessionProjections 时改用</text>
+<text x="621" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">加固 JSON：State/&lt;institute&gt;.v5state.json</text>
+<rect x="852" y="964" width="828" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="870" y="991" font-size="15" font-weight="700" fill="#125a3c">文件面：人可读产物（投影之外的一切都只是镜像）</text>
+<text x="870" y="1011" font-size="12" fill="#5d7788">共识的权威在投影；文件是工作区与可读产物，手工改坏不会破坏研究所</text>
+<rect x="874" y="1020" width="784" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1266" y="1055.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Members/&lt;id&gt;/Progress|Propos|Methods|Subproblems/</text>
+<text x="1266" y="1070.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">只有本人可写，人人可读（跨读被鼓励）</text>
+<text x="1266" y="1086.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/Chat/*.md · Shared/Meetings/&lt;mt-id&gt;.md · Shared/Debates/&lt;obj&gt;.md</text>
+<text x="1266" y="1101.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/TaskBoard.md · Institutes.md（编制镜像）· State/README.md（说明此处非权威）</text>
+<text x="1266" y="1117.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Problems/&lt;id&gt;.md（原问题）· Problems/conclusion.md（结题）· Verified/&lt;类型&gt;/&lt;id&gt;.md（定论，只读）</text>
 <path d="M 127 290 L 127 700 L 226 700" fill="none" stroke="#5b4bb8" stroke-width="2" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
 <text x="127" y="336" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">工具面</text>
 <text x="127" y="356" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">vibe_v5_*</text>
@@ -149,20 +154,20 @@
 <text x="980" y="559" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↑ 每轮提示词（状态块 + 本轮问句）　　↓ 单个 JSON 回执</text>
 <line x1="556" y1="400" x2="578" y2="400" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
 <line x1="556" y1="430" x2="578" y2="430" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
-<line x1="400" y1="852" x2="400" y2="876" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
-<text x="392" y="868" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">append / fold / stateOf</text>
-<line x1="1280" y1="852" x2="1280" y2="876" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
-<text x="1288" y="868" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">读写产物</text>
-<text x="52" y="1098" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">图例</text>
-<rect x="108" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
-<text x="129" y="1099" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">所办 / 人（外部接口，不研究不投票）</text>
-<rect x="438" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
-<text x="459" y="1099" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">所内成员与所内组织（虚线 = 不由框架执行）</text>
-<rect x="768" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
-<text x="789" y="1099" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">框架（中继 / 沉淀 / 计数 / 调度）</text>
-<rect x="1098" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
-<text x="1119" y="1099" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">状态与产物</text>
-<rect x="1428" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
-<text x="1449" y="1099" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">求真门槛（唯一定论规则）</text>
+<line x1="400" y1="940" x2="400" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="392" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">append / fold / stateOf</text>
+<line x1="1280" y1="940" x2="1280" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="1288" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">读写产物</text>
+<text x="52" y="1186" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">图例</text>
+<rect x="108" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
+<text x="129" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">所办 / 人（外部接口，不研究不投票）</text>
+<rect x="438" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
+<text x="459" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">所内成员与所内组织（虚线 = 不由框架执行）</text>
+<rect x="768" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
+<text x="789" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">框架（中继 / 沉淀 / 计数 / 调度）</text>
+<rect x="1098" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
+<text x="1119" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">状态与产物</text>
+<rect x="1428" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
+<text x="1449" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">求真门槛 / Lean 形式化（可调）</text>
 </g>
 </svg>

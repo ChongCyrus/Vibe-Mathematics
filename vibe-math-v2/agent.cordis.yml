@@ -28,11 +28,14 @@
       - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
       - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
       - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced).
+      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
       - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
       - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
+      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
+        verification (execute / archive / list the reuse library). The scheduler's child agents
+        use them too; they work in every mode.
 
       A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
       (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
@@ -53,6 +56,22 @@
       with its proofs/refutations transferred into the solution list (verification results sync back to the
       source proposition); a solver-reported sub-question q_sub registers THREE objects — the q_sub problem,
       the temporary-assumption proposition p_{q-tmp}, and the problem "判断下述命题是否成立：p_{q-tmp}".
+
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (solver/verifier agents decide by
+          implementation difficulty whether to formalize in Lean; once a Lean run passes, the review
+          subject becomes FIDELITY — do the Lean definitions/objects/conditions/assumptions/conclusion
+          match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
+          recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
+          explicit, reasoned blocker record; the scheduler is never wedged by it).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
+          formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
+          fidelity for you.
     suffix: Your working directory is {{cwd}}.
     text: |-
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
@@ -72,11 +91,14 @@
       - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
       - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
       - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced).
+      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
       - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
       - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
+      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
+        verification (execute / archive / list the reuse library). The scheduler's child agents
+        use them too; they work in every mode.
 
       A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
       (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
@@ -97,6 +119,22 @@
       with its proofs/refutations transferred into the solution list (verification results sync back to the
       source proposition); a solver-reported sub-question q_sub registers THREE objects — the q_sub problem,
       the temporary-assumption proposition p_{q-tmp}, and the problem "判断下述命题是否成立：p_{q-tmp}".
+
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (solver/verifier agents decide by
+          implementation difficulty whether to formalize in Lean; once a Lean run passes, the review
+          subject becomes FIDELITY — do the Lean definitions/objects/conditions/assumptions/conclusion
+          match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
+          recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
+          explicit, reasoned blocker record; the scheduler is never wedged by it).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
+          formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
+          fidelity for you.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'

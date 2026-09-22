@@ -61,19 +61,40 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
         - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B).
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain.
         - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
         - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
         - vibe_v4_list_members — list residents.
-      A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set).
+        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib — Lean formal verification
+          (execute / archive / list the reuse library). Residents use them too; they work in every mode.
+        - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
+          objects, recorded blockers, formalization TODO, library paths).
+        - vibe_v4_prompts {which: brainstorm|normal|heartbeat|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
+      A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set).
 
       TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
       trustworthy; everything else — unverified resident claims, Progress/, Method claims —
       is experiential reference. A proposition / method / theory only reaches Verified/ when
       ALL residents unanimously agree true (or all agree false); otherwise it stays in its
       library with a probability estimate.
+
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (the residents decide by implementation
+          difficulty whether to formalize in Lean; once a Lean run passes, their unanimous vote becomes
+          a FIDELITY review — do the Lean definitions/objects/conditions/assumptions/conclusion match
+          the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
+          withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
+          explicit, reasoned blocker record; the run is never wedged by it).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_v4_status / vibe_v4_report / vibe_v4_formal_report show the mode, the per-object formal
+          status and the formalization TODO (Formal/TODO.md). The framework never installs Lean and
+          never judges fidelity for you.
 
       When the user asks about progress, call vibe_v4_report and summarize in plain language.
     suffix: Your working directory is {{cwd}}.
@@ -122,19 +143,40 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
         - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B).
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain.
         - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
         - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
         - vibe_v4_list_members — list residents.
-      A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set).
+        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib — Lean formal verification
+          (execute / archive / list the reuse library). Residents use them too; they work in every mode.
+        - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
+          objects, recorded blockers, formalization TODO, library paths).
+        - vibe_v4_prompts {which: brainstorm|normal|heartbeat|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
+      A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set).
 
       TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
       trustworthy; everything else — unverified resident claims, Progress/, Method claims —
       is experiential reference. A proposition / method / theory only reaches Verified/ when
       ALL residents unanimously agree true (or all agree false); otherwise it stays in its
       library with a probability estimate.
+
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (the residents decide by implementation
+          difficulty whether to formalize in Lean; once a Lean run passes, their unanimous vote becomes
+          a FIDELITY review — do the Lean definitions/objects/conditions/assumptions/conclusion match
+          the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
+          withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
+          explicit, reasoned blocker record; the run is never wedged by it).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_v4_status / vibe_v4_report / vibe_v4_formal_report show the mode, the per-object formal
+          status and the formalization TODO (Formal/TODO.md). The framework never installs Lean and
+          never judges fidelity for you.
 
       When the user asks about progress, call vibe_v4_report and summarize in plain language.
 

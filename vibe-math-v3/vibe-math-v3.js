@@ -150,6 +150,11 @@ export function apply(ctx) {
     methodAutoPromote: false,     // 项目级方法自动晋升全局库（false = 人工门）
     indexAutoRebuild: true,       // 每次写盘后自动重建索引（false = 手动 vibe_math_index）
     projectLockTimeoutMs: 60000,  // 项目锁等待超时
+    // ---- Lean 形式化验证（契约：docs/formal-verification.md，四架构同名同语义）----
+    formalVerify: 'off',          // off | encourage | require（三档开关，见 实现方案.md §10.1）
+    leanCommand: 'lean',          // 要执行的 Lean 可执行文件（例：'lake'）
+    leanArgs: [],                 // 插在文件名之前的附加参数（例：['env','lean'] 配 leanCommand='lake'）
+    leanTimeoutMs: 120000,        // 单次 Lean 运行超时上限（毫秒，正整数）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
   let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导（防漂移，同 v2）
@@ -179,6 +184,16 @@ export function apply(ctx) {
   let projectLock = { sessionId: '', at: 0 }
   let lastIndexWrite = 0          // State/index.json 写入节流（每 5s 至多一次；工具/init 强制时立即）
   let archivedJ = {}              // qid -> [md 段]：重派生时被替换方向的 journal 归档（论文式历史保留）
+  /**
+   * Lean 形式化记录（契约 docs/formal-verification.md §4/§9）。
+   *
+   * v3 没有会话投影，所以每个对象的形式化记录落在**自己的持久状态** `State/formal.json`
+   * （与其它 State/*.json 同样的 readJson/writeJson 通道），按对象 id 索引，跨 resume 存活：
+   *   records: { <对象id>: {status, file, proof, decision, note, run, updatedAt} }
+   *   todo:    [{id, at, why, verdict, project}] —— require 模式下被搁置的定论
+   *   libRuns: { 'Lib/<名>.lean' | 'Proved/<名>.lean': {ok, exitCode, ms, at} } —— 索引的「最近运行」列
+   */
+  let formalState = { records: {}, todo: [], libRuns: {} }
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
@@ -291,6 +306,10 @@ export function apply(ctx) {
     { name: 'methodAutoPromote', type: 'boolean', description: '项目级方法自动晋升全局库（false = 人工门）', suggestion: false },
     { name: 'indexAutoRebuild', type: 'boolean', description: '每次写盘后自动重建索引（false = 手动 vibe_math_index）', suggestion: true },
     { name: 'projectLockTimeoutMs', type: 'integer', description: '项目锁等待超时（毫秒）', suggestion: 60000 },
+    { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证：off = 不额外要求（默认，提示词里不出现任何 Lean 内容）；encourage = 鼓励按实现难度形式化，Lean 通过后验证转为忠实性审查；require = 同上并加门禁：真/假定论必须先达到 Lean 已通过 或 已记录显式阻塞原因，否则记为未定论（formal-required）并进「形式化待办」', suggestion: 'off' },
+    { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
+    { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
+    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）', suggestion: 120000 },
   ]
 
   // ================= fs (adapted to DSH 0.1.1: resolve returns {targetKey, displayPath}) =================
@@ -364,7 +383,12 @@ export function apply(ctx) {
       return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode }
     } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
   }
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
+  /**
+   * 目录骨架。Lean 形式化（契约 §3）要求项目内 `Formal/`（形式化工作文件 + Index.md/TODO.md）
+   * 与 `Verified/Lean/`（归档证明，与定论卡片同处 Verified/，一眼可见"这条结论的证明在哪"），
+   * 以及**项目树之外**的全局可复用库 `<VibeMath 根>/Formal/{Lib,Proved}`（跨项目复用是核心收益）。
+   */
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
   async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
 
   // ================= settings =================
@@ -372,7 +396,7 @@ export function apply(ctx) {
     const out = {}
     const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'planningHorizon', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'projectLockTimeoutMs']
     const numFields = ['promoteValueThreshold']
-    const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny']
+    const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'leanArgs']
     const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
@@ -386,6 +410,11 @@ export function apply(ctx) {
       else if (k === 'reportMode') { out[k] = (v === 'file' || v === 'push' || v === 'both') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'priorityAdjust') { out[k] = (v === 'none' || v === 'deadend-deprioritize' || v === 'survival-map') ? v : DEFAULT_PARAMS[k] }
       else if (k === 'proposPriorityAdjust') { out[k] = (v === 'none' || v === 'progress-graded') ? v : DEFAULT_PARAMS[k] }
+      // Lean 形式化（契约 §1）：非法值一律回退默认，且**绝不**回退到更强的档位——
+      // 一个拼错的值若被当成 encourage/require，会让每个对象都被形式化要求卡住。
+      else if (k === 'formalVerify') { out[k] = (v === 'off' || v === 'encourage' || v === 'require') ? v : 'off' }
+      else if (k === 'leanCommand') { const s = String(v == null ? '' : v).trim(); out[k] = s || 'lean' }
+      else if (k === 'leanTimeoutMs') { const n = Number(v); out[k] = (Number.isFinite(n) && n > 0) ? Math.floor(n) : DEFAULT_PARAMS[k] }
       else if (k === 'solverAllowNetwork' || k === 'verifierAllowNetwork' || k === 'solverAllowScripts' || k === 'verifierAllowScripts') { out[k] = (v === true || v === false || v === '') ? v : DEFAULT_PARAMS[k] }
       else { out[k] = v }
     }
@@ -528,6 +557,9 @@ export function apply(ctx) {
     lines.push(anchorLine('ID', p.id))
     lines.push(anchorLine('类型', '问题'))
     lines.push(anchorLine('状态', p.状态 || '求解中'))
+    // 形式化锚点（契约 §6/§9.1）：与「状态」同行区，让读者一眼看到这条结论的形式化强度。
+    // off 模式或尚无形式化记录时**不写这一行**（off 必须是真正的无操作）。
+    if (formalAnchorLine(p.id)) lines.push(anchorLine('形式化', formalAnchorLine(p.id)))
     lines.push(anchorLine('优先级', p.优先级 == null ? 1 : p.优先级))
     lines.push(anchorLine('依赖', JSON.stringify(p.依赖 || [])))
     lines.push(anchorLine('被依赖', JSON.stringify(p.被依赖 || [])))
@@ -573,6 +605,8 @@ export function apply(ctx) {
     lines.push(anchorLine('类型', '命题'))
     lines.push(anchorLine('状态', p.状态 || '未定论'))
     lines.push(anchorLine('概率', p.概率 == null ? 0.5 : p.概率))
+    // 形式化锚点（契约 §6/§9.1）：紧邻 状态/概率，off 模式或状态为 none 时不写（无操作）。
+    if (formalAnchorLine(p.id)) lines.push(anchorLine('形式化', formalAnchorLine(p.id)))
     lines.push(anchorLine('优先级', p.优先级 == null ? 1 : p.优先级))
     lines.push(anchorLine('依赖', JSON.stringify(p.依赖 || [])))
     if (p.价值关键性 != null) lines.push(anchorLine('价值/关键性', p.价值关键性))
@@ -695,6 +729,8 @@ export function apply(ctx) {
     lines.push(anchorLine('类型', card.类型 || '命题'))
     lines.push(anchorLine('结论', card.结论 === true ? '真' : (card.结论 === false ? '假' : '')))
     lines.push(anchorLine('概率', card.概率))
+    // 结论卡片必须随信带上形式化强度：读者要能分辨"内核已核对"与"仅共识"（契约 §8）。
+    if (formalAnchorLine(card.id)) lines.push(anchorLine('形式化', formalAnchorLine(card.id)))
     lines.push(anchorLine('分类', card.分类 || '未分类'))
     lines.push(anchorLine('来源', card.来源 || ''))
     lines.push(anchorLine('时间', fmtTime(card.时间)))
@@ -905,6 +941,14 @@ export function apply(ctx) {
     const pl = await readJson('State/project_lock.json'); if (pl) projectLock = Object.assign({ sessionId: '', at: 0 }, pl)
     const lp = await readJson('State/last_plan.json'); if (lp) lastPlanSummary = lp
     const aj = await readJson('State/archived_journals.json'); if (aj && typeof aj === 'object') archivedJ = aj
+    const fm = await readJson('State/formal.json')
+    if (fm && typeof fm === 'object') {
+      const rec = (fm.records && typeof fm.records === 'object') ? fm.records : {}
+      // 只接受形状正确的记录：单个坏条目不该让整份形式化状态失效（与 loadKnowledgeBase 的容错一致）。
+      const clean = {}
+      for (const k of Object.keys(rec)) { const r = rec[k]; if (r && typeof r === 'object' && typeof r.status === 'string') clean[k] = r }
+      formalState = { records: clean, todo: Array.isArray(fm.todo) ? fm.todo.filter(function (t) { return t && t.id }) : [], libRuns: (fm.libRuns && typeof fm.libRuns === 'object') ? fm.libRuns : {} }
+    }
   }
   async function saveAll() {
     await writeJson('State/scheduler_state.json', scheduler)
@@ -917,6 +961,8 @@ export function apply(ctx) {
     await writeJson('State/method_log.json', methodLog)
     await writeJson('State/project_lock.json', projectLock)
     await writeJson('State/archived_journals.json', archivedJ)
+    // 未启用且从未产生任何形式化记录时不落这份状态文件（off 保持真正的无操作）。
+    if (formalOn() || Object.keys(formalState.records).length || formalState.todo.length || Object.keys(formalState.libRuns).length) await writeJson('State/formal.json', formalState)
     if (lastPlanSummary) await writeJson('State/last_plan.json', lastPlanSummary)
     scheduler.lastCheckpoint = now()
   }
@@ -952,6 +998,8 @@ export function apply(ctx) {
       registeredAgents: Object.keys(agentRegistry).length,
       queuedPlanActions: planQueue.length,
       recentActivity: activityLog.slice(-Math.min(30, Number(params.activityLogCap) || 100)),
+      // Lean 形式化：模式 + 每个对象的状态 + 形式化待办（可读参数表在 params 里）。
+      formal: formalSummary(),
       params: params,
     }
   }
@@ -979,6 +1027,18 @@ export function apply(ctx) {
       const dirs = getDirState(q.id)
       const dirInfo = dirs.length ? '（方向：' + dirs.map(function (d) { return d.id + ':' + d.status }).join(', ') + '）' : ''
       lines.push('- **' + q.id + '**：' + q.状态 + '，优先级 ' + q.优先级 + '，解法 ' + (q.solutions || []).length + ' 条' + dirInfo)
+    }
+    lines.push('')
+    lines.push('## Lean 形式化')
+    if (!formalOn()) {
+      lines.push('- 未启用（`formalVerify` = off；可用 vibe_math_set_params 切到 encourage / require）')
+    } else {
+      const fs2 = formalSummary()
+      lines.push('- 模式：' + fs2.mode + '（' + (fs2.mode === 'require' ? '强制：定论前必须有 Lean 通过或显式阻塞记录' : '鼓励：按实现难度自行决定') + '）')
+      lines.push('- 已通过：' + (fs2.passed.join('、') || '（无）'))
+      lines.push('- 已记录阻塞：' + (fs2.blocked.join('、') || '（无）'))
+      lines.push('- 形式化待办：' + (fs2.todo.map(function (t) { return t.id }).join('、') || '（无）'))
+      lines.push('- 可复用库：VibeMath/Formal/{Lib,Proved}/（跨项目）｜本项目形式化：Formal/｜归档证明：Verified/Lean/')
     }
     lines.push('')
     lines.push('## 最近活动')
@@ -1237,7 +1297,9 @@ export function apply(ctx) {
       'Then propose 3-6 DIVERSE, mutually distinct solution directions (e.g. analytic method, constructive proof, contradiction, numeric approximation + limit passage, categorical abstraction, ...). ' +
       'Record each direction with its core assumption and an initial feasibility estimate. Every direction must be self-contained: title / method / core_assumption written completely, defining every object they mention — no 断章取义.\n\n' +
       'feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
-      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
+      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}' +
+      // 顺手形式化（契约 §6.2）+ 回执字段（契约 §6.3）
+      (formalOn() ? '\n' + formalWorkLine() + formalReplyNote() : '')
   }
   function rederivePrompt(q, prog) {
     const prior = prog.map(function (d) {
@@ -1251,7 +1313,8 @@ export function apply(ctx) {
       '\nQuantitatively analyze the historical progress, blocker causes, and feasibility decay of each prior direction. Discard directions already proven dead ends (unless a new tool/idea changes that). ' +
       'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. Return the UNION of high-potential leftover directions and the brand-new directions (drop dead ends).\n\n' +
       'feasibility ∈ [0,1]. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
-      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}'
+      '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}' +
+      (formalOn() ? '\n' + formalWorkLine() + formalReplyNote() : '')
   }
   function directionSummary(d) {
     return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
@@ -1297,6 +1360,9 @@ export function apply(ctx) {
       'CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:\n' +
       '{"__writes":[{"path":"Progress/' + q.id + '/' + dir.id + '.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '",...同上 meta 字段...}}\n' +
       '区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。'
+    // 顺手形式化（契约 §6.2）：把常用/可复用的对象、假设、新定义沉淀到全局 Lean 库；
+    // 回执里同样要带上 formal 难度判断字段（契约 §6.3）。
+    if (formalOn()) head += '\n' + formalWorkLine() + formalReplyNote()
     return head
   }
   function verifierTargetText(r) {
@@ -1305,6 +1371,7 @@ export function apply(ctx) {
     return 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
   }
   function verifierReviewPrompt(r) {
+    const target = verifyTargetId(r)
     return personaText('verifierPersona') + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + verifierTargetText(r) + '\n' +
       knowledgeContextText('verifier') +
       capabilitiesText('verifier') +
@@ -1312,10 +1379,14 @@ export function apply(ctx) {
       '\nCalibration: 0.5 means "genuinely undecided — there is a real unresolved gap"; it is NOT a safe hedge, so do not default to 0.5. Give the number your honest confidence from the evidence actually supports.\n' +
       '\n**Reason is MANDATORY and MUST be non-empty**: name the exact step you verified, or the potential counterexample / fatal flaw, or (for 0.5) the precise gap that blocks a decision. A Result with an empty Reason is non-contributory and will be ignored; never return {"Result":0.5} with no justification.\n' +
       '\nCitations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证·真/假). Never cite an unverified or refuted object as a fact — if you need a sub-claim of a refuted card, re-derive it yourself.\n' +
+      // 形式化注入：模式与对象状态都在**构造提示词的这一刻**现算（运行中切档立刻生效）。
+      // 若该对象已有通过的 Lean 证明，这一段把审查对象换成"忠实性"，而不是让评审重做推导（契约 §6.1）。
+      (formalOn() ? '\n' + formalPromptBlock(target) + '\n' : '') +
       '\nIndependently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:\n' +
-      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>"}'
+      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>"' + formalJsonField(target) + '}'
   }
   function verifierDebatePrompt(r, transcript) {
+    const target = verifyTargetId(r)
     return personaText('verifierPersona') + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + verifierTargetText(r) + '\n' +
       knowledgeContextText('verifier') +
       capabilitiesText('verifier') +
@@ -1323,8 +1394,10 @@ export function apply(ctx) {
       '\nRespond to the others (agree / rebut / add new evidence, referencing earlier rounds if needed). If you changed your Result because of them, state the reason explicitly. ' +
       'Remember: formal/notation-level flaws in an otherwise correct proof should lower confidence only slightly — a mathematically correct argument is not "uncertain" because of typos; near-consensus is not a deadlock. Undue swing to 0.5 is discouraged: a bare review merits 0.5 ONLY if there is a genuine undecidable gap, never as a hedge.\n' +
       '\nReason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0.5) is ignored as non-contributory, so always justify your number.\n' +
+      // 辩论轮同样现算：对象已 Lean 通过时，辩论的题目是**忠实性**，不是重新推导。
+      (formalOn() ? '\n' + formalPromptBlock(target) + '\n' : '') +
       '\nReply with ONLY a single JSON object in a ```json code fence, no prose outside it:\n' +
-      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null"}'
+      '{"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null"' + formalJsonField(target) + '}'
   }
   function plannerPrompt(brief) {
     return personaText('plannerPersona') + 'You are the SCHEDULING PLANNER of a multi-agent mathematical research system. Your job: autonomously choose the OPTIMAL schedule — you may lay out the NEXT ' + params.planningHorizon + ' agent-task calls in one plan (they will be executed in order, beyond-capacity ones queued for later ticks).\n\n' +
@@ -1346,6 +1419,9 @@ export function apply(ctx) {
       knowledgeContextText('method-keeper') +
       '\nRECENT WORK DIGEST:\n' + digest + '\n\n' +
       'For each pending invention decide: create a NEW method card, or fold it into an EXISTING method (as an improvement). Only list 可信断言 for claims already verified (ids from Verified/) — everything else stays 经验 (experiential). You may propose 上级体系/子方法 links to organize methods into systems.\n' +
+      // Method Keeper 的职责正是「沉淀可复用方法」，所以形式化的沉淀也归它：可复用的定义/假设
+      // 进全局 Lib/，已成立的引理进 Proved/，让后续项目的证明直接 import 复用（契约 §6.2）。
+      (formalOn() ? formalWorkLine() + '\n【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind=\'def\'），已成立的引理归档到 Proved/（kind=\'lemma\'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。\n' : '') +
       'OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.\n' +
       'CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:\n' +
       '{"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}\n' +
@@ -1459,32 +1535,51 @@ export function apply(ctx) {
     for (const q of allProblems()) {
       if ((q.solutions || []).some(function (s) { return s.prob === 1 })) {
         const wasSolved = q.状态 === '已解决'
-        q.状态 = '已解决'; q.优先级 = 'never'
-        // 先置状态再写卡（writeVerifiedProblemCardIfNeeded 依赖 状态=已解决 才能生成卡）
-        if (!wasSolved) { changed = true; await writeVerifiedProblemCardIfNeeded(q) }
+        // require 门禁（契约 §8）：自报概率 1 是另一条"宣告定论"的入口，同样必须过门。
+        // 不改变对象的既有权重/概率字段，只把结果记为未定论 + 形式化待办。
+        if (!wasSolved && formalBlocksConclusion(q.id)) await deferForFormal(q.id, formalRequiredWhy(q.id), true)
+        else {
+          q.状态 = '已解决'; q.优先级 = 'never'
+          // 先置状态再写卡（writeVerifiedProblemCardIfNeeded 依赖 状态=已解决 才能生成卡）
+          if (!wasSolved) { changed = true; await writeVerifiedProblemCardIfNeeded(q) }
+        }
       }
     }
     for (const p of allPropos()) {
       let pChanged = false
       const proofOne = (p.proofs || []).some(function (x) { return x.prob === 1 })
       const refuteOne = (p.refutes || []).some(function (x) { return x.prob === 1 })
-      if (proofOne && p.概率 !== 1) { p.概率 = 1; p.状态 = '已验证·真'; pChanged = true }
-      else if (refuteOne && p.概率 !== 0) { p.概率 = 0; p.状态 = '已验证·假'; pChanged = true }
-      if ((p.概率 === 1 || p.概率 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
-      if (p.概率 === 1 || p.概率 === 0) {
-        if (await writeVerifiedPropositionCardIfNeeded(p)) pChanged = true
-        // 关闭晋升/判断出的"僵尸"问题
-        for (const q of allProblems()) {
-          if (q.状态 === '已解决') continue
-          if (q.判断命题 === p.id || (q.来源命题 === p.id) || ((q.来源 === 'promote' || q.来源 === 'judge') && q.来源与动机 && q.来源与动机.indexOf(p.id) !== -1)) { q.状态 = '已解决'; q.优先级 = 'never'; changed = true }
+      const wouldConclude = (proofOne && p.概率 !== 1) || (refuteOne && p.概率 !== 0)
+      if (wouldConclude && formalBlocksConclusion(p.id)) {
+        // 门禁不通过：不写 概率/状态，不写 Verified/ 卡片，只记未定论 + 待办（幂等，不刷屏）。
+        await deferForFormal(p.id, formalRequiredWhy(p.id), proofOne)
+      } else {
+        if (proofOne && p.概率 !== 1) { p.概率 = 1; p.状态 = '已验证·真'; pChanged = true }
+        else if (refuteOne && p.概率 !== 0) { p.概率 = 0; p.状态 = '已验证·假'; pChanged = true }
+        if ((p.概率 === 1 || p.概率 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
+        if (p.概率 === 1 || p.概率 === 0) {
+          if (await writeVerifiedPropositionCardIfNeeded(p)) pChanged = true
+          // 关闭晋升/判断出的"僵尸"问题
+          for (const q of allProblems()) {
+            if (q.状态 === '已解决') continue
+            if (q.判断命题 === p.id || (q.来源命题 === p.id) || ((q.来源 === 'promote' || q.来源 === 'judge') && q.来源与动机 && q.来源与动机.indexOf(p.id) !== -1)) { q.状态 = '已解决'; q.优先级 = 'never'; changed = true }
+          }
         }
       }
       if (pChanged) { await saveProposition(p); changed = true }
     }
     if (changed) { for (const q of allProblems()) await saveProblem(q); logActivity('update', 'status updates applied (probability-1 closures / verified cards)') }
   }
+  /** require 门禁的机器可读原因（写进 Formal/TODO.md 与 Formal/Index.md）。 */
+  function formalRequiredWhy(target) {
+    const rec = formalOf(target)
+    return 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + (rec.status || 'none') + '）'
+  }
   async function writeVerifiedPropositionCardIfNeeded(p) {
     if (p.概率 !== 1 && p.概率 !== 0) return false
+    // 写 Verified 卡片是"宣告定论"的收口点：require 模式下没过门就绝不写（防御性双保险，
+    // 正常路径已在 settleVerdict / processStatusUpdates 拦住）。
+    if (formalBlocksConclusion(p.id)) return false
     const proofs1 = (p.proofs || []).filter(function (x) { return x.prob === 1 })
     const refutes1 = (p.refutes || []).filter(function (x) { return x.prob === 1 })
     const parts = []
@@ -1495,6 +1590,7 @@ export function apply(ctx) {
   }
   async function writeVerifiedProblemCardIfNeeded(q) {
     if (q.状态 !== '已解决') return false
+    if (formalBlocksConclusion(q.id)) return false
     const sols1 = (q.solutions || []).filter(function (s) { return s.prob === 1 })
     const parts = []
     for (let i = 0; i < sols1.length; i++) parts.push('【解法 #' + (i + 1) + '】' + (sols1[i].text || ''))
@@ -1505,6 +1601,12 @@ export function apply(ctx) {
   async function writeVerifiedCardIfChanged(card) {
     const rel = verifiedRel(card) // 必须与 saveVerified 用同一路径，否则读侧永远读不到已写出的卡
     const existing = await readText(rel)
+    // 最后一道闸门：require 模式下没有 passed/blocked 记录就不允许**新写** Verified 卡片。
+    // 卡片已经存在（切到 require 之前就已定论）只做刷新，不算"新的定论"，因此不记待办。
+    if (formalBlocksConclusion(card.id)) {
+      if (existing === undefined) await deferForFormal(card.id, formalRequiredWhy(card.id), card.结论 === true)
+      return false
+    }
     const md = composeVerifiedMd(card)
     const strip = function (s) { return String(s).split('\n').filter(function (l) { return l.indexOf('- 时间:') !== 0 }).join('\n').trim() }
     if (existing !== undefined && strip(existing) === strip(md)) return false
@@ -1614,6 +1716,12 @@ export function apply(ctx) {
   async function createVerifyTask(c) {
     const rId = c.rId
     if (verifyTaskBusy(rId)) return false
+    // require 门禁的**防空转**（契约 §2「对象留在原库，可形式化后再次提议」）：已经被记为
+    // 「形式化待办」、而形式化又还没补齐的对象不再重复表决——重复表决只会一次又一次被同一道
+    // 门拦下（同一 rId 每 tick 重建任务、每轮再派验证器），白白耗尽验证预算。一旦 passed /
+    // blocked 落库，门禁条件满足，候选自然重新出现并继续验证（无需人工干预）。
+    const gateTarget = String(c.pId || c.qid || '')
+    if (formalBlocksConclusion(gateTarget) && formalTodo().some(function (t) { return t && t.id === gateTarget })) return false
     tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }
     logActivity('verify', 'verification task created for ' + rId)
     await saveAll()
@@ -1913,8 +2021,10 @@ export function apply(ctx) {
         if (activeCount() >= params.maxParallelThreshold) break
         const c = cands[i]
         if (verifyTaskBusy(c.rId)) continue
-        await createVerifyTask(c)
-        return // one per tick keeps scheduling simple
+        // 只有**真的建了任务**才吃掉本轮的名额：require 门禁的防空转会跳过待办对象，
+        // 若照旧 `return`，排在这些对象后面的候选会被永久饿死（每次都轮到同一个被跳过的对象）。
+        const created = await createVerifyTask(c)
+        if (created) return // one per tick keeps scheduling simple
       }
     }
     // 3) solve: explorer / solver spawns (manual → gate)
@@ -1961,6 +2071,9 @@ export function apply(ctx) {
   async function handleExplorer(childId, meta, output) {
     delete agentRegistry[childId]
     const parsed = parseJson(output)
+    // 回执里的 formal 字段（契约 §6.3）：即使一次 Lean 工具都没调用，代理也必须能留下显式的
+    // 形式化难度判断；meta.formal 与顶层 formal 两种写法都接受。
+    if (parsed) await absorbFormalFromReply(parsed, childId)
     // 新协议（代理直接写 md + sync_meta）：__writes 落盘，meta.kind==='directions' 走元数据同步
     if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'directions'))) {
       await applyAgentWrites(parsed.__writes)
@@ -1985,6 +2098,7 @@ export function apply(ctx) {
   async function handleSolver(childId, meta, output, stopReason) {
     const qid = meta.qid; const dirId = meta.direction
     const parsed = parseJson(output)
+    if (parsed) await absorbFormalFromReply(parsed, childId)
     // 新协议（代理直接写 md + sync_meta）：__writes 落盘，meta.kind==='solver' 走元数据同步
     if (parsed && ((Array.isArray(parsed.__writes) && parsed.__writes.length) || (parsed.meta && parsed.meta.kind === 'solver'))) {
       delete agentRegistry[childId]
@@ -2288,6 +2402,576 @@ export function apply(ctx) {
     }
   }
 
+  // ================= Lean 形式化验证 =================
+  // 契约：docs/formal-verification.md（v2/v3/v4/v5 共用；实现方案.md §10.1/§11.1）。
+  //
+  // 这套机制要换掉的是**审查对象**，不是给代理加一道苦役：多代理交叉验证的本质是**共识**——
+  // m 个人一致认为"这是对的"既排除不了共同误解，也排除不了共同漏掉的情形；Lean 把"我认为"
+  // 换成"机器已核对"，于是剩下的唯一不确定项收缩成一个人和代理都能有效审查的问题：
+  //
+  //     Lean 代码里的定义 / 对象 / 条件 / 假设 / 结论，是否与命题原文完全一致？
+  //
+  // 因此一旦 Lean 运行通过，验证提示词就不再要求重做推导，而是要求**忠实性审查**；
+  // require 模式把这句话变成门禁：一个对象要被判定为真（严格证明）或假（严格反驳），必须
+  // 先达到 `passed`（有 Lean 产物且最近一次运行 exit 0）或 `blocked`（代理给出显式、可审计的
+  // 阻塞原因）。门禁只是兜底：它把裁定记为未定论 + 形式化待办，绝不把系统卡死。
+  const FORMAL_MODES = ['off', 'encourage', 'require']
+  function formalMode() { const m = String(params.formalVerify); return FORMAL_MODES.indexOf(m) !== -1 ? m : 'off' }
+  function formalOn() { return formalMode() !== 'off' }
+  function formalRecords() { return formalState.records }
+  function formalTodo() { return formalState.todo }
+  /**
+   * 对象 id → 形式化记录的键。**空 id 必须是空串**：`idSafe('')` 会回退成 'id'，那样一个没写
+   * target 的回执（或空参数）就能在对象表里凭空造出一条名为 `id` 的记录。
+   */
+  function formalId(raw) { const s = String(raw == null ? '' : raw).trim(); return s ? idSafe(s) : '' }
+  function formalOf(target) {
+    const id = formalId(target)
+    if (!id) return { status: 'none' }
+    const r = formalState.records[id]
+    return r || { status: 'none' }
+  }
+  /**
+   * 落一条形式化记录。达到 passed / blocked 时**同时清掉待办**：待办的含义就是"还不满足
+   * require 门禁"，留着已形式化完成的对象会让 Formal/TODO.md 永久说谎。
+   */
+  async function putFormal(target, record) {
+    const id = formalId(target)
+    if (!id) return false
+    let todoChanged = false
+    if (record === null) delete formalState.records[id]
+    else {
+      formalState.records[id] = record
+      if (record.status === 'passed' || record.status === 'blocked') {
+        const i = formalState.todo.findIndex(function (x) { return x && x.id === id })
+        if (i !== -1) { formalState.todo.splice(i, 1); todoChanged = true }
+      }
+    }
+    await saveAll()
+    return todoChanged
+  }
+  // `passed` 需要的是**绿过的运行**，不是"归档了一个文件"：从未执行过的证明文件什么也没证明。
+  function formalGateOk(rec) { return !!rec && (rec.status === 'passed' || rec.status === 'blocked') }
+  function formalBlocksConclusion(target) { return formalMode() === 'require' && !formalGateOk(formalOf(target)) }
+  function formalStatusLine(target) {
+    const r = formalOf(target)
+    if (r.status === 'passed') return 'Lean 通过（' + (r.proof || r.file || '') + '）'
+    if (r.status === 'blocked') return '阻塞（' + (r.note || '未说明') + '）'
+    if (r.status === 'attempted') return '已尝试未通过'
+    return '未尝试'
+  }
+  /** md 卡片锚点行内容（off 模式或状态 none 时为空 = 不写这一行）。 */
+  function formalAnchorLine(target) {
+    if (!formalOn()) return ''
+    const r = formalOf(target)
+    if (!r || r.status === 'none') return ''
+    return formalStatusLine(target)
+  }
+  const formalTail = function (s, n) { const t = String(s == null ? '' : s); return t.length > n ? t.slice(-n) : t }
+
+  // ---- 路径守卫 ----------------------------------------------------------
+  /**
+   * 纯**词法**归一化绝对路径（折叠 '.', '..' 与重复斜杠），完全不碰文件系统。
+   * 只做 `startsWith(root)` 是不够的：`…/VibeMath/Projects/../../../../etc/evil.lean`
+   * 作为字符串仍然以根开头，解析后却在根外。
+   */
+  function normalizeAbsPath(p) {
+    const parts = String(p == null ? '' : p).replace(/\\/g, '/').split('/')
+    const out = []
+    for (const seg of parts) {
+      if (seg === '') { if (out.length === 0) out.push(''); continue }
+      if (seg === '.') continue
+      if (seg === '..') { if (out.length > 1) out.pop(); continue }
+      out.push(seg)
+    }
+    return out.join('/')
+  }
+  /**
+   * 把 Lean 路径解析成"可证明位于 <VibeMath 根> 之内"的归一化绝对路径，否则 null。
+   * 边界是 **VibeMath 根**而不是项目根：全局可复用库 <VibeMath 根>/Formal/{Lib,Proved}
+   * 按契约 §3 就故意放在项目树之外。越界（爬到 VibeMath 根之上、或无关绝对路径）一律拒绝。
+   */
+  function leanAbsPathFrom(baseAbs, rel) {
+    const raw = String(rel == null ? '' : rel).trim()
+    if (!raw) return null
+    const abs = (raw.charAt(0) === '/' || /^[a-z]:/i.test(raw)) ? raw : baseAbs + '/' + raw.replace(/^\.\//, '')
+    const norm = normalizeAbsPath(abs)
+    const root = normalizeAbsPath(vibeRoot())
+    if (norm !== root && norm.indexOf(root + '/') !== 0) return null
+    return norm
+  }
+  function leanAbsPath(rel) { return leanAbsPathFrom(frameworkRoot(), rel) }
+  function leanAbsPathVibe(rel) { return leanAbsPathFrom(vibeRoot(), rel) }
+  /** 契约 §5.1：`file` 可相对**项目根**或 **<VibeMath 根>**——两处都过同一守卫，先项目后全局。 */
+  async function leanResolveRun(rel) {
+    const cand = leanAbsPath(rel)
+    if (cand !== null && await readTextAbs(cand) !== undefined) return cand
+    const alt = leanAbsPathVibe(rel)
+    if (alt !== null && await readTextAbs(alt) !== undefined) return alt
+    if (cand !== null) return cand
+    return alt
+  }
+
+  // ---- 执行（绝不抛进调度循环）------------------------------------------
+  /**
+   * 在一个 .lean 文件上跑工具链。**任何**失败模式（无 subprocess 服务、工具链不存在、
+   * spawn 失败、超时、非零退出）都变成可读结果：调度循环永远不会因为 Lean 而崩。
+   */
+  async function leanRunFile(relPath, timeoutMs) {
+    const started = now()
+    const rel = String(relPath == null ? '' : relPath).trim()
+    if (!rel) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'file is required' }
+    const abs = await leanResolveRun(rel)
+    if (abs === null) {
+      return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'Lean 文件必须位于 ' + vibeRoot().replace(/\\/g, '/') + '/ 之内（收到 ' + rel + '）' }
+    }
+    if (!/\.lean$/i.test(abs)) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'only .lean files can be executed' }
+    if (await readTextAbs(abs) === undefined) return { ok: false, code: 'V3_NOT_FOUND', message: 'no such file: ' + rel }
+    const sub = subprocessOf()
+    if (sub === undefined || typeof sub.spawn !== 'function') {
+      return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel, ms: 0 }
+    }
+    const cmd = String(params.leanCommand || 'lean')
+    const cap = Math.max(1000, Number(timeoutMs) || Number(params.leanTimeoutMs) || 120000)
+    if (typeof sub.resolveExecutable !== 'function') {
+      return { ok: false, code: 'LEAN_NOT_FOUND', message: 'the host subprocess service exposes no resolveExecutable(); cannot resolve "' + cmd + '" —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
+    }
+    let exe
+    try { exe = await sub.resolveExecutable(cmd) } catch (e) {
+      return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + cmd + '": ' + String((e && e.message) || e) + ' —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
+    }
+    const argv = [exe].concat((Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)).concat([abs])
+    let handle
+    try {
+      handle = sub.spawn({
+        argv: argv,
+        cwd: frameworkRoot(),
+        stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
+        graceMs: cap,
+      })
+    } catch (e) {
+      return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
+    }
+    // 超时必须有**主动**兜底：graceMs 只是宿主侧的宽限，契约 §7 要求超时后调用 handle.terminate()。
+    let timedOut = false
+    let timer = null
+    let outcome
+    try {
+      outcome = await Promise.race([
+        handle.done,
+        new Promise(function (resolve) {
+          timer = setTimeout(function () {
+            timedOut = true
+            try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* best effort */ }
+            resolve({ exitCode: null, signal: 'SIGTERM' })
+          }, cap)
+        }),
+      ])
+    } catch (e) {
+      if (timer) clearTimeout(timer)
+      return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
+    }
+    if (timer) clearTimeout(timer)
+    let out = '', err = ''
+    try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
+    try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
+    const exitCode = outcome ? outcome.exitCode : null
+    const ms = now() - started
+    const ok = exitCode === 0
+    return {
+      ok: ok, exitCode: exitCode, signal: (outcome && outcome.signal) || null, ms: ms,
+      command: argv.join(' '), file: rel,
+      stdout: formalTail(out, 4000), stderr: formalTail(err, 4000),
+      timedOut: timedOut,
+      code: ok ? undefined : (timedOut ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
+    }
+  }
+  /**
+   * 把一次运行记到对象上（契约 §4 状态迁移）。普通运行最多把对象推进到 `attempted`；
+   * `passed` 只能由 lean_archive{kinds:'proof'} 且该文件最近一次运行 ok 产生——否则一次
+   * 顺手跑个无关文件就能把对象"洗白"成已形式化。passed/blocked 不会被普通运行降级。
+   */
+  async function formalSetRun(target, run) {
+    const t = formalId(target)
+    if (!t) return
+    const prev = formalOf(t)
+    const status = (prev.status === 'passed' || prev.status === 'blocked') ? prev.status : 'attempted'
+    await putFormal(t, Object.assign({}, prev, {
+      status: status,
+      file: (run && run.file) || prev.file || '',
+      run: { at: now(), ok: !!(run && run.ok), exitCode: (run && run.exitCode !== undefined) ? run.exitCode : null, ms: (run && run.ms) || 0, stdoutTail: formalTail(run && run.stdout, 800), stderrTail: formalTail(run && run.stderr, 800) },
+      updatedAt: now(),
+    }))
+  }
+
+  // ---- 提示词注入（都在**构造提示词的那一刻**现算，故运行中切模式立刻生效）--------
+  function formalPromptBlock(target) {
+    if (!formalOn()) return ''
+    const mode = formalMode()
+    const rec = target ? formalOf(target) : { status: 'none' }
+    const L = []
+    L.push('【Lean 形式化验证（' + (mode === 'require' ? '强制' : '鼓励') + '模式）】')
+    if (rec.status === 'passed') {
+      // 整套机制的要害：审查对象**变了**。
+      L.push('  · 该对象已有**通过的 Lean 形式化证明**（' + (rec.proof || rec.file || '') + '，最近一次运行 exit 0）。')
+      L.push('    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的')
+      L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），')
+      L.push('    并据此给出 verdict。')
+    } else if (rec.status === 'blocked') {
+      L.push('  · 该对象已被记录为**形式化阻塞**：' + (rec.note || '未说明') + '。')
+      L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
+    } else {
+      L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
+      L.push('  · 工具：vibe_math_lean_run（执行）· vibe_math_lean_archive（归档）· vibe_math_lean_lib（查已有可复用库）')
+      L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 ' + (vibeRoot() + '/Formal/Lib/').replace(/\\/g, '/'))
+      L.push('    已证引理放 ' + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '；写之前先 lean_lib 查重。')
+      L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与')
+      L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+      if (mode === 'require') {
+        L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_math_lean_archive')
+        L.push('    kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，')
+        L.push('    会被记为未定论（原因 formal-required）并进入「形式化待办」。')
+      } else {
+        L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。')
+      }
+    }
+    return L.join('\n')
+  }
+  /** 日常提示词里的"顺手形式化"一行（off 模式返回空串 = 一个字都不多）。 */
+  function formalWorkLine() {
+    if (!formalOn()) return ''
+    return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
+      + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind=\'def\'），已成立的引理归到 '
+      + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '（kind=\'lemma\'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。'
+      + (formalMode() === 'require'
+        ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
+        : '这会让后续的验证与证明省掉大量重复工作。')
+  }
+  /** 回执契约里的 formal 字段（契约 §6.3）：非 off 模式必须出现在回执契约里，否则这条通道不可发现。 */
+  function formalJsonField(target) {
+    if (!formalOn()) return ''
+    const id = String(target == null ? '' : target) || '<对象id>'
+    return ',"formal":{"target":"' + id + '","decision":"used|blocked","file":"Formal/' + id + '.lean","note":"难度判断/阻塞原因"}'
+  }
+  /**
+   * 工作轮（solver / explorer）回执契约里的 formal 字段。这些角色的回执本身就是一段 JSON 模板，
+   * 直接改模板尾部容易把示例改成非法 JSON，所以在**契约说明**里给出同样的字段（契约 §6.3），
+   * 框架侧 `absorbFormalFromReply` 同时接受顶层 `formal` 与 `meta.formal`。
+   */
+  function formalReplyNote() {
+    if (!formalOn()) return ''
+    return '\n形式化回执（本模式）：若你本轮对某个对象做了形式化难度判断，请在回执里加上 '
+      + '"formal":{"target":"<对象id>","decision":"used|blocked","file":"Formal/<对象id>.lean","note":"难度判断/阻塞原因"}'
+      + '（decision=\'blocked\' 时必须写明 note，否则拒绝记录）。'
+  }
+  /** 从一条代理回执里取出 formal 判断并落库（顶层 formal 或 meta.formal 都接受）。 */
+  async function absorbFormalFromReply(parsed, memberId) {
+    if (!formalOn() || !parsed || typeof parsed !== 'object') return
+    const f = (parsed.formal && typeof parsed.formal === 'object') ? parsed.formal
+      : ((parsed.meta && typeof parsed.meta.formal === 'object') ? parsed.meta.formal : null)
+    if (f) await absorbFormalReply(f, memberId)
+  }
+  /** 对象 id → 关联可验证对象（命题/问题）。用于把表决对象映射到形式化记录。 */
+  function verifyTargetId(r) { return String((r && (r.pId || r.qid)) || '') }
+  /**
+   * 这次裁决会不会**宣告某个对象定论**？返回被宣告对象的 id，否则空串。
+   *
+   * 门禁只管 boolean 裁定（真=严格证明 / 假=严格反驳）：近共识的小数（例如 0.95）本来就仍留
+   * 原库为未定论，不受门禁约束（契约 §2）。`prop-proof` 判 0 时并不会立刻把命题定论，它往反
+   * 方向推入一条 prob=1 的证伪；下一次 processStatusUpdates 会在那里被同一道门拦住。
+   */
+  function formalConclusionTarget(r, v) {
+    if (!r) return ''
+    if (r.kind === 'proposition') return (v === 1 || v === 0) ? String(r.pId || '') : ''
+    if (r.kind === 'prop-proof') return v === 1 ? String(r.pId || '') : ''
+    if (r.kind === 'problem-solution') return v === 1 ? String(r.qid || '') : ''
+    return ''
+  }
+
+  // ---- 公告 / 索引 --------------------------------------------------------
+  /**
+   * v3 没有 v5 的群聊通道，对应的"群聊公告"落点是：①活动日志（vibe_math_status.recentActivity /
+   * 报告里可见）②Logs/形式化.md 的追加式公告（人可复核、可 diff）。公告失败绝不影响调度。
+   */
+  async function formalAnnounce(text) {
+    logActivity('formal', text)
+    try {
+      const rel = 'Logs/形式化.md'
+      const prev = await readText(rel)
+      const head = '# 形式化公告｜' + currentProject + '\n\n> 由框架维护的追加式公告（形式化定论、归档、require 门禁搁置）。\n\n'
+      await writeText(rel, ((prev === undefined || !String(prev).trim()) ? head : prev) + '- ' + fmtTime() + ' ' + text + '\n')
+    } catch (e) { /* 公告失败不应影响调度 */ }
+  }
+  /** require 模式：本轮裁定**不生效**——记未定论 + 形式化待办 + 公告，而不写 Verified/ 卡片。 */
+  async function deferForFormal(target, why, isTrue) {
+    const t = formalId(target)
+    if (!t) return { deferred: false }
+    const list = formalTodo()
+    const already = list.some(function (x) { return x && x.id === t })
+    if (!already) {
+      // 幂等：processStatusUpdates 每个 tick 都会再试一次同一对象，只有**首次**才写盘 + 公告，
+      // 否则每秒都会往 Formal/TODO.md 和人读公告里追加一遍（日志刷屏）。
+      list.push({ id: t, at: now(), why: why, verdict: isTrue ? 1 : 0, project: currentProject })
+      await writeFormalTodo()
+      await writeFormalIndex()
+      await formalAnnounce('【形式化】' + t + ' 的表决结果为 ' + (isTrue ? '真' : '假') + '，但 **require 模式**要求'
+        + '先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md）。请完成形式化'
+        + '（vibe_math_lean_archive kind=\'proof\'）或记录阻塞原因（kind=\'blocked\'）后重新提议验证。')
+      await saveAll()
+    }
+    return { deferred: true, already: already, why: why }
+  }
+  /** status/report 里的形式化摘要：让所办/人能审计"到底拿到了严格证明，还是只有共识"。 */
+  function formalSummary() {
+    const recs = formalRecords()
+    const keys = Object.keys(recs)
+    return {
+      mode: formalMode(),
+      objects: keys.map(function (k) {
+        const r = recs[k] || {}
+        return { target: k, status: r.status || 'none', file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null }
+      }),
+      passed: keys.filter(function (k) { return (recs[k] || {}).status === 'passed' }),
+      blocked: keys.filter(function (k) { return (recs[k] || {}).status === 'blocked' }),
+      todo: formalTodo().map(function (t) { return { id: t.id, why: t.why || 'formal-required', at: t.at } }),
+      paths: { project: 'Formal/（相对项目根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
+      note: formalOn() ? '' : '未启用（formalVerify = off；可用 vibe_math_set_params 切到 encourage / require）',
+    }
+  }
+  async function writeFormalIndex() {
+    const recs = formalRecords()
+    const keys = Object.keys(recs).sort()
+    const L = ['# Lean 形式化索引｜' + currentProject + '｜' + fmtTime(), '',
+      '> 本文件由框架维护（工具调用时增量更新；`vibe_math_lean_lib` 会重建）。权威状态在对象记录里。', '',
+      '| 对象 | 状态 | 形式化文件 | 归档证明 | 最近运行 | 难度判断 / 阻塞原因 |', '|---|---|---|---|---|---|']
+    if (!keys.length) L.push('| （暂无） | | | | | |')
+    for (const k of keys) {
+      const r = recs[k] || {}
+      const run = r.run ? (r.run.ok ? 'ok（exit 0，' + ((r.run.ms || 0) / 1000).toFixed(1) + 's）' : 'fail（exit ' + r.run.exitCode + '，' + ((r.run.ms || 0) / 1000).toFixed(1) + 's）') : '—'
+      L.push('| ' + k + ' | ' + (r.status || 'none') + ' | ' + (r.file || '—') + ' | ' + (r.proof || '—') + ' | ' + run + ' | ' + String(r.note || '—').replace(/\|/g, '/').slice(0, 120) + ' |')
+    }
+    L.push('')
+    if (formalTodo().length) {
+      L.push('## 形式化待办（require 模式：定论被搁置）')
+      for (const t of formalTodo()) L.push('- ' + t.id + ' —— ' + (t.why || 'formal-required') + '（' + fmtTime(t.at) + '）')
+      L.push('')
+    }
+    await writeText('Formal/Index.md', L.join('\n'))
+  }
+  async function writeFormalTodo() {
+    const list = formalTodo()
+    const L = ['# 形式化待办｜' + currentProject + '｜' + fmtTime(), '',
+      '> 这些对象在 `require` 模式下尚不具备「Lean 已通过」或「显式阻塞记录」，因此**定论被搁置**。',
+      '> 完成形式化（vibe_math_lean_archive kind=\'proof\'）或记录阻塞原因（kind=\'blocked\'）后，重新提议验证即可。', '']
+    if (!list.length) L.push('（暂无）')
+    for (const t of list) L.push('- ' + t.id + '｜' + (t.why || 'formal-required') + '｜' + fmtTime(t.at))
+    L.push('')
+    await writeText('Formal/TODO.md', L.join('\n'))
+  }
+  /**
+   * 扫描并重建三处索引（项目 Formal/Index.md + 全局 Lib/Index.md + Proved/Index.md）。
+   * 列举**便宜且无副作用**：不跑工具链（"我能复用哪些定义"不该触发编译）；每次运行的结果记在
+   * formalState.libRuns 里（归档 kind='def'/'lemma' 时 run:true 记录的），作为"最近运行"列。
+   */
+  async function rebuildLeanLibIndexes() {
+    const scan = async function (dirAbs, dirRel) {
+      const rows = []
+      const names = await listFilesAbs(dirAbs)
+      for (const name of names) {
+        if (!/\.lean$/i.test(String(name))) continue
+        const rel = dirRel + '/' + name
+        const txt = (await readTextAbs(dirAbs + '/' + name)) || ''
+        const base = String(name).replace(/\.lean$/i, '')
+        const first = (String(txt).split('\n').filter(function (l) { return l.trim() && !/^\s*(\/\/|--|import)/.test(l) })[0] || '').trim().slice(0, 110)
+        const depend = (String(txt).split('\n').filter(function (l) { return /^\s*import\s+/.test(l) }).map(function (l) { return l.replace(/^\s*import\s+/, '').trim() }).join('、')) || '—'
+        const run = formalState.libRuns[rel]
+        rows.push({ base: base, rel: rel, first: first, depend: depend, run: run ? (run.ok ? 'ok' : 'fail') : '—' })
+      }
+      return rows
+    }
+    const libRows = await scan(vibeRoot() + '/Formal/Lib', 'Lib')
+    await writeTextAbs(vibeRoot() + '/Formal/Lib/Index.md', ['# 可复用 Lean 定义库（跨项目）｜' + currentProject, '',
+      '> 写新定义之前先查这里：能复用就不要重新定义。', '',
+      '| 名称 | 文件 | 类别 | 摘要 | 最近运行 |', '|---|---|---|---|---|']
+      .concat(libRows.length ? libRows.map(function (r) { return '| ' + r.base + ' | ' + r.rel + ' | def | ' + r.first.replace(/\|/g, '/') + ' | ' + r.run + ' |' }) : ['| （暂无） | | | | |']).join('\n') + '\n')
+    const provedRows = await scan(vibeRoot() + '/Formal/Proved', 'Proved')
+    await writeTextAbs(vibeRoot() + '/Formal/Proved/Index.md', ['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜' + currentProject, '',
+      '> 这些文件是通过内核检查的引理，可直接 import 复用。', '',
+      '| 名称 | 文件 | 陈述 | 依赖 | 最近运行 |', '|---|---|---|---|---|']
+      .concat(provedRows.length ? provedRows.map(function (r) { return '| ' + r.base + ' | ' + r.rel + ' | ' + r.first.replace(/\|/g, '/') + ' | ' + r.depend.replace(/\|/g, '/') + ' | ' + r.run + ' |' }) : ['| （暂无） | | | | |']).join('\n') + '\n')
+    await writeFormalIndex()
+    await writeFormalTodo()
+    return { lib: libRows.length, proved: provedRows.length, objects: Object.keys(formalRecords()).length }
+  }
+  /**
+   * 形式化记录变化后，把对象 md 卡片上的 `- 形式化:` 锚点改成一致（任务要求）。
+   *
+   * 用**文本级插入/替换**而不是 saveProposition/saveProblem 整卡重写：v3 支持代理直接写 md，
+   * 整卡重写会把代理在调度器最后一次解析之后写进卡里的内容抹掉（v3 自己已有"代理已直接写了
+   * 该命题卡，保留其内容（不覆盖）"的纪律）。位置与 compose*Md 保持一致：紧随 `- 概率:`，
+   * 无概率锚点时紧随 `- 状态:`。
+   */
+  function withFormalAnchor(text, line) {
+    const s = String(text)
+    const idx = s.search(/\n## /)
+    const head = idx === -1 ? s.replace(/\s+$/, '') : s.slice(0, idx)
+    const body = idx === -1 ? '' : s.slice(idx)
+    const kept = head.split('\n').filter(function (l) { return !/^-\s*形式化\s*:/.test(l) })
+    if (line) {
+      let at = -1
+      for (let i = 0; i < kept.length; i++) { if (/^-\s*概率\s*:/.test(kept[i])) { at = i; break } }
+      if (at === -1) for (let i = 0; i < kept.length; i++) { if (/^-\s*状态\s*:/.test(kept[i])) { at = i; break } }
+      if (at === -1) kept.push('- 形式化: ' + line)
+      else kept.splice(at + 1, 0, '- 形式化: ' + line)
+    }
+    const out = kept.join('\n') + body
+    if (out === s) return s
+    return /\n$/.test(out) ? out : out + '\n'
+  }
+  async function upsertFormalAnchor(target) {
+    if (!formalOn()) return false
+    const id = formalId(target)
+    if (!id) return false
+    const p = propos.get(id)
+    const q = problems.get(id)
+    const rel = p ? propositionRel(p) : (q ? problemRel(q) : '')
+    if (!rel) return false
+    const txt = await readText(rel)
+    if (txt === undefined) return false
+    const next = withFormalAnchor(txt, formalAnchorLine(id))
+    if (next === txt) return false
+    await writeText(rel, next)
+    return true
+  }
+
+  // ---- 三个工具的实现 -----------------------------------------------------
+  /**
+   * 在一个 .lean 文件上跑工具链、把结果记到对象上（可选）、刷新索引，并如实回报。
+   * off 模式下也照常工作：人/代理主动调用时它不该失效，只是框架不主动宣传它存在。
+   */
+  async function leanRunTool(memberId, o) {
+    const args = o || {}
+    const run = await leanRunFile(String(args.file || ''), args.timeout_ms)
+    const target = String(args.target || '').trim()
+    if (run.file || run.ok) {
+      if (target) { await formalSetRun(target, run); await upsertFormalAnchor(target) }
+      await writeFormalIndex()
+    }
+    if (run.ok) await formalAnnounce('【形式化】' + (memberId || 'scheduler') + ' 运行 Lean 通过：' + run.file + '（' + ((run.ms || 0) / 1000).toFixed(1) + 's）' + (target ? '｜对象 ' + target : ''))
+    return Object.assign({ ok: !!run.ok }, run, {
+      hint: run.ok
+        ? '通过。若是某个对象的证明，请用 lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
+        : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 lean_archive kind=\'blocked\' 记录原因。',
+    })
+  }
+  async function leanArchive(memberId, o) {
+    const args = o || {}
+    const kind = String(args.kind || '')
+    const content = typeof args.content === 'string' ? args.content : undefined
+    const from = args.from ? String(args.from) : ''
+    const who = memberId || 'scheduler'
+    // 读来源文件：只在 <VibeMath 根> 之内，且必须存在。
+    const readFrom = async function () {
+      const srcAbs = await leanResolveRun(from)
+      if (srcAbs === null) return { err: 'from must be a .lean file inside the VibeMath root (got ' + from + ')' }
+      const body = await readTextAbs(srcAbs)
+      if (body === undefined) return { err: 'no such file: ' + from }
+      return { body: body }
+    }
+    if (kind === 'def' || kind === 'lemma') {
+      const rawName = String(args.name || '').trim()
+      if (!rawName) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'name is required for a reusable definition/lemma' }
+      const name = idSafe(rawName)
+      let body = content
+      if (body === undefined && from) { const r = await readFrom(); if (r.err) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: r.err }; body = r.body }
+      if (body === undefined) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
+      const dirRel = kind === 'def' ? 'Lib' : 'Proved'
+      const rel = 'Formal/' + dirRel + '/' + name + '.lean'
+      const abs = vibeRoot() + '/' + rel
+      if (!await writeTextAbs(abs, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + rel }
+      // 全局库在项目树之外，必须用**绝对路径**执行（相对形式会在项目根里找）。
+      const run = args.run === false ? null : await leanRunFile(abs)
+      if (run && run.file) formalState.libRuns[dirRel + '/' + name + '.lean'] = { ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, at: now() }
+      await rebuildLeanLibIndexes()
+      await formalAnnounce('【形式化】' + who + ' 归档了' + (kind === 'def' ? '可复用定义' : '已证引理') + ' `' + name + '` → ' + rel + (run ? '（运行 ' + (run.ok ? '通过' : '未通过') + '）' : '（未运行）'))
+      return { ok: true, kind: kind, name: name, file: rel, run: run || undefined, note: '已并入全局可复用库，后续项目可直接 import 复用' }
+    }
+    if (kind === 'proof') {
+      const rawTarget = String(args.target || '').trim()
+      if (!rawTarget) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'target is required for kind=proof' }
+      const target = idSafe(rawTarget)
+      let body = content
+      if (body === undefined && from) { const r = await readFrom(); if (r.err) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: r.err }; body = r.body }
+      if (body === undefined) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
+      const workRel = 'Formal/' + target + '.lean'
+      if (!await writeText(workRel, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + workRel }
+      const run = await leanRunFile(workRel)
+      const prev = formalOf(target)
+      const passed = !!run.ok
+      const rec = Object.assign({}, prev, {
+        status: passed ? 'passed' : 'attempted',
+        file: workRel,
+        proof: passed ? 'Verified/Lean/' + target + '.lean' : (prev.proof || ''),
+        decision: 'used',
+        note: String(args.note || prev.note || ''),
+        run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: formalTail(run.stdout, 800), stderrTail: formalTail(run.stderr, 800) },
+        updatedAt: now(),
+      })
+      if (passed) await writeText('Verified/Lean/' + target + '.lean', body)
+      await putFormal(target, rec)
+      await upsertFormalAnchor(target)
+      await rebuildLeanLibIndexes()
+      await formalAnnounce('【形式化】' + who + ' 为 ' + target + ' 归档形式化证明 ' + workRel + '（运行 '
+        + (passed ? '**通过**，已归档到 ' + rec.proof + '，验证转为忠实性审查' : '**未通过**：' + formalTail(run.stderr || run.message, 160)) + '）')
+      return { ok: true, kind: kind, target: target, file: workRel, proof: rec.proof, passed: passed, run: run, status: rec.status }
+    }
+    if (kind === 'blocked') {
+      const rawTarget = String(args.target || '').trim()
+      if (!rawTarget) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'target is required for kind=blocked' }
+      const target = idSafe(rawTarget)
+      const note = String(args.note || '').trim()
+      // "因难度决定不做形式化"必须**显式、可审计**：note 空就拒绝，不允许静默跳过。
+      if (!note) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: '阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计' }
+      const prev = formalOf(target)
+      await putFormal(target, Object.assign({}, prev, { status: 'blocked', decision: 'blocked', note: note, updatedAt: now() }))
+      await upsertFormalAnchor(target)
+      await rebuildLeanLibIndexes()
+      await formalAnnounce('【形式化】' + who + ' 记录 ' + target + ' 形式化阻塞：' + note)
+      return { ok: true, kind: kind, target: target, status: 'blocked', note: note }
+    }
+    return { ok: false, code: 'V3_INVALID_ARGUMENT', message: "kind must be 'def' | 'lemma' | 'proof' | 'blocked'" }
+  }
+  /**
+   * 回执通道（契约 §3/§6.3）：代理即使一次 Lean 工具都没调用，也必须能留下"实现难度判断"。
+   * decision='blocked' 时 note 必填（否则拒绝记录并公告）；'used' 记录草稿文件 → attempted。
+   */
+  async function absorbFormalReply(f, memberId) {
+    if (!formalOn() || !f || typeof f !== 'object') return
+    const who = memberId || 'member'
+    const target = formalId(f.target)
+    if (!target) return
+    const decision = String(f.decision || '')
+    if (decision === 'blocked') {
+      const note = String(f.note || '').trim()
+      if (!note) { await formalAnnounce('【形式化】' + who + ' 的 formal.decision=blocked 未写明 note，已**拒绝**记录（难度判断必须显式、可审计）。'); return }
+      await putFormal(target, Object.assign({}, formalOf(target), { status: 'blocked', decision: 'blocked', note: note, updatedAt: now() }))
+      await upsertFormalAnchor(target)
+      await rebuildLeanLibIndexes()
+      await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化阻塞：' + note)
+      return
+    }
+    if (decision === 'used') {
+      const prev = formalOf(target)
+      const file = String(f.file || ('Formal/' + target + '.lean'))
+      await putFormal(target, Object.assign({}, prev, { status: prev.status === 'passed' ? 'passed' : 'attempted', decision: 'used', file: file, updatedAt: now() }))
+      await upsertFormalAnchor(target)
+      await rebuildLeanLibIndexes()
+      await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file)
+      return
+    }
+    await formalAnnounce('【形式化】' + who + ' 的 formal.decision 只能是 \'used\' 或 \'blocked\'（收到 ' + String(f.decision) + '），已忽略。')
+  }
+
   // ================= verification (验证器) =================
   function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
@@ -2296,6 +2980,9 @@ export function apply(ctx) {
     const parsed = parseJson(output)
     const Result = clamp01((parsed && parsed.Result != null) ? parsed.Result : 0.5)
     const Reason = (parsed && parsed.Reason) || ''
+    // 回执通道（契约 §4/§6.3）：验证者在回执里给出的难度判断/阻塞原因也要落成正式记录，
+    // 否则提示词里承诺的 formal 字段就是一条"框架收不到"的死通道。
+    if (parsed && parsed.formal && typeof parsed.formal === 'object') await absorbFormalReply(parsed.formal, childId)
     let t = tasks['verify:' + rId]
     if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
     if (!parsed && !scheduler.running) {
@@ -2391,6 +3078,18 @@ export function apply(ctx) {
       verifierAccuracy[cids[i]] = acc
     }
     await writeJson('Logs/Verification/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
+    // ── require 门禁（契约 §8）────────────────────────────────────────────────
+    // 判定为真（严格证明）或假（严格反驳）之前必须先有 `passed` 或 `blocked`。门禁放在**改
+    // 对象之前**：不这样就改写不出"不改变对象的既有权重/概率字段"（一旦先把 概率 写成 1，
+    // 下一 tick 的 processStatusUpdates 还会照着 prob=1 的条目再把它写回去）。
+    // 记录票数（上面那份 Logs/Verification 已落盘）→ 记未定论 + 形式化待办 + 群聊公告 → 返回，
+    // 对象留在原库、可形式化后再次提议，系统继续推进，绝不卡死。
+    const gTarget = formalConclusionTarget(r, v)
+    if (gTarget && formalBlocksConclusion(gTarget)) {
+      const d = await deferForFormal(gTarget, formalRequiredWhy(gTarget), v === 1)
+      logActivity('verdict', t.rId + ' = ' + v + ' 被 require 门禁搁置（formal-required；对象 ' + gTarget + ' 尚无 Lean 通过或阻塞记录）' + (d.already ? '（已在待办中）' : ''))
+      return
+    }
     if (r.kind === 'proposition') {
       const p = propos.get(r.pId)
       if (p) {
@@ -2563,6 +3262,7 @@ export function apply(ctx) {
       registeredAgents: Object.keys(agentRegistry).length,
       queuedPlanActions: planQueue.length,
       plannerEnabled: params.plannerEnabled, plannerFails: plannerFails,
+      formal: formalSummary(),
       recentActivity: activityLog.slice(-Math.min(10, Number(params.activityLogCap) || 100)), params: params,
     }
   }
@@ -2611,7 +3311,7 @@ export function apply(ctx) {
     if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0; formalState = { records: {}, todo: [], libRuns: {} }
     await loadSettings(); await migrateLegacyParams(); await loadState(); await loadKnowledgeBase(); await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
@@ -2657,6 +3357,29 @@ export function apply(ctx) {
   registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await claimWrite(String(args.target || ''), agent) })
   registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root). Call after you finished writing it.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await releaseWrite(String(args.target || ''), agent) })
   registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after you wrote content to Markdown files (direction status/survival, registered lemma ids, methods_used/new_inventions, new method cards). Content itself stays in the md files; this only keeps the scheduler index/state in sync.', objParams({ meta: { type: 'object' } }, ['meta']), async function (args, agent) { return await syncMeta(args.meta || {}, agent) })
+
+  // ---- Lean 形式化验证工具（契约 docs/formal-verification.md §5）----
+  // **无条件注册**：注册是静态的（与既有 ctx.effect 纪律一致），模式只决定框架是否主动告诉
+  // 代理它们存在；off 模式下人/代理主动调用时照常工作。
+  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(agent && agent.id, args) })
+  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(agent && agent.id, args) })
+  registerTool('vibe_math_lean_lib', "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.", objParams({ refresh: { type: 'boolean' } }), async function (args) {
+    const a = args || {}
+    const r = a.refresh === false
+      ? { lib: null, proved: null, objects: Object.keys(formalRecords()).length }
+      : await rebuildLeanLibIndexes()
+    return {
+      ok: true, mode: formalMode(), rebuilt: a.refresh !== false,
+      counts: r, todo: formalTodo().map(function (t) { return { id: t.id, why: t.why, at: t.at } }),
+      objects: Object.keys(formalRecords()).map(function (k) {
+        const rec = formalRecords()[k] || {}
+        return { target: k, status: rec.status, file: rec.file, proof: rec.proof, note: rec.note }
+      }),
+      paths: { project: 'Formal/（相对项目根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
+      hint: "复用优先：先在 Lib/ 里找现成定义；新定义用 lean_archive kind='def' 归档，已证引理用 kind='lemma'。",
+      verify: (Object.keys(tasks).length ? String(tasks[Object.keys(tasks)[0]].rId || '') : null),
+    }
+  })
 
   // ---- 代理直接写 md 的写锁 + 轻元数据同步（任务2：代理自组织写各自对应路径的 md，避免并发写同一文件） ----
   /**
@@ -2905,6 +3628,11 @@ export function apply(ctx) {
   registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly.', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_claim_write')
   registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root).', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_release_write')
   registerTool('vibe_math_sync_meta', 'After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}', objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
+  // Lean 形式化验证（docs/formal-verification.md）：三个工具**无条件注册**——注册是静态的，
+  // 模式只决定框架是否主动告诉代理它们存在。off 模式下人/代理主动调用时照常工作。
+  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
+  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
+  registerTool('vibe_math_lean_lib', "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.", objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({

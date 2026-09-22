@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = join(ROOT, '示例图', '框架图-v5.svg')
 
-const W = 1720, H = 1116
+const W = 1720, H = 1204
 const FONT = "'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC',sans-serif"
 const MONO = "'Cascadia Mono','Consolas','SFMono-Regular',monospace"
 
@@ -171,7 +171,7 @@ plain(RX, 536, '所内组织动作（分派 · 优先级 · 督办 · 会议 · 
   { size: 10.5, fill: C.mute, limit: RW, where: 'house note' })
 
 // ---- 框架 ----
-band(MAIN_L, 566, MAIN_R - MAIN_L, 286, '框架 vibe-v5 —— 只是媒介（middleware）：中继 · 沉淀 · 计数 · 调度',
+band(MAIN_L, 566, MAIN_R - MAIN_L, 382, '框架 vibe-v5 —— 只是媒介（middleware）：中继 · 沉淀 · 计数 · 调度',
   '每轮发「状态块 + 本轮问句」（规章在 persona 里，不进对话）；成员回一个 JSON：say / progress / record / verdict / task_* / hire / fire / reject_assign / input / vote_solved',
   { fill: C.frameBg, stroke: C.frame, titleFill: '#084d80' })
 const chips = [
@@ -186,15 +186,21 @@ const ccw = (IN_R - IN_L - 2 * 22) / 3
 chips.forEach((c, i) => {
   card(IN_L + (i % 3) * (ccw + 22), i < 3 ? 620 : 708, ccw, 78, c, { stroke: C.frame, fs: 12.5, sfs: 10.5 })
 })
-card(IN_L, 796, IN_R - IN_L, 38, [
+card(IN_L, 796, IN_R - IN_L, 76, [
+  'Lean 形式化验证（可调参数 formalVerify = off / encourage / require）',
+  'encourage：验证时按实现难度决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录',
+  '★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」',
+  '归档：证明 → Verified/Lean/<对象>.lean｜可复用定义 → VibeMath/Formal/Lib/｜已证引理 → VibeMath/Formal/Proved/',
+], { stroke: C.gate, fs: 12.5, sfs: 10.5 })
+card(IN_L, 880, IN_R - IN_L, 38, [
   '调度器优先级：进行中的会议或验证（二者互斥，永不同时）→ 队列中的验证 → 暂存会议 → 已认领/被分派的在办任务（按 activityTimeoutMs 节流）→ 加急邮件 → 群聊摘要 → 停滞自动开会 → 兜底心跳',
 ], { stroke: C.frame, fs: 11.5 })
 
 // ---- 数据面 ----
-band(FULL_L, 876, 790, 196, '状态权威源：会话日志的 host-only 投影单元（键 vibeMathV5）',
+band(FULL_L, 964, 790, 196, '状态权威源：会话日志的 host-only 投影单元（键 vibeMathV5）',
   '副作用只是往会话日志追加事件 —— 不进模型上下文（零 token 成本），checkpoint / restore 交给 DSH',
   { fill: C.dataBg, stroke: C.data, titleFill: '#125a3c' })
-card(62, 932, 360, 124, [
+card(62, 1020, 360, 124, [
   'applyV5Event（纯折叠，只此一份）',
   '11 类事件：institute / member / task /',
   'message / delivered / meeting / debate /',
@@ -202,7 +208,7 @@ card(62, 932, 360, 124, [
   '未知或损坏事件 → 跳过并记入 diagnostics：',
   '可用性优先，绝不因一条坏事件卡死全场',
 ], { stroke: C.data, fs: 12, sfs: 10.5 })
-card(434, 932, 374, 124, [
+card(434, 1020, 374, 124, [
   'checkpoint / restore / resume',
   '投影随会话日志一起 checkpoint；restore',
   '时从快照 + 日志尾部重新折叠 → 跨进程与',
@@ -211,10 +217,10 @@ card(434, 932, 374, 124, [
   '加固 JSON：State/<institute>.v5state.json',
 ], { stroke: C.data, fs: 12, sfs: 10.5 })
 
-band(852, 876, FULL_R - 852, 196, '文件面：人可读产物（投影之外的一切都只是镜像）',
+band(852, 964, FULL_R - 852, 196, '文件面：人可读产物（投影之外的一切都只是镜像）',
   '共识的权威在投影；文件是工作区与可读产物，手工改坏不会破坏研究所',
   { fill: C.dataBg, stroke: C.data, titleFill: '#125a3c' })
-card(874, 932, FULL_R - 874 - 22, 124, [
+card(874, 1020, FULL_R - 874 - 22, 124, [
   'Members/<id>/Progress|Propos|Methods|Subproblems/',
   '只有本人可写，人人可读（跨读被鼓励）',
   'Shared/Chat/*.md · Shared/Meetings/<mt-id>.md · Shared/Debates/<obj>.md',
@@ -249,24 +255,24 @@ arrow(556, 400, 578, 400, { color: C.house, dashed: true, width: 1.8, marker: 'b
 arrow(556, 430, 578, 430, { color: C.house, dashed: true, width: 1.8, marker: 'bothHouse' })
 
 // ---- 连线：框架 ↔ 数据面 ----
-arrow(400, 852, 400, 876, { color: C.data, marker: 'bothData', width: 2 })
-plain(392, 868, 'append / fold / stateOf', { fill: C.data, anchor: 'end', size: 10.5, halo: true })
-arrow(1280, 852, 1280, 876, { color: C.data, marker: 'bothData', width: 2 })
-plain(1288, 868, '读写产物', { fill: C.data, anchor: 'start', size: 10.5, halo: true })
+arrow(400, 940, 400, 964, { color: C.data, marker: 'bothData', width: 2 })
+plain(392, 956, 'append / fold / stateOf', { fill: C.data, anchor: 'end', size: 10.5, halo: true })
+arrow(1280, 940, 1280, 964, { color: C.data, marker: 'bothData', width: 2 })
+plain(1288, 956, '读写产物', { fill: C.data, anchor: 'start', size: 10.5, halo: true })
 
 // ---- 图例 ----
-plain(52, 1098, '图例', { size: 12, fill: C.ink, weight: 700 })
+plain(52, 1186, '图例', { size: 12, fill: C.ink, weight: 700 })
 const legend = [
   [C.human, '所办 / 人（外部接口，不研究不投票）'],
   [C.house, '所内成员与所内组织（虚线 = 不由框架执行）'],
   [C.frame, '框架（中继 / 沉淀 / 计数 / 调度）'],
   [C.data, '状态与产物'],
-  [C.gate, '求真门槛（唯一定论规则）'],
+  [C.gate, '求真门槛 / Lean 形式化（可调）'],
 ]
 legend.forEach(([col, txt], i) => {
   const x = 108 + i * 330
-  push(`<rect x="${x}" y="1087" width="14" height="14" rx="3" fill="#ffffff" stroke="${col}" stroke-width="2"/>`)
-  plain(x + 21, 1099, txt, { size: 11, fill: C.ink2, limit: 305, where: 'legend' })
+  push(`<rect x="${x}" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="${col}" stroke-width="2"/>`)
+  plain(x + 21, 1187, txt, { size: 11, fill: C.ink2, limit: 305, where: 'legend' })
 })
 
 push('</g>')

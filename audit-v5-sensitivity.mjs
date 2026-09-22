@@ -20,10 +20,12 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const SRC = new URL('./vibe-math-v5/vibe-math-v5.js', import.meta.url)
-const TESTS = {
-  selfdrive: fileURLToPath(new URL('./selfdrive-v5.mjs', import.meta.url)),
-  round2: fileURLToPath(new URL('./e2e-v5-round2.test.mjs', import.meta.url)),
-  prompt: fileURLToPath(new URL('./prompt-v5-integrity.test.mjs', import.meta.url)),
+// Keyed by the EXACT suite filename a probe names in its `ref`. A ternary chain here once
+// silently routed every new probe to the wrong suite (which then stayed green because the
+// mutation did not touch what it tests) — that reports a blind spot that does not exist.
+const TESTS = {}
+for (const f of ['selfdrive-v5.mjs', 'e2e-v5-round2.test.mjs', 'prompt-v5-integrity.test.mjs', 'formal-verify-v5.test.mjs']) {
+  TESTS[f] = fileURLToPath(new URL('./' + f, import.meta.url))
 }
 const original = readFileSync(SRC, 'utf8')
 const REPO = fileURLToPath(new URL('.', import.meta.url))
@@ -270,6 +272,71 @@ const probes = [
     from: "      if (meeting) return\n      // Only one begin may be in flight.",
     to: "      // Only one begin may be in flight.",
   },
+
+  // ── LEAN FORMAL VERIFICATION PROBES (docs/formal-verification.md) ─────────
+  {
+    name: 'formal-off-is-not-a-no-op',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㉞ the default mode must be a TRUE no-op (no Lean text, no gate)',
+    from: "    const formalOn = () => formalMode() !== 'off'",
+    to: "    const formalOn = () => true",
+  },
+  {
+    name: 'unknown-formal-mode-upgrades',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㉟ an unknown mode must degrade to off, never to a STRONGER mode (a typo must not force formalization)',
+    from: "        out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'off'",
+    to: "        out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'require'",
+  },
+  {
+    name: 'fidelity-switch-removed',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊱ a passing Lean run must switch the voting prompt to a FIDELITY review (the whole point of the feature)',
+    from: "      if (rec.status === 'passed') {\n        // The whole point of the feature: the review subject CHANGES.",
+    to: "      if (false) {\n        // The whole point of the feature: the review subject CHANGES.",
+  },
+  {
+    name: 'require-gate-removed',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊲ require mode must withhold a true/false verdict until the object is Lean-passed or explicitly blocked',
+    from: "          if (formalMode() === 'require' && !formalGateOk(rec)) {",
+    to: "          if (false) {",
+  },
+  {
+    name: 'blocked-note-not-required',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊳ a "we judged it infeasible" record must carry a reason (the difficulty decision must be auditable, not silent)',
+    from: "        if (!note) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '阻塞记录必须写明原因（note）",
+    to: "        if (false) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '阻塞记录必须写明原因（note）",
+  },
+  {
+    name: 'proof-not-archived-under-verified',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊴ a passing proof must be archived as that object\'s proof (Verified/Lean/<id>.lean)',
+    from: "        if (passed) await writeTextRel('Verified/Lean/' + target + '.lean', body)",
+    to: "        if (false) await writeTextRel('Verified/Lean/' + target + '.lean', body)",
+  },
+  {
+    name: 'reusable-lib-written-inside-the-institute',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊵ reuse must be CROSS-PROJECT: reusable definitions go to the global Formal/Lib, not inside one institute',
+    from: "        const okWrite = await writeTextAbs(instRootless(rel), body)",
+    to: "        const okWrite = await writeTextRel(rel, body)",
+  },
+  {
+    name: 'lean-path-guard-naive',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊶ the Lean path guard must normalise .. (a string prefix check lets a traversal through)',
+    from: "      const abs = leanAbsPath(rel)\n      if (abs === null) {",
+    to: "      const abs = (rel.charAt(0) === '/' || /^[a-z]:/i.test(rel)) ? rel.replace(/\\\\/g, '/') : instRoot() + '/' + rel\n      if (abs.indexOf(vibeRoot() + '/') !== 0) {",
+  },
+  {
+    name: 'lean-tools-not-registered',
+    ref: 'formal-verify-v5.test.mjs',
+    guarantee: '㊷ the three Lean tools must be registered (agents can only formalize if the tools exist)',
+    from: "  registerTool('vibe_v5_lean_run',",
+    to: "  if (false) registerTool('vibe_v5_lean_run',",
+  },
 ]
 
 let probesPassed = 0
@@ -288,8 +355,12 @@ for (const p of probes) {
   const mutated = original.replace(p.from, p.to)
   const file = join(dir, p.name + '.js')
   writeFileSync(file, mutated, 'utf8')
-  const testPath = TESTS[p.ref === 'e2e-v5-round2.test.mjs' ? 'round2'
-    : p.ref === 'prompt-v5-integrity.test.mjs' ? 'prompt' : 'selfdrive']
+  const testPath = TESTS[p.ref]
+  if (testPath === undefined) {
+    console.error('  SETUP-FAIL - ' + p.name + ': ref "' + p.ref + '" is not a known suite')
+    probesFailed++
+    continue
+  }
   const r = spawnSync(process.execPath, [testPath], {
     env: Object.assign({}, process.env, { V5_PLUGIN: file }),
     encoding: 'utf8',

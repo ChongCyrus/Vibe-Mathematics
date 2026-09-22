@@ -106,7 +106,13 @@ const plugin = mod.default || mod
 plugin.apply(ctx)
 
 console.log('tool registrations:', toolRegs.length)
-assert(toolRegs.length === 22, '22 tools registered once (not per session)')
+// 22 → 25: the Lean formal-verification feature (docs/formal-verification.md) added
+// vibe_math_lean_run / _lean_archive / _lean_lib, which are registered UNCONDITIONALLY
+// (registration is static; the formalVerify mode only decides whether members are told about
+// them). The invariant this asserts is "registered ONCE per preset, not per session".
+assert(toolRegs.length === 25, '25 tools registered once (not per session)')
+assert(['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib'].every(n => toolRegs.some(t => t.name === n)),
+  'the three Lean tools are registered unconditionally (registration is static, not mode-dependent)')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')
 
 async function callTool(name, args, agent) {

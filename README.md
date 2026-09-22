@@ -230,6 +230,76 @@ flowchart TB
 
 ---
 
+## 🧮 Lean 形式化验证（四个架构共用，可调开关）
+
+**它改变的不是"更严格一点"，而是审查对象本身。** m 个代理一致认为"这是对的"仍然是**共识**——
+排除不了共同误解；Lean 通过是**机器核对**。于是剩下的唯一不确定项缩小为一个人能有效审查的问题：
+
+> **Lean 代码里的定义 / 对象 / 条件 / 假设 / 结论，是否与命题原文完全一致？**
+
+| | 原验证工作 | 形式化通过后的验证工作 |
+|---|---|---|
+| 审查对象 | 命题本身（推导是否正确） | **忠实性**：Lean 代码 ↔ 命题原文是否一致 |
+| 结论强度 | 共识（可能共同出错） | 严格（内核已检查），前提是忠实性成立 |
+| 副产品 | 无 | 可复用的 Lean 定义 / 引理库 |
+
+### 开关：`formalVerify`（四个架构同名，默认 `'off'`）
+
+| 取值 | 含义 |
+|---|---|
+| **`'off'`（默认）** | **不额外进行任何要求。** 提示词里不出现任何 Lean 内容，验证流程与门禁完全不变（是**真正的无操作**） |
+| `'encourage'` | **鼓励但不强制**：验证时先判断该对象的**实现难度**，能在可接受工作量内形式化就优先做；一旦 Lean 通过，审查重心转为**忠实性**。平时工作也鼓励把常用/可能复用的对象、假设、新定义随手形式化归档。**不设门禁** |
+| `'require'` | **强制**：真/假结论必须满足「**Lean 已通过**」或「**显式记录了阻塞原因**」，否则本次裁定**不生效**——记为未定论（原因 `formal-required`）、写入「形式化待办」、群聊公告，对象留库待形式化后重新提议 |
+
+> `require` 里的「显式记录阻塞原因」正是**"根据实现难度决定不做"**的落点：**决定权在代理，
+> 但决定必须说出来、可审计**，不允许静默跳过。相关参数还有 `leanCommand`（默认 `lean`）、
+> `leanArgs`（配合 `lake env lean`）、`leanTimeoutMs`（默认 120s）。
+
+### 归档：形式化代码放哪里
+
+```
+<VibeMath 根>/
+├─ Formal/                              # ★ 跨项目可复用库（四个架构共用）
+│   ├─ Lib/<name>.lean                  # 可复用定义 / 对象 / 假设（def / structure / notation）
+│   ├─ Lib/Index.md                     # 名称 → 文件 → 类别 → 摘要（写新定义前先查这里）
+│   ├─ Proved/<name>.lean               # 已成立的 Lean 命题 / 引理（机器已核对）
+│   └─ Proved/Index.md
+└─ Projects/<项目>/                      # （v5 为 Projects/<项目>/Institutes/<所>/）
+    ├─ Formal/
+    │   ├─ <对象id>.lean                 # 该对象的形式化工作文件
+    │   ├─ Index.md                      # 对象 → 状态 → 文件 → 归档证明 → 运行结果 → 难度判断
+    │   └─ TODO.md                       # require 模式下的「形式化待办」
+    └─ Verified/
+        ├─ <原有定论卡片>
+        └─ Lean/<对象id>.lean            # ★ 归档证明：该定论对象对应的形式化代码
+```
+
+### 工具（每个架构三个，前缀跟随各自命名）
+
+| 工具 | 作用 |
+|---|---|
+| `<prefix>_lean_run` | 在宿主 `subprocess` 服务上执行 Lean，返回 `{ok, exitCode, ms, stdout, stderr}`。**绝不抛异常**：缺工具链 → `LEAN_NOT_FOUND`，超时 → `LEAN_TIMEOUT`，路径越界 → 拒绝 |
+| `<prefix>_lean_archive` | `kind='def'/'lemma'` → 归档到**跨项目** `Formal/Lib` 或 `Formal/Proved`；`kind='proof'` → 写 `Formal/<target>.lean`，运行通过则同时写 **`Verified/Lean/<target>.lean`** 并标记该对象为 Lean 通过；`kind='blocked'` → 记录显式难度判断/阻塞原因（**原因必填**） |
+| `<prefix>_lean_lib` | 重建并返回三处索引与逐对象形式化状态——**写新定义前先查重、直接复用** |
+
+例如 v5 是 `vibe_v5_lean_run` / `vibe_v5_lean_archive` / `vibe_v5_lean_lib`，v2/v3 是 `vibe_math_lean_*`，v4 是 `vibe_v4_lean_*`。
+
+**边界（有意为之）**：框架**不内置 Lean**（不装工具链、不下载依赖；工具链缺失时优雅降级并如实记录）；
+框架**不判断忠实性**（那是代理/人审查并投票的对象，框架只负责把审查焦点**换成**忠实性）；
+**Lean 通过 ≠ 命题为真**——它只表示"这段形式化代码通过了内核检查"。
+
+完整契约（参数、路径、状态迁移、提示词语义、门禁位置、索引格式、测试要求）见
+[`docs/formal-verification.md`](docs/formal-verification.md)。
+
+> **四个预设的 persona（主代理收到的提示词）都完整列出了上面三个工具与四个参数**，
+> 并且 `prefix` 与 `text` 两个块逐行一致（只允许第 0 行不同）。这一层由
+> [`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs) 与
+> [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs) 守护——加入本特性时正是
+> 在四个预设里发现了"工具已注册、persona 从未列出"的缺陷（同批还发现 persona 少列了两条
+> 增删常驻研究员的工具、`/v4`/`/v5` 的子命令列表与实现不一致；详见随包发布说明）。
+
+---
+
 ## 🚀 安装
 
 两种安装方式，任选其一（也可并存）：
@@ -422,6 +492,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
     └─ <研究所>.v5state.json      # 仅当宿主缺 sessionProjections 时的回退权威源
 ```
 
+> 启用 Lean 形式化验证时另有两个目录：本所 `Formal/`（工作文件 + 索引 + 形式化待办）与 `Verified/Lean/`
+> （**归档证明**），以及**跨项目**的 `<VibeMath根>/Formal/{Lib,Proved}/`（可复用定义与已证引理）——详见
+> 上方「Lean 形式化验证」一节。
+
 **v5 铁律**：① 权威状态在**会话日志的 host-only 投影单元**（键 `vibeMathV5`）里，上表中除
 `State/<研究所>.v5state.json`（降级回退）之外的一切文件都只是**镜像/工作区**，手工改坏不会破坏研究所；
 ② 成员**只写自己的库**（`Members/<自己的代号>/`），但可以读任何人的库；
@@ -609,6 +683,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | explorer 拆方向失败的重派生上限 |
+| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
 
 ### v3（论文式 md + 规划代理 + 方法库）默认值
 
@@ -629,6 +707,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `indexAutoRebuild` | true | 每次写盘后自动重建 `State/index.json`（false = 手动 `vibe_math_index`） |
 | `projectLockTimeoutMs` | 60000 | 项目锁等待超时（同项目同一时刻只允许一个会话调度） |
 | `methodKeeperPersona` | 空 | 注入方法整理代理提示词开头的人格/要求 |
+| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
 
 ### v4（常驻自组织 · 实验）默认值
 
@@ -647,6 +729,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `provider` / `model` | 空 | **常驻 LLM 路由**（空 = 常驻继承主代理的 provider/model；此前声明未用，v1.4.1 真正接入） |
 | `residentPersona` | 空 | 注入每个常驻提示词开头的人格/要求 |
 | `toolAllow` / `toolDeny` | `[]` | **常驻工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具） |
+| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
 
 ### v5（研究所体系 · 实验）默认值
 
@@ -674,8 +760,12 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `toolAllow` / `toolDeny` | `[]` | 常驻员工工具权限（⚠️ 空 `allow:[]` 会拒绝一切工具） |
 | `tempToolAllow` / `tempToolDeny` | `[]` | 临时工的工具权限（比常驻更窄） |
 | `staffPersona` | 空 | 追加到每个成员章程前的人格/要求 |
+| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
 
-常用控制：`vibe_v5_configure`（先配置）→ `vibe_v5_start`（开工）→ `vibe_v5_report` / `vibe_v5_status`；`vibe_v5_message` / `vibe_v5_meeting` / `vibe_v5_members` / `vibe_v5_hire` / `vibe_v5_fire` / `vibe_v5_pause` / `vibe_v5_resume` / `vibe_v5_stop`；斜杠命令 `/v5`。
+常用控制：`vibe_v5_configure`（先配置）→ `vibe_v5_start`（开工）→ `vibe_v5_report` / `vibe_v5_status`；`vibe_v5_message` / `vibe_v5_meeting` / `vibe_v5_members` / `vibe_v5_hire` / `vibe_v5_fire`（临时工）/ `vibe_v5_add_researcher` / `vibe_v5_remove_researcher`（增删常驻，仅所办）/ `vibe_v5_pause` / `vibe_v5_resume` / `vibe_v5_stop`；斜杠命令 `/v5`。
 
 ---
 
@@ -694,6 +784,9 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](vibe-math-v4/实现方案.md)
 - **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](vibe-math-v5/实现方案.md)（文字规格）· [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)（全套架构图）
 - **v5 提示词与交互语料**：[`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md)（框架真正发出的每一条提示词原文，可直接人工复核身份/编制/交互署名是否正确）
+- **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
+- **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
+- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程）
 
 ---
@@ -728,6 +821,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **成员章程是入职快照**：升级本包不会改写已在跑的研究所里成员的章程（它们仍用入职时冻结的版本）。
   需要新章程就在新会话里重开一个研究所；投影状态与文件树无需迁移。
 - **安装器行为同 v2**（版本化自动更新，`vibe-math-v5` 目录同样受管）。
+- **Lean 形式化需要宿主上有 Lean 工具链**：框架不内置、不下载；没有工具链时三个 Lean 工具会如实返回
+  `LEAN_NOT_FOUND`，形式化代码仍可写下来归档，但无法执行验证。
+- **`require` 模式的门禁是「搁置」而不是「卡死」**：缺形式化的真/假结论会被记为未定论 + 进入形式化待办，
+  研究所继续推进（与「未达门槛留库附平均概率」同一取舍），不会被一个对象永久卡住。
 
 ---
 

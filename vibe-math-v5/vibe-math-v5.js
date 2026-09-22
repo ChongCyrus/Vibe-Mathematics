@@ -51,6 +51,7 @@ const EV = {
   queue: 'vibe5/queue',
   counters: 'vibe5/counters',
   progress: 'vibe5/progress',
+  formal: 'vibe5/formal',
 }
 
 // Stable error codes (ported from DSH agent-teams' typed-error discipline).
@@ -135,6 +136,10 @@ export function apply(ctx) {
       meetings: [],
       debates: [],
       verdicts: {},
+      // Per-object Lean formalization record (docs/formal-verification.md). Kept in the
+      // projection so it survives restore with zero context cost, exactly like verdicts.
+      formal: {},
+      todo: [],
       queue: [],
       counters: { academician: 0, researcher: 0, temp: 0, task: 0, meeting: 0, message: 0, verify: 0 },
       runId: '',
@@ -250,6 +255,16 @@ export function apply(ctx) {
           if (d.record === null) delete verdicts[d.target]
           else verdicts[d.target] = d.record
           return Object.assign({}, inst, { verdicts })
+        })
+      }
+      if (t === EV.formal) {
+        return withInstitute(state, key, (inst) => {
+          if (!d.target || typeof d.target !== 'string') return inst
+          const formal = Object.assign({}, inst.formal)
+          if (d.record === null) delete formal[d.target]
+          else formal[d.target] = d.record
+          const todo = d.todo === undefined ? (inst.todo || []) : (Array.isArray(d.todo) ? d.todo : (inst.todo || []))
+          return Object.assign({}, inst, { formal, todo })
         })
       }
       if (t === EV.queue) {
@@ -396,6 +411,14 @@ export function apply(ctx) {
       chatDigestMs: 45000,
       chatDigestMax: 12,
       meetingKeepEvery: 5,
+      // ── Lean formal verification (§ docs/formal-verification.md) ─────────
+      // 'off'       — 不额外进行任何要求（默认）
+      // 'encourage' — 鼓励：验证时按实现难度决定是否用 Lean 形式化；平时顺手形式化可复用对象
+      // 'require'   — 强制：真/假结论必须已有「形式化已通过」或「显式阻塞原因」，否则记为未定论
+      formalVerify: 'off',
+      leanCommand: 'lean',
+      leanArgs: [],
+      leanTimeoutMs: 120000,
       // ── model / tools ────────────────────────────────────────────────────
       provider: '',
       model: '',
@@ -898,6 +921,15 @@ export function apply(ctx) {
       // failed provision invisible to the whole institute.
       const absent = inst().members.filter((m) => m.phase !== 'active' && m.phase !== 'dismissed')
       if (absent.length) b.push('[未就位] ' + absent.map((m) => m.id + '（' + m.phase + '）').join('、'))
+      // Lean mode is a RUNTIME knob, so its line is computed here (per round) rather than
+      // frozen into the charter — changing the mode must reach members immediately.
+      if (formalOn()) {
+        const recs = formalRecords()
+        const passed = Object.keys(recs).filter((k) => recs[k] && recs[k].status === 'passed').length
+        const blocked = Object.keys(recs).filter((k) => recs[k] && recs[k].status === 'blocked').length
+        b.push('[形式化] ' + (formalMode() === 'require' ? '强制' : '鼓励') + ' Lean｜已通过 ' + passed
+          + '｜已记录阻塞 ' + blocked + (formalTodo().length ? '｜形式化待办 ' + formalTodo().length + ' 项（见 Formal/TODO.md）' : ''))
+      }
       const tasks = inst().tasks.filter((t) => t.status !== 'deleted')
       const mine = tasks.filter((t) => t.ownerId === member.id && t.status === 'in_progress')
       const ready = tasks.filter((t) => t.status === 'pending' && taskReady(t))
@@ -983,13 +1015,18 @@ export function apply(ctx) {
     }
     async function mkdirs() {
       const base = instRoot()
-      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems']
+      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Verified/Lean']
+      // The REUSABLE Lean library is global (cross-project), so it hangs off the VibeMath
+      // root rather than the institute root — creating it under instRoot would scatter a
+      // second, invisible copy per institute.
+      const globalDirs = ['Formal/Lib', 'Formal/Proved']
       for (const m of activeMembers()) {
         for (const d of ['Progress', 'Propos', 'Methods', 'Subproblems']) dirs.push('Members/' + m.id + '/' + d)
       }
+      const paths = dirs.map((d) => base + '/' + d).concat(globalDirs.map((d) => vibeRoot() + '/' + d))
       const script = isWindows()
-        ? 'New-Item -Force -ItemType Directory -Path ' + dirs.map((d) => psQuote(base + '/' + d)).join(',') + ' | Out-Null'
-        : 'mkdir -p ' + dirs.map((d) => shQuote(base + '/' + d)).join(' ')
+        ? 'New-Item -Force -ItemType Directory -Path ' + paths.map((p) => psQuote(p)).join(',') + ' | Out-Null'
+        : 'mkdir -p ' + paths.map((p) => shQuote(p)).join(' ')
       return await runShell(script)
     }
 
@@ -1344,6 +1381,12 @@ export function apply(ctx) {
       L.push('  "task_done": "t-3",')
       L.push('  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},')
       L.push('  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",')
+      if (formalOn()) {
+        L.push('  "formal": {"target":"p-x","decision":"used|blocked","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}')
+        L.push('             ← Lean 形式化：' + (formalMode() === 'require'
+          ? '**强制**：定论前必须有「Lean 已通过」或显式阻塞原因（note 必填），否则本轮裁定记为未定论，'
+          : '**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，') + '详见提示词里的【Lean 形式化验证】段')
+      }
       L.push('  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给')
       L.push('             全体表决者（任务仍会执行，但你的理由不会被埋掉），')
       if (kind !== 'temp') {
@@ -1399,6 +1442,7 @@ export function apply(ctx) {
         L.push('作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、')
         L.push('哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。')
       }
+      if (formalOn()) { L.push(''); L.push(formalWorkLine()) }
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1414,6 +1458,7 @@ export function apply(ctx) {
       L.push('读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；')
       L.push('或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。')
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
+      if (formalOn()) { L.push(''); L.push(formalWorkLine()) }
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1461,6 +1506,21 @@ export function apply(ctx) {
       L.push('  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，')
       L.push('  不计入法定票数 m，但会计入全组平均概率。')
       L.push('')
+      if (formalOn()) {
+        const rec = formalOf(vs.target)
+        L.push(formalPromptBlock(vs.target))
+        // Make the SHIFT explicit: with a machine-checked proof in hand, re-deriving is
+        // wasted effort and the real risk is a statement that does not say what we meant.
+        if (rec.status === 'passed') {
+          L.push('  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。')
+        } else if (rec.status === 'blocked') {
+          L.push('  ▸ 因此请把 verdict 用在"这个阻塞判断是否成立 / 是否仍有别的形式化路线"上，并给出理由。')
+        } else {
+          L.push('  ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind=\'proof\'），后续轮次的')
+          L.push('    审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。')
+        }
+        L.push('')
+      }
       if (vs.stage === 'debate' && vs.history) {
         L.push('### 上一轮各成员的意见（框架已公开给你，请参考后重新判断）')
         for (const [k, v] of Object.entries(vs.history)) {
@@ -1477,6 +1537,12 @@ export function apply(ctx) {
       L.push('------------')
       L.push('结束时请**只**输出一个 JSON 对象（```json 围栏内）：')
       L.push('{"verdict":{"target":"' + vs.target + '","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}')
+      if (formalOn()) {
+        // The formal field belongs in the VOTING contract too: voters are exactly the agents
+        // who must either formalize the object or record why they judged it infeasible.
+        L.push('若你本轮做了形式化或给出难度判断，请一并加上：')
+        L.push('{"formal":{"target":"' + vs.target + '","decision":"used|blocked","file":"Formal/' + vs.target + '.lean","note":"难度判断/阻塞原因"}}')
+      }
       return L.join('\n')
     }
     function kindLabel2(k) { return k === 'method' ? '方法/理论' : k === 'subproblem' ? '子问题' : '命题' }
@@ -1541,6 +1607,354 @@ export function apply(ctx) {
       t.writeScopeWarnings = writeScopeWarnings(task)
       return t
     }
+
+    // ================= Lean formal verification ==============================
+    // Contract: docs/formal-verification.md.
+    //
+    // The point of this feature is a SHIFT IN WHAT MUST BE REVIEWED, not an extra chore.
+    // Consensus verification answers "do we all believe this?"; a machine-checked Lean
+    // development answers "is this true?" and shrinks the open question to one a human can
+    // actually audit:
+    //
+    //     do the Lean definitions / objects / conditions / assumptions / conclusion
+    //     match the proposition as originally stated?
+    //
+    // So once a Lean run passes, the voting prompt stops asking voters to redo the
+    // derivation and asks them to do a FIDELITY review. `require` mode makes that concrete:
+    // a 真/假 verdict does not take effect until the object is either `passed` or has an
+    // explicit, reasoned `blocked` record — "decide by difficulty, but decide out loud".
+    const FORMAL_MODES = ['off', 'encourage', 'require']
+    const formalMode = () => (FORMAL_MODES.indexOf(String(params.formalVerify)) !== -1 ? String(params.formalVerify) : 'off')
+    const formalOn = () => formalMode() !== 'off'
+    const formalRoot = () => instRoot() + '/Formal'
+    const formalLibRoot = () => vibeRoot() + '/Formal/Lib'
+    const formalProvedRoot = () => vibeRoot() + '/Formal/Proved'
+    const verifiedLeanRoot = () => instRoot() + '/Verified/Lean'
+    const formalRecords = () => (inst().formal || {})
+    const formalTodo = () => (inst().todo || [])
+    function formalOf(target) {
+      const r = formalRecords()[idSafe(String(target || ''))]
+      return r || { status: 'none' }
+    }
+    async function putFormal(target, record, todo) {
+      await commit(EV.formal, { target: idSafe(String(target)), record: record || null, todo })
+    }
+    // `passed` requires a GREEN RUN, not merely an archived file: a proof file that has
+    // never been executed proves nothing.
+    const formalGateOk = (rec) => !!rec && (rec.status === 'passed' || rec.status === 'blocked')
+    function formalStatusLine(target) {
+      const r = formalOf(target)
+      if (r.status === 'passed') return 'Lean 通过（' + (r.proof || r.file || '') + '）'
+      if (r.status === 'blocked') return '阻塞（' + (r.note || '未说明') + '）'
+      if (r.status === 'attempted') return '已尝试未通过'
+      return '未尝试'
+    }
+    const tail = (s, n) => { const t = String(s == null ? '' : s); return t.length > n ? t.slice(-n) : t }
+
+    // Lexically normalise an absolute path (collapse '.', '..' and duplicate slashes)
+    // WITHOUT touching the filesystem. A plain `startsWith(root)` check is not enough:
+    // "…/VibeMath/Projects/../../../../etc/evil.lean" still starts with the root as a
+    // string while resolving outside it.
+    function normalizeAbsPath(p) {
+      const parts = String(p == null ? '' : p).replace(/\\/g, '/').split('/')
+      const out = []
+      for (const seg of parts) {
+        if (seg === '' ) { if (out.length === 0) out.push(''); continue }
+        if (seg === '.') continue
+        if (seg === '..') { if (out.length > 1) out.pop(); continue }
+        out.push(seg)
+      }
+      return out.join('/')
+    }
+    // Resolve a Lean path to an absolute, NORMALISED path that is provably inside the
+    // VibeMath root — or null. Every Lean file access (run, archive, read) goes through it.
+    function leanAbsPath(rel) {
+      const raw = String(rel == null ? '' : rel).trim()
+      if (!raw) return null
+      const abs = (raw.charAt(0) === '/' || /^[a-z]:/i.test(raw)) ? raw : instRoot() + '/' + raw.replace(/^\.\//, '')
+      const norm = normalizeAbsPath(abs)
+      const root = normalizeAbsPath(vibeRoot())
+      if (norm !== root && norm.indexOf(root + '/') !== 0) return null
+      return norm
+    }
+
+    // Run the toolchain on one file. NEVER throws into the scheduler: every failure mode
+    // (no service, no executable, timeout, non-zero exit) becomes a readable result.
+    async function leanRunFile(relPath, timeoutMs) {
+      const started = now()
+      const rel = String(relPath || '').trim()
+      if (!rel) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'file is required' }
+      // Path guard: only files inside the VibeMath tree may be executed, so a crafted path
+      // can never make the framework run something outside the workspace.
+      const abs = leanAbsPath(rel)
+      if (abs === null) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'Lean file must live under ' + vibeRoot().replace(/\\/g, '/') + '/ (got ' + rel + ')' }
+      }
+      if (!/\.lean$/.test(abs)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'only .lean files can be executed' }
+      if (await readTextAbs(abs) === undefined) return { ok: false, code: 'V5_NOT_FOUND', message: 'no such file: ' + rel }
+      const sub = subprocessOf()
+      if (sub === undefined || typeof sub.spawn !== 'function') {
+        return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel, ms: 0 }
+      }
+      const cap = Math.max(1000, Number(timeoutMs) || Number(params.leanTimeoutMs) || 120000)
+      let exe
+      try {
+        exe = await sub.resolveExecutable(String(params.leanCommand || 'lean'))
+      } catch (e) {
+        return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + String(params.leanCommand || 'lean') + '": ' + String((e && e.message) || e) + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
+      }
+      const argv = [exe].concat((Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)).concat([abs])
+      let handle
+      try {
+        handle = sub.spawn({
+          argv,
+          cwd: instRoot(),
+          stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
+          graceMs: cap,
+        })
+      } catch (e) {
+        return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
+      }
+      let outcome
+      try {
+        outcome = await handle.done
+      } catch (e) {
+        return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
+      }
+      let out = '', err = ''
+      try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
+      try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
+      const exitCode = outcome ? outcome.exitCode : null
+      const ms = now() - started
+      const ok = exitCode === 0
+      return {
+        ok, exitCode, signal: (outcome && outcome.signal) || null, ms,
+        command: argv.join(' '), file: rel,
+        stdout: tail(out, 4000), stderr: tail(err, 4000),
+        timedOut: ms >= cap,
+        code: ok ? undefined : (ms >= cap ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
+      }
+    }
+    async function formalSetRun(target, run) {
+      const t = idSafe(String(target || ''))
+      if (!t) return
+      const prev = formalOf(t)
+      // Running a file NEVER changes an already-decided status: a green run does not by
+      // itself make an object `passed` (only archiving a proof does), and a failing scratch
+      // run must not silently erase a recorded `passed`/`blocked` decision. Everything else
+      // becomes `attempted`, which is the honest "we tried, see the compiler output" state.
+      const keep = (prev.status === 'passed' || prev.status === 'blocked') ? prev.status : 'attempted'
+      await putFormal(t, Object.assign({}, prev, {
+        status: keep,
+        file: run.file || prev.file || '',
+        run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
+        updatedAt: now(),
+      }))
+    }
+    function formalPromptBlock(target) {
+      if (!formalOn()) return ''
+      const mode = formalMode()
+      const rec = target ? formalOf(target) : { status: 'none' }
+      const L = []
+      L.push('【Lean 形式化验证（' + (mode === 'require' ? '强制' : '鼓励') + '模式）】')
+      if (rec.status === 'passed') {
+        // The whole point of the feature: the review subject CHANGES.
+        L.push('  · 该对象已有**通过的 Lean 形式化证明**（' + (rec.proof || rec.file) + '，最近运行 exit 0）。')
+        L.push('    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的')
+        L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），')
+        L.push('    并据此给出 verdict。')
+      } else if (rec.status === 'blocked') {
+        L.push('  · 该对象已被记录为**形式化阻塞**：' + (rec.note || '未说明') + '。')
+        L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
+      } else {
+        L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
+        L.push('  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）')
+        L.push('  · 工作目录：Formal/（相对研究所根）；可复用定义放 ' + formalLibRoot().replace(/\\/g, '/') + '/，')
+        L.push('    已证引理放 ' + formalProvedRoot().replace(/\\/g, '/') + '/；写之前先 lean_lib 查重。')
+        L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与')
+        L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+        if (mode === 'require') {
+          L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（lean_archive')
+          L.push('    kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，')
+          L.push('    会被记为未定论（原因 formal-required）并进入「形式化待办」。')
+        } else {
+          L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。')
+        }
+      }
+      return L.join('\n')
+    }
+    function formalWorkLine() {
+      if (!formalOn()) return ''
+      return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
+        + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind=\'def\'），已成立的引理归到 Proved/'
+        + '（kind=\'lemma\'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。'
+        + (formalMode() === 'require'
+          ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
+          : '这会让后续的验证与证明省掉大量重复工作。')
+    }
+    // ---- the three indexes (framework-maintained) ---------------------------
+    async function writeFormalIndex() {
+      const recs = formalRecords()
+      const L = ['# Lean 形式化索引｜' + instituteName + '｜' + fmtTime(), '',
+        '> 本文件由框架维护（工具调用时更新；`vibe_v5_lean_lib` 会重建）。权威状态在会话日志投影里。', '',
+        '| 对象 | 状态 | 形式化文件 | 归档证明 | 最近运行 | 难度判断 / 阻塞原因 |', '|---|---|---|---|---|---|']
+      const keys = Object.keys(recs)
+      if (!keys.length) L.push('| （暂无） | | | | | |')
+      for (const k of keys) {
+        const r = recs[k] || {}
+        const run = r.run ? (r.run.ok ? 'ok（exit 0，' + ((r.run.ms || 0) / 1000).toFixed(1) + 's）' : 'fail（exit ' + r.run.exitCode + '，' + ((r.run.ms || 0) / 1000).toFixed(1) + 's）') : '—'
+        L.push('| ' + k + ' | ' + (r.status || 'none') + ' | ' + (r.file || '—') + ' | ' + (r.proof || '—') + ' | ' + run + ' | ' + String(r.note || '—').replace(/\|/g, '/').slice(0, 120) + ' |')
+      }
+      L.push('')
+      if (formalTodo().length) {
+        L.push('## 形式化待办（require 模式：定论被搁置）')
+        for (const t of formalTodo()) L.push('- ' + t.id + ' —— ' + (t.why || 'formal-required') + '（' + fmtTime(t.at) + '）')
+        L.push('')
+      }
+      await writeTextRel('Formal/Index.md', L.join('\n'))
+    }
+    async function writeFormalTodo() {
+      const list = formalTodo()
+      const L = ['# 形式化待办｜' + instituteName + '｜' + fmtTime(), '',
+        '> 这些对象在 `require` 模式下尚不具备「Lean 已通过」或「显式阻塞记录」，因此**定论被搁置**。',
+        '> 完成形式化（vibe_v5_lean_archive kind=\'proof\'）或记录阻塞原因（kind=\'blocked\'）后，重新提议验证即可。', '']
+      if (!list.length) L.push('（暂无）')
+      for (const t of list) L.push('- ' + t.id + '｜' + (t.why || 'formal-required') + '｜' + fmtTime(t.at))
+      L.push('')
+      await writeTextRel('Formal/TODO.md', L.join('\n'))
+    }
+    async function rebuildLeanLibIndexes() {
+      // Listing must be CHEAP and side-effect free: it does NOT execute the toolchain
+      // (running `lean` on every library file each time an agent asked "what can I reuse?"
+      // would be slow and surprising). Per-object run results live in the object records
+      // and are shown in Formal/Index.md.
+      const scan = async (dirAbs, dirRel, kindLabel) => {
+        const rows = []
+        try {
+          const t = await fs.resolve(dirAbs)
+          if (await fs.stat(t) === undefined) return rows
+          const entries = await fs.listDir(t)
+          for (const e of entries || []) {
+            if (!e || e.type !== 'file' || !/\.lean$/.test(String(e.name))) continue
+            const rel = dirRel + '/' + e.name
+            const txt = (await readTextAbs(dirAbs + '/' + e.name)) || ''
+            const name = String(e.name).replace(/\.lean$/, '')
+            const first = (txt.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|--|import)/.test(l))[0] || '').trim().slice(0, 110)
+            rows.push('| ' + name + ' | ' + rel + ' | ' + kindLabel + ' | ' + first.replace(/\|/g, '/') + ' |')
+          }
+        } catch (e) { /* listing is best-effort */ }
+        return rows
+      }
+      const libRows = await scan(formalLibRoot(), 'Formal/Lib', 'def')
+      await writeTextAbs(vibeRoot() + '/Formal/Lib/Index.md', ['# 可复用 Lean 定义库（跨项目）｜' + instituteName, '',
+        '> 写新定义之前先查这里：能复用就不要重新定义。', '',
+        '| 名称 | 文件 | 类别 | 摘要 |', '|---|---|---|---|']
+        .concat(libRows.length ? libRows : ['| （暂无） | | | |']).join('\n') + '\n')
+      const provedRows = await scan(formalProvedRoot(), 'Formal/Proved', 'lemma')
+      await writeTextAbs(vibeRoot() + '/Formal/Proved/Index.md', ['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜' + instituteName, '',
+        '> 这些文件是通过内核检查的引理，可直接 import 复用。', '',
+        '| 名称 | 文件 | 类别 | 陈述 |', '|---|---|---|---|']
+        .concat(provedRows.length ? provedRows : ['| （暂无） | | | |']).join('\n') + '\n')
+      await writeFormalIndex()
+      await writeFormalTodo()
+      return { lib: libRows.length, proved: provedRows.length, objects: Object.keys(formalRecords()).length }
+    }
+    // A vibe-root-relative path → absolute. Used for the GLOBAL library, which sits beside
+    // the project tree rather than inside the current institute.
+    function instRootless(rel) { return vibeRoot() + '/' + String(rel).replace(/^\.\//, '') }
+
+    // Execute one Lean file through the toolchain, record the run (optionally against an
+    // object), refresh the indexes, and report the outcome verbatim. Deliberately called
+    // even from `off` mode: a human debugging their toolchain may want it.
+    async function leanRunTool(memberId, o) {
+      const args = o || {}
+      const run = await leanRunFile(String(args.file || ''), args.timeout_ms)
+      if (run.ok || run.file) {
+        if (String(args.target || '').trim()) await formalSetRun(String(args.target), run)
+        await writeFormalIndex()
+      }
+      if (run.ok) {
+        await saveChatLine('【形式化】' + (memberId || 'office') + ' 运行 Lean 通过：' + run.file
+          + '（' + (run.ms / 1000).toFixed(1) + 's）' + (args.target ? '｜对象 ' + args.target + ' 记为已尝试/已通过' : ''))
+      }
+      return Object.assign({ ok: !!run.ok }, run, {
+        hint: run.ok
+          ? '通过。若是某个对象的证明，请用 lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
+          : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 lean_archive kind=\'blocked\' 记录原因。',
+      })
+    }
+    async function leanArchive(memberId, o) {
+      const args = o || {}
+      const kind = String(args.kind || '')
+      const content = typeof args.content === 'string' ? args.content : undefined
+      const from = args.from ? String(args.from) : ''
+      if (kind === 'def' || kind === 'lemma') {
+        const name = idSafe(String(args.name || ''))
+        if (!name) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'name is required for a reusable definition/lemma' }
+        let body = content
+        if (body === undefined && from) {
+          const srcAbs = leanAbsPath(from)
+          if (srcAbs === null) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'from must be a .lean file inside the workspace (got ' + from + ')' }
+          body = await readTextAbs(srcAbs)
+        }
+        if (body === undefined) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
+        const rel = 'Formal/' + (kind === 'def' ? 'Lib' : 'Proved') + '/' + name + '.lean'
+        const okWrite = await writeTextAbs(instRootless(rel), body)
+        if (!okWrite) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
+        // The global library sits beside the project tree, so it must be executed through
+        // its ABSOLUTE path (the relative form would resolve inside the institute root).
+        const run = args.run === false ? null : await leanRunFile(instRootless(rel))
+        await rebuildLeanLibIndexes()
+        await saveChatLine('【形式化】' + memberId + ' 归档了' + (kind === 'def' ? '可复用定义' : '已证引理') + ' `' + name + '` → ' + rel
+          + (run ? '（运行 ' + (run.ok ? '通过' : '未通过') + '）' : ''))
+        return { ok: true, kind, name, file: rel, run: run || undefined, note: '已并入全局可复用库，后续项目可直接 import 复用' }
+      }
+      if (kind === 'proof') {
+        const target = idSafe(String(args.target || ''))
+        if (!target) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target is required for kind=proof' }
+        let body = content
+        if (body === undefined && from) {
+          const srcAbs = leanAbsPath(from)
+          if (srcAbs === null) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'from must be a .lean file inside the workspace (got ' + from + ')' }
+          body = await readTextAbs(srcAbs)
+        }
+        if (body === undefined) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
+        const workRel = 'Formal/' + target + '.lean'
+        if (!await writeTextRel(workRel, body)) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + workRel }
+        const run = await leanRunFile(workRel)
+        const prev = formalOf(target)
+        const passed = !!run.ok
+        const rec = Object.assign({}, prev, {
+          status: passed ? 'passed' : 'attempted',
+          file: workRel,
+          proof: passed ? 'Verified/Lean/' + target + '.lean' : (prev.proof || ''),
+          decision: 'used',
+          note: String(args.note || prev.note || ''),
+          run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
+          updatedAt: now(),
+        })
+        if (passed) await writeTextRel('Verified/Lean/' + target + '.lean', body)
+        await putFormal(target, rec)
+        await rebuildLeanLibIndexes()
+        await saveChatLine('【形式化】' + memberId + ' 为 ' + target + ' 归档形式化证明 ' + workRel
+          + '（运行 ' + (passed ? '**通过**，已归档到 ' + rec.proof + '，验证转为忠实性审查' : '**未通过**：' + tail(run.stderr || run.message, 160)) + '）')
+        return { ok: true, kind, target, file: workRel, proof: rec.proof, passed, run, status: rec.status }
+      }
+      if (kind === 'blocked') {
+        const target = idSafe(String(args.target || ''))
+        if (!target) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target is required for kind=blocked' }
+        const note = String(args.note || '').trim()
+        if (!note) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计' }
+        const prev = formalOf(target)
+        const rec = Object.assign({}, prev, { status: 'blocked', decision: 'blocked', note, updatedAt: now() })
+        await putFormal(target, rec)
+        await rebuildLeanLibIndexes()
+        await saveChatLine('【形式化】' + memberId + ' 记录 ' + target + ' 形式化阻塞：' + note)
+        return { ok: true, kind, target, status: 'blocked', note }
+      }
+      return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "kind must be 'def' | 'lemma' | 'proof' | 'blocked'" }
+    }
+
 
     // ---- context / compaction accounting ---------------------------------
     // A SHORT core-rules recap, injected ONLY (a) right after a REAL compaction, or
@@ -2193,7 +2607,19 @@ export function apply(ctx) {
       try {
         const j = judgeVerdict(vs)
         if (j.outcome === 'true' || j.outcome === 'false') {
-          await closeVerify(vs, j.outcome === 'true', j)
+          // ── the `require` gate (§8 of docs/formal-verification.md) ────────────────
+          // A unanimous boolean verdict is a CONSENSUS, not a proof. In `require` mode the
+          // institute has decided that consensus alone may not be promoted to Verified/:
+          // the object must also be either machine-checked (`passed`) or carry an explicit,
+          // reasoned "we judged this infeasible" record (`blocked`). The gate never wedges
+          // the run — it records 未定论 + a formalization TODO so the institute can keep
+          // going and formalize later.
+          const rec = formalOf(vs.target)
+          if (formalMode() === 'require' && !formalGateOk(rec)) {
+            await deferForFormal(vs, j, isTrueVote(j))
+          } else {
+            await closeVerify(vs, j.outcome === 'true', j)
+          }
         } else if (vs.round >= Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))) {
           await finalizeUndecided(vs, j)
         } else {
@@ -2216,6 +2642,30 @@ export function apply(ctx) {
       } finally {
         finalizeLock = null
       }
+      await scheduleNext()
+    }
+    const isTrueVote = (j) => j && j.outcome === 'true'
+    // `require` mode withheld the verdict: record it as 未定论 with a machine-readable
+    // reason, put the object on the formalization TODO, and say so in the group chat. The
+    // object keeps its mean probability and its debate record, so nothing is lost.
+    async function deferForFormal(vs, j, isTrue) {
+      const rec = formalOf(vs.target)
+      const why = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + (rec.status || 'none') + '）'
+      await writeDebateDoc(vs, false, j)
+      await putVerdict(vs.target, Object.assign({}, vs, {
+        closed: true, outcome: 'undecided', reason: why, mean: j.mean, formalDeferred: true,
+        m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
+      }))
+      const list = formalTodo().filter((t) => t.id !== vs.target)
+      list.push({ id: vs.target, at: now(), why, verdict: isTrue ? 1 : 0 })
+      await putFormal(vs.target, rec.status === 'none' ? { status: 'none', deferredAt: now() } : rec, list)
+      await writeFormalTodo()
+      await writeFormalIndex()
+      await saveChatLine('【形式化】' + vs.target + ' 的表决结果为 ' + (isTrue ? '真' : '假')
+        + '，但 **require 模式**要求先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md）。'
+        + '请完成形式化（vibe_v5_lean_archive kind=\'proof\'）或记录阻塞原因（kind=\'blocked\'）后重新提议验证。')
+      await markProgress()
+      await armNextVerify()
       await scheduleNext()
     }
     async function finalizeUndecided(vs, j) {
@@ -2323,6 +2773,9 @@ export function apply(ctx) {
         '- 来源: ' + (isTrue ? j.bTrue : j.bFalse) + ' 名有表决权者一致判' + (isTrue ? '真' : '假') + '（m=' + j.m + '）',
         '- 表决者: ' + j.voters.join('、'),
         '- 弃权: ' + j.abstain + '｜全组平均概率: ' + Number(j.mean).toFixed(2),
+        // The formal record travels WITH the conclusion: a reader of the card must be able
+        // to see how strong the result really is (machine-checked vs consensus-only).
+        ...(formalOn() ? ['- 形式化: ' + formalStatusLine(vs.target) + (formalOf(vs.target).proof ? '（证明：' + formalOf(vs.target).proof + '）' : '')] : []),
         '- 时间: ' + fmtTime(),
         '',
         '## 陈述',
@@ -2943,6 +3396,34 @@ export function apply(ctx) {
         } else await notice(member.id, '标记完成失败：没有任务 ' + String(p.task_done))
       }
       // (5) verification
+      // (4b) Lean formalization signal — the mandatory difficulty judgement. This is the
+      // path that matters in practice: a member that never calls a Lean tool still has to
+      // say "used / blocked", and `require` mode refuses to conclude without it.
+      if (p.formal && typeof p.formal === 'object') {
+        const f = p.formal
+        const target = idSafe(String(f.target || ''))
+        if (target) {
+          const decision = String(f.decision || '').trim()
+          if (decision === 'blocked') {
+            const note = String(f.note || '').trim()
+            if (!note) await notice(member.id, 'formal.decision=\'blocked\' 必须写明 note（难度判断/阻塞原因）——本次未记录。')
+            else {
+              const r = await leanArchive(member.id, { kind: 'blocked', target, note })
+              if (r.ok === false) await notice(member.id, '记录形式化阻塞失败（' + (r.code || '') + '）：' + (r.message || ''))
+            }
+          } else if (decision === 'used') {
+            const file = String(f.file || ('Formal/' + target + '.lean'))
+            const prev = formalOf(target)
+            await putFormal(target, Object.assign({}, prev, {
+              status: prev.status === 'passed' || prev.status === 'blocked' ? prev.status : 'attempted',
+              file, decision: 'used', note: String(f.note || prev.note || ''), updatedAt: now(),
+            }))
+            await writeFormalIndex()
+          } else if (decision) {
+            await notice(member.id, 'formal.decision 只能是 \'used\' 或 \'blocked\'（收到 ' + decision + '）')
+          }
+        }
+      }
       if (p.propose_verify) {
         const pv = typeof p.propose_verify === 'string' ? { target: p.propose_verify } : p.propose_verify
         if (pv && pv.target) {
@@ -3075,10 +3556,10 @@ export function apply(ctx) {
       const out = {}
       const ints = ['researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
-        'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery']
+        'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign']
-      const strs = ['quorumMode', 'provider', 'model', 'staffPersona']
-      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny']
+      const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand']
+      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs']
       for (const k of ints) if (input[k] !== undefined) { const n = Math.floor(Number(input[k])); if (Number.isFinite(n)) out[k] = n }
       for (const k of bools) if (input[k] !== undefined) out[k] = (input[k] === true || input[k] === 'true')
       for (const k of strs) if (input[k] !== undefined) out[k] = String(input[k])
@@ -3088,11 +3569,18 @@ export function apply(ctx) {
         out[k] = Array.isArray(v) ? v.map(String).filter((x) => x.trim()) : String(v).split(',').map((x) => x.trim()).filter(Boolean)
       }
       if (out.quorumMode !== undefined && out.quorumMode !== 'm-unanimous' && out.quorumMode !== 'all-unanimous') out.quorumMode = 'm-unanimous'
+      // An unknown Lean mode must degrade to 'off' (the no-op), never to a stronger mode:
+      // a typo silently forcing formal verification would block every conclusion.
+      if (out.formalVerify !== undefined) {
+        out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'off'
+      }
+      if (out.leanCommand !== undefined && !String(out.leanCommand).trim()) out.leanCommand = 'lean'
       // Guard every duration against a negative/NaN value: such a value would make a
       // watchdog fire instantly and abandon all consensus (v4 §30-T41).
-      for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs']) {
+      for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {
         if (out[k] !== undefined && !(out[k] > 0)) delete out[k]
       }
+      if (out.leanTimeoutMs !== undefined) out.leanTimeoutMs = Math.max(1000, out.leanTimeoutMs)
       if (out.researcherCount !== undefined && out.researcherCount < 0) out.researcherCount = 0
       if (out.quorumCap !== undefined && out.quorumCap < 1) out.quorumCap = 1
       return out
@@ -3121,6 +3609,8 @@ export function apply(ctx) {
         maxParallel: params.maxParallel, activityTimeoutMs: params.activityTimeoutMs,
         stallAutoMeetingMs: params.stallAutoMeetingMs, chatDigestMs: params.chatDigestMs,
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
+        formalVerify: params.formalVerify, leanCommand: params.leanCommand,
+        leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         provider: params.provider, model: params.model,
         toolAllow: params.toolAllow, toolDeny: params.toolDeny,
       }
@@ -3385,6 +3875,18 @@ export function apply(ctx) {
         verified: Object.keys(s.verdicts).filter((k) => s.verdicts[k] && s.verdicts[k].closed && s.verdicts[k].outcome !== 'undecided'),
         undecided: Object.keys(s.verdicts).filter((k) => { const v = s.verdicts[k]; return v && v.closed && v.outcome === 'undecided' }),
         solveVotes: Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v),
+        // Lean formal verification: mode + per-object status + the formalization TODO. This
+        // is how an office/human audits "did we really get strict proofs, or only consensus?"
+        formal: {
+          mode: formalMode(),
+          objects: Object.keys(formalRecords()).map((k) => {
+            const r = formalRecords()[k] || {}
+            return { target: k, status: r.status, file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null }
+          }),
+          passed: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'passed'),
+          blocked: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'blocked'),
+          todo: formalTodo(),
+        },
         lastProgressAt, params: visibleParams(),
       }
     }
@@ -3435,6 +3937,16 @@ export function apply(ctx) {
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
       L.push('- 历史会议：' + s.meetings.length + ' 次｜辩论录：' + s.debates.length + ' 份')
       L.push('- 解决票：' + (solveVotes.size ? Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v).join('、') : '（无）'))
+      L.push('')
+      L.push('## Lean 形式化')
+      if (!formalOn()) L.push('- 未启用（`formalVerify` = off；可用 vibe_v5_set 切到 encourage / require）')
+      else {
+        L.push('- 模式：' + formalMode() + '（' + (formalMode() === 'require' ? '强制：定论前必须有 Lean 通过或显式阻塞记录' : '鼓励：按实现难度自行决定') + '）')
+        L.push('- 已通过：' + (Object.keys(s.formal || {}).filter((k) => (s.formal || {})[k].status === 'passed').join('、') || '（无）'))
+        L.push('- 已记录阻塞：' + (Object.keys(s.formal || {}).filter((k) => (s.formal || {})[k].status === 'blocked').join('、') || '（无）'))
+        L.push('- 形式化待办：' + ((s.todo || []).map((t) => t.id).join('、') || '（无）'))
+        L.push('- 可复用库：VibeMath/Formal/{Lib,Proved}/（跨项目）｜本所形式化：Formal/｜归档证明：Verified/Lean/')
+      }
       L.push('')
       L.push('## 文件位置')
       L.push('- 根目录：' + instRoot())
@@ -3495,6 +4007,10 @@ export function apply(ctx) {
       taskCreate, taskList: listTasks, getTask, taskUpdate, taskAssign, taskPrioritize,
       // libraries
       publishProgress, recordCard, readLibrary,
+      // Lean formal verification (docs/formal-verification.md)
+      formalMode, formalOn, formalRecords, formalTodo, formalOf, rebuildLeanLibIndexes,
+      leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo,
+      leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // authorization helpers (used by tool handlers)
@@ -3535,12 +4051,14 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s) => s.initStop())
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in the session-log projection). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy).', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in the session-log projection). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
     compactThreshold: I, compactAfterRounds: I, maxParallel: I,
     activityTimeoutMs: I, stallAutoMeetingMs: I, chatDigestMs: I, chatDigestMax: I, meetingKeepEvery: I,
+    formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
+    leanCommand: S, leanArgs: SA, leanTimeoutMs: I,
     provider: S, model: S, staffPersona: S, toolAllow: SA, toolDeny: SA, tempToolAllow: SA, tempToolDeny: SA,
   }), (s, a) => s.setParams(a))
   registerTool('vibe_v5_message', 'Relay a message from the office/human into the institute (to a member id, to "all", or to "voters").', objParams({ to: S, content: S }, ['to', 'content']), (s, a) => {
@@ -3606,6 +4124,21 @@ export function apply(ctx) {
     parts.push('（见 Shared/Chat/ 目录；未读消息 ' + st.chat.pending + ' 条）')
     if (st.verify) parts.push('## 进行中表决\n' + JSON.stringify(st.verify))
     if (st.meeting) parts.push('## 进行中会议\n' + JSON.stringify(st.meeting))
+    // The academician supervises progress; in a formalization mode "which objects still lack
+    // a Lean result" is exactly the kind of bottleneck it must see to organise the work.
+    if (s.formalOn()) {
+      parts.push('## Lean 形式化（' + s.formalMode() + '）')
+      const recs = s.formalRecords()
+      const keys = Object.keys(recs)
+      if (!keys.length) parts.push('- 尚无对象被形式化')
+      for (const k of keys) {
+        const r = recs[k] || {}
+        parts.push('- ' + k + '｜' + (r.status || 'none') + (r.proof ? '｜' + r.proof : '') + (r.note ? '｜' + r.note : ''))
+      }
+      const todo = s.formalTodo()
+      if (todo.length) parts.push('- 形式化待办（定论被搁置）：' + todo.map((t) => t.id).join('、') + '（见 Formal/TODO.md）')
+      parts.push('- 可复用库：vibe_v5_lean_lib 可列出 Formal/Lib 与 Formal/Proved')
+    }
     parts.push('## 停滞提示')
     const idleFor = Date.now() - st.lastProgressAt
     parts.push('- 距上次实质进展：' + Math.round(idleFor / 1000) + ' 秒')
@@ -3614,6 +4147,26 @@ export function apply(ctx) {
   registerTool('vibe_v5_assign', '(academician) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => s.taskAssign(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_prioritize', '(academician) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => s.taskPrioritize(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_nudge', '(academician) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => s.nudge(s.memberIdOfAgent(x), a))
+
+  // ── Lean formal verification (docs/formal-verification.md) ────────────────
+  // These three tools are registered UNCONDITIONALLY: tool registration is static (a
+  // dynamic registration would depend on a runtime knob and break the effect discipline),
+  // while the MODE only decides whether the framework TELLS members about them. In 'off'
+  // mode they still work if a human or agent calls them deliberately.
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => s.leanRunTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => s.leanArchive(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
+    const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
+    const st = s.status()
+    return {
+      ok: true, mode: s.formalMode(), rebuilt: !(a && a.refresh === false),
+      counts: r, todo: s.formalTodo(),
+      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note })),
+      paths: { project: 'Formal/（相对研究所根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
+      hint: '复用优先：先在 Lib/ 里找现成定义；新定义用 lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。',
+      verify: st.verify ? st.verify.target : null,
+    }
+  })
 
   // ── /v5 slash command ────────────────────────────────────────────────────
   ctx.effect(() => commands.register({

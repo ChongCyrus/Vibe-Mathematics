@@ -130,16 +130,29 @@ const ctx = {
     if (name === 'compaction') return undefined
     if (name === 'subprocess') {
       return {
-        async spawn({ argv }) {
-          const script = argv[argv.length - 1] || ''
-          if (/New-Item/.test(script)) {
+        async resolveExecutable(cmd) { return String(cmd) },
+        spawn({ argv }) {
+          const last = argv[argv.length - 1] || ''
+          // directory creation still goes through the same mock (mkdirs uses a shell)
+          if (/New-Item/.test(last)) {
             const paths = []
             const re = /'((?:[^']|'')*)'/g
             let m
-            while ((m = re.exec(script)) !== null) paths.push(m[1].replace(/''/g, "'"))
-            for (const p of paths) if (p && !/^-/.test(p)) mkdirSync(p, { recursive: true })
+            while ((m = re.exec(last)) !== null) paths.push(m[1].replace(/''/g, "'"))
+            for (const q of paths) if (q && !/^-/.test(q)) mkdirSync(q, { recursive: true })
+            return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {}, terminate() {} }
           }
-          return { done: Promise.resolve({ exitCode: 0 }) }
+          // The fake Lean toolchain: GREEN unless the file still uses sorry / carries -- FAIL.
+          // Case 12 needs a proof that really passes so the prompt switches to fidelity review.
+          const text = existsSync(last) ? readFileSync(last, 'utf8') : ''
+          const bad = /sorry|-- FAIL/.test(text)
+          const ok = { text: 'ok\n', nextOffset: 3, lossy: false }
+          const err = { text: bad ? 'error: declaration uses sorry\n' : '', nextOffset: 0, lossy: false }
+          return {
+            done: Promise.resolve({ exitCode: bad ? 1 : 0, signal: null }),
+            collected: { stdout: { readFrom: () => ok }, stderr: { readFrom: () => err } },
+            terminate() {},
+          }
         },
       }
     }
@@ -220,6 +233,34 @@ const memberOfChild = (childId) => {
 const spawnOf = (root, memberId) => spawns.find(s => s.rootId === root.id && s.label.indexOf('vibe5 ' + memberId + ' ') !== -1)
 const childOf = (root, memberId) => { const s = spawnOf(root, memberId); return s ? s.childId : '' }
 const spawnsFor = (root) => spawns.filter(s => s.rootId === root.id)
+
+// Pull exactly the VOTING prompts for one root. A plain FIFO drain returns whatever was
+// queued first (work rounds, heartbeats), which is how an earlier version of this case ended
+// up asserting against the wrong prompt entirely.
+async function takeVerifyPrompts(root, n) {
+  const got = []
+  for (let guard = 0; guard < 400 && got.length < n; guard++) {
+    const idx = wakes.findIndex(w => w.rootId === root.id && /【求真表决/.test(w.prompt))
+    if (idx === -1) {
+      const other = wakes.findIndex(w => w.rootId === root.id)
+      if (other !== -1) {
+        const w = wakes.splice(other, 1)[0]
+        delivered.push({ prompt: w.prompt, owner: memberOfChild(w.childId), rootId: w.rootId })
+        fireEnd(w.childId, { progress: '（语料采样时略过非表决轮）', contextPct: 20 })
+        await settle()
+        continue
+      }
+      await settle()
+      continue
+    }
+    const w = wakes.splice(idx, 1)[0]
+    got.push(w)
+    delivered.push({ prompt: w.prompt, owner: memberOfChild(w.childId), rootId: w.rootId })
+    fireEnd(w.childId, { verdict: { target: (/"target"\s*:\s*"([^"]+)"/.exec(w.prompt) || [])[1] || '', verdict: 0.5, reason: '语料采样' }, contextPct: 20 })
+    await settle()
+  }
+  return got
+}
 
 let votePlan = new Map()   // memberId -> verdict number for the next verify prompts
 let replyOverride = new Map()   // memberId -> the exact reply its NEXT wake must produce
@@ -855,8 +896,66 @@ const unpaced = wakes.filter(w => w.rootId === RJ.id)
 assert(unpaced.length === 0, 'no unpaced re-wake of the task owner within the idle window (got ' + unpaced.length + ')')
 await endCase(RJ)
 
+// =============== CASE 12: Lean mode prompt text =================================
+section('12 Lean formal-verification text enters the prompts (and the corpus)')
+const RK = makeRoot()
+await callTool('vibe_v5_start', { problem: 'Lean 提示词测试', researcherCount: 2 }, RK)
+for (const sp of spawnsFor(RK)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(RK)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, RK)
+// (a) an ordinary work round carries the "formalize reusable things as you go" request
+delivered.length = 0
+await callTool('vibe_v5_say', { to: 'r-1', text: '继续推进。' }, childAgent(childOf(RK, 'acad')))
+await settle(); await drainWakes(3, RK)
+for (const w of delivered.filter(d => d.rootId === RK.id)) recordAndCheck('lean-work', w.owner, w.prompt)
+{
+  const txt = delivered.filter(d => d.rootId === RK.id).map(d => d.prompt).join('\n')
+  assert(/\[形式化\] 鼓励 Lean/.test(txt), 'the state block announces the Lean mode with its counts')
+  assert(/【顺手形式化（鼓励）】/.test(txt), 'the work round asks for reusable objects to be formalized as work proceeds')
+}
+// (b) a voting round on an object WITHOUT a proof carries the "decide by difficulty" block
+await callTool('vibe_v5_record_proposition', { id: 'p-lean-a', statement: 'Lean 语料对象甲', value: 0.6, motive: 'm', p: 0.8 }, childAgent(childOf(RK, 'r-1')))
+const propA = await callTool('vibe_v5_propose_verify', { target: 'p-lean-a', kind: 'proposition', reason: '语料' }, childAgent(childOf(RK, 'r-1')))
+assert(propA.ok === true && propA.started === true, 'the Lean corpus ballot for object 甲 actually started (' + JSON.stringify(propA).slice(0, 90) + ')')
+delivered.length = 0
+const vwA = await takeVerifyPrompts(RK, 3)
+assert(vwA.length === 3, 'captured three voting prompts for object 甲 (got ' + vwA.length + ')')
+for (const w of vwA) recordAndCheck('lean-verify', memberOfChild(w.childId), w.prompt)
+{
+  const txt = delivered.filter(d => d.rootId === RK.id).map(d => d.prompt).join('\n')
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(txt), 'the voting prompt explains the Lean mode')
+  assert(/你唯一需要确认的就是忠实性/.test(txt), 'the voting prompt states the fidelity question')
+}
+await endCase(RK)
+// (c) once a proof passes, the voting prompt switches to the fidelity review. This uses its
+// own root: object 甲's ballot may still be in flight above, and a queued proposal would
+// make the drained prompts belong to the WRONG ballot (the assertion would then fail for a
+// reason that has nothing to do with the feature).
+const RL2 = makeRoot()
+await callTool('vibe_v5_start', { problem: 'Lean 忠实性提示词测试', researcherCount: 2 }, RL2)
+for (const sp of spawnsFor(RL2)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(RL2)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, RL2)
+await callTool('vibe_v5_record_proposition', { id: 'p-lean-b', statement: 'Lean 语料对象乙', value: 0.6, motive: 'm', p: 0.9 }, childAgent(childOf(RL2, 'r-1')))
+const leanB = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-b', content: 'theorem p_lean_b : 1 + 1 = 2 := by decide\n' }, childAgent(childOf(RL2, 'r-1')))
+assert(leanB.ok === true && leanB.passed === true, 'object 乙 has a proof that really passes (' + JSON.stringify({ ok: leanB.ok, passed: leanB.passed, code: leanB.run && leanB.run.code }) + ')')
+const propB = await callTool('vibe_v5_propose_verify', { target: 'p-lean-b', kind: 'proposition', reason: '已有证明' }, childAgent(childOf(RL2, 'r-1')))
+assert(propB.ok === true && propB.started === true, 'the Lean corpus ballot for object 乙 actually started (' + JSON.stringify(propB).slice(0, 90) + ')')
+delivered.length = 0
+const vwB = await takeVerifyPrompts(RL2, 3)
+assert(vwB.length === 3, 'captured three voting prompts for object 乙 (got ' + vwB.length + ')')
+for (const w of vwB) recordAndCheck('lean-fidelity', memberOfChild(w.childId), w.prompt)
+{
+  const txt = vwB.map(w => w.prompt).join('\n')
+  assert(/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(txt), 'the prompt announces the passing proof')
+  assert(/你不需要重新检查推导/.test(txt), 'with a proof in hand the prompt tells voters not to re-derive')
+  assert(/忠实性审查/.test(txt), 'and asks for a fidelity review instead')
+}
+await drainWakes(10, RL2)
+await endCase(RL2)
+
 // =============== PART: full-corpus sweep ========================================
-section('12 full-corpus sweep over every prompt ever sent')
+section('13 full-corpus sweep over every prompt ever sent')
 {
   let swept = 0
   for (const sp of spawns) {
@@ -871,7 +970,8 @@ section('12 full-corpus sweep over every prompt ever sent')
   const kinds = new Set(corpus.map(c => c.kind))
   for (const need of ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
     'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
-    'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure']) {
+    'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
+    'lean-work', 'lean-verify', 'lean-fidelity']) {
     assert(kinds.has(need), 'the corpus contains a ' + need + ' prompt')
   }
   assert(corpus.every(c => c.prompt && c.prompt.length > 200), 'no captured prompt is suspiciously short')
@@ -900,7 +1000,7 @@ section('12 full-corpus sweep over every prompt ever sent')
 }
 
 // =============== corpus dump ====================================================
-section('13 the full prompt corpus is preserved for human review')
+section('14 the full prompt corpus is preserved for human review')
 mkdirSync(CORPUS_DIR, { recursive: true })
 const md = []
 md.push('# Vibe Math V5 — 提示词与交互语料（自动生成，请勿手改）')
@@ -917,7 +1017,8 @@ md.push('')
 const seenPersona = new Set()
 const order = ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
   'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
-  'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure']
+  'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
+  'lean-work', 'lean-verify', 'lean-fidelity']
 const sorted = corpus.slice().sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
 for (let i = 0; i < sorted.length; i++) {
   const c = sorted[i]

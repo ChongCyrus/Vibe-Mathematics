@@ -46,12 +46,26 @@ export function apply(ctx) {
       // toolFilter (scoped tools.restrict() in the child). Empty = inherit all tools.
       // CAUTION: only set one of these; an empty allow:[] would deny EVERY tool.
       toolAllow: [], toolDeny: [],
+      // ---- Lean formal verification (docs/formal-verification.md) ----------------
+      // 'off' (default, a TRUE no-op) | 'encourage' | 'require'. The MODE is dynamic: every
+      // mode-dependent prompt string is computed from params.formalVerify at the moment the
+      // prompt is built, never frozen into a brief, so switching the knob takes effect on the
+      // very next wake.
+      formalVerify: 'off',
+      leanCommand: 'lean',
+      leanArgs: [],            // inserted BEFORE the file name (e.g. ['env','lean'] with lake)
+      leanTimeoutMs: 120000,
     }
     let params = Object.assign({}, DEFAULT_PARAMS)
     let running = false, autoDone = false, phase = 'idle'
     let residents = new Map(), mailboxes = new Map(), taskboard = [], decisions = []
     let meetings = [], reports = [], activityLog = []
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
+    // Lean formalization records, keyed by object id. v4 has no session-log projection, so this
+    // is persisted through v4's OWN durable State/*.json mechanism (State/formal.json) and must
+    // survive `resume` — otherwise a require-mode object would lose the very record that decides
+    // whether its verdict may take effect.
+    let formal = {}, formalTodos = []
     let meetingState = null, verifyState = null, pendingVerify = [], pendingMeeting = null   // pendingVerify: FIFO queue (several residents may independently propose different objects before any verify runs — a single slot silently DROPPED all but the last proposal)
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
     let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
@@ -200,7 +214,15 @@ export function apply(ctx) {
       } catch(e){}
       return true
     }
-    async function ensureDirs(){ const base=frameworkRoot(); const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Reliable','Notes','State']; return await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)))) }
+    async function ensureDirs(){
+      const base=frameworkRoot()
+      const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Verified/Lean','Formal','Reliable','Notes','State']
+      // The GLOBAL reuse library (Formal/Lib + Formal/Proved) deliberately lives beside the
+      // project tree, NOT inside it: cross-project reuse is the whole point (spec §3). It is
+      // created here so the first `lean_archive kind='def'` never has to invent its parent.
+      const globalDirs=['Formal/Lib','Formal/Proved']
+      return await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)).concat(globalDirs.map(d=>vibeRoot()+'/'+d))))
+    }
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
     async function readCurrentProject(){ try { const t=await readTextAbs(vibeRoot()+'/.current'); if(t) return String(t).trim() } catch(e){} return currentProject }
@@ -213,12 +235,444 @@ export function apply(ctx) {
       return obj||{}
     }
 
+    // ================= Lean formal verification ==============================
+    // Contract: docs/formal-verification.md (shared by v2/v3/v4/v5).
+    //
+    // The point of this feature is a SHIFT IN WHAT MUST BE REVIEWED, not an extra chore.
+    // Unanimous consensus answers "do we all believe this?"; a machine-checked Lean
+    // development answers "is this true?" and shrinks the open question to the one thing a
+    // human (or an agent) can actually audit:
+    //
+    //     do the Lean definitions / objects / conditions / assumptions / conclusion
+    //     match the proposition as originally stated?
+    //
+    // So once a Lean run passes, the voting prompt stops asking a resident to redo the
+    // derivation and asks for a FIDELITY review. `require` mode makes that concrete: a
+    // 真/假 verdict does not take effect until the object is either `passed` (a green run)
+    // or carries an explicit, reasoned `blocked` record — "decide by difficulty, but decide
+    // out loud, and never silently skip".
+    const FORMAL_MODES=['off','encourage','require']
+    // Read the mode OFF `params` every single time. Nothing mode-dependent may be cached in a
+    // brief/closure: the knob is switchable at runtime and members must see the NEW text on
+    // their very next wake.
+    const formalMode=()=>{ const m=String(params.formalVerify); return FORMAL_MODES.indexOf(m)!==-1?m:'off' }
+    const formalOn=()=>formalMode()!=='off'
+    const formalRoot=()=>frameworkRoot()+'/Formal'
+    const formalLibRoot=()=>vibeRoot()+'/Formal/Lib'
+    const formalProvedRoot=()=>vibeRoot()+'/Formal/Proved'
+    const verifiedLeanRoot=()=>frameworkRoot()+'/Verified/Lean'
+    const formalRecords=()=>(formal||{})
+    const formalTodo=()=>(formalTodos||[])
+    function formalOf(target){
+      const key=idSafe(String(target==null?'':target))
+      if(!key||key==='id') return {status:'none'}
+      const r=formalRecords()[key]
+      return r||{status:'none'}
+    }
+    const formalKey=(target)=>{ const k=idSafe(String(target==null?'':target)); return (k&&k!=='id')?k:'' }
+    /**
+     * Write one object's formal record (and optionally the TODO list) to v4's durable state.
+     * ASYNC on purpose: the write goes through v4's per-file serialized `writeJson` queue, and a
+     * caller that only fires-and-forgets it could have the process die (or `resume` read the file)
+     * before the record lands. Every caller here awaits the result.
+     */
+    async function putFormal(target,record,todo){
+      const key=formalKey(target); if(!key) return false
+      formal[key]=record
+      if(Array.isArray(todo)) formalTodos=todo
+      await saveFormal()
+      return true
+    }
+    function saveFormal(){ return writeJson('State/formal.json',{records:formal,todo:formalTodos}) }
+    // `passed` requires a GREEN RUN, not merely an archived file: a proof file that has never
+    // been executed proves nothing, so a hand-written file cannot buy its way past the gate.
+    const formalGateOk=(rec)=>!!rec&&(rec.status==='passed'||rec.status==='blocked')
+    // Human-readable one-liner reused by the Verified card and the index. The exact strings
+    // ('Lean 通过' / '阻塞（…）') are part of the card contract (docs §8).
+    function formalStatusLine(target){
+      const r=formalOf(target)
+      if(r.status==='passed') return 'Lean 通过（'+(r.proof||r.file||'')+'）'
+      if(r.status==='blocked') return '阻塞（'+(r.note||'未说明')+'）'
+      if(r.status==='attempted') return '已尝试未通过'
+      return '未尝试'
+    }
+    const runLine=(run)=>run?(run.ok?'ok（exit 0，'+((run.ms||0)/1000).toFixed(1)+'s）':'fail（exit '+String(run.exitCode)+'，'+((run.ms||0)/1000).toFixed(1)+'s）'):'—'
+    function tail(s,n){ const t=String(s==null?'':s); return t.length>n?t.slice(-n):t }
+
+    // Lexically normalise an absolute path (collapse '.', '..' and duplicate slashes) WITHOUT
+    // touching the filesystem. A plain `startsWith(root)` check is NOT enough:
+    // "…/VibeMath/Projects/../../../../etc/evil.lean" still starts with the root as a string
+    // while resolving outside it.
+    function normalizeAbsPath(p){
+      const parts=String(p==null?'':p).replace(/\\/g,'/').split('/')
+      const out=[]
+      for(const seg of parts){
+        if(seg===''){ if(out.length===0) out.push(''); continue }
+        if(seg==='.') continue
+        if(seg==='..'){ if(out.length>1) out.pop(); continue }
+        out.push(seg)
+      }
+      return out.join('/')
+    }
+    // Resolve a Lean path to an absolute, NORMALISED path provably inside the VibeMath root —
+    // or null. Note the boundary is the VibeMath root and NOT the project: the global reuse
+    // library deliberately lives at <VibeMath>/Formal/{Lib,Proved}, outside the project tree,
+    // so climbing out of the project but staying inside VibeMath is legal. Every Lean file
+    // access (run, archive, read) goes through this.
+    function leanAbsPath(rel){
+      const raw=String(rel==null?'':rel).trim()
+      if(!raw) return null
+      const abs=(raw.charAt(0)==='/'||/^[a-z]:/i.test(raw))?raw:frameworkRoot()+'/'+raw.replace(/^\.\//,'')
+      const norm=normalizeAbsPath(abs)
+      const root=normalizeAbsPath(vibeRoot())
+      if(norm!==root&&norm.indexOf(root+'/')!==0) return null
+      return norm
+    }
+    // <VibeMath>-relative → absolute. Used for the GLOBAL library, which sits beside the
+    // project tree rather than inside it.
+    function vibeRelAbs(rel){ return vibeRoot()+'/'+String(rel==null?'':rel).replace(/^\.\//,'') }
+
+    // Run the toolchain on one file. NEVER throws into the scheduler loop: every failure mode
+    // (no service, no executable, spawn failure, timeout, non-zero exit) becomes a readable
+    // result, because a thrown error inside an end handler would strand the whole group.
+    async function leanRunFile(relPath,timeoutMs){
+      const started=now()
+      const rel=String(relPath==null?'':relPath).trim()
+      if(!rel) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'file is required'}
+      // Path guard: only files inside the VibeMath tree may be executed, so a crafted path can
+      // never make the framework run something outside the workspace.
+      const abs=leanAbsPath(rel)
+      if(abs===null) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'Lean file must live under '+vibeRoot().replace(/\\/g,'/')+'/ (got '+rel+')',file:rel}
+      if(!/\.lean$/.test(abs)) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'only .lean files can be executed',file:rel}
+      if(await readTextAbs(abs)===undefined) return {ok:false,code:'V4_NOT_FOUND',message:'no such file: '+rel,file:rel}
+      const sub=subprocessOf()
+      if(sub===undefined||typeof sub.spawn!=='function'){
+        return {ok:false,code:'NO_SUBPROCESS',message:'the host exposes no subprocess service; Lean cannot be executed here',file:rel,ms:0}
+      }
+      const cap=Math.max(1000,Math.floor(Number(timeoutMs))||Math.floor(Number(params.leanTimeoutMs))||120000)
+      let exe
+      try { exe=await sub.resolveExecutable(String(params.leanCommand||'lean')) }
+      catch(e){
+        return {ok:false,code:'LEAN_NOT_FOUND',message:'cannot resolve "'+String(params.leanCommand||'lean')+'": '+String((e&&e.message)||e)+' — 仍可把形式化代码写下来归档，但无法在此宿主上执行',file:rel,ms:now()-started}
+      }
+      const argv=[exe].concat((Array.isArray(params.leanArgs)?params.leanArgs:[]).map(String)).concat([abs])
+      let handle
+      try {
+        handle=sub.spawn({ argv, cwd:frameworkRoot(), stdio:{stdin:'ignore',stdout:{maxBytes:64*1024},stderr:{maxBytes:64*1024}}, graceMs:cap })
+      } catch(e){ return {ok:false,code:'LEAN_SPAWN_FAILED',message:String((e&&e.message)||e),file:rel,ms:now()-started} }
+      let outcome
+      try { outcome=await handle.done }
+      catch(e){ return {ok:false,code:'LEAN_RUN_FAILED',message:String((e&&e.message)||e),file:rel,ms:now()-started} }
+      let out='',err=''
+      try { if(handle.collected&&handle.collected.stdout) out=handle.collected.stdout.readFrom(0).text } catch(e){ /* best effort */ }
+      try { if(handle.collected&&handle.collected.stderr) err=handle.collected.stderr.readFrom(0).text } catch(e){ /* best effort */ }
+      const exitCode=outcome?outcome.exitCode:null
+      const ms=now()-started
+      const ok=exitCode===0
+      const timedOut=!ok&&ms>=cap
+      return {
+        ok, exitCode, signal:(outcome&&outcome.signal)||null, ms,
+        command:argv.join(' '), file:rel,
+        stdout:tail(out,4000), stderr:tail(err,4000), timedOut,
+        code: ok?undefined:(timedOut?'LEAN_TIMEOUT':'LEAN_FAILED'),
+      }
+    }
+    // Record one run against an object. `passed`/`blocked` are NEVER downgraded by a later red
+    // run (only an explicit re-archive decides those); everything else becomes `attempted`.
+    async function formalSetRun(target,run){
+      const key=formalKey(target); if(!key) return
+      const prev=formalOf(key)
+      await putFormal(key,Object.assign({},prev,{
+        status:'attempted',
+        file:run.file||prev.file||'',
+        decision:prev.decision||'used',
+        run:{at:now(),ok:!!run.ok,exitCode:run.exitCode===undefined?null:run.exitCode,ms:run.ms||0,stdoutTail:tail(run.stdout,800),stderrTail:tail(run.stderr,800)},
+        updatedAt:now(),
+      }))
+    }
+
+    function formalModeWord(){ return formalMode()==='require'?'强制':'鼓励' }
+    /**
+     * The verification-prompt block. Every branch is computed from the CURRENT mode and the
+     * object's CURRENT record at call time (spec §6.1). In particular the `passed` branch is
+     * what makes the feature worthwhile: it tells the voter that re-deriving is NOT the job.
+     */
+    function formalPromptBlock(target){
+      if(!formalOn()) return ''
+      const rec=target?formalOf(target):{status:'none'}
+      const L=[]
+      L.push('【Lean 形式化验证（'+formalModeWord()+'模式）】')
+      if(rec.status==='passed'){
+        L.push('  · 该对象已有**通过的 Lean 形式化证明**（'+(rec.proof||rec.file||'')+'，最近运行 exit 0）。')
+        L.push('    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的')
+        L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），')
+        L.push('    并据此给出 verdict。')
+        L.push('  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。')
+      } else if(rec.status==='blocked'){
+        L.push('  · 该对象已被记录为**形式化阻塞**：'+(rec.note||'未说明')+'。')
+        L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
+        L.push('  ▸ 因此请把 verdict 用在"这个阻塞判断是否成立 / 是否仍有别的形式化路线"上，并给出理由。')
+      } else {
+        L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
+        L.push('  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）')
+        L.push('  · 工作目录：Formal/（相对项目根 '+frameworkRoot().replace(/\\/g,'/')+'/）；')
+        L.push('    可复用定义放 '+formalLibRoot().replace(/\\/g,'/')+'/，已证引理放 '+formalProvedRoot().replace(/\\/g,'/')+'/；')
+        L.push('    写之前先 vibe_v4_lean_lib 查重。')
+        L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与')
+        L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+        if(formalMode()==='require'){
+          L.push('  · **本模式要求**：**必须产出 Lean 形式化**，或**必须**给出显式的阻塞原因')
+          L.push("    （vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，")
+          L.push('    本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。')
+        } else {
+          L.push('  · 若判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。')
+        }
+        if(rec.status==='attempted'){
+          L.push('  ▸ 该对象已有形式化尝试但尚未通过（最近一次 '+(rec.run?(rec.run.ok?'通过':'未通过'):'无运行记录')+'）。')
+          L.push("    请修复后重跑（vibe_v4_lean_run），跑通后用 kind='proof' 归档。")
+        } else {
+          L.push("  ▸ 若你在本轮把它形式化并跑通（vibe_v4_lean_archive kind='proof'），后续轮次的")
+          L.push('    审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。')
+        }
+      }
+      return L.join('\n')
+    }
+    /** The ordinary-work-round line (spec §6.2): formalize reusable objects as you go. */
+    function formalWorkLine(){
+      if(!formalOn()) return ''
+      return '【顺手形式化（'+formalModeWord()+'）】把你工作中常用或可能复用的对象、假设、新定义，'
+        +"用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/"
+        +"（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。"
+        +(formalMode()==='require'
+          ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
+          : '这会让后续的验证与证明省掉大量重复工作。')
+    }
+    /** The `formal` object every non-off prompt documents in its JSON reply contract. */
+    function formalReplyField(target){
+      return '{"formal":{"target":"'+String(target||'p-x')+'","decision":"used|blocked","file":"Formal/'+String(target||'p-x')+'.lean","note":"难度判断/阻塞原因"}}'
+    }
+
+    // ---- the three indexes (framework-maintained) ---------------------------
+    async function writeFormalIndex(){
+      const recs=formalRecords()
+      const L=['# Lean 形式化索引｜'+currentProject+'｜'+fmtTime(),'',
+        '> 本文件由框架维护（工具调用时更新；`vibe_v4_lean_lib` 会重建）。权威状态在 `State/formal.json`。','',
+        '| 对象 | 状态 | 形式化文件 | 归档证明 | 最近运行 | 难度判断 / 阻塞原因 |','|---|---|---|---|---|---|']
+      const keys=Object.keys(recs)
+      if(!keys.length) L.push('| （暂无） | | | | | |')
+      for(const k of keys){
+        const r=recs[k]||{}
+        L.push('| '+k+' | '+(r.status||'none')+' | '+(r.file||'—')+' | '+(r.proof||'—')+' | '+runLine(r.run)+' | '+String(r.note||'—').replace(/\|/g,'/').slice(0,120)+' |')
+      }
+      L.push('')
+      if(formalTodo().length){
+        L.push('## 形式化待办（require 模式：定论被搁置）')
+        for(const t of formalTodo()) L.push('- '+t.id+' —— '+(t.why||'formal-required')+'（'+fmtTime(t.at)+'）')
+        L.push('')
+      }
+      await writeText('Formal/Index.md',L.join('\n'))
+    }
+    async function writeFormalTodo(){
+      const L=['# 形式化待办｜'+currentProject+'｜'+fmtTime(),'',
+        '> 这些对象在 `require` 模式下尚不具备「Lean 已通过」或「显式阻塞记录」，因此**定论被搁置**。',
+        "> 完成形式化（vibe_v4_lean_archive kind='proof'）或记录阻塞原因（kind='blocked'）后，重新提议验证即可。",'']
+      const list=formalTodo()
+      if(!list.length) L.push('（暂无）')
+      for(const t of list) L.push('- '+t.id+'｜'+(t.why||'formal-required')+'｜'+fmtTime(t.at))
+      L.push('')
+      await writeText('Formal/TODO.md',L.join('\n'))
+    }
+    /**
+     * Scan and rebuild the three indexes. Listing is deliberately CHEAP and side-effect free:
+     * it does NOT execute the toolchain (running Lean on every library file each time an agent
+     * asks "what can I reuse?" would be slow and surprising). Per-object run results live in
+     * the object records and are shown in Formal/Index.md.
+     */
+    async function rebuildLeanLibIndexes(){
+      const scan=async(dirAbs,dirRel,kindLabel)=>{
+        const rows=[]
+        try {
+          const t=await fs.resolve(dirAbs)
+          if(await fs.stat(t)===undefined) return rows
+          const entries=await fs.listDir(t)
+          for(const e of entries||[]){
+            if(!e||e.type!=='file'||!/\.lean$/.test(String(e.name))) continue
+            const rel=dirRel+'/'+e.name
+            const txt=(await readTextAbs(dirAbs+'/'+e.name))||''
+            const name=String(e.name).replace(/\.lean$/,'')
+            const first=(txt.split('\n').filter(l=>l.trim()&&!/^\s*(\/\/|--|import)/.test(l))[0]||'').trim().slice(0,110)
+            rows.push('| '+name+' | '+rel+' | '+kindLabel+' | '+first.replace(/\|/g,'/')+' |')
+          }
+        } catch(e){ /* listing is best-effort */ }
+        return rows
+      }
+      const libRows=await scan(formalLibRoot(),'Formal/Lib','def')
+      await writeTextAbs(formalLibRoot()+'/Index.md',['# 可复用 Lean 定义库（跨项目）｜'+currentProject,'',
+        '> 写新定义之前先查这里：能复用就不要重新定义。','',
+        '| 名称 | 文件 | 类别 | 摘要 |','|---|---|---|---|']
+        .concat(libRows.length?libRows:['| （暂无） | | | |']).join('\n')+'\n')
+      const provedRows=await scan(formalProvedRoot(),'Formal/Proved','lemma')
+      await writeTextAbs(formalProvedRoot()+'/Index.md',['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜'+currentProject,'',
+        '> 这些文件是通过内核检查的引理，可直接 import 复用。','',
+        '| 名称 | 文件 | 类别 | 陈述 |','|---|---|---|---|']
+        .concat(provedRows.length?provedRows:['| （暂无） | | | |']).join('\n')+'\n')
+      await writeFormalIndex()
+      await writeFormalTodo()
+      return {lib:libRows.length,proved:provedRows.length,objects:Object.keys(formalRecords()).length}
+    }
+
+    /**
+     * Execute one Lean file through the toolchain, record the run (optionally against an
+     * object), refresh the index, and report the outcome verbatim. Deliberately callable even
+     * from `off` mode: a human debugging their toolchain may want it, and registration is
+     * static while the MODE only decides whether the framework TELLS members about it.
+     */
+    async function leanRunTool(memberId,o){
+      const args=o||{}
+      const run=await leanRunFile(String(args.file||''),args.timeout_ms)
+      try {
+        if(run.ok||run.file){
+          if(String(args.target||'').trim()) formalSetRun(String(args.target),run)
+          await writeFormalIndex()
+        }
+      } catch(e){ /* the index is best-effort; a run result must always come back */ }
+      logActivity('formal',(memberId||'host')+' lean_run '+(run.file||String(args.file||''))+' → '+(run.ok?'通过':(run.code||'未通过')))
+      return Object.assign({ok:!!run.ok},run,{
+        mode:formalMode(),
+        hint: run.ok
+          ? "通过。若是某个对象的证明，请用 vibe_v4_lean_archive kind='proof' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind='def'/'lemma' 归档到全局库。"
+          : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_v4_lean_archive kind=\'blocked\' 记录原因。',
+      })
+    }
+    /**
+     * One tool, three archives (spec §5.2).
+     *   def/lemma → the GLOBAL cross-project library (Formal/Lib, Formal/Proved)
+     *   proof     → the project working file Formal/<target>.lean, plus Verified/Lean/<target>.lean
+     *               when the run is GREEN (and only then is the object `passed`)
+     *   blocked   → an explicit, reasoned "we judged this infeasible" record (note REQUIRED)
+     */
+    async function leanArchive(memberId,o){
+      const args=o||{}
+      const kind=String(args.kind||'')
+      const content=typeof args.content==='string'?args.content:undefined
+      const from=args.from?String(args.from):''
+      const bodyFrom=async()=>{
+        if(content!==undefined) return {body:content}
+        if(from){
+          const srcAbs=leanAbsPath(from)
+          if(srcAbs===null) return {error:{ok:false,code:'V4_INVALID_ARGUMENT',message:'from must be a .lean file inside the workspace (got '+from+')'}}
+          const body=await readTextAbs(srcAbs)
+          if(body===undefined) return {error:{ok:false,code:'V4_NOT_FOUND',message:'no such file: '+from}}
+          return {body}
+        }
+        return {error:{ok:false,code:'V4_INVALID_ARGUMENT',message:'provide content, or from=<existing .lean file>'}}
+      }
+      if(kind==='def'||kind==='lemma'){
+        const name=idSafe(String(args.name||''))
+        if(!name||name==='id') return {ok:false,code:'V4_INVALID_ARGUMENT',message:'name is required for a reusable definition/lemma'}
+        const got=await bodyFrom(); if(got.error) return got.error
+        const rel='Formal/'+(kind==='def'?'Lib':'Proved')+'/'+name+'.lean'
+        if(!await writeTextAbs(vibeRelAbs(rel),got.body)) return {ok:false,code:'V4_WRITE_FAILED',message:'could not write '+rel}
+        // The global library sits BESIDE the project tree, so it must be executed through its
+        // ABSOLUTE path — the project-relative form would resolve inside frameworkRoot.
+        const run=args.run===false?null:await leanRunFile(vibeRelAbs(rel))
+        try { await rebuildLeanLibIndexes() } catch(e){ /* index rebuild is best-effort */ }
+        logActivity('formal',String(memberId||'host')+' 归档'+(kind==='def'?'可复用定义':'已证引理')+' '+name+' → '+rel+(run?('（运行 '+(run.ok?'通过':'未通过')+'）'):''))
+        return {ok:true,kind,name,file:rel,run:run||undefined,note:'已并入全局可复用库，后续项目可直接 import 复用'}
+      }
+      if(kind==='proof'){
+        const key=formalKey(String(args.target||''))
+        if(!key) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'target is required for kind=proof'}
+        const got=await bodyFrom(); if(got.error) return got.error
+        const workRel='Formal/'+key+'.lean'
+        if(!await writeText(workRel,got.body)) return {ok:false,code:'V4_WRITE_FAILED',message:'could not write '+workRel}
+        const run=await leanRunFile(workRel)
+        const prev=formalOf(key)
+        const passed=!!run.ok
+        const rec=Object.assign({},prev,{
+          status:passed?'passed':'attempted',
+          file:workRel,
+          proof:passed?('Verified/Lean/'+key+'.lean'):(prev.proof||''),
+          decision:'used',
+          note:String(args.note||prev.note||''),
+          run:{at:now(),ok:!!run.ok,exitCode:run.exitCode===undefined?null:run.exitCode,ms:run.ms||0,stdoutTail:tail(run.stdout,800),stderrTail:tail(run.stderr,800)},
+          updatedAt:now(),
+        })
+        // ★ `passed` requires a green run: the proof is only copied into Verified/Lean/ when the
+        // kernel actually accepted it. A red run still records the working file (so the agent
+        // can iterate) but must not mint a proof.
+        if(passed) await writeText('Verified/Lean/'+key+'.lean',got.body)
+        await putFormal(key,rec)
+        try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ }
+        logActivity('formal',String(memberId||'host')+' 为 '+key+' 归档形式化证明 '+workRel+(passed?'（**通过**，已归档到 '+rec.proof+'，验证转为忠实性审查）':'（**未通过**：'+tail(run.stderr||run.message,160)+'）'))
+        return {ok:true,kind,target:key,file:workRel,proof:rec.proof,passed,run,status:rec.status}
+      }
+      if(kind==='blocked'){
+        const key=formalKey(String(args.target||''))
+        if(!key) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'target is required for kind=blocked'}
+        const note=String(args.note||'').trim()
+        // "决定权在代理，但决定必须显式、可审计" — an empty note would make the escape hatch
+        // indistinguishable from silently skipping formalization, so it is refused outright.
+        if(!note) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计'}
+        const prev=formalOf(key)
+        const rec=Object.assign({},prev,{status:'blocked',decision:'blocked',note,updatedAt:now()})
+        await putFormal(key,rec)
+        try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ }
+        logActivity('formal',String(memberId||'host')+' 记录 '+key+' 形式化阻塞：'+note)
+        return {ok:true,kind,target:key,status:'blocked',note}
+      }
+      return {ok:false,code:'V4_INVALID_ARGUMENT',message:"kind must be 'def' | 'lemma' | 'proof' | 'blocked'"}
+    }
+    /**
+     * The per-round `formal` reply channel. This is the path that fires IN PRACTICE: a resident
+     * that never calls a Lean tool still has to state its difficulty judgement. Every failure is
+     * swallowed into the activity log — an end handler must never throw into the scheduler.
+     */
+    async function applyFormalReply(rId,formalReply){
+      try {
+        const key=formalKey(String(formalReply.target||''))
+        if(!key) return
+        const decision=String(formalReply.decision||'').trim()
+        if(decision==='blocked'){
+          const note=String(formalReply.note||'').trim()
+          if(!note){
+            logActivity('formal',(rId||'host')+" 的 formal.decision='blocked' 缺少 note（难度判断/阻塞原因）——本次未记录")
+            return
+          }
+          await leanArchive(rId,{kind:'blocked',target:key,note})
+        } else if(decision==='used'){
+          const file=String(formalReply.file||('Formal/'+key+'.lean'))
+          const prev=formalOf(key)
+          await putFormal(key,Object.assign({},prev,{
+            status:prev.status==='passed'||prev.status==='blocked'?prev.status:'attempted',
+            file,decision:'used',note:String(formalReply.note||prev.note||''),updatedAt:now(),
+          }))
+          try { await writeFormalIndex() } catch(e){ /* best-effort */ }
+        } else if(decision){
+          logActivity('formal',(rId||'host')+" 的 formal.decision 只能是 'used' 或 'blocked'（收到 "+decision+"）")
+        }
+      } catch(e){ logActivity('formal','formal 回执处理失败：'+String((e&&e.message)||e)) }
+    }
+    /** The {mode, on, objects, todo} view the host tools report (state-storage transparency). */
+    function formalView(){
+      const recs=formalRecords()
+      return {
+        mode:formalMode(),
+        on:formalOn(),
+        objects:Object.keys(recs).map(k=>({target:k,status:(recs[k]||{}).status||'none',file:(recs[k]||{}).file||'',proof:(recs[k]||{}).proof||'',note:(recs[k]||{}).note||''})),
+        passed:Object.keys(recs).filter(k=>(recs[k]||{}).status==='passed'),
+        blocked:Object.keys(recs).filter(k=>(recs[k]||{}).status==='blocked'),
+        todo:formalTodo().map(t=>t.id),
+      }
+    }
+
     // ---- persistence ----
     async function saveAll(){
       await writeJson('State/residents.json', Object.fromEntries(residents))
       await writeJson('State/mailboxes.json', Object.fromEntries(mailboxes))
       await writeJson('State/taskboard.json', taskboard)
       await writeJson('State/decisions.json', decisions)
+      await writeJson('State/formal.json', {records:formal,todo:formalTodos})
       await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,lastProgressAt,activityLog,processEpoch,artifactCount})
     }
     async function loadAll(){
@@ -227,6 +681,13 @@ export function apply(ctx) {
       const mb=await readJson('State/mailboxes.json'); if(mb&&typeof mb==='object') mailboxes=new Map(Object.entries(mb))
       const tb=await readJson('State/taskboard.json'); if(Array.isArray(tb)) taskboard=tb
       const dc=await readJson('State/decisions.json'); if(Array.isArray(dc)) decisions=dc
+      // Formal records are part of the run's durable state: a `require`-mode object's gate
+      // decision must survive a process restart, so they are restored alongside the rest.
+      const fm=await readJson('State/formal.json')
+      if(fm&&typeof fm==='object'){
+        formal=(fm.records&&typeof fm.records==='object')?fm.records:{}
+        formalTodos=Array.isArray(fm.todo)?fm.todo:[]
+      }
     }
 
     // ---- resident prompts ----
@@ -296,7 +757,11 @@ export function apply(ctx) {
     // could blank them).
     function coreRulesBrief(){
       const base=frameworkRoot()
+      // The formalization line is appended HERE (not frozen into a brief) because the mode is
+      // dynamic: after a /compact the resident must re-anchor on the rules it is actually
+      // living under right now.
       return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
+        +(formalOn()?('\n'+formalWorkLine()):'')
     }
     function brainstormPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
@@ -313,8 +778,12 @@ export function apply(ctx) {
         +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。\n'
         +'\n团队成员：\n'+banner()+'\n'
         +'New items:\n'+ (await inboxText(r.rId)) +'\n'
+        // 顺手形式化: computed from the CURRENT mode on every wake (docs §1: the mode is dynamic).
+        +(formalOn()?('\n'+formalWorkLine()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}'
+        +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40'
+        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因"}'):'')
+        +'}'
     }
     function meetingPrompt(r, st){
       const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
@@ -333,15 +802,30 @@ export function apply(ctx) {
       // others' opinions exist yet. vs.verdicts only ever holds the CURRENT round's votes.
       const src = (vs.stage==='debate' && vs.history && Object.keys(vs.history).length>0) ? vs.history : (vs.stage==='debate' ? vs.verdicts : {})
       const others=Object.entries(src).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
-      return (params.residentPersona?params.residentPersona+'\n':'')
+      const L=[]
+      L.push((params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
         +'请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。\n'
         +'判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
         +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
-        +(vs.stage==='debate'&&others?('### 他人上一轮意见（已转发给你）\n'+others+'\n'):'')
-        +'\nReply with ONLY a JSON object:\n'
-        +'{"vote":{"verdict":0.9,"reason":"<your logic>"}}'
+        +(vs.stage==='debate'&&others?('### 他人上一轮意见（已转发给你）\n'+others+'\n'):''))
+      // ---- Lean formalization: the block is computed from the CURRENT mode and the object's
+      // CURRENT record, so a mode switch and a fresh proof both show up on the next wake ----
+      if(formalOn()){
+        L.push('')
+        L.push(formalPromptBlock(vs.targetId))
+      }
+      L.push('')
+      L.push('Reply with ONLY a JSON object:')
+      L.push('{"vote":{"verdict":0.9,"reason":"<your logic>"}}')
+      if(formalOn()){
+        // The formal field belongs in the VOTING contract too: voters are exactly the agents who
+        // must either formalize the object or record why they judged it infeasible.
+        L.push('若你本轮做了形式化或给出难度判断，请一并加上：')
+        L.push(formalReplyField(vs.targetId))
+      }
+      return L.join('\n')
     }
 
     // ---- resident lifecycle ----
@@ -616,7 +1100,19 @@ export function apply(ctx) {
         // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
         const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
         const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
-        if(allTrue||allFalse){ await closeVerify(vs,allTrue); doSchedule=true }
+        if(allTrue||allFalse){
+          // ── the `require` gate (docs §8) ───────────────────────────────────────────────
+          // A unanimous verdict is a CONSENSUS, not a proof. In `require` mode the group has
+          // decided that consensus alone may not be promoted to Verified/: the object must
+          // also be either machine-checked (`passed`) or carry an explicit, reasoned
+          // "we judged this infeasible" record (`blocked`). The gate never wedges the run — it
+          // records 未定论 + a formalization TODO so the group keeps going and can formalize
+          // later. This is the SINGLE choke point: every 真/假 promotion passes through here.
+          const rec=formalOf(vs.targetId)
+          if(formalMode()==='require' && !formalGateOk(rec)) await deferForFormal(vs,allTrue)
+          else await closeVerify(vs,allTrue)
+          doSchedule=true
+        }
         else if(vs.round+1<params.verdictMaxRounds){
           // Move to a REAL debate round: snapshot the current votes into history (so the next round's
           // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
@@ -640,10 +1136,43 @@ export function apply(ctx) {
       await writeVerifiedCard(vs,isTrue)
       await rewriteSource(target,isTrue,vs.targetOwner)
       verifiedRecently.set(target, now())   // dedup: block an immediate re-proposal of the same object
-      logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus')
+      // A formalization TODO that has just been satisfied must not linger in the todo file.
+      if(formalOn() && formalTodos.some(t=>t.id===target)){
+        formalTodos=formalTodos.filter(t=>t.id!==target)
+        await saveFormal()
+        try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+      }
+      logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus'+(formalOn()?('｜形式化: '+formalStatusLine(target)):''))
       verifyState=null; wakeKind.clear(); await saveAll()
       // scheduling is done by finalizeVerify AFTER it releases finalizeLock (so a chained verify is
       // never swallowed by the still-held reentry lock)
+    }
+    /**
+     * `require` mode withheld the verdict: record it as 未定论 with a machine-readable reason, put
+     * the object on the formalization TODO, and say so in the activity log. The object keeps its
+     * mean probability (留库附概率, exactly like a non-unanimous round) and stays where it was, so
+     * nothing is lost and the group can carry on and formalize later. Deliberately NOT routed
+     * through closeVerify: no Verified card may be written, and the source card's status must not
+     * become 已验证·真/假.
+     */
+    async function deferForFormal(vs,isTrue){
+      const target=vs.targetId
+      const rec=formalOf(target)
+      const why='formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 '+(rec.status||'none')+'）'
+      await writeDebateDoc(vs,false,isTrue?1:0)   // the 真/假 tally is recorded as the debate outcome
+      const vals=Object.values(vs.verdicts)
+      const mean=vals.length?vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length:(isTrue?1:0)
+      // The card stays in the library with the group's mean UNCHANGED relative to a normal
+      // non-unanimous round: this is not a probability revision, it is a withheld conclusion.
+      await rewriteSourceProb(target,mean,vs.targetOwner)
+      if(!formalTodos.some(t=>t.id===target)) formalTodos.push({id:target,at:now(),why,verdict:isTrue?1:0})
+      await putFormal(target,rec,formalTodos)   // single durable write of records + todo together
+      try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+      logActivity('verify',target+' 的表决结果为 '+(isTrue?'真':'假')+'，但 **require 模式**要求先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md；原因 formal-required）')
+      verifyState=null; wakeKind.clear(); await saveAll()
+      // Scheduling is done by finalizeVerify (doSchedule=true) AFTER it releases finalizeLock:
+      // a withheld verdict must return the group to normal work immediately, exactly like a
+      // normal 未定论 round. Without it the run would sit idle until the heartbeat fired.
     }
     // Queue a verify proposal UNLESS the same object was just verified (closed as 真/假). In parallel
     // self-organization several residents may independently propose targets while a verify is already
@@ -673,7 +1202,12 @@ export function apply(ctx) {
       const isSub=vs.targetType==='subproblem'
       const dir= isSub?'问题':'命题'
       const type= isSub?'问题': vs.targetType==='method'?'方法':'命题'
-      const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+type+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致\n## 陈述\n参见来源卡。\n'
+      // In a non-off formal mode the card must state HOW STRONG this conclusion actually is:
+      // 'Lean 通过（Verified/Lean/<id>.lean）' means the kernel checked a formalization (whose
+      // fidelity the m votes then reviewed); '阻塞（…）' means the group explicitly decided not
+      // to formalize and said why. `off` mode is untouched — no formal line at all.
+      const formalLine=formalOn()?('\n- 形式化: '+formalStatusLine(vs.targetId)):''
+      const text='# 已验证｜'+vs.targetId+'\n- ID: '+vs.targetId+'\n- 类型: '+type+'\n- 结论: '+(isTrue?'真':'假')+'\n- 概率: '+(isTrue?1:0)+'\n- 来源: 全体常驻一致'+formalLine+'\n## 陈述\n参见来源卡。\n'
       await writeText('Verified/'+dir+'/'+vs.targetId+'.md', text)
     }
     // Does `content` declare the target as its card ID? Accept both the exact `- ID: <id>` and the
@@ -753,8 +1287,11 @@ export function apply(ctx) {
     function heartbeatPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**\n'
+        +(formalOn()?(formalWorkLine()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
-        +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40}'
+        +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40'
+        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因"}'):'')
+        +'}'
     }
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }
     function armHeartbeat(){
@@ -948,6 +1485,10 @@ export function apply(ctx) {
       }
       if((kind==='verif-ind'||kind==='verif-deb') && verifyState){
         const v=(parsed&&parsed.vote)||{}
+        // Lean difficulty judgement carried on the SAME reply. Handled BEFORE the vote is stored
+        // so a voter that says "I formalized it" / "I judge this infeasible" has that recorded
+        // together with its verdict. Never allowed to throw into the scheduler.
+        if(parsed.formal && typeof parsed.formal==='object') await applyFormalReply(r.rId, parsed.formal)
         // verdict = 0-1 probability the object is TRUE (1=绝对真, 0=绝对假, 0.5=不确定);
         // also accept legacy 'TRUE'/'FALSE' strings AND quoted numeric strings ("0.9"), which LLMs
         // occasionally emit — without this a confident "0.9" was silently misread as 0.5 (uncertainty).
@@ -965,6 +1506,10 @@ export function apply(ctx) {
         await continueVerifyRound(); return
       }
       // normal turn
+      // The `formal` reply field is honoured on EVERY turn kind (docs §4: 回执里 formal:{target,
+      // decision:'blocked'|'used'}), because the ordinary work round is where reusable objects are
+      // formalized and where a difficulty judgement is most often stated.
+      if(parsed.formal && typeof parsed.formal==='object') await applyFormalReply(r.rId, parsed.formal)
       if(r.status==='brainstorm'){ r.insight=parsed.summary||output; r.status='active' }
       if(typeof parsed.solved==='boolean'){ reports.push({rId:r.rId,solved:parsed.solved,summary:parsed.summary||'',at:now()}); if(reports.length>100) reports.shift() }   // solved-signal ring (not surfaced in status/report)
       if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
@@ -1002,6 +1547,9 @@ export function apply(ctx) {
       // still-running turns keep writing into the same per-resident files the new run is about to use.
       for(const [,or] of residents){ if(or.childId){ try{ subagents.interrupt(or.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } }
       residents=new Map(); mailboxes=new Map(); taskboard=[]; decisions=[]; meetings=[]; reports=[]; verifyState=null; meetingState=null; pendingVerify=[]; residentSeq=0; artifactCount=0; clearHeartbeat()
+      // A fresh run starts with a clean formal slate: the ids r-1.. and p-* are reused, so
+      // carrying a previous run's records over would let a stale `passed` open the new gate.
+      formal={}; formalTodos=[]
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
@@ -1056,14 +1604,29 @@ export function apply(ctx) {
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
       meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null, pendingVerifyCount: pendingVerify.length,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
+      // The Lean knobs and the per-object formal records are part of the readable status: without
+      // them a `require`-mode run that keeps returning 未定论 would be undiagnosable from outside.
+      formal: formalView(),
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
+    function formalReportText(){
+      if(!formalOn()) return '- 未启用（`formalVerify` = off；可用 vibe_v4_set 切到 encourage / require）'
+      const v=formalView()
+      return ['- 模式：'+formalMode()+'（'+(formalMode()==='require'?'强制：定论前必须有 Lean 通过或显式阻塞记录':'鼓励：按实现难度自行决定')+'）',
+        '- 已通过：'+(v.passed.join('、')||'（无）'),
+        '- 已记录阻塞：'+(v.blocked.join('、')||'（无）'),
+        '- 形式化待办：'+(v.todo.join('、')||'（无）'),
+        '- 可复用库：'+formalLibRoot().replace(/\\/g,'/')+'/ 与 '+formalProvedRoot().replace(/\\/g,'/')+'/（跨项目）｜本项目形式化：Formal/｜归档证明：Verified/Lean/'].join('\n')
+    }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
       meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+residents.size}:null,
       verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
       pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
+      formal: formalView(),
       meetings:meetings.length, recentActivity: activityLog.slice(-8) } }
+    /** Human-readable mirror of the formal state (kept OUT of the JSON report shape). */
+    function formalReport(){ return {ok:true, formalMode:formalMode(), formalReport:'## Lean 形式化\n'+formalReportText(), formal:formalView()} }
     async function addMember(direction){
       // Adding a member starts a REAL resident turn (spawnResident → brainstorm) — refuse unless the
       // run is live: on a concluded (autoDone) or never-started/paused run the new member would work
@@ -1100,7 +1663,16 @@ export function apply(ctx) {
     function normalizeParam(k, v){
       const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery','stallAutoMeetingMs']
       if(INT_KEYS.includes(k)){ const n=Number(v); if(!Number.isFinite(n)) return v; return Math.floor(n) }
-      if(k==='toolAllow'||k==='toolDeny'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
+      if(k==='toolAllow'||k==='toolDeny'||k==='leanArgs'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
+      // ---- Lean formal verification (docs §1) ------------------------------------------
+      // `formalVerify` is a three-way enum and MUST degrade to the no-op 'off' on anything else.
+      // Degrading to a STRONGER mode would let a typo silently gate every conclusion — the exact
+      // failure mode `require` is supposed to avoid.
+      if(k==='formalVerify') return FORMAL_MODES.indexOf(String(v))!==-1?String(v):'off'
+      // A blank command would make resolveExecutable('') fail confusingly; fall back to the default.
+      if(k==='leanCommand'){ const s=String(v==null?'':v).trim(); return s||'lean' }
+      // A non-positive timeout is meaningless (the run would be killed instantly) → default.
+      if(k==='leanTimeoutMs'){ const n=Number(v); if(!Number.isFinite(n)||n<=0) return DEFAULT_PARAMS.leanTimeoutMs; return Math.floor(n) }
       return v
     }
     /**
@@ -1169,6 +1741,41 @@ export function apply(ctx) {
       frameworkRoot:frameworkRoot, currentProject:()=>currentProject, problemText:()=>problemText,
       residentCount:()=>residents.size,
       busyCount:()=>busy.size,
+      // Lean formal verification (docs/formal-verification.md) — exposed to the tool layer and to
+      // the test suites exactly as v5 exposes its own helpers.
+      formalMode, formalOn, formalRecords, formalTodo, formalOf, formalView, formalReport,
+      rebuildLeanLibIndexes, leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo,
+      leanRunToolApi: async (relPath,timeoutMs)=>await leanRunFile(relPath,timeoutMs),
+      /**
+       * The prompt builders, addressed BY RESIDENT ID. "成员读到的文字就是产品"
+       * (AUDIT-CHECKLIST §0.1): a suite that can only observe tool return values is blind to a
+       * prompt defect, so the exact strings a resident would receive must be directly readable.
+       * These are pure builders — calling one has no side effects on the run.
+       */
+      promptApi:{
+        normal:(rId)=>{ const r=residents.get(String(rId)); return r?normalPrompt(r):'' },
+        heartbeat:(rId)=>{ const r=residents.get(String(rId)); return r?heartbeatPrompt(r):'' },
+        brainstorm:(rId)=>{ const r=residents.get(String(rId)); return r?brainstormPrompt(r):'' },
+        coreRules:()=>coreRulesBrief(),
+        // `vs` mirrors the live verification state ({targetId,targetType,targetOwner,stage,history,verdicts});
+        // pass one explicitly to ask "what WOULD the voters read for this object right now?".
+        verify:(rId,vs)=>{ const r=residents.get(String(rId)); return r?verifyPrompt(r, vs||verifyState||{targetId:'',targetType:'proposition',targetOwner:'',stage:'independent',verdicts:{}}):'' },
+        formalBlock:(target)=>formalPromptBlock(target),
+        formalWorkLine:()=>formalWorkLine(),
+      },
+      /** Dispatcher behind vibe_v4_prompts (kept here so the tool layer never re-implements it). */
+      promptFor:async (which,rId,arg)=>{
+        const r=residents.get(String(rId))
+        if(!r) return ''
+        if(which==='brainstorm') return brainstormPrompt(r)
+        if(which==='heartbeat') return heartbeatPrompt(r)
+        if(which==='coreRules') return coreRulesBrief()
+        if(which==='verify'){
+          const target=idSafe(String((arg&&arg.target)||''))
+          return verifyPrompt(r,{targetId:target,targetType:guessTargetType(target),targetOwner:'',stage:String((arg&&arg.stage)||'independent'),history:{},verdicts:{}})
+        }
+        return normalPrompt(r)
+      },
     }
   } // end makeSession
 
@@ -1195,6 +1802,16 @@ export function apply(ctx) {
   registerTool('vibe_v4_abort','Abort V4 and interrupt residents.',objParams({}),(s)=>s.initAbort())
   registerTool('vibe_v4_status','Show V4 status.',objParams({}),(s)=>s.status())
   registerTool('vibe_v4_report','Return the V4 progress report.',objParams({}),(s)=>s.report())
+  registerTool('vibe_v4_formal_report','Human-readable Lean formal-verification mirror (mode, Lean-passed objects, recorded blockers, formalization TODO, library paths).',objParams({}),(s)=>s.formalReport())
+  // The exact text a resident would receive. "成员读到的文字就是产品" (AUDIT-CHECKLIST §0.1): a host
+  // (or an audit) must be able to READ the prompt, not just the tool return values, or a prompt
+  // defect stays invisible. Pure builder calls — no side effects on the run.
+  registerTool('vibe_v4_prompts','Read the exact prompt text a resident would receive (which: brainstorm|normal|heartbeat|verify|coreRules). member = resident id; target/stage describe the object for `verify`. Prompt text is the product — this makes it auditable.',objParams({which:{type:'string',enum:['brainstorm','normal','heartbeat','verify','coreRules']},member:{type:'string'},target:{type:'string'},stage:{type:'string'}},['which']),async (s,a)=>{
+    const which=String(a.which||'normal')
+    if(which==='coreRules') return {ok:true,which,text:await s.promptApi.coreRules()}
+    const text=await s.promptFor(which,String(a.member||'r-1'),a)
+    return {ok:true,which,member:String(a.member||'r-1'),text:typeof text==='string'?text:String(text||'')}
+  })
   registerTool('vibe_v4_message','Inject a message to a resident (or all).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a)=>{ const to=a.to||'all'; if(to==='all') return s.broadcast(a.content); return s.postMessage('facilitator',to,a.content) })
   registerTool('vibe_v4_meeting','Start a meeting (coordinate / allocate / propose verification).',objParams({agenda:{type:'string'}},['agenda']),(s,a)=>s.startMeeting(a.agenda))
   registerTool('vibe_v4_list_members','List residents.',objParams({}),(s)=>({ok:true,residents:s.listResidents()}))
@@ -1203,7 +1820,11 @@ export function apply(ctx) {
   // model/provider inheritance: set model/provider to override the residents' LLM route (''=inherit
   // the main assistant's route). toolAllow/toolDeny are per-resident tool permissions (scoped
   // restrict). residentPersona prepends a persona line to every resident prompt.
-  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}}}),(s,a)=>{ s.setParams(a); return {ok:true} })
+  // Lean knobs (docs/formal-verification.md §1): formalVerify is the three-way mode switch (the
+  // MODE is dynamic — switching it changes the very next prompt), leanCommand/leanArgs select the
+  // executable, leanTimeoutMs bounds one run. Invalid values fall back to the defaults and an
+  // unknown mode degrades to 'off' (never to a STRONGER mode).
+  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return s.status() })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident (to=all broadcasts to the whole team).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>{ const from=s.residentIdOf(x); if(!from) return {ok:false,message:'no such resident'}; if(String(a.to)==='all') return s.broadcast(a.content, from); return s.postMessage(from,a.to,a.content) })
@@ -1223,11 +1844,26 @@ export function apply(ctx) {
   registerTool('vibe_v4_claim_write','Reserved: shared-file write lock (framework-managed).',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
   registerTool('vibe_v4_release_write','Reserved: shared-file write lock release.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
 
+  // ── Lean formal verification (docs/formal-verification.md §5) ─────────────
+  // These three tools are registered UNCONDITIONALLY. Registration is STATIC (a mode-dependent
+  // registration would be a dynamic effect and break the ctx.effect discipline), while the MODE
+  // only decides whether the framework TELLS residents about them: in 'off' mode they still work
+  // if a human or an agent calls them deliberately, but no prompt mentions them.
+  registerTool('vibe_v4_lean_run','(resident) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output verbatim, a timeout returns LEAN_TIMEOUT. Pass target=<object id> to also record the run against that object.',objParams({file:{type:'string'},target:{type:'string'},timeout_ms:{type:'integer'}},['file']),(s,a,x)=>s.leanRunTool(s.residentIdOf(x),a))
+  registerTool('vibe_v4_lean_archive',"(resident) Archive Lean code. kind=\"def\": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind=\"lemma\": a machine-checked lemma → Formal/Proved. kind=\"proof\": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind=\"blocked\": record an explicit, reasoned \"cannot/not worth formalizing\" decision (note required).",objParams({kind:{type:'string',enum:['def','lemma','proof','blocked']},name:{type:'string'},target:{type:'string'},content:{type:'string'},from:{type:'string'},note:{type:'string'},run:{type:'boolean'}},['kind']),(s,a,x)=>s.leanArchive(s.residentIdOf(x),a))
+  registerTool('vibe_v4_lean_lib','(resident) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.',objParams({refresh:{type:'boolean'}}),async (s,a)=>{
+    const r=(a&&a.refresh===false)?{lib:null,proved:null,objects:Object.keys(s.formalRecords()).length}:await s.rebuildLeanLibIndexes()
+    return { ok:true, mode:s.formalMode(), rebuilt:!(a&&a.refresh===false), counts:r, todo:s.formalTodo(),
+      objects:s.formalView().objects,
+      paths:{project:'Formal/（相对项目根）',lib:'VibeMath/Formal/Lib/',proved:'VibeMath/Formal/Proved/',proofs:'Verified/Lean/'},
+      hint:"复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'。" }
+  })
+
   // Same lifecycle rule as registerTool: commands.register() returns a disposer, so the
   // registration belongs to this fiber and must be unwound with it.
   ctx.effect(() => commands.register({
     name:'v4', description:'control the Vibe Math V4 framework',
-    input:{hint:'[configure|start|resume|pause|abort|status|report|meeting|members|add|remove|set]'},
+    input:{hint:'[configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set]'},
     handler: async function(inv){
       const s=getSession(inv&&inv.agent); if(!s) return {kind:'success',text:JSON.stringify({ok:false,error:'no session'})}
       const line=String(inv&&inv.rawInput?inv.rawInput:'').trim(); const parts=line.split(/\s+/); const cmd=parts[0]||''; const rest=parts.slice(1)
@@ -1240,11 +1876,12 @@ export function apply(ctx) {
       else if(cmd==='status') r=s.status()
       else if(cmd==='report') r=s.report()
       else if(cmd==='meeting') r=await s.startMeeting(rest.join(' '))
+      else if(cmd==='message'){ const to=rest[0]||'all'; const content=rest.slice(1).join(' '); r=!content?{ok:false,usage:'message <to|all> <content>'}:((to==='all')?await s.broadcast(content):await s.postMessage('facilitator',to,content)) }
       else if(cmd==='members') r={ok:true,residents:s.listResidents()}
       else if(cmd==='add') r=await s.addMember(rest.join(' '))
       else if(cmd==='remove') r=await s.removeMember(rest[0]||'')
       else if(cmd==='set'){ const upd={}; for(const tok of rest){ const eq=tok.indexOf('='); if(eq>0){ const k=tok.slice(0,eq); const rv=tok.slice(eq+1); const n=Number(rv); upd[k]=Number.isFinite(n)?n:rv } } r=s.setParams(upd) }
-      else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message|meeting|members|add|remove|set'}
+      else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set'}
       return {kind:'success',text:JSON.stringify(r,null,2)}
     },
   }))

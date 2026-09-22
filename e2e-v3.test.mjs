@@ -125,7 +125,8 @@ const plugin = mod.default || mod
 plugin.apply(ctx)
 
 console.log('tool registrations:', toolRegs.length)
-assert(toolRegs.length === 30, '30 tools registered once (not per session)')
+// 33 = 原有 30 个 + Lean 形式化三件套（vibe_math_lean_run / _archive / _lib，无条件注册）
+assert(toolRegs.length === 33, '33 tools registered once (not per session)')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')
 
 async function callTool(name, args, agent) {

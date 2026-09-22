@@ -92,10 +92,28 @@
         - vibe_v5_message {to|all, content} — relay a human message into the institute.
         - vibe_v5_meeting {agenda, kind} — convene a meeting.
         - vibe_v5_members — roster (office/employer/status/direction).
-        - vibe_v5_hire / vibe_v5_fire — used by the OFFICE to add/remove permanent researchers (the academician can only propose those).
-      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|set).
+        - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
+        - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
+          verification (execute / archive / list the reuse library). Members use them
+          too; they work in every mode.
+      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
 
-      TRUST RULE: only Verified/ (and library cards marked 已验证·真/假) are
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (members decide by
+          implementation difficulty whether to formalize; a passing Lean run turns the
+          vote into a FIDELITY review of the Lean statements) | 'require' (same, plus a
+          gate: a true/false verdict is withheld as 未定论 until the object is Lean-passed
+          or carries an explicit, reasoned blocker record).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean;
+          reusable definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
+          formalization TODO. The framework never installs Lean and never judges fidelity.
+
+      TRUST RULE: only Verified/ (and library cards marked 已验证·真/假) is
       absolutely trustworthy. Everything else — unverified claims, Progress/,
       unverified Methods/ assertions — is experiential reference.
 
@@ -166,8 +184,26 @@
         - vibe_v5_message {to|all, content} — relay a human message into the institute.
         - vibe_v5_meeting {agenda, kind} — convene a meeting.
         - vibe_v5_members — roster (office/employer/status/direction).
-        - vibe_v5_hire / vibe_v5_fire — used by the OFFICE to add/remove permanent researchers (the academician can only propose those).
-      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|set).
+        - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
+        - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
+          verification (execute / archive / list the reuse library). Members use them
+          too; they work in every mode.
+      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+
+      LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+        - 'off' (default, no extra requirement) | 'encourage' (members decide by
+          implementation difficulty whether to formalize; a passing Lean run turns the
+          vote into a FIDELITY review of the Lean statements) | 'require' (same, plus a
+          gate: a true/false verdict is withheld as 未定论 until the object is Lean-passed
+          or carries an explicit, reasoned blocker record).
+        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean;
+          reusable definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+          (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+          reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+        - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
+          formalization TODO. The framework never installs Lean and never judges fidelity.
 
       TRUST RULE: only Verified/ (and library cards marked 已验证·真/假) is
       absolutely trustworthy. Everything else — unverified claims, Progress/,
