@@ -19,6 +19,15 @@
 //      is exactly how the legacy entry for this repo ended up pointing at a deleted `框架图-v1.png`.
 //
 // Run: node audit-market-metadata.test.mjs      (part of `node run-tests.mjs`)
+//
+// PACKAGING CONTRACT — this suite is REPOSITORY-ONLY and deliberately **not** listed in
+// `package.json` `files`. Everything it verifies (the screenshots.json paths, the README's images) is a
+// repository artifact the catalog fetches from GitHub; the npm tarball does not ship those images, so
+// the existence checks cannot be evaluated inside an installed package and would fail there. The
+// assertion at the bottom enforces that: if someone adds this file to `files`, the suite goes red here
+// in the checkout rather than silently breaking the publish verification later.
+// (Learned the hard way: 2.3.10 shipped it, and the publish verification failed inside the tarball
+// with "示例图/框架图-v5.png (declared but missing from the repository)".)
 // ============================================================================================
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -132,6 +141,16 @@ ok(typeof engineDsh === 'string' && engineDsh.length <= 256, 'the declaration fi
   const missing = refs.filter((p) => !/^https?:/i.test(p) && !existsSync(join(HERE, p)))
   ok(refs.length > 0 && missing.length === 0, 'every image the README shows exists in the repository (' + refs.length + ' images)', missing.join(', '))
 }
+
+// ---------------------------------------------------------------------------------------------
+// 4. its own packaging contract (see the header): a repository guard must not be shipped, because the
+//    artifacts it checks against do not exist inside the npm tarball.
+// ---------------------------------------------------------------------------------------------
+ok(!(pkg.files || []).includes('audit-market-metadata.test.mjs'),
+  'this repository-only guard is NOT listed in package.json files (it cannot run inside the tarball)',
+  'if it is shipped, the publish verification fails in the extracted package: the images it checks are repo artifacts, not tarball contents')
+ok((pkg.files || []).includes('screenshots.json'),
+  'screenshots.json itself IS shipped (it documents the market contract for anyone who installs the package)')
 
 console.log('')
 console.log('=== MARKET METADATA: ' + passed + ' passed, ' + failed + ' failed ===')
