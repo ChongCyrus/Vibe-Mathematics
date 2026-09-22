@@ -643,6 +643,9 @@ export function apply(ctx) {
         decision: source.decision || prev.decision || '',
         note: source.note || prev.note || '',
         syncedFrom: objectId,
+        // 这条路径**手里就有**权威的对象 id，把它写进记录：`formalObjectIdOf` 在任务表不在内存时
+        // （resume 早期）靠它把验证 id 映射回对象，而不是去猜后缀（对象 id 可能自己以 -sN 结尾）。
+        objectId: objectId,
         updatedAt: now(),
       }))
     }
@@ -652,9 +655,25 @@ export function apply(ctx) {
    * 验证 id → 它对应的对象 id（`r-pGate` / `r-pGate-s0` / `r-pGate-pf1` / `r-pGate-rf2` → `pGate`）。
    * v2 有两套 id 空间，这条映射是**唯一**的一处：门禁的合并查询、提示词取记录、以及回执通道
    * （`blocked` / `defect` / `used`）都从这里得到对象 id，绝不另造第二套解析规则。
+   *
+   * **权威来源优先**（两级，都能跨 resume 生效）：
+   *   ① 验证任务自己知道它属于哪个对象（`t.r.pId` / `t.r.qid`）；
+   *   ② 记录里记着的 `objectId`（写记录时由**拿到对象 id 的那条路径**写上，见 `syncVerificationTarget`）。
+   * 只靠字符串后缀解析会有歧义：**对象 id 本身以 `-s1`/`-pf1`/`-rf1` 结尾**时（例如命题 `pAmb-s1` 的
+   * 验证 id 是 `r-pAmb-s1`），后缀剥离会把对象截成 `pAmb` —— 另一个对象。后果不是"少一条记录"而是
+   * **张冠李戴**：忠实性提示词会打印邻居的证明路径、`defect` 回执会降级邻居的记录并**撤回邻居的归档
+   * 证明**，而真正的对象仍然 `passed`（实测复现，见 `formal-verify-v2` 的 ambiguity 用例）。
+   * 字符串解析只是前两者都不可用时的兜底。
    */
   function formalObjectIdOf(id) {
     const t = safeId(String(id == null ? '' : id))
+    const task = tasks['verify:' + t]
+    if (task && task.r) {
+      const owner = String(task.r.pId || task.r.qid || '')
+      if (owner) return safeId(owner)
+    }
+    const rec = formalRecords()[t]
+    if (rec && rec.objectId) return safeId(rec.objectId)
     const m = /^r-(.+?)(?:-(?:s\d+|pf\d+|rf\d+))?$/.exec(t)
     return m ? m[1] : t
   }
@@ -689,11 +708,14 @@ export function apply(ctx) {
     const t = safeId(String(target == null ? '' : target))
     if (!t) return []
     const objectId = formalObjectIdOf(t)
+    // 记录里写上权威对象 id：验证 id 的那条记录从此**自带**它属于谁，`formalObjectIdOf` 不必再猜
+    // （对象 id 本身可能以 -sN/-pfN/-rfN 结尾，后缀剥离会指向另一个对象）。
+    const withOwner = (t === objectId) ? patch : Object.assign({ objectId: objectId }, patch)
     const written = []
     const write = async function (k) {
       if (written.indexOf(k) !== -1) return
       const prev = formalRecords()[k] || { status: 'none' }
-      await putFormal(k, Object.assign({}, prev, patch))
+      await putFormal(k, Object.assign({}, prev, withOwner))
       written.push(k)
     }
     await write(t)                            // 回执点名的那个 id（对象 id 或验证 id）

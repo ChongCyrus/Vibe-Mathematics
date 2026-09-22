@@ -1083,6 +1083,48 @@ section('14 defect withdrawal covers every id alias AND a host that cannot delet
 // onto the source proposition: `布尔估计 = v`, `已验证 = true`, a probability-1 proof/refutation entry,
 // and `优先级 = 'never'` for a boolean v. That IS a boolean verdict on X, so require mode must gate it —
 // otherwise a proposition nobody formalized is silently concluded (and permanently de-scheduled).
+// (c) an OBJECT ID that itself ends in `-sN` / `-pfN` / `-rfN` — exactly the shapes the rId suffix
+// parser strips. `formalObjectIdOf` used to strip such a suffix unconditionally, so the verification id
+// `r-pAmb-s1` resolved to object `pAmb`: a DIFFERENT object. A defect about the former would then
+// downgrade the latter and even retract ITS archived proof, while the real owner stayed `passed`.
+// The verification task knows its owner (r.pId / r.qid), so that is the authoritative source.
+{
+  const h = await makeCase('defect-ambig')
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  await startScheduler(h)
+  const proj = projRoot(h)
+  const innocent = await h.call('vibe_math_lean_archive', { kind: 'proof', target: 'pAmb', content: 'theorem p_amb : 2 + 2 = 4 := by decide\n' })
+  assert(innocent.ok === true && innocent.passed === true, 'ambiguity: the neighbour pAmb has its own passing proof')
+  const innocentProof = join(proj, 'Verified', 'Lean', 'pAmb.lean')
+  const prone = await h.call('vibe_math_lean_archive', { kind: 'proof', target: 'pAmb-s1', content: 'theorem p_amb_s1 : 3 + 3 = 6 := by decide\n' })
+  assert(prone.ok === true && prone.passed === true, 'ambiguity: pAmb-s1 (id ending in -s1) has its own passing proof')
+  const proneProof = join(proj, 'Verified', 'Lean', 'pAmb-s1.lean')
+  assert(existsSync(innocentProof) && existsSync(proneProof), 'ambiguity: both archived proofs exist')
+  await h.call('vibe_math_add_proposition', { id: 'pAmb', 概述: '同前缀的邻居对象', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  await h.call('vibe_math_add_proposition', { id: 'pAmb-s1', 概述: '对象 id 本身以 -s1 结尾', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  const vs = await waitFor(() => { const x = verifiersOf(h, 'r-pAmb-s1'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!vs, 'ambiguity: verifiers were spawned for r-pAmb-s1')
+  const vp = (h.spawns.find((s) => s.label === 'verifier:r-pAmb-s1:0') || {}).prompt || ''
+  assert(/忠实性审查/.test(vp), 'ambiguity: the review subject is the Lean-passed object')
+  assert(/Verified\/Lean\/pAmb-s1\.lean/.test(vp), '★★ and the fidelity prompt points at pAmb-s1 OWN proof, not at a same-prefix neighbour (got ' + (vp.match(/Verified\/Lean\/[^\s）)]+/) || ['none'])[0] + ')')
+  if (vs) {
+    replyFrom(h, vs[0].childId, { Result: 0.3, Reason: '结论写窄了（弃权）', formal: { target: 'r-pAmb-s1', decision: 'defect', note: 'Lean 只证了 n>0 的情形' } })
+    const rec = await waitFor(() => { const r = (formalStateOf(h).records || {}); return (r['pAmb-s1'] && r['pAmb-s1'].decision === 'defect') ? r : undefined }, 40, 150)
+    assert(!!rec, '★★ a defect named by r-pAmb-s1 downgrades its REAL owner (pAmb-s1)')
+    assert(!existsSync(proneProof) || /已撤回/.test(readIf(proneProof)), '★★ and retracts pAmb-s1 own archived proof')
+    const recs = formalStateOf(h).records || {}
+    assert(!!recs['pAmb'] && recs['pAmb'].status === 'passed', '★★ the same-prefix NEIGHBOUR pAmb keeps its passed status (got ' + (recs['pAmb'] ? recs['pAmb'].status : 'no record') + ')')
+    assert(existsSync(innocentProof) && !/已撤回/.test(readIf(innocentProof)), '★★ and its archived proof file is untouched — a defect must never retract another object\'s proof')
+    assert(/pAmb-s1/.test(readIf(join(proj, 'Formal', 'TODO.md')) || ''), 'the TODO names the real owner')
+    // The record carries the authoritative owner, so the mapping survives a resume even when the
+    // in-memory verification task is gone (the fallback string parse would pick the neighbour again).
+    assert(!!recs['r-pAmb-s1'] && recs['r-pAmb-s1'].objectId === 'pAmb-s1',
+      '★★ the verification record remembers its object id (authoritative, not re-parsed from the name) — got ' + JSON.stringify(recs['r-pAmb-s1'] && recs['r-pAmb-s1'].objectId))
+    assert(!!recs['pAmb'] && !recs['pAmb'].objectId, 'the neighbour record carries no bogus owner stamp')
+  }
+}
+
 section('15 the require gate also covers the judge-problem transfer')
 {
   const h = await makeCase('judge-gate')
