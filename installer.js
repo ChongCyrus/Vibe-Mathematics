@@ -1,16 +1,19 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
 // When this bundle is installed (e.g. `dsh plugin add dsh-vibe-math` or from the
-// dsh-market), this plugin copies ALL THREE agent presets out of the package into
-// the DSH preset root, so the user immediately gets three presets in the picker:
+// dsh-market), this plugin copies ALL FOUR agent presets out of the package into
+// the DSH preset root, so the user immediately gets four presets in the picker:
 //   vibe-math-v2/  (probability-driven architecture)
 //   vibe-math-v3/  (THIRD-generation: paper-style Markdown knowledge base +
 //                   planner-agent scheduling + universal theory/method library)
 //   vibe-math-v4/  (FOURTH-generation: persistent self-organizing resident
 //                   subagents — message bus / meetings / unanimous-consensus
 //                   verification / per-resident libraries)
+//   vibe-math-v5/  (FIFTH-generation: research institute — academician who
+//                   assigns work, permanent researchers who vote, temp workers,
+//                   group chat + meetings + m-vote consensus)
 //
 // (vibe-math-v1 — the classic pipeline — was removed at v2.0.0; this bundle now
-//  ships v2/v3/v4 only.)
+//  ships v2/v3/v4/v5.)
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
 //   - baseline (no state file — e.g. upgrading from an installer that predates
@@ -99,22 +102,160 @@ function detectDshVersion() {
   return undefined
 }
 
+/**
+ * Minimal semver-range matcher for the host requirement.
+ *
+ * WHY THIS EXISTS: the DSH requirement a host is judged against lives in `package.json`
+ * (`engines.dsh` / `dsh.engines.dsh`) — the same declaration dsh-market shows on a plugin's card.
+ * Judging the host by a *second* source (the `dsh.compatibility.dshReleases` map) let the two
+ * disagree: the card could say "compatible" while this self-check warned, or the reverse. So the
+ * range is evaluated here, and the map remains only a fallback for manifests that declare no range.
+ *
+ * Supported: `*`, exact, `^`, `~`, `>=`, `>`, `<=`, `<`, whitespace-separated sets, `||`
+ * alternatives — everything the ecosystem publishes (see `dshmarket`'s own
+ * `^0.1.0-rc.7 || ^0.1.1-rc.2 || ^0.1.2-alpha.2` shape). Anything else returns null = unknown
+ * (reported, never asserted), never a silent "incompatible".
+ *
+ * PRERELEASE RULE (npm's, applied per comparator SET — one `||` alternative is one set): a version
+ * carrying a prerelease tag satisfies a set only when at least one comparator in that set shares its
+ * [major, minor, patch] tuple AND carries a prerelease of its own. This is why
+ * `>=0.1.2-rc.1 <0.2.0` does NOT match `0.1.5-rc.2`, and why this package declares explicit
+ * per-tuple branches instead. Callers pass `includePrerelease: true` for host checks because every
+ * published DSH release line is itself a prerelease.
+ */
+export function satisfiesDshRange(version, range, options = {}) {
+  const v = parseSemver(version)
+  if (v === null || typeof range !== 'string' || range.trim() === '') return null
+  const versionHasPre = v.pre.length > 0
+  let sawUnknown = false
+  for (const set of range.split('||')) {
+    const parts = set.trim().split(/\s+/).filter((p) => p !== '')
+    if (parts.length === 0) return true // an empty alternative is `*`
+    const parsed = parts.map(comparator)
+    if (parsed.some((p) => p === null)) { sawUnknown = true; continue }
+    if (versionHasPre && options.includePrerelease !== true) {
+      const admitted = parsed.some((p) => p.target !== null && p.target.pre.length > 0 &&
+        p.target.major === v.major && p.target.minor === v.minor && p.target.patch === v.patch)
+      if (!admitted) continue
+    }    if (parsed.every((p) => matchesComparator(v, p))) return true
+  }
+  return sawUnknown ? null : false
+}
+
+function parseSemver(value) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(String(value == null ? '' : value).trim())
+  if (m === null) return null
+  const pre = m[4] === undefined ? [] : m[4].split('.')
+  for (const id of pre) if (/^\d+$/.test(id) && id.length > 1 && id[0] === '0') return null
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), pre }
+}
+
+function compareSemver(a, b) {
+  if (a.major !== b.major) return a.major < b.major ? -1 : 1
+  if (a.minor !== b.minor) return a.minor < b.minor ? -1 : 1
+  if (a.patch !== b.patch) return a.patch < b.patch ? -1 : 1
+  if (a.pre.length === 0 && b.pre.length === 0) return 0
+  if (a.pre.length === 0) return 1  // a release outranks its prereleases
+  if (b.pre.length === 0) return -1
+  for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+    const x = a.pre[i], y = b.pre[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y)
+    if (xn && yn) { const d = Number(x) - Number(y); if (d !== 0) return d < 0 ? -1 : 1; continue }
+    if (xn !== yn) return xn ? -1 : 1 // numeric identifiers sort below alphanumeric ones
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+/** One comparator such as `^0.1.0-rc.7`. Returns null when the target is not a version. */
+function comparator(part) {
+  const p = part.trim()
+  // `*`, `x`, `X` and an empty token mean "any version" (npm: still not a prerelease unless the
+  // caller opts into includePrerelease — the set-level gate below is what enforces that).
+  if (p === '' || p === '*' || p === 'x' || p === 'X') return { op: 'any', target: null }
+  const m = /^(\^|~|>=|<=|>|<)?(.*)$/.exec(p)
+  const op = m === null || m[1] === undefined ? '' : m[1]
+  const target = parseSemver(m === null ? '' : m[2])
+  return target === null ? null : { op, target }
+}
+
+function matchesComparator(v, { op, target }) {
+  if (op === 'any') return true
+  const c = compareSemver(v, target)
+  switch (op) {
+    case '': return c === 0
+    case '>=': return c >= 0
+    case '>': return c > 0
+    case '<=': return c <= 0
+    case '<': return c < 0
+    case '^': {
+      const upper = target.major > 0
+        ? { major: target.major + 1, minor: 0, patch: 0, pre: [ '0' ] }
+        : target.minor > 0
+          ? { major: 0, minor: target.minor + 1, patch: 0, pre: [ '0' ] }
+          : { major: 0, minor: 0, patch: target.patch + 1, pre: [ '0' ] }
+      return c >= 0 && compareSemver(v, upper) < 0
+    }
+    case '~': {
+      const upper = { major: target.major, minor: target.minor + 1, patch: 0, pre: [ '0' ] }
+      return c >= 0 && compareSemver(v, upper) < 0
+    }
+    default: return false
+  }
+}
+
+/**
+ * The host verdict for a DSH version against a package manifest.
+ * Prefers the declared range (`engines.dsh`, then `dsh.engines.dsh`); falls back to the
+ * `dsh.compatibility.dshReleases` map so packages that declare only that keep working.
+ */
+export function dshVersionVerdict(version, manifest) {
+  const pkg = manifest && typeof manifest === 'object' ? manifest : {}
+  const declared = (pkg.engines && typeof pkg.engines.dsh === 'string' && pkg.engines.dsh.trim() !== '')
+    ? pkg.engines.dsh
+    : (pkg.dsh && pkg.dsh.engines && typeof pkg.dsh.engines.dsh === 'string' && pkg.dsh.engines.dsh.trim() !== '')
+      ? pkg.dsh.engines.dsh
+      : null
+  if (declared !== null) {
+    // includePrerelease: the whole published DSH line is prerelease builds.
+    const sat = satisfiesDshRange(version, declared, { includePrerelease: true })
+    return {
+      basis: 'engines',
+      requirement: declared,
+      status: sat === true ? 'compatible' : sat === false ? 'incompatible' : 'unknown',
+    }
+  }
+  const rel = (pkg.dsh && pkg.dsh.compatibility && pkg.dsh.compatibility.dshReleases) || {}
+  const status = rel[version]
+  if (status === 'compatible' || status === 'incompatible') {
+    return { basis: 'dshReleases', requirement: null, status }
+  }
+  return { basis: 'dshReleases', requirement: null, status: status === 'unknown' ? 'unknown' : 'undeclared' }
+}
+
 async function checkHostCapabilities(ctx, logger) {
   const problems = []
   // 1) DSH version compatibility (best-effort, only when the version is detectable).
-  //    Declared under package.json dsh.compatibility.dshReleases (per the DSH STORE contract):
-  //    each full DSH release maps to 'compatible' | 'incompatible' | 'unknown'. A version that is
-  //    absent or 'unknown' is a soft warning; 'incompatible' is a hard "please use X" message.
-  let dshRel = {}
-  try { const m = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')); dshRel = (m.dsh && m.dsh.compatibility && m.dsh.compatibility.dshReleases) || {} } catch (e) {}
+  //    The AUTHORITATIVE source is the declared range `engines.dsh` / `dsh.engines.dsh` — the same
+  //    field dsh-market renders on the plugin card, so the two verdicts cannot disagree. The
+  //    `dsh.compatibility.dshReleases` map is the fallback for manifests without a range.
+  let manifest = {}
+  try { manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')) } catch (e) {}
+  const dshRel = (manifest.dsh && manifest.dsh.compatibility && manifest.dsh.compatibility.dshReleases) || {}
   const supported = Object.keys(dshRel).sort()
   const dshVersion = detectDshVersion()
   if (dshVersion) {
-    const status = dshRel[dshVersion]
-    if (status === 'incompatible') {
-      problems.push('当前 DSH 版本 v' + dshVersion + ' 被本包声明为 incompatible；请使用 ' + supported.join(' / ') + '。')
-    } else if (status === undefined || status === 'unknown') {
+    const verdict = dshVersionVerdict(dshVersion, manifest)
+    if (verdict.status === 'incompatible') {
+      problems.push(verdict.basis === 'engines'
+        ? '当前 DSH 版本 v' + dshVersion + ' 不满足本包声明的宿主版本要求（engines.dsh = ' + verdict.requirement + '）。'
+        : '当前 DSH 版本 v' + dshVersion + ' 被本包声明为 incompatible；请使用 ' + supported.join(' / ') + '。')
+    } else if (verdict.status === 'undeclared' || (verdict.status === 'unknown' && verdict.basis === 'dshReleases')) {
       problems.push('当前 DSH 版本 v' + dshVersion + ' 尚未被本包声明为兼容（dshReleases 仅声明 ' + supported.join(' / ') + '）；建议使用 ' + supported.join(' / ') + '，或将该版本在 dshReleases 中标注后再自行验证。')
+    } else if (verdict.status === 'unknown' && verdict.basis === 'engines') {
+      problems.push('当前 DSH 版本 v' + dshVersion + ' 无法与 engines.dsh 的范围比对（声明值 ' + verdict.requirement + ' 不是本安装器能解析的范围）；请按该范围自行确认。')
     }
   }
   // 2) capability self-check (the authoritative mounting gate; also covers hosts whose version

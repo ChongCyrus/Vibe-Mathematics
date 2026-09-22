@@ -140,6 +140,10 @@ ok(typeof engineDsh === 'string' && engineDsh.length <= 256, 'the declaration fi
   const refs = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1])
   const missing = refs.filter((p) => !/^https?:/i.test(p) && !existsSync(join(HERE, p)))
   ok(refs.length > 0 && missing.length === 0, 'every image the README shows exists in the repository (' + refs.length + ' images)', missing.join(', '))
+  // ...and every one of them must SHIP, or the npm page renders a broken image (the v2/v3 diagrams
+  // were referenced for months without being in `files`).
+  const unshipped = refs.filter((p) => !/^https?:/i.test(p) && !(pkg.files || []).includes(p))
+  ok(unshipped.length === 0, 'every local image the README shows is listed in package.json files', unshipped.join(', '))
 }
 
 // ---------------------------------------------------------------------------------------------
