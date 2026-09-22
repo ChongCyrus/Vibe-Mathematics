@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1260" width="1720" height="1260" role="img" aria-label="Vibe Math V4 常驻自组织架构图">
+<defs>
+  <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7d93a3"/></marker>
+  <marker id="bothHuman" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5b4bb8"/></marker>
+  <marker id="bothFrame" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0b6fb8"/></marker>
+  <marker id="bothData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f7a52"/></marker>
+  <marker id="bothHouse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b26a00"/></marker>
+  <marker id="bothGate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b3202c"/></marker>
+</defs>
+<rect width="1720" height="1260" fill="#ffffff"/>
+<g font-family="'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC',sans-serif">
+<text x="860" y="40" font-size="27" font-weight="700" fill="#10202e" text-anchor="middle">Vibe Math V4 —— 常驻自组织合作研究</text>
+<text x="860" y="67" font-size="13" font-weight="400" fill="#5d7788" text-anchor="middle">框架只是媒介：中继留言 · 沉淀产物 · 计数表决 · 管理上下文。它绝不分配任务 —— 分工由常驻之间留言与开会决定</text>
+<rect x="40" y="84" width="1640" height="92" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="58" y="111" font-size="15" font-weight="700" fill="#b3202c">定论门槛 —— 唯一让对象进入 Verified/ 的规则</text>
+<text x="58" y="131" font-size="12" fill="#5d7788">全体常驻一致为真（全 1）或一致为假（全 0）　·　没有任何 forced / flat / 近共识自动收口 —— 强分歧不得被强行判真</text>
+<rect x="62" y="140" width="506" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="315" y="158.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">全体一致为真 → 写入 Verified/命题|问题/&lt;id&gt;.md，回写来源库状态 = 已验证·真</text>
+<rect x="588" y="140" width="506" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="841" y="158.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">全体一致为假 → 同样写入 Verified/（结论 = 假），来源库状态 = 已验证·假</text>
+<rect x="1114" y="140" width="524" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1376" y="158.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">出现分歧 → 公开辩论重评；仍未全票 → 留库 + 全组平均概率 + 完整辩论录</text>
+<rect x="230" y="188" width="1450" height="150" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="248" y="215" font-size="15" font-weight="700" fill="#8a5200">常驻层（所内自治）—— 编制、方向与分工都在常驻之间完成，框架永不指派</text>
+<text x="248" y="235" font-size="12" fill="#5d7788">起始 brainstorm 产出各自方向　·　此后持续工作直到"全体认为已解决"（会议全票同意）　·　可增开 / 关闭常驻</text>
+<rect x="252" y="246" width="338" height="88" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="421" y="260.7" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">常驻 r-1</text>
+<text x="421" y="277.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable 持久会话</text>
+<text x="421" y="294.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">独立上下文 · 自主方向</text>
+<text x="421" y="311.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">只写自己的库</text>
+<text x="421" y="328.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">跨读他人的库（只读）</text>
+<rect x="608" y="246" width="338" height="88" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="777" y="260.7" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">常驻 r-2</text>
+<text x="777" y="277.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable 持久会话</text>
+<text x="777" y="294.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">独立上下文 · 自主方向</text>
+<text x="777" y="311.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">只写自己的库</text>
+<text x="777" y="328.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">跨读他人的库（只读）</text>
+<rect x="964" y="246" width="338" height="88" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1133" y="260.7" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">常驻 r-3</text>
+<text x="1133" y="277.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable 持久会话</text>
+<text x="1133" y="294.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">独立上下文 · 自主方向</text>
+<text x="1133" y="311.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">只写自己的库</text>
+<text x="1133" y="328.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">跨读他人的库（只读）</text>
+<rect x="1320" y="246" width="338" height="88" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1489" y="260.7" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">… r-N</text>
+<text x="1489" y="277.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">add_member / remove_member</text>
+<text x="1489" y="294.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">residentCount 默认 4</text>
+<text x="1489" y="311.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">唤醒 = sendMessage</text>
+<text x="1489" y="328.7" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">一轮 = 一次完整思考</text>
+<rect x="42" y="188" width="176" height="150" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="130" y="219.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">人 / 助手</text>
+<text x="130" y="235.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">会话根代理 = 接口</text>
+<text x="130" y="251.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">configure → start</text>
+<text x="130" y="267.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">message / meeting</text>
+<text x="130" y="283.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">add_member / remove_member</text>
+<text x="130" y="299.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">pause / resume / abort</text>
+<text x="130" y="315.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">set 调参（立即生效）</text>
+<rect x="230" y="400" width="1450" height="384" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="248" y="427" font-size="15" font-weight="700" fill="#084d80">框架 vibe-v4 —— 只是媒介（middleware）：中继 · 沉淀 · 计数 · 调度</text>
+<text x="248" y="447" font-size="12" fill="#5d7788">每轮发「状态块 + 本轮问句」；常驻回一个 JSON：summary / solved / input / vote / propose_verify / propose_task / claim_task / task_done / voteSolved / formal / contextPct</text>
+<rect x="252" y="462" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="479" y="479.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">消息总线 · 邮件箱</text>
+<text x="479" y="496.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_v4_message(to|all) → 入目标邮箱</text>
+<text x="479" y="512.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">空闲则 sendMessage 唤醒；常驻之间不直接互调</text>
+<text x="479" y="529.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">全靠框架 relay（模拟收件箱）· 支持广播</text>
+<rect x="728" y="462" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="955" y="479.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">会议 / 辩论</text>
+<text x="955" y="496.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_v4_meeting(agenda) → 全体发言</text>
+<text x="955" y="512.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">写 Shared/meetings/&lt;id&gt;.md 并广播结论</text>
+<text x="955" y="529.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">看门狗防死锁 · 与验证互斥（排队，不抢占）</text>
+<rect x="1204" y="462" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="1431" y="479.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">任务板（只搬运）</text>
+<text x="1431" y="496.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">提议 / 认领写在回执里 → Shared/taskboard.md</text>
+<text x="1431" y="512.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">认领后被唤醒；框架不决定谁做什么</text>
+<text x="1431" y="529.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">open 任务在空闲时常驻的唤醒顺序里优先</text>
+<rect x="252" y="548" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="479" y="565.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">共识验证（全票）</text>
+<text x="479" y="582.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">回执字段 propose_verify → FIFO 排队</text>
+<text x="479" y="598.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">独立初评（互不可见）→ 公开辩论重评</text>
+<text x="479" y="615.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">最多 verdictMaxRounds 轮（默认 3）；全票同向才入 Verified/</text>
+<rect x="728" y="548" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="955" y="565.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">上下文 / compact</text>
+<text x="955" y="582.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">contextPct ≥ compactThreshold（默认 66）</text>
+<text x="955" y="598.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">触发 DSH /compact；压缩后重申核心规则</text>
+<text x="955" y="615.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">compactAfterRounds 默认 8；人设与哲学不丢</text>
+<rect x="1204" y="548" width="454" height="76" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="1431" y="565.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">活性 / 并发 / 恢复</text>
+<text x="1431" y="582.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">activityTimeoutMs 心跳 · maxParallel 并发闸</text>
+<text x="1431" y="598.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">停滞 stallAutoMeetingMs（默认 6 min）自动开会</text>
+<text x="1431" y="615.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">resume 用 residents.json + progress.md 重种化</text>
+<rect x="252" y="636" width="1406" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="955" y="658.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Lean 形式化验证（可调参数 formalVerify = off / encourage / require）· 工具 vibe_v4_lean_run / _archive / _lib</text>
+<text x="955" y="674.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage：按实现难度自行决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论</text>
+<text x="955" y="690.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」</text>
+<text x="955" y="706.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 忠实性缺陷（decision=defect）≠ 命题为假：撤回「已通过」+ 撤回归档证明 + 进「形式化待办」，绝不记成 0/假</text>
+<rect x="252" y="732" width="1406" height="40" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="955" y="756.0" font-size="11" font-weight="700" fill="#10202e" text-anchor="middle">subagent/end 之后框架按序推进：① 邮箱非空 → 唤醒非忙收件人　② open 任务 → 唤醒提议人/认领人　③ 待验证提议 → 开会　④ 否则心跳：唤醒最久未活跃者并给它开会</text>
+<rect x="230" y="816" width="470" height="250" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="248" y="843" font-size="15" font-weight="700" fill="#125a3c">常驻专属库（每人一个目录）</text>
+<text x="248" y="863" font-size="12" fill="#5d7788">本人可写 · 他人只读（跨读被鼓励）—— 直接经 fs 写入，框架只登记</text>
+<rect x="252" y="872" width="426" height="176" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="465" y="909.9" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Progress/&lt;r-id&gt;/progress.md</text>
+<text x="465" y="925.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">本人持续进展（追加式，断点续跑靠它重种化）</text>
+<text x="465" y="940.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle"></text>
+<text x="465" y="956.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Propos/&lt;r-id&gt;/&lt;p-id&gt;.md　命题</text>
+<text x="465" y="971.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Methods/&lt;r-id&gt;/&lt;m-id&gt;.md　理论 / 方法 / 工具</text>
+<text x="465" y="987.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Subproblems/&lt;r-id&gt;/&lt;s-id&gt;.md　子问题</text>
+<text x="465" y="1002.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle"></text>
+<text x="465" y="1018.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">每条记录必填：价值程度 / 动机用途计划 / 自身概率估计</text>
+<rect x="720" y="816" width="470" height="250" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="738" y="843" font-size="15" font-weight="700" fill="#125a3c">共享与定论（VibeMath/Projects/&lt;project&gt;/）</text>
+<text x="738" y="863" font-size="12" fill="#5d7788">Shared/ 是协作产物；Verified/ 是唯一定论，写入后只读</text>
+<rect x="742" y="872" width="426" height="176" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="955" y="909.9" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Shared/meetings/&lt;id&gt;.md　会议录 + 结论</text>
+<text x="955" y="925.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/debates/&lt;target&gt;.md　辩论录（初评 + 重评）</text>
+<text x="955" y="940.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/taskboard.md　任务板（提议 / 认领）</text>
+<text x="955" y="956.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/meetings/brainstorm.md　起始头脑风暴</text>
+<text x="955" y="971.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle"></text>
+<text x="955" y="987.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Verified/命题/&lt;id&gt;.md　（或 问题/、方法→可信断言）</text>
+<text x="955" y="1002.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Problems/&lt;id&gt;.md　原问题陈述</text>
+<text x="955" y="1018.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">未全票 → 留在来源库 + 平均概率 + 辩论录</text>
+<rect x="1210" y="816" width="470" height="250" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="1228" y="843" font-size="15" font-weight="700" fill="#125a3c">状态 / 隔离 / 恢复</text>
+<text x="1228" y="863" font-size="12" fill="#5d7788">框架自己的状态：注册表、邮件箱、锁、进程纪元</text>
+<rect x="1232" y="872" width="426" height="176" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1445" y="909.9" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">State/residents.json　常驻注册表</text>
+<text x="1445" y="925.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/mailboxes.json　邮件箱（谁还没读）</text>
+<text x="1445" y="940.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/taskboard.json　任务板机器态</text>
+<text x="1445" y="956.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/decisions.json　关键决策留痕</text>
+<text x="1445" y="971.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/session.json　活动日志（人可读）</text>
+<text x="1445" y="987.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/settings.json　参数（set 立即生效）</text>
+<text x="1445" y="1002.9" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/formal.json　Lean 形式化记录（非 off 档）</text>
+<text x="1445" y="1018.4" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">fileOwner 写锁 · projectLock · processEpoch · abort→resume</text>
+<rect x="230" y="1102" width="1450" height="118" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="248" y="1129" font-size="15" font-weight="700" fill="#b3202c">哲学红线（不可协商）</text>
+<text x="248" y="1149" font-size="12" fill="#5d7788">这五条是设计本体，不是实现细节；改它们等于换一个架构</text>
+<rect x="252" y="1158" width="268.4" height="56" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="386.2" y="1174.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">框架绝不指派任务</text>
+<text x="386.2" y="1190.1" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">方向 / 分工 / 谁做什么</text>
+<text x="386.2" y="1205.6" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">只能由常驻留言与开会决定</text>
+<rect x="536.4" y="1158" width="268.4" height="56" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="670.5999999999999" y="1174.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">定论必须全体一致</text>
+<text x="670.5999999999999" y="1190.1" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">没有 forced / flat / 近共识收口</text>
+<text x="670.5999999999999" y="1205.6" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">强分歧只能留在库里</text>
+<rect x="820.8" y="1158" width="268.4" height="56" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="955" y="1174.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">只有 Verified/ 绝对可信</text>
+<text x="955" y="1190.1" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">其余（方法库未验证断言等）</text>
+<text x="955" y="1205.6" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">只作经验参考</text>
+<rect x="1105.1999999999998" y="1158" width="268.4" height="56" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1239.3999999999999" y="1174.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">常驻不直接互调</text>
+<text x="1239.3999999999999" y="1190.1" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">留言一律经框架 relay</text>
+<text x="1239.3999999999999" y="1205.6" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">（模拟收件箱，先落盘再投递）</text>
+<rect x="1389.6" y="1158" width="268.4" height="56" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1523.8" y="1174.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">人工干预不改变自组织</text>
+<text x="1523.8" y="1190.1" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">留言 / 开会 / 增删成员都可用</text>
+<text x="1523.8" y="1205.6" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">但"之后怎么做"仍由常驻决定</text>
+<path d="M 129 338 L 129 470 L 230 470" fill="none" stroke="#5b4bb8" stroke-width="2" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="129" y="384" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">工具面</text>
+<text x="129" y="404" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">vibe_v4_*</text>
+<text x="129" y="422" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">/v4 命令</text>
+<text x="129" y="446" font-size="13" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↓</text>
+<text x="129" y="506" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">汇报</text>
+<text x="129" y="526" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">status</text>
+<text x="129" y="544" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">report</text>
+<text x="129" y="572" font-size="13" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↑</text>
+<line x1="600" y1="338" x2="600" y2="400" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<line x1="1360" y1="338" x2="1360" y2="400" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="980" y="366" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↑ 每轮提示词（状态块 + 本轮问句）　　↓ 单个 JSON 回执</text>
+<text x="980" y="386" font-size="9.5" font-weight="400" fill="#5d7788" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">say / progress / record_* / propose_verify / verdict / vote_solved / input / reject_assign / task_done</text>
+<line x1="560" y1="784" x2="560" y2="816" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="552" y="806" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">沉淀 / 记录 / 唤醒</text>
+<line x1="1180" y1="784" x2="1180" y2="816" stroke="#b3202c" stroke-width="2" stroke-dasharray="7 5" marker-start="url(#bothGate)" marker-end="url(#bothGate)"/>
+<text x="1188" y="806" font-size="10.5" font-weight="400" fill="#b3202c" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">未全票 → 留库附概率（虚线）</text>
+<text x="52" y="1246" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">图例</text>
+<rect x="108" y="1235" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
+<text x="129" y="1247" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">人 / 助手（外部接口，不研究不投票）</text>
+<rect x="438" y="1235" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
+<text x="459" y="1247" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">常驻子代理（有表决权 · 自主方向）</text>
+<rect x="768" y="1235" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
+<text x="789" y="1247" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">框架（中继 / 沉淀 / 计数 / 调度）</text>
+<rect x="1098" y="1235" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
+<text x="1119" y="1247" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">产物与状态（常驻专属库 / Shared / State）</text>
+<rect x="1428" y="1235" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
+<text x="1449" y="1247" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">定论门槛 / Lean 形式化（可调）</text>
+</g>
+</svg>

@@ -22,9 +22,10 @@
 
 > 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)（v2 详解）与
 > [vibe-math-v5/架构图.md](vibe-math-v5/架构图.md)（v5 全套细节图）；
-> 可编辑生成脚本：[v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py) /
-> [v4](docs/generate_framework_diagram_v4.py)（matplotlib → PNG）、
-> [v5](docs/generate_framework_diagram_v5.mjs)（零依赖 Node → SVG，`node docs/generate_framework_diagram_v5.mjs`）。
+> 可编辑生成脚本：[v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py)（matplotlib → PNG）、
+> [v4](docs/generate_framework_diagram_v4.mjs) / [v5](docs/generate_framework_diagram_v5.mjs)
+> （零依赖 Node → **SVG**，`node docs/generate_framework_diagram_v4.mjs`）。
+> v4 起改用 SVG：纯文本、diff 友好、任意缩放不糊；需要 PNG 时用无头浏览器截图（命令见生成脚本头部）。
 
 ### Vibe Math V2（概率驱动 · JSON 数据层）✅ 主推
 
@@ -40,7 +41,10 @@
 
 ### Vibe Math V4（常驻自组织合作研究）🧪 实验性
 
-![Vibe Math V4 架构图](示例图/框架图-v4.png)
+![Vibe Math V4 架构图](示例图/框架图-v4.svg)
+
+> 上面这张 SVG 由零依赖脚本生成：`node docs/generate_framework_diagram_v4.mjs`（纯 Node、无 Python/matplotlib 依赖；
+> 生成时会估算文字宽度，任何一行溢出容器都会告警并以退出码 1 结束）。
 
 **一句话流水线**：起始产生 N 个**常驻子代理**（continuable，持久上下文）先各自头脑风暴、产出初始见解/方向 → 此后**所有任务安排由它们互相留言 + 集体开会自主决定**（框架只做消息总线/会议/任务板/产物沉淀，**绝不分配任务**）；每个常驻把有价值的产物按**价值程度 / 动机用途计划 / 自身概率估计**沉淀到**自己**的 `Progress/<id>/`、`Propos/<id>/`、`Methods/<id>/`、`Subproblems/<id>/` 库，并**可互相阅读**；验证由它们**自行商议**发起，**仅当全体常驻一致（真或假）**才写入 `Verified/`，否则留库附概率；常驻上下文量达阈值（默认 66%）自动 `/compact`；**仅当全体一致认为原问题已解决**才停止；可随时人工干预/增开/关闭常驻，支持断点续跑。
 

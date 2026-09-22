@@ -4,7 +4,7 @@
 //   node docs/generate_framework_diagram_v5.mjs
 //   → 写出 示例图/框架图-v5.svg
 //
-// v2/v3/v4 用 matplotlib 脚本生成 PNG；v5 用 Node 直接生成 **SVG**：
+// v2/v3 用 matplotlib 脚本生成 PNG；v4/v5 用 Node 直接生成 **SVG**：
 //   · 本仓库的运行时就包含 Node，不需要额外装 Python / matplotlib；
 //   · SVG 是纯文本，diff 友好、可评审、任意缩放不糊。
 // 需要 PNG 时用浏览器打开 SVG 另存，或用无头浏览器截图：
