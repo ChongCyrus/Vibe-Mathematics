@@ -63,9 +63,14 @@ let spawnThrows = false
 // Interaction corpus (AUDIT-CHECKLIST §2.4): every prompt the framework actually sent, with the
 // workspace path normalised so the dump is deterministic and diffable.
 const corpus = []
-// Normalise BOTH slash forms: prompts built through vibeRoot() carry forward slashes while other
-// framework hints carry native backslashes, and a half-normalised corpus is not diffable.
-const scrub = (s) => String(s == null ? '' : s).split(WS).join('<WS>').split(WS.replace(/\\/g, '/')).join('<WS>')
+// Normalise BOTH slash forms. The VibeMath ROOT must be replaced BEFORE the workspace root,
+// otherwise `<WS>/VibeMath` would survive as a half-substituted path: the corpus would still leak
+// the machine layout and would not be diffable against another checkout.
+const scrub = (s) => String(s == null ? '' : s)
+  .split(VIBE).join('<VIBEMATH>')
+  .split(VIBE.replace(/\\/g, '/')).join('<VIBEMATH>')
+  .split(WS).join('<WS>')
+  .split(WS.replace(/\\/g, '/')).join('<WS>')
 
 // A fake Lean: a file PASSES unless it still contains `sorry` or the marker `-- FAIL`.
 // `-- HANG` simulates a toolchain that never returns (the timeout path).
@@ -335,7 +340,7 @@ assert(await drive(RC, () => !!lastSpawn(RC, 'explorer:qE'), 'explorer:qE'), 'fa
   assert(/【顺手形式化（鼓励）】/.test(p), 'the explorer work prompt carries the 顺手形式化 line')
   assert(/vibe_math_lean_archive kind='def'/.test(p), 'the work prompt points at the archive tool for reusable definitions')
   assert(/vibe_math_lean_lib 查重/.test(p), 'the work prompt tells agents to check the reuse library first')
-  assert(/形式化回执/.test(p) && /"decision":"used\|blocked"/.test(p), '★ the work-round reply contract also advertises the formal field (契约 §6.3)')
+  assert(/形式化回执/.test(p) && /"decision":"used\|blocked\|defect"/.test(p), '★ the work-round reply contract also advertises the formal field, defect included (契约 §6.3)')
 }
 fireEnd(lastSpawn(RC, 'explorer:qE').childId, { meta: { kind: 'directions', qid: 'qE', formal: { target: 'qE', decision: 'blocked', note: '需要先形式化连分数收敛定理' }, directions: [{ id: 'd1', title: '连分数法', method: 'e 的连分数', core_assumption: '', feasibility: 0.7 }] } })
 // Answer EVERY explorer the fallback scheduler dispatches (it re-derives when a direction looks
@@ -390,7 +395,7 @@ if (encBatch) {
   assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(vp), 'the review prompt states that a passing Lean run shrinks the question to fidelity')
   assert(/实现难度/.test(vp), 'the review prompt asks for the implementation-difficulty judgement')
   assert(/可以不做，但请在回执的 formal 字段写明难度判断/.test(vp), "'encourage' explicitly allows skipping (with a recorded judgement)")
-  assert(/"formal":/.test(vp) && /"decision":"used\|blocked"/.test(vp), 'the reply contract documents the formal field')
+  assert(/"formal":/.test(vp) && /"decision":"used\|blocked\|defect"/.test(vp), 'the reply contract documents the formal field (defect included)')
   assert(/vibe_math_lean_run/.test(vp) && /vibe_math_lean_archive/.test(vp) && /vibe_math_lean_lib/.test(vp), 'the prompt names the three v3 Lean tools')
   assert(/Formal\/（相对项目根）/.test(vp) && /VibeMath\/Formal\/Lib/.test(vp), 'the prompt states the path layout')
 }
@@ -599,6 +604,12 @@ await callTool('vibe_math_start', {}, RF)
     assert(/必须产出 Lean 形式化/.test(vp), "'require' states the formalization is mandatory")
     assert(/本次裁定不会生效/.test(vp), 'the prompt warns that the verdict will not take effect without it')
     assert(/formal-required/.test(vp), 'the prompt names the machine-readable reason')
+    assert(/归档可复用定义\/引理前先跑通（vibe_math_lean_archive run=true 或先 vibe_math_lean_run）；跑不通不要入库。/.test(vp),
+      '★ the verification prompt requires a GREEN run before archiving into the reuse library (§6 hard requirement 3)')
+    assert(/宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"/.test(vp),
+      '★ and spells out the way out when the host has no Lean toolchain (§6 hard requirement 4)')
+    assert(/Result/.test(vp) && !/verdict/.test(vp) && !/(^|[^a-z_])lean_(run|archive|lib)/.test(vp),
+      '★ the voting prompt uses FULL tool names and names Result, never verdict (§6 hard requirements 1-2)')
   }
 }
 assert(await drive(RF, () => /p-gate/.test(readIf(join(gateProj, 'Formal', 'TODO.md'))), 'p-gate in Formal/TODO.md'), '★ a unanimous TRUE verdict was withheld: the object is on the formalization TODO')
@@ -757,6 +768,182 @@ await callTool('vibe_math_add_proposition', { id: 'p-nonote', 概述: '没有理
 await callTool('vibe_math_abort', {}, RG)
 
 // ===============================================================
+// 8b. the §4.1 `defect` channel (contract §4.1 / §6 / §10 items 8-9)
+//
+// A fidelity defect is NOT "the proposition is false". These are BEHAVIOURAL assertions: a real
+// agent reply carrying `formal:{decision:'defect', note}` is fed through the real reply path
+// (subagent/end → handleVerifier → absorbFormalReply) and the record, the archived file and the
+// formalization TODO are inspected on disk.
+// ===============================================================
+section('8b a formal.decision=defect reply withdraws the passed proof and withholds the verdict')
+const RH = makeRoot()
+await callTool('vibe_math_new_project', { name: 'lean-defect' }, RH)
+await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'require' }), RH)
+const defectProj = projRoot('lean-defect')
+await callTool('vibe_math_add_proposition', { id: 'p-defect', 概述: '形式化写窄了的命题', 概率: 0.6, 分类: '数论' }, RH)
+{
+  const pass = await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'p-defect', content: 'theorem p_defect : 2 + 2 = 4 := by decide\n' }, RH)
+  assert(pass.ok === true && pass.passed === true, 'defect: the object starts out Lean-passed')
+  assert(existsSync(join(defectProj, 'Verified', 'Lean', 'p-defect.lean')), 'defect: the archived proof is on disk before the fidelity review')
+}
+await callTool('vibe_math_start', {}, RH)
+{
+  const re = verifyRe('p-defect')
+  assert(await drive(RH, () => unfiredVerifiers(RH, re).length >= 2, 'verifiers for r-p-defect'), 'defect: the Lean-passed object is put to a fidelity review')
+  const vs = unfiredVerifiers(RH, re).slice(0, 2)
+  if (vs.length === 2) {
+    for (const v of vs) firedChildren.add(v.childId)
+    assert(/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(vs[0].prompt) && /不要投 0/.test(vs[0].prompt) && /formal:\{decision:'defect'/.test(vs[0].prompt),
+      'defect: the fidelity prompt asks for the defect reply and forbids recording the deviation as 0')
+    // The defect reply carries an EXTREME Result on purpose: the gate (not the vote value) has to
+    // be what withholds the verdict — a defect must never be harvested as "the proposition is false".
+    fireEnd(vs[0].childId, { Result: 1, Reason: '逐条核对后认定形式化不忠实', formal: { target: 'p-defect', decision: 'defect', note: 'Lean 代码多加了 h>0 假设，命题原文未要求' } })
+    await sleep(240)
+    const st = await callTool('vibe_math_status', {}, RH)
+    const rec = st.formal.objects.find((o) => o.target === 'p-defect')
+    assert(!!rec && rec.status === 'attempted', '★ defect downgrades the formal record to attempted (observed ' + (rec && rec.status) + ')')
+    assert(st.formal.passed.indexOf('p-defect') === -1, '★ and the object is no longer reported as Lean-passed')
+    assert(!!rec && rec.proof === '', '★ defect clears the `proof` field')
+    assert(!existsSync(join(defectProj, 'Verified', 'Lean', 'p-defect.lean')), '★ defect deletes the archived proof Verified/Lean/p-defect.lean')
+    assert(existsSync(join(defectProj, 'Formal', 'p-defect.lean')), 'the WORK file Formal/p-defect.lean survives (the code itself is not lost)')
+    const persisted = JSON.parse(readIf(join(defectProj, 'State', 'formal.json')))
+    assert(persisted.records['p-defect'].decision === 'defect' && /多加了 h>0 假设/.test(persisted.records['p-defect'].note),
+      '★ the note (the concrete deviation) is recorded in the persisted formal record')
+    assert(/- 形式化: 已尝试未通过/.test(readIf(join(defectProj, 'Propos', '数论', 'p-defect.md'))), 'and the object card anchor is refreshed')
+    fireEnd(vs[1].childId, { Result: 1, Reason: '同意：形式化不忠实' })
+    await sleep(300)
+  }
+}
+{
+  const todo = readIf(join(defectProj, 'Formal', 'TODO.md'))
+  assert(/p-defect/.test(todo) && /多加了 h>0 假设/.test(todo), '★ the deviation is written into Formal/TODO.md')
+  const idx = readIf(join(defectProj, 'Formal', 'Index.md'))
+  assert(/p-defect/.test(idx) && /attempted/.test(idx) && !/Verified\/Lean\/p-defect\.lean/.test(idx), 'Formal/Index.md now shows attempted with no archived proof')
+  assert(!existsSync(join(defectProj, 'Verified', '命题', 'p-defect.md')), '★ require after a defect: NO Verified card is written (the verdict is withheld, not turned into "false")')
+  const card = readIf(join(defectProj, 'Propos', '数论', 'p-defect.md'))
+  assert(/- 状态: 未定论/.test(card), '★ and the object stays 未定论')
+  assert(/- 概率: 0.6/.test(card), 'the object keeps its existing probability: a defect must NOT be harvested as a refutation')
+  const ann = readIf(join(defectProj, 'Logs', '形式化.md'))
+  assert(/忠实性缺陷/.test(ann) && /多加了 h>0 假设/.test(ann), '★ the defect is announced with its concrete deviation')
+  assert(ann.indexOf('不是"命题为假"') !== -1, 'the announcement spells out that a fidelity defect is NOT "the proposition is false"')
+  const st = await callTool('vibe_math_status', {}, RH)
+  assert(st.formal.todo.some((t) => t.id === 'p-defect'), '★ the object is on the formalization TODO (undecided until the formalization is fixed and re-run)')
+}
+await callTool('vibe_math_abort', {}, RH)
+
+section('8b-2 a defect without a note is refused (the deviation must be auditable)')
+const RI = makeRoot()
+await callTool('vibe_math_new_project', { name: 'lean-defect-nonote' }, RI)
+await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'require' }), RI)
+const nonoteProj = projRoot('lean-defect-nonote')
+await callTool('vibe_math_add_proposition', { id: 'p-nonote-defect', 概述: '没有偏差说明的缺陷回执', 概率: 0.6, 分类: '数论' }, RI)
+await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'p-nonote-defect', content: 'theorem p_nn_defect : 2 + 2 = 4 := by decide\n' }, RI)
+await callTool('vibe_math_start', {}, RI)
+{
+  const re = verifyRe('p-nonote-defect')
+  assert(await drive(RI, () => unfiredVerifiers(RI, re).length >= 2, 'verifiers for r-p-nonote-defect'), 'defect: the passed object is put to a fidelity review')
+  const vs = unfiredVerifiers(RI, re).slice(0, 2)
+  if (vs.length === 2) {
+    for (const v of vs) firedChildren.add(v.childId)
+    fireEnd(vs[0].childId, { Result: 1, Reason: '觉得不忠实但没写清楚', formal: { target: 'p-nonote-defect', decision: 'defect' } })
+    await sleep(240)
+    const st = await callTool('vibe_math_status', {}, RI)
+    const rec = st.formal.objects.find((o) => o.target === 'p-nonote-defect')
+    assert(!!rec && rec.status === 'passed', '★ a defect WITHOUT a note is refused: the object stays Lean-passed (no silent downgrade)')
+    assert(existsSync(join(nonoteProj, 'Verified', 'Lean', 'p-nonote-defect.lean')), '★ and the archived proof is NOT deleted')
+    assert(st.formal.todo.every((t) => t.id !== 'p-nonote-defect') && !/p-nonote-defect/.test(readIf(join(nonoteProj, 'Formal', 'TODO.md'))),
+      'and no bogus formalization-TODO entry is created')
+    assert(/未写明 note/.test(readIf(join(nonoteProj, 'Logs', '形式化.md'))), '★ the refusal is announced explicitly')
+    fireEnd(vs[1].childId, { Result: 1, Reason: '核对后认为一致' })
+    await sleep(300)
+  }
+}
+assert(await drive(RI, () => existsSync(join(nonoteProj, 'Verified', '命题', 'p-nonote-defect.md')), 'Verified card'), 'a refused defect leaves the gate open: the same vote still promotes the object')
+// §4.1: the downgrade is unconditional — a `blocked` record loses to a defect too (it needs REDOING,
+// not a free pass through the gate, which `blocked` would otherwise grant).
+await callTool('vibe_math_add_proposition', { id: 'p-blocked-defect', 概述: '阻塞后仍被认定不忠实', 概率: 0.6, 分类: '数论' }, RI)
+await callTool('vibe_math_lean_archive', { kind: 'blocked', target: 'p-blocked-defect', note: '先按难度记为阻塞' }, RI)
+await restart(RI)
+{
+  const re = verifyRe('p-blocked-defect')
+  assert(await drive(RI, () => unfiredVerifiers(RI, re).length >= 2, 'verifiers for r-p-blocked-defect'), 'a blocked object is put to a vote (the gate is open for blocked)')
+  const vs = unfiredVerifiers(RI, re).slice(0, 2)
+  if (vs.length === 2) {
+    for (const v of vs) firedChildren.add(v.childId)
+    fireEnd(vs[0].childId, { Result: 1, Reason: '形式化与命题不对应', formal: { target: 'p-blocked-defect', decision: 'defect', note: '阻塞所依据的形式化本身写错了对象' } })
+    await sleep(240)
+    const st = await callTool('vibe_math_status', {}, RI)
+    const rec = st.formal.objects.find((o) => o.target === 'p-blocked-defect')
+    assert(!!rec && rec.status === 'attempted', '★★ a defect ALWAYS downgrades, even from `blocked` (observed ' + (rec && rec.status) + ')')
+    assert(st.formal.blocked.indexOf('p-blocked-defect') === -1 && /阻塞所依据的形式化本身写错了对象/.test(rec.note || ''), 'and the blocked record is replaced by the concrete deviation')
+    fireEnd(vs[1].childId, { Result: 1, Reason: '同意，形式化写错了对象' })
+    await sleep(280)
+  }
+}
+assert(!existsSync(join(nonoteProj, 'Verified', '命题', 'p-blocked-defect.md')), 'require after a blocked→defect downgrade: still no Verified card (undecided, not "false")')
+await callTool('vibe_math_abort', {}, RI)
+
+// ===============================================================
+// 8c. the injected text obeys the five hard requirements of contract §6
+// ===============================================================
+section('8c the injected text uses full tool names, Result (not verdict) and the run-before-archive rule')
+const RJ = makeRoot()
+await callTool('vibe_math_new_project', { name: 'lean-workline' }, RJ)
+await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'require' }), RJ)
+await callTool('vibe_math_add_problem', { id: 'q-defect', description: '顺手形式化的对象', priority: 0 }, RJ)
+const workProj = projRoot('lean-workline')
+// a `meta.formal` defect on the WORK-round path (absorbFormalFromReply) must downgrade too
+await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'q-defect', content: 'theorem q_defect : 2 + 2 = 4 := by decide\n' }, RJ)
+await callTool('vibe_math_start', {}, RJ)
+assert(await drive(RJ, () => !!lastSpawn(RJ, 'explorer:q-defect'), 'explorer:q-defect'), 'the explorer for q-defect was spawned')
+{
+  const p = lastSpawn(RJ, 'explorer:q-defect').prompt
+  assert(/归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。/.test(p),
+    '★ the work-round prompt requires a GREEN run before archiving a reusable definition (§6 hard requirement 3)')
+  assert(/"decision":"used\|blocked\|defect"/.test(p), 'the work-round reply contract advertises the defect decision too')
+  assert(!/verdict/.test(p) && !/(^|[^a-z_])lean_(run|archive|lib)/.test(p),
+    '★ the work-round prompt uses FULL tool names only and never the v4/v5 field name `verdict`')
+  fireEnd(lastSpawn(RJ, 'explorer:q-defect').childId, {
+    meta: { kind: 'directions', qid: 'q-defect', formal: { target: 'q-defect', decision: 'defect', note: '陈述里的自然数范围被写成了整数' },
+      directions: [{ id: 'd1', title: '直接形式化', method: 'Lean', core_assumption: '', feasibility: 0.6 }] },
+  })
+  await sleep(260)
+  const st = await callTool('vibe_math_status', {}, RJ)
+  const rec = st.formal.objects.find((o) => o.target === 'q-defect')
+  assert(!!rec && rec.status === 'attempted' && /自然数范围被写成了整数/.test(rec.note || ''),
+    '★ a `meta.formal` defect from a WORK reply downgrades the record too (absorbFormalFromReply, not just the verifier path)')
+  assert(!existsSync(join(workProj, 'Verified', 'Lean', 'q-defect.lean')), '★ and its archived proof is deleted')
+}
+await callTool('vibe_math_abort', {}, RJ)
+
+section('8c-2 the fidelity branch reaches BOTH the review and the debate prompt, and names Result')
+const RK = makeRoot()
+await callTool('vibe_math_new_project', { name: 'lean-fidelity' }, RK)
+await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'encourage', debateMaxRounds: 2 }), RK)
+await callTool('vibe_math_add_proposition', { id: 'p-fid', 概述: '忠实性审查措辞观察对象', 概率: 0.6, 分类: '数论' }, RK)
+await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'p-fid', content: 'theorem p_fid : 2 + 2 = 4 := by decide\n' }, RK)
+await callTool('vibe_math_start', {}, RK)
+const fidBatch = await runVerifyRound(RK, 'p-fid', [0.9, 0.95])
+assert(fidBatch !== null, 'fidelity: the review round was asked')
+if (fidBatch) {
+  const vp = fidBatch.map((s) => s.prompt).join('\n')
+  assert(/一致 → Result = 1/.test(vp), "★ the review prompt states the faithful case as `Result = 1` (v3's REAL reply field, not v4/v5's verdict)")
+  assert(/发现任何偏差，不要投 0/.test(vp) && /形式化不合格/.test(vp), '★ and forbids expressing a fidelity defect as 0')
+  assert(/formal:\{decision:'defect', note:'<具体偏差>'\}/.test(vp), 'and points at the defect reply field to record it')
+  assert(/独立于这份 Lean 代码/.test(vp), 'only an INDEPENDENT refutation may be voted 0')
+  assert(/Result/.test(vp) && !/verdict/.test(vp), '★ the voting prompt names Result, never verdict (§6 hard requirement 2)')
+  assert(vp.indexOf('偏离 → 0') === -1, '★ no "偏离 → 0" instruction anywhere in the fidelity branch (contract §10 item 9)')
+}
+assert(await drive(RK, () => wakes.some((w) => w.rootId === RK.id && /交流群/.test(w.prompt)), 'debate prompt'), 'a non-consensus fidelity round moved to the debate')
+{
+  const dp = wakes.filter((w) => w.rootId === RK.id).map((w) => w.prompt).join('\n')
+  assert(/一致 → Result = 1/.test(dp) && /不要投 0/.test(dp), '★ the DEBATE prompt carries the same fidelity wording')
+  assert(/Result/.test(dp) && !/verdict/.test(dp), 'the debate prompt names Result, never verdict')
+  assert(dp.indexOf('偏离 → 0') === -1, 'the debate prompt also refuses "a deviation is a 0"')
+}
+await callTool('vibe_math_abort', {}, RK)
+
+// ===============================================================
 // 9. reporting + persistence
 // ===============================================================
 section('9 the office can audit formal strength')
@@ -792,8 +979,11 @@ section('10 the captured prompt corpus is written for human review')
   mkdirSync(CORPUS_DIR, { recursive: true })
   writeFileSync(join(CORPUS_DIR, 'formal-verify-v3.json'), JSON.stringify({ entries: corpus }, null, 2), 'utf8')
   const md = ['# V3 形式化验证交互语料（prompt corpus）', '',
-    '> 由 `formal-verify-v3.test.mjs` 落盘：框架**真正发出**的每一条提示词原文（工作区路径归一化为 `<WS>`，可 diff）。',
-    '> 覆盖：explorer / solver / method-keeper 的日常工作提示词、三种模式下的表决初评与辩论提示词、规划提示词。', '']
+    '> 由 `formal-verify-v3.test.mjs` 落盘：框架**真正发出**的每一条提示词原文。路径归一化：工作区 → `<WS>`，',
+    '> VibeMath 根 → `<VIBEMATH>`（两者都按正/反斜杠两种写法替换，因此语料是确定性的、可 diff 的、不泄露本机路径）。',
+    '> 覆盖：explorer / solver / method-keeper 的日常工作提示词（含「顺手形式化」与"归档前先跑通"），',
+    '> `off`（零 Lean 文本）、`encourage`、**`require`** 三档下的表决初评与辩论提示词，`passed` 之后的忠实性审查分支',
+    '> （含 `defect` 出口），以及规划提示词。', '']
   for (let i = 0; i < corpus.length; i++) {
     const c = corpus[i]
     md.push('## [' + i + '] ' + c.kind + ' · ' + c.label)
@@ -809,10 +999,27 @@ section('10 the captured prompt corpus is written for human review')
   assert(corpus.some((c) => c.label.startsWith('explorer:')) && corpus.some((c) => c.label.startsWith('solver:')) && corpus.some((c) => c.label.startsWith('method-keeper')) && corpus.some((c) => c.label.startsWith('verifier:')), 'the corpus covers every interaction type this suite drives')
   assert(corpus.some((c) => c.kind === 'wake'), 'the corpus also keeps the continuation prompts (debate rounds)')
   // generic sweep over EVERY captured prompt, not spot checks (AUDIT §2.1)
-  const dirty = corpus.filter((c) => /\[object Object\]|\bNaN\b|\bundefined\b/.test(c.prompt))
+  const dirty = corpus.filter((c) => /\[object Object\]|\bNaN\b|:\s*undefined|["']undefined["']|undefined\s*[,}\]]/.test(c.prompt))
   assert(dirty.length === 0, 'no captured prompt contains placeholder garbage (' + dirty.map((d) => d.label).join(',') + ')')
   const joined = corpus.map((c) => c.prompt).join('\n')
   assert(joined.indexOf(WS) === -1 && joined.indexOf(WS.replace(/\\/g, '/')) === -1, 'every captured prompt normalises the workspace path to <WS> (the corpus stays diffable)')
+  assert(joined.indexOf(VIBE) === -1 && joined.indexOf(VIBE.replace(/\\/g, '/')) === -1 && joined.indexOf('<VIBEMATH>') !== -1,
+    '★ every captured prompt normalises the VibeMath root to <VIBEMATH> (no machine path leaks into the shipped corpus, contract §10 item 10)')
+  assert(!corpus.some((c) => c.root === RA.id && /Lean|形式化/.test(c.prompt)),
+    '★ the off-mode prompts captured in the corpus contain ZERO Lean text (off stays a true no-op)')
+  // contract §10 item 10: the corpus must cover require AND the work round (not just encourage + fidelity)
+  assert(corpus.some((c) => /【Lean 形式化验证（鼓励模式）】/.test(c.prompt)), '★ the corpus covers the encourage-mode verification prompt')
+  assert(corpus.some((c) => /【Lean 形式化验证（强制模式）】/.test(c.prompt)), '★ the corpus covers the REQUIRE-mode verification prompt')
+  assert(corpus.some((c) => /【顺手形式化（鼓励）】/.test(c.prompt)) && corpus.some((c) => /【顺手形式化（强制）】/.test(c.prompt)), '★ the corpus covers the work-round 顺手形式化 prompt in both modes')
+  assert(corpus.some((c) => /一致 → Result = 1/.test(c.prompt)), '★ the corpus keeps the passed/fidelity branch verbatim for human review')
+  // contract §6 hard requirements 1-2 + §10 item 9, swept over EVERY captured prompt
+  const verifier = corpus.filter((c) => c.label.startsWith('verifier:'))
+  assert(verifier.length >= 5 && verifier.every((c) => /Result/.test(c.prompt) && !/verdict/.test(c.prompt)),
+    '★ every captured voting prompt names Result and never verdict (§6 hard requirement 2)')
+  const bareTools = corpus.filter((c) => /(^|[^a-z_])lean_(run|archive|lib)/.test(c.prompt))
+  assert(bareTools.length === 0, '★ no captured prompt abbreviates a Lean tool name (§6 hard requirement 1): ' + bareTools.map((b) => b.label).join(','))
+  const zeroDeviation = corpus.filter((c) => c.prompt.indexOf('偏离 → 0') !== -1)
+  assert(zeroDeviation.length === 0, '★ no captured prompt turns a fidelity defect into a 0 vote (§6 hard requirement 5 / §10 item 9): ' + zeroDeviation.map((b) => b.label).join(','))
 }
 
 console.log('')

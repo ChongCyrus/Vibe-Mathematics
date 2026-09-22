@@ -348,7 +348,9 @@ const absentOf = (prompt) => {
   return r ? r[1].split(/[、,]/).map(s => s.trim()).filter(Boolean) : null
 }
 const stateBlockCount = (prompt) => (prompt.match(/\[状态\]/g) || []).length
-const GARBAGE = [/\bundefined\b/, /\bNaN\b/, /\[object Object\]/, /你是\s*\?/]
+// Data-position garbage only: a bare \bundefined\b also matches legitimate prose
+// such as v2's "no undefined symbols" (the v2 suite caught that as a false positive).
+const GARBAGE = [/:\s*undefined/, /["']undefined["']/, /undefined\s*[,}\]]/, /\bNaN\b/, /\[object Object\]/, /你是\s*\?/]
 const isVoter = (id) => id === 'acad' || /^r-/.test(id)
 
 // Applied to EVERY captured prompt.
@@ -389,7 +391,22 @@ function checkPromptSweep(prompt, owner, where) {
 // corpus recorder
 // ---------------------------------------------------------------
 const corpus = []
-const scrub = (s) => String(s == null ? '' : s).split(WS).join('<WS>')
+// Normalise the workspace OUT of the corpus. A plain `split(WS)` is not enough on Windows:
+// the plugin renders paths with forward slashes while os.tmpdir() may hand back a different
+// CASE ("...\ADMIN\..." vs ".../admin/..."), so the absolute workspace path used to survive
+// into the SHIPPED corpus — non-deterministic (the temp dir changes every run) and a machine
+// path leak. Match case-insensitively, on either separator.
+const scrub = (s) => {
+  const t = String(s == null ? '' : s).replace(/\\/g, '/')
+  const ws = WS.replace(/\\/g, '/')
+  const re = new RegExp(ws.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  // Timestamps are part of the prompt a member reads, but not part of what a reviewer needs:
+  // normalise them too. Otherwise the shipped corpus changes on EVERY run — its headings carry
+  // `### YYYY-MM-DD hh:mm:ss｜<member>` — and its diffs stop being meaningful.
+  return t.replace(re, '<WS>').replace(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/g, '<TIME>')
+}
+// Every Lean tool mention in agent-facing text must be the REGISTERED name.
+const noBareLeanTool = (t) => !/(^|[^a-z_])lean_(run|archive|lib)/.test(String(t || ''))
 function record(kind, owner, prompt, persona, extra) {
   corpus.push({
     kind, owner,
@@ -950,9 +967,65 @@ for (const w of vwB) recordAndCheck('lean-fidelity', memberOfChild(w.childId), w
   assert(/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(txt), 'the prompt announces the passing proof')
   assert(/你不需要重新检查推导/.test(txt), 'with a proof in hand the prompt tells voters not to re-derive')
   assert(/忠实性审查/.test(txt), 'and asks for a fidelity review instead')
+  assert(/不要投 0/.test(txt), '★ it forbids expressing a faithfulness defect as 0 (= 命题为假)')
+  assert(/decision:'defect'/.test(txt), 'it names the defect reply channel that withdraws the proof')
+  assert(!/偏离 → 0/.test(txt), '★ the old "any deviation → 0" instruction is gone')
+  assert(noBareLeanTool(txt), 'no abbreviated tool name appears in the fidelity prompt')
 }
 await drainWakes(10, RL2)
 await endCase(RL2)
+
+// (d) `require` mode adds the conclusion gate to the voting prompt (contract §10 item 10)
+const R_LEANREQ = makeRoot()
+await callTool('vibe_v5_start', { problem: 'Lean require 提示词测试', researcherCount: 2 }, R_LEANREQ)
+for (const sp of spawnsFor(R_LEANREQ)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(R_LEANREQ)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'require' }, R_LEANREQ)
+await callTool('vibe_v5_record_proposition', { id: 'p-lean-req', statement: 'Lean 语料对象丙（require 档）', value: 0.6, motive: 'm', p: 0.8 }, childAgent(childOf(R_LEANREQ, 'r-1')))
+const propR = await callTool('vibe_v5_propose_verify', { target: 'p-lean-req', kind: 'proposition', reason: '语料' }, childAgent(childOf(R_LEANREQ, 'r-1')))
+assert(propR.ok === true && propR.started === true, 'the require-mode ballot started (' + JSON.stringify(propR).slice(0, 90) + ')')
+delivered.length = 0
+const vwR = await takeVerifyPrompts(R_LEANREQ, 3)
+assert(vwR.length === 3, 'captured three require-mode voting prompts (got ' + vwR.length + ')')
+for (const w of vwR) recordAndCheck('lean-require', memberOfChild(w.childId), w.prompt)
+{
+  const txt = vwR.map(w => w.prompt).join('\n')
+  assert(/【Lean 形式化验证（强制模式）】/.test(txt), 'the require-mode block is labelled 强制')
+  assert(/本模式要求/.test(txt) && /formal-required/.test(txt), 'it states the conclusion gate and its reason code')
+  assert(/vibe_v5_lean_archive/.test(txt) && /kind='blocked'/.test(txt), 'it names the full archive tool for the blocker route')
+  assert(/宿主无 Lean 工具链/.test(txt), 'it also says what to do when the host has no Lean toolchain')
+  assert(noBareLeanTool(txt), 'no abbreviated tool name appears in the require-mode prompt')
+}
+await drainWakes(30, R_LEANREQ)
+await endCase(R_LEANREQ)
+// (e) after a fidelity DEFECT the member must see the withdrawal, never a stale "已通过"
+const R_LEANDEF = makeRoot()
+await callTool('vibe_v5_start', { problem: 'Lean 缺陷后提示词测试', researcherCount: 2 }, R_LEANDEF)
+for (const sp of spawnsFor(R_LEANDEF)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(R_LEANDEF)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, R_LEANDEF)
+await callTool('vibe_v5_record_proposition', { id: 'p-lean-def', statement: 'Lean 语料对象丁', value: 0.6, motive: 'm', p: 0.9 }, childAgent(childOf(R_LEANDEF, 'r-1')))
+const leanD = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-def', content: 'theorem p_lean_d : 1 + 1 = 2 := by decide\n' }, childAgent(childOf(R_LEANDEF, 'r-1')))
+assert(leanD.ok === true && leanD.passed === true, 'object 丁 has a passing proof before the defect')
+delivered.length = 0
+await callTool('vibe_v5_say', { to: 'r-1', text: '请核对形式化的忠实性。' }, childAgent(childOf(R_LEANDEF, 'acad')))
+await settle()
+fireEnd(childOf(R_LEANDEF, 'r-1'), { progress: '核对后发现偏差。', formal: { target: 'p-lean-def', decision: 'defect', note: '条件被加强：连续写成了逐点连续' }, contextPct: 20 })
+await settle()
+await drainWakes(8, R_LEANDEF)
+const stRP = await callTool('vibe_v5_status', {}, R_LEANDEF)
+const recRP = (stRP.formal.objects || []).find(o => o.target === 'p-lean-def') || {}
+assert(recRP.status === 'attempted' && !recRP.proof, 'the defect reply withdrew the proof (status=' + recRP.status + ')')
+delivered.length = 0
+await callTool('vibe_v5_say', { to: 'r-1', text: '再继续。' }, childAgent(childOf(R_LEANDEF, 'acad')))
+await settle(); await drainWakes(3, R_LEANDEF)
+for (const w of delivered.filter(d => d.rootId === R_LEANDEF.id)) recordAndCheck('lean-after-defect', w.owner, w.prompt)
+{
+  const txt = delivered.filter(d => d.rootId === R_LEANDEF.id).map(d => d.prompt).join('\n')
+  assert(!/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(txt), '★ the post-defect prompt no longer claims a passing proof')
+  assert(/已通过 0/.test(txt), '★ the state block reports zero Lean-passed objects after the withdrawal')
+}
+await endCase(R_LEANDEF)
 
 // =============== PART: full-corpus sweep ========================================
 section('13 full-corpus sweep over every prompt ever sent')
@@ -971,7 +1044,7 @@ section('13 full-corpus sweep over every prompt ever sent')
   for (const need of ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
     'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
     'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
-    'lean-work', 'lean-verify', 'lean-fidelity']) {
+    'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect']) {
     assert(kinds.has(need), 'the corpus contains a ' + need + ' prompt')
   }
   assert(corpus.every(c => c.prompt && c.prompt.length > 200), 'no captured prompt is suspiciously short')

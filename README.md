@@ -255,6 +255,25 @@ flowchart TB
 > 但决定必须说出来、可审计**，不允许静默跳过。相关参数还有 `leanCommand`（默认 `lean`）、
 > `leanArgs`（配合 `lake env lean`）、`leanTimeoutMs`（默认 120s）。
 
+### ⚠️ 忠实性缺陷 ≠ 命题为假（重要）
+
+Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命题想说的**。所以当表决者逐条核对后
+发现 Lean 代码与命题原文不一致（写窄了 / 写宽了 / 换了对象 / 漏了条件）时：
+
+- **不得投 0**。投 0 的含义是"**该命题为假**"；一个写错的形式化会让框架把"形式化不合格"
+  记成"命题被证伪"，在 v5 的全 0 一致规则下甚至会把命题写进 `Verified/` 标注**假**——
+  用来求真的机制反而**伪造出一个错误的否定结论**。
+- 正确做法：给一个严格介于 0 与 1 之间的值（记为弃权）+ 用回执
+  `formal:{decision:'defect', note:'<具体偏差>'}` 记录偏差。框架随即**撤回这条证明的「已通过」状态**
+  （降级为 `attempted`、撤回 `Verified/Lean/<id>.lean`、写入「形式化待办」），`require` 档下
+  **本次裁定不定论**；修正形式化并重新跑通后再投票。
+- 只有表决者**独立于这份 Lean 代码**也能确定命题为假（并能给出独立理由）时才投 0。
+
+> 注入提示词的另外三条硬要求（契约 §6）：工具名一律**全称**（`<prefix>lean_archive` 不是
+> `lean_archive`——缩写不是注册名，代理照抄会调用一个不存在的工具）；归档可复用定义/引理**前先跑通**，
+> 跑不通不许进库；**工具链缺失**（`LEAN_NOT_FOUND`）时把代码写下来归档并在 `note` 写明
+> "宿主无 Lean 工具链"——这算显式阻塞原因，门禁据此放行，不会因为装不了 Lean 而卡死。
+
 ### 归档：形式化代码放哪里
 
 ```
@@ -784,8 +803,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](vibe-math-v4/实现方案.md)
 - **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](vibe-math-v5/实现方案.md)（文字规格）· [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)（全套架构图）
 - **v5 提示词与交互语料**：[`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md)（框架真正发出的每一条提示词原文，可直接人工复核身份/编制/交互署名是否正确）
+- **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程）
 

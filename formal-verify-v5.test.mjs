@@ -262,6 +262,9 @@ async function wakeAndReply(root, memberId, reply, fromMember) {
 const instRootOf = (root) => join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
 const vibeRoot = join(WS, 'VibeMath')
 const readIf = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
+// Every Lean tool mention in AGENT-FACING text must be the registered name (vibe_v5_lean_*).
+// An abbreviated `lean_archive` is not a tool: an agent that copies it calls nothing.
+const noBareLeanTool = (t) => !/(^|[^a-z_])lean_(run|archive|lib)/.test(String(t || ''))
 
 // ===============================================================
 console.log('-- V5 Lean formal verification --')
@@ -318,6 +321,8 @@ await callTool('vibe_v5_set', { formalVerify: 'encourage' }, RC)
   assert(/\[形式化\] 鼓励 Lean/.test(work), "the state block gains a [形式化] 鼓励 Lean line")
   assert(/【顺手形式化（鼓励）】/.test(work), 'the work round tells members to formalize reusable objects as they go')
   assert(/vibe_v5_lean_archive kind='def'/.test(work), 'the work round points at the archive tool for reusable definitions')
+  assert(noBareLeanTool(work), 'no abbreviated tool name appears in the injected work-round prompt')
+  assert(/归档前先跑通/.test(work), 'the work-round prompt requires a green run before archiving into the reuse library')
 }
 await callTool('vibe_v5_record_proposition', { id: 'p-enc', statement: '鼓励模式下的忠实性审查', value: 0.6, motive: 'm', p: 0.8 }, childAgent(childOf(RC, 'r-1')))
 await callTool('vibe_v5_propose_verify', { target: 'p-enc', kind: 'proposition', reason: '先看看提示词' }, childAgent(childOf(RC, 'r-1')))
@@ -326,9 +331,13 @@ await settle(); delivered.length = 0; await drainWakes(3, RC)
   const vp = delivered.filter(d => d.rootId === RC.id).map(d => d.prompt).join('\n')
   assert(/【Lean 形式化验证（鼓励模式）】/.test(vp), 'the voting prompt explains the Lean mode')
   assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(vp), 'the voting prompt states that a passing Lean run shrinks the question to fidelity')
+  assert(/归档可复用定义\/引理前先跑通/.test(vp), 'the voting prompt requires a GREEN RUN before archiving a reusable definition')
+  assert(/LEAN_NOT_FOUND/.test(vp) && /宿主无 Lean 工具链/.test(vp), 'the voting prompt says what to do when the host has no Lean toolchain')
+  assert(noBareLeanTool(vp), 'no abbreviated tool name appears in the injected voting prompt')
   assert(/实现难度/.test(vp), 'the voting prompt asks for the implementation-difficulty judgement')
   assert(/可以不做，但请在回执的 formal 字段写明难度判断/.test(vp), "'encourage' explicitly allows skipping (with a recorded judgement)")
   assert(/"formal":/.test(vp), 'the reply contract documents the formal field')
+  assert(/"decision":"used\|blocked\|defect"/.test(vp), '★ the reply contract offers the defect decision (a faithfulness defect is recordable)')
 }
 await drainWakes(10, RC)
 
@@ -392,6 +401,11 @@ await settle(); delivered.length = 0; await drainWakes(3, RD)
   assert(/你不需要重新检查推导/.test(vp), '★ it tells voters NOT to re-derive')
   assert(/忠实性审查/.test(vp), '★ it tells voters the review subject is now fidelity')
   assert(/定义 \/ 对象 \/ 条件 \/ 假设 \/ 结论是否与命题原文\*\*完全一致\*\*/.test(vp), 'it enumerates exactly what fidelity means')
+  assert(/不要投 0/.test(vp), '★ a faithfulness defect must NOT be expressed as 0 (that would record 命题为假)')
+  assert(/形式化不合格/.test(vp), 'it names the failure a formalisation defect, not a refutation')
+  assert(/decision:'defect'/.test(vp), 'it names the defect reply channel')
+  assert(!/偏离 → 0/.test(vp), '★ the old "any deviation → 0" instruction is GONE')
+  assert(noBareLeanTool(vp), 'no abbreviated tool name appears in the fidelity prompt')
 }
 await drainWakes(10, RD)
 
@@ -443,6 +457,8 @@ await settle(); delivered.length = 0; await drainWakes(3, RE)
   assert(/【Lean 形式化验证（强制模式）】/.test(vp), 'the voting prompt says 强制模式')
   assert(/必须产出 Lean 形式化/.test(vp), "'require' states the formalization is mandatory")
   assert(/本次裁定不会生效/.test(vp), 'the prompt warns that the verdict will not take effect without it')
+  assert(/formal-required/.test(vp), 'it names the machine-readable reason code in the prompt itself')
+  assert(/vibe_v5_lean_archive/.test(vp) && /kind='blocked'/.test(vp), 'it gives the full tool name for the blocker route')
 }
 const gated = await voteToConclusion(RE, 'p-gate', new Map([['acad', 1], ['r-1', 1], ['r-2', 1]]))
 assert(gated.verified.indexOf('p-gate') === -1, '★ a unanimous TRUE verdict did NOT promote the object to Verified/')
@@ -518,6 +534,62 @@ assert(/已通过：.*p-gate/.test(rep.report), 'the report lists Lean-passed ob
 assert(/已记录阻塞：.*p-blocked-ok/.test(rep.report), 'the report lists blocked objects')
 const stOff = await callTool('vibe_v5_report', {}, RA)
 assert(/未启用（`formalVerify` = off/.test(stOff.report), 'in off mode the report says the feature is not enabled')
+
+// ---------- 11. a faithfulness defect withdraws the proof, it is NOT a refutation ----------
+section('11 ★ a faithfulness defect withdraws the proof instead of recording 命题为假 (contract §4.1)')
+const RG = makeRoot()
+await foundInstitute(RG, '忠实性缺陷语义测试')
+await callTool('vibe_v5_set', { formalVerify: 'encourage' }, RG)
+const instG = instRootOf(RG)
+// make p-def Lean-PASSED first: the archived proof is what a defect must withdraw
+const arcG = await callTool('vibe_v5_lean_archive', {
+  kind: 'proof', target: 'p-def', content: 'theorem p_def : (1:Nat) + 1 = 2 := by decide\n',
+}, childAgent(childOf(RG, 'r-1')))
+assert(arcG.ok === true && arcG.passed === true, 'p-def is Lean-passed before the review')
+assert(existsSync(join(instG, 'Verified', 'Lean', 'p-def.lean')), 'its archived proof exists on disk')
+// a voter reports a FIDELITY DEFECT through the reply channel
+const wDef = await wakeAndReply(RG, 'r-1', {
+  progress: '逐条核对后发现 Lean 陈述与命题不一致。',
+  formal: { target: 'p-def', decision: 'defect', note: 'Lean 里把"连续"写成了逐点连续，条件被加强了' },
+  contextPct: 20,
+})
+assert(!!wDef, 'the reviewer was woken and answered with a defect report')
+const stG = await callTool('vibe_v5_status', {}, RG)
+const recG = (stG.formal.objects || []).find(o => o.target === 'p-def') || {}
+assert(recG.status === 'attempted', '★ the object is demoted to attempted (a defect is not a proof any more), got ' + recG.status)
+assert(!recG.proof, '★ the archived proof is cleared from the record')
+assert(/加强了/.test(String(recG.note || '')), 'the concrete deviation is recorded on the object')
+const proofPathG = join(instG, 'Verified', 'Lean', 'p-def.lean')
+const proofNowG = existsSync(proofPathG) ? readFileSync(proofPathG, 'utf8') : ''
+assert(!existsSync(proofPathG) || /已撤回/.test(proofNowG),
+  '★ the archived proof is withdrawn from Verified/Lean/ (deleted, or replaced by a withdrawal notice when the host cannot delete)')
+assert(!/theorem p_def/.test(proofNowG), '★ the original proof text is no longer readable as the object\'s proof')
+assert(existsSync(join(instG, 'Formal', 'p-def.lean')), 'the working file is kept (the code is not lost)')
+const todoG = readIf(join(instG, 'Formal', 'TODO.md'))
+assert(/p-def/.test(todoG) && /忠实性缺陷/.test(todoG), 'the object enters Formal/TODO.md as a formalisation defect')
+const idxG = readIf(join(instG, 'Formal', 'Index.md'))
+assert(/加强了/.test(idxG), 'the human-readable index carries the concrete deviation')
+assert(/attempted/.test(idxG) && !/Verified\/Lean\/p-def\.lean/.test(idxG.split('p-def')[1] || ''),
+  'the index shows attempted and no longer points at a proof')
+// a defect without a note is refused
+delivered.length = 0
+const wDef2 = await wakeAndReply(RG, 'r-1', { formal: { target: 'p-def2', decision: 'defect' }, contextPct: 20 })
+assert(!!wDef2, 'the reviewer was woken for the note-less defect')
+assert(/必须写明 note/.test(delivered.map(d => d.prompt).join('\n')), 'a defect without a note is refused with an explicit notice')
+assert((await callTool('vibe_v5_status', {}, RG)).formal.objects.every(o => o.target !== 'p-def2'),
+  'and no record is created for the refused defect')
+
+// ---------- 12. after a defect, require mode refuses to conclude -------------
+section('12 ★ a defect makes the require gate block the conclusion (re-formalise, do not conclude 假)')
+await callTool('vibe_v5_set', { formalVerify: 'require' }, RG)
+await callTool('vibe_v5_record_proposition', { id: 'p-def', statement: '连续函数在闭区间上一致连续（被写窄的形式化）', value: 0.6, motive: 'm', p: 0.9 }, childAgent(childOf(RG, 'r-1')))
+await callTool('vibe_v5_propose_verify', { target: 'p-def', kind: 'proposition', reason: '缺陷后重验' }, childAgent(childOf(RG, 'r-1')))
+// every voter says TRUE — without the fix this would be recorded as a concluded object
+const stDef = await voteToConclusion(RG, 'p-def', new Map([['acad', 1], ['r-1', 1], ['r-2', 1]]))
+assert(stDef.verified.indexOf('p-def') === -1, '★ the object is NOT verified: a withdrawn proof cannot support a conclusion')
+assert(stDef.undecided.indexOf('p-def') !== -1, '★ it is recorded as 未定论 and stays in the library')
+assert(!existsSync(join(instG, 'Verified', '命题', 'p-def.md')), 'no Verified card is written for it')
+assert(/p-def/.test(readIf(join(instG, 'Formal', 'TODO.md'))), 'it is on the formalisation TODO list')
 
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

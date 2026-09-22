@@ -25,9 +25,9 @@
 //
 // Run: node formal-verify-v4.test.mjs
 // ============================================================
-import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
+import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, isAbsolute } from 'node:path'
+import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
 // V4_PLUGIN (same convention the v5 suite uses for V5_PLUGIN): point the suite at a MUTATED copy of
@@ -41,6 +41,11 @@ function pluginUrl() {
   return pathToFileURL(fileURLToPath(new URL('file:///' + s.replace(/\\/g, '/'))))
 }
 const PLUGIN = pluginUrl()
+// docs §10 item 10: the Lean prompt corpus is shipped under prompt-corpus-v4/ so a HUMAN can read
+// the exact text the framework sends. V4_CORPUS_DIR overrides the destination (same convention v3
+// and v5 use for V3_CORPUS_DIR / V5_CORPUS_DIR).
+const HERE = dirname(fileURLToPath(import.meta.url))
+const CORPUS_DIR = process.env.V4_CORPUS_DIR ? pathResolve(process.env.V4_CORPUS_DIR) : join(HERE, 'prompt-corpus-v4')
 
 let passed = 0, failed = 0
 const failures = []
@@ -56,6 +61,7 @@ const readIf = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
 // ===============================================================
 let toolchainAvailable = true
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
+const shellCalls = []        // every platform-shell script (mkdir at mount, Remove-Item on defect)
 
 function makeSubprocess() {
   return {
@@ -65,6 +71,24 @@ function makeSubprocess() {
       return String(cmd)
     },
     spawn(spec) {
+      // The preset drives the platform shell through this SAME `subprocess` service (runShell:
+      // powershell / /bin/sh) for mkdir at mount, and — since docs §4.1 — for Remove-Item when a
+      // `defect` retracts an archived proof. Handle it here so that retraction is a REAL filesystem
+      // deletion, exactly as the real host performs it; otherwise "the proof file is gone" could
+      // only be asserted against a mock's bookkeeping.
+      const argv0 = String((spec.argv && spec.argv[0]) || '')
+      if (/powershell|cmd\.exe|\/bin\/sh|(^|\/)sh$/i.test(argv0)) {
+        const script = String(spec.argv[spec.argv.length - 1] || '')
+        shellCalls.push(script)
+        const m = script.match(/-LiteralPath\s+'((?:[^']|'')*)'/)
+        if (/Remove-Item/.test(script) && m) rmSync(m[1].replace(/''/g, "'"), { force: true })
+        if (/^rm -f /.test(script)) for (const q of script.slice(6).match(/'[^']*'/g) || []) rmSync(q.slice(1, -1), { force: true })
+        return {
+          done: Promise.resolve({ exitCode: 0, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
+          terminate() {},
+        }
+      }
       // The plugin passes an ABSOLUTE path as the last argv element, so resolve it directly; fall
       // back to scanning the argv for an existing .lean file (mirrors leanAbsPath).
       const last = spec.argv[spec.argv.length - 1]
@@ -420,7 +444,13 @@ assert(!existsSync(join(D.projectRoot, 'Verified', 'Lean', 'p-red.lean')), '★ 
   assert(/你不需要重新检查推导/.test(prompt), '★ it tells voters NOT to re-derive')
   assert(/忠实性审查/.test(prompt), '★ it tells voters the review subject is now fidelity')
   assert(/定义 \/ 对象 \/ 条件 \/ 假设 \/ 结论是否与命题原文\*\*完全一致\*\*/.test(prompt), 'it enumerates exactly what fidelity means')
-  assert(/因此请把 verdict 用在\*\*忠实性\*\*上/.test(prompt), 'the shift is made explicit in the verdict instruction')
+  assert(/一致 → verdict = 1/.test(prompt), "the fidelity instruction uses v4's REAL reply field name (`verdict`)")
+  assert(/发现任何偏差，不要投 0/.test(prompt), '★ it forbids expressing a fidelity deviation as "0 / false"')
+  assert(/偏差只说明\*\*形式化不合格\*\*，不代表命题为假/.test(prompt), '★ it states WHY: a defect is a failed formalization, not a refutation')
+  assert(/formal:\{decision:'defect', note:'<具体偏差>'\}/.test(prompt), '★ it hands the voter the exact `defect` reply contract')
+  assert(/降级为 attempted、删除归档证明、写入形式化待办/.test(prompt), 'it says what the framework WILL do with a defect (downgrade + delete + TODO)')
+  assert(/只有当你\*\*独立于这份 Lean 代码\*\*也能确定命题为假时，才投 0/.test(prompt), 'only an INDEPENDENT refutation may be expressed as 0')
+  assert(!/偏离 → 0/.test(prompt), '★ the old "a deviation ⇒ 0" wording is gone (it would fabricate a negative conclusion)')
   assert(/Verified\/Lean\/p-proof\.lean/.test(prompt), 'it points at the archived proof')
   // the SAME object's work round must not inherit the fidelity framing (that is a voting
   // instruction), but it does carry the standing formalization line.
@@ -594,6 +624,255 @@ const reportE = await E.callTool('vibe_v4_formal_report', {}, E.ROOT)
 assert(/已通过：.*p-gate/.test(reportE.formalReport), 'the human report lists Lean-passed objects')
 assert(/已记录阻塞：.*p-blocked-ok/.test(reportE.formalReport), 'the human report lists blocked objects')
 assert(/形式化待办：.*p-gate-false/.test(reportE.formalReport), 'the human report lists the formalization TODO')
+
+// ===============================================================
+// 12. the fidelity rule + the prompt hard requirements (docs §6, §10 items 9/11)
+//     The v2 lesson (docs §10 item 8) is why every claim here is paired with a BEHAVIOURAL
+//     assertion in §13/§14: wording alone guards nothing.
+// ===============================================================
+section('12 the injected text states the fidelity rule and never abbreviates a tool name')
+const G = await establish()
+await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+{
+  const enc = await G.prompts('verify', 'r-1', { target: 'p-text', stage: 'independent' })
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(enc), 'the encourage voting prompt keeps its header')
+  assert(/实现难度/.test(enc), 'it still asks for the implementation-difficulty judgement')
+  assert(/工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）/.test(enc), 'it names all three tools in FULL')
+  assert(/归档可复用定义\/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。/.test(enc), '★ a reusable definition/lemma must be RUN GREEN before it is archived')
+  assert(/宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"/.test(enc), '★ the missing-toolchain path is written out (archive the code, record it as an explicit blocker)')
+  assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(enc), 'a green Lean run still shrinks the open question to fidelity')
+  assert(/decision='blocked' 时必须写明 note/.test(enc), 'the encourage opt-out documents the mandatory note')
+  assert(!/偏离 → 0/.test(enc) && !/发现任何偏离/.test(enc), '★ no "deviation ⇒ 0" instruction anywhere in the encourage block')
+  await G.callTool('vibe_v4_set', { formalVerify: 'require' })
+  const req = await G.prompts('verify', 'r-1', { target: 'p-text', stage: 'independent' })
+  assert(/【Lean 形式化验证（强制模式）】/.test(req), 'the require voting prompt says 强制模式')
+  assert(/必须产出 Lean 形式化/.test(req) && /必须\*\*给出显式的阻塞原因/.test(req), "'require' states the formalization OR an explicit blocker is mandatory")
+  assert(/本次裁定不会生效/.test(req) && /进入「形式化待办」/.test(req), 'it warns the verdict is withheld as 未定论 (formal-required)')
+  assert(!/可以不做/.test(req), "'require' does NOT offer the encourage-mode opt-out")
+  assert(/归档可复用定义\/引理前先跑通/.test(req) && /宿主没有 Lean 工具链/.test(req), 'the run-before-archive and toolchain rules are in the require text as well')
+  assert(/\*\*本模式要求\*\*/.test(req), 'the require bullet replaces the encourage opt-out in place')
+  // normal / heartbeat / post-compact recap all carry the standing work line; the two that ARE a
+  // reply contract also document the `defect` decision (coreRules is a recap prefix, not a contract)
+  for (const [label, text] of [['normal', await G.prompts('normal', 'r-1')], ['heartbeat', await G.prompts('heartbeat', 'r-1')], ['coreRules', await G.prompts('coreRules', 'r-1')]]) {
+    assert(/【顺手形式化（强制）】/.test(text), label + ': the standing formalization line uses the require wording')
+    assert(/归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。/.test(text), label + ': ★ it requires a green run before archiving a reusable definition')
+    if (label !== 'coreRules') assert(/"decision":"used\|blocked\|defect"/.test(text), label + ': the reply contract documents the `defect` decision')
+  }
+  assert(/"decision":"used\|blocked\|defect"/.test(req) && /具体偏差/.test(req), '★ the voting reply contract documents decision=defect and its note')
+}
+{
+  // ---- the sweep: EVERY agent-facing string must spell the three tools in full (docs §6-1) ----
+  const scanned = []
+  const addText = (label, t) => { if (typeof t === 'string' && t) scanned.push({ label, text: t }) }
+  addText('captured run prompts', G.allPrompts())
+  for (const which of ['brainstorm', 'normal', 'heartbeat', 'coreRules']) addText(which, await G.prompts(which, 'r-1'))
+  for (const t of ['p-text', 'p-corpus']) for (const st of ['independent', 'debate']) addText('verify:' + t + ':' + st, await G.prompts('verify', 'r-1', { target: t, stage: st }))
+  // tool hints are injected text too (docs §6 hard requirement 1 names them explicitly)
+  const r1G = G.resAgent(G.childOf('r-1'))
+  const hintGreen = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-hint', content: 'theorem p_hint : 1 = 1 := rfl\n' }, r1G)
+  assert(hintGreen.ok === true && hintGreen.passed === true, 'precondition: a green file exists for the hint sweep')
+  const hintRed = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-hint-red', content: 'theorem p_hint_red : 1 = 2 := by sorry\n' }, r1G)
+  assert(hintRed.ok === true && hintRed.passed === false, 'precondition: a red file exists for the hint sweep')
+  addText('lean_run hint (green)', (await G.callTool('vibe_v4_lean_run', { file: 'Formal/p-hint.lean' }, r1G)).hint)
+  addText('lean_run hint (red)', (await G.callTool('vibe_v4_lean_run', { file: 'Formal/p-hint-red.lean' }, r1G)).hint)
+  addText('lean_lib hint', (await G.callTool('vibe_v4_lean_lib', {}, r1G)).hint)
+  toolchainAvailable = false
+  addText('LEAN_NOT_FOUND message', (await G.callTool('vibe_v4_lean_run', { file: 'Formal/p-hint.lean' }, r1G)).message)
+  toolchainAvailable = true
+  for (const t of G.toolRegs.filter((x) => /lean/.test(x.name))) addText('tool description ' + t.name, t.description)
+  const bare = [/(^|[^a-z_])lean_run/, /(^|[^a-z_])lean_archive/, /(^|[^a-z_])lean_lib/]
+  const offenders = []
+  for (const s of scanned) for (const re of bare) if (re.test(s.text)) offenders.push(s.label + ' :: ' + re.source)
+  assert(offenders.length === 0, '★ no injected text (prompt, tool hint or tool description) uses a bare tool abbreviation (' + offenders.slice(0, 3).join(' | ') + ')')
+  assert(scanned.length >= 15, 'the sweep really covered the injected-text surface (' + scanned.length + ' texts)')
+}
+
+// ===============================================================
+// 13. the `defect` reply channel (docs §4.1 / §10 item 8) — BEHAVIOURAL, not wording
+// ===============================================================
+section('13 the `defect` reply withdraws a passing proof (spec §4.1)')
+await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+const activityOf = (h) => { try { return JSON.parse(readIf(join(h.projectRoot, 'State', 'session.json')) || '{}').activityLog || [] } catch (e) { return [] } }
+const g1 = G.resAgent(G.childOf('r-1'))
+{
+  const arc = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-defect', content: 'theorem p_defect : 2 + 2 = 4 := by decide\n' }, g1)
+  assert(arc.passed === true && existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-defect.lean')), 'precondition: p-defect has a green archived proof')
+  const w = await workWake(G, 'r-1')
+  G.fireEnd(w.childId, { summary: '我逐条核对了 Lean 代码，发现偏差。', formal: { target: 'p-defect', decision: 'defect', note: 'Lean 里的条件比命题弱：只证了 n ≥ 1 的情形' }, contextPct: 20 })
+  await sleep(90)
+  const st = await G.callTool('vibe_v4_status', {})
+  const rec = st.formal.objects.find((o) => o.target === 'p-defect')
+  assert(rec && rec.status === 'attempted', '★ a `formal.decision=defect` reply downgrades the object to attempted (never a refutation)')
+  assert(rec && rec.proof === '', '★ the archived proof is cleared from the record')
+  assert(rec && rec.note === 'Lean 里的条件比命题弱：只证了 n ≥ 1 的情形', 'the concrete deviation is stored as the record note')
+  assert(!existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-defect.lean')), '★ the archived proof file is DELETED (the formalization is 不合格 — the proposition is NOT false)')
+  assert(existsSync(join(G.projectRoot, 'Formal', 'p-defect.lean')), 'the WORKING file is kept — the code is not lost, only its "passed" claim')
+  assert(st.formal.passed.indexOf('p-defect') === -1, 'the object is no longer reported as Lean-passed')
+  assert(shellCalls.some((c) => /Remove-Item|^rm -f/.test(c) && /p-defect\.lean/.test(c)), 'the withdrawal really went through the platform shell (the fs service has no delete)')
+  const todo = readIf(join(G.projectRoot, 'Formal', 'TODO.md'))
+  assert(/p-defect/.test(todo) && /formal-defect/.test(todo), '★ Formal/TODO.md lists the object with the DEFECT reason')
+  assert(/只证了 n ≥ 1 的情形/.test(todo), '★ the concrete deviation reaches the human-readable TODO')
+  const idx = readIf(join(G.projectRoot, 'Formal', 'Index.md'))
+  assert(/\| p-defect \| attempted \|/.test(idx), 'Formal/Index.md downgrades the object to attempted')
+  assert(/只证了 n ≥ 1 的情形/.test(idx), 'the deviation is the record note in the index')
+  assert(activityOf(G).some((e) => /忠实性缺陷/.test(e.detail) && /p-defect/.test(e.detail)), '★ the retraction is announced in the activity log')
+}
+{
+  const arc2 = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-defect2', content: 'theorem p_defect2 : 3 + 3 = 6 := by decide\n' }, g1)
+  assert(arc2.passed === true, 'precondition: p-defect2 is Lean-passed')
+  const w2 = await workWake(G, 'r-2')
+  G.fireEnd(w2.childId, { summary: '有偏差，但没写清是什么。', formal: { target: 'p-defect2', decision: 'defect' }, contextPct: 20 })
+  await sleep(90)
+  const st2 = await G.callTool('vibe_v4_status', {})
+  const rec2 = st2.formal.objects.find((o) => o.target === 'p-defect2')
+  assert(rec2 && rec2.status === 'passed' && rec2.proof === 'Verified/Lean/p-defect2.lean', '★ a `defect` reply WITHOUT a note is REJECTED — the record is untouched')
+  assert(existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-defect2.lean')), '★ and the archived proof is NOT withdrawn')
+  assert(activityOf(G).some((e) => /defect/.test(e.detail) && /V4_INVALID_ARGUMENT/.test(e.detail)), '★ the rejection carries the preset error code (V4_INVALID_ARGUMENT), not a silent drop')
+  assert((await G.callTool('vibe_v4_status', {})).ok === true, 'the refusal did not crash the run')
+}
+{
+  const blk = await G.callTool('vibe_v4_lean_archive', { kind: 'blocked', target: 'p-defect3', note: '前置知识未形式化，本轮不做' }, g1)
+  assert(blk.ok === true && blk.status === 'blocked', 'precondition: p-defect3 carries a reasoned blocker record')
+  const w3 = await workWake(G, 'r-1')
+  G.fireEnd(w3.childId, { summary: '复核后发现归档的形式化换了对象。', formal: { target: 'p-defect3', decision: 'defect', note: '归档的形式化证的是特例，换了对象' }, contextPct: 20 })
+  await sleep(90)
+  const st3 = await G.callTool('vibe_v4_status', {})
+  const rec3 = st3.formal.objects.find((o) => o.target === 'p-defect3')
+  assert(rec3 && rec3.status === 'attempted', '★ `defect` downgrades even a `blocked` record (spec §4.1: ALWAYS downgrade)')
+  assert(st3.formal.blocked.indexOf('p-defect3') === -1, '★ a bad formalization may not stay in the gate-passing `blocked` state')
+}
+
+// ===============================================================
+// 14. `require` after a defect: the retraction closes the gate (docs §4.1-3 / §10 item 9)
+// ===============================================================
+section("14 'require' withholds the verdict after a defect, even on a unanimous 1")
+const H = await establish()
+await H.callTool('vibe_v4_set', { formalVerify: 'require' })
+{
+  const h1 = H.resAgent(H.childOf('r-1'))
+  const arc = await H.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-defect-req', content: 'theorem p_defect_req : 4 * 1 ^ 2 - 2 = (1:Nat) ^ 2 := by decide\n' }, h1)
+  assert(arc.passed === true, 'precondition: p-defect-req is Lean-passed')
+  const before = await H.prompts('verify', 'r-1', { target: 'p-defect-req', stage: 'independent' })
+  assert(/不要投 0/.test(before) && /formal:\{decision:'defect'/.test(before), 'the voter is told (before voting) how to report a fidelity defect')
+  await H.callTool('vibe_v4_record_proposition', { id: 'p-defect-req', title: '缺陷不是证伪', statement: '形式化写窄了不代表命题为假', prob: 0.9, value: 0.6, motivation: 'm' }, h1)
+  const n0 = H.followups.length
+  await H.callTool('vibe_v4_message', { to: 'r-1', content: '请处理本轮工作。' })
+  for (let i = 0; i < 300 && H.followups.length === n0; i++) await sleep(10)
+  // r-1 reports the defect AND votes 1 in the SAME reply; r-2 votes 1. The framework must NOT take
+  // the unanimous 1: the formalization was just retracted, so the verdict has to be deferred.
+  const replyFor = (pt, rId) => (/团队验证/.test(pt)
+    ? (rId === 'r-1'
+      ? { vote: { verdict: 1, reason: '我发现形式化写窄了，但独立看命题仍为真' }, formal: { target: 'p-defect-req', decision: 'defect', note: 'Lean 只证了 x=1 的特例，命题要求所有整数 x' } }
+      : { vote: { verdict: 1, reason: '独立复核为真' } })
+    : { summary: '提议验证 p-defect-req。', solved: false, propose_verify: 'p-defect-req', contextPct: 20 })
+  for (let i = 0; i < 4; i++) { await drive(H, replyFor, verifySettled(H)); if (await verifySettled(H)()) break }
+  const st = await H.callTool('vibe_v4_status', {})
+  assert(st.verifyInProgress === false && st.pendingVerify === null, 'the verification actually settled (so the next assertion is falsifiable)')
+  assert(!existsSync(join(H.projectRoot, 'Verified', '命题', 'p-defect-req.md')), '★ a defect in `require` mode writes NO Verified card, even with a unanimous 1')
+  assert(st.formal.todo.indexOf('p-defect-req') !== -1, '★ the object stays 未定论 on the formalization TODO')
+  const rec = st.formal.objects.find((o) => o.target === 'p-defect-req')
+  assert(rec && rec.status === 'attempted' && rec.proof === '', 'the formal record is the retracted one (attempted, no proof)')
+  assert(rec && /只证了 x=1 的特例/.test(rec.note || ''), "the record's note is the reported deviation")
+  assert(!existsSync(join(H.projectRoot, 'Verified', 'Lean', 'p-defect-req.lean')), '★ the archived proof was withdrawn as part of the retraction')
+  assert(!/已验证·真/.test(readIf(join(H.projectRoot, 'Propos', 'r-1', 'p-defect-req.md'))), 'the source card was NOT rewritten to 已验证·真 (the conclusion was withheld, not taken)')
+  assert(!/已验证·真/.test(readIf(join(H.projectRoot, 'Shared', 'debates', 'p-defect-req.md'))), 'the debate record does not claim a 真 conclusion')
+  const todo = readIf(join(H.projectRoot, 'Formal', 'TODO.md'))
+  assert(/p-defect-req/.test(todo) && /formal-defect/.test(todo), '★ the TODO keeps the DEFECT reason, not merely formal-required')
+  assert(/只证了 x=1 的特例/.test(todo), 'the concrete deviation is what a human reads in the TODO')
+}
+
+// ===============================================================
+// 15. the shipped Lean prompt corpus (docs §10 item 10) — a HUMAN must be able to re-read the
+//     exact text, not just the assertions about it.
+// ===============================================================
+section('15 the captured Lean prompt corpus is written for human review')
+const K = await establish()
+{
+  const vibe = K.vibeRoot
+  // Normalise BOTH slash forms, and the VibeMath root FIRST: it sits INSIDE the workspace, so
+  // replacing the workspace first would leave `<WS>/VibeMath` instead of `<VIBEMATH>`.
+  const scrub = (s) => String(s == null ? '' : s)
+    .split(vibe).join('<VIBEMATH>').split(vibe.replace(/\\/g, '/')).join('<VIBEMATH>')
+    .split(K.WS).join('<WS>').split(K.WS.replace(/\\/g, '/')).join('<WS>')
+  const corpus = []
+  const add = (kind, label, prompt) => corpus.push({ kind, label, prompt: scrub(prompt) })
+  // (a) off: a TRUE no-op must be visible in the corpus, not merely asserted
+  add('verify', 'off/verify', await K.prompts('verify', 'r-1', { target: 'p-corpus', stage: 'independent' }))
+  add('work', 'off/normal', await K.prompts('normal', 'r-1'))
+  // (b) encourage
+  await K.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+  add('verify', 'encourage/verify', await K.prompts('verify', 'r-1', { target: 'p-corpus', stage: 'independent' }))
+  const encNormal = await K.prompts('normal', 'r-1')
+  add('work', 'encourage/normal', encNormal)
+  add('work', 'encourage/heartbeat', await K.prompts('heartbeat', 'r-1'))
+  add('work', 'encourage/coreRules', await K.prompts('coreRules', 'r-1'))
+  // (c) require
+  await K.callTool('vibe_v4_set', { formalVerify: 'require' })
+  add('verify', 'require/verify', await K.prompts('verify', 'r-1', { target: 'p-corpus', stage: 'independent' }))
+  add('verify', 'require/verify/debate', await K.prompts('verify', 'r-1', { target: 'p-corpus', stage: 'debate' }))
+  add('work', 'require/normal', await K.prompts('normal', 'r-1'))
+  // (d) a PASSED object: the review subject has changed to fidelity
+  const k1 = K.resAgent(K.childOf('r-1'))
+  await K.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-corpus-passed', content: 'theorem p_corpus_passed : 1 + 1 = 2 := by decide\n' }, k1)
+  const fid = await K.prompts('verify', 'r-1', { target: 'p-corpus-passed', stage: 'independent' })
+  add('verify', 'passed/fidelity', fid)
+  // (e) a BLOCKED object
+  await K.callTool('vibe_v4_lean_archive', { kind: 'blocked', target: 'p-corpus-blocked', note: '需要未形式化的解析数论框架' }, k1)
+  add('verify', 'blocked/verify', await K.prompts('verify', 'r-1', { target: 'p-corpus-blocked', stage: 'independent' }))
+  // (f) the `formal` reply contract line itself (the field whose parsing §13/§14 prove)
+  const contractLine = (t) => { const m = String(t).match(/"formal":\{[^\n]*\}\}/); return m ? m[0] : '' }
+  add('contract', 'formal reply contract (voting prompt)', contractLine(fid))
+  add('contract', 'formal reply contract (work prompt)', contractLine(encNormal))
+  // (g) a REAL delivered work wake (proves the builder is the one actually used to address a resident)
+  const w = await workWake(K, 'r-2')
+  add('work', 'require/real work wake', promptOf(w))
+  K.fireEnd(w.childId, { summary: '继续推进。', solved: false, contextPct: 20 })
+  await sleep(40)
+  // (h) the tool hints are injected text too (docs §6 hard requirement 1)
+  add('hint', 'lean_run hint (green)', (await K.callTool('vibe_v4_lean_run', { file: 'Formal/p-corpus-passed.lean' }, k1)).hint)
+  add('hint', 'lean_lib hint', (await K.callTool('vibe_v4_lean_lib', {}, k1)).hint)
+
+  // The corpus is REGENERATED on every run. Dumping it while V4_PLUGIN points at a MUTATED copy
+  // would let a sensitivity probe overwrite the SHIPPED corpus with mutated text (the probe's job
+  // is to run this suite against a broken plugin), so the dump is skipped then — unless the probe
+  // explicitly redirects it with V4_CORPUS_DIR. The IN-MEMORY corpus assertions below still run, so
+  // nothing is weakened.
+  const writeCorpus = !process.env.V4_PLUGIN || !!process.env.V4_CORPUS_DIR
+  if (writeCorpus) {
+    mkdirSync(CORPUS_DIR, { recursive: true })
+    writeFileSync(join(CORPUS_DIR, 'formal-verify-v4.json'), JSON.stringify({ entries: corpus }, null, 2), 'utf8')
+    const md = ['# V4 形式化验证交互语料（prompt corpus）', '',
+      '> 由 `formal-verify-v4.test.mjs` 落盘：非 `off` 模式下常驻**真正会读到**的 Lean 提示词原文',
+      '> （`vibe_v4_prompts` 的只读回显 + 一条真实投递的工作轮 + 工具 `hint`）。',
+      '> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`：确定、可 diff、不含任何本机路径。', '',
+      '> 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**、',
+      '> `blocked` 分支、平时工作轮的「顺手形式化」，以及回执契约里的 `formal` 字段。', '']
+    for (let i = 0; i < corpus.length; i++) {
+      const c = corpus[i]
+      md.push('## [' + i + '] ' + c.kind + ' · ' + c.label)
+      md.push('')
+      md.push('```text')
+      md.push(c.prompt)
+      md.push('```')
+      md.push('')
+    }
+    writeFileSync(join(CORPUS_DIR, 'formal-verify-v4.md'), md.join('\n'), 'utf8')
+    assert(existsSync(join(CORPUS_DIR, 'formal-verify-v4.json')) && existsSync(join(CORPUS_DIR, 'formal-verify-v4.md')), 'the prompt corpus was written (JSON + Markdown)')
+  }
+  assert(corpus.length >= 14, 'the corpus covers the whole Lean prompt surface (' + corpus.length + ' prompts)')
+  const byLabel = (l) => corpus.find((c) => c.label === l)
+  assert(!!byLabel('off/verify') && !/Lean/.test(byLabel('off/verify').prompt) && !/Lean/.test(byLabel('off/normal').prompt), '★ the corpus keeps the off-mode entries and they contain NO Lean text')
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(byLabel('encourage/verify').prompt), 'the corpus carries the encourage voting prompt')
+  assert(/【Lean 形式化验证（强制模式）】/.test(byLabel('require/verify').prompt), '★ the corpus carries the REQUIRE voting prompt')
+  assert(/不要投 0/.test(byLabel('passed/fidelity').prompt), '★ the corpus carries the passed/fidelity branch')
+  assert(/【顺手形式化（强制）】/.test(byLabel('require/normal').prompt), 'the corpus carries the ordinary work-round line')
+  assert(/"decision":"used\|blocked\|defect"/.test(byLabel('formal reply contract (voting prompt)').prompt), '★ the corpus carries the `formal` reply contract line with decision=defect')
+  assert(/【顺手形式化/.test(byLabel('require/real work wake').prompt), 'the corpus also keeps a prompt the framework REALLY delivered')
+  const joined = corpus.map((c) => c.prompt).join('\n')
+  assert(joined.indexOf(K.WS) === -1 && joined.indexOf(K.WS.replace(/\\/g, '/')) === -1 && joined.indexOf(vibe) === -1 && joined.indexOf(vibe.replace(/\\/g, '/')) === -1, '★ every captured prompt normalises <WS> and <VIBEMATH> (diffable, no machine paths)')
+  assert(!/\[object Object\]|\bNaN\b|:\s*undefined|["']undefined["']|undefined\s*[,}\]]/.test(joined), 'no captured prompt contains placeholder garbage')
+  assert(corpus.every((c) => c.prompt && c.prompt.length > 20), 'every corpus entry carries real prompt text')
+}
 
 // ===============================================================
 console.log('')

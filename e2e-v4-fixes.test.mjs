@@ -14,6 +14,12 @@ const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else 
 // old 40ms/4000ms pair meant every unsatisfied poll burned up to 4s. 10ms/900ms keeps a
 // generous ~90x margin over the observed settle time while cutting the tail drastically.
 async function waitFor(pred, t=900){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },10) }) }
+const IDLE_POLLS = Number(process.env.V4_IDLE_POLLS || 100)
+let quietPolls = 0
+// "The framework has stopped asking": reset on every answered followup, trip after a silence.
+// Without this the loops below ran their FULL 300-iteration budget every time (~12 s per case).
+function idleTick(){ return ++quietPolls >= IDLE_POLLS }
+function busyTick(){ quietPolls = 0 }
 const JSONX = o => '```json\n'+JSON.stringify(o)+'\n```'
 
 function makeCtx(){
@@ -53,7 +59,8 @@ function makeCtx(){
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
   for(let i=0;i<300;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
     let reply
     if(k==='verify'){ reply={ vote:(rid==='r-1')?{verdict:'TRUE',confidence:0.9,reason:'支持'}:{verdict:'FALSE',confidence:0.9,reason:'反对'} } }
@@ -81,7 +88,8 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   let fi=0, proposed=false
   for(let i=0;i<300;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
     let reply
     if(k==='verify'){ reply={ vote:{verdict:'TRUE',confidence:0.9,reason:'成立'} } }
@@ -237,7 +245,8 @@ function makeCtx(){
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
   for(let i=0;i<300;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
     let reply
     if(k==='verify'){ reply={ vote:{ verdict: rid==='r-1'?0.9:0.1, reason:'基于独立判断' } } }
@@ -308,7 +317,8 @@ function makeCtx(){
   await sleep(80)
   let fi=0, proposedMeeting=false, sawNormalDirective=false, checkedMeeting=false, directiveInMeeting=false
   for(let i=0;i<400;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone){ break }; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone){ break }; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     const k=/meeting is in progress/i.test(pt)?'meeting':/verifying object/i.test(pt)?'verify':'normal'
     let reply
@@ -468,7 +478,8 @@ function makeCtx(){
   // Track per-round verify wakes: round-1 (independent, no "上一轮意见") vs round-2 (debate, carries history).
   let fi=0, proposed=false, sawDebate=false, round1Verify=0, round2Verify=0
   for(let i=0;i<400;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){
@@ -504,7 +515,8 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
   let fi=0, proposed=false
   for(let i=0;i<300;i++){
-    if(fi>=m.followups.length){ await sleep(40); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){ reply={ vote:{verdict:1, reason:'ok'} } }
@@ -579,7 +591,8 @@ function makeCtx(){
   let fi=0, proposed=false, verifyWakes=0
   const drain = async ()=> {
     for(let i=0;i<400;i++){
-      if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+      if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
+      busyTick()
       const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
       let reply
       if(/verifying object/i.test(pt)){ verifyWakes++; reply={ vote:{verdict:1, reason:'ok'} } }
@@ -622,7 +635,8 @@ function makeCtx(){
   // resident's own normal wake right after the first verify closes but inside the dedup window — the
   // framework must drop it at propose time (maybeQueueVerify) AND at beginVerify if it slipped through.
   for(let i=0;i<500;i++){
-    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){ verifyRounds++; reply={ vote:{verdict:1, reason:'ok'} } }
@@ -650,7 +664,8 @@ function makeCtx(){
   await m.callTool('vibe_v4_meeting', { agenda:'表决是否完成' })
   let fi=0, votedSolved=false
   for(let i=0;i<200;i++){
-    if(fi>=m.followups.length){ await sleep(30); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]
     m.fireEnd({ id: fu.childId, runId:'t24-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'我确认已解决', voteSolved:true})}] })
     votedSolved=true
@@ -682,7 +697,8 @@ function makeCtx(){
   let fi=0, meetingDone=false
   let verifyA=0, verifyB=0
   for(let i=0;i<600;i++){
-    if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){
@@ -718,7 +734,8 @@ function makeCtx(){
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false, removed=false, votes=0
   for(let i=0;i<700;i++){
-    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-rm.md'))) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-rm.md'))) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){
@@ -755,7 +772,8 @@ function makeCtx(){
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
   for(let i=0;i<300;i++){
-    if(fi>=m.followups.length){ await sleep(30); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; continue }
+    if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
+    busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
     if(/verifying object/i.test(pt)){ reply={ vote:{ verdict: rid==='r-1' ? '0.9' : 0.1, reason:'判断' } } }   // r-1 quotes the number

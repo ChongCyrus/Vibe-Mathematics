@@ -22,20 +22,23 @@
 //
 // Run: node audit-formal-sensitivity.mjs
 // ============================================================
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { cpus } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const REPO = fileURLToPath(new URL('.', import.meta.url))
 const dir = mkdtempSync(join(tmpdir(), 'v5-formal-sens-'))
 
 const PLUGINS = {
-  v2: { file: join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), suite: 'formal-verify-v2.test.mjs', env: 'V2_PLUGIN' },
-  v3: { file: join(REPO, 'vibe-math-v3', 'vibe-math-v3.js'), suite: 'formal-verify-v3.test.mjs', env: 'V3_PLUGIN' },
-  v4: { file: join(REPO, 'vibe-math-v4', 'vibe-math-v4.js'), suite: 'formal-verify-v4.test.mjs', env: 'V4_PLUGIN' },
-  v5: { file: join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), suite: 'formal-verify-v5.test.mjs', env: 'V5_PLUGIN' },
+  // corpusEnv: each suite writes a human-reviewable prompt corpus; concurrent probes of the SAME
+  // suite must not race on it, so every probe gets its own corpus dir.
+  v2: { file: join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), suite: 'formal-verify-v2.test.mjs', env: 'V2_PLUGIN', corpusEnv: 'V2_CORPUS_DIR' },
+  v3: { file: join(REPO, 'vibe-math-v3', 'vibe-math-v3.js'), suite: 'formal-verify-v3.test.mjs', env: 'V3_PLUGIN', corpusEnv: 'V3_CORPUS_DIR' },
+  v4: { file: join(REPO, 'vibe-math-v4', 'vibe-math-v4.js'), suite: 'formal-verify-v4.test.mjs', env: 'V4_PLUGIN', corpusEnv: 'V4_CORPUS_DIR' },
+  v5: { file: join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), suite: 'formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
 }
 const ORIGINAL = {}
 for (const [k, v] of Object.entries(PLUGINS)) ORIGINAL[k] = readFileSync(v.file, 'utf8')
@@ -191,56 +194,139 @@ const probes = [
     to: ", 'vibe_math_lean_run_DISABLED')" },
 ]
 
+// ── prompt-surface probes (2.3.1) ────────────────────────────────────────────────────────
+// "成员读到的文字就是产品" (AUDIT-CHECKLIST §0): the injected text is a contract, so breaking it
+// must turn the preset's suite RED. Each probe mutates ONE piece of the text agents actually read.
+// `expect` is the number of times that anchor legitimately occurs (v3 declares each reply
+// contract twice; v4/v5 document the formal contract in several prompt paths). The probe runner
+// reports SETUP-FAIL when a count drifts, so this table is self-checking.
+const DEFECT_CONTRACT_COUNT = { v2: 2, v3: 2, v4: 3, v5: 2 }
+for (const [tag, pfx] of [['v2', 'vibe_math_'], ['v3', 'vibe_math_'], ['v4', 'vibe_v4_'], ['v5', 'vibe_v5_']]) {
+  probes.push(
+    { name: tag + '-fidelity-defect-rule-removed', preset: tag, expect: 1,
+      guarantee: 'a faithfulness defect must NEVER be expressed as a vote of 0 (= 命题为假); it is a formalisation defect, not a refutation',
+      from: '发现任何偏差，不要投 0', to: '发现任何偏离一律投 0' },
+    { name: tag + '-abbreviated-tool-name-injected', preset: tag, expect: 1,
+      guarantee: 'injected text must use the REGISTERED tool name (an abbreviated lean_archive is not a tool: the agent calls nothing)',
+      from: '· ' + pfx + 'lean_archive（归档）', to: '· lean_archive（归档）' },
+    { name: tag + '-require-wording-removed', preset: tag, expect: 1,
+      guarantee: "the require gate's own wording (mandatory formalisation + the formal-required reason code) must reach the voter",
+      from: '**本模式要求**：必须产出 Lean 形式化', to: '**本模式要求**：可以不做形式化' },
+    { name: tag + '-defect-decision-not-offered', preset: tag, expect: DEFECT_CONTRACT_COUNT[tag],
+      guarantee: 'the reply contract must offer decision=defect (without it a faithfulness defect cannot be recorded at all)',
+      from: '"decision":"used|blocked|defect"', to: '"decision":"used|blocked"' },
+  )
+}
+
 let ok = 0, bad = 0
 console.log('-- Lean formal-verification sensitivity probes --')
 console.log('(a probe passes when breaking the guarantee turns that preset\'s suite RED)')
 console.log('')
 
-for (const p of probes) {
-  const preset = PLUGINS[p.preset]
-  const original = ORIGINAL[p.preset]
-  if (p.from.startsWith('PLACEHOLDER_')) {
-    console.error('  SETUP-FAIL - ' + p.name + ': anchor not filled in yet')
-    bad++
-    continue
-  }
-  const occurrences = original.split(p.from).length - 1
-  if (occurrences !== 1) {
-    console.error('  SETUP-FAIL - ' + p.name + ' [' + p.preset + ']: anchor matched ' + occurrences + ' times (need exactly 1)')
-    bad++
-    continue
-  }
-  const mutated = original.replace(p.from, p.to)
-  const file = join(dir, p.name + '.js')
-  writeFileSync(file, mutated, 'utf8')
-
-  // A mutation that does not even parse is red for the WRONG reason.
-  const chk = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' })
-  if (chk.status !== 0) {
-    console.error('  SETUP-FAIL - ' + p.name + ': the mutated copy has a syntax error:\n' + String(chk.stderr || '').split('\n').slice(0, 4).join('\n'))
-    bad++
-    continue
-  }
-
-  const env = Object.assign({}, process.env)
-  env[preset.env] = file
-  const r = spawnSync(process.execPath, [join(REPO, preset.suite)], { env, encoding: 'utf8', cwd: REPO })
-  if (r.status === null) {
-    console.error('  SETUP-FAIL - ' + p.name + ': the suite could not be started (' + String(r.error && r.error.message) + ')')
-    bad++
-    continue
-  }
-  if (r.status !== 0) {
-    ok++
-    console.log('  ok - ' + p.name + ' [' + p.preset + '] => suite went RED as required  [' + p.guarantee + ']')
-  } else {
-    bad++
-    console.error('  BLIND SPOT - ' + p.name + ' [' + p.preset + '] => suite stayed GREEN, so it does NOT detect: ' + p.guarantee)
-  }
+// ── timing feedback: per-probe durations so the next run's strategy comes from data ──────
+const CONCURRENCY = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--concurrency='))
+  const env = process.env.PROBE_CONCURRENCY
+  const v = Number((arg && arg.split('=')[1]) || env || Math.min(4, cpus().length))
+  return Math.max(1, Number.isFinite(v) ? v : 1)
+})()
+const ONLY = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--only='))
+  return arg ? arg.split('=')[1] : ''
+})()
+const selected = probes.filter((p) => !ONLY || p.name.includes(ONLY) || p.preset === ONLY)
+if (process.argv.includes('--list')) {
+  for (const p of selected) console.log(p.preset + '  ' + p.name)
+  process.exit(0)
 }
 
-rmSync(dir, { recursive: true, force: true })
-console.log('')
+function runAsync(cmd, args, opts) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, opts)
+    let out = '', err = ''
+    child.stdout.on('data', (d) => { out += d.toString() })
+    child.stderr.on('data', (d) => { err += d.toString() })
+    child.on('error', (e) => resolve({ status: null, error: e, stdout: out, stderr: err }))
+    child.on('close', (status) => resolve({ status, stdout: out, stderr: err }))
+  })
+}
+
+// One probe = one targeted mutation + one run of that preset's suite. Returns a verdict object;
+// never throws, so a single bad probe cannot take the pool down.
+async function runProbe(p) {
+  const t0 = Date.now()
+  const preset = PLUGINS[p.preset]
+  const original = ORIGINAL[p.preset]
+  const done = (kind, detail) => ({ p, kind, detail, ms: Date.now() - t0 })
+  if (p.from.startsWith('PLACEHOLDER_')) return done('setup', 'anchor not filled in yet')
+  const want = p.expect === undefined ? 1 : p.expect
+  const occurrences = original.split(p.from).length - 1
+  if (occurrences !== want) return done('setup', 'anchor matched ' + occurrences + ' times (need exactly ' + want + ')')
+  // Mutate EVERY occurrence the anchor was asserted to have. `replace()` would only hit the first
+  // one, which silently produced a fake blind spot: the v5 reply contract is emitted in two places
+  // (replySpec + the voting prompt), so replacing just one left the other intact and the suite —
+  // correctly — stayed green.
+  const mutated = want > 1 ? original.split(p.from).join(p.to) : original.replace(p.from, p.to)
+  // One directory per probe: the mutated copy AND its corpus output (several suites write a
+  // corpus, and concurrent runs of the same suite must not race on that file).
+  const pdir = join(dir, p.name)
+  mkdirSync(pdir, { recursive: true })
+  const file = join(pdir, 'plugin.js')
+  writeFileSync(file, mutated, 'utf8')
+  // A mutation that does not even parse is red for the WRONG reason.
+  const chk = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' })
+  if (chk.status !== 0) return done('setup', 'the mutated copy has a syntax error: ' + String(chk.stderr || '').split('\n').slice(0, 4).join(' '))
+  const env = Object.assign({}, process.env)
+  env[preset.env] = file
+  if (preset.corpusEnv) env[preset.corpusEnv] = join(pdir, 'corpus')
+  const r = await runAsync(process.execPath, [join(REPO, preset.suite)], { env, encoding: 'utf8', cwd: REPO })
+  if (r.status === null) return done('setup', 'the suite could not be started (' + String(r.error && r.error.message) + ')')
+  if (r.status !== 0) return done('ok', '')
+  return done('blind', '')
+}
+
+const results = new Array(selected.length)
+let cursor = 0
+let finished = 0
+const wall0 = Date.now()
+async function worker() {
+  for (;;) {
+    const i = cursor++
+    if (i >= selected.length) return
+    const res = await runProbe(selected[i])
+    results[i] = res
+    finished++
+    const tag = '[' + String(finished).padStart(2) + '/' + selected.length + ']'
+    const secs = (res.ms / 1000).toFixed(1) + 's'
+    if (res.kind === 'ok') console.log('  ok - ' + res.p.name + ' [' + res.p.preset + '] => suite went RED as required (' + secs + ')  [' + res.p.guarantee + ']')
+    else if (res.kind === 'blind') console.error('  BLIND SPOT ' + tag + ' - ' + res.p.name + ' [' + res.p.preset + '] (' + secs + ') => suite stayed GREEN, so it does NOT detect: ' + res.p.guarantee)
+    else console.error('  SETUP-FAIL ' + tag + ' - ' + res.p.name + ' [' + res.p.preset + '] (' + secs + '): ' + res.detail)
+  }
+}
+await Promise.all(Array.from({ length: Math.min(CONCURRENCY, selected.length) }, () => worker()))
+
+// ── timing summary: this is the feedback that decides the next run's strategy ────────────
+{
+  const wall = (Date.now() - wall0) / 1000
+  const sum = results.reduce((a, r) => a + (r ? r.ms : 0), 0) / 1000
+  const perPreset = {}
+  for (const r of results) {
+    if (!r) continue
+    perPreset[r.p.preset] = perPreset[r.p.preset] || { n: 0, s: 0 }
+    perPreset[r.p.preset].n++
+    perPreset[r.p.preset].s += r.ms / 1000
+  }
+  const slow = results.filter(Boolean).slice().sort((a, b) => b.ms - a.ms).slice(0, 5)
+  console.log('')
+  console.log('-- timing --')
+  console.log('  concurrency ' + CONCURRENCY + '  ·  wall ' + wall.toFixed(1) + 's  ·  sum of probe times ' + sum.toFixed(1) + 's'
+    + '  ·  speed-up x' + (sum / Math.max(wall, 0.001)).toFixed(2))
+  console.log('  per preset: ' + Object.keys(perPreset).sort().map((k) => k + ' ' + perPreset[k].n + ' probes/' + perPreset[k].s.toFixed(0) + 's').join('  ·  '))
+  console.log('  slowest: ' + slow.map((r) => r.p.name + ' ' + (r.ms / 1000).toFixed(1) + 's').join('  ·  '))
+  ok = results.filter((r) => r && r.kind === 'ok').length
+  bad = results.filter((r) => r && r.kind !== 'ok').length
+}
+
 console.log('formal sensitivity: ' + ok + ' probes detected the break, ' + bad + ' problems')
 if (bad) process.exit(1)
 console.log('ALL FORMAL PROBES RED AS REQUIRED')

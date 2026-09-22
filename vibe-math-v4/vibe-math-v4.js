@@ -146,6 +146,17 @@ export function apply(ctx) {
       if(isWindows()) return 'New-Item -Force -ItemType Directory -Path '+paths.map(psQuote).join(',')+' | Out-Null'
       return 'mkdir -p '+paths.map(shQuote).join(' ')
     }
+    /**
+     * Delete command for the same two interpreters. DSH's `fs` service has no unlink/remove at all
+     * (dsh-fs FileSystem: resolve/stat/readText/writeText/editText/listDir), so the ONE place this
+     * preset must remove a file — withdrawing a retracted proof on `defect` (spec §4.1) — goes
+     * through the platform shell helper the preset already uses for mkdir. `-ErrorAction
+     * SilentlyContinue` / `-f` keep it idempotent: deleting an already-absent file is a success.
+     */
+    function rmCmd(paths){
+      if(isWindows()) return 'Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath '+paths.map(psQuote).join(',')
+      return 'rm -f '+paths.map(shQuote).join(' ')
+    }
     async function runShell(script,cwd){
       const subprocess=subprocessOf(); if(subprocess===undefined) return {ok:false,error:'no-subprocess'}
       try {
@@ -293,6 +304,9 @@ export function apply(ctx) {
       const r=formalOf(target)
       if(r.status==='passed') return 'Lean 通过（'+(r.proof||r.file||'')+'）'
       if(r.status==='blocked') return '阻塞（'+(r.note||'未说明')+'）'
+      // A retracted proof must not read as a plain "tried and failed": the card has to say WHY the
+      // archived proof disappeared (spec §4.1 — a fidelity defect is not a refutation).
+      if(r.status==='attempted'&&r.decision==='defect') return '忠实性缺陷（'+(r.note||'未说明')+'，待重做）'
       if(r.status==='attempted') return '已尝试未通过'
       return '未尝试'
     }
@@ -405,9 +419,14 @@ export function apply(ctx) {
       if(rec.status==='passed'){
         L.push('  · 该对象已有**通过的 Lean 形式化证明**（'+(rec.proof||rec.file||'')+'，最近运行 exit 0）。')
         L.push('    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的')
-        L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），')
-        L.push('    并据此给出 verdict。')
-        L.push('  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。')
+        L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。')
+        L.push('  ▸ 一致 → verdict = 1。')
+        L.push('  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：')
+        L.push("      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；")
+        L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
+        L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+        L.push('         修正形式化并重新跑通后再投票。')
+        L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。')
       } else if(rec.status==='blocked'){
         L.push('  · 该对象已被记录为**形式化阻塞**：'+(rec.note||'未说明')+'。')
         L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
@@ -415,18 +434,15 @@ export function apply(ctx) {
       } else {
         L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
         L.push('  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）')
-        L.push('  · 工作目录：Formal/（相对项目根 '+frameworkRoot().replace(/\\/g,'/')+'/）；')
-        L.push('    可复用定义放 '+formalLibRoot().replace(/\\/g,'/')+'/，已证引理放 '+formalProvedRoot().replace(/\\/g,'/')+'/；')
-        L.push('    写之前先 vibe_v4_lean_lib 查重。')
-        L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与')
-        L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+        L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 '+formalLibRoot().replace(/\\/g,'/')+'/，已证引理放 '+formalProvedRoot().replace(/\\/g,'/')+'/；写之前先 vibe_v4_lean_lib 查重。')
+        L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
         if(formalMode()==='require'){
-          L.push('  · **本模式要求**：**必须产出 Lean 形式化**，或**必须**给出显式的阻塞原因')
-          L.push("    （vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，")
-          L.push('    本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。')
+          L.push("  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。")
         } else {
-          L.push('  · 若判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。')
+          L.push("  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。")
         }
+        L.push('  · 归档可复用定义/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。')
+        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
         if(rec.status==='attempted'){
           L.push('  ▸ 该对象已有形式化尝试但尚未通过（最近一次 '+(rec.run?(rec.run.ok?'通过':'未通过'):'无运行记录')+'）。')
           L.push("    请修复后重跑（vibe_v4_lean_run），跑通后用 kind='proof' 归档。")
@@ -446,10 +462,11 @@ export function apply(ctx) {
         +(formalMode()==='require'
           ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
           : '这会让后续的验证与证明省掉大量重复工作。')
+        +'归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
     }
     /** The `formal` object every non-off prompt documents in its JSON reply contract. */
     function formalReplyField(target){
-      return '{"formal":{"target":"'+String(target||'p-x')+'","decision":"used|blocked","file":"Formal/'+String(target||'p-x')+'.lean","note":"难度判断/阻塞原因"}}'
+      return '{"formal":{"target":"'+String(target||'p-x')+'","decision":"used|blocked|defect","file":"Formal/'+String(target||'p-x')+'.lean","note":"难度判断/阻塞原因/具体偏差"}}'
     }
 
     // ---- the three indexes (framework-maintained) ---------------------------
@@ -540,7 +557,7 @@ export function apply(ctx) {
       return Object.assign({ok:!!run.ok},run,{
         mode:formalMode(),
         hint: run.ok
-          ? "通过。若是某个对象的证明，请用 vibe_v4_lean_archive kind='proof' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind='def'/'lemma' 归档到全局库。"
+          ? "通过。若是某个对象的证明，请用 vibe_v4_lean_archive kind='proof' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind='def'/'lemma' 归档到全局库——归档前先跑通（run=true 或先 vibe_v4_lean_run）：跑不通的定义不要进可复用库。"
           : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_v4_lean_archive kind=\'blocked\' 记录原因。',
       })
     }
@@ -624,22 +641,91 @@ export function apply(ctx) {
       return {ok:false,code:'V4_INVALID_ARGUMENT',message:"kind must be 'def' | 'lemma' | 'proof' | 'blocked'"}
     }
     /**
+     * Withdraw an archived proof (spec §4.1). Best-effort by contract: the RECORD is the
+     * authoritative state, so a host without a subprocess service (or without Lean) still gets a
+     * correct `attempted` record — the stale file is then reported in the activity log instead of
+     * silently kept. Every path goes through `leanAbsPath` so this can only ever remove a `.lean`
+     * file inside the VibeMath root (a hand-edited State/formal.json must not become an
+     * arbitrary-file delete).
+     */
+    async function withdrawProof(rel){
+      const raw=String(rel==null?'':rel)
+      if(!raw) return {ok:false,skipped:true}
+      const abs=leanAbsPath(raw)
+      if(abs===null||!/\.lean$/.test(abs)){
+        logActivity('formal','拒绝删除越界的归档证明路径：'+raw)
+        return {ok:false,skipped:true}
+      }
+      const r=await runShell(rmCmd([abs]),vibeRoot())
+      if(!r||!r.ok) return {ok:false,error:(r&&r.error)||('exit '+String(r&&r.exitCode))}
+      return {ok:true,abs}
+    }
+    /**
+     * §4.1 `defect`: a voter checked the Lean code against the proposition and found a FIDELITY
+     * defect (written too narrow/wide, wrong object, missing hypothesis). That is a statement about
+     * the FORMALIZATION, not about the proposition, so it must never be absorbed as "the
+     * proposition is false". The record is therefore ALWAYS downgraded to `attempted` (even from
+     * `blocked`), `proof` is cleared, `Verified/Lean/<id>.lean` is withdrawn, the deviation goes
+     * into the record + Formal/Index.md + Formal/TODO.md, and the group is told in the activity
+     * log. The working file `Formal/<id>.lean` is deliberately KEPT — the code is not lost, only
+     * its "passed" claim. In `require` mode the downgrade also makes `formalGateOk` false, so the
+     * verdict defers through the existing `deferForFormal` path (no Verified card, TODO entry).
+     */
+    async function recordFormalDefect(rId,key,note){
+      const prev=formalOf(key)
+      const proofRel=String(prev.proof||'')||('Verified/Lean/'+key+'.lean')
+      const rec=Object.assign({},prev,{status:'attempted',proof:'',decision:'defect',note,updatedAt:now()})
+      const why='formal-defect：形式化与命题原文不一致——'+String(note).slice(0,160)
+      const todo=formalTodo().slice()
+      const i=todo.findIndex(t=>t&&t.id===key)
+      // The defect reason must survive the later `deferForFormal`, which keeps an EXISTING entry
+      // rather than overwriting it — so the TODO file explains "formalization不合格", not merely
+      // "formal-required". An already-deferred object keeps its original 真/假 tally here.
+      if(i>=0) todo[i]=Object.assign({},todo[i],{why,at:now()})
+      else todo.push({id:key,at:now(),why,verdict:null})
+      // Durable write FIRST (record + todo together), then withdraw the file: a crash in between
+      // leaves an orphaned file with a truthful record, never a record still claiming `passed`.
+      await putFormal(key,rec,todo)
+      const del=await withdrawProof(proofRel)
+      try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+      logActivity('formal',(rId||'host')+' 报告 '+key+' 存在**忠实性缺陷**（formal.decision=defect）：'+note
+        +' ——已撤回「已通过」状态（→ attempted）、'+(del&&del.ok?'删除归档证明 '+proofRel:'删除归档证明失败（'+String((del&&del.error)||'no-subprocess')+'，记录已降级）')
+        +'、写入 Formal/TODO.md；本次裁定**不定论**，修正形式化并重新跑通后再投票')
+      return {ok:true,target:key,status:'attempted',proof:'',decision:'defect',removedProof:!!(del&&del.ok)}
+    }
+    /**
      * The per-round `formal` reply channel. This is the path that fires IN PRACTICE: a resident
      * that never calls a Lean tool still has to state its difficulty judgement. Every failure is
-     * swallowed into the activity log — an end handler must never throw into the scheduler.
+     * swallowed into the activity log — an end handler must never throw into the scheduler — but
+     * each rejection still returns the preset's typed error so the caller/audit can see WHY a
+     * judgement was dropped instead of silently losing it.
      */
     async function applyFormalReply(rId,formalReply){
       try {
         const key=formalKey(String(formalReply.target||''))
-        if(!key) return
+        if(!key){
+          logActivity('formal',(rId||'host')+' 的 formal 回执缺少 target（对象 id）——本次未记录（V4_INVALID_ARGUMENT）')
+          return {ok:false,code:'V4_INVALID_ARGUMENT',message:'formal.target（对象 id）是必填的'}
+        }
         const decision=String(formalReply.decision||'').trim()
         if(decision==='blocked'){
           const note=String(formalReply.note||'').trim()
           if(!note){
-            logActivity('formal',(rId||'host')+" 的 formal.decision='blocked' 缺少 note（难度判断/阻塞原因）——本次未记录")
-            return
+            logActivity('formal',(rId||'host')+" 的 formal.decision='blocked' 缺少 note（难度判断/阻塞原因）——本次未记录（V4_INVALID_ARGUMENT）")
+            return {ok:false,code:'V4_INVALID_ARGUMENT',message:"formal.decision='blocked' 必须写明 note（难度判断/阻塞原因）"}
           }
           await leanArchive(rId,{kind:'blocked',target:key,note})
+          return {ok:true,target:key,decision:'blocked',status:'blocked'}
+        } else if(decision==='defect'){
+          // §4.1: a fidelity defect is NOT a refutation. Accepting it as "0 / false" would make the
+          // framework fabricate a negative conclusion out of a broken formalization, so the ONLY
+          // thing this branch may do is RETRACT the passing proof and defer the verdict.
+          const note=String(formalReply.note||'').trim()
+          if(!note){
+            logActivity('formal',(rId||'host')+" 的 formal.decision='defect' 缺少 note（具体偏差）——本次未记录（V4_INVALID_ARGUMENT）")
+            return {ok:false,code:'V4_INVALID_ARGUMENT',message:"formal.decision='defect' 必须写明 note（具体偏差：写窄了/写宽了/换了对象/漏了条件…）"}
+          }
+          return await recordFormalDefect(rId,key,note)
         } else if(decision==='used'){
           const file=String(formalReply.file||('Formal/'+key+'.lean'))
           const prev=formalOf(key)
@@ -648,10 +734,16 @@ export function apply(ctx) {
             file,decision:'used',note:String(formalReply.note||prev.note||''),updatedAt:now(),
           }))
           try { await writeFormalIndex() } catch(e){ /* best-effort */ }
+          return {ok:true,target:key,decision:'used'}
         } else if(decision){
-          logActivity('formal',(rId||'host')+" 的 formal.decision 只能是 'used' 或 'blocked'（收到 "+decision+"）")
+          logActivity('formal',(rId||'host')+" 的 formal.decision 只能是 'used'、'blocked' 或 'defect'（收到 "+decision+"）——本次未记录（V4_INVALID_ARGUMENT）")
+          return {ok:false,code:'V4_INVALID_ARGUMENT',message:"formal.decision 只能是 'used' | 'blocked' | 'defect'（收到 "+decision+"）"}
         }
-      } catch(e){ logActivity('formal','formal 回执处理失败：'+String((e&&e.message)||e)) }
+        return {ok:false,code:'V4_INVALID_ARGUMENT',message:'formal.decision 是必填的'}
+      } catch(e){
+        logActivity('formal','formal 回执处理失败：'+String((e&&e.message)||e))
+        return {ok:false,code:'V4_INVALID_ARGUMENT',message:String((e&&e.message)||e)}
+      }
     }
     /** The {mode, on, objects, todo} view the host tools report (state-storage transparency). */
     function formalView(){
@@ -782,7 +874,7 @@ export function apply(ctx) {
         +(formalOn()?('\n'+formalWorkLine()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40'
-        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因"}'):'')
+        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}'):'')
         +'}'
     }
     function meetingPrompt(r, st){
@@ -1290,7 +1382,7 @@ export function apply(ctx) {
         +(formalOn()?(formalWorkLine()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40'
-        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因"}'):'')
+        +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}'):'')
         +'}'
     }
     function clearHeartbeat(){ if(heartbeatDisposer!==null){ try{ heartbeatDisposer() }catch(e){} heartbeatDisposer=null } }

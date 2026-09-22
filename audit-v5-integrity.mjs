@@ -217,7 +217,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   const codeTools = new Set()
   for (const m of raw.matchAll(/registerTool\(\s*'(vibe_v5_[a-z_]+)'/g)) codeTools.add(m[1])
   // documented-but-wildcarded placeholders are not real tools
-  const IGNORE = new Set(['vibe_v5_', 'vibe_v5_record_'])
+  const IGNORE = new Set(['vibe_v5_', 'vibe_v5_record_', 'vibe_v5_lean_', 'vibe_v5_task_'])
   for (const t of planTools) {
     if (IGNORE.has(t)) continue
     if (!codeTools.has(t)) findings.push('plan names tool ' + t + ' but the plugin never registers it')
@@ -335,8 +335,10 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
       'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
       'inbox-office', 'inbox-assign', 'inbox-nudge', 'inbox-office-assign', 'inbox-office-nudge',
       'notice', 'notice-claim', 'after-failure',
-      // the Lean formal-verification interaction must be reviewable by a human too
-      'lean-work', 'lean-verify', 'lean-fidelity']
+      // the Lean formal-verification interaction must be reviewable by a human too — including
+      // the `require` gate wording and the state a member sees AFTER a fidelity defect withdrew
+      // a proof (both were missing from the first corpus, so nobody could read them).
+      'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect']
     for (const k of need) if (!kinds.has(k)) findings.push('the prompt corpus is missing a ' + k + ' prompt')
     const all = (c.prompts || []).map(p => p.prompt + '\n' + (p.charter || '')).join('\n')
     if (/你是 \?/.test(all)) findings.push('the prompt corpus contains a wrong-identity "你是 ?" brief')

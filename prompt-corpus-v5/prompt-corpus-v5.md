@@ -261,7 +261,209 @@
 
 ---
 
-## [6] kind=`founding` owner=`acad`
+## [6] kind=`lean-require` owner=`acad`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【求真表决 —— 院士 acad 就对象 p-lean-req 投票】
+
+本所正在对下列对象发起共识验证：
+  对象：p-lean-req（类型：命题）
+  陈述：Lean 语料对象丙（require 档）
+
+请给出你**诚实独立的判断**：
+  verdict = 1  表示你认为该对象**绝对为真**；
+  verdict = 0  表示你认为该对象**绝对为假**；
+  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，
+  不计入法定票数 m，但会计入全组平均概率。
+
+【Lean 形式化验证（强制模式）】
+  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
+    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
+    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+    会被记为未定论（原因 formal-required）并进入「形式化待办」。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+  ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
+    审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
+
+**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
+本所宁可留下未定论，也不要一个骗人的结论。
+
+------------
+[状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+[形式化] 强制 Lean｜已通过 0｜已记录阻塞 0
+------------
+结束时请**只**输出一个 JSON 对象（```json 围栏内）：
+{"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
+若你本轮做了形式化或给出难度判断，请一并加上：
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+```
+
+---
+
+## [7] kind=`lean-require` owner=`r-1`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【求真表决 —— 常驻研究员 r-1 就对象 p-lean-req 投票】
+
+本所正在对下列对象发起共识验证：
+  对象：p-lean-req（类型：命题）
+  陈述：Lean 语料对象丙（require 档）
+
+请给出你**诚实独立的判断**：
+  verdict = 1  表示你认为该对象**绝对为真**；
+  verdict = 0  表示你认为该对象**绝对为假**；
+  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，
+  不计入法定票数 m，但会计入全组平均概率。
+
+【Lean 形式化验证（强制模式）】
+  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
+    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
+    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+    会被记为未定论（原因 formal-required）并进入「形式化待办」。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+  ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
+    审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
+
+**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
+本所宁可留下未定论，也不要一个骗人的结论。
+
+------------
+[状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+[形式化] 强制 Lean｜已通过 0｜已记录阻塞 0
+------------
+结束时请**只**输出一个 JSON 对象（```json 围栏内）：
+{"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
+若你本轮做了形式化或给出难度判断，请一并加上：
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+```
+
+---
+
+## [8] kind=`lean-require` owner=`r-2`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【求真表决 —— 常驻研究员 r-2 就对象 p-lean-req 投票】
+
+本所正在对下列对象发起共识验证：
+  对象：p-lean-req（类型：命题）
+  陈述：Lean 语料对象丙（require 档）
+
+请给出你**诚实独立的判断**：
+  verdict = 1  表示你认为该对象**绝对为真**；
+  verdict = 0  表示你认为该对象**绝对为假**；
+  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，
+  不计入法定票数 m，但会计入全组平均概率。
+
+【Lean 形式化验证（强制模式）】
+  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
+    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
+    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+    会被记为未定论（原因 formal-required）并进入「形式化待办」。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+  ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
+    审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
+
+**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
+本所宁可留下未定论，也不要一个骗人的结论。
+
+------------
+[状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+[形式化] 强制 Lean｜已通过 0｜已记录阻塞 0
+------------
+结束时请**只**输出一个 JSON 对象（```json 围栏内）：
+{"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
+若你本轮做了形式化或给出难度判断，请一并加上：
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+```
+
+---
+
+## [9] kind=`lean-after-defect` owner=`r-1`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+[新到的消息]
+  【研究所·私信 from acad】再继续。
+
+【第 2 轮 —— 常驻研究员 r-1】
+
+请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
+结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
+
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。这会让后续的验证与证明省掉大量重复工作。
+
+------------
+[状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
+[在册] acad、r-1、r-2
+[形式化] 鼓励 Lean｜已通过 0｜已记录阻塞 0｜形式化待办 1 项（见 Formal/TODO.md）
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}
+             ← Lean 形式化：**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，详见提示词里的【Lean 形式化验证】段
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [10] kind=`founding` owner=`acad`
 
 - charter: 5618 字符
 
@@ -483,7 +685,7 @@
 
 ---
 
-## [7] kind=`founding` owner=`r-1`
+## [11] kind=`founding` owner=`r-1`
 
 - charter: 5524 字符
 
@@ -696,7 +898,7 @@
 
 ---
 
-## [8] kind=`founding` owner=`r-2`
+## [12] kind=`founding` owner=`r-2`
 
 - charter: 5528 字符
 
@@ -909,7 +1111,7 @@
 
 ---
 
-## [9] kind=`founding` owner=`r-3`
+## [13] kind=`founding` owner=`r-3`
 
 - charter: 5532 字符
 
@@ -1122,7 +1324,7 @@
 
 ---
 
-## [10] kind=`founding-temp` owner=`t-1`
+## [14] kind=`founding-temp` owner=`t-1`
 
 - charter: 4462 字符
 
@@ -1312,7 +1514,7 @@
 
 ---
 
-## [11] kind=`founding-leaderless` owner=`r-1`
+## [15] kind=`founding-leaderless` owner=`r-1`
 
 - charter: 4744 字符
 
@@ -1358,7 +1560,7 @@
 
 ---
 
-## [12] kind=`founding-leaderless` owner=`r-2`
+## [16] kind=`founding-leaderless` owner=`r-2`
 
 - charter: 4748 字符
 
@@ -1404,7 +1606,7 @@
 
 ---
 
-## [13] kind=`resume` owner=`acad`
+## [17] kind=`resume` owner=`acad`
 
 - charter: 5591 字符
 
@@ -1419,52 +1621,52 @@
 
 恢复说明：
   
-### 2026-09-22 01:23:44｜acad
+### <TIME>｜acad
 acad：初始见解。
 
-### 2026-09-22 01:23:44｜acad
+### <TIME>｜acad
 acad：初始见解。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:45｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:46｜acad
+### <TIME>｜acad
 acad：初始见解。
 
-### 2026-09-22 01:23:46｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:46｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:46｜acad
+### <TIME>｜acad
 acad：继续推进。
 
-### 2026-09-22 01:23:46｜acad
+### <TIME>｜acad
 acad：初始见解。
 
-### 2026-09-22 01:23:47｜acad
+### <TIME>｜acad
 acad：初始见解。
 
-### 2026-09-22 01:23:47｜acad
+### <TIME>｜acad
 acad：初始见解。
 
 
@@ -1504,7 +1706,7 @@ acad：初始见解。
 
 ---
 
-## [14] kind=`resume` owner=`r-1`
+## [18] kind=`resume` owner=`r-1`
 
 - charter: 5497 字符
 
@@ -1519,55 +1721,55 @@ acad：初始见解。
 
 恢复说明：
   
-### 2026-09-22 01:23:44｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
-### 2026-09-22 01:23:44｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:45｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:46｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
-### 2026-09-22 01:23:46｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:46｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
-### 2026-09-22 01:23:47｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:47｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:47｜r-1
+### <TIME>｜r-1
 r-1：继续推进。
 
-### 2026-09-22 01:23:47｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
-### 2026-09-22 01:23:47｜r-1
+### <TIME>｜r-1
 r-1：初始见解。
 
 
@@ -1603,7 +1805,7 @@ r-1：初始见解。
 
 ---
 
-## [15] kind=`resume` owner=`r-2`
+## [19] kind=`resume` owner=`r-2`
 
 - charter: 5501 字符
 
@@ -1618,67 +1820,67 @@ r-1：初始见解。
 
 恢复说明：
   
-### 2026-09-22 01:23:44｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:45｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:46｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
-### 2026-09-22 01:23:47｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
-### 2026-09-22 01:23:47｜r-2
+### <TIME>｜r-2
 r-2：继续推进。
 
-### 2026-09-22 01:23:47｜r-2
+### <TIME>｜r-2
 r-2：初始见解。
 
 
@@ -1714,7 +1916,7 @@ r-2：初始见解。
 
 ---
 
-## [16] kind=`normal` owner=`acad`
+## [20] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -1764,7 +1966,7 @@ r-2：初始见解。
 
 ---
 
-## [17] kind=`normal` owner=`r-2`
+## [21] kind=`normal` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -1811,7 +2013,7 @@ r-2：初始见解。
 
 ---
 
-## [18] kind=`normal` owner=`r-1`
+## [22] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -1857,7 +2059,7 @@ r-2：初始见解。
 
 ---
 
-## [19] kind=`normal` owner=`acad`
+## [23] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -1907,7 +2109,7 @@ r-2：初始见解。
 
 ---
 
-## [20] kind=`normal` owner=`r-1`
+## [24] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -1953,7 +2155,7 @@ r-2：初始见解。
 
 ---
 
-## [21] kind=`normal` owner=`r-2`
+## [25] kind=`normal` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -1999,7 +2201,7 @@ r-2：初始见解。
 
 ---
 
-## [22] kind=`normal` owner=`acad`
+## [26] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2049,7 +2251,7 @@ r-2：初始见解。
 
 ---
 
-## [23] kind=`normal` owner=`r-1`
+## [27] kind=`normal` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2095,7 +2297,7 @@ r-2：初始见解。
 
 ---
 
-## [24] kind=`normal` owner=`r-2`
+## [28] kind=`normal` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2141,7 +2343,7 @@ r-2：初始见解。
 
 ---
 
-## [25] kind=`normal` owner=`acad`
+## [29] kind=`normal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2191,7 +2393,7 @@ r-2：初始见解。
 
 ---
 
-## [26] kind=`checkpoint` owner=`r-1`
+## [30] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2237,7 +2439,7 @@ r-2：初始见解。
 
 ---
 
-## [27] kind=`checkpoint` owner=`r-2`
+## [31] kind=`checkpoint` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2283,7 +2485,7 @@ r-2：初始见解。
 
 ---
 
-## [28] kind=`checkpoint` owner=`acad`
+## [32] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2333,7 +2535,7 @@ r-2：初始见解。
 
 ---
 
-## [29] kind=`checkpoint` owner=`r-1`
+## [33] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2379,7 +2581,7 @@ r-2：初始见解。
 
 ---
 
-## [30] kind=`checkpoint` owner=`r-2`
+## [34] kind=`checkpoint` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2425,7 +2627,7 @@ r-2：初始见解。
 
 ---
 
-## [31] kind=`checkpoint` owner=`acad`
+## [35] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2475,7 +2677,7 @@ r-2：初始见解。
 
 ---
 
-## [32] kind=`checkpoint` owner=`r-1`
+## [36] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2521,7 +2723,7 @@ r-2：初始见解。
 
 ---
 
-## [33] kind=`checkpoint` owner=`r-2`
+## [37] kind=`checkpoint` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2567,7 +2769,7 @@ r-2：初始见解。
 
 ---
 
-## [34] kind=`checkpoint` owner=`acad`
+## [38] kind=`checkpoint` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2621,7 +2823,7 @@ r-2：初始见解。
 
 ---
 
-## [35] kind=`checkpoint` owner=`r-1`
+## [39] kind=`checkpoint` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2671,7 +2873,7 @@ r-2：初始见解。
 
 ---
 
-## [36] kind=`verify` owner=`acad`
+## [40] kind=`verify` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2703,7 +2905,7 @@ r-2：初始见解。
 
 ---
 
-## [37] kind=`verify` owner=`r-1`
+## [41] kind=`verify` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2735,7 +2937,7 @@ r-2：初始见解。
 
 ---
 
-## [38] kind=`verify` owner=`r-2`
+## [42] kind=`verify` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2767,7 +2969,7 @@ r-2：初始见解。
 
 ---
 
-## [39] kind=`verify-debate` owner=`acad`
+## [43] kind=`verify-debate` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2805,7 +3007,7 @@ r-2：初始见解。
 
 ---
 
-## [40] kind=`verify-debate` owner=`r-1`
+## [44] kind=`verify-debate` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -2843,7 +3045,7 @@ r-2：初始见解。
 
 ---
 
-## [41] kind=`verify-debate` owner=`r-2`
+## [45] kind=`verify-debate` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -2881,57 +3083,7 @@ r-2：初始见解。
 
 ---
 
-## [42] kind=`meeting` owner=`r-1`
-
-- charter: （本次唤醒不带人设）
-
-### 提示词原文
-
-```text
-【研究所会议 mt-1 进行中 —— 常驻研究员 r-1】
-
-议程：分工与下一步（类型：sync）
-
-（你是本次会议的第一位发言者，目前还没有别人发言。）
-
-请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
-（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
-如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
-一致认为是真时，本所才会停下来。
-
-------------
-[状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
-[在册] acad、r-1
-------------
-结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
-{
-  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
-  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
-  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
-               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
-  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
-  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
-             介于两者之间=弃权/存疑；只在被要求表决时填。
-  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
-  "task_claim": "t-3",
-  "task_done": "t-3",
-  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
-  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
-             全体表决者（任务仍会执行，但你的理由不会被埋掉），
-  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
-  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
-  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
-  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
-  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
-  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
-}
-```
-
----
-
-## [43] kind=`meeting` owner=`acad`
+## [46] kind=`meeting` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -2985,7 +3137,57 @@ r-2：初始见解。
 
 ---
 
-## [44] kind=`meeting-proposal` owner=`acad`
+## [47] kind=`meeting` owner=`r-1`
+
+- charter: （本次唤醒不带人设）
+
+### 提示词原文
+
+```text
+【研究所会议 mt-1 进行中 —— 常驻研究员 r-1】
+
+议程：分工与下一步（类型：sync）
+
+（你是本次会议的第一位发言者，目前还没有别人发言。）
+
+请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
+（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
+如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
+一致认为是真时，本所才会停下来。
+
+------------
+[状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
+[在册] acad、r-1
+------------
+结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：
+{
+  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），
+  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",
+  "record": [ {"kind":"proposition|method|subproblem","id":"p-x","title":"…","statement":"…",
+               "content":"…（method 用）","value":0.6,"motive":"为何重要/打算怎么用","p":0.7} ],
+  "propose_verify": {"target":"p-x","kind":"proposition|method|subproblem","reason":"为何值得验证"},
+  "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
+             介于两者之间=弃权/存疑；只在被要求表决时填。
+  "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_claim": "t-3",
+  "task_done": "t-3",
+  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
+  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
+  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
+             全体表决者（任务仍会执行，但你的理由不会被埋掉），
+  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
+  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），
+  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）
+  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
+  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
+  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
+}
+```
+
+---
+
+## [48] kind=`meeting-proposal` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3039,7 +3241,7 @@ r-2：初始见解。
 
 ---
 
-## [45] kind=`inbox-dm` owner=`r-2`
+## [49] kind=`inbox-dm` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3086,7 +3288,7 @@ r-2：初始见解。
 
 ---
 
-## [46] kind=`inbox-voters` owner=`acad`
+## [50] kind=`inbox-voters` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3140,7 +3342,7 @@ r-2：初始见解。
 
 ---
 
-## [47] kind=`inbox-voters` owner=`r-2`
+## [51] kind=`inbox-voters` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3187,7 +3389,7 @@ r-2：初始见解。
 
 ---
 
-## [48] kind=`inbox-chat` owner=`acad`
+## [52] kind=`inbox-chat` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3241,7 +3443,7 @@ r-2：初始见解。
 
 ---
 
-## [49] kind=`inbox-chat` owner=`r-2`
+## [53] kind=`inbox-chat` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3288,7 +3490,7 @@ r-2：初始见解。
 
 ---
 
-## [50] kind=`inbox-office` owner=`acad`
+## [54] kind=`inbox-office` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3342,7 +3544,7 @@ r-2：初始见解。
 
 ---
 
-## [51] kind=`inbox-office` owner=`r-1`
+## [55] kind=`inbox-office` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3389,7 +3591,7 @@ r-2：初始见解。
 
 ---
 
-## [52] kind=`inbox-office` owner=`r-2`
+## [56] kind=`inbox-office` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3436,7 +3638,7 @@ r-2：初始见解。
 
 ---
 
-## [53] kind=`inbox-assign` owner=`r-2`
+## [57] kind=`inbox-assign` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3483,7 +3685,7 @@ r-2：初始见解。
 
 ---
 
-## [54] kind=`inbox-assign` owner=`r-2`
+## [58] kind=`inbox-assign` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3533,7 +3735,7 @@ r-2：初始见解。
 
 ---
 
-## [55] kind=`inbox-nudge` owner=`r-2`
+## [59] kind=`inbox-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3584,7 +3786,7 @@ r-2：初始见解。
 
 ---
 
-## [56] kind=`inbox-nudge` owner=`r-2`
+## [60] kind=`inbox-nudge` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3634,7 +3836,7 @@ r-2：初始见解。
 
 ---
 
-## [57] kind=`notice` owner=`r-1`
+## [61] kind=`notice` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3681,7 +3883,7 @@ r-2：初始见解。
 
 ---
 
-## [58] kind=`notice-claim` owner=`r-1`
+## [62] kind=`notice-claim` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3728,7 +3930,7 @@ r-2：初始见解。
 
 ---
 
-## [59] kind=`after-failure` owner=`r-2`
+## [63] kind=`after-failure` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3776,7 +3978,7 @@ r-2：初始见解。
 
 ---
 
-## [60] kind=`lean-work` owner=`r-1`
+## [64] kind=`lean-work` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3791,7 +3993,7 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。这会让后续的验证与证明省掉大量重复工作。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -3813,7 +4015,7 @@ r-2：初始见解。
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
   "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "formal": {"target":"p-x","decision":"used|blocked","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}
+  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}
              ← Lean 形式化：**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，详见提示词里的【Lean 形式化验证】段
   "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
              全体表决者（任务仍会执行，但你的理由不会被埋掉），
@@ -3828,7 +4030,7 @@ r-2：初始见解。
 
 ---
 
-## [61] kind=`lean-verify` owner=`acad`
+## [65] kind=`lean-verify` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3850,11 +4052,13 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Lib/，
-    已证引理放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Proved/；写之前先 lean_lib 查重。
-  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。
+  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3869,12 +4073,12 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
 
-## [62] kind=`lean-verify` owner=`r-1`
+## [66] kind=`lean-verify` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -3896,11 +4100,13 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Lib/，
-    已证引理放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Proved/；写之前先 lean_lib 查重。
-  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。
+  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3915,12 +4121,12 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
 
-## [63] kind=`lean-verify` owner=`r-2`
+## [67] kind=`lean-verify` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -3942,11 +4148,13 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Lib/，
-    已证引理放 C:/Users/admin/AppData/Local/Temp/1/vibe-v5-prompt-f0lZCF/VibeMath/Formal/Proved/；写之前先 lean_lib 查重。
-  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与
+  · 工作目录：Formal/（相对研究所根）；可复用定义放 <WS>/VibeMath/Formal/Lib/，
+    已证引理放 <WS>/VibeMath/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
+  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。
+  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
+  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3961,12 +4169,12 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
 
-## [64] kind=`lean-fidelity` owner=`acad`
+## [68] kind=`lean-fidelity` owner=`acad`
 
 - charter: （本次唤醒不带人设）
 
@@ -3988,9 +4196,14 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 该对象已有**通过的 Lean 形式化证明**（Verified/Lean/p-lean-b.lean，最近运行 exit 0）。
     **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的
-    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），
-    并据此给出 verdict。
-  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。
+    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。
+  ▸ 一致 → verdict = 1。
+  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：
+      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；
+      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的
+         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；
+         修正形式化并重新跑通后再投票。
+  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。
 
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
@@ -4003,12 +4216,12 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
 
-## [65] kind=`lean-fidelity` owner=`r-1`
+## [69] kind=`lean-fidelity` owner=`r-1`
 
 - charter: （本次唤醒不带人设）
 
@@ -4030,9 +4243,14 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 该对象已有**通过的 Lean 形式化证明**（Verified/Lean/p-lean-b.lean，最近运行 exit 0）。
     **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的
-    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），
-    并据此给出 verdict。
-  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。
+    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。
+  ▸ 一致 → verdict = 1。
+  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：
+      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；
+      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的
+         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；
+         修正形式化并重新跑通后再投票。
+  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。
 
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
@@ -4045,12 +4263,12 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
 
-## [66] kind=`lean-fidelity` owner=`r-2`
+## [70] kind=`lean-fidelity` owner=`r-2`
 
 - charter: （本次唤醒不带人设）
 
@@ -4072,9 +4290,14 @@ r-2：初始见解。
 【Lean 形式化验证（鼓励模式）】
   · 该对象已有**通过的 Lean 形式化证明**（Verified/Lean/p-lean-b.lean，最近运行 exit 0）。
     **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的
-    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），
-    并据此给出 verdict。
-  ▸ 因此请把 verdict 用在**忠实性**上：一致 → 1；发现任何偏离 → 0（或按不确定度给中间值并说明）。
+    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。
+  ▸ 一致 → verdict = 1。
+  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：
+      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；
+      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的
+         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；
+         修正形式化并重新跑通后再投票。
+  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。
 
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
@@ -4087,7 +4310,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
 ```
 
 ---
@@ -4107,7 +4330,9 @@ r-2：初始见解。
 - `inbox-office-assign`: 2
 - `inbox-office-nudge`: 2
 - `inbox-voters`: 2
+- `lean-after-defect`: 1
 - `lean-fidelity`: 3
+- `lean-require`: 3
 - `lean-verify`: 3
 - `lean-work`: 1
 - `meeting`: 2
@@ -4120,4 +4345,4 @@ r-2：初始见解。
 - `verify`: 3
 - `verify-debate`: 3
 
-- 合计：66 条提示词
+- 合计：70 条提示词

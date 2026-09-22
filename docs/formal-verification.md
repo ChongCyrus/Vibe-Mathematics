@@ -121,8 +121,8 @@
   "status": "none" | "attempted" | "passed" | "blocked",
   "file": "Formal/p-1.lean",        // 工作文件（可为空）
   "proof": "Verified/Lean/p-1.lean",// 归档证明（仅 passed）
-  "decision": "used" | "blocked",   // 代理的显式难度判断
-  "note": "…",                      // blocked 时必填：难度判断 / 阻塞原因
+  "decision": "used" | "blocked" | "defect", // 代理的显式判断（defect 见 §4.1）
+  "note": "…",                      // blocked / defect 时必填：难度判断 / 阻塞原因 / 具体偏差
   "run": { "at": 0, "ok": true, "exitCode": 0, "ms": 0, "stdoutTail": "", "stderrTail": "" },
   "updatedAt": 0
 }
@@ -136,8 +136,34 @@
 | `lean_run` 失败 | `none` → `attempted`（记录失败输出，供代理修复） |
 | `lean_archive{kinds:'proof', target, from|content}` + 该文件最近一次运行 `ok` | → `passed`，写 `Verified/Lean/<id>.lean` |
 | `lean_archive{kinds:'blocked', target, note}` | → `blocked`（`note` 必填） |
-| 回执里 `formal:{target, decision:'blocked', note}` | → `blocked` |
+| 回执里 `formal:{target, decision:'blocked', note}` | → `blocked`（`note` 必填） |
+| **回执里 `formal:{target, decision:'defect', note}`** | **撤回 `passed`：→ `attempted`，清空 `proof`、删除 `Verified/Lean/<id>.lean`、把 `note` 写入记录与 `Formal/TODO.md`、公告**（`note` 必填） |
 | 回执里 `formal:{target, decision:'used', file}` | → `attempted`（记录文件） |
+
+### 4.1 `defect`：忠实性缺陷**不是**"命题为假"
+
+`passed` 只保证"这段 Lean 代码通过了内核检查"，**不保证它说的就是命题想说的**。当表决者逐条核对后
+发现 Lean 代码与命题原文不一致（写窄了 / 写宽了 / 换了对象 / 漏了条件…），那是**形式化不合格**，
+不是命题被证伪。两种混淆的后果都很严重：
+
+- 若让表决者"发现偏差 → 投 0"，框架记下的是"**该命题为假**"；在 v5 的全 0 一致规则下，
+  一个写错的形式化会直接把命题写进 `Verified/` 并标注**假**——用来求真更严格的机制，
+  反而**伪造出一个错误的否定结论**。
+- 若只把偏差记成 `blocked`，门禁会**放行**（`blocked` 本就允许定论），等于带着一个坏形式化去定论。
+
+因此 `defect` 是独立的一档，语义固定为：
+
+1. **表决者**：不得投 `1` 或 `0`；给一个严格介于 0 与 1 之间的值（记为弃权）并在 `Reason` 里写清偏差；
+   同时用回执 `formal:{decision:'defect', note:'<具体偏差>'}` 记录（`note` 必填）。
+2. **框架**：把该对象的形式化记录**降级为 `attempted`**（无论此前是 `passed` 还是 `blocked`——都让位于
+   "形式化不合格，需重做"）、清空 `proof`、删除 `Verified/Lean/<id>.lean`
+   （工作文件 `Formal/<id>.lean` 保留，代码不丢）、`note` 记入记录与 `Formal/TODO.md`、公告。
+3. **`require` 档**：降级后 `formalGateOk` 为假，本次裁定**不定论**，对象进入「形式化待办」——
+   修正形式化并重新跑通后再投票。这正是"形式化不合格 ⇒ 重做"，而不是"命题为假"。
+   `encourage` 档没有门禁，框架**仍然**撤回证明并记入待办，但**不得在提示词里承诺一个它无法强制的
+   "不定论"**；那里靠表决者自己的弃权（§6.1 第 ① 条）使表决无法得出布尔一致结论。
+4. **唯一可以投 0 的情形**：表决者**独立于这份 Lean 代码**也能确定命题为假（并能给出独立理由）。
+   此时 `Reason` 必须写清独立理由，不得以"Lean 与命题不一致"作为投 0 的依据。
 
 ---
 
@@ -176,6 +202,20 @@
 
 ## 6. 提示词注入（在构造提示词时现算）
 
+> **硬要求（四套一致，逐字级别的约束）**
+> 1. **工具名一律写全称**（`<prefix>lean_run` / `<prefix>lean_archive` / `<prefix>lean_lib`）。
+>    注入文本里**不得**出现 `lean_run` / `lean_archive` / `lean_lib` 这类缩写——那不是注册名，
+>    代理照抄会调用一个不存在的工具（工具自己返回的 `hint` 字段同样算注入文本）。
+> 2. **回执字段名必须与该架构真实契约一致**：v2/v3 的评审值字段是 `Result`，v4/v5 是 `verdict`。
+>    写错字段名 = 那一票被静默丢弃。
+> 3. **归档可复用定义/引理前必须先跑通**：`<prefix>lean_archive` 支持 `run:true`，
+>    或先 `<prefix>lean_run`。跑不通的代码不得进入 `Formal/Lib` / `Formal/Proved`——
+>    否则"可复用库"会被不编译的定义污染。
+> 4. **工具链缺失时的出路必须写出来**：`LEAN_NOT_FOUND` 时把代码写下来并归档，
+>    在 `note` 里写明"宿主无 Lean 工具链"；这算显式阻塞原因，`require` 档可以据此放行，
+>    代理不会因为装不了 Lean 而卡死。
+> 5. **忠实性缺陷不得用 0 表达**（§4.1 第 4 条）：只有独立于 Lean 代码也能确定命题为假时才投 0。
+
 ### 6.1 验证提示词
 
 `encourage`：
@@ -184,10 +224,13 @@
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先用 Lean 写形式化代码并执行。
   · 工具：<prefix>lean_run（执行）· <prefix>lean_archive（归档）· <prefix>lean_lib（查已有可复用库）
-  · 工作目录：<项目根>/Formal/（可复用定义放 <VibeMath 根>/Formal/Lib/，已证引理放 Formal/Proved/）
+  · 工作目录：<项目根>/Formal/（可复用定义放 <VibeMath 根>/Formal/Lib/，已证引理放 <VibeMath 根>/Formal/Proved/）
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：Lean 代码里的定义/对象/条件/假设/结论
     是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · 若判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。
+  · 归档可复用定义/引理前先跑通（<prefix>lean_archive run=true 或先 <prefix>lean_run）；跑不通不要入库。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在会诊/回执的 note 里写明
+    "宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
 ```
 
 `require`：同样内容，但"可以不做"改为"**必须**产出 Lean 形式化，或**必须**给出显式的阻塞原因"，
@@ -198,13 +241,21 @@
     （原因 formal-required）并进入「形式化待办」。
 ```
 
-**门禁提示（两种模式都加，只要模式非 off）**：如果该对象**已经** `formal.status === 'passed'`，
-验证提示词改为强调：
+**忠实性分支（两种模式都加，只要模式非 off）**：如果该对象**已经** `formal.status === 'passed'`，
+验证提示词把审查对象换成忠实性，并**明确禁止**把偏差写成"假"：
 
 ```
-  · 该对象已有**通过的 Lean 形式化证明**（<proof 路径>）。因此你不需要重新检查推导；
-    你的任务是**忠实性审查**：逐条核对定义/对象/条件/假设/结论是否与命题原文一致，
-    并据此给出 verdict。
+  · 该对象已有**通过的 Lean 形式化证明**（<proof 路径>，最近运行 exit 0）。
+    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的
+    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。
+  ▸ 一致 → 投 <真值 1>。
+  ▸ **发现任何偏差，不要投 <0>**：偏差只说明**形式化不合格**，不代表命题为假。此时请：
+      ① 投票给一个严格介于 0 与 1 之间的值（记为弃权），并在理由里写清偏差；
+      ② 用回执 `formal:{decision:'defect', note:'<具体偏差>'}` 记录它。框架会撤回这条证明的
+         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；`require` 档下
+         本次裁定**不定论**，`encourage` 档**不得**声称框架会强制搁置（那里靠你的弃权阻止定论）。
+         修正形式化并重新跑通后再投票。
+  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 <0>，并在理由里写清独立理由。
 ```
 
 ### 6.2 平时工作提示词（solver / explorer / 常驻 / method-keeper 等）
@@ -212,16 +263,24 @@
 ```
 【顺手形式化（<模式>）】把你工作中常用或可能复用的对象、假设、新定义，
 用 Lean 形式化定义并归档到全局可复用库（<prefix>lean_archive kind='def'），
-已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 <prefix>lean_lib 查重，避免重复定义。
+已成立的引理归到 <VibeMath 根>/Formal/Proved/（kind='lemma'）；写之前先 <prefix>lean_lib 查重，避免重复定义。
+归档前先跑通（<prefix>lean_run 或 lean_archive run=true）：跑不通的定义不要进可复用库。
 ```
 
 ### 6.3 回执契约
 
-非 `off` 模式时，在每轮回执契约里加入：
+非 `off` 模式时，在每轮回执契约里加入（**必须真的被框架解析并落库**——只把字段写进提示词而不实现
+解析，等于让代理的难度判断静默消失；每个架构都必须有"回执 → 记录"的行为断言，不能只断言措辞）：
 
 ```
-  "formal": {"target":"p-x","decision":"used|blocked","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"},
+  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因/具体偏差"},
 ```
+
+- `decision='blocked'` 与 `decision='defect'` 时 `note` 必填，否则整条记录被拒绝（返回该架构的
+  `*_INVALID_ARGUMENT`）。
+- `decision='defect'` 的落库见 §4.1：**降级 + 删除归档证明 + 写入待办**。
+- 这些字段必须出现在**该架构每一类会被表决者/研究者读到的回执契约**里（v2 的初评与辩论两条路径、
+  v3 的初评/辩论/工作轮、v4 的验证与常规/心跳轮、v5 的回执契约与心跳轮）。
 
 ---
 
@@ -309,6 +368,25 @@
    反向：persona 里的每个 `vibe_*` 名字必须真的注册。`audit-persona-sensitivity.mjs` 用变异副本
    证明这套断言会变红。**教训**：本特性首版在 v2/v3/v4 上"工具已注册、persona 从未列出"，
    而当时所有既有套件全绿——因为 e2e 套件直接 `apply(ctx)`，从不加载 YAML。
+8. **回执通道必须是行为断言，不是措辞断言**（放进各架构的 `formal-verify-vN.test.mjs`）：
+   构造一条带 `formal:{decision:'blocked'|'defect', note}` 的**代理回执**喂给框架，断言记录真的落库
+   （`blocked` → `blocked`；`defect` → `attempted` + `proof` 清空 + 归档文件被删 + 待办条目出现）。
+   **教训**：v2 首版只在提示词里写了"请在回执的 formal 字段写明难度判断"，框架从不解析它；
+   而套件只断言"那句话存在"，于是 177 条断言全绿却守着一个**死通道**——这正是
+   `AUDIT-CHECKLIST.md` §2.2 说的"只断言包含某些关键词"。
+9. **忠实性语义必须有断言**（四套都要）：断言注入文本**不含**"偏离 → 0"这类把形式化缺陷等同命题为假
+   的指令，且含"不要投 0 / 记为形式化不合格 / 走待办"的要求；并断言 `defect` 路径真的不得定论
+   （`require` 档下对象留在未定论 + `Formal/TODO.md`）。
+10. **每个架构都要有人可读的 Lean 提示词语料**（`prompt-corpus-vN/`，随包发布）：至少覆盖
+    `off` 不出文本、`encourage`、**`require`**、`passed` 忠实性分支、以及平时工作轮的"顺手形式化"；
+    语料必须把工作区与 VibeMath 根**归一化为 `<WS>` / `<VIBEMATH>`**（大小写与分隔符无关——
+    Windows 下 `os.tmpdir()` 的大小写可能与插件渲染的不同），并把**时间戳归一化为 `<TIME>`**，
+    保证逐字节确定性、可 diff、不泄露本机路径。**教训**：首版只有 v3/v5 有语料，v2/v4 的 Lean
+    提示词只能翻源码；`require` 档文本不在任何语料里；v5 语料既有绝对临时路径又有时间戳，
+    每跑一次都变。
+11. **提示词硬要求的探针**（放进 `audit-formal-sensitivity.mjs`）：把注入文本里的工具名改成缩写
+    （`lean_archive`）、删掉 `require` 档的要求段落、把忠实性分支改回"偏离 → 0"——三者都必须让
+    对应套件**变红**。
 
 ---
 
@@ -317,5 +395,7 @@
 - **不内置 Lean**：本框架不安装工具链、不下载依赖。工具链不存在时优雅降级（记录 `LEAN_NOT_FOUND`）。
 - **不判"忠实性"**：忠实性由代理/人审查并投票决定；框架只负责把审查焦点**换成**忠实性
   （因为证明正确性已由内核保证）。框架不会假装自己能判断 Lean 代码是否对应命题。
+- **`defect` 也不是框架的判断**：框架不判断 Lean 代码是否忠实，只提供"表决者认定不忠实时"的
+  一档落库语义（§4.1）——**降级 + 待办 + 不定论**，而不是把它记成"命题为假"。
 - **不把 Lean 通过等同于"命题为真"**：`passed` 只表示"形式化代码通过内核检查"，
   该代码是否忠实于命题仍需 m 票审查。这正是 §0 表格里"审查对象变化"的含义。

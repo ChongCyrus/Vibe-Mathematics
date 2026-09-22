@@ -2588,7 +2588,7 @@ export function apply(ctx) {
   }
   /**
    * 把一次运行记到对象上（契约 §4 状态迁移）。普通运行最多把对象推进到 `attempted`；
-   * `passed` 只能由 lean_archive{kinds:'proof'} 且该文件最近一次运行 ok 产生——否则一次
+   * `passed` 只能由 vibe_math_lean_archive{kind:'proof'} 且该文件最近一次运行 ok 产生——否则一次
    * 顺手跑个无关文件就能把对象"洗白"成已形式化。passed/blocked 不会被普通运行降级。
    */
   async function formalSetRun(target, run) {
@@ -2612,28 +2612,34 @@ export function apply(ctx) {
     const L = []
     L.push('【Lean 形式化验证（' + (mode === 'require' ? '强制' : '鼓励') + '模式）】')
     if (rec.status === 'passed') {
-      // 整套机制的要害：审查对象**变了**。
+      // 整套机制的要害：审查对象**变了**——不是"推导对不对"，而是"这段代码说的是不是这个命题"。
+      // §4.1：忠实性缺陷**不是**"命题为假"，所以这一支必须同时给出 defect 出口（不得把偏差记成 0）。
       L.push('  · 该对象已有**通过的 Lean 形式化证明**（' + (rec.proof || rec.file || '') + '，最近一次运行 exit 0）。')
       L.push('    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的')
-      L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**（有偏差就指出偏差），')
-      L.push('    并据此给出 verdict。')
+      L.push('    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。')
+      L.push('  ▸ 一致 → Result = 1。')
+      L.push('  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：')
+      L.push('      ① Result 给一个严格介于 0 与 1 之间的值（记为弃权），并在 Reason 里写清偏差；')
+      L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
+      L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+      L.push('         修正形式化并重新跑通后再投票。')
+      L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。')
     } else if (rec.status === 'blocked') {
       L.push('  · 该对象已被记录为**形式化阻塞**：' + (rec.note || '未说明') + '。')
       L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
     } else {
       L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
       L.push('  · 工具：vibe_math_lean_run（执行）· vibe_math_lean_archive（归档）· vibe_math_lean_lib（查已有可复用库）')
-      L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 ' + (vibeRoot() + '/Formal/Lib/').replace(/\\/g, '/'))
-      L.push('    已证引理放 ' + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '；写之前先 lean_lib 查重。')
-      L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与')
-      L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+      L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 ' + (vibeRoot() + '/Formal/Lib/').replace(/\\/g, '/')
+        + '，已证引理放 ' + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '；写之前先 vibe_math_lean_lib 查重。')
+      L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
       if (mode === 'require') {
-        L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_math_lean_archive')
-        L.push('    kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，')
-        L.push('    会被记为未定论（原因 formal-required）并进入「形式化待办」。')
+        L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_math_lean_archive kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。')
       } else {
-        L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断。')
+        L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision=\'blocked\' 时必须写明 note）。')
       }
+      L.push('  · 归档可复用定义/引理前先跑通（vibe_math_lean_archive run=true 或先 vibe_math_lean_run）；跑不通不要入库。')
+      L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
     }
     return L.join('\n')
   }
@@ -2646,12 +2652,14 @@ export function apply(ctx) {
       + (formalMode() === 'require'
         ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
         : '这会让后续的验证与证明省掉大量重复工作。')
+      // 硬要求 3（契约 §6 顶部）：可复用库只收**跑通过**的代码，否则它会被不编译的定义污染。
+      + '归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
   }
   /** 回执契约里的 formal 字段（契约 §6.3）：非 off 模式必须出现在回执契约里，否则这条通道不可发现。 */
   function formalJsonField(target) {
     if (!formalOn()) return ''
     const id = String(target == null ? '' : target) || '<对象id>'
-    return ',"formal":{"target":"' + id + '","decision":"used|blocked","file":"Formal/' + id + '.lean","note":"难度判断/阻塞原因"}'
+    return ',"formal":{"target":"' + id + '","decision":"used|blocked|defect","file":"Formal/' + id + '.lean","note":"难度判断/阻塞原因/具体偏差"}'
   }
   /**
    * 工作轮（solver / explorer）回执契约里的 formal 字段。这些角色的回执本身就是一段 JSON 模板，
@@ -2661,15 +2669,17 @@ export function apply(ctx) {
   function formalReplyNote() {
     if (!formalOn()) return ''
     return '\n形式化回执（本模式）：若你本轮对某个对象做了形式化难度判断，请在回执里加上 '
-      + '"formal":{"target":"<对象id>","decision":"used|blocked","file":"Formal/<对象id>.lean","note":"难度判断/阻塞原因"}'
-      + '（decision=\'blocked\' 时必须写明 note，否则拒绝记录）。'
+      + '"formal":{"target":"<对象id>","decision":"used|blocked|defect","file":"Formal/<对象id>.lean","note":"难度判断/阻塞原因/具体偏差"}'
+      + '（decision=\'blocked\' 与 decision=\'defect\' 时必须写明 note，否则拒绝记录；'
+      + 'decision=\'defect\' 表示你认定这条已通过的 Lean 形式化**不忠实于命题原文**——'
+      + '那不是"命题为假"，框架会撤回其已通过状态并把对象放回形式化待办）。'
   }
   /** 从一条代理回执里取出 formal 判断并落库（顶层 formal 或 meta.formal 都接受）。 */
   async function absorbFormalFromReply(parsed, memberId) {
     if (!formalOn() || !parsed || typeof parsed !== 'object') return
     const f = (parsed.formal && typeof parsed.formal === 'object') ? parsed.formal
       : ((parsed.meta && typeof parsed.meta.formal === 'object') ? parsed.meta.formal : null)
-    if (f) await absorbFormalReply(f, memberId)
+    if (f) return await absorbFormalReply(f, memberId)
   }
   /** 对象 id → 关联可验证对象（命题/问题）。用于把表决对象映射到形式化记录。 */
   function verifyTargetId(r) { return String((r && (r.pId || r.qid)) || '') }
@@ -2860,8 +2870,8 @@ export function apply(ctx) {
     if (run.ok) await formalAnnounce('【形式化】' + (memberId || 'scheduler') + ' 运行 Lean 通过：' + run.file + '（' + ((run.ms || 0) / 1000).toFixed(1) + 's）' + (target ? '｜对象 ' + target : ''))
     return Object.assign({ ok: !!run.ok }, run, {
       hint: run.ok
-        ? '通过。若是某个对象的证明，请用 lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
-        : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 lean_archive kind=\'blocked\' 记录原因。',
+        ? '通过。若是某个对象的证明，请用 vibe_math_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
+        : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_math_lean_archive kind=\'blocked\' 记录原因。',
     })
   }
   async function leanArchive(memberId, o) {
@@ -2942,8 +2952,49 @@ export function apply(ctx) {
     return { ok: false, code: 'V3_INVALID_ARGUMENT', message: "kind must be 'def' | 'lemma' | 'proof' | 'blocked'" }
   }
   /**
+   * §4.1 的落地点：表决者认定这条**已通过的** Lean 形式化不忠实于命题原文。
+   *
+   * 偏差不是"命题为假"，而恰好是"这次形式化不合格"，因此这里的动作与 blocked 不同：
+   *   ① 无论此前是 `passed` 还是 `blocked`，一律**降级**为 `attempted`（都让位于"需重做"）；
+   *   ② 清空 `proof` 并**删除** `Verified/Lean/<id>.lean`（工作文件 `Formal/<id>.lean` 保留，代码不丢）；
+   *   ③ 把具体偏差写进记录与 `Formal/TODO.md`，并公告。
+   * 之后 `formalGateOk` 为假：require 档本次裁定**不定论**，对象进入「形式化待办」——修正形式化
+   * 并重新跑通后再投票。绝不把这条路径写成 `0`（那会让框架记下"命题为假"）。
+   */
+  async function formalRecordDefect(target, note, who) {
+    const id = formalId(target)
+    if (!id) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'defect 记录必须写明 target' }
+    const prev = formalOf(id)
+    const archived = String(prev.proof || '').trim() || ('Verified/Lean/' + id + '.lean')
+    await putFormal(id, Object.assign({}, prev, {
+      status: 'attempted',
+      decision: 'defect',
+      note: note,
+      proof: '',
+      updatedAt: now(),
+    }))
+    // 归档证明必须消失，否则 Verified/Lean/ 里会留下一份"看起来已通过"的不忠实代码。
+    await removeFile(archived)
+    // 待办条目按 id 去重、就地刷新：note 进入 TODO.md 的 why 列（require 档据此搁置定论）。
+    const list = formalTodo()
+    const i = list.findIndex(function (x) { return x && x.id === id })
+    const why = 'formal-defect：' + note
+    if (i === -1) list.push({ id: id, at: now(), why: why, verdict: null, project: currentProject })
+    else list[i] = Object.assign({}, list[i], { why: why, at: now() })
+    await writeFormalTodo()
+    await upsertFormalAnchor(id)
+    await rebuildLeanLibIndexes()
+    await saveAll()
+    await formalAnnounce('【形式化】' + who + ' 认定 ' + id + ' 的 Lean 形式化存在**忠实性缺陷**：' + note
+      + '。这不是"命题为假"，而是**形式化不合格**：已撤回其「已通过」状态（降级为 attempted）、'
+      + '删除归档证明 ' + archived + '、写入 Formal/TODO.md；本次裁定**不定论**，修正形式化并重新'
+      + '跑通（vibe_math_lean_archive kind=\'proof\'）后再投票。')
+    return { ok: true, kind: 'defect', target: id, status: 'attempted', proof: '', note: note, archived: archived }
+  }
+  /**
    * 回执通道（契约 §3/§6.3）：代理即使一次 Lean 工具都没调用，也必须能留下"实现难度判断"。
-   * decision='blocked' 时 note 必填（否则拒绝记录并公告）；'used' 记录草稿文件 → attempted。
+   * decision='blocked' 时 note 必填（否则拒绝记录并公告）；'used' 记录草稿文件 → attempted；
+   * decision='defect' 时 note 必填（具体偏差），落库语义见 §4.1 与 `formalRecordDefect`。
    */
   async function absorbFormalReply(f, memberId) {
     if (!formalOn() || !f || typeof f !== 'object') return
@@ -2960,6 +3011,16 @@ export function apply(ctx) {
       await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化阻塞：' + note)
       return
     }
+    if (decision === 'defect') {
+      const note = String(f.note || '').trim()
+      if (!note) {
+        // 与 blocked 同样"显式、可审计"：没写出具体偏差就无法复核，整条记录拒绝（返回该架构的错误码）。
+        await formalAnnounce('【形式化】' + who + ' 的 formal.decision=defect 未写明 note，已**拒绝**记录'
+          + '（忠实性缺陷必须写出具体偏差，否则无从复核）。该对象的形式化记录与归档证明**保持不变**。')
+        return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'defect 记录必须写明具体偏差（note）——"形式化与命题不一致"必须显式、可复核' }
+      }
+      return await formalRecordDefect(target, note, who)
+    }
     if (decision === 'used') {
       const prev = formalOf(target)
       const file = String(f.file || ('Formal/' + target + '.lean'))
@@ -2969,7 +3030,7 @@ export function apply(ctx) {
       await formalAnnounce('【形式化】' + who + ' 通过回执记录 ' + target + ' 形式化草稿：' + file)
       return
     }
-    await formalAnnounce('【形式化】' + who + ' 的 formal.decision 只能是 \'used\' 或 \'blocked\'（收到 ' + String(f.decision) + '），已忽略。')
+    await formalAnnounce('【形式化】' + who + ' 的 formal.decision 只能是 \'used\'、\'blocked\' 或 \'defect\'（收到 ' + String(f.decision) + '），已忽略。')
   }
 
   // ================= verification (验证器) =================
@@ -3376,7 +3437,7 @@ export function apply(ctx) {
         return { target: k, status: rec.status, file: rec.file, proof: rec.proof, note: rec.note }
       }),
       paths: { project: 'Formal/（相对项目根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
-      hint: "复用优先：先在 Lib/ 里找现成定义；新定义用 lean_archive kind='def' 归档，已证引理用 kind='lemma'。",
+      hint: "复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_math_lean_archive kind='def' 归档，已证引理用 kind='lemma'；归档前先跑通（run=true 或先 vibe_math_lean_run），跑不通不要入库。",
       verify: (Object.keys(tasks).length ? String(tasks[Object.keys(tasks)[0]].rId || '') : null),
     }
   })
