@@ -189,7 +189,44 @@ console.log('=== 6. a same-version re-run is a no-op ===')
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 
-console.log('=== 7. the managed list covers what the presets need ===')
+console.log('=== 7. an unreadable package manifest replaces nothing (and self-heals) ===')
+{
+  // a package whose manifest cannot be read: the installer cannot tell whether this is an upgrade,
+  // so the only safe behaviour is to copy nothing and still restore what is missing. (The manifest
+  // must stay VALID JSON — Node parses the nearest package.json to decide the module type — so the
+  // unreadable-version case is a manifest with no `version` field, which is exactly what a
+  // hand-assembled package looks like.)
+  const broken = buildPackage('9.9.9', join(tmp, 'pkg-broken'))
+  writeFileSync(join(broken, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', type: 'module' }, null, 2))
+  const pkgC = buildPackage('3.0.0', join(tmp, 'pkg-3.0.0'))
+
+  appendFileSync(at(PRESETS[1], 'preset.yml'), '\n# USER EDIT 2\n')
+  const driftedBytes = readFileSync(at(PRESETS[1], 'preset.yml'))
+  rmSync(at(PRESETS[2], 'preset.yml')) // ...but a missing file is still restored
+  // an earlier upgrade already preserved an edit of this same file: that copy must win
+  const earlier = join(backupRoot, '2.0.0', PRESETS[1].dst, 'preset.yml')
+  mkdirSync(dirname(earlier), { recursive: true })
+  writeFileSync(earlier, 'EARLIER COPY\n')
+
+  const logs = await applyFrom(broken, home, [])
+  ok(readFileSync(at(PRESETS[1], 'preset.yml')).equals(driftedBytes), 'an unreadable manifest leaves drifted files alone')
+  ok(isCopyOf(PRESETS[2], 'preset.yml', broken), '...while a missing file is still restored')
+  ok(logs.some((l) => l.includes('读不到本包版本')), 'the reason is reported, not swallowed')
+  ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '2.0.0', 'the previously recorded version is kept (so the next run reports the right "from" version)')
+  ok(!existsSync(join(backupRoot, '(unversioned)')), 'no "(unversioned)" backup directory was created')
+
+  const logs2 = await applyFrom(pkgC, home, [])
+  ok(readFileSync(at(PRESETS[1], 'preset.yml')).equals(readFileSync(shipped(PRESETS[1], 'preset.yml', pkgC))),
+    'the next readable run replaces the drift as a normal version change')
+  ok(readFileSync(earlier, 'utf8') === 'EARLIER COPY\n', 'a backup that already exists for that version is kept byte-for-byte (the earliest copy wins)')
+  ok(logs2.every((l) => !l.includes('备份失败')), 'a pre-existing backup for the same version is NOT reported as a failure')
+  ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '3.0.0', 'the state records the new version')
+
+  // the backup directory must never be readable as a preset: DSH only accepts [a-z0-9][a-z0-9-]* ids
+  ok(!/^[a-z0-9]/.test('.vibe-math-backup'), 'the backup directory name cannot be mistaken for a preset id (discovery skips it)')
+}
+
+console.log('=== 8. the managed list covers what the presets need ===')
 for (const p of PRESETS) {
   const shippedFiles = (pkg.files || []).filter((f) => f.startsWith(p.src + '/')).map((f) => f.slice(p.src.length + 1))
   const runtime = ['agent.cordis.yml', 'preset.yml', p.src + '.js']

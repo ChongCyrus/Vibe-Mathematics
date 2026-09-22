@@ -78,20 +78,23 @@ function sha256(buf) { return createHash('sha256').update(buf).digest('hex') }
 
 /**
  * Preserve one file that is about to be replaced by the shipped version, under
- * `<presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file>`. Returns true when a copy was
- * written; an existing backup for the same version is kept (the earliest edit is the one worth
- * keeping, and re-running an upgrade must not overwrite it with an already-replaced file).
+ * `<presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file>`.
+ *
+ * Returns `'written'` (a copy was made now), `'kept'` (a copy for this version was already there —
+ * the earliest edit is the one worth keeping, and a re-run must not overwrite it with an
+ * already-replaced file) or `'failed'`. A caller must not report `'kept'` as a failure: the user's
+ * bytes are preserved, just from an earlier run.
  */
 function backupReplacedFile(presetRoot, fromVersion, presetDir, fileName, buf) {
   try {
     const dir = join(presetRoot, BACKUP_DIR, String(fromVersion || 'unversioned'), presetDir)
     const dst = join(dir, fileName)
-    if (existsSync(dst)) return false
+    if (existsSync(dst)) return 'kept' // the earliest copy for this version is the one worth keeping
     mkdirSync(dir, { recursive: true })
     writeFileSync(dst, buf)
-    return true
+    return 'written'
   } catch (e) {
-    return false // a backup failure must never stop the update; it is reported by the caller
+    return 'failed' // a backup failure must never stop the update; it is reported by the caller
   }
 }
 
@@ -385,10 +388,18 @@ export async function apply(ctx) {
     // leaves the working tree alone. See UPDATE POLICY at the top of this file.
     const refresh = isBaseline || isUpgrade
     const fromVersion = (state && state.version) || '(unversioned)'
+    if (pkgVersion === '') {
+      // Without a version there is nothing to compare against, so this run must NOT replace
+      // anything (a wrong guess would overwrite files for no reason); it still restores missing
+      // ones and keeps the previously recorded version, so the next readable run reports the
+      // right "from" version.
+      logger?.warn?.('[dsh-vibe-math] 读不到本包版本（package.json 缺失或损坏）：本次不做版本比对，只补回缺失的 preset 文件。')
+    }
 
     const nextFiles = {}
     let installed = 0, updated = 0, kept = 0, backedUp = 0
     const replacedEdits = []
+    const backupFailures = []
 
     for (const p of PRESETS) {
       const srcDir = join(here, p.src)
@@ -430,7 +441,9 @@ export async function apply(ctx) {
         // replacing: preserve the user's bytes when they are not what this installer last wrote
         // (a legacy state without a hash cannot tell, so it backs the file up rather than risk it)
         if (typeof prevRec.hash !== 'string' || destHash !== prevRec.hash) {
-          if (backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf)) backedUp += 1
+          const backupResult = backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf)
+          if (backupResult === 'failed') backupFailures.push(key)
+          else backedUp += 1
           replacedEdits.push(key)
         }
         writeFileSync(d, cur)
@@ -469,7 +482,7 @@ export async function apply(ctx) {
       if (dirEmpty && existsSync(dir)) { try { rmdirSync(dir); removedDirs.push(dir) } catch (e) {} }
     }
 
-    writeState(stateFile, { version: pkgVersion, files: nextFiles, updatedAt: Date.now() })
+    writeState(stateFile, { version: pkgVersion || (state && state.version) || '', files: nextFiles, updatedAt: Date.now() })
 
     if (removedFiles > 0 || removedDirs.length > 0) {
       logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped.')
@@ -480,13 +493,19 @@ export async function apply(ctx) {
         ' — 新增 ' + installed + ' 个文件，更新 ' + updated + ' 个文件。' +
         (replacedEdits.length > 0
           ? '其中 ' + replacedEdits.length + ' 个文件与上一次安装的字节不同（被改过），已按版本一致化覆盖' +
-            (backedUp > 0 ? '，原文备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + replacedEdits.join(', ')
-              : '，但备份失败（原文未保留）') + '。要自定义 preset，请复制一份而不是改这几个文件——被管理的文件在下一次版本变更时一定会被替换。'
+            (backupFailures.length === 0
+              ? '，原文备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + replacedEdits.join(', ')
+              : '；这 ' + backupFailures.length + ' 个文件**备份失败**（原文未保留）：' + backupFailures.join(', ')) +
+            '。要自定义 preset，请复制一份而不是改这几个文件——被管理的文件在下一次版本变更时一定会被替换。'
           : '') +
         '新版本 preset 将在新会话生效。')
     } else if (isBaseline) {
       logger?.info?.('[dsh-vibe-math] preset baseline: refreshed ' + (installed + updated) + ' file(s) to v' + pkgVersion +
-        (replacedEdits.length > 0 ? '，其中 ' + replacedEdits.length + ' 个原有文件与随包版本不同，原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) : '') +
+        (replacedEdits.length > 0
+          ? '，其中 ' + replacedEdits.length + ' 个原有文件与随包版本不同' +
+            (backupFailures.length === 0 ? '，原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion))
+              : '，但有 ' + backupFailures.length + ' 个备份失败（原文未保留）：' + backupFailures.join(', '))
+          : '') +
         ' — 已启用版本化自动更新（后续版本变更会直接替换被管理的 preset 文件）。')
     } else if (installed > 0) {
       logger?.info?.('[dsh-vibe-math] restored ' + installed + ' missing preset file(s)')
