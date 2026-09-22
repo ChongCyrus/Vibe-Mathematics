@@ -8,15 +8,15 @@
 ## 1. 怎么跑（并行是默认）
 
 ```bash
-node run-tests.mjs                     # 全部 *.test.mjs，并行（并发 = min(4, CPU 核数)）
-node run-tests.mjs --only formal       # 只跑名字含 formal 的套件
-node run-tests.mjs --concurrency=6     # 手动指定并发
-node audit-formal-sensitivity.mjs      # 49 条不变式探针，并行（--concurrency=N / --only=<preset> / --list）
-node audit-persona-sensitivity.mjs     # 11 条提示词面探针（串行，本身只要几秒）
-node audit-prompt-invariants.mjs       # 静态：四套的提示词/工具面不变式 + 扫描器自检（< 0.1s）
-node audit-prompt-invariants.mjs --self-probe   # 证明上面那 157 条不变式真的会变红（5 个自探针）
-node audit-spec-traceability.mjs       # 静态：规格/README ↔ 代码可追溯（< 0.1s）
-node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁 + 扫描器解析级自检（≈0.5 s）
+node tests/run-tests.mjs                     # 全部 *.test.mjs（在 tests/ 下），并行（并发 = min(4, CPU 核数)；命令都从**仓库根**执行）
+node tests/run-tests.mjs --only formal       # 只跑名字含 formal 的套件
+node tests/run-tests.mjs --concurrency=6     # 手动指定并发
+node tests/audit-formal-sensitivity.mjs      # 49 条不变式探针，并行（--concurrency=N / --only=<preset> / --list）
+node tests/audit-persona-sensitivity.mjs     # 11 条提示词面探针（串行，本身只要几秒）
+node tests/audit-prompt-invariants.mjs       # 静态：四套的提示词/工具面不变式 + 扫描器自检（< 0.1s）
+node tests/audit-prompt-invariants.mjs --self-probe   # 证明上面那 157 条不变式真的会变红（5 个自探针）
+node tests/audit-spec-traceability.mjs       # 静态：规格/README ↔ 代码可追溯（< 0.1s）
+node tests/audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁 + 扫描器解析级自检（≈0.5 s）
 ```
 
 两个并行 runner 都会打印**每项耗时 + 汇总（wall / sum / speed-up / 最慢几项）**。跑完请读这几行。
@@ -25,14 +25,15 @@ node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁 + �
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `run-tests.mjs`（23 个套件） | 221.5 s | **111.5 s**（并发 4，speed-up x1.99） | 关键路径 = `e2e-v4-fixes` 98.1 s |
+| `tests/run-tests.mjs`（26 个套件） | 225.8 s | **109.7 s**（并发 4，speed-up x2.06） | 关键路径 = `e2e-v4-fixes` 95.9 s |
+| `tests/audit-installer-policy.test.mjs` | ≈ 1 s | — | 在临时 DSH_HOME 里驱动真实安装器（复制 4 套预设 × 2 个版本） |
 | `audit-formal-sensitivity.mjs`（49 探针） | 612.0 s | **154.6 s**（并发 4，speed-up x3.96） | 关键路径 = 12 个 v2 探针（每个 ≈32 s） |
 | `audit-persona-sensitivity.mjs`（11 探针） | ≈ 5 s | — | 本身很快，不需要并行 |
 | `audit-prompt-invariants.mjs`（157 条，含 X5–X8b 扫描器自检） | 0.4 s | — | 静态 |
 | `audit-prompt-invariants.mjs --self-probe`（5 探针） | 1.5 s | — | 每个探针 = 一次自我重跑（0.3 s） |
 | `audit-spec-traceability.mjs`（94 条） | 0.3 s | — | 静态 |
 | `audit-v5-integrity.mjs` | ≈ 0.5 s | — | 静态审计（含扫描器自检） |
-| `prompt-v5-integrity.test.mjs` | 1.6 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定） |
+| `prompt-v5-integrity.test.mjs` | 1.6 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定；**stdout 里的会议成员顺序仍是运行间随机的**，只有落盘语料是逐字节确定的） |
 
 > 优化前：全量回归 ≈ 5.5 min（串行，`formal-verify-v2` 单独 186 s）；
 > 探针脚本 ≈ **38 min**（49 条串行，其中 12 条 × `formal-verify-v2` 162 s）。
@@ -90,12 +91,12 @@ node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁 + �
 
 | 目的 | 跑什么 | 预期 |
 |---|---|---|
-| 改了某个架构的插件 | `node run-tests.mjs --only <vN>` + `node audit-formal-sensitivity.mjs --only=vN` | 30 s – 2 min |
-| 改了提示词/人设 | `node run-tests.mjs --only persona --only prompt` + `node audit-persona-sensitivity.mjs` | ≈ 15 s |
-| **改了任何工具的参数 schema / 参数处理** | `node audit-prompt-invariants.mjs --self-probe` + `node run-tests.mjs --only formal` | ≈ 40 s（v2 套件占大头） |
-| 改了共享契约 / 发版前 | `node run-tests.mjs` + `node audit-formal-sensitivity.mjs` + `node audit-persona-sensitivity.mjs` + `node audit-prompt-invariants.mjs --self-probe` + `node audit-spec-traceability.mjs` + `node audit-v5-integrity.mjs` | ≈ 4.5 min |
-| 只想快速看提示词/文档有没有漂移 | `node audit-prompt-invariants.mjs && node audit-spec-traceability.mjs` | **< 0.5 s** |
-| 只想知道"快不快" | `node run-tests.mjs --json` | 读 `wallSeconds` / `slowest` |
+| 改了某个架构的插件 | `node tests/run-tests.mjs --only <vN>` + `node tests/audit-formal-sensitivity.mjs --only=vN` | 30 s – 2 min |
+| 改了提示词/人设 | `node tests/run-tests.mjs --only persona --only prompt` + `node tests/audit-persona-sensitivity.mjs` | ≈ 15 s |
+| **改了任何工具的参数 schema / 参数处理** | `node tests/audit-prompt-invariants.mjs --self-probe` + `node tests/run-tests.mjs --only formal` | ≈ 40 s（v2 套件占大头） |
+| 改了共享契约 / 发版前 | `node tests/run-tests.mjs` + `node tests/audit-formal-sensitivity.mjs` + `node tests/audit-persona-sensitivity.mjs` + `node tests/audit-prompt-invariants.mjs --self-probe` + `node tests/audit-spec-traceability.mjs` + `node tests/audit-v5-integrity.mjs` | ≈ 4.5 min |
+| 只想快速看提示词/文档有没有漂移 | `node tests/audit-prompt-invariants.mjs && node tests/audit-spec-traceability.mjs` | **< 0.5 s** |
+| 只想知道"快不快" | `node tests/run-tests.mjs --json` | 读 `wallSeconds` / `slowest` |
 
 **每次跑完都要看那几行 timing**：如果某个套件突然比基线慢很多，先怀疑新增的固定等待，
 再怀疑它是否在等一个永远不会发生的条件（这正是 v2 套件 186 s 的成因）。

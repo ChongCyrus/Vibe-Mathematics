@@ -16,16 +16,21 @@
 //  ships v2/v3/v4/v5.)
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
-//   - baseline (no state file — e.g. upgrading from an installer that predates
-//     this mechanism): every existing owned file is refreshed to the current
-//     package version and recorded as package-owned (user policy: auto-update
-//     old installs; any manual edits made before this baseline are overwritten
-//     once — from then on edits are protected).
-//   - upgrade (recorded version != current package.json version): every owned
-//     file that is byte-identical to the previously installed copy (i.e. NOT
-//     user-edited since) is overwritten with the new version; user-edited files
-//     are preserved and reported via the logger.
-//   - same version: no-op (idempotent). Missing files are ALWAYS restored.
+//   - FORCE-REPLACE ON VERSION CHANGE. When the recorded version differs from this package's
+//     version — or there is no record at all (an install made by an older installer) — every
+//     managed file is overwritten with the shipped bytes. This is deliberately NOT conditional on
+//     the file being unmodified. Two reasons:
+//       · a preset assembled from two different versions (the old policy updated a file's
+//         neighbours and kept the file the user had touched) is exactly the state that fails to
+//         mount or misbehaves subtly, and the user has no way to see that from the outside;
+//       · editing a shipped preset in place is not the supported way to customize one — DSH
+//         provides a real one (copy the preset: the picker's copy action, or a new directory
+//         under <presetRoot>), which leaves the managed set updatable.
+//   - Nothing is destroyed silently: before a file whose bytes are not what the installer last
+//     wrote is replaced, the user's copy is kept under
+//     <presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file> and named in the log.
+//   - same version: no-op (idempotent) — restarting DSH never rewrites a file or churns the
+//     preset's generation stamp. Missing files are ALWAYS restored, at any version.
 //   - force a full refresh at any time: delete the preset dirs and restart DSH.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -36,7 +41,10 @@ import { fileURLToPath } from 'node:url'
 
 export const name = 'vibe-math-preset-installer'
 
-const PRESETS = [
+// Exported so the shipped policy suite can prove the managed list still covers what each preset
+// needs at runtime (a file present in the preset directory but missing here is copied by nobody,
+// and the installed preset then cannot mount).
+export const PRESETS = [
   {
     src: 'vibe-math-v2',
     dst: 'vibe-math-v2',
@@ -62,8 +70,30 @@ const PRESETS = [
 ]
 
 const STATE_FILE = '.vibe-math-installed.json'
+// where a replaced user edit is preserved; a leading dot keeps DSH's preset discovery from ever
+// treating it as a preset directory (ids must match [a-z0-9][a-z0-9-]*)
+const BACKUP_DIR = '.vibe-math-backup'
 
 function sha256(buf) { return createHash('sha256').update(buf).digest('hex') }
+
+/**
+ * Preserve one file that is about to be replaced by the shipped version, under
+ * `<presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file>`. Returns true when a copy was
+ * written; an existing backup for the same version is kept (the earliest edit is the one worth
+ * keeping, and re-running an upgrade must not overwrite it with an already-replaced file).
+ */
+function backupReplacedFile(presetRoot, fromVersion, presetDir, fileName, buf) {
+  try {
+    const dir = join(presetRoot, BACKUP_DIR, String(fromVersion || 'unversioned'), presetDir)
+    const dst = join(dir, fileName)
+    if (existsSync(dst)) return false
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(dst, buf)
+    return true
+  } catch (e) {
+    return false // a backup failure must never stop the update; it is reported by the caller
+  }
+}
 
 function readState(path) {
   try {
@@ -350,11 +380,15 @@ export async function apply(ctx) {
     const state = readState(stateFile)
     const prevFiles = (state && state.files) || {}
     const isUpgrade = state !== null && pkgVersion !== '' && state.version !== pkgVersion
-    const isBaseline = state === null // no recorded history → refresh everything (user policy: auto-update old installs)
+    const isBaseline = state === null // no recorded history → refresh everything
+    // A version change (or a first sighting) REPLACES the managed files; only a same-version boot
+    // leaves the working tree alone. See UPDATE POLICY at the top of this file.
+    const refresh = isBaseline || isUpgrade
+    const fromVersion = (state && state.version) || '(unversioned)'
 
     const nextFiles = {}
-    let installed = 0, updated = 0, kept = 0
-    const keptList = []
+    let installed = 0, updated = 0, kept = 0, backedUp = 0
+    const replacedEdits = []
 
     for (const p of PRESETS) {
       const srcDir = join(here, p.src)
@@ -375,32 +409,33 @@ export async function apply(ctx) {
           nextFiles[key] = { hash: curHash, provenance: 'package' }
           continue
         }
-        const destHash = sha256(readFileSync(d))
-        if (isBaseline) {
-          // no recorded history: refresh to the current package (one-time; edits
-          // made before this mechanism are overwritten, later edits are protected)
-          if (destHash === curHash) { nextFiles[key] = { hash: curHash, provenance: 'package' } }
-          else { writeFileSync(d, cur); updated += 1; nextFiles[key] = { hash: curHash, provenance: 'package' } }
-          continue
-        }
+        const destBuf = readFileSync(d)
+        const destHash = sha256(destBuf)
         const prev = prevFiles[key]
         const prevRec = (prev && typeof prev === 'object') ? prev : { hash: prev, provenance: 'package' }
-        const prevProv = (prevRec.provenance === 'user') ? 'user' : 'package' // 未知来源按包文件处理
-        if (prevProv === 'package' && destHash === prevRec.hash) {
-          // 包文件且未被改动 → 可安全升级（内容相同则跳过写入）
-          if (destHash !== curHash) { writeFileSync(d, cur); updated += 1 }
+        if (destHash === curHash) {
+          // already the shipped bytes: never rewrite, so the file's mtime (which keys the preset's
+          // DSH generation) stays put
           nextFiles[key] = { hash: curHash, provenance: 'package' }
-        } else if (prevProv === 'user') {
-          // 用户持有 → 永不覆盖
-          kept += 1
-          if (isUpgrade) keptList.push(key + ' (用户持有)')
-          nextFiles[key] = { hash: destHash, provenance: 'user' }
-        } else {
-          // 包文件但自上次安装后已被用户改动
-          kept += 1
-          if (isUpgrade) keptList.push(key + ' (已修改)')
-          nextFiles[key] = { hash: destHash, provenance: 'user' }
+          continue
         }
+        if (!refresh) {
+          // same version: nothing is being updated, so a file that differs from the package is left
+          // exactly as it is. The recorded hash stays "what this installer last wrote" (or unknown),
+          // so the drift is still recognised — and backed up — at the next version change.
+          kept += 1
+          nextFiles[key] = typeof prevRec.hash === 'string' ? { hash: prevRec.hash, provenance: 'package' } : { provenance: 'package' }
+          continue
+        }
+        // replacing: preserve the user's bytes when they are not what this installer last wrote
+        // (a legacy state without a hash cannot tell, so it backs the file up rather than risk it)
+        if (typeof prevRec.hash !== 'string' || destHash !== prevRec.hash) {
+          if (backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf)) backedUp += 1
+          replacedEdits.push(key)
+        }
+        writeFileSync(d, cur)
+        updated += 1
+        nextFiles[key] = { hash: curHash, provenance: 'package' }
       }
     }
 
@@ -441,15 +476,25 @@ export async function apply(ctx) {
     }
 
     if (isUpgrade) {
-      logger?.info?.('[dsh-vibe-math] preset auto-update: version ' + (state.version || '(none)') + ' → ' + pkgVersion +
-        ' — 新增 ' + installed + ' 个文件，更新 ' + updated + ' 个文件' +
-        (kept > 0 ? '，保留 ' + kept + ' 个未覆盖文件（' + keptList.join('; ') + '）' : '') +
-        '。新版本 preset 将在新会话生效。')
+      logger?.info?.('[dsh-vibe-math] preset auto-update: version ' + fromVersion + ' → ' + pkgVersion +
+        ' — 新增 ' + installed + ' 个文件，更新 ' + updated + ' 个文件。' +
+        (replacedEdits.length > 0
+          ? '其中 ' + replacedEdits.length + ' 个文件与上一次安装的字节不同（被改过），已按版本一致化覆盖' +
+            (backedUp > 0 ? '，原文备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + replacedEdits.join(', ')
+              : '，但备份失败（原文未保留）') + '。要自定义 preset，请复制一份而不是改这几个文件——被管理的文件在下一次版本变更时一定会被替换。'
+          : '') +
+        '新版本 preset 将在新会话生效。')
     } else if (isBaseline) {
       logger?.info?.('[dsh-vibe-math] preset baseline: refreshed ' + (installed + updated) + ' file(s) to v' + pkgVersion +
-        ' — 已启用自动更新（后续版本升级将自动替换未被手动修改的 preset 文件）。')
+        (replacedEdits.length > 0 ? '，其中 ' + replacedEdits.length + ' 个原有文件与随包版本不同，原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) : '') +
+        ' — 已启用版本化自动更新（后续版本变更会直接替换被管理的 preset 文件）。')
     } else if (installed > 0) {
       logger?.info?.('[dsh-vibe-math] restored ' + installed + ' missing preset file(s)')
+    } else if (kept > 0) {
+      // same version, and some managed file on disk differs from the package: reported, never
+      // rewritten mid-version (it is replaced, with a backup, at the next version change)
+      logger?.info?.('[dsh-vibe-math] preset files untouched (v' + pkgVersion + ' unchanged): ' + kept +
+        ' file(s) differ from the shipped copy; they will be replaced on the next version change (原件会先备份)')
     }
     await checkHostCapabilities(ctx, logger)
   } catch (err) {

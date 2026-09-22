@@ -324,8 +324,8 @@ Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命�
 
 > **四个预设的 persona（主代理收到的提示词）都完整列出了上面三个工具与四个参数**，
 > 并且 `prefix` 与 `text` 两个块逐行一致（只允许第 0 行不同）。这一层由
-> [`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs) 与
-> [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs) 守护——加入本特性时正是
+> [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) 与
+> [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) 守护——加入本特性时正是
 > 在四个预设里发现了"工具已注册、persona 从未列出"的缺陷（同批还发现 persona 少列了两条
 > 增删常驻研究员的工具、`/v4`/`/v5` 的子命令列表与实现不一致；详见随包发布说明）。
 
@@ -345,7 +345,10 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 安装时插件会自动把四个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v2/`、`vibe-math-v3/`、`vibe-math-v4/` 与 `vibe-math-v5/`。
 之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**主推**）、**Vibe Math V2**（v2，**主推**）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——v2 与 v3 同级主推，按实际需求自选（见「怎么选」）。
-**升级包版本后重启 DSH，未手动改过的 preset 文件会自动更新到新版本**（细节见文末安装器说明）。
+**升级包版本后重启 DSH，这四个 preset 目录里的受管文件会被整体替换成新版本的字节——包括你手动改过的文件。**
+这是有意的：一个"一半旧版、一半新版"的 preset 会挂不上或行为诡异，而你在外面看不出来。**被替换掉的手改内容不会丢**：
+原文会先备份到 `~/.dsh/.agent-presets/.vibe-math-backup/<旧版本>/<preset>/`，文件名会在日志里列出（细节见文末安装器说明）。
+**要自定义 preset 就别改这几个受管文件**——复制一份（预设选择器里的复制动作，或自行复制目录成新的 id），那份属于你，随包更新不会碰它。
 
 ### 方式 B：作为 agent preset 手动安装
 
@@ -368,10 +371,10 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 - **形态依赖**：四个 preset 依赖 DSH 的标准 **agent-preset 机制**（`~/.dsh/.agent-presets/<id>/` + preset picker）与 **bundle patch 机制**（`cordis.patch.yml` 注入安装器）。
 - **宿主插件行**：`agent.cordis.yml` 引用宿主提供的 `@deepseek-ai/dsh-*` 插件行（persona、agent-instructions、tool-bash/pwsh、tool-fs/fs-search、tool-jobs、skill-filesystem、tool-skill、tool-goal、plan-mode、compaction、subagent/workflow、ask-user、todo、web 等，约 21 个唯一包名）。宿主缺行会导致 preset 挂载失败（会话启动时报错）。
 - **宿主服务 API**：预设插件消费 `subagents`（startContinuable / **sendMessage**（续做/唤醒；`followup` 仅为 `Agent` 对象方法、**不是** `subagents` 服务方法）/ interrupt / drainContinuableChildren（v5 用于**真实解雇**））、`agents`（get/roots）、`tools`（register/restrict）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），以及**可选** `subprocess` / `sandboxPolicy` / `compaction` / `sessionProjections` / `sessions`。这些 API 形状随 DSH 版本演进；本项目**已在 `dsh-v0.1.5-rc.2` 上逐项核对并适配**（`package.json` 的 `dsh.testedVersion`）。**注意：DSH 0.1.2 起 `subagents.startContinuable` 的 `agentOptions` / `toolFilter` 需要宿主 provider 声明对应 capability**（spawn / fork 进程内 provider 均支持，v4/v5 指定成员模型/路由与工具权限依赖于此）。
-  > **2026 兼容性修复要点**（详见 `../COMPAT-AUDIT-ROUND2.md`）：① `tools.restrict()` 对**未注册的工具名抛错**，而 filter 在建立子代理时应用，故权限名表必须只含本部署真正注册的名字——v2/v3 原先硬编码 `web`/`fetch`/`bash`（其中 `bash` 在 Windows 被 `disabled`）会导致"想收紧权限时子代理永远起不来"；② v4 的真实 `/compact` 原先在 `subagent/end` 里查 `agents.get()`，但该事件在子代理**已被移出注册表之后**才触发，属死代码，已改为在 `subagent/start` 捕获引用；③ 可选服务改为**惰性读取**，不再在 `apply()` 快照（否则挂载顺序会让 `subprocess` 永久为 undefined 而静默不建目录）。
+  > **2026 兼容性修复要点**（详见 `docs/COMPAT-AUDIT-ROUND2.md`）：① `tools.restrict()` 对**未注册的工具名抛错**，而 filter 在建立子代理时应用，故权限名表必须只含本部署真正注册的名字——v2/v3 原先硬编码 `web`/`fetch`/`bash`（其中 `bash` 在 Windows 被 `disabled`）会导致"想收紧权限时子代理永远起不来"；② v4 的真实 `/compact` 原先在 `subagent/end` 里查 `agents.get()`，但该事件在子代理**已被移出注册表之后**才触发，属死代码，已改为在 `subagent/start` 捕获引用；③ 可选服务改为**惰性读取**，不再在 `apply()` 快照（否则挂载顺序会让 `subprocess` 永久为 undefined 而静默不建目录）。
 - **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前已声明 `0.1.2-alpha.4` … `0.1.5-rc.2` 共 8 个版本为 `compatible`，实测目标为 `0.1.5-rc.2`）；`engines.node` 为 `^22.19.0 || >=24.0.0`。
 - **运行时自检（能力 + 版本双检）**：安装器（bundle 插件）每次启动时：**① 尽力探测 DSH 版本**（读 `@deepseek-ai/dsh/package.json` 或 `DSH_VERSION` 环境变量；DSH 未通过公开 service/context 暴露版本，故为尽力而为，探测不到就跳过）。若探测到且该版本未被 `dshReleases` 声明为 `compatible`，会给出明确提示；**② 再对宿主服务与关键 API 做能力自检**（这是真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction`/`sessionProjections`/`sessions` 为**可选**（缺失只提示"功能会静默降级"，不影响挂载；`sessionProjections` 缺失时 v5 的研究所状态回退到加固 JSON），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
-- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin update dsh-vibe-math`，重启 DSH 后安装器会自动把 preset 更新到新版本（见上文「安装」说明）。
+- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin update dsh-vibe-math`，重启 DSH 后安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；见上文「安装」说明）。
 
 ---
 
@@ -818,19 +821,19 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
-- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
-- **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
-- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
-- **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
-- **v5 静态完整性**：[`audit-v5-integrity.mjs`](audit-v5-integrity.mjs)（≈0.5 s）——调用了但未定义的函数、未声明的 `params.*` 读取、会话 API 上不存在的方法、文档化但从未抛出的错误码、遗留开发标记，外加**扫描器解析级自检**（它先把注释/字符串/正则抹掉再扫描，自检保证"抹除后的源码仍能被 `node --check` 解析"——2.3.5 修掉的正是这个扫描器读错 30 行的盲区）；配套 [`audit-v5-sensitivity.mjs`](audit-v5-sensitivity.mjs)（39 条探针，全红才算通过）
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
+- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
+- **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
+- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
+- **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
+- **v5 静态完整性**：[`audit-v5-integrity.mjs`](tests/audit-v5-integrity.mjs)（≈0.5 s）——调用了但未定义的函数、未声明的 `params.*` 读取、会话 API 上不存在的方法、文档化但从未抛出的错误码、遗留开发标记，外加**扫描器解析级自检**（它先把注释/字符串/正则抹掉再扫描，自检保证"抹除后的源码仍能被 `node --check` 解析"——2.3.5 修掉的正是这个扫描器读错 30 行的盲区）；配套 [`audit-v5-sensitivity.mjs`](tests/audit-v5-sensitivity.mjs)（39 条探针，全红才算通过）
 
 ---
 
 ## ⚠️ 已知边界（有意简化）
 
 **v2**：
-- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——版本升级会自动替换**未被手动修改**的 preset 文件（哈希一致才覆盖）；你改过的文件会被保留并在日志中提示。无记录的老安装首次会一次性刷新到当前版本。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v2`、`vibe-math-v3`、`vibe-math-v4` 与 `vibe-math-v5` 目录后重启 DSH。
+- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v2`、`vibe-math-v3`、`vibe-math-v4` 与 `vibe-math-v5` 目录后重启 DSH。
 - `flat` 裁决在辩论不一致时直接判 `0.5`（高置信分歧如 0.9 vs 1 也会被误判 0.5——**v3 已用近共识规则修复**）；`forced` 按历史准确率+置信度加权。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
 - 四个 preset 文件互相独立、可共存；同一会话同时只能选一个预设。
@@ -856,7 +859,7 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **`resume` 后轮次计数从 1 重新计**（内存态，仅用于节流与压缩提示）；权威进度在成员自己的 `Progress/`。
 - **成员章程是入职快照**：升级本包不会改写已在跑的研究所里成员的章程（它们仍用入职时冻结的版本）。
   需要新章程就在新会话里重开一个研究所；投影状态与文件树无需迁移。
-- **安装器行为同 v2**（版本化自动更新，`vibe-math-v5` 目录同样受管）。
+- **安装器行为同 v2**（版本化自动更新；版本一变即整体替换受管文件并先备份原文，`vibe-math-v5` 目录同样受管）。
 - **Lean 形式化需要宿主上有 Lean 工具链**：框架不内置、不下载；没有工具链时三个 Lean 工具会如实返回
   `LEAN_NOT_FOUND`，形式化代码仍可写下来归档，但无法执行验证。
 - **`require` 模式的门禁是「搁置」而不是「卡死」**：缺形式化的真/假结论会被记为未定论 + 进入形式化待办，
