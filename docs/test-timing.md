@@ -16,7 +16,7 @@ node audit-persona-sensitivity.mjs     # 11 条提示词面探针（串行，本
 node audit-prompt-invariants.mjs       # 静态：四套的提示词/工具面不变式 + 扫描器自检（< 0.1s）
 node audit-prompt-invariants.mjs --self-probe   # 证明上面那 157 条不变式真的会变红（5 个自探针）
 node audit-spec-traceability.mjs       # 静态：规格/README ↔ 代码可追溯（< 0.1s）
-node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁（≈3 s）
+node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁 + 扫描器解析级自检（≈0.5 s）
 ```
 
 两个并行 runner 都会打印**每项耗时 + 汇总（wall / sum / speed-up / 最慢几项）**。跑完请读这几行。
@@ -31,7 +31,7 @@ node audit-v5-integrity.mjs            # 静态：v5 完整性/理念门禁（�
 | `audit-prompt-invariants.mjs`（157 条，含 X5–X8b 扫描器自检） | 0.4 s | — | 静态 |
 | `audit-prompt-invariants.mjs --self-probe`（5 探针） | 1.5 s | — | 每个探针 = 一次自我重跑（0.3 s） |
 | `audit-spec-traceability.mjs`（94 条） | 0.3 s | — | 静态 |
-| `audit-v5-integrity.mjs` | ≈ 3 s | — | 静态审计 |
+| `audit-v5-integrity.mjs` | ≈ 0.5 s | — | 静态审计（含扫描器自检） |
 | `prompt-v5-integrity.test.mjs` | 1.6 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定） |
 
 > 优化前：全量回归 ≈ 5.5 min（串行，`formal-verify-v2` 单独 186 s）；

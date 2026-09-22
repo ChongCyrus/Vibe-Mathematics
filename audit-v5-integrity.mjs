@@ -9,21 +9,53 @@
 //   5. leftover development markers / TODO scaffolding
 // Run: node audit-v5-integrity.mjs   (exit 1 on any finding)
 // ============================================================
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const FILE = new URL('./vibe-math-v5/vibe-math-v5.js', import.meta.url)
 const raw = readFileSync(FILE, 'utf8')
-// Strip comments and string literals before any identifier scan. Without this the
+// Strip comments, string literals AND regex literals before any identifier scan. Without this the
 // heuristic matches English words inside comments that merely precede a '(' (e.g.
 // "// per unit (" becomes a phantom call to unit()), drowning the real findings.
+//
+// REGEX LITERALS ARE NOT OPTIONAL HERE: v5 contains `/[\\/:*?"<>|\u0000-\u001f]+/` — a character class
+// holding a DOUBLE QUOTE. A scanner without regex support reads that quote as a string start and
+// mangles the rest of the line. Measured on this very file (old vs new, line by line): 30 of 4365
+// lines differed and the stripped output did NOT parse. No identifier this audit checks
+// (call names, `params.*` reads, `s.*()` methods) happened to be missed in the current source, so this
+// was latent rather than exploited — but a single call appearing only on such a line would have been
+// invisible. The self-check at the bottom of this file keeps the scanner honest.
+// The keyword rule matters for the same reason as in audit-prompt-invariants.mjs (`return /…/`).
 function stripNoise(s) {
   let out = ''
   let i = 0
   const n = s.length
+  let prev = '' // last significant token (single char, or a whole word such as `return`)
+  let word = ''
+  const REGEX_AFTER_KEYWORD = /^(?:return|typeof|case|delete|void|instanceof|in|of|yield|await|new|do|else)$/
+  const regexAllowed = () => prev === '' || REGEX_AFTER_KEYWORD.test(prev) || /[(,=:[!&|?{};+\-*%~^<>]/.test(prev)
   while (i < n) {
     const c = s[i], c2 = s[i + 1]
     if (c === '/' && c2 === '/') { while (i < n && s[i] !== '\n') i++; continue }
     if (c === '/' && c2 === '*') { i += 2; while (i < n && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue }
+    if (c === '/' && regexAllowed()) {
+      i++
+      let inClass = false
+      while (i < n) {
+        if (s[i] === '\\') { i += 2; continue }
+        if (s[i] === '[') inClass = true
+        else if (s[i] === ']') inClass = false
+        else if (s[i] === '/' && !inClass) { i++; break }
+        else if (s[i] === '\n') break // a regex literal cannot span lines
+        i++
+      }
+      while (i < n && /[a-z]/i.test(s[i])) i++ // flags
+      out += "''" // a value placeholder, like strings: keeps `X: <value>` shapes but no phantom calls
+      prev = ')'
+      continue
+    }
     if (c === "'" || c === '"' || c === '`') {
       const q = c
       i++
@@ -34,9 +66,12 @@ function stripNoise(s) {
         i++
       }
       out += q + q   // keep a placeholder so `X: ''` shape survives
+      prev = ')'
       continue
     }
     out += c
+    if (/[A-Za-z0-9_$]/.test(c)) word += c
+    else { if (word) { prev = word; word = '' } if (!/\s/.test(c)) prev = c }
     i++
   }
   return out
@@ -367,6 +402,35 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     notes.push('persona corpus: ' + (pc.presets || []).length + ' presets')
   } catch (e) {
     findings.push('the persona corpus could not be read/parsed: ' + String((e && e.message) || e))
+  }
+}
+
+// ---- scanner self-check -------------------------------------------------
+// The whole audit rests on stripNoise(); a scanner that mis-lexes silently BLINDS it (that is how the
+// regex-with-a-quote bug lived here). Two checks, both cheap and both measured to be sensitive:
+//   · the stripped source must still PARSE (the pre-fix scanner produced a SyntaxError);
+//   · a fixture with a quoted character class + a following comment must survive intact.
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'v5-integrity-strip-'))
+  try {
+    const f = join(tmp, 'v5.mjs')
+    writeFileSync(f, src)
+    const r = spawnSync(process.execPath, ['--check', f], { encoding: 'utf8' })
+    if (r.status !== 0) {
+      findings.push('stripNoise() corrupted the source it scans (the stripped text does not parse) — every identifier check below is unreliable: ' +
+        String(r.stderr || '').split('\n').filter((l) => l.trim()).slice(-2).join(' ').slice(0, 160))
+    }
+    const fixture = [
+      'function f(s) { return s.replace(/["\']/g, "-") }',
+      '// phantom_call( must not survive as a call site',
+      'const div = 6 / 2',
+    ].join('\n')
+    const stripped = stripNoise(fixture)
+    if (stripped.includes('phantom_call')) findings.push('stripNoise() left a comment in the code stream (a phantom call site would be reported)')
+    if (!/'/.test(stripped)) findings.push('stripNoise() dropped a value placeholder')
+    notes.push('scanner self-check: stripped output parses=' + (r.status === 0) + '; quoted-class fixture=' + (!stripped.includes('phantom_call')))
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
   }
 }
 
