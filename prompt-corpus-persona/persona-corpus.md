@@ -565,7 +565,9 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     reusable definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
-    reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+    reported as LEAN_NOT_FOUND, a host with no subprocess service as NO_SUBPROCESS
+    (on a timeout the process is terminated first), and in every one of those cases the
+    code can still be written down and archived.
   - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
     formalization TODO. The framework never installs Lean and never judges fidelity.
 
@@ -660,7 +662,9 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     reusable definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
-    reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+    reported as LEAN_NOT_FOUND, a host with no subprocess service as NO_SUBPROCESS
+    (on a timeout the process is terminated first), and in every one of those cases the
+    code can still be written down and archived.
   - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
     formalization TODO. The framework never installs Lean and never judges fidelity.
 

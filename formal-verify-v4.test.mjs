@@ -60,7 +60,16 @@ const readIf = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
 // MOCK HOST — the shape selfdrive-v4 / e2e-v4-fixes use, plus a fake Lean
 // ===============================================================
 let toolchainAvailable = true
+// A host that exposes NO `subprocess` service at all (docs §7 → NO_SUBPROCESS, and §6 hard rule 4
+// requires the injected guidance to name that code so the resident records a blocker instead of
+// retrying forever).
+let subprocessAvailable = true
+// A stub host whose shell EXITS 0 WITHOUT deleting anything (a permissions quirk / a stub host).
+// Used by §13 to prove the withdrawal is not a best-effort delete: the framework must confirm the
+// file is gone through the fs service and fall back to overwriting it with a withdrawal notice.
+let shellDeletesFiles = true
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
+const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
 const shellCalls = []        // every platform-shell script (mkdir at mount, Remove-Item on defect)
 
 function makeSubprocess() {
@@ -81,8 +90,8 @@ function makeSubprocess() {
         const script = String(spec.argv[spec.argv.length - 1] || '')
         shellCalls.push(script)
         const m = script.match(/-LiteralPath\s+'((?:[^']|'')*)'/)
-        if (/Remove-Item/.test(script) && m) rmSync(m[1].replace(/''/g, "'"), { force: true })
-        if (/^rm -f /.test(script)) for (const q of script.slice(6).match(/'[^']*'/g) || []) rmSync(q.slice(1, -1), { force: true })
+        if (shellDeletesFiles && /Remove-Item/.test(script) && m) rmSync(m[1].replace(/''/g, "'"), { force: true })
+        if (shellDeletesFiles && /^rm -f /.test(script)) for (const q of script.slice(6).match(/'[^']*'/g) || []) rmSync(q.slice(1, -1), { force: true })
         return {
           done: Promise.resolve({ exitCode: 0, signal: null }),
           collected: { stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
@@ -96,6 +105,16 @@ function makeSubprocess() {
       const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
       const bad = /sorry|-- FAIL/.test(text)
       leanRuns.push({ argv: spec.argv.slice(), file, cwd: spec.cwd, graceMs: spec.graceMs, stdio: spec.stdio })
+      // A HANG file never settles and never exits: the ONLY thing that can end it is the framework's
+      // own timeout calling handle.terminate() (docs §7). Records each terminate so the suite can
+      // assert the timeout path is ACTIVE, not merely reported.
+      if (/-- HANG/.test(text)) {
+        return {
+          done: new Promise(() => {}),
+          collected: { stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
+          terminate() { terminated.push(file) },
+        }
+      }
       const stdout = bad ? '' : 'ok\n'
       const stderr = bad ? 'error: declaration uses sorry\n' : ''
       return {
@@ -116,7 +135,7 @@ function makeHost() {
   const subprocess = makeSubprocess()
   let ROOT
   const ctx = {
-    get(name) { return name === 'subprocess' ? subprocess : undefined },
+    get(name) { return name === 'subprocess' && subprocessAvailable ? subprocess : undefined },
     on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
     effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
     logger: { info() {}, warn() {}, error() {} },
@@ -273,6 +292,9 @@ const A = await establish()
   assert(!/Lean/.test(all), 'no founding/round prompt mentions Lean in off mode')
   assert(!/顺手形式化|Lean 通过|忠实性审查|vibe_v4_lean/.test(all), 'no founding/round prompt carries any Lean-formalization text in off mode')
   assert(all.length > 0, 'sanity: the scan actually saw the founding prompts')
+  // `off` must not CREATE Lean state at all: the feature's durable record file must not appear
+  // for a session that never used the feature (v3's suite pins the same invariant).
+  assert(!existsSync(join(A.projectRoot, 'State', 'formal.json')), '★ off mode creates NO State/formal.json (a TRUE no-op, not just an empty record store)')
 }
 // an off-mode verification must behave exactly as before: unanimous 真 → Verified/, no formal record
 const offSettled = await proposeAndVote(A, 'p-off', {
@@ -288,6 +310,39 @@ assert(!/顺手形式化/.test(await A.prompts('normal', 'r-1')), 'the work prom
 // the tools still EXIST in off mode (static registration), they are just never advertised
 assert(['vibe_v4_lean_run', 'vibe_v4_lean_archive', 'vibe_v4_lean_lib'].every(n => !!A.toolRegs.find(t => t.name === n)),
   'the three Lean tools are registered in every mode (registration is static)')
+
+// ★ The mode switch must be REACHABLE THROUGH THE TOOL SCHEMA (2.3.2 defect D1) ──────────────
+// Every tool schema here is closed (`additionalProperties:false`), so a key the schema does not
+// advertise is REJECTED by any schema-validating provider. v3 shipped 2.3.0/2.3.1 with all four Lean
+// parameters missing from the set-params schema while every assertion in this file stayed green —
+// because the suite calls the handler DIRECTLY and never inspects the registered schema. The feature
+// could not be switched on at all through the tool interface.
+{
+  const setSpec = A.toolRegs.find((t) => t.name === 'vibe_v4_set')
+  assert(!!setSpec, "vibe_v4_set is registered")
+  assert(setSpec.parameters && setSpec.parameters.type === 'object' && setSpec.parameters.additionalProperties === false,
+    '★ vibe_v4_set publishes a CLOSED object schema (an unlisted key is rejected, so the schema IS the contract)')
+  for (const k of ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']) {
+    assert(Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k),
+      '★ the registered schema advertises ' + k + ' (every other surface documents it; a schema that omits it makes the switch unreachable)')
+  }
+  assert(JSON.stringify(setSpec.parameters.properties.formalVerify.enum) === JSON.stringify(['off', 'encourage', 'require']),
+    'the schema narrows formalVerify to the three real modes (a typo must not be a fourth)')
+}
+
+// A stray `formal` reply in OFF mode must be INERT (finding #1): the reply contract does not offer
+// the field there, so honouring it would contradict "off is a TRUE no-op". The TOOLS stay usable.
+{
+  await A.callTool('vibe_v4_record_proposition', { id: 'p-offreply', title: 'off', statement: '关模式下注入回执', prob: 0.8, value: 0.6, motivation: 'm' }, A.resAgent(A.childOf('r-1')))
+  const wOffR = await workWake(A, 'r-1')
+  A.fireEnd(wOffR.childId, { summary: '继续。', solved: false, contextPct: 20, formal: { target: 'p-offreply', decision: 'defect', note: '不应被记录' } })
+  await sleep(80)
+  const stOffReply = await A.callTool('vibe_v4_status', {})
+  assert(stOffReply.formal.objects.length === 0, '★ a stray `formal` reply in off mode records NO formal object')
+  assert(!existsSync(join(A.projectRoot, 'Formal', 'p-offreply.lean')), '★ and writes no formal working file')
+  assert(!existsSync(join(A.projectRoot, 'Formal', 'TODO.md')) || !/p-offreply/.test(readIf(join(A.projectRoot, 'Formal', 'TODO.md'))), '★ and creates no TODO entry')
+  assert(!existsSync(join(A.projectRoot, 'State', 'formal.json')), '★ and still no State/formal.json after the stray reply (the off-mode guard is a true no-op)')
+}
 
 // ---------- 2. parameter validation + runtime switching ----------
 section('2 parameter validation and runtime switching')
@@ -401,6 +456,31 @@ assert(noTc.ok === false && noTc.code === 'LEAN_NOT_FOUND', '★ a missing toolc
 assert(/仍可把形式化代码写下来归档/.test(noTc.message || ''), 'the failure explains the graceful degradation')
 assert((await D.callTool('vibe_v4_status', {})).ok === true, 'the group did NOT crash on the missing toolchain (status still answers)')
 toolchainAvailable = true
+// No `subprocess` service at all (docs §7): the run must degrade to a typed NO_SUBPROCESS result —
+// never a thrown error into the scheduler — and an object it was asked to record must stay
+// `attempted` (an un-runnable host must not mint a `passed` record).
+{
+  subprocessAvailable = false
+  const noSub = await D.callTool('vibe_v4_lean_run', { file: 'Formal/good.lean', target: 'p-nosub' }, r1)
+  assert(noSub.ok === false && noSub.code === 'NO_SUBPROCESS', '★ a host with no subprocess service returns NO_SUBPROCESS instead of crashing (got ' + noSub.code + ')')
+  assert(/no subprocess service/.test(String(noSub.message || '')), 'the failure is readable (it explains that Lean cannot be executed here)')
+  const stNoSub = await D.callTool('vibe_v4_status', {})
+  assert(stNoSub.ok === true, 'the group did NOT crash on the missing service (status still answers)')
+  const recNoSub = stNoSub.formal.objects.find((o) => o.target === 'p-nosub')
+  assert(recNoSub && recNoSub.status === 'attempted' && !recNoSub.proof, '★ the object record stays honest: attempted (never passed) when nothing could be executed')
+  subprocessAvailable = true
+}
+// A run that never finishes: the framework must ACTIVELY terminate it (docs §7) and still report a
+// readable LEAN_TIMEOUT — relying on the host's own graceMs alone leaves the Lean process running.
+{
+  writeFileSync(join(D.projectRoot, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1 := rfl\n', 'utf8')
+  const t0 = Date.now()
+  const runHang = await D.callTool('vibe_v4_lean_run', { file: 'Formal/hang.lean', timeout_ms: 1000 }, r1)
+  const waited = Date.now() - t0
+  assert(runHang.ok === false && runHang.code === 'LEAN_TIMEOUT' && runHang.timedOut === true, '★ a run that never finishes is reported as LEAN_TIMEOUT (got ' + runHang.code + ')')
+  assert(terminated.some(f => /hang\.lean$/.test(String(f))), '★ the timeout path really calls handle.terminate() (docs §7) instead of leaving the Lean process running')
+  assert(waited >= 900 && waited < 15000, 'the timeout waited for the cap before terminating (' + waited + 'ms)')
+}
 
 // ---------- 5. a passing proof flips the review subject to fidelity ----------
 section('5 a passing proof flips the review subject to fidelity')
@@ -414,6 +494,18 @@ const stD = await D.callTool('vibe_v4_status', {})
 assert(stD.formal.passed.indexOf('p-proof') !== -1, 'status reports the object as Lean-passed')
 const idxD = readIf(join(D.projectRoot, 'Formal', 'Index.md'))
 assert(/p-proof/.test(idxD) && /passed/.test(idxD) && /Verified\/Lean\/p-proof\.lean/.test(idxD), 'Formal/Index.md indexes the object, its status and its archived proof')
+// A later run recorded against an ALREADY-passed object records the run but must never strip
+// `passed`/`proof`: doing so would silently remove the fidelity branch from the next voting prompt
+// AND (in `require`) re-close the gate on an object that already has a green archived proof.
+{
+  writeFileSync(join(D.projectRoot, 'Formal', 'p-proof.lean'), 'theorem p_proof : 1 = 2 := by sorry\n', 'utf8')
+  const rerun = await D.callTool('vibe_v4_lean_run', { file: 'Formal/p-proof.lean', target: 'p-proof' }, r1)
+  assert(rerun.ok === false, 'precondition: the recorded re-run is red')
+  const rec = (await D.callTool('vibe_v4_status', {})).formal.objects.find(o => o.target === 'p-proof')
+  assert(rec && rec.status === 'passed' && rec.proof === 'Verified/Lean/p-proof.lean',
+    '★ a RED re-run never downgrades a `passed` record (docs §31.6: only an explicit re-archive decides) — the object keeps its fidelity prompt and its require-mode gate')
+  writeFileSync(join(D.projectRoot, 'Formal', 'p-proof.lean'), 'theorem p_proof : 3 * 1 ^ 2 - 2 = (1:Nat) ^ 2 := by decide\n', 'utf8')
+}
 // a RED proof must NOT mint a Verified/Lean/ copy or mark the object passed
 const arcRed = await D.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-red', content: 'theorem p_red : 1 = 2 := by sorry\n' }, r1)
 assert(arcRed.ok === true && arcRed.passed === false && arcRed.status === 'attempted', 'a red proof is archived as attempted, not passed')
@@ -639,7 +731,7 @@ await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
   assert(/实现难度/.test(enc), 'it still asks for the implementation-difficulty judgement')
   assert(/工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）/.test(enc), 'it names all three tools in FULL')
   assert(/归档可复用定义\/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。/.test(enc), '★ a reusable definition/lemma must be RUN GREEN before it is archived')
-  assert(/宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"/.test(enc), '★ the missing-toolchain path is written out (archive the code, record it as an explicit blocker)')
+  assert(/宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"/.test(enc), '★ both unavailable-toolchain paths are written out (missing Lean OR no subprocess service) as explicit blocker reasons')
   assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(enc), 'a green Lean run still shrinks the open question to fidelity')
   assert(/decision='blocked' 时必须写明 note/.test(enc), 'the encourage opt-out documents the mandatory note')
   assert(!/偏离 → 0/.test(enc) && !/发现任何偏离/.test(enc), '★ no "deviation ⇒ 0" instruction anywhere in the encourage block')
@@ -650,6 +742,15 @@ await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
   assert(/本次裁定不会生效/.test(req) && /进入「形式化待办」/.test(req), 'it warns the verdict is withheld as 未定论 (formal-required)')
   assert(!/可以不做/.test(req), "'require' does NOT offer the encourage-mode opt-out")
   assert(/归档可复用定义\/引理前先跑通/.test(req) && /宿主没有 Lean 工具链/.test(req), 'the run-before-archive and toolchain rules are in the require text as well')
+  assert(/LEAN_NOT_FOUND/.test(req) && /NO_SUBPROCESS/.test(req), '★ the require text names BOTH unavailable-toolchain codes (the escape route must be documented in every mode)')
+  // The sentence is written ONCE and reused by both modes: a second copy would drift (one branch
+  // kept up to date, the other stale). The anchor `（LEAN_NOT_FOUND）` therefore occurs exactly once
+  // in the plugin, which is also what the sensitivity probe table assumes.
+  {
+    const src = readFileSync(fileURLToPath(PLUGIN), 'utf8')
+    assert(src.split('（LEAN_NOT_FOUND）').length - 1 === 1, '★ the unavailable-toolchain guidance is written once (not duplicated per mode/branch)')
+    assert(src.split('（NO_SUBPROCESS）').length - 1 === 1, 'the same single sentence names NO_SUBPROCESS (no per-branch copy)')
+  }
   assert(/\*\*本模式要求\*\*/.test(req), 'the require bullet replaces the encourage opt-out in place')
   // normal / heartbeat / post-compact recap all carry the standing work line; the two that ARE a
   // reply contract also document the `defect` decision (coreRules is a recap prefix, not a contract)
@@ -680,11 +781,35 @@ await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
   addText('LEAN_NOT_FOUND message', (await G.callTool('vibe_v4_lean_run', { file: 'Formal/p-hint.lean' }, r1G)).message)
   toolchainAvailable = true
   for (const t of G.toolRegs.filter((x) => /lean/.test(x.name))) addText('tool description ' + t.name, t.description)
+  // The activity log is agent/host-readable text too (vibe_v4_report exposes `recentActivity`, and
+  // a host reads it out to the group): a bare abbreviation there names a tool that does not exist,
+  // for exactly the same reason as in a prompt.
+  try {
+    const log = JSON.parse(readIf(join(G.projectRoot, 'State', 'session.json')) || '{}').activityLog || []
+    for (const e of log) addText('activity log: ' + e.event, String((e && e.detail) || ''))
+  } catch (e) { /* the log is best-effort */ }
   const bare = [/(^|[^a-z_])lean_run/, /(^|[^a-z_])lean_archive/, /(^|[^a-z_])lean_lib/]
   const offenders = []
   for (const s of scanned) for (const re of bare) if (re.test(s.text)) offenders.push(s.label + ' :: ' + re.source)
   assert(offenders.length === 0, '★ no injected text (prompt, tool hint or tool description) uses a bare tool abbreviation (' + offenders.slice(0, 3).join(' | ') + ')')
   assert(scanned.length >= 15, 'the sweep really covered the injected-text surface (' + scanned.length + ' texts)')
+}
+{
+  // docs §4.1-3 / §6.1: the fidelity branch's "the framework withholds the verdict" clause may only
+  // appear in `require` (the only mode with a gate). In `encourage` the framework still withdraws
+  // the proof and records the TODO, but it CANNOT hold the ballot — so the text must not promise
+  // that, and must instead point at the voter's own abstention.
+  await G.callTool('vibe_v4_set', { formalVerify: 'require' })
+  const reqFid = await G.prompts('verify', 'r-1', { target: 'p-hint', stage: 'independent' })
+  assert(/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(reqFid), 'precondition: p-hint is the passed/fidelity case in this prompt')
+  assert(/本次裁定\*\*不定论\*\*/.test(reqFid), "'require' fidelity text states the verdict will be withheld (it has a gate)")
+  await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+  const encFid = await G.prompts('verify', 'r-1', { target: 'p-hint', stage: 'independent' })
+  assert(!/本次裁定\*\*不定论\*\*/.test(encFid), "★ 'encourage' does NOT promise a hold it cannot enforce (docs §4.1-3)")
+  assert(/本档没有门禁/.test(encFid) && /弃权值/.test(encFid), "★ instead it says the voter's own abstention is what keeps the ballot from concluding")
+  assert(/降级为 attempted、删除归档证明、写入形式化待办/.test(encFid), 'the withdrawal the framework CAN enforce is still stated in both modes')
+  assert(/发现任何偏差，不要投 0/.test(encFid), 'the fidelity rule itself is mode-independent')
+  await G.callTool('vibe_v4_set', { formalVerify: 'require' })
 }
 
 // ===============================================================
@@ -716,6 +841,31 @@ const g1 = G.resAgent(G.childOf('r-1'))
   assert(/\| p-defect \| attempted \|/.test(idx), 'Formal/Index.md downgrades the object to attempted')
   assert(/只证了 n ≥ 1 的情形/.test(idx), 'the deviation is the record note in the index')
   assert(activityOf(G).some((e) => /忠实性缺陷/.test(e.detail) && /p-defect/.test(e.detail)), '★ the retraction is announced in the activity log')
+  // the log line is agent/host-readable text, so it is bound by the same §4.1-3 rule as the prompt:
+  // in `encourage` it may not claim a hold the mode does not have.
+  {
+    const line = activityOf(G).filter((e) => /忠实性缺陷/.test(e.detail) && /p-defect[^-]/.test(e.detail)).pop() || { detail: '' }
+    assert(/本档没有门禁/.test(line.detail) && !/本次裁定\*\*不定论\*\*/.test(line.detail), "★ the encourage-mode activity line does not promise the 不定论 hold that only `require` enforces")
+  }
+}
+{
+  // §4.1 degraded withdrawal: the record must never be the ONLY thing withdrawn. A host whose shell
+  // "succeeds" without deleting (a stub host / a permissions quirk) must be caught by re-reading the
+  // file through the fs service, and the archive must then be OVERWRITTEN with a withdrawal notice —
+  // otherwise the retracted proof keeps sitting at the exact path everyone looks for the proof.
+  const arcD = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-defect-degraded', content: 'theorem p_defect_degraded : 5 = 5 := rfl\n' }, g1)
+  assert(arcD.passed === true && existsSync(join(G.projectRoot, 'Verified', 'Lean', 'p-defect-degraded.lean')), 'precondition: the degraded-path object has a green archived proof')
+  shellDeletesFiles = false
+  const wD = await workWake(G, 'r-1')
+  G.fireEnd(wD.childId, { summary: '核对后发现偏差。', formal: { target: 'p-defect-degraded', decision: 'defect', note: '结论方向相反' }, contextPct: 20 })
+  await sleep(90)
+  shellDeletesFiles = true
+  const body = readIf(join(G.projectRoot, 'Verified', 'Lean', 'p-defect-degraded.lean'))
+  assert(!/p_defect_degraded/.test(body), '★ a shell that exits 0 without deleting does NOT leave the retracted proof readable — its original text is gone')
+  assert(/已撤回/.test(body) && /原代码保留在工作文件/.test(body), '★ the archived file was OVERWRITTEN with an explicit withdrawal notice instead (delete → confirm → overwrite)')
+  const recD = (await G.callTool('vibe_v4_status', {})).formal.objects.find((o) => o.target === 'p-defect-degraded')
+  assert(recD && recD.status === 'attempted' && recD.proof === '', 'the record is downgraded on the degraded path too')
+  assert(activityOf(G).some((e) => /覆盖归档证明/.test(e.detail) && /p-defect-degraded/.test(e.detail)), '★ the activity log says WHICH withdrawal path was taken (overwritten, not silently reported as deleted)')
 }
 {
   const arc2 = await G.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-defect2', content: 'theorem p_defect2 : 3 + 3 = 6 := by decide\n' }, g1)
@@ -816,6 +966,12 @@ const K = await establish()
   await K.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-corpus-passed', content: 'theorem p_corpus_passed : 1 + 1 = 2 := by decide\n' }, k1)
   const fid = await K.prompts('verify', 'r-1', { target: 'p-corpus-passed', stage: 'independent' })
   add('verify', 'passed/fidelity', fid)
+  // (d2) the SAME passed object in `encourage`: the promise must shrink to what that mode enforces
+  // (docs §4.1-3: no gate there, so no claim that the framework withholds the verdict).
+  await K.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+  const fidEnc = await K.prompts('verify', 'r-1', { target: 'p-corpus-passed', stage: 'independent' })
+  add('verify', 'passed/fidelity (encourage)', fidEnc)
+  await K.callTool('vibe_v4_set', { formalVerify: 'require' })
   // (e) a BLOCKED object
   await K.callTool('vibe_v4_lean_archive', { kind: 'blocked', target: 'p-corpus-blocked', note: '需要未形式化的解析数论框架' }, k1)
   add('verify', 'blocked/verify', await K.prompts('verify', 'r-1', { target: 'p-corpus-blocked', stage: 'independent' }))
@@ -845,7 +1001,8 @@ const K = await establish()
       '> 由 `formal-verify-v4.test.mjs` 落盘：非 `off` 模式下常驻**真正会读到**的 Lean 提示词原文',
       '> （`vibe_v4_prompts` 的只读回显 + 一条真实投递的工作轮 + 工具 `hint`）。',
       '> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`：确定、可 diff、不含任何本机路径。', '',
-      '> 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**、',
+      '> 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**',
+      '> （`encourage` / `require` 两种措辞各一份：只有 `require` 会声称"不定论"）、',
       '> `blocked` 分支、平时工作轮的「顺手形式化」，以及回执契约里的 `formal` 字段。', '']
     for (let i = 0; i < corpus.length; i++) {
       const c = corpus[i]
@@ -865,6 +1022,9 @@ const K = await establish()
   assert(/【Lean 形式化验证（鼓励模式）】/.test(byLabel('encourage/verify').prompt), 'the corpus carries the encourage voting prompt')
   assert(/【Lean 形式化验证（强制模式）】/.test(byLabel('require/verify').prompt), '★ the corpus carries the REQUIRE voting prompt')
   assert(/不要投 0/.test(byLabel('passed/fidelity').prompt), '★ the corpus carries the passed/fidelity branch')
+  assert(/本次裁定\*\*不定论\*\*/.test(byLabel('passed/fidelity').prompt), 'the require fidelity entry keeps the hold it really enforces')
+  assert(!!byLabel('passed/fidelity (encourage)') && !/本次裁定\*\*不定论\*\*/.test(byLabel('passed/fidelity (encourage)').prompt)
+    && /本档没有门禁/.test(byLabel('passed/fidelity (encourage)').prompt), '★ the encourage fidelity entry does NOT promise the hold only require has (docs §4.1-3)')
   assert(/【顺手形式化（强制）】/.test(byLabel('require/normal').prompt), 'the corpus carries the ordinary work-round line')
   assert(/"decision":"used\|blocked\|defect"/.test(byLabel('formal reply contract (voting prompt)').prompt), '★ the corpus carries the `formal` reply contract line with decision=defect')
   assert(/【顺手形式化/.test(byLabel('require/real work wake').prompt), 'the corpus also keeps a prompt the framework REALLY delivered')
@@ -872,6 +1032,25 @@ const K = await establish()
   assert(joined.indexOf(K.WS) === -1 && joined.indexOf(K.WS.replace(/\\/g, '/')) === -1 && joined.indexOf(vibe) === -1 && joined.indexOf(vibe.replace(/\\/g, '/')) === -1, '★ every captured prompt normalises <WS> and <VIBEMATH> (diffable, no machine paths)')
   assert(!/\[object Object\]|\bNaN\b|:\s*undefined|["']undefined["']|undefined\s*[,}\]]/.test(joined), 'no captured prompt contains placeholder garbage')
   assert(corpus.every((c) => c.prompt && c.prompt.length > 20), 'every corpus entry carries real prompt text')
+}
+
+// ===============================================================
+// 16. a FRESH run must not inherit the previous run's formal records (docs §31.6): object ids are
+//     reused (p-*, r-1..), so the in-memory reset in `start()` has to REACH DISK even when the mode
+//     has been switched back to `off` — otherwise a later `resume` restores a stale `passed` and
+//     re-opens the require gate for an object of the new run. This is the exact hazard that makes
+//     the `off`-mode persistence guard ("do not create State/formal.json" ) non-trivial.
+// ===============================================================
+section('16 a fresh run clears the persisted formal records (even in off mode)')
+{
+  const stale = readIf(join(D.projectRoot, 'State', 'formal.json'))
+  assert(/"p-proof"/.test(stale), 'precondition: the previous run left formal records on disk')
+  await D.callTool('vibe_v4_set', { formalVerify: 'off' })
+  const beforeSpawns = D.spawns.length
+  const st = await D.callTool('vibe_v4_start', { problem: '新一轮：形式化清白起点', residentCount: 1 })
+  assert(st.ok === true && D.spawns.length > beforeSpawns, 'the fresh run actually started (so the clean-slate assertion is falsifiable)')
+  const now = readIf(join(D.projectRoot, 'State', 'formal.json'))
+  assert(!/"p-proof"/.test(now) && !/"passed"/.test(now), '★ a fresh run clears the persisted formal records on disk, even in off mode (no stale `passed` can open the new run’s gate)')
 }
 
 // ===============================================================

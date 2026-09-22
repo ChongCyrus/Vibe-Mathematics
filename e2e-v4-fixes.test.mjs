@@ -538,7 +538,12 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T21 consensus finalize reentry (no duplicated tasks/meetings/stop) --')
   await m.callTool('vibe_v4_start', { problem:'重入测试', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
-  await m.callTool('vibe_v4_set', { activityTimeoutMs: 40 })
+  // This case is about finalizeMeeting/finalizeVerify REENTRY, not about the meeting watchdog. The
+  // watchdog fires at 2×activityTimeoutMs, so the old 40 ms value gave it only 80 ms of patience —
+  // under the parallel runner's CPU contention it abandoned the meeting before every resident had
+  // spoken (`dup=0, autoDone=false`), which made this case fail ~2 runs in 6. 200 ms (→400 ms
+  // watchdog) keeps the case's own drives (it answers every wake) comfortably ahead of the clock.
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 200 })
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   await m.callTool('vibe_v4_meeting', { agenda:'表决' })
   // Drain all meeting wakes. On the LAST two speaker completions fire the ends back-to-back in the same

@@ -103,11 +103,12 @@
 <text x="1430.3333333333333" y="743.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">院士/研究员可雇自己的临时工</text>
 <text x="1430.3333333333333" y="759.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">雇主或院士可真实解雇（释放子会话）</text>
 <text x="1430.3333333333333" y="776.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">代号永不复用 · 按人/全所双配额</text>
-<rect x="248" y="796" width="1410" height="76" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
-<text x="953" y="813.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Lean 形式化验证（可调参数 formalVerify = off / encourage / require）</text>
-<text x="953" y="830.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage：验证时按实现难度决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录</text>
-<text x="953" y="846.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」</text>
-<text x="953" y="863.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">归档：证明 → Verified/Lean/&lt;对象&gt;.lean｜可复用定义 → VibeMath/Formal/Lib/｜已证引理 → VibeMath/Formal/Proved/</text>
+<rect x="248" y="796" width="1410" height="90" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="953" y="812.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Lean 形式化验证（可调参数 formalVerify = off / encourage / require）</text>
+<text x="953" y="829.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage：验证时按实现难度决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录</text>
+<text x="953" y="845.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」</text>
+<text x="953" y="862.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ 忠实性缺陷（decision=defect）≠ 命题为假：撤回「已通过」+ 撤回归档证明 + 进「形式化待办」，绝不记成 0/假</text>
+<text x="953" y="878.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">归档：证明 → Verified/Lean/&lt;对象&gt;.lean｜可复用定义 → VibeMath/Formal/Lib/｜已证引理 → VibeMath/Formal/Proved/</text>
 <rect x="248" y="880" width="1410" height="38" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
 <text x="953" y="903.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">调度器优先级：进行中的会议或验证（二者互斥，永不同时）→ 队列中的验证 → 暂存会议 → 已认领/被分派的在办任务（按 activityTimeoutMs 节流）→ 加急邮件 → 群聊摘要 → 停滞自动开会 → 兜底心跳</text>
 <rect x="40" y="964" width="790" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>

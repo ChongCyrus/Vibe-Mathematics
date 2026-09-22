@@ -247,7 +247,7 @@ flowchart TB
 
 | 取值 | 含义 |
 |---|---|
-| **`'off'`（默认）** | **不额外进行任何要求。** 提示词里不出现任何 Lean 内容，验证流程与门禁完全不变（是**真正的无操作**） |
+| **`'off'`（默认）** | **不额外进行任何要求。** 成员提示词里不出现任何 Lean 内容，不写入任何形式化状态，验证流程与门禁完全不变（是**真正的无操作**，有断言与探针守着）。三个工具仍注册可用（主动调用照常工作）；主代理的 persona **始终**写着这三个工具与四个参数——否则这个开关就不可发现、"off" 也就无从打开 |
 | `'encourage'` | **鼓励但不强制**：验证时先判断该对象的**实现难度**，能在可接受工作量内形式化就优先做；一旦 Lean 通过，审查重心转为**忠实性**。平时工作也鼓励把常用/可能复用的对象、假设、新定义随手形式化归档。**不设门禁** |
 | `'require'` | **强制**：真/假结论必须满足「**Lean 已通过**」或「**显式记录了阻塞原因**」，否则本次裁定**不生效**——记为未定论（原因 `formal-required`）、写入「形式化待办」、群聊公告，对象留库待形式化后重新提议 |
 
@@ -265,14 +265,22 @@ Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命�
   用来求真的机制反而**伪造出一个错误的否定结论**。
 - 正确做法：给一个严格介于 0 与 1 之间的值（记为弃权）+ 用回执
   `formal:{decision:'defect', note:'<具体偏差>'}` 记录偏差。框架随即**撤回这条证明的「已通过」状态**
-  （降级为 `attempted`、撤回 `Verified/Lean/<id>.lean`、写入「形式化待办」），`require` 档下
-  **本次裁定不定论**；修正形式化并重新跑通后再投票。
+  （降级为 `attempted`；`Verified/Lean/<id>.lean` **删除**，宿主删不掉时改写为"已撤回"说明，
+  绝不把一个已撤回的证明留在大家找证明的位置；写入「形式化待办」），`require` 档下
+  **本次裁定不定论**（`encourage` 档没有门禁，不得声称框架会强制搁置——那里靠表决者弃权阻止定论）；
+  修正形式化并重新跑通后再投票。
 - 只有表决者**独立于这份 Lean 代码**也能确定命题为假（并能给出独立理由）时才投 0。
+
+> **回执通道**（不调用 Lean 工具的成员也能留下判断，`require` 档下必须留）：
+> `"formal": {"target":"<对象id>", "decision":"used|blocked|defect", "file":"Formal/<对象id>.lean", "note":"难度判断/阻塞原因/具体偏差"}`。
+> `decision='blocked'`/`'defect'` 时 **`note` 必填**（缺则整条拒绝）；`used` 只把对象记为 `attempted`；
+> `off` 档下这个通道**失效**（否则 `off` 就不是真正的无操作了）。
 
 > 注入提示词的另外三条硬要求（契约 §6）：工具名一律**全称**（`<prefix>lean_archive` 不是
 > `lean_archive`——缩写不是注册名，代理照抄会调用一个不存在的工具）；归档可复用定义/引理**前先跑通**，
-> 跑不通不许进库；**工具链缺失**（`LEAN_NOT_FOUND`）时把代码写下来归档并在 `note` 写明
-> "宿主无 Lean 工具链"——这算显式阻塞原因，门禁据此放行，不会因为装不了 Lean 而卡死。
+> 跑不通不许进库；**工具链缺失**（`LEAN_NOT_FOUND` 解析不到可执行文件 / `NO_SUBPROCESS` 宿主没有
+> subprocess 服务）时把代码写下来归档并在 `note` 写明"宿主无 Lean 工具链"——这算显式阻塞原因，
+> 门禁据此放行，不会因为装不了 Lean 而卡死。
 
 ### 归档：形式化代码放哪里
 
@@ -808,7 +816,9 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
 - **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
-- **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程）
+- **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
+- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](audit-prompt-invariants.mjs)（145 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）
+- **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](audit-spec-traceability.mjs)（91 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
 
 ---
 

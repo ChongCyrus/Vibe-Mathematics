@@ -231,13 +231,22 @@ const CONCURRENCY = (() => {
   return Math.max(1, Number.isFinite(v) ? v : 1)
 })()
 const ONLY = (() => {
-  const arg = process.argv.find((a) => a.startsWith('--only='))
-  return arg ? arg.split('=')[1] : ''
+  const eq = process.argv.find((a) => a.startsWith('--only='))
+  if (eq) return eq.split('=')[1]
+  // also accept the space form (`--only v5`), which the usage line advertises
+  const i = process.argv.indexOf('--only')
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : ''
 })()
 const selected = probes.filter((p) => !ONLY || p.name.includes(ONLY) || p.preset === ONLY)
 if (process.argv.includes('--list')) {
   for (const p of selected) console.log(p.preset + '  ' + p.name)
   process.exit(0)
+}
+// A filter that matches nothing must FAIL, not report success: with zero probes the summary below
+// would say "0 problems / ALL PROBES RED" — a textbook false green (AUDIT-CHECKLIST §2.5).
+if (selected.length === 0) {
+  console.error('no probes matched' + (ONLY ? ' --only=' + ONLY : '') + ' — refusing to report success on an empty run')
+  process.exit(2)
 }
 
 function runAsync(cmd, args, opts) {

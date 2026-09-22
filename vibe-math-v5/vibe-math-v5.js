@@ -1714,10 +1714,39 @@ export function apply(ctx) {
         return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
       }
       let outcome
+      // docs/formal-verification.md §7: a TIMEOUT must actually TERMINATE the process —
+      // `graceMs` is only a request to the host, so relying on it alone could leave a runaway
+      // Lean (or a host that ignores graceMs) alive while we report LEAN_TIMEOUT. Race `done`
+      // against a `cap` timer that calls `handle.terminate()`, exactly like v2/v3/v4. The
+      // timer disposer runs in BOTH outcomes, so a settled run never leaks a timer.
+      let timerDisposer = null
+      let timedOut = false
+      // A `done` that settles AFTER the timeout won the race must not surface as an unhandled
+      // rejection; the guarded `ran` promise is what the race uses, so the chain is attached
+      // once and never re-created after it may already have rejected.
+      const ran = Promise.resolve(handle.done).then(
+        (v) => ({ settled: true, value: v }),
+        (e) => ({ settled: false, error: e }))
       try {
-        outcome = await handle.done
+        const r = await Promise.race([
+          ran,
+          new Promise((resolve) => {
+            timerDisposer = ctx.timeout(() => {
+              timedOut = true
+              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
+              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
+            }, cap)
+          }),
+        ])
+        if (r.settled) outcome = r.value
+        else throw r.error
       } catch (e) {
+        if (timerDisposer) { try { timerDisposer() } catch (e2) { /* already settled */ } }
         return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
+      } finally {
+        // `done`/error wins -> the timer must not fire later. When the TIMEOUT won, the timer
+        // has already fired and disposing it is a no-op, so this is safe in either order.
+        if (timerDisposer) { try { timerDisposer() } catch (e) { /* already settled */ } }
       }
       let out = '', err = ''
       try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
@@ -1729,8 +1758,8 @@ export function apply(ctx) {
         ok, exitCode, signal: (outcome && outcome.signal) || null, ms,
         command: argv.join(' '), file: rel,
         stdout: tail(out, 4000), stderr: tail(err, 4000),
-        timedOut: ms >= cap,
-        code: ok ? undefined : (ms >= cap ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
+        timedOut: timedOut || ms >= cap,
+        code: ok ? undefined : ((timedOut || ms >= cap) ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
       }
     }
     async function formalSetRun(target, run) {
@@ -1787,8 +1816,13 @@ export function apply(ctx) {
       await putFormal(t, formalOf(t), list)
       await writeFormalTodo()
       await writeFormalIndex()
+      // `removeArchivedProof` can fail on a host whose shell cannot delete AND whose
+      // overwrite also fails. The record is downgraded either way, so say it out loud:
+      // otherwise the stale file stays at the exact path everyone looks for proofs, and
+      // nothing in any prompt or index would disclose that the withdrawal was incomplete.
+      const stillThere = removed ? [] : ['｜⚠ 归档证明 ', proofRel, ' 未能撤回（宿主删除与覆盖均失败）；记录已降级，请不要把它当作该对象的证明。']
       await saveChatLine('【形式化】' + (memberId || '成员') + ' 认定 ' + t + ' 的形式化**不忠实**：' + why
-        + ' —— 已撤回「已通过」状态并从 Verified/Lean/ 删除归档证明；请修正形式化、重新跑通后再投票。')
+        + ' —— 已撤回「已通过」状态' + (removed ? '并从 Verified/Lean/ 删除归档证明' : '') + '；请修正形式化、重新跑通后再投票。' + stillThere.join(''))
       return { ok: true, target: t, status: 'attempted', removed }
     }
     function formalPromptBlock(target) {
@@ -1811,9 +1845,12 @@ export function apply(ctx) {
         L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
         // Only `require` actually GATES the conclusion; in `encourage` the framework still
         // withdraws the proof (and records the defect) but must not promise a hold it cannot
-        // enforce — the voter's own abstention is what keeps the ballot from concluding.
+        // enforce. Say the same thing v2/v3/v4 say instead of silently omitting it: the
+        // voter must know that the ABSTENTION is what keeps this round from concluding.
         L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）'
-          + (mode === 'require' ? '，本次裁定**不定论**；' : '；'))
+          + (mode === 'require'
+            ? '，本次裁定**不定论**；'
+            : '。本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论；'))
         L.push('         修正形式化并重新跑通后再投票。')
         L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。')
       } else if (rec.status === 'blocked') {
@@ -1834,7 +1871,7 @@ export function apply(ctx) {
           L.push("  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。")
         }
         L.push('  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。')
-        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
+        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。')
       }
       return L.join('\n')
     }
@@ -1983,7 +2020,12 @@ export function apply(ctx) {
         const rec = Object.assign({}, prev, {
           status: passed ? 'passed' : 'attempted',
           file: workRel,
-          proof: passed ? 'Verified/Lean/' + target + '.lean' : (prev.proof || ''),
+          // A FAILED re-archive must also drop the pointer to the previous proof: the code
+          // that proof referred to has just been overwritten by `body` (the file that failed),
+          // so keeping it would advertise `Verified/Lean/<id>.lean` as this object's proof
+          // while the object's own last run is a failure — a self-contradicting record, and
+          // a pointer that the reviewer's `formalPromptBlock(rec.proof)` would print.
+          proof: passed ? 'Verified/Lean/' + target + '.lean' : '',
           decision: 'used',
           note: String(args.note || prev.note || ''),
           run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
@@ -3455,7 +3497,11 @@ export function apply(ctx) {
       // (4b) Lean formalization signal — the mandatory difficulty judgement. This is the
       // path that matters in practice: a member that never calls a Lean tool still has to
       // say "used / blocked", and `require` mode refuses to conclude without it.
-      if (p.formal && typeof p.formal === 'object') {
+      //
+      // `formalOn()` gates it: off mode is a TRUE no-op, and the field is not even offered in the
+      // reply contract there, so a stray / stale / hallucinated reply must not create Lean state.
+      // (The TOOLS stay usable in off mode on purpose — a tool call is deliberate.)
+      if (formalOn() && p.formal && typeof p.formal === 'object') {
         const f = p.formal
         const target = idSafe(String(f.target || ''))
         if (target) {
@@ -4212,7 +4258,7 @@ export function apply(ctx) {
   // dynamic registration would depend on a runtime knob and break the effect discipline),
   // while the MODE only decides whether the framework TELLS members about them. In 'off'
   // mode they still work if a human or agent calls them deliberately.
-  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => s.leanRunTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT, and a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => s.leanRunTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => s.leanArchive(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
     const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()

@@ -562,25 +562,45 @@ export function apply(ctx) {
     } catch (e) {
       return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
     }
+    // 超时必须有**主动**兜底：`graceMs` 只是宿主侧的宽限，契约 §7 明确要求"对超时调用
+    // handle.terminate()"。此前 v2 只依赖 graceMs，从不终止进程：一个卡住的 Lean 会继续占着
+    // 资源，而框架已经报了超时——它与自己的契约不一致。这里与 `handle.done` 竞速：计时器到点
+    // 时尽力 terminate()，并给出一份可读的超时结果；`done` 先到就清掉计时器（不留悬挂 timer）。
+    let timedOut = false
+    let timer = null
     let outcome
     try {
-      outcome = await handle.done
+      outcome = await Promise.race([
+        handle.done,
+        new Promise(function (resolve) {
+          timer = setTimeout(function () {
+            timedOut = true
+            try { if (handle && typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* best effort：终止失败也要给出可读结果 */ }
+            resolve({ exitCode: null, signal: 'SIGTERM' })
+          }, cap)
+        }),
+      ])
     } catch (e) {
+      if (timer !== null) clearTimeout(timer)
       return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
     }
+    if (timer !== null) clearTimeout(timer)
     let out = '', err = ''
     try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
     try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
     const exitCode = outcome ? outcome.exitCode : null
     const ms = now() - started
     const ok = exitCode === 0
+    // 两种超时都算超时：我们自己的计时器到点（timedOut），或耗时已越过 cap（宿主的 graceMs
+    // 杀掉了进程时 done 会先返回一个非零 exitCode）。
+    const isTimeout = timedOut || ms >= cap
     // 输出截断到 ~4KB 再入库（避免把巨大的编译器输出写进状态）。
     return {
       ok: ok, exitCode: exitCode, signal: (outcome && outcome.signal) || null, ms: ms,
       command: argv.join(' '), file: rel,
       stdout: tailText(out, 4000), stderr: tailText(err, 4000),
-      timedOut: ms >= cap,
-      code: ok ? undefined : (ms >= cap ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
+      timedOut: isTimeout,
+      code: ok ? undefined : (isTimeout ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
     }
   }
   // 把一次运行结果写进对象的形式化记录（不提升 status，状态迁移见契约 §4）。
@@ -727,16 +747,18 @@ export function apply(ctx) {
         L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision=\'blocked\' 时必须写明 note）。')
       }
       L.push('  · 归档可复用定义/引理前先跑通（vibe_math_lean_archive run=true 或先 vibe_math_lean_run）；跑不通不要入库。')
-      L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明'
+      L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明'
         + '"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
     }
     return L.join('\n')
   }
   function formalWorkLine() {
     if (!formalOn()) return ''
+    // `Formal/Proved/` 在项目根下**并不存在**（可复用库故意在项目树之外），只写相对路径会让代理
+    // 去项目里找一个永远找不到的目录；这里与验证段落一样给出 VibeMath 根的绝对路径（契约 §6.2）。
     return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
-      + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind=\'def\'），已成立的引理归到 Formal/Proved/'
-      + '（kind=\'lemma\'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。'
+      + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind=\'def\'），已成立的引理归到 '
+      + vibeRoot().replace(/\\/g, '/') + '/Formal/Proved/（kind=\'lemma\'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。'
       + '归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
   }
   /**
@@ -762,12 +784,33 @@ export function apply(ctx) {
       + 'decision=\'defect\' 会撤回该证明的「已通过」状态并写入「形式化待办」）。'
   }
   /**
+   * 撤回一份归档证明。删除是**尽力而为**，撤回却不是：
+   * 宿主没有 `subprocess` 服务、shell 删除失败、或 shell 退出 0 却没真的删掉（stub 宿主、权限问题）时，
+   * 必须把撤回通知**写进那个路径**——否则一份已被撤回的证明仍留在 `Verified/Lean/`，那是"所有人找
+   * 这个对象的证明"的地方；记录里的 `proof` 已经清空，于是目录与记录脱节，谁也不会再发现它
+   * （契约 §4.1 要求撤回，而不是"试过删除"）。
+   * 返回**实际发生了哪一种**（deleted / overwritten / failed / unreachable），由调用方如实告知读者。
+   */
+  async function withdrawArchivedProof(rel) {
+    const abs = leanAbsPath(rel)
+    if (abs === null) return { rel: String(rel), outcome: 'unreachable' }
+    const sub = subprocessOf()
+    if (sub !== undefined && typeof sub.spawn === 'function') {
+      try { await runShell(rmCmd(abs)) } catch (e) { /* 落到下面的覆写 */ }
+      // 用 fs 复核"真的没了"：`Remove-Item -ErrorAction SilentlyContinue` / `rm -f` 都可能静默失败。
+      if (await readTextAbs(abs) === undefined) return { rel: String(rel), outcome: 'deleted' }
+    }
+    const ok = await writeTextAbs(abs, '-- 已撤回（' + fmtTime() + '）：该形式化被认定与命题原文不一致。\n'
+      + '-- 原代码保留在工作文件 Formal/' + String(rel).split('/').pop() + '；修正并重新跑通后重新归档。\n')
+    return { rel: String(rel), outcome: ok ? 'overwritten' : 'failed' }
+  }
+  /**
    * 契约 §4.1：`defect` = **形式化不合格**，不是"命题为假"。
    *
    * 表决者逐条核对后发现 Lean 代码与命题原文不一致（写窄了/写宽了/换了对象/漏了条件…），
    * 那是这条形式化写得不对，不是命题被证伪。因此：
    *   ① 把形式化记录**降级为 `attempted`**（无论此前是 `passed` 还是 `blocked`）、清空 `proof`；
-   *   ② 删除归档证明 `Verified/Lean/<id>.lean`（工作文件 `Formal/<id>.lean` 保留，代码不丢）；
+   *   ② 撤回归档证明 `Verified/Lean/<id>.lean`（工作文件 `Formal/<id>.lean` 保留，代码不丢）；
    *   ③ `note` 记入记录与 `Formal/TODO.md`，并在活动日志里公告；
    *   ④ `require` 档下 `formalGateOk` 随之为假 → 本次裁定**不定论**，修正形式化并重新跑通后再投票。
    */
@@ -777,24 +820,50 @@ export function apply(ctx) {
     const before = formalRecords()
     const proofs = []
     const pushProof = function (p) { const s = String(p || ''); if (s && proofs.indexOf(s) === -1) proofs.push(s) }
-    pushProof((before[t] || {}).proof)
-    pushProof((before[objectId] || {}).proof)
+    // **同一对象的全部 id 别名**都要看：归档可能写在对象 id（`pX`）上，也可能写在验证 id
+    // （`r-pX` / `r-pX-s0` / `r-pX-pf1`）上，而回执点名的可以是任意一侧。只扫 `t` 与 `objectId`
+    // 会漏掉"归档用 rId、回执用对象 id"这一组合，于是那份被撤回的证明永远留在 `Verified/Lean/`
+    // 里（记录已清空 proof，没人再指向它）——这正是"成对关系只做一半"的缺陷形态（审计清单 §3）。
+    for (const k of Object.keys(before)) if (formalObjectIdOf(k) === objectId) pushProof((before[k] || {}).proof)
     // 两套 id 一起降级——只降一侧会让另一侧继续"已通过"，门禁/卡片就会照旧放行。
     await putFormalBothIds(t, { status: 'attempted', decision: 'defect', note: note, proof: '', updatedAt: now() })
-    // 删除归档证明：删记录里记着的那份，也删两边 id 直接对应的文件名（覆盖"归档时用对象 id、
-    // 回执时用验证 id"这种两侧写法不同的情形）。
+    // 备选的归档证明路径 = 记录里记着的那份（一定存在过）+ 各个 id 直接对应的文件名。
+    const candidates = []
+    for (let i = 0; i < proofs.length; i++) if (proofs[i].indexOf('Verified/Lean/') === 0 && candidates.indexOf(proofs[i]) === -1) candidates.push(proofs[i])
+    const keys = Object.keys(before).filter(function (k) { return formalObjectIdOf(k) === objectId })
+    for (const id of keys.concat([t, objectId])) { const r = 'Verified/Lean/' + id + '.lean'; if (candidates.indexOf(r) === -1) candidates.push(r) }
+    // 只处理**确实存在**（或在记录里被引用）的路径：宿主没有 subprocess 时撤回会退化成"覆写通知"，
+    // 若把从未存在过的文件名也一并处理，就会凭空造出 `Verified/Lean/<id>.lean`。
     const rels = []
-    for (let i = 0; i < proofs.length; i++) if (proofs[i].indexOf('Verified/Lean/') === 0 && rels.indexOf(proofs[i]) === -1) rels.push(proofs[i])
-    for (const id of [t, objectId]) { const r = 'Verified/Lean/' + id + '.lean'; if (rels.indexOf(r) === -1) rels.push(r) }
-    for (let i = 0; i < rels.length; i++) { try { await removeFile(rels[i]) } catch (e) { /* 删除失败不应影响记账 */ } }
+    for (let i = 0; i < candidates.length; i++) {
+      if (proofs.indexOf(candidates[i]) !== -1) { rels.push(candidates[i]); continue }
+      const abs = leanAbsPath(candidates[i])
+      if (abs !== null && (await readTextAbs(abs)) !== undefined) rels.push(candidates[i])
+    }
+    const deleted = [], overwritten = [], failed = []
+    for (let i = 0; i < rels.length; i++) {
+      let r
+      try { r = await withdrawArchivedProof(rels[i]) } catch (e) { r = { rel: rels[i], outcome: 'failed' } }
+      if (r.outcome === 'deleted') deleted.push(r.rel)
+      else if (r.outcome === 'overwritten') overwritten.push(r.rel)
+      else failed.push(r.rel)
+    }
     const list = formalTodo().filter(function (x) { return x.id !== objectId })
     list.push({ id: objectId, at: now(), why: 'defect：形式化与命题原文不一致，需修正后重新跑通（' + note + '）' })
     await putFormal(t, Object.assign({}, formalRecords()[t] || {}, { status: 'attempted', decision: 'defect', note: note, proof: '', updatedAt: now() }), list)
     await writeFormalTodo()
     await writeFormalIndex()
+    // 公告必须如实说明**撤回实际怎么完成的**：删除成功、只能覆写成撤回通知、还是两者都没做到。
+    // 否则读者会以为归档目录里已经干净了，而一份坏证明还躺在那里（契约 §4.1）。
     logActivity('formal', '【形式化】' + who + ' 通过回执记录 ' + objectId + ' 的忠实性缺陷（decision=defect）：' + note
-      + ' —— 已撤回「已通过」状态（降级 attempted、删除归档证明 ' + rels.join('、') + '、写入 Formal/TODO.md），本次裁定不定论。')
-    return { ok: true, decision: 'defect', target: objectId, named: t, status: 'attempted', note: note, cleared: rels }
+      + ' —— 已撤回「已通过」状态（降级 attempted'
+      + (deleted.length ? '、删除归档证明 ' + deleted.join('、') : '')
+      + (overwritten.length ? '、把归档证明覆写为撤回通知 ' + overwritten.join('、') + '（宿主无法删除，但该路径已不再是一份证明）' : '')
+      + (failed.length ? '、⚠ 归档证明 ' + failed.join('、') + ' 既未删除也未能覆写，记录已降级——请不要把它当作该对象的证明' : '')
+      + '、写入 Formal/TODO.md）。'
+      // 强度必须与档位一致（契约 §4.1 第 3 条）：encourage 没有门禁，不能声称框架会搁置裁定。
+      + (formalRequired() ? '本次裁定不定论。' : '本档没有门禁：本次裁定是否定论由表决结果决定（靠表决者的弃权值阻止布尔一致结论）。'))
+    return { ok: true, decision: 'defect', target: objectId, named: t, status: 'attempted', note: note, cleared: rels, deleted: deleted, overwritten: overwritten, failed: failed }
   }
   /**
    * 回执通道（契约 §4 / §6.3）：代理**即使一次 Lean 工具都没调用**，也必须能留下"实现难度判断"或
@@ -959,7 +1028,14 @@ export function apply(ctx) {
       const run = args.run === false ? null : await leanRunFile(abs)
       await rebuildLeanLibIndexes()
       logActivity('formal', (memberId || 'office') + ' 归档了' + (kind === 'def' ? '可复用定义' : '已证引理') + ' `' + name + '` → ' + rel + (run ? '（运行 ' + (run.ok ? '通过' : '未通过') + '）' : ''))
-      return { ok: true, kind: kind, name: name, file: rel, run: run || undefined, note: '已并入全局可复用库，后续项目可直接 import 复用' }
+      // 工具返回值同样是代理读到的文字：`run` 为红时**不能**声称"可直接 import 复用"——
+      // 那份文件没有通过编译，"可复用库"里的它是有害的（契约 §6 第 3 条 / v2 实现方案 §9.4）。
+      return {
+        ok: true, kind: kind, name: name, file: rel, run: run || undefined,
+        note: (run && !run.ok)
+          ? '⚠ 该文件**运行未通过**（见 run.stderr）：它已写入 ' + rel + '，但**不合格**，请不要当作可复用定义；请修复后用 vibe_math_lean_run（或再次归档 run=true）跑通。'
+          : '已并入全局可复用库，后续项目可直接 import 复用',
+      }
     }
     if (kind === 'proof') {
       const rawTarget = String(args.target || '').trim()
@@ -977,16 +1053,23 @@ export function apply(ctx) {
       const run = await leanRunFile(workRel)
       const prev = formalOf(target)
       const passed = !!run.ok
+      // A RED re-archive invalidates the previous proof: the work file it proved has just been
+      // overwritten by code that does not compile. Keeping the pointer (or leaving the archived
+      // file) would produce "attempted + 归档证明 X.lean" in the index and let the fidelity prompt
+      // print a proof path for code that no longer exists — `proof` is for `passed` only (§4).
+      const stalePrev = passed ? '' : String(prev.proof || ('Verified/Lean/' + target + '.lean'))
       const rec = Object.assign({}, prev, {
         status: passed ? 'passed' : 'attempted',
         file: workRel,
-        proof: passed ? 'Verified/Lean/' + target + '.lean' : (prev.proof || ''),
+        proof: passed ? 'Verified/Lean/' + target + '.lean' : '',
         decision: 'used',
         note: String(args.note || prev.note || ''),
         run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tailText(run.stdout, 800), stderrTail: tailText(run.stderr, 800) },
         updatedAt: now(),
       })
+      let withdrawn = null
       if (passed) await writeText('Verified/Lean/' + target + '.lean', body)
+      else if (stalePrev) { try { withdrawn = await withdrawArchivedProof(stalePrev) } catch (e) { withdrawn = { rel: stalePrev, outcome: 'failed' } } }
       await putFormal(target, rec)
       // ★ 让"归档"与"验证对象"两套 id 对齐。
       // 验证提示词与门禁关心的是**这一次验证**（rId，例如 r-pGate），而代理用 vibe_math_lean_archive
@@ -995,7 +1078,10 @@ export function apply(ctx) {
       // 裁定还是被反复搁置。两套记录都写，门禁与提示词任取其一都自洽。
       await syncVerificationTarget(target, passed ? 'passed' : 'attempted', rec)
       await rebuildLeanLibIndexes()
-      logActivity('formal', (memberId || 'office') + ' 为 ' + target + ' 归档形式化证明 ' + workRel + '（运行 ' + (passed ? '通过，已归档到 ' + rec.proof + '，验证转为忠实性审查' : '未通过：' + tailText(run.stderr || run.message, 160)) + '）')
+      logActivity('formal', (memberId || 'office') + ' 为 ' + target + ' 归档形式化证明 ' + workRel + '（运行 ' + (passed
+        ? '通过，已归档到 ' + rec.proof + '，验证转为忠实性审查'
+        : '未通过：' + tailText(run.stderr || run.message, 160)
+          + '；已撤回上一份已通过状态与归档证明' + (withdrawn && withdrawn.outcome !== 'failed' ? '（' + withdrawn.outcome + '）' : '（⚠ 撤回失败，请不要把 ' + stalePrev + ' 当作该对象的证明）')) + '）')
       return { ok: true, kind: kind, target: target, file: workRel, proof: rec.proof, passed: passed, run: run, status: rec.status }
     }
     if (kind === 'blocked') {
@@ -1024,14 +1110,22 @@ export function apply(ctx) {
   async function deferForFormal(target, why) {
     const t = safeId(String(target || ''))
     if (!t) return false
-    const rec = formalOf(t)
     if (!formalRequired()) return false
+    // ★ 判定必须用**合并后**的记录（`formalGateRecord`，两套 id 都认），不能只看自己那一侧。
+    // 代理是用**对象 id** 归档的（提示词里给它的就是对象 id），而验证/门禁问的是 rId；
+    // `syncVerificationTarget` 只更新**已存在**的别名键，所以"归档写了 pX、r-pX 还没有记录"是
+    // 首次形式化后的真实状态。那时 `formalOf('r-pX')` 返回 `{status:'none'}`，门禁会把一个
+    // **已经 passed 的对象**判为未形式化（假阴性）；更糟的是这次搁置本身会写下 r-pX =
+    // status:'none'，于是此后**每一轮**都继续搁置、继续重开一次完整辩论——对象永远无法定论。
+    // 这正是实现方案 §四写明的"门禁与提示词取记录时两个方向都认（formalGateRecord）"。
+    const rec = formalGateRecord(t)
     if (formalGateOk(rec)) return false
+    const own = formalOf(t)
     const reason = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + (rec.status || 'none') + '）' + (why ? '｜' + why : '')
     const list = formalTodo().filter(function (x) { return x.id !== t })
     list.push({ id: t, at: now(), why: reason })
     // 不改动对象的既有权重/概率字段：只补一条 formal 记录（status 保持 none/attempted）。
-    await putFormal(t, rec.status === 'none' ? { status: 'none', deferredAt: now() } : Object.assign({}, rec, { deferredAt: now() }), list)
+    await putFormal(t, own.status === 'none' ? { status: 'none', deferredAt: now() } : Object.assign({}, own, { deferredAt: now() }), list)
     await writeFormalTodo()
     await writeFormalIndex()
     // v2 没有群聊文件（没有 Shared/Chat/），所以"群聊公告"落在它的可读通道上：
@@ -1411,7 +1505,16 @@ export function apply(ctx) {
       L.push('  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：')
       L.push("      ① Result 给一个严格介于 0 与 1 之间的值（记为弃权），并在 Reason 里写清偏差；")
       L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
-      L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+      if (formalMode() === 'require') {
+        // 这一档真的有门禁，所以"本次裁定**不定论**"是框架**能兑现**的承诺（契约 §6.1）。
+        L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+      } else {
+        // encourage 档没有门禁：撤回证明 ≠ 搁置裁定。承诺一个框架无法强制的"不定论"，会让表决者
+        // 以为不必自己弃权——那正是"提示词承诺的强度档位必须与实现一致"这条不变式（契约 §4.1 第 3 条
+        // / §6.1，审计清单 §1.7）。这里如实说明：阻止本轮定论的是**你的弃权值**。
+        L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）。**本档没有门禁**：')
+        L.push('         框架不会强制搁置本次裁定——请务必给出①里的弃权值，靠它阻止本轮得出布尔一致结论；')
+      }
       L.push('         修正形式化并重新跑通后再投票。')
       L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。')
     } else if (rec.status === 'blocked') {
@@ -2085,19 +2188,30 @@ export function apply(ctx) {
           if (q.判断命题 && !sol.来源列表) {
             const ap = await findProposition(q.判断命题)
             if (ap) {
-              ap.布尔估计 = v
-              // 收敛闸门：本条路径只在 v=1/0 时才写入证明/证伪条目，中间裁决（flat 默认给出
-              // 0.5，forced 给出加权浮点）会让 ap 停留在"中间布尔估计 + 两个列表皆空"的状态——
-              // 而这正是 buildVerifyCandidates 认定"裸命题需要验证"的条件。若不在此标记，该命题
-              // 会在每个 tick 重新入选、重开一轮完整辩论；又因 processVerify 每 tick 只跑一个验证，
-              // 其它对象被无限饿死，终止条件（所有问题已解决）永不可达。标记后不再重复消耗验证配额，
-              // 裁决值仍保留在 布尔估计 中。
-              ap.已验证 = true
-              if (v === 1) { ap.证明列表 = ap.证明列表 || []; ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
-              else if (v === 0) { ap.证伪列表 = ap.证伪列表 || []; ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
-              await upsertProposition(ap)
-              await writeVerifiedCardIfNeeded(ap)
-              logActivity('judge-sync', 'judge problem verdict ' + v + ' synced to proposition ' + ap.id)
+              // ★ require 门禁：这条路径把**源命题**的 布尔估计 直接写成 0/1、置 优先级='never'、
+              //   并标记 已验证（此后不再入选验证）——这就是一次对源命题的布尔裁定，必须先过门禁。
+              //   原来的写法只让 writeVerifiedCardIfNeeded 去拦卡片，而它的返回值没人检查，概率字段
+              //   早已落库：一个未形式化的命题会被侧面判为"假"并永久退出调度（v=1 时上面那道门禁
+              //   拦得住，v=0 拦不住）。实现方案 §八把顺序写得很清楚：先拿卡片写入许可，再改
+              //   布尔估计/优先级（契约 §8：门禁不通过时"不改变对象的既有权重/概率字段"）。
+              const judgeBool = (v === 1 || v === 0)
+              if (judgeBool && await deferForFormal(ap.id, '「判断命题」问题解法的裁定转移到源命题（' + v + '）')) {
+                logActivity('gate', t.rId + ' 对源命题 ' + ap.id + ' 的裁定 ' + v + ' 被 require 模式搁置为未定论（formal-required）')
+              } else {
+                ap.布尔估计 = v
+                // 收敛闸门：本条路径只在 v=1/0 时才写入证明/证伪条目，中间裁决（flat 默认给出
+                // 0.5，forced 给出加权浮点）会让 ap 停留在"中间布尔估计 + 两个列表皆空"的状态——
+                // 而这正是 buildVerifyCandidates 认定"裸命题需要验证"的条件。若不在此标记，该命题
+                // 会在每个 tick 重新入选、重开一轮完整辩论；又因 processVerify 每 tick 只跑一个验证，
+                // 其它对象被无限饿死，终止条件（所有问题已解决）永不可达。标记后不再重复消耗验证配额，
+                // 裁决值仍保留在 布尔估计 中。
+                ap.已验证 = true
+                if (v === 1) { ap.证明列表 = ap.证明列表 || []; ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
+                else if (v === 0) { ap.证伪列表 = ap.证伪列表 || []; ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
+                await upsertProposition(ap)
+                await writeVerifiedCardIfNeeded(ap)
+                logActivity('judge-sync', 'judge problem verdict ' + v + ' synced to proposition ' + ap.id)
+              }
             }
           }
           if (v === 1) { q.已解决 = true; q.优先级 = 'never'; await writeVerifiedProblemCardIfNeeded(q) }

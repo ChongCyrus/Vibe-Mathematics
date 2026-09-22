@@ -52,7 +52,9 @@ const PRESETS = [
   {
     src: 'vibe-math-v5',
     dst: 'vibe-math-v5',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5.js', '实现方案.md'],
+    // 架构图.md belongs here for the same reason 实现方案.md does: the installer's policy is to put
+    // the preset's documentation next to the preset, and the shipped v5 directory carries both.
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5.js', '实现方案.md', '架构图.md'],
   },
 ]
 

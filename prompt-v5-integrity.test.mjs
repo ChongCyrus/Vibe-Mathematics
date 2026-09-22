@@ -46,8 +46,39 @@ const failures = []
 const assert = (c, m) => {
   if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) }
 }
-const sleep = ms => new Promise(r => setTimeout(r, ms))
 const section = (t) => console.log('\n[' + t + ']')
+
+// ---------------------------------------------------------------
+// VIRTUAL CLOCK
+// The institute is driven by `ctx.timeout` + `Date.now()`. On the real clock, WHICH member a timer
+// picks (heartbeat / meeting / digest) depends on load and on millisecond deltas, so the shipped
+// corpus recorded different members on different runs and changed on every run — which makes it
+// undiffable and hides real drift (AUDIT-CHECKLIST §2.4). A virtual clock fires every timer in a
+// fixed order regardless of machine speed, and makes the suite faster because `sleep(n)` advances
+// virtual time instead of waiting n real milliseconds.
+let vnow = 1700000000000
+let vtimerSeq = 0
+const vtimers = new Map()
+Date.now = () => vnow
+function advanceClock(ms) {
+  const target = vnow + Math.max(0, Math.round(Number(ms) || 0))
+  for (;;) {
+    let next = null
+    for (const t of vtimers.values()) {
+      if (t.at > target) continue
+      if (!next || t.at < next.at || (t.at === next.at && t.seq < next.seq)) next = t
+    }
+    if (!next) break
+    vtimers.delete(next.id)
+    vnow = Math.max(vnow, next.at)
+    try { next.cb() } catch (e) { /* a throwing timer must not stop the clock */ }
+  }
+  vnow = target
+}
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Advance the virtual clock, then give the real event loop a few turns so awaited work (fs writes,
+// handler chains) can finish before the next assertion reads the state.
+const sleep = async (ms) => { advanceClock(ms); for (let i = 0; i < 3; i++) await realSleep(1) }
 
 // ---------------------------------------------------------------
 // mock host
@@ -161,7 +192,13 @@ const ctx = {
   on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
   effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
   logger: { info() {}, warn() {}, error() {} },
-  timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
+  // Virtualised: the plugin's timers fire when the suite advances the clock (see the virtual-clock
+  // block above), which is what makes timer-driven prompt selection reproducible.
+  timeout(cb, ms) {
+    const id = ++vtimerSeq
+    vtimers.set(id, { id, seq: id, at: vnow + Math.max(0, Math.round(Number(ms) || 0)), cb })
+    return () => { vtimers.delete(id) }
+  },
   tools: { register(spec) { toolRegs.push(spec); return () => {} } },
   commands: { register() { return () => {} } },
   sessions: { async flush() { return true } },
@@ -403,10 +440,19 @@ const scrub = (s) => {
   // Timestamps are part of the prompt a member reads, but not part of what a reviewer needs:
   // normalise them too. Otherwise the shipped corpus changes on EVERY run — its headings carry
   // `### YYYY-MM-DD hh:mm:ss｜<member>` — and its diffs stop being meaningful.
-  return t.replace(re, '<WS>').replace(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/g, '<TIME>')
+  // The VibeMath ROOT gets its own token (not `<WS>/VibeMath`), so v5's corpus can be diffed
+  // side by side with v2/v3/v4's, which render the same root as `<VIBEMATH>`.
+  return t.replace(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/g, '<TIME>')
+    .replace(/[A-Za-z]:\/[^\s"'`）)，。；：]*?[\\/]VibeMath/g, '<VIBEMATH>')
+    .replace(/\/VibeMath/g, '<VIBEMATH>')
+    .replace(re, '<WS>')
 }
 // Every Lean tool mention in agent-facing text must be the REGISTERED name.
-const noBareLeanTool = (t) => !/(^|[^a-z_])lean_(run|archive|lib)/.test(String(t || ''))
+// `Verified/Lean/` is a contract PATH, not a tool name, and on a case-insensitive reading it
+// even contains the substring "lean_"; strip that exact path before the check (the same path
+// is written by the plugin, so the prompt builders genuinely can emit it).
+const noBareLeanTool = (t) => !/(^|[^a-z_])lean_(run|archive|lib)/.test(
+  String(t || '').replace(/Verified\/Lean\//g, ''))
 function record(kind, owner, prompt, persona, extra) {
   corpus.push({
     kind, owner,
@@ -496,20 +542,38 @@ assert(normalWakes.some(w => w.owner === 'r-2' && w.prompt.indexOf('【研究所
   'r-2 is woken with its inbox containing the DM framed from r-1')
 assert(normalWakes.filter(w => w.owner === 'r-2').every(w => w.prompt.indexOf('【研究所·私信 from r-2】') === -1),
   'r-2 never receives the DM framed as coming from itself')
-// (b) the heartbeat must produce a CHECKPOINT prompt
-delivered.length = 0
-await sleep(260); await settle(); await drainWakes(10, RB)
-let checkpointWakes = delivered.filter(w => /【心跳检查/.test(w.prompt))
-if (!checkpointWakes.length) { await sleep(260); await settle(); await drainWakes(10, RB); checkpointWakes = delivered.filter(w => /【心跳检查/.test(w.prompt)) }
-assert(checkpointWakes.length > 0, 'the heartbeat produced a checkpoint prompt (' + checkpointWakes.length + ')')
-for (const w of checkpointWakes) {
-  recordAndCheck('checkpoint', w.owner, w.prompt)
+// (b) the heartbeat must produce a CHECKPOINT prompt. Captured in its OWN single-member institute:
+// the heartbeat wakes the most idle non-busy member, so with exactly one member the pick cannot
+// depend on real `Date.now()` deltas under load — the earlier shared-root version recorded
+// heartbeat prompts for different members on different runs, which made the SHIPPED corpus change
+// between runs (AUDIT-CHECKLIST §2.4: corpora must be byte-diffable).
+const RHB = makeRoot()
+await callTool('vibe_v5_start', { problem: '心跳语料（单成员）', researcherCount: 1, academician: false }, RHB)
+for (const sp of spawnsFor(RHB)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(RHB)
+await callTool('vibe_v5_set', { activityTimeoutMs: 80, maxParallel: 6, chatDigestMax: 1 }, RHB)
+let hbQueueIdx = -1
+for (let i = 0; i < 15 && hbQueueIdx === -1; i++) {
+  await sleep(120); await settle()
+  // Inspect the QUEUE (never drains it): draining answers turns and changes who is idle next.
+  hbQueueIdx = wakes.findIndex(w => w.rootId === RHB.id && /【心跳检查/.test(w.prompt))
+}
+assert(hbQueueIdx !== -1, 'the heartbeat produced a checkpoint prompt')
+if (hbQueueIdx !== -1) {
+  const hbWake = wakes.splice(hbQueueIdx, 1)[0]
+  const hbMember = memberOfChild(hbWake.childId)
+  assert(hbMember === 'r-1',
+    '★ the heartbeat picked the only member (r-1) — deterministic, not timing-dependent (got ' + hbMember + ')')
+  recordAndCheck('checkpoint', hbMember, hbWake.prompt)
   // The heartbeat body may be preceded by a delivered inbox or the core-rules recap
   // after a real compaction, so match anywhere rather than at offset 0.
-  assert(w.prompt.indexOf('【心跳检查 —— ') !== -1, w.owner + "'s heartbeat prompt names its own office and id")
-  assert(new RegExp('【心跳检查 —— (院士|常驻研究员|临时工) ' + w.owner + '】').test(w.prompt),
-    w.owner + "'s heartbeat header carries its own kind and id")
+  assert(hbWake.prompt.indexOf('【心跳检查 —— ') !== -1, hbMember + "'s heartbeat prompt names its own office and id")
+  assert(new RegExp('【心跳检查 —— (院士|常驻研究员|临时工) ' + hbMember + '】').test(hbWake.prompt),
+    hbMember + "'s heartbeat header carries its own kind and id")
+  fireEnd(hbWake.childId, { progress: hbMember + '：继续推进。', solved: false, contextPct: 20 })
+  await settle()
 }
+await endCase(RHB)
 await endCase(RB)
 
 // =============== CASE 3: interaction framing ====================================
@@ -970,6 +1034,7 @@ for (const w of vwB) recordAndCheck('lean-fidelity', memberOfChild(w.childId), w
   assert(/不要投 0/.test(txt), '★ it forbids expressing a faithfulness defect as 0 (= 命题为假)')
   assert(/decision:'defect'/.test(txt), 'it names the defect reply channel that withdraws the proof')
   assert(!/偏离 → 0/.test(txt), '★ the old "any deviation → 0" instruction is gone')
+  assert(/本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值/.test(txt), '★ the encourage branch says there is NO gate and that the abstention is what blocks a conclusion')
   assert(noBareLeanTool(txt), 'no abbreviated tool name appears in the fidelity prompt')
 }
 await drainWakes(10, RL2)
@@ -994,6 +1059,7 @@ for (const w of vwR) recordAndCheck('lean-require', memberOfChild(w.childId), w.
   assert(/本模式要求/.test(txt) && /formal-required/.test(txt), 'it states the conclusion gate and its reason code')
   assert(/vibe_v5_lean_archive/.test(txt) && /kind='blocked'/.test(txt), 'it names the full archive tool for the blocker route')
   assert(/宿主无 Lean 工具链/.test(txt), 'it also says what to do when the host has no Lean toolchain')
+  assert(/LEAN_NOT_FOUND/.test(txt) && /NO_SUBPROCESS/.test(txt), '★ it names BOTH no-toolchain codes (a service-less host must not look like an unknown failure)')
   assert(noBareLeanTool(txt), 'no abbreviated tool name appears in the require-mode prompt')
 }
 await drainWakes(30, R_LEANREQ)
@@ -1027,6 +1093,45 @@ for (const w of delivered.filter(d => d.rootId === R_LEANDEF.id)) recordAndCheck
 }
 await endCase(R_LEANDEF)
 
+// (f) the three Lean tools' own agent-facing strings (hint / LEAN_NOT_FOUND message). A tool
+// `hint` is injected text by the contract's own wording ("工具自己返回的 hint 字段同样算注入文本"),
+// but it reached the corpus only through the prompts that happened to embed it. Capture it
+// directly so a reviewer can check the failure routes without reading the plugin source.
+const R_LEANHINT = makeRoot()
+await callTool('vibe_v5_start', { problem: 'Lean 工具提示语料测试', researcherCount: 2 }, R_LEANHINT)
+for (const sp of spawnsFor(R_LEANHINT)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
+await settleInstitute(R_LEANHINT)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, R_LEANHINT)
+{
+  const r1 = childAgent(childOf(R_LEANHINT, 'r-1'))
+  // Labels are OURS (they name the call that produced the string); only the VALUES are
+  // plugin text, so the bare-tool-name check runs on the values, never on the labels.
+  const toolTexts = []
+  await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-hint', content: 'theorem p_lean_hint : 1 + 1 = 2 := by decide\n' }, r1)
+  const green = await callTool('vibe_v5_lean_run', { file: 'Formal/p-lean-hint.lean' }, r1)
+  toolTexts.push(['vibe_v5_lean_run hint (green)', String(green.hint || '')])
+  await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-hint-red', content: 'theorem p_lean_hint_red : 1 = 2 := by sorry\n' }, r1)
+  const red = await callTool('vibe_v5_lean_run', { file: 'Formal/p-lean-hint-red.lean' }, r1)
+  toolTexts.push(['vibe_v5_lean_run hint (red)', String(red.hint || '')])
+  const missing = await callTool('vibe_v5_lean_run', { file: 'Formal/no-such-file.lean' }, r1)
+  toolTexts.push(['vibe_v5_lean_run on a missing file', String(missing.code || '') + '｜' + String(missing.message || '')])
+  const noName = await callTool('vibe_v5_lean_archive', { kind: 'def', content: 'def x := 1\n' }, r1)
+  toolTexts.push(['vibe_v5_lean_archive without a name', String(noName.code || '') + '｜' + String(noName.message || '')])
+  const noNote = await callTool('vibe_v5_lean_archive', { kind: 'blocked', target: 'p-lean-hint' }, r1)
+  toolTexts.push(['vibe_v5_lean_archive blocked without a note', String(noNote.code || '') + '｜' + String(noNote.message || '')])
+  const lib = await callTool('vibe_v5_lean_lib', {}, r1)
+  toolTexts.push(['vibe_v5_lean_lib hint', String(lib.hint || '')])
+  const values = toolTexts.map(([, v]) => v).join('\n')
+  assert(/vibe_v5_lean_archive/.test(values), 'the tool hints name the REGISTERED archive tool (an abbreviated lean_archive is not callable)')
+  assert(noBareLeanTool(values), 'no tool hint or failure message uses an abbreviated lean_* name')
+  assert(/V5_NOT_FOUND/.test(values) && /必须写明原因/.test(values), 'the failure routes are explicit (missing file / missing note)')
+  // NOT via recordAndCheck: these strings are tool output, not a round prompt, so they carry
+  // no [状态] block and the identity sweep does not apply to them.
+  record('lean-tool-hint', 'r-1', toolTexts.map(([k, v]) => k + ': ' + v).join('\n'))
+}
+await drainWakes(10, R_LEANHINT)
+await endCase(R_LEANHINT)
+
 // =============== PART: full-corpus sweep ========================================
 section('13 full-corpus sweep over every prompt ever sent')
 {
@@ -1044,7 +1149,8 @@ section('13 full-corpus sweep over every prompt ever sent')
   for (const need of ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
     'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
     'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
-    'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect']) {
+    'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect',
+    'lean-tool-hint']) {
     assert(kinds.has(need), 'the corpus contains a ' + need + ' prompt')
   }
   assert(corpus.every(c => c.prompt && c.prompt.length > 200), 'no captured prompt is suspiciously short')
@@ -1081,7 +1187,7 @@ md.push('')
 md.push('由 `prompt-v5-integrity.test.mjs` 在每次运行时重写。这里保存的是**框架真正发给每个')
 md.push('成员的提示词原文**，用于人工复核提示词分配、成员代号与交互内容的正确性。')
 md.push('')
-md.push('- 生成时刻的工作区路径被替换为 `<WS>`，因此内容是确定性的、可 diff 的。')
+md.push('- 生成时刻的工作区路径被替换为 `<WS>`，VibeMath 根被替换为 `<VIBEMATH>`（与 v2/v3/v4 的语料一致，可并排 diff），因此内容是确定性的、可 diff 的。')
 md.push('- `owner` 是这条提示词**实际发给的成员**；`kind` 是提示词类型。')
 md.push('- 人设（charter/persona）按成员只完整打印一次，其余条目只记录字符数。')
 md.push('- 这是提示词正确性的人工复核入口：任何“成员代号/职位/在册名单/交互署名”问题')
@@ -1091,8 +1197,16 @@ const seenPersona = new Set()
 const order = ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
   'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
   'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
-  'lean-work', 'lean-verify', 'lean-fidelity']
-const sorted = corpus.slice().sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+  'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect', 'lean-tool-hint']
+// The sort must be TOTAL, not just by kind: entries of the same kind were emitted in whatever order
+// the asynchronous drain produced them (two meeting prompts, two members' normal rounds), so the
+// shipped corpus still changed between runs even after the clock was virtualised. Sorting by
+// (kind, owner, prompt) makes the file a pure function of the recorded SET.
+const sorted = corpus.slice().sort((a, b) =>
+  (order.indexOf(a.kind) - order.indexOf(b.kind)) ||
+  (a.owner < b.owner ? -1 : a.owner > b.owner ? 1 : 0) ||
+  (a.prompt < b.prompt ? -1 : a.prompt > b.prompt ? 1 : 0) ||
+  (String(a.toolFilter || '') < String(b.toolFilter || '') ? -1 : 1))
 for (let i = 0; i < sorted.length; i++) {
   const c = sorted[i]
   md.push('---')
@@ -1119,7 +1233,7 @@ for (let i = 0; i < sorted.length; i++) {
   md.push('')
 }
 const byKind = {}
-for (const c of corpus) byKind[c.kind] = (byKind[c.kind] || 0) + 1
+for (const c of sorted) byKind[c.kind] = (byKind[c.kind] || 0) + 1
 md.push('---')
 md.push('')
 md.push('## 统计')
@@ -1132,8 +1246,8 @@ const mdPath = join(CORPUS_DIR, 'prompt-corpus-v5.md')
 writeFileSync(mdPath, md.join('\n'), 'utf8')
 writeFileSync(join(CORPUS_DIR, 'prompt-corpus-v5.json'), JSON.stringify({
   note: 'Vibe Math V5 prompt/interaction corpus — generated by prompt-v5-integrity.test.mjs. <WS> = the run workspace.',
-  counts: byKind, total: corpus.length,
-  prompts: corpus.map(c => ({
+  counts: byKind, total: sorted.length,
+  prompts: sorted.map(c => ({
     kind: c.kind, owner: c.owner, sentToLabel: c.sentToLabel,
     charterChars: c.persona == null ? null : c.persona.length,
     charter: c.persona, toolFilter: c.toolFilter, prompt: c.prompt,

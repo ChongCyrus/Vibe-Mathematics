@@ -56,6 +56,7 @@ const section = (t) => console.log('\n[' + t + ']')
 // ---------------------------------------------------------------
 let toolchainAvailable = true
 const leanRuns = []
+const terminations = []
 const subprocess = {
   async resolveExecutable(cmd) {
     if (!toolchainAvailable) throw new Error('spawn lean ENOENT')
@@ -98,6 +99,29 @@ const subprocess = {
     leanRuns.push({ argv: spec.argv.slice(0, -1), file: last, cwd: spec.cwd, graceMs: spec.graceMs, stdio: spec.stdio })
     const stdout = bad ? '' : 'ok\n'
     const stderr = bad ? 'error: declaration uses sorry\n' : ''
+    if (/-- HANG/.test(text)) {
+      // A run that never finishes by itself. It settles ONLY when the plugin actively terminates it
+      // (contract §7: "对超时调用 handle.terminate()"), with a bounded 2.5 s fallback so a plugin
+      // that FORGETS to terminate FAILS the terminate/speed assertions instead of hanging this suite.
+      let settled = false
+      let finish
+      const done = new Promise((resolve) => { finish = resolve })
+      const fallback = REAL_SET_TIMEOUT(() => { if (!settled) { settled = true; finish({ exitCode: null, signal: 'SIGKILL' }) } }, 2500)
+      return {
+        done,
+        collected: {
+          stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+          stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        },
+        terminate() {
+          if (settled) return
+          settled = true
+          REAL_CLEAR_TIMEOUT(fallback)
+          terminations.push({ file: last })
+          finish({ exitCode: null, signal: 'SIGTERM' })
+        },
+      }
+    }
     return {
       done: Promise.resolve({ exitCode: bad ? 1 : 0, signal: null }),
       collected: {
@@ -202,6 +226,21 @@ const REAL_SET_INTERVAL = globalThis.setInterval
 globalThis.setInterval = function (fn, ms, ...rest) {
   return REAL_SET_INTERVAL(fn, Math.min(Number(ms) || 0, 25), ...rest)
 }
+// ── test speed / leak check: track OUTSTANDING setTimeout handles (test-only) ──────────────
+// `leanRunFile` races `handle.done` against its own `cap`-ms timer; forgetting to clear that timer on
+// the normal path leaves one pending multi-minute timer PER RUN — a leak no output assertion can see.
+// The plugin resolves the global at call time, so wrapping it here covers it. The mock's own bounded
+// fallback uses the REAL functions, so it never pollutes the count.
+const REAL_SET_TIMEOUT = globalThis.setTimeout
+const REAL_CLEAR_TIMEOUT = globalThis.clearTimeout
+const liveTimers = new Set()
+globalThis.setTimeout = function (fn, ms, ...rest) {
+  let h
+  h = REAL_SET_TIMEOUT(function (...a) { liveTimers.delete(h); return fn.apply(this, a) }, ms, ...rest)
+  liveTimers.add(h)
+  return h
+}
+globalThis.clearTimeout = function (h) { liveTimers.delete(h); return REAL_CLEAR_TIMEOUT(h) }
 
 const projRoot = (h) => join(h.WS, 'VibeMath', 'Projects', 'proj')
 const vibeRoot = (h) => join(h.WS, 'VibeMath')
@@ -281,6 +320,25 @@ section("1 'off' (default) is a true no-op")
   assert(st.params.leanTimeoutMs === 120000, 'leanTimeoutMs defaults to 120000 (got ' + st.params.leanTimeoutMs + ')')
   assert(!!h.toolRegs.find((t) => t.name === 'vibe_math_lean_run') && !!h.toolRegs.find((t) => t.name === 'vibe_math_lean_archive') && !!h.toolRegs.find((t) => t.name === 'vibe_math_lean_lib'),
     'the three Lean tools are registered in every mode (registration is static)')
+// ★ The mode switch must be REACHABLE THROUGH THE TOOL SCHEMA (2.3.2 defect D1) ──────────────
+// Every tool schema here is closed (`additionalProperties:false`), so a key the schema does not
+// advertise is REJECTED by any schema-validating provider. v3 shipped 2.3.0/2.3.1 with all four Lean
+// parameters missing from the set-params schema while every assertion in this file stayed green —
+// because the suite calls the handler DIRECTLY and never inspects the registered schema. The feature
+// could not be switched on at all through the tool interface.
+{
+  const setSpec = h.toolRegs.find((t) => t.name === 'vibe_math_set_params')
+  assert(!!setSpec, "vibe_math_set_params is registered")
+  assert(setSpec.parameters && setSpec.parameters.type === 'object' && setSpec.parameters.additionalProperties === false,
+    '★ vibe_math_set_params publishes a CLOSED object schema (an unlisted key is rejected, so the schema IS the contract)')
+  for (const k of ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']) {
+    assert(Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k),
+      '★ the registered schema advertises ' + k + ' (every other surface documents it; a schema that omits it makes the switch unreachable)')
+  }
+  assert(JSON.stringify(setSpec.parameters.properties.formalVerify.enum) === JSON.stringify(['off', 'encourage', 'require']),
+    'the schema narrows formalVerify to the three real modes (a typo must not be a fourth)')
+}
+
   assert(existsSync(join(vibeRoot(h), 'Formal', 'Lib')) && existsSync(join(vibeRoot(h), 'Formal', 'Proved')), 'the GLOBAL Formal/Lib + Formal/Proved dirs are created outside the project')
   assert(existsSync(join(projRoot(h), 'Formal')) && existsSync(join(projRoot(h), 'Verified', 'Lean')), 'the project Formal/ and Verified/Lean/ dirs are created')
   await h.call('vibe_math_add_problem', { id: 'q1', description: 'off 模式无操作测试' })
@@ -470,6 +528,33 @@ section('4 lean_run executes through the subprocess service and reports honestly
   assert(noSubStatus.ok === true, 'the scheduler still answers status after that (nothing was thrown into the loop)')
 }
 
+// ---------- 4b. the timeout must STOP the process, not just report it ----------
+// Contract §7: "必须给 cwd…，并对超时调用 handle.terminate()". Reporting LEAN_TIMEOUT while the Lean
+// process keeps running is a silent resource leak, and the framework's own contract says otherwise.
+section('4b lean_run ACTIVELY terminates on timeout (contract §7)')
+{
+  const h = await makeCase('timeout')
+  await h.call('vibe_math_set_params', { formalVerify: 'encourage' })
+  const proj = projRoot(h)
+  mkdirSync(join(proj, 'Formal'), { recursive: true })
+  writeFileSync(join(proj, 'Formal', 'hang.lean'), 'theorem t : 1 = 1 := rfl -- HANG\n', 'utf8')
+  writeFileSync(join(proj, 'Formal', 'fast.lean'), 'theorem t : 1 = 1 := rfl\n', 'utf8')
+  const before = terminations.length
+  const t0 = Date.now()
+  const run = await h.call('vibe_math_lean_run', { file: 'Formal/hang.lean', timeout_ms: 1000 })
+  const elapsed = Date.now() - t0
+  assert(run.ok === false && run.code === 'LEAN_TIMEOUT', '★ a run that outlives its timeout is reported as LEAN_TIMEOUT (got ' + run.code + ')')
+  assert(run.timedOut === true, 'the result carries timedOut=true')
+  assert(terminations.length === before + 1 && /hang\.lean/.test(terminations[terminations.length - 1].file),
+    '★★ the timeout ACTIVELY called handle.terminate() (graceMs alone does not stop a lingering Lean process)')
+  assert(elapsed < 2400, 'the call returned AT its timeout instead of waiting the process out (took ' + elapsed + 'ms)')
+  const fast = await h.call('vibe_math_lean_run', { file: 'Formal/fast.lean' })
+  assert(fast.ok === true && fast.timedOut === false, 'a normal run still reports success')
+  assert(terminations.length === before + 1, 'a normal run terminates nothing')
+  await sleep(60)
+  assert(liveTimers.size === 0, '★ no timeout timer is left pending after either run (it is cleared as soon as `done` wins)')
+}
+
 // ---------- 5. archive: def / lemma / proof / blocked ----------
 section('5 lean_archive writes the contract paths and indexes')
 {
@@ -494,6 +579,13 @@ section('5 lean_archive writes the contract paths and indexes')
   writeFileSync(join(proj, 'Formal', 'src.lean'), 'def copied := 3\n', 'utf8')
   const defFrom = await h.call('vibe_math_lean_archive', { kind: 'def', name: 'copied', from: 'Formal/src.lean' })
   assert(defFrom.ok === true && existsSync(join(libPath, 'copied.lean')), 'kind=def can archive from an existing .lean file')
+  // The tool RESULT is agent-facing text too: a definition whose run just failed must not be advertised
+  // as "directly importable" (contract §6 hard req. 3 / 实现方案 §9.4 — a red file must not be presented
+  // as usable, whatever the framework decides to do with the file itself).
+  const defRed = await h.call('vibe_math_lean_archive', { kind: 'def', name: 'polluted', content: 'def polluted := 1 -- FAIL\n' })
+  assert(defRed.ok === true && !!defRed.run && defRed.run.ok === false, 'a definition that does not compile is reported as a red run')
+  assert(!/可直接 import 复用/.test(defRed.note || ''), '★ a red definition must NOT be advertised as directly reusable')
+  assert(/运行未通过/.test(defRed.note || ''), '…and the note says what to do instead')
   const fromOutside = await h.call('vibe_math_lean_archive', { kind: 'def', name: 'escape', from: '../../../../etc/passwd' })
   assert(fromOutside.ok === false && fromOutside.code === 'V2_INVALID_ARGUMENT', 'from=<path outside the VibeMath root> is refused')
   const noName = await h.call('vibe_math_lean_archive', { kind: 'def', content: 'def x := 1\n' })
@@ -566,9 +658,15 @@ section('6 a passing proof flips the review subject to fidelity')
   assert(/formal:\{decision:'defect'/.test(vpText), '★ the reviewers are given the defect reply channel that withdraws the proof')
   assert(!/偏离 → 0/.test(vpText), '★ the "any deviation → 0" instruction is gone (it would fabricate a false conclusion)')
   assert(!/请先判断该对象的\*\*实现难度\*\*/.test(vpText), 'the "judge the difficulty first" wording is gone when a proof already exists')
+  // The withdrawal sentence must match the MODE's real strength (contract §4.1 pt.3 / §6.1; this case is
+  // 'encourage'): encouraging mode has NO gate, so the framework cannot hold the verdict — promising a
+  // hold there is a lie the voter would rely on (AUDIT-CHECKLIST §1.7, "提示词承诺的强度档位").
+  assert(/本档没有门禁/.test(vpText), '★ encourage fidelity text says THIS MODE HAS NO GATE (the framework cannot hold the verdict)')
+  assert(!/本次裁定\*\*不定论\*\*/.test(vpText), '★ encourage must NOT promise a hold the framework cannot enforce')
   const debate = h.followups.map((f) => f.prompt || '').filter((p) => /DEBATE/.test(p)).join('\n')
   assert(/你不需要重新检查推导/.test(debate), '★ the debate prompt for a Lean-passed object also asks for fidelity, not re-derivation')
   assert(/发现任何偏差，不要投 0/.test(debate), '★ and it carries the same no-zero rule in the debate round')
+  assert(/本档没有门禁/.test(debate), '★ the debate round carries the same mode-qualified withdrawal wording')
   await h.call('vibe_math_lean_archive', { kind: 'blocked', target: 'r-pBlk2', note: '涉及未形式化的分析学前置' })
   await h.call('vibe_math_add_proposition', { id: 'pBlk2', 概述: '已记录阻塞的命题', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
   const vs2 = await verifyWithDebate(h, 'r-pBlk2', 0.5, 1)
@@ -812,6 +910,9 @@ section('12 a defect reply withdraws the proof, writes the TODO and defers the v
   assert(!!vs, 'verifiers were spawned for the Lean-passed object')
   const vp = (h.spawns.find((s) => s.label === 'verifier:r-pDefect:0') || {}).prompt || ''
   assert(/忠实性审查/.test(vp) && /不要投 0/.test(vp), 'the reviewers were told to audit fidelity and NOT to vote 0 on a defect')
+  // In REQUIRE mode the framework really does hold the verdict, so THAT promise is the correct one here.
+  assert(/本次裁定\*\*不定论\*\*/.test(vp), '★ require fidelity text does promise the hold (the gate really enforces it)')
+  assert(!/本档没有门禁/.test(vp), 'require must not claim it has no gate')
   const DEFECT = 'Lean 只证了 n>0 的情形，命题原文是 n≥0'
   if (vs) {
     // A fidelity defect: the voter ABSTAINS (0.3) and records it through the reply channel.
@@ -873,10 +974,149 @@ section('12 a defect reply withdraws the proof, writes the TODO and defers the v
   }
 }
 
-// ---------- 13. the prompt corpus (contract §10.10) ----------
+// ---------- 13. the gate must read BOTH id spaces ----------
+// v2 has two id spaces that name the same object: the verification id (rId, `r-pX`, `r-pX-s0`) that the
+// verification prompts and the gate use, and the OBJECT id (`pX`) that the agent reads in the target
+// block and normally archives under. `lean_archive` can only ADD a record for the id it was given, and
+// `syncVerificationTarget` merely UPDATES aliases that already exist — so "archived under the object id,
+// rId record does not exist yet" is a real first-time state. A gate that reads only its own side calls
+// that object un-formalized (a false negative), and because the deferral itself materialises the rId
+// record as `status:'none'`, the object can then NEVER conclude: every round re-defers and re-debates
+// (AUDIT-CHECKLIST §3: "成对关系只做一半").
+section('13 the require gate reads BOTH id spaces (archiving under the OBJECT id must not wedge)')
+{
+  const h = await makeCase('gate-objid')
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  await startScheduler(h)
+  const proj = projRoot(h)
+  const proof = await h.call('vibe_math_lean_archive', { kind: 'proof', target: 'pObjId', content: 'theorem p_objid : 2 + 2 = 4 := by decide\n' })
+  assert(proof.ok === true && proof.passed === true, 'precondition: the object is Lean-passed under its OBJECT id')
+  const rec0 = formalStateOf(h)
+  assert(!!rec0.records && !!rec0.records.pObjId && rec0.records.pObjId.status === 'passed', 'the passed record lives under the object id')
+  assert(!(rec0.records || {})['r-pObjId'], 'precondition: no rId record exists yet (this is the state that used to fool the gate)')
+  await h.call('vibe_math_add_proposition', { id: 'pObjId', 概述: '用对象 id 归档后必须能定论', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  const vs = await waitFor(() => { const x = verifiersOf(h, 'r-pObjId'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!vs, 'verifiers were spawned for the object-id case')
+  fireVerdicts(h, vs || [], 1)
+  await tick(600)
+  const props = JSON.parse(readIf(join(proj, 'Propos', '数论_Propos.json')) || '[]')
+  const p = props.find((x) => x.id === 'pObjId') || {}
+  assert(p.布尔估计 === 1, "★ a Lean-passed object DOES conclude when the proof was archived under the object id (got " + p.布尔估计 + ')')
+  const cards = JSON.parse(readIf(join(proj, 'Verified', '数论_Verified.json')) || '[]')
+  assert(!!cards.find((c) => c.id === 'pObjId'), 'the Verified card was written')
+  const todo = readIf(join(proj, 'Formal', 'TODO.md'))
+  assert(!/pObjId/.test(todo), '★ the already-formalized object is NOT put on the formalization TODO')
+  const todo2 = await h.call('vibe_math_status', {})
+  assert(!(todo2.formal.todo || []).some((t) => String(t.id).indexOf('pObjId') !== -1), 'and the status TODO is empty for it too')
+}
+
+// ---------- 14. withdrawing a proof must reach EVERY archived copy ----------
+// Contract §4.1 requires the withdrawal, not a best-effort delete: after a `defect` the archived proof
+// must be gone from `Verified/Lean/` — the one place everyone looks for "the proof of this object".
+// Two independent ways that fails silently:
+//   (1) the proof was archived under a DIFFERENT id than the one the reply names (`Verified/Lean/<rId>.lean`
+//       while the reply names the object id) — scanning only the two named ids misses it, and the record's
+//       `proof` pointer is cleared anyway, so nothing ever points at the orphan again;
+//   (2) the host cannot delete at all (no subprocess service) — the delete fails and the stale proof stays.
+section('14 defect withdrawal covers every id alias AND a host that cannot delete')
+{
+  // (a) archived under the VERIFICATION id, defect named by the OBJECT id.
+  const h = await makeCase('defect-alias')
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  await startScheduler(h)
+  const proj = projRoot(h)
+  const pr = await h.call('vibe_math_lean_archive', { kind: 'proof', target: 'r-pAlias', content: 'theorem p_alias : 2 + 2 = 4 := by decide\n' })
+  assert(pr.ok === true && pr.passed === true, 'precondition: the proof is archived under the VERIFICATION id')
+  const aliasProof = join(proj, 'Verified', 'Lean', 'r-pAlias.lean')
+  assert(existsSync(aliasProof), 'the archived proof sits at Verified/Lean/<rId>.lean')
+  await h.call('vibe_math_add_proposition', { id: 'pAlias', 概述: '归档写在验证 id 上', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  const vs = await waitFor(() => { const x = verifiersOf(h, 'r-pAlias'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!vs, 'verifiers were spawned for the alias case')
+  if (vs) {
+    replyFrom(h, vs[0].childId, { Result: 0.3, Reason: '写宽了（弃权）', formal: { target: 'pAlias', decision: 'defect', note: '原文还有 n≥1 的假设' } })
+    const rec = await waitFor(() => { const r = (formalStateOf(h).records || {}); return (r['pAlias'] && r['pAlias'].decision === 'defect') ? r : undefined }, 40, 150)
+    assert(!!rec, '★ the defect named by the object id is absorbed')
+    assert(!existsSync(aliasProof), '★★ the proof archived under the VERIFICATION id is withdrawn too (every id alias, not just the two named ones)')
+    assert(!!rec && (!rec['r-pAlias'] || rec['r-pAlias'].proof === ''), 'the rId record no longer points at a proof')
+  }
+
+  // (b) a host whose deletion cannot work: the archived path must not keep reading as the proof.
+  const h2 = await makeCase('defect-nosub', { noSubprocess: true })
+  await h2.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  const proj2 = projRoot(h2)
+  mkdirSync(join(proj2, 'Verified', 'Lean'), { recursive: true })
+  mkdirSync(join(proj2, 'Formal'), { recursive: true })
+  const WORK = 'theorem p_stale : 2 + 2 = 4 := by decide\n'
+  writeFileSync(join(proj2, 'Formal', 'pStale.lean'), WORK, 'utf8')
+  writeFileSync(join(proj2, 'Verified', 'Lean', 'pStale.lean'), WORK, 'utf8')
+  // The record is written directly (this host has no subprocess, so the LEAN tools cannot run at all):
+  // what is under test is the WITHDRAWAL path, not the archiving path.
+  writeFileSync(join(proj2, 'VibeMath_State', 'formal.json'), JSON.stringify({ records: { pStale: { status: 'passed', file: 'Formal/pStale.lean', proof: 'Verified/Lean/pStale.lean', decision: 'used', updatedAt: 1 } }, todo: [] }), 'utf8')
+  await h2.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  await h2.call('vibe_math_add_proposition', { id: 'pStale', 概述: '宿主删不掉归档证明时的撤回', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  await startScheduler(h2)
+  const st0 = await h2.call('vibe_math_status', {})
+  assert(st0.formal.objects.some((o) => o.target === 'pStale' && o.status === 'passed'), 'precondition: the passed record with an archived proof survives resume on the no-subprocess host')
+  const vs2 = await waitFor(() => { const x = verifiersOf(h2, 'r-pStale'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!vs2, 'verifiers were spawned on the no-subprocess host')
+  if (vs2) {
+    replyFrom(h2, vs2[0].childId, { Result: 0.3, Reason: '不忠实（弃权）', formal: { target: 'pStale', decision: 'defect', note: 'Lean 少了 n≥1' } })
+    const rec2 = await waitFor(() => { const r = (formalStateOf(h2).records || {}); return (r['pStale'] && r['pStale'].decision === 'defect') ? r : undefined }, 40, 150)
+    assert(!!rec2, '★ the defect is absorbed even though this host cannot run a delete')
+    assert(!!rec2 && rec2['pStale'].status === 'attempted' && rec2['pStale'].proof === '', 'the record is downgraded and its proof pointer cleared')
+    const stalePath = join(proj2, 'Verified', 'Lean', 'pStale.lean')
+    assert(existsSync(stalePath), 'the archived file could NOT be deleted here (no subprocess) — so the fallback has to handle it')
+    const body = readIf(stalePath)
+    assert(!/theorem p_stale/.test(body), '★★ the original proof text is GONE from the archived path (it can no longer be read as the proof)')
+    assert(/已撤回/.test(body), '★★ …and that path carries an explicit withdrawal notice instead')
+    assert(/Formal\/pStale\.lean/.test(body), 'the notice points at the working file that is kept')
+    const acts = (await h2.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+    assert(/覆写/.test(acts), '★ the announcement says WHAT actually happened (overwritten, not deleted)')
+    assert(/撤回「已通过」状态/.test(acts), 'the announcement still says the passed status was withdrawn')
+  }
+}
+
+// ---------- 15. the「判断命题」transfer is a verdict on the SOURCE proposition ----------
+// When a solver's solution for a "判断下述命题是否成立：X" problem is verified, the result is TRANSFERRED
+// onto the source proposition: `布尔估计 = v`, `已验证 = true`, a probability-1 proof/refutation entry,
+// and `优先级 = 'never'` for a boolean v. That IS a boolean verdict on X, so require mode must gate it —
+// otherwise a proposition nobody formalized is silently concluded (and permanently de-scheduled).
+section('15 the require gate also covers the judge-problem transfer')
+{
+  const h = await makeCase('judge-gate')
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度器运行的占位问题', priority: 9 })
+  const proj = projRoot(h)
+  await h.call('vibe_math_add_proposition', { id: 'pJudgeSrc', 概述: '被判断的源命题（未形式化）', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  await h.call('vibe_math_add_problem', { id: 'qJudge', description: '判断下述命题是否成立：pJudgeSrc', priority: 1 })
+  const qsFile = join(proj, 'qs', 'qs.json')
+  const qs0 = JSON.parse(readIf(qsFile) || '[]')
+  const qj = qs0.find((q) => q.id === 'qJudge')
+  qj.判断命题 = 'pJudgeSrc'
+  // A solver-produced solution carries no 来源列表 — that is exactly the branch that transfers to the source.
+  qj.解法列表 = [{ 完整解法: '该命题不成立的论证', 正确概率: 0.8, 已验: false }]
+  writeFileSync(qsFile, JSON.stringify(qs0, null, 2), 'utf8')
+  await startScheduler(h)
+  const sp = await waitFor(() => { const x = verifiersOf(h, 'r-qJudge-s0'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!sp, 'verifiers were spawned for the judge problem solution')
+  fireVerdicts(h, sp || [], 0)
+  await tick(600)
+  const props = JSON.parse(readIf(join(proj, 'Propos', '数论_Propos.json')) || '[]')
+  const ap = props.find((x) => x.id === 'pJudgeSrc') || {}
+  assert(ap.布尔估计 === 0.5, "★★ the source proposition's 布尔估计 is UNCHANGED (require mode must not conclude 假 through the transfer; got " + ap.布尔估计 + ')')
+  assert(!(ap.证伪列表 || []).some((x) => x.正确概率 === 1), 'no probability-1 refutation was written onto the source proposition')
+  assert(ap.优先级 !== 'never', 'the source proposition was not pinned to never')
+  assert(ap.已验证 !== true, '★ it stays re-verifiable (the ungated path also marked it 已验证, removing it from every future candidate set)')
+  assert(/pJudgeSrc/.test(readIf(join(proj, 'Formal', 'TODO.md'))), '★ the deferred source proposition is on the formalization TODO')
+  assert(!existsSync(join(proj, 'Verified', '数论_Verified.json')), 'no Verified card for the source proposition')
+}
+
+// ---------- 16. the prompt corpus (contract §10.10) ----------
 // A HUMAN must be able to re-read every prompt the framework emitted, not just the assertions
 // about them. Paths are normalised so the dump is deterministic, diffable and machine-free.
-section('13 the captured prompt corpus is written for human review')
+section('16 the captured prompt corpus is written for human review')
 {
   // Freeze the scheduler in every case FIRST: a still-running tick loop could emit one more
   // prompt between two runs and make the corpus non-deterministic.

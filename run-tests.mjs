@@ -28,7 +28,17 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const argv = process.argv.slice(2)
-const flag = (name) => argv.filter((a) => a.startsWith('--' + name + '=')).map((a) => a.split('=').slice(1).join('='))
+// Accept BOTH `--only=x` and `--only x` (the help text used the space form, which a value-taking
+// flag() did not understand — the filter silently did nothing and every suite still ran).
+const flag = (name) => {
+  const out = []
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--' + name && i + 1 < argv.length && !argv[i + 1].startsWith('--')) out.push(argv[++i])
+    else if (a.startsWith('--' + name + '=')) out.push(a.split('=').slice(1).join('='))
+  }
+  return out
+}
 const has = (name) => argv.includes('--' + name)
 const only = flag('only')
 const exclude = flag('exclude')
@@ -62,16 +72,22 @@ async function worker(id) {
     const r = await runSuite(suites[i])
     const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
     results[i] = r
-    const mark = r.code === 0 ? 'PASS' : 'FAIL'
-    console.log(
-      mark + '  ' + r.file.padEnd(38) +
-      ' exit=' + String(r.code).padStart(3) +
-      '  ' + (r.ms / 1000).toFixed(1).padStart(6) + 's' +
-      (tail ? '  ' + tail.slice(0, 78) : '')
-    )
-    if (r.code !== 0) {
+    if (!asJson) {
+      const mark = r.code === 0 ? 'PASS' : 'FAIL'
+      console.log(
+        mark + '  ' + r.file.padEnd(38) +
+        ' exit=' + String(r.code).padStart(3) +
+        '  ' + (r.ms / 1000).toFixed(1).padStart(6) + 's' +
+        (tail ? '  ' + tail.slice(0, 78) : '')
+      )
+      if (r.code !== 0) {
+        const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
+        for (const l of lines.slice(-15)) console.log('      ' + l)
+      }
+    } else if (r.code !== 0) {
+      // In --json mode keep stdout machine-readable: the failure detail travels in the JSON.
       const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
-      for (const l of lines.slice(-15)) console.log('      ' + l)
+      r.tailDetail = lines.slice(-15).join('\n')
     }
   }
 }
@@ -86,7 +102,10 @@ if (asJson) {
   console.log(JSON.stringify({
     concurrency, wallSeconds: Number(wall.toFixed(1)), sumSeconds: Number(sum.toFixed(1)),
     pass: results.length - bad.length, fail: bad.length,
-    suites: results.map((r) => ({ file: r.file, exit: r.code, seconds: Number((r.ms / 1000).toFixed(1)) })),
+    suites: results.map((r) => ({
+      file: r.file, exit: r.code, seconds: Number((r.ms / 1000).toFixed(1)),
+      ...(r.tailDetail ? { detail: r.tailDetail } : {}),
+    })),
   }, null, 2))
 } else {
   console.log('')

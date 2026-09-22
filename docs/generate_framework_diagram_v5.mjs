@@ -186,10 +186,11 @@ const ccw = (IN_R - IN_L - 2 * 22) / 3
 chips.forEach((c, i) => {
   card(IN_L + (i % 3) * (ccw + 22), i < 3 ? 620 : 708, ccw, 78, c, { stroke: C.frame, fs: 12.5, sfs: 10.5 })
 })
-card(IN_L, 796, IN_R - IN_L, 76, [
+card(IN_L, 796, IN_R - IN_L, 90, [
   'Lean 形式化验证（可调参数 formalVerify = off / encourage / require）',
   'encourage：验证时按实现难度决定是否形式化；require：真/假结论必须先有「Lean 通过」或显式阻塞记录',
   '★ 一旦 Lean 通过，审查对象就变了：不再是「推导对不对」，而是「Lean 的定义/对象/条件/假设/结论是否忠实于命题原文」',
+  '★ 忠实性缺陷（decision=defect）≠ 命题为假：撤回「已通过」+ 撤回归档证明 + 进「形式化待办」，绝不记成 0/假',
   '归档：证明 → Verified/Lean/<对象>.lean｜可复用定义 → VibeMath/Formal/Lib/｜已证引理 → VibeMath/Formal/Proved/',
 ], { stroke: C.gate, fs: 12.5, sfs: 10.5 })
 card(IN_L, 880, IN_R - IN_L, 38, [

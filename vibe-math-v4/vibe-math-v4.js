@@ -65,7 +65,7 @@ export function apply(ctx) {
     // is persisted through v4's OWN durable State/*.json mechanism (State/formal.json) and must
     // survive `resume` — otherwise a require-mode object would lose the very record that decides
     // whether its verdict may take effect.
-    let formal = {}, formalTodos = []
+    let formal = {}, formalTodos = [], formalPersisted = false
     let meetingState = null, verifyState = null, pendingVerify = [], pendingMeeting = null   // pendingVerify: FIFO queue (several residents may independently propose different objects before any verify runs — a single slot silently DROPPED all but the last proposal)
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
     let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
@@ -294,7 +294,13 @@ export function apply(ctx) {
       await saveFormal()
       return true
     }
-    function saveFormal(){ return writeJson('State/formal.json',{records:formal,todo:formalTodos}) }
+    // Once formal state has been persisted (or restored from disk) the file must KEEP being
+    // written even after the mode is switched back to `off` — otherwise `start()`'s clean slate
+    // would never reach disk and a later `resume` would restore a stale `passed` record for a
+    // reused object id (the exact hazard that reset exists to prevent). A session that never
+    // touched the feature writes NO State/formal.json at all: `off` is a TRUE no-op (v3 guards
+    // its own State/formal.json the same way).
+    function saveFormal(){ formalPersisted=true; return writeJson('State/formal.json',{records:formal,todo:formalTodos}) }
     // `passed` requires a GREEN RUN, not merely an archived file: a proof file that has never
     // been executed proves nothing, so a hand-written file cannot buy its way past the gate.
     const formalGateOk=(rec)=>!!rec&&(rec.status==='passed'||rec.status==='blocked')
@@ -374,16 +380,44 @@ export function apply(ctx) {
       try {
         handle=sub.spawn({ argv, cwd:frameworkRoot(), stdio:{stdin:'ignore',stdout:{maxBytes:64*1024},stderr:{maxBytes:64*1024}}, graceMs:cap })
       } catch(e){ return {ok:false,code:'LEAN_SPAWN_FAILED',message:String((e&&e.message)||e),file:rel,ms:now()-started} }
+      // A timeout must be ACTIVELY enforced. `graceMs` is only the host's own grace window; the
+      // contract (§7) additionally requires `handle.terminate()` on timeout, and a host that
+      // ignores/exceeds graceMs would otherwise leave the Lean process running while the framework
+      // reports LEAN_TIMEOUT. Race `done` against a cap-ms timer that terminates the handle and
+      // resolves a synthetic outcome. Note: the plugin runtime has no global setTimeout — the
+      // `timer` service (ctx.timeout) is the only timer, and it returns the disposer we clear
+      // below when `done` wins the race.
+      let killedByUs=false, timerDispose=null
       let outcome
-      try { outcome=await handle.done }
-      catch(e){ return {ok:false,code:'LEAN_RUN_FAILED',message:String((e&&e.message)||e),file:rel,ms:now()-started} }
+      try {
+        outcome=await Promise.race([
+          handle.done,
+          new Promise(function(resolve){
+            if(typeof ctx.timeout!=='function') return   // no timer service: the host's graceMs is all we have
+            timerDispose=ctx.timeout(function(){
+              killedByUs=true
+              try { if(typeof handle.terminate==='function') handle.terminate() } catch(e){ /* best effort */ }
+              resolve({exitCode:null,signal:'SIGTERM'})
+            }, cap)
+          }),
+        ])
+      } catch(e){
+        if(timerDispose){ try { timerDispose() } catch(_e){} }
+        return {ok:false,code:'LEAN_RUN_FAILED',message:String((e&&e.message)||e),file:rel,ms:now()-started}
+      }
+      if(timerDispose){ try { timerDispose() } catch(e){ /* already fired */ } }
       let out='',err=''
       try { if(handle.collected&&handle.collected.stdout) out=handle.collected.stdout.readFrom(0).text } catch(e){ /* best effort */ }
       try { if(handle.collected&&handle.collected.stderr) err=handle.collected.stderr.readFrom(0).text } catch(e){ /* best effort */ }
       const exitCode=outcome?outcome.exitCode:null
       const ms=now()-started
       const ok=exitCode===0
-      const timedOut=!ok&&ms>=cap
+      // Two ways a timeout is observed: OUR timer won (we terminated the handle), or the HOST's own
+      // grace window killed the process first and its `done` beat our timer to the race — the latter
+      // is recognised by "non-zero exit after at least cap ms", which is what the spec's
+      // LEAN_TIMEOUT row describes. Keeping both means a real hang is never reported as a plain
+      // compile failure just because the host's kill resolved first.
+      const timedOut=killedByUs||(!ok&&ms>=cap)
       return {
         ok, exitCode, signal:(outcome&&outcome.signal)||null, ms,
         command:argv.join(' '), file:rel,
@@ -393,11 +427,17 @@ export function apply(ctx) {
     }
     // Record one run against an object. `passed`/`blocked` are NEVER downgraded by a later red
     // run (only an explicit re-archive decides those); everything else becomes `attempted`.
+    // The comment used to describe a transition the body did not implement: `status:'attempted'`
+    // was hardcoded, so ANY `lean_run {target}` on a passed object silently stripped `passed`
+    // (and kept the now-stale `proof` pointer). That is not a cosmetic slip: it removes the
+    // fidelity branch from the next voting prompt AND, in `require` mode, re-closes the gate on an
+    // object that already has a green archived proof. docs/formal-verification.md §4 only maps
+    // `none`/`attempted` → `attempted`, and v2/v5 preserve passed/blocked here.
     async function formalSetRun(target,run){
       const key=formalKey(target); if(!key) return
       const prev=formalOf(key)
       await putFormal(key,Object.assign({},prev,{
-        status:'attempted',
+        status:prev.status==='passed'?'passed':(prev.status==='blocked'?'blocked':'attempted'),
         file:run.file||prev.file||'',
         decision:prev.decision||'used',
         run:{at:now(),ok:!!run.ok,exitCode:run.exitCode===undefined?null:run.exitCode,ms:run.ms||0,stdoutTail:tail(run.stdout,800),stderrTail:tail(run.stderr,800)},
@@ -424,7 +464,14 @@ export function apply(ctx) {
         L.push('  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：')
         L.push("      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；")
         L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
-        L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+        // Only `require` actually GATES the conclusion. In `encourage` the framework still
+        // withdraws the proof (and records the defect + TODO), but it CANNOT hold the ballot —
+        // promising "本次裁定不定论" there would promise behaviour the framework does not have
+        // (docs §4.1-3/§6.1); the voter's own abstention is what keeps the ballot from concluding.
+        L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）'
+          +(formalMode()==='require'
+            ?'，本次裁定**不定论**；'
+            :'；本档没有门禁：请务必给弃权值，以保证本轮无法得出一致结论；'))
         L.push('         修正形式化并重新跑通后再投票。')
         L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。')
       } else if(rec.status==='blocked'){
@@ -442,7 +489,7 @@ export function apply(ctx) {
           L.push("  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。")
         }
         L.push('  · 归档可复用定义/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。')
-        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
+        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。')
         if(rec.status==='attempted'){
           L.push('  ▸ 该对象已有形式化尝试但尚未通过（最近一次 '+(rec.run?(rec.run.ok?'通过':'未通过'):'无运行记录')+'）。')
           L.push("    请修复后重跑（vibe_v4_lean_run），跑通后用 kind='proof' 归档。")
@@ -553,7 +600,10 @@ export function apply(ctx) {
           await writeFormalIndex()
         }
       } catch(e){ /* the index is best-effort; a run result must always come back */ }
-      logActivity('formal',(memberId||'host')+' lean_run '+(run.file||String(args.file||''))+' → '+(run.ok?'通过':(run.code||'未通过')))
+      // The activity log is part of the injected-text surface (a host reads it out of
+      // vibe_v4_report, and residents may be quoted it): use the REGISTERED tool name, never the
+      // bare `lean_run` abbreviation (docs §6 hard requirement 1).
+      logActivity('formal',(memberId||'host')+' vibe_v4_lean_run '+(run.file||String(args.file||''))+' → '+(run.ok?'通过':(run.code||'未通过')))
       return Object.assign({ok:!!run.ok},run,{
         mode:formalMode(),
         hint: run.ok
@@ -641,24 +691,38 @@ export function apply(ctx) {
       return {ok:false,code:'V4_INVALID_ARGUMENT',message:"kind must be 'def' | 'lemma' | 'proof' | 'blocked'"}
     }
     /**
-     * Withdraw an archived proof (spec §4.1). Best-effort by contract: the RECORD is the
-     * authoritative state, so a host without a subprocess service (or without Lean) still gets a
-     * correct `attempted` record — the stale file is then reported in the activity log instead of
-     * silently kept. Every path goes through `leanAbsPath` so this can only ever remove a `.lean`
-     * file inside the VibeMath root (a hand-edited State/formal.json must not become an
-     * arbitrary-file delete).
+     * Withdraw an archived proof (spec §4.1). The RECORD is authoritative, but the FILE must not
+     * survive at the exact path everyone looks for "this object's proof": a host whose shell
+     * cannot delete (no `subprocess`, a stub shell that exits 0 without removing anything, a
+     * permission quirk) would otherwise leave the retracted proof readable as the object's proof
+     * while the record already says `attempted`. So the withdrawal is: delete → CONFIRM through
+     * the fs service that it is really gone → if it still exists, OVERWRITE it with an explicit
+     * withdrawal notice. Returns WHICH path it took ({ok,how:'deleted'|'overwritten'|'failed'})
+     * so the caller/activity log can say so out loud instead of reporting a best-effort delete as
+     * done. Every path goes through `leanAbsPath`, so this can only ever touch a `.lean` file
+     * inside the VibeMath root (a hand-edited State/formal.json must not become an arbitrary-file
+     * delete).
      */
     async function withdrawProof(rel){
       const raw=String(rel==null?'':rel)
-      if(!raw) return {ok:false,skipped:true}
+      if(!raw) return {ok:false,how:'failed',skipped:true}
       const abs=leanAbsPath(raw)
       if(abs===null||!/\.lean$/.test(abs)){
         logActivity('formal','拒绝删除越界的归档证明路径：'+raw)
-        return {ok:false,skipped:true}
+        return {ok:false,how:'failed',skipped:true}
       }
-      const r=await runShell(rmCmd([abs]),vibeRoot())
-      if(!r||!r.ok) return {ok:false,error:(r&&r.error)||('exit '+String(r&&r.exitCode))}
-      return {ok:true,abs}
+      const sub=subprocessOf()
+      if(sub!==undefined&&typeof sub.spawn==='function'){
+        const r=await runShell(rmCmd([abs]),vibeRoot())
+        // Exit 0 is NOT proof of deletion: confirm through the fs service before believing it.
+        if(r&&r.ok&&await readTextAbs(abs)===undefined) return {ok:true,how:'deleted',abs}
+      }
+      // Fallback: make the file impossible to read as this object's proof any more. The withdrawn
+      // code itself is NOT lost — it stays in the working file Formal/<id>.lean.
+      const notice='-- 已撤回（'+fmtTime()+'）：该形式化被认定与命题原文不一致。\n'
+        +'-- 原代码保留在工作文件 Formal/'+String(raw).split('/').pop()+'；修正并重新跑通后重新归档。\n'
+      if(await writeTextAbs(abs,notice)) return {ok:true,how:'overwritten',abs}
+      return {ok:false,how:'failed',abs}
     }
     /**
      * §4.1 `defect`: a voter checked the Lean code against the proposition and found a FIDELITY
@@ -687,11 +751,18 @@ export function apply(ctx) {
       // leaves an orphaned file with a truthful record, never a record still claiming `passed`.
       await putFormal(key,rec,todo)
       const del=await withdrawProof(proofRel)
+      const how=del&&del.how==='deleted'?'删除归档证明 '+proofRel
+        :del&&del.how==='overwritten'?'覆盖归档证明 '+proofRel+'（宿主无法删除，已写入撤回说明，原证明内容不再可读）'
+        :'⚠ 归档证明 '+proofRel+' 未能撤回（删除与覆盖均失败）——它仍停留在"该对象的证明"的位置，请不要把它当作该对象的证明'
       try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+      // The activity log is agent/host-readable, so the same §4.1-3 rule applies here as in the
+      // prompt: only `require` actually GATES the verdict, so only there may this say 不定论.
       logActivity('formal',(rId||'host')+' 报告 '+key+' 存在**忠实性缺陷**（formal.decision=defect）：'+note
-        +' ——已撤回「已通过」状态（→ attempted）、'+(del&&del.ok?'删除归档证明 '+proofRel:'删除归档证明失败（'+String((del&&del.error)||'no-subprocess')+'，记录已降级）')
-        +'、写入 Formal/TODO.md；本次裁定**不定论**，修正形式化并重新跑通后再投票')
-      return {ok:true,target:key,status:'attempted',proof:'',decision:'defect',removedProof:!!(del&&del.ok)}
+        +' ——已撤回「已通过」状态（→ attempted）、'+how
+        +'、写入 Formal/TODO.md；'+(formalMode()==='require'
+          ?'require 门禁使本次裁定**不定论**，修正形式化并重新跑通后再投票'
+          :'本档没有门禁：本轮能否定论取决于表决者是否给出弃权值，修正形式化并重新跑通后再投票'))
+      return {ok:true,target:key,status:'attempted',proof:'',decision:'defect',removedProof:!!(del&&del.ok),withdrawal:del?del.how:'failed'}
     }
     /**
      * The per-round `formal` reply channel. This is the path that fires IN PRACTICE: a resident
@@ -702,6 +773,11 @@ export function apply(ctx) {
      */
     async function applyFormalReply(rId,formalReply){
       try {
+        // `off` is a TRUE no-op: the reply contract only offers the `formal` field in non-off modes,
+        // so a stray / stale / hallucinated one must NOT create Lean state (v2/v3 guard here too;
+        // without this, off mode could still be made to write Formal/ records, TODO entries and
+        // announcements). The TOOLS stay usable in off mode on purpose — a tool call is deliberate.
+        if(!formalOn()) return {ok:false,ignored:true}
         const key=formalKey(String(formalReply.target||''))
         if(!key){
           logActivity('formal',(rId||'host')+' 的 formal 回执缺少 target（对象 id）——本次未记录（V4_INVALID_ARGUMENT）')
@@ -764,7 +840,9 @@ export function apply(ctx) {
       await writeJson('State/mailboxes.json', Object.fromEntries(mailboxes))
       await writeJson('State/taskboard.json', taskboard)
       await writeJson('State/decisions.json', decisions)
-      await writeJson('State/formal.json', {records:formal,todo:formalTodos})
+      // `off` mode must not CREATE Lean state: a run that never used the feature leaves no
+      // State/formal.json behind. Seeded/live records (or a mode that is on) still persist.
+      if(formalOn()||formalPersisted||Object.keys(formal).length||formalTodos.length) await writeJson('State/formal.json', {records:formal,todo:formalTodos})
       await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,lastProgressAt,activityLog,processEpoch,artifactCount})
     }
     async function loadAll(){
@@ -779,6 +857,7 @@ export function apply(ctx) {
       if(fm&&typeof fm==='object'){
         formal=(fm.records&&typeof fm.records==='object')?fm.records:{}
         formalTodos=Array.isArray(fm.todo)?fm.todo:[]
+        if(Object.keys(formal).length||formalTodos.length) formalPersisted=true
       }
     }
 

@@ -298,7 +298,6 @@ export function apply(ctx) {
     { name: 'plannerEnabled', type: 'boolean', description: 'false = 完全走内置启发式调度（规划代理禁用）', suggestion: true },
     { name: 'plannerProvider', type: 'string', description: '规划代理模型 provider（空 = 继承根代理）', suggestion: '' },
     { name: 'plannerModel', type: 'string', description: '规划代理模型 id（空 = 继承根代理）', suggestion: '' },
-    { name: 'plannerPersona', type: 'string', description: '注入规划代理提示词开头的人格/要求', suggestion: '' },
     { name: 'planMinIntervalMs', type: 'integer', description: '两次规划调用的最小间隔（毫秒）；系统空闲且有工作时忽略', suggestion: 30000 },
     { name: 'plannerMaxFails', type: 'integer', description: '规划代理连续失败达此值 → 自动降级启发式', suggestion: 3 },
     { name: 'methodKeepIntervalMs', type: 'integer', description: 'Method Keeper 定时整理间隔（0 = 事件驱动）', suggestion: 0 },
@@ -1577,9 +1576,9 @@ export function apply(ctx) {
   }
   async function writeVerifiedPropositionCardIfNeeded(p) {
     if (p.概率 !== 1 && p.概率 !== 0) return false
-    // 写 Verified 卡片是"宣告定论"的收口点：require 模式下没过门就绝不写（防御性双保险，
-    // 正常路径已在 settleVerdict / processStatusUpdates 拦住）。
-    if (formalBlocksConclusion(p.id)) return false
+    // 门禁只在**唯一的收口点**（writeVerifiedCardIfChanged）判定：那里的语义是"新卡要过门、
+    // 已存在的卡只做刷新（可能要把被 defect 撤回的形式化状态如实改掉）"。在这里提前 return false
+    // 会把两种情形一起挡掉，于是 require 档下一张已存在的卡片会永久宣称「形式化: Lean 通过」。
     const proofs1 = (p.proofs || []).filter(function (x) { return x.prob === 1 })
     const refutes1 = (p.refutes || []).filter(function (x) { return x.prob === 1 })
     const parts = []
@@ -1590,7 +1589,7 @@ export function apply(ctx) {
   }
   async function writeVerifiedProblemCardIfNeeded(q) {
     if (q.状态 !== '已解决') return false
-    if (formalBlocksConclusion(q.id)) return false
+    // 同 writeVerifiedPropositionCardIfNeeded：门禁统一在 writeVerifiedCardIfChanged 里判定。
     const sols1 = (q.solutions || []).filter(function (s) { return s.prob === 1 })
     const parts = []
     for (let i = 0; i < sols1.length; i++) parts.push('【解法 #' + (i + 1) + '】' + (sols1[i].text || ''))
@@ -1603,8 +1602,13 @@ export function apply(ctx) {
     const existing = await readText(rel)
     // 最后一道闸门：require 模式下没有 passed/blocked 记录就不允许**新写** Verified 卡片。
     // 卡片已经存在（切到 require 之前就已定论）只做刷新，不算"新的定论"，因此不记待办。
-    if (formalBlocksConclusion(card.id)) {
-      if (existing === undefined) await deferForFormal(card.id, formalRequiredWhy(card.id), card.结论 === true)
+    //
+    // 但"只做刷新"必须**真的刷新**：`defect` 会撤回形式化（降级 attempted、proof 清空、归档证明
+    // 删除/覆盖），若在这里连刷新也一起 return false，那张已存在的卡片会永久宣称
+    // 「形式化: Lean 通过（Verified/Lean/<id>.lean）」——指向一份已经不存在的证明。门禁管的是
+    // "能不能宣告新结论"，不是"能不能说实话"。所以：不存在 → 记待办并拒绝新写；已存在 → 照常刷新。
+    if (formalBlocksConclusion(card.id) && existing === undefined) {
+      await deferForFormal(card.id, formalRequiredWhy(card.id), card.结论 === true)
       return false
     }
     const md = composeVerifiedMd(card)
@@ -2621,7 +2625,12 @@ export function apply(ctx) {
       L.push('  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：')
       L.push('      ① Result 给一个严格介于 0 与 1 之间的值（记为弃权），并在 Reason 里写清偏差；')
       L.push("      ② 用回执 formal:{decision:'defect', note:'<具体偏差>'} 记录它。框架会撤回这条证明的")
-      L.push('         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办），本次裁定**不定论**；')
+      // §4.1 第 3 条：只有 `require` 真的有门禁。`encourage` 档框架**仍然**撤回证明并记入待办，
+      // 但**不得**承诺一个它无法强制的"不定论"——那里靠表决者自己的弃权票使表决无法得出一致结论。
+      L.push('         「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）'
+        + (mode === 'require'
+          ? '，本次裁定**不定论**；'
+          : '。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；'))
       L.push('         修正形式化并重新跑通后再投票。')
       L.push('  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。')
     } else if (rec.status === 'blocked') {
@@ -2633,13 +2642,15 @@ export function apply(ctx) {
       L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 ' + (vibeRoot() + '/Formal/Lib/').replace(/\\/g, '/')
         + '，已证引理放 ' + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '；写之前先 vibe_math_lean_lib 查重。')
       L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
+      // 把"这么做的收益"说出来：本轮通过，下一轮的审查对象就整体换掉了（不是再加一道苦役）。
+      L.push('  ▸ 若你在本轮把它形式化并跑通（vibe_math_lean_archive kind=\'proof\'），后续轮次的审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。')
       if (mode === 'require') {
         L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_math_lean_archive kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。')
       } else {
         L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision=\'blocked\' 时必须写明 note）。')
       }
       L.push('  · 归档可复用定义/引理前先跑通（vibe_math_lean_archive run=true 或先 vibe_math_lean_run）；跑不通不要入库。')
-      L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
+      L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
     }
     return L.join('\n')
   }
@@ -2762,7 +2773,10 @@ export function apply(ctx) {
     }
     L.push('')
     if (formalTodo().length) {
-      L.push('## 形式化待办（require 模式：定论被搁置）')
+      // §4.1 第 3 条：只有 `require` 真的搁置定论；`encourage` 档的待办只是"这份形式化要重做"的记录。
+      L.push(formalMode() === 'require'
+        ? '## 形式化待办（require 模式：定论被搁置）'
+        : '## 形式化待办（encourage 档：框架不搁置定论，靠表决者弃权）')
       for (const t of formalTodo()) L.push('- ' + t.id + ' —— ' + (t.why || 'formal-required') + '（' + fmtTime(t.at) + '）')
       L.push('')
     }
@@ -2771,7 +2785,10 @@ export function apply(ctx) {
   async function writeFormalTodo() {
     const list = formalTodo()
     const L = ['# 形式化待办｜' + currentProject + '｜' + fmtTime(), '',
-      '> 这些对象在 `require` 模式下尚不具备「Lean 已通过」或「显式阻塞记录」，因此**定论被搁置**。',
+      // 说清这一档**实际**会发生什么：只有 require 有门禁会把定论记为未定论。
+      formalMode() === 'require'
+        ? '> 这些对象在 `require` 模式下尚不具备「Lean 已通过」或「显式阻塞记录」，因此**定论被搁置**。'
+        : '> 这些对象尚未取得「Lean 已通过」或「显式阻塞记录」。本档（encourage）**没有定论门禁**，框架不会搁置裁定——请在投票时给出严格介于 0 与 1 之间的弃权值，并尽快修正形式化。',
       '> 完成形式化（vibe_math_lean_archive kind=\'proof\'）或记录阻塞原因（kind=\'blocked\'）后，重新提议验证即可。', '']
     if (!list.length) L.push('（暂无）')
     for (const t of list) L.push('- ' + t.id + '｜' + (t.why || 'formal-required') + '｜' + fmtTime(t.at))
@@ -2868,10 +2885,16 @@ export function apply(ctx) {
       await writeFormalIndex()
     }
     if (run.ok) await formalAnnounce('【形式化】' + (memberId || 'scheduler') + ' 运行 Lean 通过：' + run.file + '（' + ((run.ms || 0) / 1000).toFixed(1) + 's）' + (target ? '｜对象 ' + target : ''))
+    // 失败提示必须与失败原因一致：工具链缺失 / 宿主没有 subprocess 服务时**没有任何编译器输出**
+    // 可以"按它修复"，把它当成普通编译错误会让代理反复重试而不是走"写下代码 + 记录显式阻塞"
+    // 这条出路（契约 §6 硬要求 4）。
+    const noHost = run.code === 'LEAN_NOT_FOUND' || run.code === 'NO_SUBPROCESS' || run.code === 'LEAN_SPAWN_FAILED'
     return Object.assign({ ok: !!run.ok }, run, {
       hint: run.ok
         ? '通过。若是某个对象的证明，请用 vibe_math_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
-        : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_math_lean_archive kind=\'blocked\' 记录原因。',
+        : (noHost
+          ? '本宿主无法执行 Lean（' + run.code + '），没有编译器输出可以修：把形式化代码写下来并用 vibe_math_lean_archive 归档，并在回执的 note 里写明原因——这算显式阻塞原因，定论门禁可以据此放行。'
+          : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_math_lean_archive kind=\'blocked\' 记录原因。'),
     })
   }
   async function leanArchive(memberId, o) {
@@ -2914,20 +2937,28 @@ export function apply(ctx) {
       if (body === undefined && from) { const r = await readFrom(); if (r.err) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: r.err }; body = r.body }
       if (body === undefined) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
       const workRel = 'Formal/' + target + '.lean'
-      if (!await writeText(workRel, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + workRel }
+      // 用绝对路径写：`writeText` 写失败时只会抛（由工具包装层变成通用 error），
+      // 这一行的 V3_WRITE_FAILED 分支就永远不可能触发；writeTextAbs 会如实返回 false。
+      if (!await writeTextAbs(frameworkRoot() + '/' + workRel, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + workRel }
       const run = await leanRunFile(workRel)
       const prev = formalOf(target)
       const passed = !!run.ok
+      // A RED re-archive invalidates the previous proof: the work file it proved was just
+      // overwritten by code that does not compile. Keeping the pointer (or the archived file)
+      // would produce "attempted + 归档证明 X.lean" in the index and let the fidelity prompt print
+      // a proof path for code that no longer exists — `proof` is for `passed` only (contract §4).
+      const stalePrev = passed ? '' : String(prev.proof || ('Verified/Lean/' + target + '.lean'))
       const rec = Object.assign({}, prev, {
         status: passed ? 'passed' : 'attempted',
         file: workRel,
-        proof: passed ? 'Verified/Lean/' + target + '.lean' : (prev.proof || ''),
+        proof: passed ? 'Verified/Lean/' + target + '.lean' : '',
         decision: 'used',
         note: String(args.note || prev.note || ''),
         run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: formalTail(run.stdout, 800), stderrTail: formalTail(run.stderr, 800) },
         updatedAt: now(),
       })
       if (passed) await writeText('Verified/Lean/' + target + '.lean', body)
+      else if (stalePrev) { try { await withdrawArchivedProof(stalePrev) } catch (e) { /* 撤回失败已在公告里如实说明 */ } }
       await putFormal(target, rec)
       await upsertFormalAnchor(target)
       await rebuildLeanLibIndexes()
@@ -2952,14 +2983,37 @@ export function apply(ctx) {
     return { ok: false, code: 'V3_INVALID_ARGUMENT', message: "kind must be 'def' | 'lemma' | 'proof' | 'blocked'" }
   }
   /**
+   * 撤回归档证明：**删除**既不是唯一手段，也不是想当然就能成功的手段。
+   *
+   * fs 服务没有 unlink，`subprocess` 服务是**可选**的（`runShell` 在没有它时只返回 no-subprocess），
+   * 删除命令本身也可能静默失败（桩宿主、权限、宿主不提供 shell）。而归档证明就躺在
+   * `Verified/Lean/<id>.lean`——所有人都去那个路径找"这条结论的证明"——所以"删掉了"必须被
+   * **回读验证**：删不掉就用撤回声明**就地覆盖**，使它不可能再被读成一份通过的证明。
+   * 返回：'deleted'（确认已不在）| 'overwritten'（已覆盖为撤回声明）| 'failed'（两者都没成功）。
+   */
+  async function withdrawArchivedProof(rel) {
+    const abs = leanAbsPath(rel)
+    if (abs === null) return 'failed'
+    const sub = subprocessOf()
+    if (sub !== undefined && typeof sub.spawn === 'function') {
+      try { await removeFile(rel) } catch (e) { /* 落到覆盖兜底 */ }
+      // 退出码 0 不等于文件真的没了（桩宿主 / 权限怪癖 / 删除被静默忽略）：必须回读确认。
+      if (await readTextAbs(abs) === undefined) return 'deleted'
+    }
+    const notice = '-- 已撤回（' + fmtTime() + '）：该形式化被认定与命题原文不一致。\n'
+      + '-- 原代码保留在工作文件 Formal/' + String(rel).split('/').pop() + '；修正并重新跑通后重新归档。\n'
+    return (await writeTextAbs(abs, notice)) !== false ? 'overwritten' : 'failed'
+  }
+  /**
    * §4.1 的落地点：表决者认定这条**已通过的** Lean 形式化不忠实于命题原文。
    *
    * 偏差不是"命题为假"，而恰好是"这次形式化不合格"，因此这里的动作与 blocked 不同：
    *   ① 无论此前是 `passed` 还是 `blocked`，一律**降级**为 `attempted`（都让位于"需重做"）；
-   *   ② 清空 `proof` 并**删除** `Verified/Lean/<id>.lean`（工作文件 `Formal/<id>.lean` 保留，代码不丢）；
+   *   ② 清空 `proof` 并**撤下** `Verified/Lean/<id>.lean`（工作文件 `Formal/<id>.lean` 保留，代码不丢）；
    *   ③ 把具体偏差写进记录与 `Formal/TODO.md`，并公告。
    * 之后 `formalGateOk` 为假：require 档本次裁定**不定论**，对象进入「形式化待办」——修正形式化
-   * 并重新跑通后再投票。绝不把这条路径写成 `0`（那会让框架记下"命题为假"）。
+   * 并重新跑通后再投票。encourage 档没有门禁，公告里**不得**声称框架搁置了裁定（§4.1 第 3 条）。
+   * 绝不把这条路径写成 `0`（那会让框架记下"命题为假"）。
    */
   async function formalRecordDefect(target, note, who) {
     const id = formalId(target)
@@ -2974,7 +3028,7 @@ export function apply(ctx) {
       updatedAt: now(),
     }))
     // 归档证明必须消失，否则 Verified/Lean/ 里会留下一份"看起来已通过"的不忠实代码。
-    await removeFile(archived)
+    const withdrawn = await withdrawArchivedProof(archived)
     // 待办条目按 id 去重、就地刷新：note 进入 TODO.md 的 why 列（require 档据此搁置定论）。
     const list = formalTodo()
     const i = list.findIndex(function (x) { return x && x.id === id })
@@ -2985,10 +3039,17 @@ export function apply(ctx) {
     await upsertFormalAnchor(id)
     await rebuildLeanLibIndexes()
     await saveAll()
+    // 如实说出**哪一种**撤回发生了：删除成功 / 就地覆盖 / 两者都失败（后者必须让人手动处理，
+    // 否则一份不忠实的代码会静静留在"证明"的路径上而无人知晓）。
     await formalAnnounce('【形式化】' + who + ' 认定 ' + id + ' 的 Lean 形式化存在**忠实性缺陷**：' + note
       + '。这不是"命题为假"，而是**形式化不合格**：已撤回其「已通过」状态（降级为 attempted）、'
-      + '删除归档证明 ' + archived + '、写入 Formal/TODO.md；本次裁定**不定论**，修正形式化并重新'
-      + '跑通（vibe_math_lean_archive kind=\'proof\'）后再投票。')
+      + (withdrawn === 'deleted' ? '删除归档证明 ' + archived
+        : withdrawn === 'overwritten' ? '归档证明 ' + archived + ' 无法删除（宿主不支持删除），已**就地覆盖为撤回声明**'
+          : '归档证明 ' + archived + ' **未能撤回**（宿主删除与覆盖均失败，请手动删除，不要把它当作该对象的证明）')
+      + '、写入 Formal/TODO.md；'
+      + (formalMode() === 'require'
+        ? '本次裁定**不定论**，修正形式化并重新跑通（vibe_math_lean_archive kind=\'proof\'）后再投票。'
+        : '**本档没有门禁**：框架不会替你搁置裁定，请给弃权值以避免得出真/假一致结论；修正形式化并重新跑通（vibe_math_lean_archive kind=\'proof\'）后再投票。'))
     return { ok: true, kind: 'defect', target: id, status: 'attempted', proof: '', note: note, archived: archived }
   }
   /**
@@ -3391,7 +3452,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json + Logs/报告.md.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -3631,8 +3692,12 @@ export function apply(ctx) {
   // ================= session surface =================
   return {
     sessionId: sessionId,
-    scheduler: scheduler,
-    tickInFlight: tickInFlight,
+    // 这两个必须是**取值器**而不是快照：`scheduler` 会在 loadState/setProject 里被整体重新赋值，
+    // 而 `tickInFlight` 每次 tick 都会翻转。快照会让 apply 级的定时器守卫（见文件末尾
+    // `!s.tickInFlight && s.scheduler.gate === null`）永远读到最初的值——那个守卫就再也拦不住
+    // 任何东西（tick() 内部还有一道实时守卫，所以此前没有可观测后果，但那是巧合而非设计）。
+    get scheduler() { return scheduler },
+    get tickInFlight() { return tickInFlight },
     scheduleTick: scheduleTick,
     onChildEnd: onChildEnd,
     dispatchVibeCommand: dispatchVibeCommand,
@@ -3666,7 +3731,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json + Logs/报告.md.', objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial).', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')

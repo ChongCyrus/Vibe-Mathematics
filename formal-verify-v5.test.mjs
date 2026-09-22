@@ -70,7 +70,17 @@ const leanRuns = []
 // This mirrors the one property that matters for the feature — an exit code that says
 // "the kernel accepted this".
 let toolchainAvailable = true
-const subprocess = {
+// A host with NO `subprocess` service at all: `ctx.get('subprocess')` returns undefined, which
+// must become a readable NO_SUBPROCESS result (and must NOT stop the code from being archived).
+let noSubprocess = false
+// A run that HANGS: `hangLean` makes the fake toolchain return a `done` that only settles
+// after `hangMs` (far beyond any cap the tests use), so the run can only be reported as a
+// timeout by actually racing `done` against a timer. `terminations` records every
+// `handle.terminate()` call, which is the observable proof that the guard fired.
+let hangLean = false
+let hangMs = 60000
+const terminations = []
+let subprocess = {
   async resolveExecutable(cmd) {
     if (!toolchainAvailable) throw new Error('spawn lean ENOENT')
     if (String(cmd) !== 'lean') throw new Error('unknown executable ' + cmd)
@@ -83,13 +93,16 @@ const subprocess = {
     leanRuns.push({ argv: spec.argv.slice(0, -1), file, cwd: spec.cwd })
     const stdout = bad ? '' : 'ok\n'
     const stderr = bad ? 'error: declaration uses sorry\n' : ''
+    const done = hangLean
+      ? new Promise(r => setTimeout(() => r({ exitCode: 0, signal: null }), hangMs))
+      : Promise.resolve({ exitCode: bad ? 1 : 0, signal: null })
     return {
-      done: Promise.resolve({ exitCode: bad ? 1 : 0, signal: null }),
+      done,
       collected: {
         stdout: { readFrom: () => ({ text: stdout, nextOffset: stdout.length, lossy: false }) },
         stderr: { readFrom: () => ({ text: stderr, nextOffset: stderr.length, lossy: false }) },
       },
-      terminate() {},
+      terminate() { terminations.push(file) },
     }
   },
 }
@@ -125,7 +138,7 @@ const ctx = {
     if (name === 'sessionProjections') return projections
     if (name === 'sandboxPolicy') return undefined
     if (name === 'compaction') return undefined
-    if (name === 'subprocess') return subprocess
+    if (name === 'subprocess') return noSubprocess ? undefined : subprocess
     return undefined
   },
   on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
@@ -291,6 +304,41 @@ assert(!/形式化/.test(readIf(join(instRootOf(RA), 'Verified', '命题', 'p-of
 assert(!!toolRegs.find(t => t.name === 'vibe_v5_lean_run') && !!toolRegs.find(t => t.name === 'vibe_v5_lean_archive') && !!toolRegs.find(t => t.name === 'vibe_v5_lean_lib'),
   'the three Lean tools are registered in every mode (registration is static)')
 
+// ★ The mode switch must be REACHABLE THROUGH THE TOOL SCHEMA (2.3.2 defect D1) ──────────────
+// Every tool schema here is closed (`additionalProperties:false`), so a key the schema does not
+// advertise is REJECTED by any schema-validating provider. v3 shipped 2.3.0/2.3.1 with all four Lean
+// parameters missing from the set-params schema while every assertion in this file stayed green —
+// because the suite calls the handler DIRECTLY and never inspects the registered schema. The feature
+// could not be switched on at all through the tool interface.
+{
+  const setSpec = toolRegs.find((t) => t.name === 'vibe_v5_set')
+  assert(!!setSpec, "vibe_v5_set is registered")
+  assert(setSpec.parameters && setSpec.parameters.type === 'object' && setSpec.parameters.additionalProperties === false,
+    '★ vibe_v5_set publishes a CLOSED object schema (an unlisted key is rejected, so the schema IS the contract)')
+  for (const k of ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']) {
+    assert(Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k),
+      '★ the registered schema advertises ' + k + ' (every other surface documents it; a schema that omits it makes the switch unreachable)')
+  }
+  assert(JSON.stringify(setSpec.parameters.properties.formalVerify.enum) === JSON.stringify(['off', 'encourage', 'require']),
+    'the schema narrows formalVerify to the three real modes (a typo must not be a fourth)')
+}
+
+// A stray `formal` reply in OFF mode must be INERT: the field is not offered in the reply contract
+// there, and honouring it would create Formal/ state in a mode documented as a "TRUE no-op" (the
+// TOOLS stay usable on purpose — a tool call is deliberate, a stray reply field is not).
+{
+  const wOff = await wakeAndReply(RA, 'r-1', {
+    progress: '关模式下的普通回轮。',
+    formal: { target: 'p-off-stray', decision: 'blocked', note: '不应被记录' },
+    contextPct: 20,
+  })
+  assert(!!wOff, 'off mode: a wake carrying a stray formal reply was fed to the framework')
+  const stOff2 = await callTool('vibe_v5_status', {}, RA)
+  assert((stOff2.formal.objects || []).length === 0, '★ a stray `formal` reply in off mode records NO formal object')
+  assert((stOff2.formal.todo || []).length === 0, '★ and adds nothing to the formalization TODO')
+  assert(!/p-off-stray/.test(readIf(join(instRootOf(RA), 'Formal', 'TODO.md'))), '★ and writes no TODO entry for it')
+}
+
 // ---------- 2. parameter validation ----------
 section('2 parameter validation and runtime switching')
 const RB = makeRoot()
@@ -333,6 +381,7 @@ await settle(); delivered.length = 0; await drainWakes(3, RC)
   assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(vp), 'the voting prompt states that a passing Lean run shrinks the question to fidelity')
   assert(/归档可复用定义\/引理前先跑通/.test(vp), 'the voting prompt requires a GREEN RUN before archiving a reusable definition')
   assert(/LEAN_NOT_FOUND/.test(vp) && /宿主无 Lean 工具链/.test(vp), 'the voting prompt says what to do when the host has no Lean toolchain')
+  assert(/NO_SUBPROCESS/.test(vp), '§6 rule 4: the no-toolchain route names NO_SUBPROCESS too (an agent that only knows LEAN_NOT_FOUND treats a service-less host as an unknown failure and retries)')
   assert(noBareLeanTool(vp), 'no abbreviated tool name appears in the injected voting prompt')
   assert(/实现难度/.test(vp), 'the voting prompt asks for the implementation-difficulty judgement')
   assert(/可以不做，但请在回执的 formal 字段写明难度判断/.test(vp), "'encourage' explicitly allows skipping (with a recorded judgement)")
@@ -376,6 +425,42 @@ const runNoTc = await callTool('vibe_v5_lean_run', { file: 'Formal/good.lean' },
 assert(runNoTc.ok === false && runNoTc.code === 'LEAN_NOT_FOUND', 'a missing toolchain returns LEAN_NOT_FOUND instead of crashing')
 assert(/仍可把形式化代码写下来归档/.test(runNoTc.message), 'the failure explains the graceful degradation')
 toolchainAvailable = true
+// docs/formal-verification.md §7: a TIMEOUT must TERMINATE the process. `graceMs` is only a
+// request to the host, so a run whose `done` never settles within the cap must be ended by
+// `handle.terminate()` — otherwise a runaway toolchain lingers while we report LEAN_TIMEOUT.
+{
+  const before = terminations.length
+  hangLean = true
+  hangMs = 60000
+  const runHang = await callTool('vibe_v5_lean_run', { file: 'Formal/good.lean', timeout_ms: 1000 }, childAgent(childOf(RD, 'r-1')))
+  hangLean = false
+  assert(runHang.ok === false && runHang.code === 'LEAN_TIMEOUT', '★ a run that outlives the cap is reported as LEAN_TIMEOUT (got ' + runHang.code + ')')
+  assert(runHang.timedOut === true, 'the result is flagged timedOut')
+  assert(terminations.slice(before).some(f => /good\.lean$/.test(String(f))), '★ the timeout path really called handle.terminate() (the toolchain is not left running)')
+  assert(runHang.signal === 'SIGTERM', 'the synthetic outcome names the signal that ended it')
+}
+// A host that exposes NO `subprocess` service must produce the readable NO_SUBPROCESS result
+// (never a throw into the scheduler), must leave the object record honest (`attempted`, and NOT
+// passed), and must still let the code be written down through the archive route.
+{
+  noSubprocess = true
+  const runNoSvc = await callTool('vibe_v5_lean_run', { file: 'Formal/good.lean', target: 'p-nosub' }, childAgent(childOf(RD, 'r-1')))
+  assert(runNoSvc.ok === false && runNoSvc.code === 'NO_SUBPROCESS', '★ a host with no subprocess service returns NO_SUBPROCESS instead of throwing (got ' + runNoSvc.code + ')')
+  assert(typeof runNoSvc.message === 'string' && /no subprocess service/.test(runNoSvc.message), 'the result explains why Lean cannot run here')
+  const stNoSvc = await callTool('vibe_v5_status', {}, RD)
+  assert(stNoSvc.ok === true, 'the institute still answers status after that (nothing was thrown into the scheduling loop)')
+  const recNoSvc = (stNoSvc.formal.objects || []).find(o => o.target === 'p-nosub') || {}
+  assert(recNoSvc.status === 'attempted', 'the run is recorded as attempted (no toolchain = no proof), got ' + recNoSvc.status)
+  assert(!recNoSvc.proof, 'and it is NOT recorded as passed')
+  // The way out (contract §6 rule 4): the code can still be written down. The archive route
+  // itself needs no toolchain at all.
+  const arcNoSvc = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-nosub', content: 'theorem p_nosub : 1 + 1 = 2 := by decide\n' }, childAgent(childOf(RD, 'r-1')))
+  assert(arcNoSvc.ok === true && arcNoSvc.passed === false && arcNoSvc.run && arcNoSvc.run.code === 'NO_SUBPROCESS',
+    'the code is still written down and archived with no toolchain, and the record stays honest (' + JSON.stringify({ ok: arcNoSvc.ok, status: arcNoSvc.status, code: arcNoSvc.run && arcNoSvc.run.code }) + ')')
+  assert(existsSync(join(instD, 'Formal', 'p-nosub.lean')), 'the working file exists on disk even though nothing could execute it')
+  assert(!existsSync(join(instD, 'Verified', 'Lean', 'p-nosub.lean')), '★ nothing is promoted to Verified/Lean/ without a green run')
+  noSubprocess = false
+}
 
 // ---------- 5. archive a proof → the vote becomes a FIDELITY review ----------
 section('5 a passing proof flips the review subject to fidelity')
@@ -405,6 +490,8 @@ await settle(); delivered.length = 0; await drainWakes(3, RD)
   assert(/形式化不合格/.test(vp), 'it names the failure a formalisation defect, not a refutation')
   assert(/decision:'defect'/.test(vp), 'it names the defect reply channel')
   assert(!/偏离 → 0/.test(vp), '★ the old "any deviation → 0" instruction is GONE')
+  assert(/本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论/.test(vp),
+    '★ encourage mode is explicit that there is NO gate and the voter\'s abstention is what prevents a conclusion (wording shared with v2/v3/v4)')
   assert(noBareLeanTool(vp), 'no abbreviated tool name appears in the fidelity prompt')
 }
 await drainWakes(10, RD)
