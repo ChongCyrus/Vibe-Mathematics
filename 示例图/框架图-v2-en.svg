@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 2449" width="1720" height="2449" role="img" aria-label="Vibe Math V2 architecture diagram (English)">
+<defs>
+  <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7d93a3"/></marker>
+  <marker id="bothHuman" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5b4bb8"/></marker>
+  <marker id="bothFrame" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0b6fb8"/></marker>
+  <marker id="bothData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f7a52"/></marker>
+  <marker id="bothHouse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b26a00"/></marker>
+  <marker id="bothGate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b3202c"/></marker>
+</defs>
+<rect width="1720" height="2449" fill="#ffffff"/>
+<g font-family="'Segoe UI','Helvetica Neue',Arial,'Noto Sans',sans-serif">
+<text x="860" y="40" font-size="27" font-weight="700" fill="#10202e" text-anchor="middle">Vibe Math V2 — multi-agent math problem solving &amp; verification framework (probability-driven)</text>
+<text x="860" y="67" font-size="13" fill="#5d7788" text-anchor="middle">qs/qs.json problem list + Propos/ proposition library · scheduled by correctness probability / value · explorer → one solver per direction → ≥3 verifiers debate and adjudicate</text>
+<rect x="40" y="84" width="1640" height="114" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="58" y="111" font-size="15" font-weight="700" fill="#b3202c">Truth gate — the only rule that lets an object enter Verified/</text>
+<text x="58" y="131" font-size="12" fill="#5d7788">a probability is strict: new results must be strictly between 0 and 1 · only the verifiers settle exactly 1 (true) or exactly 0 (false) · anything in between stays in its library</text>
+<rect x="62" y="140" width="518" height="44" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="321" y="158.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">all verifiers agree (all 1, or all 0)</text>
+<text x="321" y="174.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">near-consensus → that boolean is the verdict, immediately</text>
+<rect x="600" y="140" width="518" height="44" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="859" y="158.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">otherwise: adjudication by verdictMode</text>
+<text x="859" y="174.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">flat = balanced (0.5) · forced = weighted by accuracy + rigor</text>
+<rect x="1138" y="140" width="518" height="44" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1397" y="158.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">only exactly 1 or exactly 0 enters Verified/</text>
+<text x="1397" y="174.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a solver must never mark its own new lemma or solution as 1 or 0</text>
+<rect x="40" y="216" width="1640" height="174" rx="14" fill="#f1eefc" stroke="#5b4bb8" stroke-width="2"/>
+<text x="58" y="243" font-size="15" font-weight="700" fill="#5b4bb8">Interaction layer — user · main agent (assistant + reporter)</text>
+<text x="58" y="263" font-size="12" fill="#5d7788">natural language in · requirements, progress and configuration out · the main agent neither solves nor schedules nor votes</text>
+<rect x="62" y="272" width="788" height="104" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="456" y="286.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">user · main agent (assistant + reporter)</text>
+<text x="456" y="303.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the user states a need in natural language: "solve XX" · "what is the progress?" · "pause"</text>
+<text x="456" y="320.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the main agent translates it into vibe_math_* tool calls and echoes the results back</text>
+<text x="456" y="337.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">it configures parameters by Q&amp;A (/vibe setup) and reports progress in plain language</text>
+<text x="456" y="354.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">it never solves and never schedules — the scheduler is plugin code, not a model</text>
+<text x="456" y="371.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">it does not vote either: only verifiers settle a probability at exactly 1 or exactly 0</text>
+<rect x="940" y="272" width="716" height="104" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1298" y="286.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">vibe_math_* tools and the /vibe slash command (equivalent)</text>
+<text x="1298" y="303.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">add_problem · add_proposition · list_propositions · new_project · set_project · list_projects</text>
+<text x="1298" y="320.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">start · resume · pause · abort · status · report · set_mode · set_params · setup</text>
+<text x="1298" y="337.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">save_settings · template · list_decisions · decide · list_agents · message_agent</text>
+<text x="1298" y="354.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">interrupt_agent · lean_run · lean_archive · lean_lib (the three Lean tools)</text>
+<text x="1298" y="371.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">/vibe start|resume|pause|abort|status|report|mode|setup|save|template|add|add-proposition|…</text>
+<line x1="850" y1="324" x2="940" y2="324" stroke="#5b4bb8" stroke-width="1.8" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="895" y="318" font-size="10" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">tools</text>
+<rect x="40" y="408" width="1640" height="194" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="58" y="435" font-size="15" font-weight="700" fill="#8a5200">Scheduling layer — plugin code · probability-driven · the sole file writer</text>
+<text x="58" y="455" font-size="12" fill="#5d7788">a smaller priority integer is scheduled first · "never" is never scheduled (and does not block termination) · a new dispatch waits until active sub-agents &lt; maxParallelThreshold</text>
+<rect x="190" y="464" width="660" height="124" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="520" y="489.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">scheduler — plugin code · probability-driven (never a model)</text>
+<text x="520" y="505.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the sole file writer: sub-agents only return structured JSON and never write files</text>
+<text x="520" y="522.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">takes the highest-priority unsolved problem from qs/qs.json, dispatches explorer /</text>
+<text x="520" y="538.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solver / verifier, advances the state machine, and writes every result to disk</text>
+<text x="520" y="555.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a new dispatch waits until active sub-agents &lt; maxParallelThreshold (default 4)</text>
+<text x="520" y="571.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">checkpoint persistence: VibeMath_State/*.json + process epoch · tickIntervalMs heartbeat</text>
+<rect x="940" y="464" width="716" height="58" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="481.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">qs/qs.json — problem list (single source for solving &amp; verification)</text>
+<text x="1298" y="497.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">overview / solved / solution list (complete solution · correctness probability) / priority / progress</text>
+<text x="1298" y="514.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">v2 writes JSON only — the v1-era qs/qs.csv is no longer produced</text>
+<rect x="940" y="530" width="716" height="58" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="547.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">VibeMath_State/*.json — scheduler-private state (checkpoint / resume)</text>
+<text x="1298" y="563.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">scheduler_state · agent_registry · decision_queue · verifier_accuracy</text>
+<text x="1298" y="580.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">tasks · explorer_retries · process_epoch · formal.json</text>
+<line x1="850" y1="493" x2="940" y2="493" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="487" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">read/write</text>
+<line x1="850" y1="559" x2="940" y2="559" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="553" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">state</text>
+<rect x="40" y="620" width="1640" height="194" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="58" y="647" font-size="15" font-weight="700" fill="#084d80">Sub-agent layer · direction solving — brainstorm, then one solver per direction</text>
+<text x="58" y="667" font-size="12" fill="#5d7788">all directions are dead ends → re-derive brand-new ones (maxExplorerRetries) · one dedicated continuable session per direction, iterating up to solverMaxRounds rounds</text>
+<rect x="190" y="676" width="660" height="124" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="520" y="701.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">explorer → solver × N (one continuable session each)</text>
+<text x="520" y="717.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">brainstorm: constraint decomposition · boundary / extreme tests · similar-problem mapping</text>
+<text x="520" y="734.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">split q into widely-divergent directions m_i, each with assumptions + a feasibility estimate</text>
+<text x="520" y="750.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">non-empty progress: quantify it, prune proven dead ends, derive 1–3 brand-new directions</text>
+<text x="520" y="767.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the solver iterates in-session: lemmas + sub-routes + survival probability + full solution</text>
+<text x="520" y="783.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">self-adversarial check (counterexamples, boundary cases) before END; solverMaxRounds cap</text>
+<rect x="940" y="676" width="716" height="76" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="702.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Propos/&lt;category&gt;_Propos.json — the proposition library</text>
+<text x="1298" y="718.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">overview · boolean estimate · fine type · priority · value/criticality · progress</text>
+<text x="1298" y="735.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">proof list / disproof list: complete derivation · correctness probability · evidence</text>
+<rect x="940" y="760" width="716" height="40" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="776.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">new results are written by the scheduler with probability &lt; 1</text>
+<text x="1298" y="792.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a hard sub-problem q_sub becomes a problem + a temporary hypothesis (boolean estimate 0.5)</text>
+<line x1="850" y1="714" x2="940" y2="714" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="708" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">② write</text>
+<line x1="850" y1="780" x2="940" y2="780" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="774" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">append</text>
+<rect x="40" y="832" width="1640" height="194" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="58" y="859" font-size="15" font-weight="700" fill="#084d80">Sub-agent layer · cross-verification — independent review → debate → adjudication</text>
+<text x="58" y="879" font-size="12" fill="#5d7788">every target r gets ≥ verifierCount (default 3) harsh reviewers · no communication before their first reports are in · the debate lasts at most debateMaxRounds rounds</text>
+<rect x="190" y="888" width="660" height="124" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="520" y="913.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">verifier × ≥ 3 (harsh reviewers, one session each)</text>
+<text x="520" y="929.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">r = proposition | proposition + proof/disproof | problem + solution</text>
+<text x="520" y="946.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">independent review first: Result in [0,1] + Reason (a full proof at 1, a disproof at 0)</text>
+<text x="520" y="962.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">they must not communicate before every first report is in — independence is the point</text>
+<text x="520" y="979.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">debate in one chat group: every verifier speaks each round (agree · rebut · new evidence)</text>
+<text x="520" y="995.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the debate ends the moment all Results are 1 or all are 0; debateMaxRounds cap</text>
+<rect x="940" y="888" width="716" height="58" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="905.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Verification_logs/&lt;rId&gt;_&lt;time&gt;.json — the audit trail</text>
+<text x="1298" y="921.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">r · verdict · every verifier Result · the debate transcript · history</text>
+<text x="1298" y="938.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verifier historical accuracy is kept for the forced (weighted) mode</text>
+<rect x="940" y="954" width="716" height="58" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="971.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">how the scheduler picks the next r</text>
+<text x="1298" y="987.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">from qs/qs.json or Propos/: an unsolved object whose probability is not 1 or 0</text>
+<text x="1298" y="1004.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a bare proposition may be picked only while both proof and disproof lists are empty</text>
+<line x1="850" y1="917" x2="940" y2="917" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="911" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">log</text>
+<line x1="850" y1="983" x2="940" y2="983" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="977" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">pick r</text>
+<rect x="40" y="1044" width="1640" height="254" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="58" y="1071" font-size="15" font-weight="700" fill="#b3202c">Lean formal verification — four adjustable parameters (formalVerify · leanCommand · leanArgs · leanTimeoutMs)</text>
+<text x="58" y="1091" font-size="12" fill="#5d7788">the level is dynamic: prompt text is recomputed at the moment the prompt is built, so switching formalVerify takes effect on the very next prompt</text>
+<rect x="62" y="1100" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="321" y="1113.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">formalVerify = off | encourage | require (default off)</text>
+<text x="321" y="1130.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">off: a true no-op — no Lean text in any prompt, the verification flow is unchanged</text>
+<text x="321" y="1146.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the three tools stay registered, so a proactive call still works</text>
+<text x="321" y="1163.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage: formalize when the implementation difficulty allows — no gate</text>
+<text x="321" y="1179.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">require: a true/false verdict needs Lean passed or an explicit blocked record</text>
+<rect x="600" y="1100" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="859" y="1113.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">require — the gate sits at the only closing point</text>
+<text x="859" y="1130.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">status passed (the last run has exitCode 0) or blocked (a non-empty note)</text>
+<text x="859" y="1146.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">otherwise the verdict does not take effect: undecided, reason formal-required</text>
+<text x="859" y="1163.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">no Verified/ card · boolean estimate / solved / priority stay unchanged</text>
+<text x="859" y="1179.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the object stays in its library and can be re-proposed after formalizing</text>
+<rect x="1138" y="1100" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1397" y="1113.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">leanCommand = lean · leanArgs = [] · leanTimeoutMs = 120000</text>
+<text x="1397" y="1130.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">leanArgs are inserted before the .lean file name (lake + ["env","lean"])</text>
+<text x="1397" y="1146.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">an illegal formalVerify falls back to off, never to a stronger level</text>
+<text x="1397" y="1163.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a non-positive leanTimeoutMs is dropped and falls back to the default</text>
+<text x="1397" y="1179.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a timeout actively terminates the run (LEAN_TIMEOUT) and never throws</text>
+<rect x="62" y="1200" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="321" y="1213.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">a fidelity defect is not "the proposition is false"</text>
+<text x="321" y="1230.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the verifier must abstain (strictly between 0 and 1) and report</text>
+<text x="321" y="1246.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">formal:{decision:"defect", note:"&lt;specific deviation&gt;"}</text>
+<text x="321" y="1263.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the framework withdraws the archived proof and downgrades it to attempted</text>
+<text x="321" y="1279.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">under require the verdict is undecided; vote 0 only with independent reasons</text>
+<rect x="600" y="1200" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="859" y="1213.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">paths: Formal/&lt;object id&gt;.lean · Verified/Lean/&lt;object id&gt;.lean</text>
+<text x="859" y="1230.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Formal/Index.md (object → status → file → run) · Formal/TODO.md</text>
+<text x="859" y="1246.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">cross-project: Formal/Lib/&lt;name&gt;.lean · Formal/Proved/&lt;name&gt;.lean</text>
+<text x="859" y="1263.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">tools: vibe_math_lean_run · vibe_math_lean_archive · vibe_math_lean_lib</text>
+<text x="859" y="1279.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">full tool names only — an abbreviation is not a registered tool</text>
+<rect x="1138" y="1200" width="518" height="84" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1397" y="1213.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">records: status none|attempted|passed|blocked + run {ok, exitCode, ms}</text>
+<text x="1397" y="1230.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">persisted in VibeMath_State/formal.json → resume does not forget the gate</text>
+<text x="1397" y="1246.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">two id spaces stay in sync: r-pGate / r-q1-s0 and the object id pGate</text>
+<text x="1397" y="1263.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a receipt may carry the defect from a verifier who never ran Lean</text>
+<text x="1397" y="1279.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the framework does not bundle Lean; a missing toolchain is a blocked note</text>
+<rect x="40" y="1316" width="1640" height="194" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="1343" font-size="15" font-weight="700" fill="#125a3c">Closing · write-back · data layer — probability = 1 closes the object</text>
+<text x="58" y="1363" font-size="12" fill="#5d7788">problem solved = true · proposition boolean estimate 1/0 · priority = never · the scheduler is still the only writer; a sub-agent never touches a file</text>
+<rect x="190" y="1372" width="660" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="520" y="1397.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">probability = 1 → close out</text>
+<text x="520" y="1413.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">problem: solved = true · the complete solution is stored · priority = never</text>
+<text x="520" y="1430.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">proposition: boolean estimate = 1 or 0 · the proof / disproof is recorded · priority = never</text>
+<text x="520" y="1446.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">exactly 1 appends the proof at probability 1; exactly 0 appends the disproof at 1</text>
+<text x="520" y="1463.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">nothing strictly between 0 and 1 enters Verified/ — it stays in its library</text>
+<text x="520" y="1479.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the loop stops when every problem in qs/qs.json is solved (never does not block it)</text>
+<rect x="940" y="1372" width="716" height="58" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1298" y="1389.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Verified/&lt;category&gt;_Verified.json — concluded facts</text>
+<text x="1298" y="1405.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">boolean estimate exactly 1 (true) or exactly 0 (false) · read-only for everyone</text>
+<text x="1298" y="1422.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">citations must name the file path + the object id — unsourced references are rejected</text>
+<rect x="940" y="1438" width="716" height="58" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1298" y="1455.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Progress_Logs/report.json · Reliable/</text>
+<text x="1298" y="1471.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">event-driven by default (reportIntervalMs = 0) · reportMode file | push | both</text>
+<text x="1298" y="1488.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Reliable/ is placed by the user and read-only; agents reason on Propos/ + Reliable/</text>
+<line x1="850" y1="1401" x2="940" y2="1401" stroke="#b3202c" stroke-width="1.6" marker-start="url(#bothGate)" marker-end="url(#bothGate)"/>
+<text x="895" y="1395" font-size="10" font-weight="400" fill="#b3202c" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">gate</text>
+<line x1="850" y1="1467" x2="940" y2="1467" stroke="#1f7a52" stroke-width="1.6" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="895" y="1461" font-size="10" font-weight="400" fill="#1f7a52" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">report</text>
+<rect x="40" y="1528" width="1640" height="260.5" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="1555" font-size="15" font-weight="700" fill="#125a3c">File layout — every path below is relative to VibeMath/Projects/&lt;project&gt;/</text>
+<text x="58" y="1575" font-size="12" fill="#5d7788">the project skeleton is created up front (qs, Propos, Reliable, Verified, Verification_logs, Progress_Logs, VibeMath_State, Formal) · hand-editing a file cannot corrupt the scheduler, which rewrites it</text>
+<rect x="62" y="1584" width="794" height="190.5" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="74" y="1607.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">VibeMath/Projects/&lt;project&gt;/                     </text>
+<text x="74" y="1623" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ qs/qs.json                                    problems: overview / solved / solutions / priority / progress</text>
+<text x="74" y="1638.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Propos/&lt;category&gt;_Propos.json                 propositions: boolean estimate / proof·disproof lists</text>
+<text x="74" y="1654" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Reliable/                                     trusted references placed by the user (read-only)</text>
+<text x="74" y="1669.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Verified/&lt;category&gt;_Verified.json             concluded facts: boolean estimate 0 or 1</text>
+<text x="74" y="1685" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Verified/Lean/&lt;object id&gt;.lean                archived Lean proofs</text>
+<text x="74" y="1700.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Verification_logs/&lt;rId&gt;_&lt;time&gt;.json           one debate transcript per verification run</text>
+<text x="74" y="1716" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Progress_Logs/report.json                     event-driven progress report</text>
+<text x="74" y="1731.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ Formal/&lt;object id&gt;.lean + Index.md + TODO.md  per-object formalization</text>
+<text x="74" y="1747" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ VibeMath_State/                               scheduler-private state (checkpoint / resume)</text>
+<text x="74" y="1762.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">└─ vibe_math_setting.json                        project parameters (global fallback supported)</text>
+<rect x="876" y="1584" width="782" height="113" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="888" y="1607.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">VibeMath/  (the framework root)             </text>
+<text x="888" y="1623" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ current.&lt;session id&gt;.json                the current project, per session</text>
+<text x="888" y="1638.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">├─ vibe_math_setting.json                   optional global fallback parameters</text>
+<text x="888" y="1654" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">└─ Formal/                                  cross-project reusable Lean library</text>
+<text x="888" y="1669.5" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">   ├─ Lib/&lt;name&gt;.lean + Lib/Index.md        reusable definitions / objects</text>
+<text x="888" y="1685" font-size="11.5" font-weight="400" fill="#2c4557" text-anchor="start" font-family="'Cascadia Mono','Consolas','SFMono-Regular',monospace">   └─ Proved/&lt;name&gt;.lean + Proved/Index.md  machine-checked lemmas</text>
+<rect x="40" y="1806.5" width="1640" height="254" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="58" y="1833.5" font-size="15" font-weight="700" fill="#8a5200">Adjustable parameters — vibe_math_set_params · /vibe setup · vibe_math_setting.json</text>
+<text x="58" y="1853.5" font-size="12" fill="#5d7788">the project-level vibe_math_setting.json wins over the global fallback (&lt;workspace&gt;/VibeMath/vibe_math_setting.json), then built-in defaults · a runtime change takes effect immediately and is persisted</text>
+<rect x="62" y="1862.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="321" y="1876.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">scheduling &amp; concurrency</text>
+<text x="321" y="1892.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">maxParallelThreshold 4 · tickIntervalMs 2000 · activityLogCap 100</text>
+<text x="321" y="1909.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solverMaxRounds 3 · directionsPerSolver 1 · maxExplorerRetries 3</text>
+<text x="321" y="1925.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a new dispatch waits until active sub-agents &lt; maxParallelThreshold</text>
+<text x="321" y="1942.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">priority: a smaller integer first · never = never scheduled</text>
+<rect x="600" y="1862.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="859" y="1876.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">verification &amp; adjudication</text>
+<text x="859" y="1892.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verifierCount 3 · debateMaxRounds 5 · verdictMode flat | forced (weighted)</text>
+<text x="859" y="1909.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">promoteValueThreshold 0.7 — a valuable undecided proposition joins qs.json</text>
+<text x="859" y="1925.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">priorityAdjust none | deadend-deprioritize | survival-map</text>
+<text x="859" y="1942.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">proposPriorityAdjust none | progress-graded</text>
+<rect x="1138" y="1862.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1397" y="1876.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">reporting · model · projects</text>
+<text x="1397" y="1892.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">reportMode file | push | both · reportIntervalMs 0 (event-driven only)</text>
+<text x="1397" y="1909.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">mode auto | manual · provider / model (empty = inherit the main agent)</text>
+<text x="1397" y="1925.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solverPersona · verifierPersona · explorerPersona · knowledgeContext</text>
+<text x="1397" y="1942.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_new_project / set_project / list_projects · list_decisions</text>
+<rect x="62" y="1962.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="321" y="1976.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Lean parameters (semantics in the Lean band above)</text>
+<text x="321" y="1992.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">formalVerify off | encourage | require (default off)</text>
+<text x="321" y="2009.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">leanCommand lean · leanArgs [] · leanTimeoutMs 120000</text>
+<text x="321" y="2025.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">all four appear in the schema, in status / report and in the card</text>
+<text x="321" y="2042.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">an illegal formalVerify falls back to off, never to a stronger level</text>
+<rect x="600" y="1962.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="859" y="1976.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">sub-agent permissions</text>
+<text x="859" y="1992.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solverToolAllow / solverToolDeny · verifierToolAllow / verifierToolDeny</text>
+<text x="859" y="2009.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solverAllowNetwork · verifierAllowNetwork · solver/verifierAllowScripts</text>
+<text x="859" y="2025.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">solverMaxToolCalls / verifierMaxToolCalls (0 = unlimited)</text>
+<text x="859" y="2042.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">all agents may read Verified/ as a trusted dependency, plus Reliable/</text>
+<rect x="1138" y="1962.5" width="518" height="84" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1397" y="1976.0" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">configuration surface</text>
+<text x="1397" y="1992.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_setup returns the schema (/vibe setup asks item by item)</text>
+<text x="1397" y="2009.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_set_params / set_mode write back immediately and persist</text>
+<text x="1397" y="2025.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_template writes a commented template · save_settings saves</text>
+<text x="1397" y="2042.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_save_settings makes the current values the new defaults</text>
+<rect x="40" y="2078.5" width="1640" height="238" rx="14" fill="#f1eefc" stroke="#5b4bb8" stroke-width="2"/>
+<text x="58" y="2105.5" font-size="15" font-weight="700" fill="#5b4bb8">Two hard requirements — checkpoint resume · mid-run manual intervention</text>
+<text x="58" y="2125.5" font-size="12" fill="#5d7788">every architecture shares the same four foundations: checkpoint resume, mid-run intervention, progress reporting and per-session isolation</text>
+<rect x="62" y="2134.5" width="788" height="76" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="456" y="2152.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint resume (hard requirement 1)</text>
+<text x="456" y="2168.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">VibeMath_State/*.json is written throughout and every sub-agent is a continuable</text>
+<text x="456" y="2185.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">DSH session; vibe_math_resume restores tasks, agents, decisions, verifier accuracy;</text>
+<text x="456" y="2201.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a process epoch separates same-process pause → resume from a cross-process restart</text>
+<rect x="870" y="2134.5" width="788" height="76" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1264" y="2152.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">manual / auto intervention (hard requirement 2)</text>
+<text x="1264" y="2168.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_set_mode auto | manual — switching back to auto clears pending decisions;</text>
+<text x="1264" y="2185.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">in manual mode dispatch and verdict suspend a decision for list_decisions,</text>
+<text x="1264" y="2201.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">then decide (approve | reject | override); message / interrupt any sub-agent</text>
+<rect x="62" y="2226.5" width="788" height="76" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="456" y="2244.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">progress reporting</text>
+<text x="456" y="2260.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">event-driven: a report is written when an agent status changes (reportIntervalMs = 0)</text>
+<text x="456" y="2277.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">reportMode file (Progress_Logs/report.json) | push (wake the main agent) | both</text>
+<text x="456" y="2293.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_status / vibe_math_report answer "what is going on" at any moment</text>
+<rect x="870" y="2226.5" width="788" height="76" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1264" y="2244.3" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">multi-session isolation &amp; projects</text>
+<text x="1264" y="2260.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">one preset is a standing mount: the plugin isolates all state by root session id</text>
+<text x="1264" y="2277.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">each problem is a project folder (VibeMath/Projects/&lt;project&gt;/) — switch at any time</text>
+<text x="1264" y="2293.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">current.&lt;session id&gt;.json keeps the current project per session (legacy current.json)</text>
+<rect x="62" y="2334.5" width="385" height="44" rx="10" fill="#f4f7f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="254.5" y="2360.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">probability = 1 auto-closes (solved / 1|0)</text>
+<rect x="465" y="2334.5" width="385" height="44" rx="10" fill="#f4f7f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="657.5" y="2360.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">never = never scheduled · never blocks the stop</text>
+<rect x="868" y="2334.5" width="385" height="44" rx="10" fill="#f4f7f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="1060.5" y="2360.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint resume (vibe_math_resume · process epoch)</text>
+<rect x="1271" y="2334.5" width="385" height="44" rx="10" fill="#f4f7f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="1463.5" y="2360.6" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">reportMode file|push|both · per-project isolation</text>
+<text x="52" y="2424.5" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">Legend</text>
+<rect x="108" y="2412.5" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
+<text x="129" y="2424.5" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">user / main agent (neither solves nor schedules)</text>
+<rect x="428" y="2412.5" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
+<text x="449" y="2424.5" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">scheduler &amp; parameters (plugin code · writer)</text>
+<rect x="748" y="2412.5" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
+<text x="769" y="2424.5" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">sub-agents and the pipeline flow (①–④)</text>
+<rect x="1068" y="2412.5" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
+<text x="1089" y="2424.5" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">data and artifacts (probability-driven JSON)</text>
+<rect x="1388" y="2412.5" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
+<text x="1409" y="2424.5" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">truth gate &amp; Lean formalization (adjustable)</text>
+<line x1="540" y1="376" x2="540" y2="408" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="562" y="404" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">vibe_math_* tools  ↓    status / report  ↑</text>
+<line x1="540" y1="588" x2="540" y2="620" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="562" y="616" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">① take the highest-priority unsolved problem → dispatch the explorer</text>
+<line x1="540" y1="800" x2="540" y2="832" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="562" y="828" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">② results are written with probability &lt; 1   ·   ③ pick r by priority   ·   ④ dispatch ≥ 3 verifiers</text>
+<line x1="540" y1="1012" x2="540" y2="1044" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="562" y="1040" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑤ the debate ends → verdict 0 / 1 / in between</text>
+<line x1="540" y1="1298" x2="540" y2="1316" stroke="#b3202c" stroke-width="2" marker-start="url(#bothGate)" marker-end="url(#bothGate)"/>
+<text x="562" y="1312" font-size="10.5" font-weight="400" fill="#b3202c" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑥ require: the gate guards this closing point (Verified/ card · settleVerdict)</text>
+<path d="M 190 1404 L 22 1404 L 22 496 L 190 496" fill="none" stroke="#b26a00" stroke-width="2" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
+<text x="106" y="1398" font-size="10" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">write-back</text>
+<text x="106" y="1424" font-size="10" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">solved / 1 / 0</text>
+<text x="106" y="472" font-size="10" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">read qs/qs.json</text>
+<text x="106" y="498" font-size="10" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">next round</text>
+</g>
+</svg>

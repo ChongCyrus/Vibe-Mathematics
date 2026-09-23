@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 2858" width="1720" height="2858" role="img" aria-label="Vibe Math V3 architecture diagram (English)">
+<defs>
+  <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7d93a3"/></marker>
+  <marker id="bothHuman" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5b4bb8"/></marker>
+  <marker id="bothFrame" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0b6fb8"/></marker>
+  <marker id="bothData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f7a52"/></marker>
+  <marker id="bothHouse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b26a00"/></marker>
+  <marker id="bothGate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b3202c"/></marker>
+  <marker id="spine" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2c4557"/></marker>
+</defs>
+<rect width="1720" height="2858" fill="#ffffff"/>
+<g font-family="'Segoe UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC',sans-serif">
+<text x="860" y="40" font-size="26" font-weight="700" fill="#10202e" text-anchor="middle">Vibe Math V3 — multi-agent mathematical research and verification framework</text>
+<text x="860" y="68" font-size="12.5" font-weight="400" fill="#5d7788" text-anchor="middle">paper-style md knowledge base (soft-spec anchors + free narration) · the planner agent lays out the next N steps by itself · invented theories / frameworks / tools / methods / ideas are distilled into a universal method library</text>
+<rect x="40" y="88" width="1640" height="183" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="58" y="115" font-size="15" font-weight="700" fill="#084d80">Interaction layer — user and main agent (assistant + reporter)</text>
+<text x="58" y="135" font-size="12" fill="#5d7788">natural language in · reports progress out · configures parameters in Q&amp;A · holds the control commands for the human</text>
+<rect x="40" y="317" width="1640" height="220" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="58" y="344" font-size="15" font-weight="700" fill="#8a5200">Scheduler layer — plugin code + planner agent</text>
+<text x="58" y="364" font-size="12" fill="#5d7788">the scheduler is the sole writer of the md knowledge base: anchor index, structural moves, and every hard constraint enforced by code</text>
+<rect x="40" y="583" width="1640" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="610" font-size="15" font-weight="700" fill="#125a3c">Subagent layer — direction solving (continuable persistent sessions)</text>
+<text x="58" y="630" font-size="12" fill="#5d7788">Explorer splits directions and one Solver per direction iterates; every subagent writes its own md file</text>
+<rect x="40" y="825" width="1640" height="220" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="852" font-size="15" font-weight="700" fill="#125a3c">Subagent layer — cross-verification</text>
+<text x="58" y="872" font-size="12" fill="#5d7788">at least three harsh reviewers per object: independent review → debate (chat group) → ruling; then the scheduler writes the anchors and the Verified/ copy back</text>
+<rect x="40" y="1091" width="1640" height="292" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="1118" font-size="15" font-weight="700" fill="#125a3c">Subagent layer — method distillation</text>
+<text x="58" y="1138" font-size="12" fill="#5d7788">the Method Keeper digests recent work and invention reports into Methods/ (project level, promotable to the global cross-project layer)</text>
+<rect x="40" y="1429" width="1640" height="169" rx="14" fill="#f1eefc" stroke="#5b4bb8" stroke-width="2"/>
+<text x="58" y="1456" font-size="15" font-weight="700" fill="#3f2f8f">Closing · write-back · data layer (md knowledge base)</text>
+<text x="58" y="1476" font-size="12" fill="#5d7788">VibeMath/Projects/&lt;project&gt;/ — different types live in different paths; only Verified/ and objects judged true/false may be cited as fact</text>
+<rect x="62" y="144" width="758" height="63" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="441" y="163.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">User · main agent (assistant + reporter)</text>
+<text x="441" y="180.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">natural language: translate requests / report progress / configure in Q&amp;A / control commands</text>
+<text x="441" y="197.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">does not solve · does not schedule — it only calls vibe_math_* tools and reports back</text>
+<rect x="1080" y="144" width="558" height="111" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1359" y="162.8" font-size="12.5" font-weight="700" fill="#b3202c" text-anchor="middle">Trust tiers — the iron rule of trust</text>
+<text x="1359" y="179.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">1. Verified/ — absolutely trusted, citable as fact</text>
+<text x="1359" y="195.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">2. Propos/ cards marked 状态: 已验证·真/假 — trusted,</text>
+<text x="1359" y="212.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">    but the Verified/ copy prevails</text>
+<text x="1359" y="228.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">3. everything else (unconcluded propositions, Progress/,</text>
+<text x="1359" y="245.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">    Methods/ assertions, Notes/) — experiential reference only</text>
+<rect x="62" y="373" width="370" height="148" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="247" y="392.2" font-size="13" font-weight="700" fill="#8a5200" text-anchor="middle">Scheduler (plugin code)</text>
+<text x="247" y="409.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">sole master control: keeps the md index,</text>
+<text x="247" y="426.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">builds the state brief, validates the</text>
+<text x="247" y="443.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plan action by action, writes the files</text>
+<text x="247" y="460.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">hard constraints enforced by code:</text>
+<text x="247" y="477.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">concurrency · idempotency · already-verified</text>
+<text x="247" y="494.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">objects are never rescheduled again · one</text>
+<text x="247" y="511.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">writer per file (write ownership)</text>
+<rect x="502" y="373" width="318" height="148" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="661" y="392.2" font-size="13" font-weight="700" fill="#8a5200" text-anchor="middle">Planner agent (planner)</text>
+<text x="661" y="409.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">reads the state brief: problems +</text>
+<text x="661" y="426.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">dependencies + survival rates, verifiable</text>
+<text x="661" y="443.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">objects, active agents, budget, available</text>
+<text x="661" y="460.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methods, last plan result</text>
+<text x="661" y="477.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">arranges the next N steps in one go:</text>
+<text x="661" y="494.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">spawn / continue / interrupt / promote /</text>
+<text x="661" y="511.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">verify / method-keep / wait</text>
+<rect x="1080" y="373" width="558" height="140" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1359" y="391.3" font-size="12" font-weight="700" fill="#3f2f8f" text-anchor="middle">Problems/ — problem list · one md per problem</text>
+<text x="1359" y="407.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">statement / status / priority / dependencies /</text>
+<text x="1359" y="423.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">dependents / source·motivation / plan /</text>
+<text x="1359" y="439.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">solution candidates</text>
+<text x="1359" y="455.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">follow-up problems (q_sub) register the temp problem,</text>
+<text x="1359" y="471.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the judgement problem and the temporary assumption</text>
+<text x="1359" y="487.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">p_{q-tmp} (a Propos/ card) — source and motivation</text>
+<text x="1359" y="503.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">are first-class anchors here</text>
+<rect x="62" y="639" width="758" height="97" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="441" y="658.2" font-size="13" font-weight="700" fill="#125a3c" text-anchor="middle">Explorer → Solver × N</text>
+<text x="441" y="675.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">splits the problem into widely divergent directions (constraint decomposition, boundary tests, analogous problems);</text>
+<text x="441" y="692.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">all dead ends → re-derive, and the old direction log is archived</text>
+<text x="441" y="709.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">one solver per direction, multiple rounds inside the same session; it checks Methods/ first, then reports</text>
+<text x="441" y="726.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methods_used / new_inventions and writes Progress/&lt;id&gt;/&lt;direction&gt;.md</text>
+<rect x="1080" y="639" width="558" height="124" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1359" y="657.3" font-size="12" font-weight="700" fill="#3f2f8f" text-anchor="middle">Progress/ — research log · one md per problem</text>
+<text x="1359" y="673.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">direction × round narrative: one independent file</text>
+<text x="1359" y="689.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">per direction Progress/&lt;id&gt;/&lt;direction&gt;.md, so</text>
+<text x="1359" y="705.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">self-organizing agents never conflict with each other</text>
+<text x="1359" y="721.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the aggregated index Progress/&lt;id&gt;.md carries the per-</text>
+<text x="1359" y="737.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">direction summaries + the lemma index + the rounds</text>
+<text x="1359" y="753.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">old directions are archived [archived directions]</text>
+<rect x="62" y="881" width="758" height="148" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="441" y="900.2" font-size="13" font-weight="700" fill="#125a3c" text-anchor="middle">Verifier × ≥3 (harsh reviewers)</text>
+<text x="441" y="917.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">each object gets ≥3 independent reviewers: independent review → debate (chat group) → ruling;</text>
+<text x="441" y="934.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">during the first pass they cannot see each other</text>
+<text x="441" y="951.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">each one returns Result ∈ [0,1] plus Reason — 1 needs a complete proof, 0 needs a rigorous disproof,</text>
+<text x="441" y="968.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">anything strictly in between is a genuine abstention / doubt</text>
+<text x="441" y="985.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">near-consensus ruling: all results on the same side and mean ≥0.85 / ≤0.15 → take the mean</text>
+<text x="441" y="1002.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">(0.9 vs 1 → 0.95); otherwise verdictMode = forced (historical accuracy + rigor) / flat (0.5)</text>
+<text x="441" y="1019.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">this rule fixes the v2 defect of misjudging the high-confidence "0.9 vs 1" as 0.5</text>
+<rect x="1080" y="881" width="558" height="124" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1359" y="899.3" font-size="12" font-weight="700" fill="#3f2f8f" text-anchor="middle">Propos/ — proposition library</text>
+<text x="1359" y="915.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">one md per proposition (a category subdirectory</text>
+<text x="1359" y="931.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">is optional): statement / probability /</text>
+<text x="1359" y="947.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">proof·disproof attempts / dependencies</text>
+<text x="1359" y="963.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">a card marked 状态: 已验证·真/假 is trusted, but</text>
+<text x="1359" y="979.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the Verified/ copy prevails; everything else is</text>
+<text x="1359" y="995.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">an estimate, not an established fact</text>
+<rect x="62" y="1147" width="758" height="131" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="441" y="1166.2" font-size="13" font-weight="700" fill="#125a3c" text-anchor="middle">Method Keeper (method-organizing agent)</text>
+<text x="441" y="1183.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">digests recent work, Progress/Propos/Logs and the new_inventions reports (scheduled by</text>
+<text x="441" y="1200.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methodKeepIntervalMs / methodKeepEvery) and distils them</text>
+<text x="441" y="1217.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">distils new method cards (状态: 经验) · merges duplicate and fragmentary entries</text>
+<text x="441" y="1234.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">improves the system hierarchy (上级体系 / 子方法) · maintains the 可信断言 of each card</text>
+<text x="441" y="1251.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the library is universal: theories, frameworks, tools, methods, ideas, paradigms, techniques —</text>
+<text x="441" y="1268.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">what was invented to solve one problem becomes reusable for the next ones</text>
+<rect x="1080" y="1147" width="558" height="220" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1359" y="1165.3" font-size="12" font-weight="700" fill="#3f2f8f" text-anchor="middle">Methods/ — general theory invention library</text>
+<text x="1359" y="1181.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">+ the global VibeMath/Methods/, reused across projects</text>
+<text x="1359" y="1197.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">theories / frameworks / tools / methods / ideas</text>
+<text x="1359" y="1213.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">invented while solving (group theory for an equation,</text>
+<text x="1359" y="1229.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">functional analysis for variational problems)</text>
+<text x="1359" y="1245.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">application records · improvement history · the</text>
+<text x="1359" y="1261.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">system hierarchy (上级体系 / 子方法)</text>
+<text x="1359" y="1277.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">a card's 可信断言 may only link IDs that already</text>
+<text x="1359" y="1293.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">entered Verified/ — everything else in the card stays</text>
+<text x="1359" y="1309.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">experiential reference and is never cited as a theorem</text>
+<text x="1359" y="1325.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">project → global promotion uses methodAutoPromote,</text>
+<text x="1359" y="1341.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">otherwise it waits behind a manual gate; the library</text>
+<text x="1359" y="1357.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">keeps growing across projects and across sessions</text>
+<rect x="62" y="1485" width="758" height="97" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="441" y="1504.2" font-size="13" font-weight="700" fill="#b3202c" text-anchor="middle">Closing — the iron rule of trust</text>
+<text x="441" y="1521.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">probability = 1 → Verified/ card (read-only, absolutely trusted): the complete trusted statement +</text>
+<text x="441" y="1538.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">every proof / disproof / solution whose probability is 1 + the verdict (true / false) + time + source</text>
+<text x="441" y="1555.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">only verified content is injected into later prompts as fact; unverified objects never are</text>
+<text x="441" y="1572.2" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the scheduler rewrites the 状态 / 概率 anchors, generates the Verified/ copy and updates State/index.json</text>
+<rect x="1080" y="1485" width="558" height="92" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1359" y="1503.3" font-size="12" font-weight="700" fill="#3f2f8f" text-anchor="middle">Verified/ — absolutely trusted (read-only)</text>
+<text x="1359" y="1519.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">Verified/命题/&lt;id&gt;.md · Verified/问题/&lt;id&gt;.md</text>
+<text x="1359" y="1535.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">Logs/Verification/ debate records · Logs/Plans/</text>
+<text x="1359" y="1551.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plan audits (the planner learning loop) · Logs/报告.md</text>
+<text x="1359" y="1567.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">State/*.json — scheduler-private state, not knowledge</text>
+<rect x="40" y="1632" width="1640" height="200" rx="14" fill="#f1eefc" stroke="#5b4bb8" stroke-width="2"/>
+<text x="58" y="1659" font-size="15" font-weight="700" fill="#3f2f8f">The soft-spec contract — minimum enforcement + maximum freedom</text>
+<text x="58" y="1679" font-size="12" fill="#5d7788">only the head anchors and the entry title lines are machine-parsed; the rest is free paper-style prose (v3 deliberately imposes no stricter format)</text>
+<rect x="62" y="1688" width="512" height="95" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="318" y="1707.0" font-size="12.5" font-weight="700" fill="#3f2f8f" text-anchor="middle">Anchors — the only mandatory part</text>
+<text x="318" y="1723.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">4–7 lines of `- key: value` at the head of an object md</text>
+<text x="318" y="1740.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">- ID/类型/状态/概率/优先级/依赖/被依赖/来源/计划/</text>
+<text x="318" y="1756.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">  上级体系/子方法/相关/可信断言:</text>
+<text x="318" y="1773.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the scheduler rebuilds State/index.json from these</text>
+<rect x="594" y="1688" width="512" height="95" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="850" y="1707.0" font-size="12.5" font-weight="700" fill="#3f2f8f" text-anchor="middle">Entry titles — also machine-parsed</text>
+<text x="850" y="1723.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">### 解法/证明/证伪 N｜标题｜概率X｜状态Y</text>
+<text x="850" y="1740.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">one such title per solution / proof / disproof attempt,</text>
+<text x="850" y="1756.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">each followed by its full narrative text</text>
+<text x="850" y="1773.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the scheduler never parses the body prose</text>
+<rect x="1126" y="1688" width="512" height="128" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1382" y="1707.0" font-size="12.5" font-weight="700" fill="#3f2f8f" text-anchor="middle">Everything else is free prose</text>
+<text x="1382" y="1723.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">paper / research-report style: statements, derivations,</text>
+<text x="1382" y="1740.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">counterexamples, lessons — self-organized by the agent</text>
+<text x="1382" y="1756.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the 状态 / 概率 anchor lines are rewritten by the</text>
+<text x="1382" y="1773.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">scheduler on verdict write-back; the body is append-only</text>
+<text x="1382" y="1789.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">and is never overwritten (anchors are edited in place,</text>
+<text x="1382" y="1806.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">text-level, so agent-written prose survives)</text>
+<rect x="40" y="1866" width="1640" height="196" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="58" y="1893" font-size="15" font-weight="700" fill="#084d80">Write ownership — agents write their own Markdown, the scheduler keeps the index</text>
+<text x="58" y="1913" font-size="12" fill="#5d7788">one writer per file at a time; only the scheduler performs structural moves (generating Verified/ copies, promotion)</text>
+<rect x="62" y="1922" width="512" height="124" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="318" y="1940.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">1 — claim the write lock</text>
+<text x="318" y="1956.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_claim_write({target}) before writing</text>
+<text x="318" y="1972.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">only one agent may write a given file at a time;</text>
+<text x="318" y="1988.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">a busy lock tells you to wait and retry</text>
+<text x="318" y="2004.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the lock table is process-level, and its purpose is</text>
+<text x="318" y="2020.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">to stop two agents from interleaving appends into</text>
+<text x="318" y="2036.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">one md file</text>
+<rect x="594" y="1922" width="512" height="108" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="850" y="1940.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">2 — write  ·  3 — release</text>
+<text x="850" y="1956.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">write only your own assigned file; append and</text>
+<text x="850" y="1972.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">continue, never edit another agent's anchors</text>
+<text x="850" y="1988.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_release_write({target}) when you are done</text>
+<text x="850" y="2004.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">the content stays in the md file — only lightweight</text>
+<text x="850" y="2020.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">metadata goes back to the scheduler</text>
+<rect x="1126" y="1922" width="512" height="124" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="1382" y="1940.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">4 — sync metadata (+ fallback)</text>
+<text x="1382" y="1956.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">vibe_math_sync_meta({meta}) reports direction status</text>
+<text x="1382" y="1972.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">/ survival, lemma ids + proof, method card ids, new</text>
+<text x="1382" y="1988.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">inventions, solutions — enough to keep the index in</text>
+<text x="1382" y="2004.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">sync, without moving knowledge into JSON</text>
+<text x="1382" y="2020.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">fallback when file tools are unavailable: reply with</text>
+<text x="1382" y="2036.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">JSON __writes[] + meta and the scheduler writes to disk</text>
+<rect x="40" y="2096" width="1640" height="233" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="58" y="2123" font-size="15" font-weight="700" fill="#8a5200">Planner degradation and multi-session isolation</text>
+<text x="58" y="2143" font-size="12" fill="#5d7788">the planner agent is an enhancement, not a requirement — md appends conflict more easily than JSON, which is why the project lock exists</text>
+<rect x="62" y="2152" width="778" height="161" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="451" y="2171.0" font-size="12.5" font-weight="700" fill="#8a5200" text-anchor="middle">Planner fallback — an enhancement, not a requirement</text>
+<text x="451" y="2187.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">plannerEnabled = false → the built-in v2-style heuristic scheduling is used instead</text>
+<text x="451" y="2204.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">no output / timeout / invalid JSON → fall back to the heuristic scheduler within the same tick</text>
+<text x="451" y="2220.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">plannerMaxFails = 3 consecutive failures → degrade to pure heuristic mode (re-enable in settings)</text>
+<text x="451" y="2237.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">planMinIntervalMs = 30000 is a cooldown between planning calls; it is ignored when the system is</text>
+<text x="451" y="2253.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">idle and there is work, so a plan is produced immediately</text>
+<text x="451" y="2270.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the plan (JSON, at most planningHorizon = 3 actions) is validated action by action, then executed</text>
+<text x="451" y="2286.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">actions beyond the current concurrency enter the pending queue (plans.json) and are consumed across</text>
+<text x="451" y="2303.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">ticks; every plan + its per-action result goes to Logs/Plans/ (the planner learning loop)</text>
+<rect x="860" y="2152" width="778" height="161" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1249" y="2171.0" font-size="12.5" font-weight="700" fill="#8a5200" text-anchor="middle">Project lock and multi-session isolation</text>
+<text x="1249" y="2187.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">per-session Session: root agent / current project / scheduler / registry / decision queue /</text>
+<text x="1249" y="2204.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">parameters / task stack are all isolated per root session; childOwner routes subagent/end</text>
+<text x="1249" y="2220.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">and each session has its own current.&lt;sessionId&gt;.json</text>
+<text x="1249" y="2237.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/project.lock (holding the session id + a timestamp): one project is scheduled by one</text>
+<text x="1249" y="2253.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">session at a time — md appends conflict more easily than JSON, which is why this guard exists</text>
+<text x="1249" y="2270.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">a second session is told "project occupied by session X", or waits up to projectLockTimeoutMs</text>
+<text x="1249" y="2286.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">processEpoch stays process-level, so two sessions in one process never mark each other's</text>
+<text x="1249" y="2303.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">subagents stale; the lock is released on pause / termination / when everything is resolved</text>
+<rect x="40" y="2363" width="1640" height="365" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="58" y="2390" font-size="15" font-weight="700" fill="#b3202c">Adjustable parameters — planner, method library and Lean formal verification</text>
+<text x="58" y="2410" font-size="12" fill="#5d7788">vibe_math_set_params applies them at runtime; the single persistent source is vibe_math_setting.json (JSONC with comments, project level falling back to global)</text>
+<rect x="62" y="2419" width="512" height="243" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="318" y="2437.8" font-size="12.5" font-weight="700" fill="#b3202c" text-anchor="middle">Added by v3 (default)</text>
+<text x="318" y="2454.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">planningHorizon = 3 — actions per plan</text>
+<text x="318" y="2470.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plannerEnabled = true</text>
+<text x="318" y="2487.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plannerProvider / plannerModel (empty = inherit)</text>
+<text x="318" y="2503.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plannerPersona (empty)</text>
+<text x="318" y="2520.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">planMinIntervalMs = 30000</text>
+<text x="318" y="2536.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">plannerMaxFails = 3</text>
+<text x="318" y="2553.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methodKeepIntervalMs = 0 (event-driven)</text>
+<text x="318" y="2569.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methodKeepEvery = 5</text>
+<text x="318" y="2586.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methodAutoPromote = false (manual gate)</text>
+<text x="318" y="2602.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">indexAutoRebuild = true</text>
+<text x="318" y="2619.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">projectLockTimeoutMs = 60000</text>
+<text x="318" y="2635.8" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">methodKeeperPersona (empty)</text>
+<text x="318" y="2652.3" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">verdictMode = forced (near-consensus first)</text>
+<rect x="594" y="2419" width="512" height="293" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="850" y="2438.0" font-size="12.5" font-weight="700" fill="#b3202c" text-anchor="middle">Lean formal verification (4 parameters)</text>
+<text x="850" y="2454.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">formalVerify = off | encourage | require</text>
+<text x="850" y="2471.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   default off; an illegal value always falls back to</text>
+<text x="850" y="2487.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   off, never to a stronger tier</text>
+<text x="850" y="2504.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   off: no Lean wording appears anywhere (a true no-op),</text>
+<text x="850" y="2520.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   yet the three Lean tools stay registered</text>
+<text x="850" y="2537.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   encourage: formalize when the implementation is easy</text>
+<text x="850" y="2553.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   enough; once Lean passes, the only question left is</text>
+<text x="850" y="2570.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   fidelity to the proposition text</text>
+<text x="850" y="2586.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   require: a true/false ruling needs formal.status ∈</text>
+<text x="850" y="2603.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   {passed, blocked}; otherwise it is recorded as</text>
+<text x="850" y="2619.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">   undecided (formal-required) + Formal/TODO.md</text>
+<text x="850" y="2636.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">leanCommand = "lean"  (e.g. "lake"; blank → "lean")</text>
+<text x="850" y="2652.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">leanArgs = []  (inserted before the .lean file name)</text>
+<text x="850" y="2669.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">leanTimeoutMs = 120000</text>
+<text x="850" y="2685.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">tools: vibe_math_lean_run · vibe_math_lean_archive</text>
+<text x="850" y="2702.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">· vibe_math_lean_lib (always written in full)</text>
+<rect x="1126" y="2419" width="512" height="227" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1382" y="2438.0" font-size="12.5" font-weight="700" fill="#b3202c" text-anchor="middle">Inherited from v2 (unchanged)</text>
+<text x="1382" y="2454.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">mode · maxParallelThreshold · solverMaxRounds</text>
+<text x="1382" y="2471.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">directionsPerSolver · verifierCount · debateMaxRounds</text>
+<text x="1382" y="2487.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">reportMode = file | push | both · reportIntervalMs</text>
+<text x="1382" y="2504.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">promoteValueThreshold · priorityAdjust</text>
+<text x="1382" y="2520.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">proposPriorityAdjust · knowledgeContext</text>
+<text x="1382" y="2537.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">provider / model · the three personas</text>
+<text x="1382" y="2553.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">tool allow / deny lists · network / script switches</text>
+<text x="1382" y="2570.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">solverMaxToolCalls / verifierMaxToolCalls</text>
+<text x="1382" y="2586.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">tickIntervalMs = 2000 · activityLogCap = 100</text>
+<text x="1382" y="2603.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">maxExplorerRetries = 3</text>
+<text x="1382" y="2619.5" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">source of truth: vibe_math_setting.json (JSONC,</text>
+<text x="1382" y="2636.0" font-size="10" font-weight="400" fill="#2c4557" text-anchor="middle">project level, global fallback) + vibe_math_setup</text>
+<path d="M 1080 1287 L 1072 1287 L 1072 655 L 820 655" fill="none" stroke="#5b4bb8" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="943" y="638" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">consult Methods/ before starting,</text>
+<text x="943" y="651" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">record the application after use</text>
+<line x1="400" y1="275" x2="400" y2="313" stroke="#2c4557" stroke-width="2" marker-end="url(#spine)"/>
+<text x="416" y="298" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">vibe_math_* tools</text>
+<line x1="400" y1="541" x2="400" y2="579" stroke="#2c4557" stroke-width="2" marker-end="url(#spine)"/>
+<text x="416" y="564" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">① plan validated → spawn Explorer and one Solver per direction</text>
+<line x1="400" y1="783" x2="400" y2="821" stroke="#2c4557" stroke-width="2" marker-end="url(#spine)"/>
+<text x="416" y="796" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">② pick r (proposition / proposition+proof·disproof /</text>
+<text x="416" y="810" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">problem+solution) → dispatch ≥3 verifiers</text>
+<line x1="400" y1="1049" x2="400" y2="1087" stroke="#2c4557" stroke-width="2" marker-end="url(#spine)"/>
+<text x="416" y="1072" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">③ ruling → near-consensus close-out</text>
+<line x1="400" y1="1387" x2="400" y2="1425" stroke="#2c4557" stroke-width="2" marker-end="url(#spine)"/>
+<text x="416" y="1410" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">④ probability = 1 → Verified/ card</text>
+<line x1="820" y1="447" x2="1080" y2="447" stroke="#5b4bb8" stroke-width="1.8" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="950" y="426" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑤ register problems, follow-up problems</text>
+<text x="950" y="439" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">and the plan write-back</text>
+<line x1="820" y1="701" x2="1080" y2="701" stroke="#5b4bb8" stroke-width="1.8" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="950" y="680" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑥ write lemmas / sub-routes / solutions</text>
+<text x="950" y="693" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">(probability &lt; 1)</text>
+<line x1="1080" y1="955" x2="820" y2="955" stroke="#5b4bb8" stroke-width="1.8" marker-end="url(#bothHuman)"/>
+<text x="950" y="947" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑦ propositions / proofs → verification</text>
+<line x1="820" y1="1257" x2="1080" y2="1257" stroke="#5b4bb8" stroke-width="1.8" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="950" y="1236" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑧ methods_used / new_inventions</text>
+<text x="950" y="1249" font-size="9.5" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">→ methods library</text>
+<line x1="820" y1="1533.5" x2="1080" y2="1533.5" stroke="#b3202c" stroke-width="1.8" marker-start="url(#bothGate)" marker-end="url(#bothGate)"/>
+<text x="950" y="1525.5" font-size="9.5" font-weight="400" fill="#b3202c" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">⑨ conclusion → Verified/ card (read-only)</text>
+<line x1="432" y1="447" x2="502" y2="447" stroke="#b26a00" stroke-width="1.8" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
+<text x="467" y="440" font-size="9" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">state brief →</text>
+<text x="467" y="462" font-size="9" font-weight="400" fill="#b26a00" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">← plan JSON</text>
+<rect x="62" y="2762" width="302" height="48" rx="10" fill="#f7f8f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="213" y="2782.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Only Verified/ and objects judged</text>
+<text x="213" y="2798.3" font-size="9.5" font-weight="400" fill="#2c4557" text-anchor="middle">true/false are absolutely trusted</text>
+<rect x="380" y="2762" width="302" height="48" rx="10" fill="#f7f8f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="531" y="2782.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Soft-spec anchors + free narration</text>
+<text x="531" y="2798.3" font-size="9.5" font-weight="400" fill="#2c4557" text-anchor="middle">(the scheduler parses anchors only)</text>
+<rect x="698" y="2762" width="302" height="48" rx="10" fill="#f7f8f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="849" y="2782.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Planning failure → automatic</text>
+<text x="849" y="2798.3" font-size="9.5" font-weight="400" fill="#2c4557" text-anchor="middle">fallback to heuristic scheduling</text>
+<rect x="1016" y="2762" width="302" height="48" rx="10" fill="#f7f8f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="1167" y="2782.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Checkpoint resume (md is the</text>
+<text x="1167" y="2798.3" font-size="9.5" font-weight="400" fill="#2c4557" text-anchor="middle">narrative breakpoint + process epoch)</text>
+<rect x="1334" y="2762" width="302" height="48" rx="10" fill="#f7f8f9" stroke="#7d93a3" stroke-width="1.6"/>
+<text x="1485" y="2782.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Per-session isolation + project lock</text>
+<text x="1485" y="2798.3" font-size="9.5" font-weight="400" fill="#2c4557" text-anchor="middle">State/project.lock, projectLockTimeoutMs</text>
+<text x="52" y="2834" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">Legend</text>
+<rect x="108" y="2823" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
+<text x="129" y="2835" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Subagent layers (solver, verifier, keeper)</text>
+<rect x="408" y="2823" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
+<text x="429" y="2835" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Planner agent and its fallback</text>
+<rect x="708" y="2823" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
+<text x="729" y="2835" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Framework, scheduler, write lock</text>
+<rect x="1008" y="2823" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
+<text x="1029" y="2835" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">md knowledge base / write-back</text>
+<rect x="1308" y="2823" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
+<text x="1329" y="2835" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Truth rules, parameters, Lean verification</text>
+</g>
+</svg>

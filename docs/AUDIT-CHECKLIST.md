@@ -363,3 +363,22 @@ provider **直接拒绝**。于是"提示词/规格/状态表都写着这个参�
 - [ ] GitHub Release 的正文 = 这份文件本身（`gh release create --notes-file <该文件>`），标题中英并列。
 
 ---
+
+## 7. 中英双语 README 与英文版架构图（2.3.16 起）
+
+- **默认语言**：`README.md` 为中文（默认、GitHub 首屏），`README.en.md` 为英文；两文顶部各有一行切换器
+  （中文版 `[English](README.en.md) | 中文`，英文版 `English | [中文](README.md)`）。不建 `README.zh.md`。
+- **结构同构**：标题层级序列、表格行数、代码块数、图片数量、本地链接集合必须一一对应；
+  唯一允许的差异是四张架构图各自指向 `-en` 版本（按序号配对校验）。
+- **文件与产物名不翻译**：真实目录/文件名（`示例图/…`、`docs/架构图.md`、`Verified/命题/`、`Logs/报告.md`）、
+  真实 JSON 键（`已解决`、`正确概率`）、真实格式锚点（`- ID/类型/状态/概率/…`、`### 解法/证明/证伪 N｜标题｜概率X｜状态Y`）、
+  会话重建标记 `【会话重建 —— <role> <id>】`、v2/v3 真实 md 字段名（`可信断言`、`上级体系`、`子方法`）**保持原样**，
+  首次出现处可加括注；除此以外的正文必须是英文（`tests/audit-readme-bilingual.test.mjs` 的 CJK 预算兜底）。
+- **架构图**：四张英文图 `示例图/框架图-v{2,3,4,5}-en.svg` 只被 `README.en.md` 引用，中文图不受影响；
+  v4/v5 用现有零依赖生成器加 `--lang=en`（`docs/generate_framework_diagram_v4.mjs`），
+  v2/v3 用独立的零依赖 Node 生成器 `docs/generate_framework_diagram_v{2,3}_en.mjs`（中文 v2/v3 海报仍由 matplotlib 脚本产出）。
+  英文图内只允许保留上述"真实字面量"的中文，`tests/audit-diagram-assets.test.mjs` 按图核 CJK 预算。
+- **历史文档必须标注适用范围**：描述旧版本布局的文档（如 v1 时期的 `docs/架构图.md`）要在开头写明它描述的是哪一版，
+  不能在被 README 当作"当前详解"引用时静默误导（`qs.csv`、`Pending_Verification/` 等 v1 名称在 v2 起已不存在）。
+
+---

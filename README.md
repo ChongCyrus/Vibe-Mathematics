@@ -22,11 +22,12 @@
 
 ## 🧩 架构图（v2 + v3 + v4 + v5）
 
-> 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)（v2 详解）与
+> 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)（v1 历史架构图；v2 起目录布局已变更）与
 > [vibe-math-v5/架构图.md](vibe-math-v5/架构图.md)（v5 全套细节图）；
-> 可编辑生成脚本：[v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py)（matplotlib → PNG）、
+> 可编辑生成脚本：中文 v2/v3 海报由 matplotlib 脚本生成 [v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py)（matplotlib → PNG）；
+> 英文版 v2/v3 由零依赖 Node 脚本生成 [v2-en](docs/generate_framework_diagram_v2_en.mjs) / [v3-en](docs/generate_framework_diagram_v3_en.mjs)（→ **SVG**）；
 > [v4](docs/generate_framework_diagram_v4.mjs) / [v5](docs/generate_framework_diagram_v5.mjs)
-> （零依赖 Node → **SVG**，`node docs/generate_framework_diagram_v4.mjs`）。
+> （零依赖 Node → **SVG**，`node docs/generate_framework_diagram_v4.mjs`，加 `--lang=en` 生成英文版 `示例图/框架图-v4-en.svg`）。
 > v4 起改用 SVG：纯文本、diff 友好、任意缩放不糊；需要 PNG 时用无头浏览器截图（命令见生成脚本头部）。
 
 ### Vibe Math V2（概率驱动 · JSON 数据层）✅ 主推
@@ -481,6 +482,7 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 ```
 <会话工作区>/VibeMath/
 ├─ Methods/                            # 【全局】跨项目通用理论发明库（v3，晋升自项目级）
+├─ Formal/                             # 对象形式化工作文件：Lib/（可复用定义）与 Proved/（已证引理）
 ├─ current.<会话id>.json               # 每会话当前项目（多会话并行互不覆盖）
 ├─ vibe_math_setting.json             # （可选，全局回退）默认参数 JSONC，含注释
 └─ Projects/<项目>/
@@ -670,10 +672,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 结束了吗？结论是什么？
 ```
 
-主代理 `vibe_math_status`：`qs.csv` 里 `q1` 已回写 `solved`，解法文件在 `Verified/` 里并被命名为
-`q1-的解法_<唯一标识>.csv`。
+主代理 `vibe_math_status`：`qs/qs.json` 里 `q1` 已回写 `已解决 = true`，其解法 `正确概率 = 1`；定论事实进入
+`Verified/<分类>_Verified.json`。
 
-> v2 对应的收尾是：`qs.json` 中 `q1.已解决 = true`，其解法 `正确概率 = 1`，相关命题进入 `Verified/`。
+> v2 不写 CSV：已解决问题就在 `qs/qs.json` 里，`Verified/<分类>_Verified.json` 是定论事实索引（解法 `正确概率 = 1` → 问题收口；证明/证伪 `正确概率 = 1` → 命题布尔估计 = 1/0）。
 
 ---
 

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1204" width="1720" height="1204" role="img" aria-label="Vibe Math V5 institute architecture diagram">
+<defs>
+  <marker id="both" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7d93a3"/></marker>
+  <marker id="bothHuman" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5b4bb8"/></marker>
+  <marker id="bothFrame" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0b6fb8"/></marker>
+  <marker id="bothData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f7a52"/></marker>
+  <marker id="bothHouse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b26a00"/></marker>
+</defs>
+<rect width="1720" height="1204" fill="#ffffff"/>
+<g font-family="'Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC',sans-serif">
+<text x="860" y="40" font-size="27" font-weight="700" fill="#10202e" text-anchor="middle">Vibe Math V5 —— Institute System</text>
+<text x="860" y="67" font-size="13" font-weight="400" fill="#5d7788" text-anchor="middle">The framework is only a medium: relaying messages · persisting artifacts · counting votes · managing context. It never assigns tasks —— organizing and assigning is the academician's job</text>
+<rect x="40" y="84" width="1640" height="94" rx="14" fill="#fdeef0" stroke="#b3202c" stroke-width="2"/>
+<text x="58" y="111" font-size="15" font-weight="700" fill="#b3202c">Truth gate —— the only rule that lets an object enter Verified/</text>
+<text x="58" y="131" font-size="12" fill="#5d7788">m = min(quorumCap, number of registered voting members)　·　a vote is a [0,1] probability: exactly 1 = assert true, exactly 0 = assert false, strictly between = abstention/doubt (not counted toward m, counted in the group average)</text>
+<rect x="62" y="140" width="506" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="315" y="158.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Boolean votes ≥ m and all 1 or all 0 → conclusion, written to Verified/</text>
+<rect x="588" y="140" width="506" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="841" y="158.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Both 1 and 0 → blocked: the minority cannot push a conclusion through</text>
+<rect x="1114" y="140" width="524" height="28" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="1376" y="158.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Below quorum → stays in the library + average probability + debate record</text>
+<rect x="40" y="190" width="1640" height="100" rx="14" fill="#f1eefc" stroke="#5b4bb8" stroke-width="2"/>
+<text x="58" y="217" font-size="15" font-weight="700" fill="#5b4bb8">Institute office (session root agent / human) —— the institute's external interface</text>
+<text x="58" y="237" font-size="12" fill="#5d7788">Does not research · does not vote · only reports and relays the human's instructions; holds the one-off creation rights the platform requires</text>
+<rect x="62" y="246" width="372" height="38" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="248" y="261.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">Natural-language interface + reporter</text>
+<text x="248" y="277.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">"solve XX" "how is it going" "pause"</text>
+<rect x="452" y="246" width="372" height="38" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="638" y="261.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">vibe_v5_configure → start</text>
+<text x="638" y="277.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">message / meeting / hire / fire</text>
+<rect x="842" y="246" width="330" height="38" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1007" y="261.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">pause / resume / stop</text>
+<text x="1007" y="277.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">set parameters (effective immediately)</text>
+<rect x="1190" y="246" width="448" height="38" rx="10" fill="#ffffff" stroke="#5b4bb8" stroke-width="1.6"/>
+<text x="1414" y="261.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">/v5 slash commands (equivalent to the tools)</text>
+<text x="1414" y="277.3" font-size="9" font-weight="400" fill="#2c4557" text-anchor="middle">configure|start|resume|pause|status|report|members|message|meeting|hire|fire|set</text>
+<rect x="226" y="302" width="1454" height="240" rx="14" fill="#fdf5e2" stroke="#b26a00" stroke-width="2"/>
+<text x="244" y="329" font-size="15" font-weight="700" fill="#8a5200">Institute (internal autonomy) —— roster, organization and assignment all happen among members; the framework never assigns</text>
+<text x="244" y="349" font-size="12" fill="#5d7788">Academician acad: leader / center of organization and coordination　·　resident researcher r-n: voting rights　·　temp worker t-n: no voting rights (hired and fired by its employer)</text>
+<rect x="248" y="362" width="300" height="142" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="398" y="376.6" font-size="13.5" font-weight="700" fill="#10202e" text-anchor="middle">Academician acad</text>
+<text x="398" y="394.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Leader · organization and coordination center</text>
+<text x="398" y="411.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L1 institute-wide overview (overview)</text>
+<text x="398" y="429.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L2 decompose and assign tasks (assign)</text>
+<text x="398" y="446.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L3 set priorities (prioritize)</text>
+<text x="398" y="464.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L4 convene and chair meetings (convene)</text>
+<text x="398" y="481.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L5 supervise progress (nudge)</text>
+<text x="398" y="499.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">L6 move temp workers · L7 external</text>
+<text x="398" y="520" font-size="10" font-weight="400" fill="#b3202c" text-anchor="middle">Four boundaries: one vote, equally weighted /</text>
+<text x="398" y="536" font-size="10" font-weight="400" fill="#b3202c" text-anchor="middle">what is assigned is work, not conclusions /</text>
+<text x="576" y="372" font-size="11.5" font-weight="700" fill="#8a5200" text-anchor="start">Resident researcher (voting rights · may autonomously hire/fire its own temp workers)</text>
+<rect x="576" y="380" width="326" height="52" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="739" y="402.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Resident researcher r-1</text>
+<text x="739" y="419.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable persistent session · own direction</text>
+<rect x="922" y="380" width="326" height="52" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1085" y="402.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Resident researcher r-2</text>
+<text x="1085" y="419.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable persistent session · own direction</text>
+<rect x="1268" y="380" width="326" height="52" rx="10" fill="#ffffff" stroke="#b26a00" stroke-width="1.6"/>
+<text x="1431" y="402.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Resident researcher r-3</text>
+<text x="1431" y="419.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">continuable persistent session · own direction</text>
+<text x="576" y="452" font-size="11.5" font-weight="700" fill="#8a5200" text-anchor="start">Temp worker (no voting rights · hired temporarily for a specific task · fired by its employer or the academician)</text>
+<rect x="576" y="460" width="326" height="52" rx="10" fill="#ffffff" stroke="#c99a4a" stroke-width="1.6"/>
+<text x="739" y="482.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Temp worker t-1</text>
+<text x="739" y="499.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Hired by r-1 · read/think/speak, write own library</text>
+<rect x="922" y="460" width="326" height="52" rx="10" fill="#ffffff" stroke="#c99a4a" stroke-width="1.6"/>
+<text x="1085" y="482.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Temp worker t-2</text>
+<text x="1085" y="499.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Hired by r-2 · read/think/speak, write own library</text>
+<rect x="1268" y="460" width="326" height="52" rx="10" fill="#ffffff" stroke="#c99a4a" stroke-width="1.6"/>
+<text x="1431" y="482.2" font-size="13" font-weight="700" fill="#10202e" text-anchor="middle">Temp worker t-3</text>
+<text x="1431" y="499.2" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Hired by r-3 · read/think/speak, write own library</text>
+<text x="576" y="536" font-size="10.5" font-weight="400" fill="#5d7788" text-anchor="start">In-institute organization (assignment · priority · nudge · meetings · staffing) is initiated by the academician, not the framework —— it only delivers</text>
+<rect x="226" y="566" width="1454" height="382" rx="14" fill="#eaf3fd" stroke="#0b6fb8" stroke-width="2"/>
+<text x="244" y="593" font-size="15" font-weight="700" fill="#084d80">Framework vibe-v5 —— only a medium (middleware): relay · persistence · counting · scheduling</text>
+<text x="244" y="613" font-size="12" fill="#5d7788">Each round: "state block + this round's question" (the charter is in the persona); a member returns one JSON: say / progress / record / verdict / task_* / hire / fire / reject_assign / input / vote_solved</text>
+<rect x="248" y="620" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="475.66666666666663" y="638.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Message relay (persistent mailbox)</text>
+<text x="475.66666666666663" y="655.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">group chat / direct message / to all voters</text>
+<text x="475.66666666666663" y="671.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">office notice / assignment / nudge / framework hint</text>
+<text x="475.66666666666663" y="688.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">persisted per recipient · written before delivery · group chat batched</text>
+<rect x="725.3333333333333" y="620" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="952.9999999999999" y="638.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Meeting / debate</text>
+<text x="952.9999999999999" y="655.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">agenda · live roster check · random speaking order</text>
+<text x="952.9999999999999" y="671.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">mutually exclusive with verification: while one runs, the other queues</text>
+<text x="952.9999999999999" y="688.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">watchdog: if it hangs, abandon it and return to self-organization</text>
+<rect x="1202.6666666666665" y="620" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="1430.3333333333333" y="638.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Task board (CAS + DAG)</text>
+<text x="1430.3333333333333" y="655.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">open / claim / release / complete / reopen / assign</text>
+<text x="1430.3333333333333" y="671.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">compare-and-set revision · dependency cycle detection</text>
+<text x="1430.3333333333333" y="688.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">write-scope overlap warning · firing reclaims tasks</text>
+<rect x="248" y="708" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="475.66666666666663" y="726.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">m-vote consensus verification</text>
+<text x="475.66666666666663" y="743.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">propose → independent initial assessment → open debate and re-vote</text>
+<text x="475.66666666666663" y="759.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Boolean unanimity + ≥ m decides it</text>
+<text x="475.66666666666663" y="776.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Verified/ card + debate record + group average probability</text>
+<rect x="725.3333333333333" y="708" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="952.9999999999999" y="726.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Context and liveness</text>
+<text x="952.9999999999999" y="743.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">threshold compaction (persona kept) · poll-free activity wait</text>
+<text x="952.9999999999999" y="759.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">priority scheduling · heartbeat always re-armed</text>
+<text x="952.9999999999999" y="776.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">concurrency gate maxParallel · automatic meeting on stall</text>
+<rect x="1202.6666666666665" y="708" width="455.3333333333333" height="78" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="1430.3333333333333" y="726.8" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Roster and hiring</text>
+<text x="1430.3333333333333" y="743.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">academician/researchers can hire their own temp workers</text>
+<text x="1430.3333333333333" y="759.8" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">employer or academician can really fire (releases the child session)</text>
+<text x="1430.3333333333333" y="776.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">codenames never reused · dual quota per member / institute-wide</text>
+<rect x="248" y="796" width="1410" height="90" rx="10" fill="#ffffff" stroke="#b3202c" stroke-width="1.6"/>
+<text x="953" y="812.5" font-size="12.5" font-weight="700" fill="#10202e" text-anchor="middle">Lean formal verification (adjustable parameter formalVerify = off / encourage / require)</text>
+<text x="953" y="829.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">encourage: at verification time, implementation difficulty decides whether to formalize; require: a true/false conclusion needs "Lean passed" or an explicit blocking record first</text>
+<text x="953" y="845.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ Once Lean passes, the object of review changes: no longer "is the derivation correct", but "are Lean's definitions/objects/conditions/assumptions/conclusions faithful to the proposition"</text>
+<text x="953" y="862.0" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">★ A fidelity defect (decision=defect) ≠ the proposition is false: revoke "passed" + revoke the archived proof + enter the "formalization TODO", never recorded as 0/false</text>
+<text x="953" y="878.5" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Archive: proof → Verified/Lean/&lt;object&gt;.lean | reusable definition → VibeMath/Formal/Lib/ | proved lemma → VibeMath/Formal/Proved/</text>
+<rect x="248" y="880" width="1410" height="38" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
+<text x="953" y="903.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Scheduler priority: meeting/verification (mutually exclusive) → queued verification → meetings → active tasks (throttled by activityTimeoutMs) → mail → chat digest → meeting on stall → heartbeat</text>
+<rect x="40" y="964" width="790" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="58" y="991" font-size="15" font-weight="700" fill="#125a3c">Source of truth: host-only projection cell of the session log (key vibeMathV5)</text>
+<text x="58" y="1011" font-size="12" fill="#5d7788">The only side effect is appending events to the session log, outside the model context (zero token cost)</text>
+<rect x="62" y="1020" width="360" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="242" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">applyV5Event (pure fold, the only copy)</text>
+<text x="242" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">11 kinds of events: institute / member / task /</text>
+<text x="242" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">message / delivered / meeting / debate /</text>
+<text x="242" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verdict / queue / counters / progress</text>
+<text x="242" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">unknown/bad event → skipped and recorded in diagnostics:</text>
+<text x="242" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">availability first, one bad event never stalls the field</text>
+<rect x="434" y="1020" width="374" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="621" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint / restore / resume</text>
+<text x="621" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the projection is checkpointed with the session log; restore</text>
+<text x="621" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">re-folds snapshot + log tail → across and within processes</text>
+<text x="621" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">one process recovery takes the same code path</text>
+<text x="621" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">fallback: host without sessionProjections → hardened</text>
+<text x="621" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">JSON: State/&lt;institute&gt;.v5state.json</text>
+<rect x="852" y="964" width="828" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
+<text x="870" y="991" font-size="15" font-weight="700" fill="#125a3c">File plane: human-readable artifacts (everything outside the projection is only a mirror)</text>
+<text x="870" y="1011" font-size="12" fill="#5d7788">The authority for consensus is the projection; files are readable artifacts, breaking them by hand does not damage it</text>
+<rect x="874" y="1020" width="784" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
+<text x="1266" y="1055.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Members/&lt;id&gt;/Progress|Propos|Methods|Subproblems/</text>
+<text x="1266" y="1070.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">only the owner can write, everyone can read (cross-reading is encouraged)</text>
+<text x="1266" y="1086.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/Chat/*.md · Shared/Meetings/&lt;mt-id&gt;.md · Shared/Debates/&lt;obj&gt;.md</text>
+<text x="1266" y="1101.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/TaskBoard.md · Institutes.md (roster mirror) · State/README.md (says the authority is not here)</text>
+<text x="1266" y="1117.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Problems/&lt;id&gt;.md (original problem) · Problems/conclusion.md (conclusion) · Verified/&lt;type&gt;/&lt;id&gt;.md (conclusion, read-only)</text>
+<path d="M 127 290 L 127 700 L 226 700" fill="none" stroke="#5b4bb8" stroke-width="2" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
+<text x="127" y="336" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">Tool surface</text>
+<text x="127" y="356" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">vibe_v5_*</text>
+<text x="127" y="374" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">/v5 commands</text>
+<text x="127" y="398" font-size="13" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↓</text>
+<text x="127" y="470" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">Report</text>
+<text x="127" y="490" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">status</text>
+<text x="127" y="508" font-size="11" font-weight="400" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">report</text>
+<text x="127" y="532" font-size="13" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↑</text>
+<text x="127" y="600" font-size="10" font-weight="400" fill="#5d7788" text-anchor="middle">the office does not vote</text>
+<text x="127" y="616" font-size="10" font-weight="400" fill="#5d7788" text-anchor="middle">cannot make a conclusion true</text>
+<text x="127" y="644" font-size="10" font-weight="400" fill="#5d7788" text-anchor="middle">nor think or sign</text>
+<text x="127" y="660" font-size="10" font-weight="400" fill="#5d7788" text-anchor="middle">on a member's behalf</text>
+<line x1="560" y1="542" x2="560" y2="566" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<line x1="1400" y1="542" x2="1400" y2="566" stroke="#0b6fb8" stroke-width="2" marker-start="url(#bothFrame)" marker-end="url(#bothFrame)"/>
+<text x="980" y="559" font-size="10.5" font-weight="400" fill="#0b6fb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">↑ per-round prompt (state block + this round's question)　　↓ single JSON receipt</text>
+<line x1="556" y1="400" x2="578" y2="400" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
+<line x1="556" y1="430" x2="578" y2="430" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
+<line x1="400" y1="940" x2="400" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="392" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">append / fold / stateOf</text>
+<line x1="1280" y1="940" x2="1280" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
+<text x="1288" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">read/write artifacts</text>
+<text x="52" y="1186" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">Legend</text>
+<rect x="108" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#5b4bb8" stroke-width="2"/>
+<text x="129" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Institute office / human (no research, no vote)</text>
+<rect x="438" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#b26a00" stroke-width="2"/>
+<text x="459" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Members and org (dashed = not framework)</text>
+<rect x="768" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6fb8" stroke-width="2"/>
+<text x="789" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Framework (relay / persist / count / sched.)</text>
+<rect x="1098" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#1f7a52" stroke-width="2"/>
+<text x="1119" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">State and artifacts</text>
+<rect x="1428" y="1175" width="14" height="14" rx="3" fill="#ffffff" stroke="#b3202c" stroke-width="2"/>
+<text x="1449" y="1187" font-size="11" font-weight="400" fill="#2c4557" text-anchor="start">Truth gate / Lean formalization (adjustable)</text>
+</g>
+</svg>

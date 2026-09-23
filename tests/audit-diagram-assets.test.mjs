@@ -81,6 +81,37 @@ for (const v of ['v2', 'v3']) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 2b. the four English diagrams (2.3.16): v2/v3 are drawn by their own zero-dependency Node
+//     generators, v4/v5 take `--lang=en`. Each must exist, be a complete SVG with a real poster
+//     canvas, and actually be English: what stays Chinese on purpose is only the REAL literal text
+//     of the format it quotes (v3's md anchors `状态: 已验证·真/假`, `- ID/类型/状态/…`, the entry
+//     title `### 解法/证明/证伪 N｜标题｜概率X｜状态Y`; v4/v5's `Verified/命题|问题/<id>.md` paths).
+//     The budgets below are the measured counts with room to breathe; a translated-into-Chinese
+//     regression lands in the hundreds.
+// ---------------------------------------------------------------------------------------------
+{
+  const IDEOGRAPH = /[\u3400-\u9fff\uf900-\ufaff]/g
+  for (const [v, budget] of [['v2', 0], ['v3', 120], ['v4', 30], ['v5', 30]]) {
+    const rel = `示例图/框架图-${v}-en.svg`
+    if (!ok(existsSync(at(rel)), `${v}-en: the English diagram exists`)) continue
+    const svg = readFileSync(at(rel), 'utf8')
+    ok(svg.trimEnd().endsWith('</svg>') && /<svg[^>]*viewBox=/.test(svg), `${v}-en: it is a complete SVG document`)
+    const { w, h } = svgSize(at(rel))
+    ok(w >= 1200 && h >= 800, `${v}-en: the canvas is a real poster (${w}×${h})`)
+    const visible = svg.replace(/<[^>]+>/g, '') // markup and attributes do not render, only text bodies do
+    const cjk = visible.match(IDEOGRAPH) || []
+    ok(cjk.length <= budget, `${v}-en: the rendered text is English (${cjk.length} CJK characters, budget ${budget})`,
+      'only quoted literals may stay Chinese; found: ' + [...new Set(cjk)].join(''))
+    ok((pkg.files || []).includes(rel), `${v}-en: the asset is listed in package.json files`)
+  }
+  // v2/v3 have dedicated English generators; v4/v5 generate both languages from the shared script
+  for (const rel of ['docs/generate_framework_diagram_v2_en.mjs', 'docs/generate_framework_diagram_v3_en.mjs',
+    'docs/generate_framework_diagram_v4.mjs', 'docs/generate_framework_diagram_v5.mjs']) {
+    ok((pkg.files || []).includes(rel) && existsSync(at(rel)), 'the generator ships: ' + rel)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // 3. the marketplace carousel lists exactly these four, and this suite does not ship
 // ---------------------------------------------------------------------------------------------
 {

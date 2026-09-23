@@ -27,8 +27,8 @@ node tests/audit-v5-integrity.mjs            # 静态：v5 完整性/理念门�
 |---|---|---|---|
 | `tests/run-tests.mjs`（28 个套件） | ≈ 230 s | **≈ 110 s**（并发 4） | 关键路径 = `e2e-v4-fixes` ≈ 96 s |
 | `tests/audit-installer-policy.test.mjs` | ≈ 1 s | — | 在临时 DSH_HOME 里驱动真实安装器（复制 4 套预设 × 2 个版本） |
-| `tests/audit-readme-bilingual.test.mjs` | ≈ 0.2 s | — | 中英 README 的结构/链接/图片/锚点一致性（纯静态） |
-| `tests/audit-diagram-assets.test.mjs` | ≈ 1 s | — | 四张架构图 PNG 必须装得下它自己的画面（解 PNG 与 SVG，纯静态） |
+| `tests/audit-readme-bilingual.test.mjs` | ≈ 0.2 s | — | 中英 README 的结构/链接/图片/锚点一致性（英文版架构图按 `-en` 变体配对；纯静态） |
+| `tests/audit-diagram-assets.test.mjs` | ≈ 1 s | — | 四张架构图 PNG 必须装得下它自己的画面、四张英文版 SVG 必须存在且正文为英文（解 PNG 与 SVG，纯静态） |
 | `audit-formal-sensitivity.mjs`（49 探针） | 612.0 s | **154.6 s**（并发 4，speed-up x3.96） | 关键路径 = 12 个 v2 探针（每个 ≈32 s） |
 | `audit-persona-sensitivity.mjs`（11 探针） | ≈ 5 s | — | 本身很快，不需要并行 |
 | `audit-prompt-invariants.mjs`（157 条，含 X5–X8b 扫描器自检） | 0.4 s | — | 静态 |

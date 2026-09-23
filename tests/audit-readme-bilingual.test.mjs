@@ -78,8 +78,18 @@ ok(fences(zh) === fences(en), 'the code-fence count matches', `zh=${fences(zh)} 
 // ---- 4. assets and links ----------------------------------------------------
 const images = (t) => [...t.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1])
 const zhImg = images(zh), enImg = images(en)
-ok(zhImg.length > 0 && zhImg.join('|') === enImg.join('|'), 'both READMEs show the same images in the same order',
+// The four architecture diagrams deliberately differ by language: the English README points at the
+// `-en` asset of the same diagram, every other image must be the very same file.
+const enVariant = (p) => p.replace(/^(示例图\/框架图-v[0-9]+)\.(png|svg)$/, '$1-en.svg')
+ok(zhImg.length > 0 && zhImg.length === enImg.length, 'both READMEs show the same number of images',
   `zh=[${zhImg.join(', ')}] en=[${enImg.join(', ')}]`)
+const imgMismatch = zhImg.filter((p, i) => enImg[i] !== p && enImg[i] !== enVariant(p))
+ok(imgMismatch.length === 0,
+  'every English image is the same asset as the Chinese one, or its -en variant, in the same order',
+  `mismatch=[${imgMismatch.join(', ')}] en=[${enImg.join(', ')}]`)
+const enDiagrams = enImg.filter((p) => /示例图\/框架图-v[0-9]+-en\.svg$/.test(p))
+ok(enDiagrams.length === 4, 'the English README references all four English architecture diagrams',
+  `en=[${enImg.join(', ')}]`)
 
 // Internal anchors must resolve inside their OWN file: translating a heading renames its slug, so
 // an anchor copied from the Chinese README breaks. (GitHub maps EVERY whitespace to a hyphen and
@@ -106,15 +116,24 @@ const localLinks = (t) => [...new Set([...t.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)
   .filter((p) => p !== 'README.md' && p !== 'README.en.md') // the switcher is intentionally asymmetric
   .sort()
 const zhLinks = localLinks(zh), enLinks = localLinks(en)
-ok(zhLinks.join('|') === enLinks.join('|'), 'both READMEs link to the same local targets',
-  'only in zh: ' + zhLinks.filter((p) => !enLinks.includes(p)).join(', ')
-  + ' | only in en: ' + enLinks.filter((p) => !zhLinks.includes(p)).join(', '))
+// The four architecture diagrams are the single documented exception: the English README points at
+// the `-en` asset of the same diagram. Normalizing just that difference keeps the guard strict about
+// every other local target (a genuinely missing or extra link still fails).
+const diagramKey = (p) => {
+  const m = /^示例图\/框架图-(v[0-9]+)(?:-en)?\.(?:png|svg)$/.exec(p)
+  return m ? '示例图/框架图-' + m[1] + '.<diagram>' : p
+}
+const zhKeys = zhLinks.map(diagramKey).sort(), enKeys = enLinks.map(diagramKey).sort()
+ok(zhKeys.join('|') === enKeys.join('|'),
+  'both READMEs link to the same local targets, up to the four language-specific diagrams',
+  'only in zh: ' + zhLinks.filter((p) => !enKeys.includes(diagramKey(p))).join(', ')
+  + ' | only in en: ' + enLinks.filter((p) => !zhKeys.includes(diagramKey(p))).join(', '))
 
 // ---- 5. the English file is actually English outside code --------------------
 {
-  // Link and image TARGETS legitimately stay Chinese (file names). What remains is user-pasteable
-  // Chinese example prompts (kept on purpose so an English reader can paste them as-is) plus the
-  // switcher — a real untranslated paragraph would be in the hundreds.
+  // Link and image TARGETS legitimately stay Chinese (real file and directory names), as do the real
+  // JSON keys, the literal session-rebuild marker and the switcher label. What is left is that small
+  // set of literals — a real untranslated paragraph would be in the hundreds.
   const withoutTargets = enPlain.replace(/\]\([^)\s]+\)/g, '](TARGET)').replace(/!\[[^\]]*\](\([^)\s]+\))/g, '![img]($1)')
   const cjk = (withoutTargets.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length
   ok(cjk <= 150, `no untranslated prose outside code and link targets (${cjk} CJK characters, budget 150)`,
