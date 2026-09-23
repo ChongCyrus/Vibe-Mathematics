@@ -135,26 +135,27 @@ ok(typeof engineDsh === 'string' && engineDsh.length <= 256, 'the declaration fi
 // ---------------------------------------------------------------------------------------------
 // 3. the README must not point at diagrams that no longer exist (the same rot, other surface)
 // ---------------------------------------------------------------------------------------------
-{
-  const readme = read('README.md') || ''
+for (const name of ['README.md', 'README.en.md']) {
+  const readme = read(name) || ''
   const refs = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1])
   const missing = refs.filter((p) => !/^https?:/i.test(p) && !existsSync(join(HERE, p)))
-  ok(refs.length > 0 && missing.length === 0, 'every image the README shows exists in the repository (' + refs.length + ' images)', missing.join(', '))
+  ok(refs.length > 0 && missing.length === 0, `every image ${name} shows exists in the repository (${refs.length} images)`, missing.join(', '))
   // ...and every one of them must SHIP, or the npm page renders a broken image (the v2/v3 diagrams
   // were referenced for months without being in `files`).
   const unshipped = refs.filter((p) => !/^https?:/i.test(p) && !(pkg.files || []).includes(p))
-  ok(unshipped.length === 0, 'every local image the README shows is listed in package.json files', unshipped.join(', '))
-  // ...and the same for every OTHER local link. The npm page renders this README, so a relative
+  ok(unshipped.length === 0, `every local image ${name} shows is listed in package.json files`, unshipped.join(', '))
+  // ...and the same for every OTHER local link. The npm page renders these files, so a relative
   // link to a file the tarball does not carry is a dead end for whoever installed the package —
-  // which is exactly what the two diagram generators were (linked, never shipped).
+  // which is exactly what the two diagram generators were (linked, never shipped). README.en.md
+  // additionally links to README.md (the language switcher), which ships too.
   const allLinks = [...new Set([...readme.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]))]
     .filter((p) => !/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith('#'))
     .map((p) => p.split('#')[0])
     .filter((p) => p !== '')
   const deadLinks = allLinks.filter((p) => !existsSync(join(HERE, p)))
-  ok(deadLinks.length === 0, 'every local link in the README resolves (' + allLinks.length + ' links)', deadLinks.join(', '))
+  ok(deadLinks.length === 0, `every local link in ${name} resolves (${allLinks.length} links)`, deadLinks.join(', '))
   const unshippedLinks = allLinks.filter((p) => !(pkg.files || []).includes(p))
-  ok(unshippedLinks.length === 0, 'every local link in the README ships in package.json files', unshippedLinks.join(', '))
+  ok(unshippedLinks.length === 0, `every local link in ${name} ships in package.json files`, unshippedLinks.join(', '))
 }
 
 // ---------------------------------------------------------------------------------------------

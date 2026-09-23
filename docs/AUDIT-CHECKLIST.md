@@ -321,3 +321,45 @@ provider **直接拒绝**。于是"提示词/规格/状态表都写着这个参�
 - 缺陷要分**类**："这一整类此前没有审计维度"比"修了 N 个 bug"更重要。
 - 假绿/假红必须单独说明：**审计本身失效**是最严重的发现。
 - 每条结论都要给出**可复核的证据**（真实日志片段、语料原文、可重跑的命令与结果）。
+
+---
+
+## 6. 发布说明（Release Notes / GitHub Release）格式
+
+**中英双语、先中文后英文，只写"给用户看的信息"。** 工程过程（探针结果、断言条数、事故复盘、行号与
+内部编号）属于 `_oneoff/audit-findings-*.md` 台账与提交信息，**不进**发布说明。
+
+固定骨架（只有版本号、标题与正文随版本变，**节名不变**）：
+
+```markdown
+# dsh-vibe-math <版本> — 发布说明（中文）
+
+> 上一版：<版本>。<一句话：这一版是干什么的、是否影响行为。>
+
+## 概览
+## 变更
+## 兼容性
+## 升级
+
+---
+
+# dsh-vibe-math <版本> — Release Notes (English)
+
+> Previous: <version>. <One sentence: what this release is and whether behaviour changes.>
+
+## Overview
+## Changes
+## Compatibility
+## Upgrade
+```
+
+- [ ] 两个 H1 都在；**英文那份的 H1 必须含 `English`**（发布门禁阶段 1c 会检查）；
+- [ ] 中文部分 ≥ 150 个汉字（门禁同阶段检查），英文部分不得残留未翻译段落；
+- [ ] 每条变更都回答"**对使用者有什么影响**"——不写内部编号、探针名、断言条数；
+- [ ] 「兼容性」明确回答：四套预设的字节/行为是否变化、参数与工具面是否变化；
+- [ ] 「升级」给出可直接复制的命令（`npm i dsh-vibe-math@latest`；若 profile 里把版本钉死了，
+      写出对应的 `dsh plugin --profile <name> add dsh-vibe-math@latest`）；
+- [ ] **发布前把草稿交给用户确认**（在对话里展示全文，或用提问工具）；用户同意或给出修改意见后再发布；
+- [ ] GitHub Release 的正文 = 这份文件本身（`gh release create --notes-file <该文件>`），标题中英并列。
+
+---

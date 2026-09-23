@@ -7,8 +7,13 @@
 // v2/v3 用 matplotlib 脚本生成 PNG；v4/v5 用 Node 直接生成 **SVG**：
 //   · 本仓库的运行时就包含 Node，不需要额外装 Python / matplotlib；
 //   · SVG 是纯文本，diff 友好、可评审、任意缩放不糊。
-// 需要 PNG 时用浏览器打开 SVG 另存，或用无头浏览器截图：
-//   chrome --headless=new --window-size=1720,1100 --screenshot=框架图-v5.png 框架图-v5.svg
+// 需要 PNG（市场轮播 / 预览图）时**不要**直接照着"窗口尺寸 = 画布尺寸"截图：
+//   chrome --headless=new --window-size=1720,1204 --screenshot=示例图/框架图-v5.png 示例图/框架图-v5.svg   ← 会静默裁掉底部
+// 原因：`--screenshot` 截的是**窗口**，而页面**视口**比窗口矮约 96px（浏览器 UI 占位），
+// 画布底部那一截根本没被绘制——而 PNG 的尺寸又恰好等于画布尺寸，所以从尺寸上完全看不出来。
+// （2.3.15 修掉的真实缺陷：v4/v5 的 PNG 因此丢了最下面的图例行，且连续两版没人发现。）
+// 正确做法（按 SVG 自身尺寸渲染、裁掉多余高度、并校验墨迹到达内容底边）：
+//   node docs/render_framework_diagram_png.mjs 示例图/框架图-v5.svg 示例图/框架图-v5.png 2
 //
 // 版式约定（改布局时请遵守，否则会重叠）：
 //   · 每个 band 的标题在 y+27、副标题在 y+47，**内容从 y+56 开始**；
