@@ -323,3 +323,6 @@ e2e-f1-agent-detach    CONFIRMED (drives the real AgentRegistry)
 | R3「v4 硬编码假名、无重试可能半启动」 | v4 的过滤器**只用用户传入的名字**，不硬编码网络/脚本名；该条**不成立**（v4 的真实问题是注册未纳入 `ctx.effect`） |
 | R1 仅"代码阅读推断" | 本轮**用真实 `AgentRegistry` 可执行复现**（`prove-f1-agent-detach.mjs`，exit 0） |
 | 「兼容性审计 0 处崩溃」 | 兼容性缺陷确实不是崩溃型，但 F-2 会让子代理**永远起不来**，属功能失效而非"无问题" |
+
+> **后续轮次**：DSH 0.2.0 的适配审计与四宿主实测记录见 [`COMPAT-AUDIT-ROUND3.md`](COMPAT-AUDIT-ROUND3.md)
+> （预设交付形态换代、会话事件白名单、子代理数量上限、工具名抛错、压缩语义等）。

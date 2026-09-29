@@ -68,11 +68,17 @@ for (const [range, version, pre, expected] of CASES) {
     'matcher: ' + JSON.stringify(range) + ' vs ' + version + (pre ? ' (includePrerelease)' : ''))
 }
 // our own declaration, both semantics (the exact chain the market and the installer share)
-for (const v of ['0.1.2-alpha.4', '0.1.2-rc.1', '0.1.3-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2']) {
+// The window is per-tuple: every supported line has its own prerelease branch, because npm's
+// prerelease rule only admits a version when a comparator in the SAME [major,minor,patch] tuple also
+// carries a prerelease. 0.2.0 joined the window with the DSH 0.2.0 adaptation.
+for (const v of ['0.1.2-alpha.4', '0.1.2-rc.1', '0.1.3-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.6-alpha.2', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.0-rc.2']) {
   eq(satisfiesDshRange(v, pkg.engines.dsh), true, 'own range admits ' + v + ' (default semantics)')
   eq(satisfiesDshRange(v, pkg.engines.dsh, { includePrerelease: true }), true, 'own range admits ' + v + ' (includePrerelease)')
 }
-for (const v of ['0.1.1-rc.1', '0.2.0-rc.1', '0.2.0', '1.0.0']) {
+for (const v of ['0.2.0']) {
+  eq(satisfiesDshRange(v, pkg.engines.dsh, { includePrerelease: true }), true, 'own range admits the released ' + v)
+}
+for (const v of ['0.1.1-rc.1', '0.3.0-rc.1', '0.3.0', '1.0.0']) {
   eq(satisfiesDshRange(v, pkg.engines.dsh, { includePrerelease: true }), false, 'own range rejects ' + v)
 }
 // unsupported forms are UNKNOWN (null) — reported, never asserted incompatible
@@ -88,7 +94,7 @@ eq(satisfiesDshRange('not-a-version', pkg.engines.dsh), null, 'an unparseable ho
   const a = dshVersionVerdict('0.1.5-rc.2', pkg)
   ok(a.status === 'compatible' && a.basis === 'engines', 'our own host line is compatible via the declared range', JSON.stringify(a))
   eq(a.requirement, pkg.engines.dsh, 'the verdict surfaces the declared range (so the log and the market card say the same thing)')
-  const b = dshVersionVerdict('0.2.0', pkg)
+  const b = dshVersionVerdict('0.3.0', pkg)
   ok(b.status === 'incompatible' && b.basis === 'engines', 'a host outside the declared range is incompatible via the range', JSON.stringify(b))
   const c = dshVersionVerdict('0.1.0-rc.6', pkg)
   ok(c.status === 'incompatible', 'a host below the declared floor is incompatible', JSON.stringify(c))

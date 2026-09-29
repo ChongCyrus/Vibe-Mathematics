@@ -382,3 +382,48 @@ provider **直接拒绝**。于是"提示词/规格/状态表都写着这个参�
   不能在被 README 当作"当前详解"引用时静默误导（`qs.csv`、`Pending_Verification/` 等 v1 名称在 v2 起已不存在）。
 
 ---
+
+## 8. 宿主版本线适配与发布流程实测教训（2.4.0 起）
+
+### 8.1 一条版本线一个机制：先定"形态"，再谈"版本"
+
+DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，且**旧机制是被彻底删除**的：
+
+| 版本线 | preset 形态 | 本文档对应做法 |
+|---|---|---|
+| ≤ 0.1.6 | 目录 `<DSH_HOME>/.agent-presets/<id>/{agent.cordis.yml,preset.yml,…}` | `installer.js` 复制（`detectPresetMechanism` 判为 `directory`） |
+| ≥ 0.1.7 | 组合行 `@deepseek-ai/dsh-agent-preset`（`agentPresets.register({id,plugins,…})`） | `cordis.patch.yml` 里的声明行（判为 `rows`，安装器跳过目录同步） |
+
+**判定必须用能力，不要用版本号**：`agentPresets` 服务在两条线上都存在但语义不同（旧线是目录扫描器、没有 `register`），
+所以判定改成读 **loader 入口树**里有没有 `@deepseek-ai/dsh-agent-preset`（或其 registry）——这在任何插件激活之前就可见，
+而"读服务"在 bundle 被单独激活（`dsh plugin add`）时可能还没就绪。**旧线上"装了但看不见"正是本版修掉的那类缺陷。**
+
+### 8.2 组合行声明的四条硬约束（都是实测出来的）
+
+1. **`dsh.bundle.patch` 必须是字符串**。数组形态只有 ≥ 0.1.7 接受；0.1.5/0.1.6 会把该值直接送进 `path.join`，
+   结果是整个 profile **起不来**（`ERR_INVALID_ARG_TYPE`）。要多个 patch 就合并成一个文件。
+2. **声明行不要命名宿主包**（如 `@deepseek-ai/dsh-agent-preset`）：旧线上该包不存在，行会 `failed to import`，
+   每次启动都报一条激活失败。改成本包自己的模块（`preset-declaration.js`），它在旧线上**什么都不注册且不报错**。
+3. **声明行不能用 `disabled: !!js` 做版本门**：patch 表达式里 **`ctx.get(...)` 会抛**（实测：常量、`typeof ctx` 正常，
+   任何服务查询都让入口永远不初始化，报 "N entries did not activate"）。要按宿主能力分流，就分到**代码里**（运行时读服务）。
+4. **声明行里的 `name` 不会被改写成文件 URL**（app-boot 只递归 group 的 config），loader 会拿**profile 目录**去解析相对路径
+   → `./vibe-math-vN.js` 必 ENOENT、整个 preset 拒绝挂载。必须用**包内子路径**（`dsh-vibe-math/vibe-math-vN/vibe-math-vN.js`）+ `exports` 放行。
+
+### 8.3 不要在宿主的"历史事件"面上存自己的状态
+
+会话日志是**只增不改**的，但**读它是严格的**：持久化层遇到不认识的 `type` 会**拒绝加载整个会话**，除非写入方标了
+`ignorable: true`——而 `Session.append` **无法**设置该字段（只有构造种子能）。所以"把插件状态写进会话日志"这条路
+会让**用户自己的会话在下次恢复时打不开**（静默：写入成功、失败发生在之后的加载）。自研状态请落在自己的文件里（v5 即如此）。
+
+### 8.4 发布流程：`npm publish` 返回 202 不是失败
+
+- `npm publish` 得到 **HTTP 202** + "Your package is being processed…" 时，registry 正在**异步处理**；此时 `npm view` /
+  `dist-tags` / 版本 manifest / tarball 都可能是 404 或旧值，**持续数分钟**。
+- 期间重发会得到 **409 `Cannot publish over previously staged version`**——这句措辞会让人误以为被扣下等 2FA 批准
+  （`npm stage list` 实测为空，并非 staged）。**正确处理：等待并轮询 packument**（`dist-tags.latest` + `/<pkg>/<ver>` + tarball HEAD），
+  **绝不在此时改版本号或内容**。
+- `dsh plugin --profile <p> add` 在 Windows 上可能**在 pnpm 完成后才崩**（`0xC0000409`，报 "pnpm failed"）：
+  **不要信退出码**，查 `package.json` 的 spec、lockfile、`node_modules` 三处是否一致，不一致就只对齐 manifest。
+
+---
+

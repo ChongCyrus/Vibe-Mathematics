@@ -14,7 +14,7 @@
 > - **`vibe-math-v2`（概率驱动 · JSON 数据层）✅ 主推**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度 + 代码启发式调度；
 > - **`vibe-math-v3`（第三代 · 论文式 md + 规划代理 + 方法库）✅ 主推**：全部知识以 **Markdown 论文/研究报告式** 存储与续写（`Problems/` 问题清单+依赖+来源动机、`Progress/` 研究日志、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）；调度前由**规划代理**自主制定接下来 N 步计划；解决过程中发明的理论/框架/工具/方法/思想由 **Method Keeper** 沉淀为可复用方法体系（如发明群论、泛函分析那样）。
 > - **`vibe-math-v4`（第四代 · 常驻自组织合作研究）🧪 实验性**：一组**持久化常驻子代理**互相**留言 + 开会**，自主决定一切任务安排（无中央调度）；各自沉淀进度/命题/方法/子问题库并互相查阅；验证**仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率；上下文达阈值自动 `/compact`；仅当全体一致认为原问题已解决才停止。
-> - **`vibe-math-v5`（第五代 · 研究所体系）🧪 实验性 · 最新**：把常驻升级为一座**研究所**——**院士**（领头人 / 组织与协调中心，负责拆解与**分派**、定优先级、主持会议、督导进度）+ **常驻研究员**（有表决权，可自主雇佣/解雇自己的临时工）+ **临时工**（无表决权）；有**公共规章**、**群聊与会议**、**compare-and-set 任务板**、**真实解雇**；**≥ m 票布尔一致**才写入 `Verified/`（反向票阻塞、弃权不计票、未达门槛留库附平均概率）；状态存于**会话日志的 host-only 投影单元**，零 token 成本。
+> - **`vibe-math-v5`（第五代 · 研究所体系）🧪 实验性 · 最新**：把常驻升级为一座**研究所**——**院士**（领头人 / 组织与协调中心，负责拆解与**分派**、定优先级、主持会议、督导进度）+ **常驻研究员**（有表决权，可自主雇佣/解雇自己的临时工）+ **临时工**（无表决权）；有**公共规章**、**群聊与会议**、**compare-and-set 任务板**、**真实解雇**；**≥ m 票布尔一致**才写入 `Verified/`（反向票阻塞、弃权不计票、未达门槛留库附平均概率）；状态存于研究所目录下的**加固 JSON** `State/<研究所>.v5state.json`（串行写、读前必 load），**不写入宿主会话日志**，零 token 成本。
 
 安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**四个** agent preset。
 
@@ -79,7 +79,7 @@ flowchart TB
     subgraph FW["⚙️ 框架 vibe-v5 —— 只是媒介（middleware），绝不指派任务"]
         M["消息中继 · 会议/辩论 · 任务板 CAS+DAG<br/>m 票共识验证 · 上下文与活性 · 编制与雇佣 · 调度器"]
     end
-    PROJ["💾 host-only 会话日志投影单元（键 vibeMathV5）<br/>11 类事件 · 纯折叠 applyV5Event · DSH 负责 checkpoint/restore"]
+    PROJ["💾 State/&lt;研究所&gt;.v5state.json（加固 JSON 权威源）<br/>11 类事件 · 纯折叠 applyV5Event · 串行写 · 恢复=读前必 load"]
     FS["📁 Members/&lt;id&gt;/* · Shared/* · Verified/ · Problems/"]
     RULE{{"求真门槛：布尔一致 且 布尔票 ≥ m = min(quorumCap, 在册有表决权人数)"}}
     OFF <-->|"vibe_v5_* / /v5 命令　↔　status / report"| M
@@ -141,16 +141,17 @@ flowchart TB
 
 #### 状态与持久化
 
-研究所状态存在**会话日志的 host-only 投影单元**里（键 `vibeMathV5`）：框架的副作用只是往会话日志
-追加 11 类事件，由 `applyV5Event` 纯折叠出状态。因此
+研究所状态只写在**研究所目录下的加固 JSON** `State/<研究所>.v5state.json` 里：框架的副作用只是把 11 类事件
+交给 `applyV5Event` 纯折叠成状态，再把整份快照**串行落盘**（每条序列化链只服务一个文件）。因此
 
 - **零 token 成本**：这些事件**不进模型上下文**，不占成员的对话预算；
-- **恢复走同一条代码路径**：跨进程重启与同进程 abort 后 resume 都由 DSH 的 checkpoint/restore 覆盖；
+- **恢复走同一条代码路径**：跨进程重启与同进程 abort 后 resume 都靠"读前必 load"，两条路径是同一段代码；
 - v4 的 `State/*.json` 直写带来的"损坏静默覆盖 / 并发丢写 / 跨进程陈旧快照"这一整类问题在构造上被消除。
 
-宿主若没有 `sessionProjections` 服务，v5 自动回退到加固 JSON（`State/<研究所>.v5state.json`，同一份折叠、
-串行写、读前必 load），安装器的启动自检会报告这一降级。投影之外的文件（成员成果库、群聊、会议纪要、
-辩论录、编制镜像、任务板镜像）都是**人可读产物**，手工改坏不会破坏研究所。
+**v5 不再把研究所事件写进宿主会话日志**：DSH 的会话持久化遇到日志里不认识的事件类型会**拒绝加载整个会话**
+（除非写入方标记 `ignorable: true`，而 `Session.append` 无法设置该字段），那会让**你自己的会话在下次恢复时打不开**。
+除状态文件之外的文件（成员成果库、群聊、会议纪要、辩论录、编制镜像、任务板镜像）都是**人可读产物**，
+手工改坏不会破坏研究所。
 
 #### 提示词是怎么构成的
 
@@ -184,7 +185,7 @@ flowchart TB
 │   ├─ TaskBoard.md              # 任务板镜像
 │   └─ State-of-institute.md     # 成员对"是否已解决"的判断快照
 ├─ Verified/<类型>/<id>.md       # 定论（只读；只有它能被当作已确立）
-└─ State/README.md               # 说明"权威状态在会话日志投影里，不是这里"
+└─ State/README.md               # 说明"这里的文件是镜像，请勿手改"
 ```
 
 #### 工具面
@@ -200,7 +201,7 @@ flowchart TB
 - **有领头人**：v4 无中央调度、一切靠讨论涌现；v5 在**所内**设有院士负责组织与分派
   （**框架仍然绝不指派**——指派者是院士，同样受 m 票约束）。
 - **求真门槛从"全体一致"改为"≥ m 一致"**（可切回 v4 口径）。
-- **状态存于会话日志的 host-only 投影单元**，由 DSH 负责 checkpoint/恢复（见上）。
+- **状态存于研究所目录下的加固 JSON** `State/<研究所>.v5state.json`（串行写、读前必 load）：恢复就是"读之前先 load"（见上）。
 - **三类职位 + 可雇用的临时工**：编制是可变的，雇佣/解雇是真实的可逆操作。
 - **不引入任何 npm 实验包**：v5 是 preset 内的单个 `.js` 文件，零依赖。
 - **会议与验证严格互斥**（双向排队）。
@@ -231,9 +232,9 @@ flowchart TB
 - **常驻自组织（v4）**：起始产生 N 个**持久化常驻子代理**，此后**所有任务安排由它们互相留言 + 开会自行决定**（框架只做消息总线/会议/任务板，绝不分配任务）。
 - **研究所体系（v5）**：在 v4 的自组织之上引入**现实研究所的组织形式**——**院士**（领头人）负责拆解、**分派**、定优先级、主持会议、督导进度；**常驻研究员**有表决权并可**自主雇佣/解雇自己的临时工**；**临时工**无表决权；全部组织动作都由**所内成员**完成，框架仍然只做媒介。详见上方 [Vibe Math V5](#vibe-math-v5研究所体系-实验性--最新) 一节。
 - **可调的一致性门槛（v5）**：对象要进 `Verified/`，需要 **≥ m = min(`quorumCap`, 在册有表决权人数)** 名有表决权者投出**一致的布尔票**（全 `1` 或全 `0`）；**反向票阻塞**、**弃权不计票但计入平均概率**；未达门槛则**留库附平均概率与完整辩论录**，不强行裁决。
-- **零 token 成本的状态持久化（v5）**：研究所状态存于**会话日志的 host-only 投影单元**，不进模型上下文；跨进程与同进程恢复走同一条代码路径。
+- **零 token 成本的状态持久化（v5）**：研究所状态写在**研究所目录下的加固 JSON** 里（`State/<研究所>.v5state.json`），不进模型上下文；跨进程与同进程恢复走同一条代码路径（读前必 load）。
 - **真实可逆的编制（v5）**：雇佣会创建常驻子会话，解雇会取消在途回合、释放子会话、收回其任务并丢弃未投递邮件；代号永不复用。
-- **人可读镜像（v4/v5）**：编制表、任务板、会议纪要、辩论录、结题记录都以 Markdown 落盘，人随时可读；但**权威状态不在这些文件里**（v5 在投影单元），所以手工改坏它们不会破坏研究所。
+- **人可读镜像（v4/v5）**：编制表、任务板、会议纪要、辩论录、结题记录都以 Markdown 落盘，人随时可读；但**权威状态不在这些文件里**（v5 在 `State/<研究所>.v5state.json`），所以手工改坏它们不会破坏研究所。
 
 ---
 
@@ -340,43 +341,43 @@ Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命�
 
 ### 方式 A：作为插件包一键安装（推荐，同时装出四个预设）
 
+桌面版在「设置 → 插件」里安装 `dsh-vibe-math`；命令行 profile 用：
+
 ```sh
 dsh plugin --profile <你的 profile> add dsh-vibe-math
 # 或从 GitHub 直装：
 dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-安装时插件会自动把四个 preset 写入 `~/.dsh/.agent-presets/`：`vibe-math-v2/`、`vibe-math-v3/`、`vibe-math-v4/` 与 `vibe-math-v5/`。
 之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，**主推**）、**Vibe Math V2**（v2，**主推**）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——v2 与 v3 同级主推，按实际需求自选（见「怎么选」）。
-**升级包版本后重启 DSH，这四个 preset 目录里的受管文件会被整体替换成新版本的字节——包括你手动改过的文件。**
-这是有意的：一个"一半旧版、一半新版"的 preset 会挂不上或行为诡异，而你在外面看不出来。**被替换掉的手改内容不会丢**：
-原文会先备份到 `~/.dsh/.agent-presets/.vibe-math-backup/<旧版本>/<preset>/`，文件名会在日志里列出（细节见文末安装器说明）。
-**要自定义 preset 就别改这几个受管文件**——复制一份（预设选择器里的复制动作，或自行复制目录成新的 id），那份属于你，随包更新不会碰它。
+**两个 DSH 世代的落点不同，本包自动适配**：
 
-### 方式 B：作为 agent preset 手动安装
+- **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml` 里声明四个 preset（每行把该 preset 的完整插件清单交给宿主的 `agentPresets` 服务注册），**不往 `~/.dsh/.agent-presets/` 写任何东西**——该目录自 0.1.7 起不再被读取。
+- **DSH ≤ 0.1.6**：preset 仍是目录形式，安装器把四个 preset 写入 `~/.dsh/.agent-presets/`（`vibe-math-v2/` … `vibe-math-v5/`）；同一份 `cordis.patch.yml` 里的声明行在这些版本上什么都不注册，因此旧版启动**不会报错**。
 
-1. 把本仓库对应目录的文件复制到 preset 目录：
+**升级包版本后重启 DSH，受管内容会被整体替换成新版本的字节——包括你手动改过的文件。** 这是有意的：一个"一半旧版、一半新版"的 preset 会挂不上或行为诡异，而你在外面看不出来。**被替换掉的手改内容不会丢**：目录形式下原文会先备份到 `~/.dsh/.agent-presets/.vibe-math-backup/<旧版本>/<preset>/`，文件名会在日志里列出。
+**要自定义 preset 就别改受管内容**——复制一份（预设选择器里的复制动作，或在自己的 bundle 里用新的 id 声明）。注意：在当前 DSH 里你若为**同名 id** 保存了自己的声明，本包会放弃注册并打印一行说明，以你的声明为准。
 
-   ```
-   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v2\   ← 复制 vibe-math-v2/ 下的 agent.cordis.yml / preset.yml / vibe-math-v2.js
-   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v3\   ← 复制 vibe-math-v3/ 下的 agent.cordis.yml / preset.yml / vibe-math-v3.js
-   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v4\   ← 复制 vibe-math-v4/ 下的 agent.cordis.yml / preset.yml / vibe-math-v4.js
-   C:\Users\<你>\.dsh\.agent-presets\vibe-math-v5\   ← 复制 vibe-math-v5/ 下的 agent.cordis.yml / preset.yml / vibe-math-v5.js
-   ```
+### 方式 B：手动声明（自定义 / 二次开发）
 
-2. 新建一个会话，在 preset 选择器里选 **「Vibe Math V2」** / **「Vibe Math V3」** / **「Vibe Math V4」** / **「Vibe Math V5」**。
-3. 会话启动后即可使用：v2/v3 的工具是 `vibe_math_*`、v4 是 `vibe_v4_*`、v5 是 `vibe_v5_*`；输入框键入 `/vibe`、`/v4`、`/v5` 有自动补全。
+- **DSH ≥ 0.1.7**：把 `vibe-math-vN/agent.cordis.yml` 整段作为 `plugins` 放进一个声明行——既可以照抄本包 `cordis.patch.yml` 里的 `dsh-vibe-math/preset-declaration` 行，也可以用宿主自带的 `@deepseek-ai/dsh-agent-preset` 行；把这个 bundle 装进你的 profile 即可。完整规则见 DSH 自带技能 `editing-cordis-compositions`。
+- **DSH ≤ 0.1.6**：把 `vibe-math-vN/` 下的 `agent.cordis.yml` / `preset.yml` / `vibe-math-vN.js` 复制到 `~/.dsh/.agent-presets/vibe-math-vN/`。
 
-> 修改 preset 文件后需**重启 DSH 进程**再开新会话（preset 的 standing mount 会缓存到进程退出）。
+新建会话后在 preset 选择器里选 **「Vibe Math V2」** / **「Vibe Math V3」** / **「Vibe Math V4」** / **「Vibe Math V5」**；会话启动后即可使用：v2/v3 的工具是 `vibe_math_*`、v4 是 `vibe_v4_*`、v5 是 `vibe_v5_*`；输入框键入 `/vibe`、`/v4`、`/v5` 有自动补全。
+
+> 改过 preset 定义后需**重启 DSH 进程**再开新会话（preset 的 standing mount 会缓存到进程退出）。
 
 ### DSH 版本适配与依赖
 
-- **形态依赖**：四个 preset 依赖 DSH 的标准 **agent-preset 机制**（`~/.dsh/.agent-presets/<id>/` + preset picker）与 **bundle patch 机制**（`cordis.patch.yml` 注入安装器）。
+- **形态依赖（两条线，本包一份 bundle 全兼容）**：**bundle patch 机制**（`cordis.patch.yml`，`dsh.bundle.patch` 必须是**字符串**——0.1.5/0.1.6 会把该值直接送进 `path.join`，数组会让 profile 起不来）；**DSH ≥ 0.1.7** 走 **组合行声明**（`agentPresets` 服务），**DSH ≤ 0.1.6** 走 `~/.dsh/.agent-presets/<id>/` 目录 + preset picker。
 - **宿主插件行**：`agent.cordis.yml` 引用宿主提供的 `@deepseek-ai/dsh-*` 插件行（persona、agent-instructions、tool-bash/pwsh、tool-fs/fs-search、tool-jobs、skill-filesystem、tool-skill、tool-goal、plan-mode、compaction、subagent/workflow、ask-user、todo、web 等，约 21 个唯一包名）。宿主缺行会导致 preset 挂载失败（会话启动时报错）。
-- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / **sendMessage**（续做/唤醒；`followup` 仅为 `Agent` 对象方法、**不是** `subagents` 服务方法）/ interrupt / drainContinuableChildren（v5 用于**真实解雇**））、`agents`（get/roots）、`tools`（register/restrict）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），以及**可选** `subprocess` / `sandboxPolicy` / `compaction` / `sessionProjections` / `sessions`。这些 API 形状随 DSH 版本演进；本项目**已在 `dsh-v0.1.5-rc.2` 上逐项核对并适配**（`package.json` 的 `dsh.testedVersion`）。**注意：DSH 0.1.2 起 `subagents.startContinuable` 的 `agentOptions` / `toolFilter` 需要宿主 provider 声明对应 capability**（spawn / fork 进程内 provider 均支持，v4/v5 指定成员模型/路由与工具权限依赖于此）。
+- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / **sendMessage**（续做/唤醒；`followup` 仅为 `Agent` 对象方法、**不是** `subagents` 服务方法）/ interrupt / drainContinuableChildren（v5 用于**真实解雇**））、`agents`（get/roots）、`tools`（register/restrict）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），以及**可选** `subprocess` / `sandboxPolicy` / `compaction`。这些 API 形状随 DSH 版本演进；本项目**已在 `dsh-v0.2.0-rc.2` 上逐项核对并适配**（`package.json` 的 `dsh.testedVersion`），并同时对齐 `0.1.5-rc.2`。**注意：DSH 0.1.2 起 `subagents.startContinuable` 的 `agentOptions` / `toolFilter` 需要宿主 provider 声明对应 capability**（spawn / fork 进程内 provider 均支持，v4/v5 指定成员模型/路由与工具权限依赖于此）。
+  - **v5 的研究所状态只写在 `State/<研究所>.v5state.json`**（加固 JSON、串行写、读前必 load）。v5 **不再**把研究所事件写进宿主会话日志：DSH 的会话持久化遇到日志里不认识的事件类型会**拒绝加载整个会话**（除非写入方标记 `ignorable: true`，而 `Session.append` 无法设置该字段），那会让**你自己的会话在下次恢复时打不开**。
+  - **常驻数量有宿主上限**：DSH ≥ 0.1.7 对每个根代理的**存活 continuable 子代理**设了上限（`subagent` 行的 `maxActiveSubagents`，默认 8）。v4/v5 会在撞到上限时给出明确提示、把该次派生推迟到下一轮，而不是让启动循环崩在半途。
   > **2026 兼容性修复要点**（详见 `docs/COMPAT-AUDIT-ROUND2.md`）：① `tools.restrict()` 对**未注册的工具名抛错**，而 filter 在建立子代理时应用，故权限名表必须只含本部署真正注册的名字——v2/v3 原先硬编码 `web`/`fetch`/`bash`（其中 `bash` 在 Windows 被 `disabled`）会导致"想收紧权限时子代理永远起不来"；② v4 的真实 `/compact` 原先在 `subagent/end` 里查 `agents.get()`，但该事件在子代理**已被移出注册表之后**才触发，属死代码，已改为在 `subagent/start` 捕获引用；③ 可选服务改为**惰性读取**，不再在 `apply()` 快照（否则挂载顺序会让 `subprocess` 永久为 undefined 而静默不建目录）。
-- **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前已声明 `0.1.2-alpha.4` … `0.1.5-rc.2` 共 8 个版本为 `compatible`，实测目标为 `0.1.5-rc.2`）；`engines.node` 为 `^22.19.0 || >=24.0.0`。
-- **运行时自检（能力 + 版本双检）**：安装器（bundle 插件）每次启动时：**① 尽力探测 DSH 版本**（读 `@deepseek-ai/dsh/package.json` 或 `DSH_VERSION` 环境变量；DSH 未通过公开 service/context 暴露版本，故为尽力而为，探测不到就跳过）。若探测到且该版本未被 `dshReleases` 声明为 `compatible`，会给出明确提示；**② 再对宿主服务与关键 API 做能力自检**（这是真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction`/`sessionProjections`/`sessions` 为**可选**（缺失只提示"功能会静默降级"，不影响挂载；`sessionProjections` 缺失时 v5 的研究所状态回退到加固 JSON），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
+- **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前声明 `0.1.2-alpha.4` … `0.2.0-rc.2` 共 11 个版本为 `compatible`，实测目标为 `0.2.0-rc.2`）；`engines.dsh` 为 `>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0`；`engines.node` 为 `^22.19.0 || >=24.0.0`。
+  另外声明了 `peerDependencies`（`@deepseek-ai/dsh-base`，并标为 optional）：DSH ≥ 0.1.7 会用**宿主自己的版本**去比对插件声明的 peer 范围，不满足时**跳过整个 bundle 并给出明确提示**，而不是挂上一个跑不通的预设。
+- **运行时自检（版本 + 形态 + 能力）**：安装器（bundle 插件）每次启动时：**① 按优先级探测 DSH 版本**——`DSH_VERSION` 环境变量 → `pluginManager` 服务的 bundle 列表（`@deepseek-ai/dsh-base` 的版本即宿主版本，0.1.7+）→ `@deepseek-ai/dsh-app-boot` 导出的 `getDshRuntimeVersion()`（0.2.0+ 的公开 API）→ `@deepseek-ai/dsh/package.json`（全局 0.1.x 安装），日志会写明**来源**；探测到且未被 `dshReleases` 声明为 `compatible` 时给出明确提示。**② 判断 preset 形态**：从 loader 入口树里是否挂了 `@deepseek-ai/dsh-agent-preset`（或其 registry）判断本宿主是"组合行"还是"目录"，据此决定是否同步 `~/.dsh/.agent-presets/`——新宿主上会跳过并在日志里说明旧目录可安全删除。**③ 能力自检**（真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction` 为**可选**（缺失只提示"功能会静默降级"），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
 - **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（`dsh plugin` 的 `--profile` 是必填项；用 `add` 而不是 `update`，因为 profile 里可能把版本钉成精确值，那时 `update` 不会跨过去），重启 DSH 后安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；见上文「安装」说明）。
 
 ---
@@ -402,7 +403,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 >   - **有组织的自组织**——现实研究所那样有**领头人（院士）**负责拆解、分派、定优先级、主持会议、督导进度，但**判断仍归每个人自己**；
 >   - **可增减的编制**——常驻研究员 + 可**自主雇佣/解雇**的临时工（临时工无表决权，适合处理核对、试算、资料整理等杂活）；
 >   - **可调的一致性门槛**——`m = min(quorumCap, 有表决权人数)` 票布尔一致即定论（比"全体一致"更容易收敛，同时**反向票仍然阻塞**，少数派不会被弃权淹没）；
->   - **零 token 成本的状态持久化**——研究所状态存于会话日志的 host-only 投影单元，不占成员上下文预算。
+>   - **零 token 成本的状态持久化**——研究所状态写在研究所目录下的加固 JSON 里，不占成员上下文预算。
 >
 > **⚠️ `vibe-math-v2` 与 `vibe-math-v3` 是成熟主推架构；`vibe-math-v4`、`vibe-math-v5` 是实验性架构，** 均可选择；老 `vibe-math-v1` 已被移除（本包仅含 v2/v3/v4/v5）。
 
@@ -410,7 +411,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 |---|---|---|---|---|
 | 定位 | **主推**（JSON 数据层） | **主推**（第三代） | **实验性**（第四代） | **实验性**（第五代） |
 | 核心思想 | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度 | **论文式 md 知识库 + 规划代理调度 + 通用理论发明库** | **持久化常驻子代理自组织**：互相留言 + 开会决定一切任务，无中央调度 | **研究所**：院士做组织与分派，成员各自研究；**≥ m 票布尔一致**才定论；临时工可按需雇入 |
-| 数据 | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` | `Problems/` + **按常驻 id 归属**的 `Progress|Propos|Methods|Subproblems/<id>/` + `Shared/`（会议/任务板/辩论）+ `Verified/` | 同 v4 的按成员归属布局，另加 `Institutes.md`（编制镜像）；**权威状态在会话日志投影里**，文件只是镜像与工作区 |
+| 数据 | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` | `Problems/` + **按常驻 id 归属**的 `Progress|Propos|Methods|Subproblems/<id>/` + `Shared/`（会议/任务板/辩论）+ `Verified/` | 同 v4 的按成员归属布局，另加 `Institutes.md`（编制镜像）；**权威状态在 `State/<研究所>.v5state.json`**，其余文件只是镜像与工作区 |
 | 角色 | explorer → 逐方向 solver → verifier | **planner（规划代理）** → explorer → 逐方向 solver → verifier → **method-keeper（方法整理代理）** | **N 个常驻研究者**（continuable），无固定角色 | **院士 acad**（领头人）+ **常驻研究员 r-n**（有表决权）+ **临时工 t-n**（无表决权，可雇可解雇）+ 所办（不研究不投票） |
 | 调度方式 | 代码启发式（优先级 + 概率） | **规划代理产出 N 步计划**（校验后执行，失败回退启发式） | **无中央调度**：任务由常驻互相留言/开会（框架只做媒介，不指派） | **框架仍不指派**；由**院士**拆解/分派/定优先级/督导，成员可据理反对；框架只做中继、任务板、会议与计数 |
 | 收口规则 | 解法/证明达概率 `1` 即收口，`never` 永不调度 | 同 v2（近共识裁决修复 flat 误判） | **仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率 | **布尔票 ≥ m = min(`quorumCap`, 有表决权人数) 且全为 1 或全为 0** 才写入 `Verified/`；反向票阻塞；弃权不计票但计入平均；（可切回 v4 口径） |
@@ -449,7 +450,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 | 谁做判断 | 各自；全体一致才定论 | 各自；**≥ m 票布尔一致**才定论 |
 | 协调机制 | 消息 + 会议 | 消息 + 会议（与验证严格互斥）+ **compare-and-set 任务板** |
 | 编制 | 常驻，可增开/关闭 | **可增减**：常驻研究员由所办批准增聘；临时工由院士/研究员自主雇佣解雇 |
-| 状态 | `State/*.json` 直写 | **会话日志 host-only 投影单元**（零 token 成本、由 DSH checkpoint/restore） |
+| 状态 | `State/*.json` 直写 | **`State/<研究所>.v5state.json` 加固 JSON**（零 token 成本、串行写、读前必 load） |
 
 v5 的完整架构（含成员生命周期、一轮时序、共识状态机、会议流程、调度优先级、状态折叠、提示词构成、
 任务板、职权矩阵）见 [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)；文字规格见
@@ -526,16 +527,16 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 │   └─ State-of-institute.md     # 成员对"是否已解决"的判断快照
 ├─ Verified/<类型>/<id>.md       # 定论（只读；只有它能被当作已确立）
 └─ State/
-    ├─ README.md                 # 说明"权威状态在会话日志投影里，不是这里"
-    └─ <研究所>.v5state.json      # 仅当宿主缺 sessionProjections 时的回退权威源
+    ├─ README.md                 # 说明"这里的文件是镜像，请勿手改"
+    └─ <研究所>.v5state.json      # 权威状态（加固 JSON、串行写、读前必 load）
 ```
 
 > 启用 Lean 形式化验证时另有两个目录：本所 `Formal/`（工作文件 + 索引 + 形式化待办）与 `Verified/Lean/`
 > （**归档证明**），以及**跨项目**的 `<VibeMath根>/Formal/{Lib,Proved}/`（可复用定义与已证引理）——详见
 > 上方「Lean 形式化验证」一节。
 
-**v5 铁律**：① 权威状态在**会话日志的 host-only 投影单元**（键 `vibeMathV5`）里，上表中除
-`State/<研究所>.v5state.json`（降级回退）之外的一切文件都只是**镜像/工作区**，手工改坏不会破坏研究所；
+**v5 铁律**：① 权威状态只写在 `State/<研究所>.v5state.json`（加固 JSON、串行写、读前必 load）里，
+上表中其余文件都只是**镜像/工作区**，手工改坏不会破坏研究所；
 ② 成员**只写自己的库**（`Members/<自己的代号>/`），但可以读任何人的库；
 ③ 只有 `Verified/` 与标注"已验证·真/假"的卡片**绝对可信**，其余（含 `Methods/` 里的未验证断言）只是经验参考，
 引用必须注明"未验证"；④ 入库必须写明**价值程度 / 动机用途计划 / 自己的概率估计**三项，缺一不可。
@@ -774,7 +775,7 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 
 ### v5（研究所体系 · 实验）默认值
 
-`vibe_v5_set` 可调（持久化在会话日志投影里）：
+`vibe_v5_set` 可调（持久化在研究所状态文件 `State/<研究所>.v5state.json` 里）：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -809,7 +810,7 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 
 ## 📝 断点续跑 & 人工干预（两大硬性需求）
 
-- **断点续跑**：所有状态落盘（v2：`VibeMath_State/*.json`；v3：`State/*.json`；**v5：会话日志的 host-only 投影单元**），每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` 即可续跑。v2/v3 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。**v3 的 md 知识库本身就是叙事断点**——代理 resume 时从研究日志/问题卡/命题卡尾部续写；**v5 由投影单元承担**——跨进程与同进程恢复走同一条代码路径，成员会话重建时会以"读回你自己的 Progress/"重新种化（而不是让它们从头再来）。
+- **断点续跑**：所有状态落盘（v2：`VibeMath_State/*.json`；v3：`State/*.json`；**v5：研究所目录下的加固 JSON `State/<研究所>.v5state.json`**），每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` 即可续跑。v2/v3 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。**v3 的 md 知识库本身就是叙事断点**——代理 resume 时从研究日志/问题卡/命题卡尾部续写；**v5 由状态文件承担**——恢复就是"读之前先 load"，跨进程与同进程走同一条代码路径，成员会话重建时会以"读回你自己的 Progress/"重新种化（而不是让它们从头再来）。
 - **中途人工干预**：`manual` 模式在关键节点挂起决策（v2：explorer/solver 派发、验证裁决；v3：**计划审批门**（规划代理产出计划后等你 approve/reject）、验证裁决门、**方法晋升门**（项目方法 → 全局库））；可随时 `set_mode auto` 切回自动（自动放行所有挂起决策）；可对任意子代理 `message_agent` / `interrupt_agent`。**v4/v5 天然可干预**：随时给成员留言（`vibe_v5_message`）、召集会议、暂停全所、增删编制——成员下一轮就会看到。
 - **进度汇报**：默认**事件驱动** —— 只有代理状态更新等事件发生时才会写报告（v2：`Progress_Logs/report.json`；v3：`Progress_Logs/report.json` + `Logs/报告.md` 论文式人读摘要；`reportMode` 可 `file`/`push`/`both`，`push` 通过 `subagents.sendMessage(根代理, 常驻子代理, …)` 唤醒常驻主动汇报——`followup` **不是** `subagents` 服务的方法，它只是 `Agent` 对象方法）；只有把 `reportIntervalMs` 设为 >0 才启动定时自动汇报（间隔毫秒）。**v4/v5 的工作汇报是"所内自述"**：成员把进展写进自己的 `Progress/`、把关键结论说进群聊（v5 另有人读镜像 `Institutes.md` / `Shared/TaskBoard.md` / 会议纪要 / 辩论录 / `Problems/conclusion.md`）。
 
@@ -837,8 +838,9 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 ## ⚠️ 已知边界（有意简化）
 
 **v2**：
-- 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除 `~/.dsh/.agent-presets/vibe-math-v2`、`vibe-math-v3`、`vibe-math-v4` 与 `vibe-math-v5` 目录后重启 DSH。
-- **这四个目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。想彻底不要它们，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
+- **（DSH ≤ 0.1.6 的目录形式）** 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除那四个 preset 目录后重启 DSH。
+  在 DSH ≥ 0.1.7 上安装器**不写这些目录**（预设由上文「安装」里的组合行提供），启动时只会提示旧副本可安全删除。
+- **在 DSH ≤ 0.1.6 上，这四个目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。在 DSH ≥ 0.1.7 上它们不再被读取、也不再被写入，直接删掉即可；想彻底不要本包的预设，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
 - `flat` 裁决在辩论不一致时直接判 `0.5`（高置信分歧如 0.9 vs 1 也会被误判 0.5——**v3 已用近共识规则修复**）；`forced` 按历史准确率+置信度加权。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
 - 四个 preset 文件互相独立、可共存；同一会话同时只能选一个预设。
@@ -863,8 +865,9 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
   等会议收口后再走完整的表决流程。
 - **`resume` 后轮次计数从 1 重新计**（内存态，仅用于节流与压缩提示）；权威进度在成员自己的 `Progress/`。
 - **成员章程是入职快照**：升级本包不会改写已在跑的研究所里成员的章程（它们仍用入职时冻结的版本）。
-  需要新章程就在新会话里重开一个研究所；投影状态与文件树无需迁移。
-- **安装器行为同 v2**（版本化自动更新；版本一变即整体替换受管文件并先备份原文，`vibe-math-v5` 目录同样受管）。
+  需要新章程就在新会话里重开一个研究所；状态文件与文件树无需迁移。
+- **安装器行为同 v2**（在 DSH ≤ 0.1.6 的目录形式上：版本一变即整体替换受管文件并先备份原文，`vibe-math-v5` 目录同样受管；
+  DSH ≥ 0.1.7 上安装器不写预设目录，预设由组合行提供）。
 - **Lean 形式化需要宿主上有 Lean 工具链**：框架不内置、不下载；没有工具链时三个 Lean 工具会如实返回
   `LEAN_NOT_FOUND`，形式化代码仍可写下来归档，但无法执行验证。
 - **`require` 模式的门禁是「搁置」而不是「卡死」**：缺形式化的真/假结论会被记为未定论 + 进入形式化待办，

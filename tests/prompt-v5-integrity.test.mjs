@@ -83,37 +83,11 @@ const sleep = async (ms) => { advanceClock(ms); for (let i = 0; i < 3; i++) awai
 // ---------------------------------------------------------------
 // mock host
 // ---------------------------------------------------------------
-function makeProjectionRegistry() {
-  const units = new Map()
-  const cells = new Map()
-  const cellMap = (sess) => {
-    const id = String(sess.id)
-    let m = cells.get(id)
-    if (!m) { m = new Map(); cells.set(id, m) }
-    return m
-  }
-  return {
-    register(def) { units.set(def.key, def); return () => { units.delete(def.key) } },
-    stateOf(session, key) {
-      const def = units.get(key)
-      if (!def) return undefined
-      const m = cellMap(session)
-      if (!m.has(key)) m.set(key, def.init(session.header, session.inheritedEventCount || 0))
-      return m.get(key)
-    },
-    _drive(session, event) {
-      const m = cellMap(session)
-      for (const [k, def] of units) {
-        const cur = m.has(k) ? m.get(k) : def.init(session.header, session.inheritedEventCount || 0)
-        let next
-        try { next = def.apply(cur, event) } catch (e) { next = cur }
-        m.set(k, next)
-      }
-    },
-  }
-}
-
-const projections = makeProjectionRegistry()
+// NO session services: v5 injects only ['subagents','agents','fs','tools','commands','timer'] and
+// keeps its durable state in the hardened JSON file State/<institute>.v5state.json. Sessions still
+// record anything appended to them so the suite can assert that the plugin appended NOTHING — an
+// institute event in the user's session log makes that session unresumable (DSH refuses to load an
+// unknown event type unless it is marked `ignorable`, which `Session.append` cannot set).
 const listeners = {}
 const toolRegs = []
 const liveAgents = new Map()
@@ -123,17 +97,25 @@ const wakes = []      // queued sends not yet handled
 const delivered = []  // sends that drainWakes actually handled
 let failNextStarts = 0
 
-function makeMockSession(id, parentSession) {
+// One workspace PER CASE. The institute's durable state is a file under the workspace, so a shared
+// workspace would let case 1's institute (and its running state) leak into every later case.
+const WORKSPACES = [WS]
+function newWorkspace() {
+  const ws = mkdtempSync(join(tmpdir(), 'vibe-v5-prompt-'))
+  WORKSPACES.push(ws)
+  return ws
+}
+
+function makeMockSession(id, parentSession, cwd) {
   const events = []
   const s = {
     id,
-    header: { version: 1, id, createdAt: Date.now(), cwd: WS, parentSession, isSeeded: false },
+    header: { version: 1, id, createdAt: Date.now(), cwd: cwd || WS, parentSession, isSeeded: false },
     inheritedEventCount: 0,
     get seq() { return events.length },
     append(type, data) {
       const ev = { type, data, seq: events.length, time: Date.now() }
       events.push(ev)
-      projections._drive(s, ev)
       return ev
     },
     deriveMessages() { return [] },
@@ -146,17 +128,19 @@ function makeMockSession(id, parentSession) {
 
 const roots = new Map()
 let rootSeq = 0
-function makeRoot() {
+// `ws` opens a SECOND root over an existing workspace, which is what a reload looks like.
+function makeRoot(ws) {
   const id = 'sess-' + String.fromCharCode(65 + rootSeq++)
-  const session = makeMockSession(id, undefined)
+  const cwd = ws || newWorkspace()
+  const session = makeMockSession(id, undefined, cwd)
   const root = { id, options: { provider: 'mock', model: 'm' }, session, ctx: undefined }
   roots.set(id, root)
   return root
 }
+const wsOf = (root) => root.session.header.cwd
 
 const ctx = {
   get(name) {
-    if (name === 'sessionProjections') return projections
     if (name === 'sandboxPolicy') return undefined
     if (name === 'compaction') return undefined
     if (name === 'subprocess') {
@@ -201,14 +185,14 @@ const ctx = {
   },
   tools: { register(spec) { toolRegs.push(spec); return () => {} } },
   commands: { register() { return () => {} } },
-  sessions: { async flush() { return true } },
   subagents: {
     list() { return ['spawn'] },
     async startContinuable({ label, request }) {
       if (failNextStarts > 0) { failNextStarts -= 1; throw new Error('mock provisioning failure') }
       const rootId = (request && request.parent && request.parent.id) || 'sess-A'
       const id = 'c' + (spawns.length + 1)
-      liveAgents.set(id, { id, session: makeMockSession(id, rootId), options: request && request.agentOptions })
+      const cwd = (request && request.parent && request.parent.session && request.parent.session.header.cwd) || WS
+      liveAgents.set(id, { id, session: makeMockSession(id, rootId, cwd), options: request && request.agentOptions })
       spawns.push({
         label, childId: id, rootId,
         persona: request && request.persona,
@@ -428,24 +412,26 @@ function checkPromptSweep(prompt, owner, where) {
 // corpus recorder
 // ---------------------------------------------------------------
 const corpus = []
-// Normalise the workspace OUT of the corpus. A plain `split(WS)` is not enough on Windows:
+// Normalise every workspace OUT of the corpus. A plain `split(WS)` is not enough on Windows:
 // the plugin renders paths with forward slashes while os.tmpdir() may hand back a different
 // CASE ("...\ADMIN\..." vs ".../admin/..."), so the absolute workspace path used to survive
 // into the SHIPPED corpus — non-deterministic (the temp dir changes every run) and a machine
-// path leak. Match case-insensitively, on either separator.
+// path leak. Match case-insensitively, on either separator, for EVERY per-case workspace.
 const scrub = (s) => {
-  const t = String(s == null ? '' : s).replace(/\\/g, '/')
-  const ws = WS.replace(/\\/g, '/')
-  const re = new RegExp(ws.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  let t = String(s == null ? '' : s).replace(/\\/g, '/')
   // Timestamps are part of the prompt a member reads, but not part of what a reviewer needs:
   // normalise them too. Otherwise the shipped corpus changes on EVERY run — its headings carry
   // `### YYYY-MM-DD hh:mm:ss｜<member>` — and its diffs stop being meaningful.
   // The VibeMath ROOT gets its own token (not `<WS>/VibeMath`), so v5's corpus can be diffed
   // side by side with v2/v3/v4's, which render the same root as `<VIBEMATH>`.
-  return t.replace(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/g, '<TIME>')
+  t = t.replace(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/g, '<TIME>')
     .replace(/[A-Za-z]:\/[^\s"'`）)，。；：]*?[\\/]VibeMath/g, '<VIBEMATH>')
     .replace(/\/VibeMath/g, '<VIBEMATH>')
-    .replace(re, '<WS>')
+  for (const ws of WORKSPACES) {
+    const re = new RegExp(ws.replace(/\\/g, '/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+    t = t.replace(re, '<WS>')
+  }
+  return t
 }
 // Every Lean tool mention in agent-facing text must be the REGISTERED name.
 // `Verified/Lean/` is a contract PATH, not a tool name, and on a case-insensitive reading it
@@ -521,6 +507,22 @@ for (const sp of founding) {
 }
 for (const sp of founding) { sp._ended = true; fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(RA)
+// ★ The persistence contract after the DSH 0.2.0 audit: institute state lives in the hardened
+// JSON file State/<institute>.v5state.json and NOTHING is appended to the host session log. The
+// old projection backend wrote `vibe5/*` events into the user's own session, and DSH's session
+// persistence refuses to load a log with an unknown event type unless it is marked
+// `ignorable: true` — which `Session.append` cannot set — so that session became unresumable.
+{
+  assert(RA.session._events.length === 0,
+    '★ the plugin appends NOTHING to the host session log (' + RA.session._events.length + ' events after a full founding)')
+  const stateFile = join(wsOf(RA), 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
+  for (let i = 0; i < 40 && !existsSync(stateFile); i++) await settle()
+  assert(existsSync(stateFile), 'the institute state is on disk in State/institute.v5state.json')
+  const RB0 = makeRoot(wsOf(RA))   // a second root over the same workspace = a reload
+  const stReload = await callTool('vibe_v5_status', {}, RB0)
+  assert(stReload.members.length === 4, '★ a reload reads the 4-member roster back out of the JSON file (got ' + stReload.members.length + ')')
+  assert(RB0.session._events.length === 0, '★ the reloading root appends nothing to its session log either')
+}
 await endCase(RA)
 
 // =============== CASE 2: round prompts (normal + checkpoint) =====================
@@ -901,7 +903,7 @@ for (const w of meetingOne) {
 await settleInstitute(RI)
 const stMtg = await callTool('vibe_v5_status', {}, RI)
 assert(stMtg.meeting === null, 'the meeting finished instead of deadlocking')
-const minutes = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', 'mt-1.md')
+const minutes = join(wsOf(RI), 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', 'mt-1.md')
 assert(existsSync(minutes), 'the meeting minutes were written')
 if (existsSync(minutes)) {
   const t = readFileSync(minutes, 'utf8')

@@ -35,29 +35,12 @@ const section = (t) => console.log('\n[' + t + ']')
 // ---------------------------------------------------------------
 // mock host
 // ---------------------------------------------------------------
-function makeProjectionRegistry() {
-  const units = new Map(); const cells = new Map()
-  const cellMap = (s) => { const id = String(s.id); let m = cells.get(id); if (!m) { m = new Map(); cells.set(id, m) } return m }
-  return {
-    register(def) { units.set(def.key, def); return () => { units.delete(def.key) } },
-    stateOf(session, key) {
-      const def = units.get(key); if (!def) return undefined
-      const m = cellMap(session)
-      if (!m.has(key)) m.set(key, def.init(session.header, session.inheritedEventCount || 0))
-      return m.get(key)
-    },
-    _drive(session, event) {
-      const m = cellMap(session)
-      for (const [k, def] of units) {
-        const cur = m.has(k) ? m.get(k) : def.init(session.header, session.inheritedEventCount || 0)
-        let next; try { next = def.apply(cur, event) } catch (e) { next = cur }
-        m.set(k, next)
-      }
-    },
-  }
-}
-
-const projections = makeProjectionRegistry()
+// The host offers NO session services: v5 injects only
+// ['subagents','agents','fs','tools','commands','timer'] and keeps its durable state in the
+// hardened JSON file State/<institute>.v5state.json. Sessions still RECORD anything appended to
+// them, so the suite can assert that the plugin appended nothing (an institute event in the log
+// would make the user session unresumable — DSH refuses to load an unknown event type unless it
+// is marked `ignorable`, which `Session.append` cannot set).
 const listeners = {}
 const toolRegs = []
 const liveAgents = new Map()
@@ -107,14 +90,14 @@ let subprocess = {
   },
 }
 
-function makeMockSession(id, parentSession) {
+function makeMockSession(id, parentSession, cwd) {
   const events = []
   const s = {
     id,
-    header: { version: 1, id, createdAt: Date.now(), cwd: WS, parentSession, isSeeded: false },
+    header: { version: 1, id, createdAt: Date.now(), cwd: cwd || WS, parentSession, isSeeded: false },
     inheritedEventCount: 0,
     get seq() { return events.length },
-    append(type, data) { const ev = { type, data, seq: events.length, time: Date.now() }; events.push(ev); projections._drive(s, ev); return ev },
+    append(type, data) { const ev = { type, data, seq: events.length, time: Date.now() }; events.push(ev); return ev },
     deriveMessages() { return [] },
     snapshotEvents(from) { return events.slice(from || 0) },
     ownEvents() { return events.slice() },
@@ -125,9 +108,14 @@ function makeMockSession(id, parentSession) {
 
 const roots = new Map()
 let rootSeq = 0
-function makeRoot() {
+// Every case gets its OWN workspace. The institute's durable state is a file under the
+// workspace (State/<institute>.v5state.json), so roots sharing one workspace would share one
+// institute and let one case's state leak into the next. `ws` lets a case open a SECOND root
+// over the same workspace, which is exactly what a reload looks like.
+function makeRoot(ws) {
   const id = 'sess-' + String.fromCharCode(65 + rootSeq++)
-  const session = makeMockSession(id, undefined)
+  const cwd = ws || mkdtempSync(join(tmpdir(), 'vibe-v5-lean-'))
+  const session = makeMockSession(id, undefined, cwd)
   const root = { id, options: { provider: 'mock', model: 'm' }, session, ctx: undefined }
   roots.set(id, root)
   return root
@@ -135,7 +123,6 @@ function makeRoot() {
 
 const ctx = {
   get(name) {
-    if (name === 'sessionProjections') return projections
     if (name === 'sandboxPolicy') return undefined
     if (name === 'compaction') return undefined
     if (name === 'subprocess') return noSubprocess ? undefined : subprocess
@@ -147,13 +134,12 @@ const ctx = {
   timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
   tools: { register(spec) { toolRegs.push(spec); return () => {} } },
   commands: { register() { return () => {} } },
-  sessions: { async flush() { return true } },
   subagents: {
     list() { return ['spawn'] },
     async startContinuable({ label, request }) {
       const rootId = (request && request.parent && request.parent.id) || 'sess-A'
       const id = 'c' + (spawns.length + 1)
-      liveAgents.set(id, { id, session: makeMockSession(id, rootId), options: request && request.agentOptions })
+      liveAgents.set(id, { id, session: makeMockSession(id, rootId, (request && request.parent && request.parent.session && request.parent.session.header.cwd) || WS), options: request && request.agentOptions })
       spawns.push({ label, childId: id, rootId, persona: request && request.persona, prompt: request && request.prompt && request.prompt[0] && request.prompt[0].text })
       return { childId: id, messageId: 'm' + spawns.length }
     },
@@ -272,8 +258,10 @@ async function wakeAndReply(root, memberId, reply, fromMember) {
   return w
 }
 
-const instRootOf = (root) => join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
-const vibeRoot = join(WS, 'VibeMath')
+// Paths are per ROOT: each case's workspace holds its own institute.
+const wsOf = (root) => root.session.header.cwd
+const instRootOf = (root) => join(wsOf(root), 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+const vibeRootOf = (root) => join(wsOf(root), 'VibeMath')
 const readIf = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
 // Every Lean tool mention in AGENT-FACING text must be the registered name (vibe_v5_lean_*).
 // An abbreviated `lean_archive` is not a tool: an agent that copies it calls nothing.
@@ -287,6 +275,26 @@ section("1 'off' (default) is a true no-op")
 const RA = makeRoot()
 const st0 = await foundInstitute(RA, '形式化开关默认关闭测试')
 assert(st0.params.formalVerify === 'off', "the default is 'off' (got " + st0.params.formalVerify + ')')
+
+// ★ The persistence contract (the DSH 0.2.0 audit fix). v5 used to keep the institute in a
+// host-only session projection: it appended `vibe5/*` events to the user's OWN session log, and
+// DSH's session persistence then REFUSED to load that session (unknown event type without
+// `ignorable: true`, which `Session.append` cannot set) — the user's session became unresumable.
+// The hardened JSON file is now the only authority, so the log must stay empty AND the state must
+// come back from the file in a brand-new root.
+{
+  assert(RA.session._events.length === 0,
+    '★ the plugin appends NOTHING to the host session log (' + RA.session._events.length + ' events after founding): an institute event would make the session unresumable')
+  const stateFile = join(instRootOf(RA), 'State', 'institute.v5state.json')
+  for (let i = 0; i < 40 && !existsSync(stateFile); i++) await settle()
+  assert(existsSync(stateFile), 'the institute state is on disk in State/institute.v5state.json')
+  const before = await callTool('vibe_v5_status', {}, RA)
+  const RA2 = makeRoot(wsOf(RA))   // fresh root, fresh backend, same workspace = a reload
+  const after = await callTool('vibe_v5_status', {}, RA2)
+  assert(after.members.length === before.members.length && after.params.formalVerify === before.params.formalVerify,
+    '★ a reload reads the roster and the parameters back out of the JSON file (' + after.members.length + ' members, formalVerify=' + after.params.formalVerify + ')')
+  assert(RA2.session._events.length === 0, '★ the reloading root appends nothing to its session log either')
+}
 {
   const allPrompts = spawnsFor(RA).map(s => s.prompt || '').join('\n') + '\n' + delivered.filter(d => d.rootId === RA.id).map(d => d.prompt).join('\n')
   assert(!/Lean/.test(allPrompts), 'no founding/round prompt mentions Lean in off mode')
@@ -498,8 +506,8 @@ await drainWakes(10, RD)
 
 // ---------- 6. the reusable cross-project library ----------
 section('6 reusable definitions and lemmas go to the GLOBAL library')
-const libPath = join(vibeRoot, 'Formal', 'Lib')
-const provedPath = join(vibeRoot, 'Formal', 'Proved')
+const libPath = join(vibeRootOf(RD), 'Formal', 'Lib')
+const provedPath = join(vibeRootOf(RD), 'Formal', 'Proved')
 const defRes = await callTool('vibe_v5_lean_archive', { kind: 'def', name: 'ZMod5', content: 'def ZMod5 := Fin 5\n' }, childAgent(childOf(RD, 'r-1')))
 assert(defRes.ok === true && defRes.file === 'Formal/Lib/ZMod5.lean', 'a reusable definition is archived to the global lib (' + defRes.file + ')')
 assert(existsSync(join(libPath, 'ZMod5.lean')), '★ the definition exists under VibeMath/Formal/Lib/ (cross-project, NOT inside the institute)')

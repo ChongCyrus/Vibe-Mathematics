@@ -1,10 +1,1123 @@
-# The dsh-vibe-math merged bundle patch. Installing this bundle (dsh plugin --profile <name> add
-# dsh-vibe-math / dsh-market) runs ONE plugin row: the preset installer, which
-# copies the agent presets (vibe-math-v2 + vibe-math-v3 + vibe-math-v4 +
-# vibe-math-v5) into the DSH preset root. The presets themselves register the
-# vibe_math_* / vibe_v4_* / vibe_v5_* tools — nothing is injected into the profile
-# composition directly.
+# dsh-vibe-math bundle patch — the profile layer this package contributes.
+#
+# It inserts the preset installer plus one agent-preset declaration per shipped preset, and it is
+# GENERATED: edit scripts/build-preset-rows.mjs, not this file (tests/audit-preset-rows.test.mjs fails
+# on drift).
+#
+# TWO DSH LINES, ONE FILE:
+#   · DSH >= 0.1.7 — an agent preset is a composition row (`agentPresets.register({id,plugins,…})`).
+#     The declarations below carry the full composition in `config.plugins` and name this package's
+#     own preset-declaration.js, which performs that registration. The installer row then reports the
+#     mechanism and skips the legacy directory.
+#   · DSH <= 0.1.6 — nothing reads preset declarations; presets are directories under
+#     <DSH_HOME>/.agent-presets, which the installer row writes (its directory branch). The four
+#     declaration rows still load (they name our own module, which exists on both lines) but find no
+#     `agentPresets` service and register nothing, so the older line boots without warnings.
+#
+# Composition source of truth: each preset's frozen vibe-math-vN/agent.cordis.yml. The only
+# differences applied to it here:
+#   · @deepseek-ai/dsh-workflow-worker-thread was removed after 0.1.6; @deepseek-ai/dsh-workflow-ptc replaces it
+#   · the legacy `persona.text` key (kept in the frozen file for DSH <= 0.1.2) is unknown from 0.1.3 on — `prefix` carries the same text
+#   · the framework row must name an installed package subpath: a declaration row's `name` is NOT rewritten to a file URL by app-boot (it only recurses into group configs), so a relative path would be resolved against the profile directory
+#   · comment follows the row above (`./vibe-math-vN.js` → the package subpath)
+#   · `command-goal` (the human's /goal) is part of every shipped full preset and must be declared in-preset to reach the agent's scoped command registry
+#   · `present` (deliverable cards) has no host row — it must be declared inside the preset
+#
+# Usage of the installer row's bare specifier: `dsh-vibe-math/installer` resolves through the profile's
+# node_modules (where this package is installed) and is exported by package.json.
 
 - insert:
     - id: vibe-math-preset-installer
       name: dsh-vibe-math/installer
+
+# ── Vibe Math V2 ──────────────────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-v2
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-v2
+        name: "Vibe Math V2"
+        description: "多代理数学问题求解与验证框架（新架构）：概率驱动调度 —— qs.json 问题清单 + Propos/ 命题库 + Reliable/ 参考文献，explorer 拆方向 → 逐方向 Solver 迭代 → 多验证器独立审查→辩论→裁决；断点续跑、人工/自动干预、file/push 双模式进度汇报。"
+        order: 20
+        plugins:
+          # The `vibe-math-v2` agent preset: the full coding agent (`standard`), plus the
+          # NEW-architecture multi-agent mathematical problem-solving & verification
+          # framework (see 新架构-vibe-math-实现方案.md).
+          #
+          # The vibe-math-v2 plugin row consumes the HOST subagents/agents/fs/tools/commands
+          # services and publishes nothing, so it needs no isolate realm.
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a coding agent powered by the {{model}} model.
+
+                ## Vibe Math V2 toolkit
+
+                This session includes the "Vibe Math V2" multi-agent mathematical problem-solving and
+                verification framework (NEW architecture). It is driven by a background scheduler (code),
+                NOT by the model: you only issue the control tools below and read status; the scheduler
+                programmatically runs explorer (direction setting) → per-direction solvers (agent_self_iteration)
+                → multi-reviewer independent review → debate → verdict, and promotes/updates data itself.
+
+                - vibe_math_add_problem {id, description, priority} — add a problem to qs/qs.json.
+                - vibe_math_add_proposition {id, 概述, 布尔估计, 优先级, 价值/关键性} — add a proposition to Propos/.
+                - vibe_math_list_propositions — list the proposition knowledge base (summary index).
+                - vibe_math_start / vibe_math_resume — start / resume the scheduler (resume = continue after a checkpoint or restart).
+                - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
+                - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
+                - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
+                - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
+                - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
+                - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
+                - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
+                - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
+                - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
+                  verification (execute / archive / list the reuse library). The scheduler's child agents
+                  use them too; they work in every mode.
+
+                A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
+                (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
+                and survives restarts via vibe_math_resume.
+
+                Key rules to remember when reporting: a problem is "solved" when one of its solutions reaches
+                正确概率 = 1; a proposition reaches 布尔估计 = 1/0 when a proof/refutation in its lists reaches
+                正确概率 = 1; Propos propositions with 价值/关键性 ≥ promoteValueThreshold auto-promote to qs.json.
+                When the user asks about progress, call vibe_math_report and summarize in plain language.
+
+                Configuration highlights (all tunable via vibe_math_set_params / the settings file):
+                `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
+                (empty = built-in full version); `explorerPersona` / `solverPersona` / `verifierPersona` prepend
+                role instructions; `solverAllowNetwork` / `verifierAllowNetwork` / `solverAllowScripts` /
+                `verifierAllowScripts` toggle network / script tools (empty = inherit, true = allow, false = deny);
+                `directionsPerSolver` = how many directions each solver's prompt includes (1 = own direction only).
+                Data behaviors: an auto-promoted proposition becomes the problem "判断下述命题是否成立：<命题>"
+                with its proofs/refutations transferred into the solution list (verification results sync back to the
+                source proposition); a solver-reported sub-question q_sub registers THREE objects — the q_sub problem,
+                the temporary-assumption proposition p_{q-tmp}, and the problem "判断下述命题是否成立：p_{q-tmp}".
+
+                LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+                  - 'off' (default, no extra requirement) | 'encourage' (solver/verifier agents decide by
+                    implementation difficulty whether to formalize in Lean; once a Lean run passes, the review
+                    subject becomes FIDELITY — do the Lean definitions/objects/conditions/assumptions/conclusion
+                    match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
+                    recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
+                    explicit, reasoned blocker record; the scheduler is never wedged by it).
+                  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+                    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+                  - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+                    (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+                    reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+                  - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
+                    formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
+                    fidelity for you.
+              suffix: Your working directory is {{cwd}}.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────────────────────
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ────────────────────────────────────────────────────────
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────────────────────
+
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────────────────────
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  backgroundMode: continuable
+
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: false
+              searchTimeoutMs: 60000
+
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+
+          # ── Vibe Math V2 ────────────────────────────────────────────────────────────
+
+          # The NEW-architecture framework: this package's plugin (dsh-vibe-math/vibe-math-v2/vibe-math-v2.js)
+          # that registers the vibe_math_* tools, a /vibe slash command, and a background
+          # scheduler (explorer → per-direction solvers → multi-reviewer verification).
+          # It consumes the HOST subagents/agents/fs/tools/commands services and provides
+          # nothing, so it sits loose (no isolate realm).
+          - id: vibe-math-v2
+            name: 'dsh-vibe-math/vibe-math-v2/vibe-math-v2.js'
+
+
+# ── Vibe Math V3 ──────────────────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-v3
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-v3
+        name: "Vibe Math V3"
+        description: "多代理数学研究与验证框架（第三代架构）：论文式 Markdown 知识库（Problems/ 问题清单+依赖+来源动机、Progress/ 研究日志、Propos/ 命题库、Methods/ 通用理论发明库、Verified/ 绝对可信）+ 规划代理自主调度（一次安排接下来 n 次各代理任务）+ 方法库沉淀循环（Method Keeper 提炼理论/框架/工具/方法/思想）；断点续跑、人工/自动干预、多会话并行隔离。"
+        order: 21
+        plugins:
+          # The `vibe-math-v3` agent preset: the full coding agent (`standard`), plus the
+          # THIRD-generation multi-agent mathematical problem-solving & verification
+          # framework (see 实现方案.md): paper-style Markdown knowledge base
+          # (Problems/ Progress/ Propos/ Methods/ Verified/), planner-agent scheduling
+          # (one planner call decides the next N actions), and a universal theory/method
+          # invention library (Method Keeper distills reusable theories/tools/methods).
+          #
+          # The vibe-math-v3 plugin row consumes the HOST subagents/agents/fs/tools/commands
+          # services and publishes nothing, so it needs no isolate realm.
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a coding agent powered by the {{model}} model.
+
+                ## Vibe Math V3 toolkit
+
+                This session includes the "Vibe Math V3" multi-agent mathematical research and
+                verification framework (third-generation architecture). It is driven by a background
+                scheduler (code) + a PLANNER AGENT: the code builds a state brief and a planner agent
+                autonomously decides the next up-to-N actions (spawn solver/verifier/explorer/method-keeper,
+                interrupt, promote, wait), then the code validates and executes them. You do NOT schedule
+                manually — you only issue the control tools below and read status.
+
+                Data is a PAPER-STYLE MARKDOWN knowledge base under {{cwd}}/VibeMath/Projects/<project>/:
+                Problems/ (问题清单, one md per problem: 陈述/状态/依赖/被依赖/来源与动机/计划/解法候选),
+                Progress/ (研究日志, per-direction round narratives), Propos/ (结论/命题库, one md per
+                proposition), Methods/ (通用理论发明库: 理论体系/框架/工具/方法/思想 invented during
+                solving, distilled by the Method Keeper), Verified/ (绝对可信, scheduler-generated read-only),
+                Reliable/ (user references), Notes/, Logs/, State/ (scheduler-private).
+                TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
+                trustworthy; everything else — unverified propositions, Progress/ journals, Method claims —
+                is experiential reference.
+
+                - vibe_math_add_problem {id, description, priority, dependencies?} — add a problem (creates Problems/<id>.md).
+                - vibe_math_add_proposition {id, 概述, 概率, 优先级, 价值/关键性, 分类} — add a proposition (Propos/<分类>/<id>.md).
+                - vibe_math_list_propositions — list the proposition knowledge base.
+                - vibe_math_start / vibe_math_resume — start / resume the scheduler (resume = continue after checkpoint/restart).
+                - vibe_math_status / vibe_math_report — read status / full progress report (report writes Progress_Logs/report.json + Logs/报告.md).
+                - vibe_math_pause / vibe_math_abort — pause / abort.
+                - vibe_math_set_mode {mode: manual|auto} — switch manual / auto (manual gates: 计划审批 / 裁决 / 方法晋升).
+                - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup; V3 additions: planningHorizon,
+                  plannerEnabled/plannerProvider/plannerModel/plannerPersona, planMinIntervalMs, plannerMaxFails,
+                  methodKeepIntervalMs/methodKeepEvery, methodAutoPromote, indexAutoRebuild, projectLockTimeoutMs,
+                  formalVerify/leanCommand/leanArgs/leanTimeoutMs — Lean 形式化验证（off = 默认不额外要求，
+                  encourage = 按实现难度自行形式化、Lean 通过后审查对象变为忠实性，require = 同上并加结论门禁）).
+                - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
+                - vibe_math_plan {force?} — show queued plan / last plan, or force a planning round.
+                - vibe_math_index — rebuild State/index.json from the Markdown knowledge base.
+                - vibe_math_method_add / vibe_math_method_list — manually add / list method cards (Methods/ + global).
+                - vibe_math_lock_status — project lock occupancy.
+                - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
+                - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
+                - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
+                - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
+                  verification (execute / archive / list the reuse library). The scheduler's child agents
+                  use them too; they work in every mode.
+
+                A /vibe slash command mirrors the main controls (/vibe start|resume|pause|abort|status|report|mode
+                <auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|...).
+                Data survives restarts via vibe_math_resume.
+
+                Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
+                (the scheduler writes Verified/问题/<id>.md); a proposition reaches 已验证·真/假 when a 证明/证伪
+                entry reaches 概率 = 1 (Verified/命题/<id>.md); Propos propositions with 价值/关键性 ≥
+                promoteValueThreshold auto-promote into Problems/ as "判断下述命题是否成立：<命题>" (verification
+                results sync back to the source proposition); a solver-reported sub-question q_sub registers THREE
+                objects (q_sub problem + judge problem + p-tmp temporary-assumption proposition) with full 来源与动机.
+
+                LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+                  - 'off' (default, no extra requirement) | 'encourage' (solver/verifier agents decide by
+                    implementation difficulty whether to formalize in Lean; once a Lean run passes, the review
+                    subject becomes FIDELITY — do the Lean definitions/objects/conditions/assumptions/conclusion
+                    match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
+                    withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
+                    explicit, reasoned blocker record; the scheduler is never wedged by it).
+                  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+                    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+                  - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+                    (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+                    reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+                  - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
+                    formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
+                    fidelity for you.
+                When the user asks about progress, call vibe_math_report and summarize in plain language.
+              suffix: Your working directory is {{cwd}}.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────────────────────
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ────────────────────────────────────────────────────────
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────────────────────
+
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────────────────────
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  backgroundMode: continuable
+
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: false
+              searchTimeoutMs: 60000
+
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+
+          # ── Vibe Math V3 ────────────────────────────────────────────────────────────
+
+          # The THIRD-generation framework: this package's plugin (dsh-vibe-math/vibe-math-v3/vibe-math-v3.js)
+          # that registers the vibe_math_* tools, a /vibe slash command, and a background
+          # scheduler (planner-agent scheduling → explorer → per-direction solvers →
+          # multi-reviewer verification; method library + Method Keeper; paper-style
+          # Markdown knowledge base). It consumes the HOST subagents/agents/fs/tools/commands
+          # services and provides nothing, so it sits loose (no isolate realm).
+          - id: vibe-math-v3
+            name: 'dsh-vibe-math/vibe-math-v3/vibe-math-v3.js'
+
+
+# ── Vibe Math V4 ──────────────────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-v4
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-v4
+        name: "Vibe Math V4"
+        description: "常驻自组织合作研究框架（第四代架构）：一组持久化常驻子代理互相留言、集体开会，自主决定一切任务安排；各自沉淀 progress/命题/方法/子问题库并互相查阅；验证仅当全体常驻一致（真或假）才写入 Verified/，否则留库附概率；上下文达阈值自动 /compact；仅当全体一致认为原问题已解决才停止；断点续跑、多会话隔离、可随时人工干预/增开关闭常驻。"
+        order: 22
+        plugins:
+          # The `vibe-math-v4` agent preset: the full coding agent (`standard`), plus the
+          # FOURTH-generation "persistent self-organizing collaborative research" framework
+          # (see 实现方案.md): a set of PERSISTENT resident subagents that decide ALL task
+          # allocation among themselves (message/meeting), persist their own progress /
+          # proposition / method / sub-problem libraries, verify ONLY by unanimous
+          # consensus (else keep as unverified with a probability), self-compact at a
+          # context threshold, and stop only when all residents agree the original problem
+          # is solved. The framework is a FACILITATOR (message bus / meeting / persist /
+          # consensus-verify / context management / resume) — it NEVER assigns tasks.
+          #
+          # The vibe-math-v4 plugin row consumes HOST subagents/agents/fs/tools/commands
+          # services and publishes nothing, so it needs no isolate realm.
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a coding agent powered by the {{model}} model.
+
+                ## Vibe Math V4 toolkit
+
+                This session includes the "Vibe Math V4" persistent self-organizing collaborative
+                research framework (fourth-generation architecture). It is a REAL research group that
+                works by talking: a set of RESIDENT subagents message each other and hold meetings,
+                and they decide ALL task allocation, division of labor, priorities, what to verify, and
+                when to stop — through their own discussion. There is NO central scheduler assigning
+                tasks. Each resident persists its own progress / proposition / method / sub-problem
+                library and WRITES those files DIRECTLY (via fs) in a documented format; anyone may READ
+                everyone else's files (read-only). Anything is "established" only when ALL residents
+                agree (unanimous true or false); otherwise it stays in a library with a probability.
+
+                The framework is just a facilitator: it relays the group's conversation (a resident's
+                `input` is forwarded to the others, and meetings forward everyone's contribution so the
+                team genuinely discusses/debates), convenes and records meetings, exposes a shared task
+                board, and stops the run only when the whole team agrees the problem is solved.
+
+                At brainstorm, residents are told they MAY (but are never forced to) autonomously build a
+                NEW general theory/framework/tool — by abstracting/generalising a structure (like inventing
+                group theory to solve polynomial equations, or building functional analysis as a general
+                framework). If they do, they must state its value to the original problem and may refine /
+                generalise it over time; such artifacts go in their Methods/<resident>/ library. This is an
+                encouragement, not an assignment.
+
+                **YOUR ROLE — LET THEM SELF-ORGANIZE (hands-off):** you are NOT a moderator/coordinator.
+                Do NOT inject agendas, priorities, division-of-labor, or verification decisions, and do
+                NOT direct the residents' work. After `vibe_v4_start`, stay passive: read `vibe_v4_status`
+                / `vibe_v4_report` and summarize in plain language when asked. Use `vibe_v4_message` /
+                `vibe_v4_meeting` ONLY when the user explicitly asks you to intervene, or when the group
+                is visibly deadlocked (all idle & nothing progressing for a long time) — and even then,
+                only relay/nudge the group to decide, never decide for them.
+
+                Data lives under {{cwd}}/VibeMath/Projects/<project>/:
+                  Problems/ (original problem card), Progress/<resident>/ (each resident's progress),
+                  Propos/<resident>/ (each resident's propositions, "- ID: p-<id>" / "- 概率:" / "- 价值程度:" ...),
+                  Methods/<resident>/ (theories/tools), Subproblems/<resident>/, Shared/ (meeting transcripts /
+                  task board / debates), Verified/ (read-only, ONLY after unanimous consensus),
+                  State/ (framework-private), Reliable/ (references), Notes/.
+
+                Main controls (recommended flow: configure FIRST, then start):
+                  - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
+                  - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
+                  - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain.
+                  - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
+                  - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
+                  - vibe_v4_meeting {agenda} — force a meeting.
+                  - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
+                  - vibe_v4_list_members — list residents.
+                  - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib — Lean formal verification
+                    (execute / archive / list the reuse library). Residents use them too; they work in every mode.
+                  - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
+                    objects, recorded blockers, formalization TODO, library paths).
+                  - vibe_v4_prompts {which: brainstorm|normal|heartbeat|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
+                A /v4 slash command mirrors the main controls (configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set).
+
+                TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
+                trustworthy; everything else — unverified resident claims, Progress/, Method claims —
+                is experiential reference. A proposition / method / theory only reaches Verified/ when
+                ALL residents unanimously agree true (or all agree false); otherwise it stays in its
+                library with a probability estimate.
+
+                LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+                  - 'off' (default, no extra requirement) | 'encourage' (the residents decide by implementation
+                    difficulty whether to formalize in Lean; once a Lean run passes, their unanimous vote becomes
+                    a FIDELITY review — do the Lean definitions/objects/conditions/assumptions/conclusion match
+                    the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
+                    withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
+                    explicit, reasoned blocker record; the run is never wedged by it).
+                  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
+                    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+                  - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+                    (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+                    reported as LEAN_NOT_FOUND and still lets the code be written and archived.
+                  - vibe_v4_status / vibe_v4_report / vibe_v4_formal_report show the mode, the per-object formal
+                    status and the formalization TODO (Formal/TODO.md). The framework never installs Lean and
+                    never judges fidelity for you.
+
+                When the user asks about progress, call vibe_v4_report and summarize in plain language.
+              suffix: Your working directory is {{cwd}}.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────────────────────
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ────────────────────────────────────────────────────────
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────────────────────
+
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────────────────────
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  backgroundMode: continuable
+
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: false
+              searchTimeoutMs: 60000
+
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+
+          # ── Vibe Math V4 ────────────────────────────────────────────────────────────
+
+          # THE FOURTH-GENERATION framework: this package's plugin (dsh-vibe-math/vibe-math-v4/vibe-math-v4.js)
+          # that registers the vibe_v4_* tools + a /v4 slash command, and facilitates a
+          # persistent self-organizing band of resident subagents (message bus / meetings /
+          # per-resident artifact libraries / unanimous-consensus verification / context
+          # compaction / resume / human intervention). It consumes HOST
+          # subagents/agents/fs/tools/commands services and provides nothing, so it sits
+          # loose (no isolate realm).
+          - id: vibe-math-v4
+            name: 'dsh-vibe-math/vibe-math-v4/vibe-math-v4.js'
+
+
+# ── Vibe Math V5 ──────────────────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-v5
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-v5
+        name: "Vibe Math V5"
+        description: "研究所体系（第五代架构）：设院士（领头人/组织协调中心）、常驻研究员、临时工三类职员；成员可群聊/开会、自主分工与雇佣解雇临时工；院士统筹全所、拆解并分派任务、设定优先级、主持会议、督导进度；每位成员有自己的 Progress/命题/方法/子问题库（progress 有完整定义与用途说明）；任何结论须至少 m 名有表决权者一致给出布尔概率 1 或 0 才写入 Verified/，否则留库附全组平均概率；上下文达阈值自动压缩；仅当全体有表决权者一致认为原问题已解决才停止；状态存于加固 JSON（State/<研究所>.v5state.json），支持断点续跑与多会话隔离。"
+        order: 23
+        plugins:
+          # The `vibe-math-v5` agent preset: the full coding agent (`standard`), plus the
+          # FIFTH-generation "research institute" framework (see 实现方案.md).
+          #
+          # V5 turns v4's band of residents into a RESEARCH INSTITUTE with real offices:
+          #   · 院士 (academician) — the leader and organizational centre: builds the
+          #     institute-wide view, decomposes the problem into tasks and ASSIGNS them,
+          #     sets priorities, chairs meetings, supervises progress, reallocates temps.
+          #   · 常驻研究员 (permanent researchers) — vote, hire/fire their own temps.
+          #   · 临时工 (temp workers) — hired per task by the academician or a researcher;
+          #     no vote.
+          # Members talk in a group chat and hold meetings; anyone may propose verifying an
+          # object, but an object enters Verified/ ONLY when at least m voting members
+          # (academician + permanent researchers) agree AND every one of those votes is the
+          # boolean probability 1 (true) or every one is 0 (false). Anything else stays in
+          # its library with the group's mean probability.
+          #
+          # The framework is only the MEDIUM (message relay / meetings / task board /
+          # artifact libraries / consensus tally / context / resume). It NEVER assigns
+          # tasks — the academician does that, as a member subject to the same m-vote rule.
+          #
+          # The vibe-math-v5 plugin row consumes HOST subagents/agents/fs/tools/commands/
+          # timer services and publishes nothing, so it needs no isolate realm. Institute
+          # state lives in its own hardened JSON file (State/<institute>.v5state.json):
+          # the plugin appends NOTHING to any host session log.
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a coding agent powered by the {{model}} model.
+
+                ## Vibe Math V5 toolkit — the research-institute framework
+
+                This session includes "Vibe Math V5": a self-organizing RESEARCH INSTITUTE
+                that solves a research problem by talking. It is NOT a scheduler. It has
+                three kinds of staff:
+
+                  · 院士 (academician, code `acad`) — ONE. The leader and the ORGANIZATIONAL
+                    CENTRE of the institute. It researches too, but it is chiefly responsible
+                    for the institute-wide view, decomposing the problem into tasks and
+                    ASSIGNING them to suitable members, setting priorities, chairing
+                    meetings, supervising progress and unblocking stalled directions, and
+                    reallocating temp workers. It has NO extra voting weight and cannot
+                    decide truth by fiat.
+                  · 常驻研究员 (permanent researchers, `r-<n>`) — hold the vote, and may
+                    hire/fire their OWN temp workers freely.
+                  · 临时工 (temp workers, `t-<n>`) — hired for a specific task by the
+                    academician or a researcher. They may read, think, speak, keep their own
+                    library and claim/be assigned tasks, but they have NO vote.
+
+                Members talk in a group chat (`vibe_v5_say`), hold meetings, keep their own
+                Progress/Propos/Methods/Subproblems libraries (written directly with fs in a
+                documented format — the charter explains the exact fields and why progress
+                matters), and share a compare-and-set task DAG (`vibe_v5_task_*`).
+
+                **TRUTH IS HARD BY DESIGN.** An object enters `Verified/` ONLY when at least
+                m voting members (academician + permanent researchers) return a BOOLEAN
+                probability and ALL of them return the same one — every vote exactly 1
+                (true), or every vote exactly 0 (false). A vote strictly between 0 and 1 is
+                recorded as an abstention: it does not count toward m, but it does count
+                toward the group's mean probability. Any vote pointing the other way blocks
+                the verdict. Otherwise the object stays in its library labelled 未定论 with
+                the mean probability and the full debate record. There is no forced closure.
+
+                **YOUR ROLE — HANDS-OFF.** You are the institute's EXTERNAL INTERFACE (所办),
+                not a member. You do NOT research, do NOT vote, and hold no library. Report
+                status in plain language, relay the user's instructions into the institute,
+                and hold the creation authority the platform requires. Do NOT inject
+                agendas, priorities, division of labour, or verification verdicts — the
+                academician and the researchers decide all of that. After
+                `vibe_v5_start`, stay passive: read `vibe_v5_report` / `vibe_v5_status` and
+                summarise. Use `vibe_v5_message` / `vibe_v5_meeting` ONLY when the user
+                explicitly asks, or when the institute is visibly deadlocked — and even then
+                only relay/nudge, never decide for them.
+
+                Data lives under {{cwd}}/VibeMath/Projects/<project>/Institutes/<institute>/:
+                  Members/<id>/Progress/progress.md, Members/<id>/Propos/<id>.md,
+                  Members/<id>/Methods/<id>.md, Members/<id>/Subproblems/<id>.md,
+                  Shared/TaskBoard.md (human view), Shared/Chat/<day>.md,
+                  Shared/Meetings/<id>.md, Shared/Debates/<target>.md,
+                  Problems/<id>.md, Verified/<kind>/<id>.md (read-only; m-vote only),
+                  State/ (a human-readable MIRROR only — the authoritative state is the
+                  session log projection; never hand-edit State/).
+
+                Main controls (recommended flow: configure FIRST, then start):
+                  - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
+                  - vibe_v5_start {problem?, researcherCount?, academician?, seedDirections?} — found the institute (academician + researchers) and begin.
+                  - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools.
+                  - vibe_v5_pause / vibe_v5_resume / vibe_v5_stop / vibe_v5_status / vibe_v5_report.
+                  - vibe_v5_message {to|all, content} — relay a human message into the institute.
+                  - vibe_v5_meeting {agenda, kind} — convene a meeting.
+                  - vibe_v5_members — roster (office/employer/status/direction).
+                  - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
+                  - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+                  - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
+                    verification (execute / archive / list the reuse library). Members use them
+                    too; they work in every mode.
+                A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+
+                LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
+                  - 'off' (default, no extra requirement) | 'encourage' (members decide by
+                    implementation difficulty whether to formalize; a passing Lean run turns the
+                    vote into a FIDELITY review of the Lean statements) | 'require' (same, plus a
+                    gate: a true/false verdict is withheld as 未定论 until the object is Lean-passed
+                    or carries an explicit, reasoned blocker record).
+                  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean;
+                    reusable definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+                  - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+                    (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
+                    reported as LEAN_NOT_FOUND, a host with no subprocess service as NO_SUBPROCESS
+                    (on a timeout the process is terminated first), and in every one of those cases the
+                    code can still be written down and archived.
+                  - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
+                    formalization TODO. The framework never installs Lean and never judges fidelity.
+
+                TRUST RULE: only Verified/ (and library cards marked 已验证·真/假) is
+                absolutely trustworthy. Everything else — unverified claims, Progress/,
+                unverified Methods/ assertions — is experiential reference.
+
+                When the user asks about progress, call vibe_v5_report and summarise in
+                plain language. Never present an unverified claim as established.
+              suffix: Your working directory is {{cwd}}.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────────────────────
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ─────────────────────────────────────────────────────────
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────────────────────
+
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────────────────────
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  backgroundMode: continuable
+
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: false
+              searchTimeoutMs: 60000
+
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+
+          # ── Vibe Math V5 ────────────────────────────────────────────────────────────
+
+          # THE FIFTH-GENERATION framework: this package's plugin (dsh-vibe-math/vibe-math-v5/vibe-math-v5.js) that
+          # registers the vibe_v5_* tools + a /v5 slash command and runs the research
+          # institute (group chat / meetings / per-member artifact libraries / the academician's
+          # organization & task assignment / m-vote boolean consensus verification /
+          # hire & fire / context compaction / resume / human intervention).
+          #
+          # It consumes HOST subagents/agents/fs/tools/commands/timer services; it provides
+          # no service of its own, so it sits loose (no isolate realm). Institute state is
+          # persisted by the plugin itself in State/<institute>.v5state.json — the host
+          # session log is never written (DSH refuses to load a session that carries an
+          # unknown event type, and Session.append cannot mark one ignorable).
+          - id: vibe-math-v5
+            name: 'dsh-vibe-math/vibe-math-v5/vibe-math-v5.js'

@@ -1,8 +1,10 @@
 // ============================================================
 // Vibe-Math-V5 SELF-DRIVING TEST — drives the REAL vibe-math-v5 plugin with a mock
-// host, including a faithful mock of the HOST-ONLY session projection unit it relies
-// on (register / eager fold on append / stateOf), so the projection storage path is
-// actually exercised rather than stubbed out.
+// host. The host deliberately offers NO session services: v5 keeps its durable state in
+// the hardened JSON file State/<institute>.v5state.json and appends NOTHING to the host
+// session log (an unknown event type in the log makes the session unresumable, because
+// DSH's session persistence refuses to load it unless the writer marked it `ignorable`
+// — and `Session.append` cannot set that field).
 //
 // Run: node tests/selfdrive-v5.mjs   (temp workspace; assertions; non-zero exit on failure)
 // ============================================================
@@ -20,52 +22,22 @@ const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-// ---------- mock host: projection registry ----------
-// Mirrors the contract the plugin depends on: register returns a disposer, every
-// committed event is folded EAGERLY into every unit's cell, stateOf materialises a
-// cell lazily with init().
-function makeProjectionRegistry() {
-  const units = new Map()
-  const cells = new Map()
-  function cellMap(sess) {
-    const id = String(sess.id)
-    let m = cells.get(id)
-    if (!m) { m = new Map(); cells.set(id, m) }
-    return m
+// The durable authority. Reading it back is how this suite observes "committed": the
+// plugin no longer writes anything a test could read out of the session log.
+const V5STATE = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
+const readV5State = () => { try { return JSON.parse(readFileSync(V5STATE, 'utf8')) } catch (e) { return null } }
+// Commits are applied to the in-memory snapshot at once but WRITTEN through a deferred per-file
+// chain, so a test that wants to observe a commit must wait for it to land on disk.
+const waitV5State = async (pred, tries = 80) => {
+  let s = readV5State()
+  for (let i = 0; i < tries; i++) {
+    if (s && (!pred || pred(s))) return s
+    await sleep(10)
+    s = readV5State()
   }
-  return {
-    register(def) {
-      if (!def || typeof def.key !== 'string') throw new Error('projection: key required')
-      units.set(def.key, def)
-      return () => { units.delete(def.key) }
-    },
-    stateOf(session, key) {
-      const def = units.get(key)
-      if (!def) return undefined
-      const m = cellMap(session)
-      if (!m.has(key)) m.set(key, def.init(session.header, session.inheritedEventCount || 0))
-      return m.get(key)
-    },
-    checkpoint(session) {
-      const out = {}
-      const m = cellMap(session)
-      for (const [k, def] of units) out[k] = { ver: def.stateVersion, seq: session.seq, val: m.get(k) }
-      return out
-    },
-    _drive(session, event) {
-      const m = cellMap(session)
-      for (const [k, def] of units) {
-        const cur = m.has(k) ? m.get(k) : def.init(session.header, session.inheritedEventCount || 0)
-        let next
-        try { next = def.apply(cur, event) } catch (e) { next = cur }
-        m.set(k, next)
-      }
-    },
-    _units: units,
-  }
+  return s
 }
 
-const projections = makeProjectionRegistry()
 const listeners = {}
 const toolRegs = []
 const commandRegs = []
@@ -75,6 +47,7 @@ const interrupts = []
 const drains = []
 const liveAgents = new Map()
 
+// The session records whatever it is handed, so the suite can assert that it was handed NOTHING.
 function makeMockSession(id, parentSession) {
   const events = []
   const s = {
@@ -85,10 +58,9 @@ function makeMockSession(id, parentSession) {
     append(type, data) {
       const ev = { type, data, seq: events.length, time: Date.now() }
       events.push(ev)
-      projections._drive(s, ev)
       return ev
     },
-    deriveMessages() { return [] },   // non-surface events must never become messages
+    deriveMessages() { return [] },   // nothing may enter the model history
     snapshotEvents(from) { return events.slice(from || 0) },
     ownEvents() { return events.slice() },
     _events: events,
@@ -100,7 +72,6 @@ const ROOT = { id: 'sess-A', options: { provider: 'mock', model: 'm' }, session:
 
 const ctx = {
   get(name) {
-    if (name === 'sessionProjections') return projections
     if (name === 'sandboxPolicy') return undefined
     if (name === 'compaction') return undefined
     if (name === 'subprocess') {
@@ -126,7 +97,6 @@ const ctx = {
   timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
   tools: { register(spec) { toolRegs.push(spec); return () => {} } },
   commands: { register(spec) { commandRegs.push(spec); return () => {} } },
-  sessions: { async flush() { return true } },
   subagents: {
     list() { return ['spawn'] },
     async startContinuable({ label, request }) {
@@ -280,10 +250,20 @@ assert(spawns[0].persona.indexOf('分派') !== -1 && spawns[0].persona.indexOf('
 assert(spawns[0].persona.indexOf('m = 3') !== -1 || /至少有 m = \d+ 名有表决权者/.test(spawns[0].persona), 'charter states the m-vote rule with the live m')
 
 const st0 = await callTool('vibe_v5_status', {})
-assert(st0.backend === 'projection', 'durable state uses the session-projections backend (got ' + st0.backend + ')')
+assert(st0.backend === 'file', 'durable state uses the hardened JSON backend (got ' + st0.backend + ')')
 assert(st0.members.length === 4 && st0.members.filter(m => m.kind === 'researcher').length === 3, 'status roster is 1 academician + 3 researchers')
-assert(ROOT_SESSION._events.some(e => String(e.type).indexOf('vibe5/') === 0), 'institute events are appended to the session log')
-assert(ROOT_SESSION.deriveMessages().length === 0, 'institute events never enter the model history (zero context cost)')
+// ★ The whole point of the persistence fix: the plugin used to append `vibe5/*` events to the
+// user's own session log, which made that session UNRESUMABLE (DSH refuses to load a log with an
+// unknown event type unless it is marked `ignorable`, and `Session.append` cannot set that field).
+// The state now lives in the JSON file, so the log must stay COMPLETELY empty.
+assert(ROOT_SESSION._events.filter(e => String(e.type).indexOf('vibe5/') === 0).length === 0,
+  '★ the plugin appends NO institute events to the host session log')
+assert(ROOT_SESSION._events.length === 0,
+  '★ the host session log is untouched by the whole founding (the user session stays resumable)')
+assert(ROOT_SESSION.deriveMessages().length === 0, 'nothing enters the model history (zero context cost)')
+const st0File = await waitV5State(s => s.institutes['default::institute'].members.length === 4)
+assert(!!st0File && !!st0File.institutes['default::institute'], 'the institute state is on disk in State/institute.v5state.json')
+assert(!!st0File && st0File.institutes['default::institute'].members.length === 4, 'the JSON state holds the same 4 members (got ' + (st0File ? st0File.institutes['default::institute'].members.length : 'none') + ')')
 assert(st0.quorum.m === 3 && st0.quorum.voterCount === 4, 'm = min(quorumCap=3, P=4) = 3 (got ' + st0.quorum.m + ')')
 assert(st0.members.every(m => m.busy === true), 'every member is marked in-flight while its founding turn runs')
 
@@ -429,8 +409,15 @@ if (existsSync(rosterMirror)) {
 }
 const boardMirror = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'TaskBoard.md')
 assert(existsSync(boardMirror), 'the human-readable task board mirror (Shared/TaskBoard.md) was written')
-assert(existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'README.md')),
-  'State/ carries a README stating that the authoritative state is the session-log projection')
+const stateReadme = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'README.md')
+assert(existsSync(stateReadme), 'State/ carries a README')
+if (existsSync(stateReadme)) {
+  const readmeText = readFileSync(stateReadme, 'utf8')
+  assert(/权威状态/.test(readmeText) && /v5state\.json/.test(readmeText),
+    'the State/ README names State/<研究所>.v5state.json as the authoritative state')
+  assert(/不在任何宿主会话日志里/.test(readmeText),
+    'the State/ README states that the authority is NOT in any host session log')
+}
 
 // ---------- the institute stops only on a unanimous solve vote ----------
 solvePlan = false

@@ -134,34 +134,34 @@ const STRINGS = {
     },
 
     projection: {
-      bandTitle: '状态权威源：会话日志的 host-only 投影单元（键 vibeMathV5）',
-      bandSub: '副作用只是往会话日志追加事件 —— 不进模型上下文（零 token 成本），checkpoint / restore 交给 DSH',
+      bandTitle: '状态权威源：加固 JSON 文件 State/<institute>.v5state.json',
+      bandSub: '同一份纯折叠 applyV5Event · 整份快照经串行 promise 链写入 · 读前必先 load —— 事件不进模型上下文（零 token 成本）',
       eventsCard: [
         'applyV5Event（纯折叠，只此一份）',
-        '11 类事件：institute / member / task /',
+        '12 类事件：institute / member / task /',
         'message / delivered / meeting / debate /',
-        'verdict / queue / counters / progress',
+        'verdict / formal / queue / counters / progress',
         '未知或损坏事件 → 跳过并记入 diagnostics：',
         '可用性优先，绝不因一条坏事件卡死全场',
       ],
       checkpointCard: [
-        'checkpoint / restore / resume',
-        '投影随会话日志一起 checkpoint；restore',
-        '时从快照 + 日志尾部重新折叠 → 跨进程与',
-        '同进程恢复走同一条代码路径',
-        '回退：宿主无 sessionProjections 时改用',
-        '加固 JSON：State/<institute>.v5state.json',
+        '唯一后端：加固 JSON 文件',
+        '读之前必先 load；每次提交把整份快照经',
+        '一条串行 promise 链写入（后写者不会用旧',
+        '子集覆盖新状态）；跨进程与同进程恢复走',
+        '同一条代码路径：读文件 → 折叠',
+        '研究所事件绝不写进宿主会话日志（DSH 拒载未知事件）',
       ],
     },
 
     files: {
-      bandTitle: '文件面：人可读产物（投影之外的一切都只是镜像）',
-      bandSub: '共识的权威在投影；文件是工作区与可读产物，手工改坏不会破坏研究所',
+      bandTitle: '文件面：人可读产物（除 State/<institute>.v5state.json 外都只是镜像）',
+      bandSub: '权威状态是 State/<institute>.v5state.json；文件是工作区与可读产物，手工改坏不会破坏研究所',
       card: [
         'Members/<id>/Progress|Propos|Methods|Subproblems/',
         '只有本人可写，人人可读（跨读被鼓励）',
         'Shared/Chat/*.md · Shared/Meetings/<mt-id>.md · Shared/Debates/<obj>.md',
-        'Shared/TaskBoard.md · Institutes.md（编制镜像）· State/README.md（说明此处非权威）',
+        'Shared/TaskBoard.md · Institutes.md（编制镜像）· State/README.md（说明权威＝同目录 v5state.json）',
         'Problems/<id>.md（原问题）· Problems/conclusion.md（结题）· Verified/<类型>/<id>.md（定论，只读）',
       ],
     },
@@ -272,34 +272,34 @@ const STRINGS = {
     },
 
     projection: {
-      bandTitle: 'Source of truth: host-only projection cell of the session log (key vibeMathV5)',
-      bandSub: 'The only side effect is appending events to the session log, outside the model context (zero token cost)',
+      bandTitle: 'Source of truth: hardened JSON file State/<institute>.v5state.json',
+      bandSub: 'the same pure applyV5Event fold · serial whole-snapshot writes · load before every read (zero token cost)',
       eventsCard: [
         'applyV5Event (pure fold, the only copy)',
-        '11 kinds of events: institute / member / task /',
+        '12 kinds of events: institute / member / task /',
         'message / delivered / meeting / debate /',
-        'verdict / queue / counters / progress',
+        'verdict / formal / queue / counters / progress',
         'unknown/bad event → skipped and recorded in diagnostics:',
         'availability first, one bad event never stalls the field',
       ],
       checkpointCard: [
-        'checkpoint / restore / resume',
-        'the projection is checkpointed with the session log; restore',
-        're-folds snapshot + log tail → across and within processes',
-        'one process recovery takes the same code path',
-        'fallback: host without sessionProjections → hardened',
-        'JSON: State/<institute>.v5state.json',
+        'the only backend: hardened JSON file',
+        'never read before load; each commit writes the whole',
+        'snapshot through a serial chain, so a late writer cannot',
+        'land a stale subset; across and within processes recovery',
+        'takes one code path: read file → fold. Institute events',
+        'never enter the host session log; DSH refuses unknown ones',
       ],
     },
 
     files: {
-      bandTitle: 'File plane: human-readable artifacts (everything outside the projection is only a mirror)',
-      bandSub: 'The authority for consensus is the projection; files are readable artifacts, breaking them by hand does not damage it',
+      bandTitle: 'File plane: readable artifacts (all except State/<institute>.v5state.json are mirrors)',
+      bandSub: 'The authority is State/<institute>.v5state.json; everything else is a readable artifact — hand edits change nothing',
       card: [
         'Members/<id>/Progress|Propos|Methods|Subproblems/',
         'only the owner can write, everyone can read (cross-reading is encouraged)',
         'Shared/Chat/*.md · Shared/Meetings/<mt-id>.md · Shared/Debates/<obj>.md',
-        'Shared/TaskBoard.md · Institutes.md (roster mirror) · State/README.md (says the authority is not here)',
+        'Shared/TaskBoard.md · Institutes.md (roster mirror) · State/README.md (says the authority is the sibling v5state.json)',
         'Problems/<id>.md (original problem) · Problems/conclusion.md (conclusion) · Verified/<type>/<id>.md (conclusion, read-only)',
       ],
     },
@@ -520,7 +520,7 @@ arrow(556, 430, 578, 430, { color: C.house, dashed: true, width: 1.8, marker: 'b
 
 // ---- 连线：框架 ↔ 数据面 ----
 arrow(400, 940, 400, 964, { color: C.data, marker: 'bothData', width: 2 })
-plain(392, 956, 'append / fold / stateOf', { fill: C.data, anchor: 'end', size: 10.5, halo: true })
+plain(392, 956, 'load / commit / fold', { fill: C.data, anchor: 'end', size: 10.5, halo: true })
 arrow(1280, 940, 1280, 964, { color: C.data, marker: 'bothData', width: 2 })
 plain(1288, 956, T.links.filesLabel, { fill: C.data, anchor: 'start', size: 10.5, halo: true })
 

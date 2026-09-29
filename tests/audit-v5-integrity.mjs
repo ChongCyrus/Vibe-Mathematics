@@ -142,6 +142,34 @@ else {
 }
 
 // ---- 3. session-API surface used by tool handlers -----------------------
+// `s` is not always the session API object. The toolFilter sanitiser added for the v2/v3/v4
+// parity guard contains `.map(function(s){ return s.trim() })` — there `s` is a LOCAL string
+// parameter, and a flat `s.NAME(` scan reported the phantom finding "calls s.trim() but the
+// session API does not export it". A false FINDING is as corrosive as a blind spot (it trains
+// the reader to ignore the audit), so the scan now respects the ONE shadowing form the plugin
+// actually uses: a plain `function (...)` whose parameter list binds `s`.
+//
+// This is scope analysis, not an allowlist: any `s.X()` inside such a body CANNOT be a call on
+// the enclosing session object — the parameter shadows it. The tool handlers themselves are
+// ARROW functions (`(s, a, x) => s.…)`), so their `s` IS the session API and stays scanned; the
+// self-check at the bottom of this file proves the skip does not blind those.
+function localSParamBodySpans(text) {
+  const spans = []
+  const re = /function\s*(?:[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)\s*\{/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const params = m[1].split(',').map((p) => p.trim().replace(/[={].*$/s, '').trim())
+    if (params.indexOf('s') === -1) continue
+    let i = m.index + m[0].length - 1   // sitting on the opening '{'
+    let depth = 0
+    for (; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      else if (text[i] === '}') { depth--; if (depth === 0) break }
+    }
+    spans.push([m.index, i])
+  }
+  return spans
+}
 // The returned API object is the last `return { ... }` inside makeSession.
 const apiStart = src.lastIndexOf('    return {\n      sessionId,')
 if (apiStart === -1) findings.push('could not locate the session API return object')
@@ -151,14 +179,19 @@ else {
   const apiKeys = new Set()
   for (const m of apiText.matchAll(/(?:^|[\s{,])([A-Za-z_$][\w$]*)\s*:/g)) apiKeys.add(m[1])
   for (const m of apiText.matchAll(/(?:^|[\s{,])([A-Za-z_$][\w$]*)\s*,/g)) apiKeys.add(m[1])
+  const localScopes = localSParamBodySpans(src)
+  const inLocalScope = (idx) => localScopes.some(([a, b]) => idx >= a && idx <= b)
   const usedOnS = new Map()
+  let shadowed = 0
   for (const m of src.matchAll(/(?<![\w$.])s\.([A-Za-z_$][\w$]*)\s*\(/g)) {
+    if (inLocalScope(m.index)) { shadowed++; continue }
     if (!usedOnS.has(m[1])) usedOnS.set(m[1], lineOf(m.index))
   }
   for (const [k, line] of usedOnS) {
     if (!apiKeys.has(k)) findings.push('line ' + line + ': tool handler calls s.' + k + '() but the session API does not export it')
   }
-  notes.push('session API keys: ' + apiKeys.size + '; s.*() called: ' + usedOnS.size)
+  notes.push('session API keys: ' + apiKeys.size + '; s.*() called: ' + usedOnS.size +
+    (shadowed ? '; skipped ' + shadowed + ' inside a local `function(s)` scope (a shadowing parameter, not the session API)' : ''))
 }
 
 // ---- 4. error codes ----------------------------------------------------
@@ -333,7 +366,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['reusable definitions live in the GLOBAL cross-project library', 'const okWrite = await writeTextAbs(instRootless(rel), body)'],
     ['the Lean path guard normalises .. (no string-prefix traversal hole)', 'const norm = normalizeAbsPath(abs)'],
     ['a missing toolchain degrades to a readable result, not a crash', "code: 'LEAN_NOT_FOUND'"],
-    ['the formal record is durable projection state', "formal: 'vibe5/formal',"],
+    ['the formal record is durable state (folded into State/<institute>.v5state.json)', "formal: 'vibe5/formal',"],
     ['the state block advertises the formalization counts', "b.push('[形式化] ' + (formalMode()"],
     ['the reply contract carries the difficulty judgement', "L.push('  \"formal\": {"],
   ]
@@ -428,7 +461,20 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     const stripped = stripNoise(fixture)
     if (stripped.includes('phantom_call')) findings.push('stripNoise() left a comment in the code stream (a phantom call site would be reported)')
     if (!/'/.test(stripped)) findings.push('stripNoise() dropped a value placeholder')
-    notes.push('scanner self-check: stripped output parses=' + (r.status === 0) + '; quoted-class fixture=' + (!stripped.includes('phantom_call')))
+    // The session-API scan must ignore a SHADOWING `function(s)` parameter while still seeing the
+    // real arrow handlers. Without this, either the false `s.trim()` finding comes back or the
+    // scope skip silently blinds every tool-handler call — both are failures worth failing on.
+    const scopeFixture = [
+      'const names = m[1].split(",").map(function(s){ return s.trim() })',   // local string param
+      'registerTool("t", "d", {}, (s, a) => s.resume())',                     // the session API
+    ].join('\n')
+    const spans = localSParamBodySpans(scopeFixture)
+    const idxShadow = scopeFixture.indexOf('s.trim()')
+    const idxApi = scopeFixture.indexOf('s.resume()')
+    if (!spans.some(([a, b]) => idxShadow >= a && idxShadow <= b)) findings.push('the session-API scan would report a PHANTOM finding for a shadowing `function(s)` parameter (s.trim())')
+    if (spans.some(([a, b]) => idxApi >= a && idxApi <= b)) findings.push('the session-API scan would SKIP a real arrow tool handler (s.resume() was classified as shadowed)')
+    notes.push('scanner self-check: stripped output parses=' + (r.status === 0) + '; quoted-class fixture=' + (!stripped.includes('phantom_call')) +
+      '; shadowed-param skip=' + spans.length)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }

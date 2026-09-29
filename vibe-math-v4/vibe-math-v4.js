@@ -4,9 +4,44 @@
 // intervention). It NEVER assigns tasks: residents message & meet and decide all
 // task allocation among themselves. Consumes HOST subagents/agents/fs/tools/commands.
 // NOTE: must declare `inject` for every service read as a ctx property (the Guard
-// rejects undeclared dependencies), and must use the `timer` Service (ctx.timeout),
-// not global setTimeout/clearTimeout, which do not exist in the plugin runtime.
+// rejects undeclared dependencies). `timer` IS injected and used (ctx.timeout) so every
+// timer here is a fiber-owned disposer — but the global setTimeout/clearTimeout DO exist
+// in this preset's runtime: a preset is a FILE row loaded by a plain host-realm import().
+// The vm sandbox that traps require/setTimeout/setInterval/fetch wraps only a DYNAMIC
+// package's host half (@deepseek-ai/dsh-cordis-host-runner/lib/types/sandbox.js, reached
+// only from the dynamic-package start path); v2/v3 use those globals and work. An earlier
+// version of this note claimed the globals do not exist — false for file rows, and it would
+// only become true if this preset were ever converted to a dynamic package.
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
+
+// ---- host live-child cap (DSH ≥ 0.2) ----------------------------------------
+// The host caps the number of LIVE continuable children PER ROOT AGENT. Evidence (installed
+// dsh-subagent 0.2.0-rc.2): `materialize` calls `ActivationPool.reserve(this.maxActiveSubagents())`
+// and `reserve` throws `SubagentError('subagent limit reached (active child limit: <capacity>);
+// wait for an existing child to finish or complete this work with the current agents',
+// 'ACTIVATION_LIMIT_REACHED')` when every slot is taken. The capacity comes from the `subagent`
+// row's `maxActiveSubagents` Config key (default 8; no preset sets it), the cap is shared by all
+// descendants of that root, and a slot is released when a child settles. The `.d.ts` does NOT
+// document the throw.
+//
+// The detector and the remembered limit live at MODULE scope because the cap is a property of the
+// HOST (the same number for every root of this process), not of one session. On DSH 0.1.x
+// `subagents.startContinuable` never throws this code, so every branch below is inert there — the
+// error code itself is the feature test, there is no version check anywhere.
+let hostChildLimit                 // undefined until the host tells us its ceiling (via a refusal)
+function isActivationLimitReached(e){ return String((e && e.code) || '') === 'ACTIVATION_LIMIT_REACHED' }
+function noteChildLimit(e){
+  const m = /active child limit:\s*(\d+)/.exec(String((e && e.message) || e || ''))
+  if(m) hostChildLimit = Number(m[1])
+  return hostChildLimit
+}
+// One actionable sentence naming the HOST ceiling and the knob that raises it.
+function hostChildLimitHint(limit){
+  const n = (limit === undefined || limit === null) ? '' : ('=' + limit)
+  return '本宿主对「同时在活的续聊子代理」有上限（宿主 subagent 行的 maxActiveSubagents 参数' + n
+    + '，写满后子代理服务抛 ACTIVATION_LIMIT_REACHED）'
+}
+
 export function apply(ctx) {
   const subagents = ctx.subagents
   const agents = ctx.agents
@@ -384,9 +419,10 @@ export function apply(ctx) {
       // contract (§7) additionally requires `handle.terminate()` on timeout, and a host that
       // ignores/exceeds graceMs would otherwise leave the Lean process running while the framework
       // reports LEAN_TIMEOUT. Race `done` against a cap-ms timer that terminates the handle and
-      // resolves a synthetic outcome. Note: the plugin runtime has no global setTimeout — the
-      // `timer` service (ctx.timeout) is the only timer, and it returns the disposer we clear
-      // below when `done` wins the race.
+      // resolves a synthetic outcome. Note: the `timer` service (ctx.timeout) is the timer used here
+      // because it returns the disposer we clear below when `done` wins the race (a fiber-owned
+      // disposer), NOT because global timers are missing: they exist for file rows like this preset
+      // (see the header note — only a DYNAMIC package's host half is vm-sandboxed).
       let killedByUs=false, timerDispose=null
       let outcome
       try {
@@ -999,15 +1035,82 @@ export function apply(ctx) {
       return L.join('\n')
     }
 
+    // ---- host live-child cap: a refused spawn must never kill the run --------------
+    // A ROOT agent's live continuable children are capped by the host (see the module-scope note):
+    // `startContinuable` throws ACTIVATION_LIMIT_REACHED once the cap is full. Without the handling
+    // below that throw escaped `start()` mid-loop, so the run was left with `running=true`, a
+    // half-built team and an unhandled rejection.
+    let childLimitLoggedThisRound = false   // ONE actionable line per ROUND, not one per refused child
+    let pendingSpawns = []                  // residents the cap refused: retried a round later
+    function beginSpawnRound(){ childLimitLoggedThisRound = false }
+    // LIVE continuable children of THIS framework: a resident that holds a childId and has not been
+    // stopped. A refused resident carries childId '' so it can never inflate (or hide behind) the
+    // real ceiling, and is never counted as a voter/speaker either (see noteSpawnRefused).
+    function liveChildCount(){ let n=0; for(const [,r] of residents){ if(r.childId && r.status!=='stopped') n++ } return n }
+    // Mark a resident whose spawn the host refused and say ONCE per round what the operator can do.
+    // The resident is kept OUT of the live roster: a childless member must not be counted by the
+    // meeting/verify consensus (they require EVERY resident to speak/vote, and no end event can ever
+    // arrive for a child that was never created), and `wakeResident` could never deliver to it. It is
+    // queued in `pendingSpawns` instead, so the work is deferred rather than lost.
+    function noteSpawnRefused(r, limit){
+      r.childId=''; r.status='refused'; r.lastActiveAt=now()
+      // `start()`/`addMember` never put the resident in the roster, but a RESPAWN (resume) does:
+      // drop it here (the queued retry re-registers it, and its own end event resumes the flow).
+      if(residents.get(r.rId)===r) residents.delete(r.rId)
+      busy.delete(r.rId); wakeKind.delete(r.rId)
+      if(currentResident===r.rId) currentResident=''
+      if(pendingSpawns.indexOf(r)<0) pendingSpawns.push(r)
+      if(childLimitLoggedThisRound) return
+      childLimitLoggedThisRound=true
+      const line='vibe-math-v4: '+hostChildLimitHint(limit)+'。'+r.rId+' 等常驻本轮未能创建；'
+        +'可在宿主的 subagent 行把 maxActiveSubagents 调大（或调小 residentCount），未创建的常驻已排队，有空位时自动重试。'
+      console.error(line)
+      logActivity('spawn-refused', line)
+    }
+    // One retry ROUND for the queued residents. Called from scheduleNext (the single choke point of
+    // every scheduling pass) and paced by the heartbeat, so a capped team is never retried in a
+    // tight loop; a successful retry registers the resident normally and its own end event resumes
+    // the normal flow.
+    async function retryPendingSpawns(){
+      if(!pendingSpawns.length) return
+      const queue=pendingSpawns.slice(); pendingSpawns=[]; beginSpawnRound()
+      for(const r of queue){
+        try { await spawnResident(r) }
+        catch(e){
+          // A non-cap failure has no other caller to report to here: say it once and drop this
+          // resident (retrying a broken tool filter every round forever would be worse).
+          console.error('vibe-math-v4: 重试创建常驻 '+r.rId+' 失败，已放弃该常驻：'+String((e&&e.message)||e))
+          logActivity('spawn-failed', r.rId+' '+String((e&&e.message)||e))
+        }
+      }
+      await saveAll()
+      if(pendingSpawns.length) armHeartbeat()   // still capped: re-check on the next heartbeat window
+    }
+
     // ---- resident lifecycle ----
     let residentSeq = 0
     function newResident(dir){ const rId='r-'+(++residentSeq); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
+      // Skip BEFORE touching the host when we already KNOW the ceiling and our own live children
+      // fill it: the host would refuse this spawn too, and one line per ROUND (not per child) is
+      // enough. The resident is queued and the next round retries it.
+      if(hostChildLimit!==undefined && liveChildCount()>=hostChildLimit){ noteSpawnRefused(r, hostChildLimit); return false }
       const ao=residentAgentOptions(); const tf=residentToolFilter()
-      const started=await subagents.startContinuable({provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:ao,...(tf?{toolFilter:tf}:{})},signal:makeSignal(params.activityTimeoutMs||60000)})
+      let started
+      try {
+        started=await startWithToolFilter(tf, function(f){ return {provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:ao,...(f?{toolFilter:f}:{})},signal:makeSignal(params.activityTimeoutMs||60000)} })
+      } catch(e){
+        // The host's live-child cap is a HOST limit (maxActiveSubagents on the `subagent` row), not
+        // a defect in this preset: remember the ceiling, keep the resident for a later round, and
+        // do NOT let the throw escape (it used to abort start()'s spawn loop). Every OTHER start
+        // failure keeps its previous behaviour and still propagates.
+        if(!isActivationLimitReached(e)) throw e
+        noteSpawnRefused(r, noteChildLimit(e)); return false
+      }
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
       childOwner.set(started.childId,sessionId); busy.add(r.rId); wakeKind.set(r.rId,'normal'); currentResident=r.rId
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
+      return true
     }
     async function wakeResident(r, promptText, kind){
       if(!r || !r.childId) return false   // a removed resident must never be woken (else r.childId would crash)
@@ -1040,8 +1143,11 @@ export function apply(ctx) {
       // The DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}),
       // NOT subagents.followup (which is only Agent.followup, and does NOT exist on the subagents
       // service). Using a non-existent method threw TypeError and made EVERY wake fail silently →
-      // the group went idle forever. Prefer sendMessage; fall back to a legacy followup if a host
-      // still exposes it (older deployments), so this works across versions.
+      // the group went idle forever. Prefer sendMessage; the legacy `subagents.followup` branch is
+      // kept for the earliest supported hosts only: that service method was dropped in DSH
+      // 0.1.2-rc.1, so it is reachable only on 0.1.2-alpha.* — 0.1.2-rc.1 and every later release
+      // this package targets expose startContinuable/sendMessage/drainContinuableChildren and
+      // nothing else (checked against dsh-subagent 0.2.0-rc.2).
       try {
         if(typeof subagents.sendMessage==='function'){
           await subagents.sendMessage(rootAgent, r.childId, [textBlock(prompt)], {signal: makeSignal(params.activityTimeoutMs||60000)})
@@ -1510,6 +1616,46 @@ export function apply(ctx) {
      * plugin row where it is (nothing else moves in or out of the realm) while making
      * both compaction paths agree on one instance.
      */
+    // ---- toolFilter names the host may not register -------------------------
+    // `tools.restrict` throws for a name outside the host's restrictable set, and that throw escapes
+    // child creation, so one stale name in `vibe_v4_set{toolAllow|toolDeny}` would make every spawn
+    // fail with no operator-facing message. The host's own rejection lists every registered tool, so
+    // the retry below never guesses. FAIL CLOSED: if nothing survives the filter we rethrow instead of
+    // spawning WITHOUT one (that would grant exactly what the operator denied).
+    function registeredToolsFromError(message){
+      const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+      if(!m) return undefined
+      const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
+      return names.length > 0 ? new Set(names) : undefined
+    }
+    function sanitizeToolFilter(filter, known){
+      if(!filter || !(known instanceof Set) || known.size === 0) return filter
+      const out = {}
+      for(const key of ['allow','deny']){
+        const list = filter[key]
+        if(!Array.isArray(list)) continue
+        const kept = list.filter(function(n){ return known.has(String(n).trim()) })
+        if(kept.length > 0) out[key] = kept
+      }
+      return (out.allow || out.deny) ? out : undefined
+    }
+    async function startWithToolFilter(toolFilter, makeSpec){
+      try {
+        return await subagents.startContinuable(makeSpec(toolFilter))
+      } catch(e){
+        const message = String((e && e.message) || e)
+        const retry = sanitizeToolFilter(toolFilter, registeredToolsFromError(message))
+        if(retry===undefined){
+          console.error('vibe-math-v4: 配置的工具过滤只包含本宿主未注册的工具名，拒绝在不带过滤的情况下启动子代理。filter=' + JSON.stringify(toolFilter) + ' 宿主提示：' + message)
+          throw e
+        }
+        if(JSON.stringify(retry) === JSON.stringify(toolFilter)) throw e
+        console.error('vibe-math-v4: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
+        // a FRESH spec (and a fresh timeout signal) for the retry
+        return await subagents.startContinuable(makeSpec(retry))
+      }
+    }
+
     function compactionForAgent(agent){
       try { const c = agent && agent.ctx ? agent.ctx.get('compaction') : undefined; if(c && c.compactIfNeeded) return c } catch(e){}
       // fallback: this plugin's own plane (host root for a row outside the realm)
@@ -1520,10 +1666,15 @@ export function apply(ctx) {
       const agent = liveAgentOf(r.childId)
       if(!agent || !agent.session) return
       const compaction = compactionForAgent(agent)
-      if(compaction===undefined || !compaction.compactIfNeeded) return
+      if(compaction===undefined) return
+      // `compactIfNeeded` is a POLICY call on the current host: it may return null without compacting
+      // and nothing records that, so a real /compact would silently do nothing. `compactNow` is the
+      // forcing verb; feature-detected so older hosts keep the policy call.
+      const force = typeof compaction.compactNow === 'function'
+      if(!force && typeof compaction.compactIfNeeded !== 'function') return
       try {
         const signal = makeSignal(params.activityTimeoutMs||60000)
-        const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+        const result = force ? await compaction.compactNow(agent, signal) : await compaction.compactIfNeeded(agent, 'pressure', signal)
         if(result && (result.shadowedSeqs||[]).length>0){
           // the resident's real session was compacted → its context is now a summary.
           // Flag needCompact so the NEXT wake re-anchors the core rules (they may have been blurred).
@@ -1536,6 +1687,10 @@ export function apply(ctx) {
     // ---- liveness / scheduling ----
     async function scheduleNext(){
       if(!running||autoDone){ clearHeartbeat(); return }
+      // Residents the host's live-child cap refused are retried here — the single choke point every
+      // scheduling pass goes through — so a refused spawn is deferred by a whole round (and paced by
+      // the heartbeat) instead of being retried inside the loop that discovered the refusal.
+      if(pendingSpawns.length) await retryPendingSpawns()
       if(phase==='brainstorm'){ await maybeFinishBrainstorm(); return }
       if(meetingState){ await continueMeetingRound(); return }
       if(verifyState){ await continueVerifyRound(); return }
@@ -1581,6 +1736,10 @@ export function apply(ctx) {
         const free = mp>0 ? (mp - busy.size) : Number.MAX_SAFE_INTEGER
         if(free<=0) break            // concurrency cap reached → stop filling
         if((now()-r.lastActiveAt)<atOs) break   // the remaining are all busy-or-not-idle-enough
+        // A resident with no childId has nothing to wake (wakeResident would refuse): that is a
+        // resident whose spawn the host cap refused, and it is retried by retryPendingSpawns() at
+        // the top of the next pass — never in a tight loop here.
+        if(!r.childId) continue
         let ok=false
         try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){ ok=false }
         if(ok) started++
@@ -1724,8 +1883,20 @@ export function apply(ctx) {
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
-      for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); await spawnResident(r) }
-      await saveAll(); return {ok:true,message:'v4 started: '+params.residentCount+' resident(s) brainstorming',project:currentProject}
+      pendingSpawns=[]                 // a fresh run replaces the roster: nothing is queued from before
+      beginSpawnRound()                // the whole spawn loop is ONE round (one cap notice, not N)
+      let startedCount=0
+      // spawnResident no longer throws for the host's live-child cap: it queues the refused resident
+      // and returns false, so a capped host leaves a RUNNING team of the residents it accepted
+      // instead of an aborted half-built run.
+      for(let i=0;i<params.residentCount;i++){ const r=newResident(dirs[i]||''); if(await spawnResident(r)) startedCount++ }
+      await saveAll()
+      if(pendingSpawns.length) armHeartbeat()   // retry the queued residents on the next round
+      // Report the LIVE count when the host refused part of the team: "4 resident(s)" while only 2
+      // exist would be exactly the kind of half-truth this fix exists to remove.
+      const refused=pendingSpawns.length
+      return {ok:true,message:'v4 started: '+(refused?(startedCount+'/'+params.residentCount):params.residentCount)+' resident(s) brainstorming'
+        +(refused?('（宿主同时在活的子代理已达上限，'+refused+' 个常驻已排队、有空位时自动重试；'+hostChildLimitHint(hostChildLimit)+'）'):''),project:currentProject}
     }
     async function resume(){
       currentProject=await readCurrentProject(); await ensureDirs()
@@ -1761,6 +1932,7 @@ export function apply(ctx) {
         for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.insight=''; r.roundsSinceCompact=0 }
         busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; pendingVerify=[]; verifyState=null; meetingState=null; finalizeLock=null; verifiedRecently.clear()
       }
+      beginSpawnRound()   // the whole re-spawn loop is ONE round for the cap notice
       for(const [,r] of residents){ if(!r.childId){ await spawnResident(r) } }
       if(!running){ running=true; autoDone=false; if(phase==='idle') phase='active' }
       if(needRespawn && phase!=='brainstorm') phase='brainstorm'   // let re-spawned residents re-bootstrap together
@@ -1773,6 +1945,10 @@ export function apply(ctx) {
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
+      // Residents the host's live-child cap refused (maxActiveSubagents): queued, not lost. Without
+      // this the only trace would be the one console line, and `residentCount` alone cannot tell a
+      // short team from a deliberately small one.
+      pendingSpawns: pendingSpawns.length, hostChildLimit: (hostChildLimit===undefined?null:hostChildLimit),
       meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null, pendingVerifyCount: pendingVerify.length,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
       // The Lean knobs and the per-object formal records are part of the readable status: without
@@ -1803,7 +1979,9 @@ export function apply(ctx) {
       // run is live: on a concluded (autoDone) or never-started/paused run the new member would work
       // with nobody to coordinate (zombie work on a project the group already declared done).
       if(!running || autoDone) return {ok:false,message:'no active run to join (start or resume first)'}
-      const r=newResident(direction||''); await spawnResident(r)
+      const r=newResident(direction||'')
+      beginSpawnRound()
+      if(!await spawnResident(r)) return {ok:false,code:'ACTIVATION_LIMIT_REACHED',message:'本宿主同时在活的子代理已达上限，'+r.rId+' 未能创建（已排队、有空位时自动重试）。'+hostChildLimitHint(hostChildLimit)}
       // Mid-meeting additions must join the meeting's speaking order; otherwise allSpoke (over CURRENT
       // residents) can never be true for the new member (not in the snapshot order) and the meeting is
       // only ever released by the stuck watchdog instead of finalizing with everyone's input.

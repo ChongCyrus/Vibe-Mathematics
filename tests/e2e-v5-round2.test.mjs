@@ -1,6 +1,6 @@
 // ============================================================
 // V5 ROUND-2 E2E — the behaviour paths the first suite never exercised:
-//   · the hardened JSON FALLBACK backend (host without sessionProjections)
+//   · the hardened JSON backend (the ONLY backend: `makeFileBackend`/`installBackend`)
 //   · a simulated PROCESS RESTART (fresh agent + fresh backend over the same workspace)
 //   · duplicate subagent/end idempotence
 //   · hire quotas (per-member and institute-wide)
@@ -13,7 +13,7 @@
 //   · the verification watchdog abandoning a stuck round
 //   · meeting PARKED behind an in-flight verification, then resumed
 //   · compaction/keepalive directives appear only when they should
-//   · session-log REPLAY reproduces the institute state in a new session
+//   · the host session log is NEVER written, and the state reloads through the JSON file
 // Run: node tests/e2e-v5-round2.test.mjs
 // ============================================================
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -32,30 +32,12 @@ const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-function makeProjectionRegistry() {
-  const units = new Map()
-  const cells = new Map()
-  const cellMap = (sess) => { const id = String(sess.id); let m = cells.get(id); if (!m) { m = new Map(); cells.set(id, m) } return m }
-  return {
-    register(def) { units.set(def.key, def); return () => { units.delete(def.key) } },
-    stateOf(session, key) {
-      const def = units.get(key); if (!def) return undefined
-      const m = cellMap(session)
-      if (!m.has(key)) m.set(key, def.init(session.header, 0))
-      return m.get(key)
-    },
-    checkpoint(session) { const o = {}; const m = cellMap(session); for (const [k, d] of units) o[k] = { ver: d.stateVersion, seq: session.seq, val: m.get(k) }; return o },
-    _drive(session, event) {
-      const m = cellMap(session)
-      for (const [k, def] of units) {
-        const cur = m.has(k) ? m.get(k) : def.init(session.header, 0)
-        let next; try { next = def.apply(cur, event) } catch (e) { next = cur }
-        m.set(k, next)
-      }
-    },
-  }
-}
-
+// The host contract v5 needs has NO session services at all: the plugin declares
+// `inject = ['subagents','agents','fs','tools','commands','timer']` and keeps its state in a
+// hardened JSON file. `Session.append` cannot mark an event `ignorable`, and DSH's session
+// persistence refuses to load a log carrying an unknown event type — so a host that offers
+// `sessionProjections` must still never receive an institute event. Every session created
+// here records whatever it is given, so the suites can assert that NOTHING was appended.
 function makeSession(id, parentSession) {
   const events = []
   const s = {
@@ -63,27 +45,28 @@ function makeSession(id, parentSession) {
     header: { version: 1, id, createdAt: Date.now(), cwd: null, parentSession, isSeeded: false },
     inheritedEventCount: 0,
     get seq() { return events.length },
-    append(type, data) { const ev = { type, data, seq: events.length, time: Date.now() }; events.push(ev); this._drive(ev); return ev },
+    append(type, data) { const ev = { type, data, seq: events.length, time: Date.now() }; events.push(ev); return ev },
     deriveMessages() { return [] },
     snapshotEvents(from) { return events.slice(from || 0) },
     ownEvents() { return events.slice() },
     _events: events,
-    _drive: null,
   }
   return s
 }
 
-/** A fresh host+plugin instance. `withProjections:false` exercises the JSON fallback. */
+/** A fresh host+plugin instance over a workspace (a fresh temp dir by default). */
 function makeHost(opts) {
   const o = opts || {}
   const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-v5r2-'))
-  const projections = o.withProjections === false ? undefined : makeProjectionRegistry()
   const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = []
   const liveAgents = new Map()
+  // The two services the fix removed. This host does not provide them, and records every
+  // request so the suite can assert the plugin never even LOOKS for them any more.
+  const removedServiceQueries = []
 
   const ctx = {
     get(name) {
-      if (name === 'sessionProjections') return projections
+      if (name === 'sessions' || name === 'sessionProjections') removedServiceQueries.push(name)
       if (name === 'sandboxPolicy') return undefined
       if (name === 'compaction') return o.compaction
       if (name === 'subprocess') {
@@ -106,7 +89,6 @@ function makeHost(opts) {
     timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
     tools: { register(spec) { toolRegs.push(spec); return () => {} } },
     commands: { register(spec) { commandRegs.push(spec); return () => {} } },
-    sessions: { async flush() { return true } },
     subagents: {
       list() { return ['spawn'] },
       async startContinuable({ label, request }) {
@@ -114,7 +96,6 @@ function makeHost(opts) {
         const childSession = makeSession(id, 'sess-A'); childSession.header.cwd = WS
         liveAgents.set(id, { id, session: childSession, options: request && request.agentOptions })
         spawns.push({ label, request, childId: id, persona: request && request.persona, ended: false })
-        if (projections) childSession._drive = (ev) => projections._drive(childSession, ev)
         return { childId: id, messageId: 'm' + spawns.length }
       },
       async sendMessage(parent, childId, blocks) { wakes.push({ childId, blocks }); return 'w' + wakes.length },
@@ -138,7 +119,6 @@ function makeHost(opts) {
   const ROOT_SESSION = makeSession('sess-A', undefined)
   ROOT_SESSION.header.cwd = WS
   const ROOT = { id: 'sess-A', options: {}, session: ROOT_SESSION, ctx: undefined }
-  if (projections) ROOT_SESSION._drive = (ev) => projections._drive(ROOT_SESSION, ev)
 
   const mod = o.pluginModule
   mod.apply(ctx)
@@ -211,48 +191,70 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, projections, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
 const PROBLEM = '证明素数有无穷多个'
 
+// The durable authority is the hardened JSON file. A commit is applied to the in-memory
+// snapshot immediately but written through a deferred per-file chain, so a test that wants to
+// observe "this was committed" must poll the FILE — reading the session log is no longer possible
+// (and is exactly what the fix removed).
+const statePathOf = (ws) => join(ws, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
+const readStateAt = (ws) => { try { return JSON.parse(readFileSync(statePathOf(ws), 'utf8')) } catch (e) { return null } }
+const instOfState = (s) => (s && s.institutes) ? s.institutes['default::institute'] : undefined
+async function waitInst(ws, pred) {
+  let inst = instOfState(readStateAt(ws))
+  for (let i = 0; i < 60; i++) {
+    if (inst && (!pred || pred(inst))) return inst
+    await sleep(10)
+    inst = instOfState(readStateAt(ws))
+  }
+  return inst
+}
+
 // ============================================================
 console.log('-- V5 round-2 e2e --')
 
-// ---------- 1. the hardened JSON FALLBACK backend ----------
-console.log('\n[1] fallback backend (host without sessionProjections)')
+// ---------- 1. the hardened JSON backend (the only one) ----------
+console.log('\n[1] the hardened JSON backend (host with no session services at all)')
 {
-  const h = makeHost({ pluginModule, withProjections: false })
+  const h = makeHost({ pluginModule })
   const st = await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 2 })
-  assert(st.ok === true, 'start works without sessionProjections (fallback path)')
+  assert(st.ok === true, 'start works on a host with no sessions/sessionProjections service (got ' + JSON.stringify(st).slice(0, 90) + ')')
+  assert(Array.isArray(pluginModule.inject) && pluginModule.inject.indexOf('sessions') === -1 && pluginModule.inject.indexOf('sessionProjections') === -1,
+    '★ the plugin declares no sessions/sessionProjections dependency (inject=' + JSON.stringify(pluginModule.inject) + ')')
+  assert(h.removedServiceQueries.length === 0,
+    '★ the plugin never even resolves the removed services (queries=' + JSON.stringify(h.removedServiceQueries) + ')')
   const s0 = await h.callTool('vibe_v5_status', {})
   assert(s0.backend === 'file', 'status reports the file backend (got ' + s0.backend + ')')
   await h.settleSpawns()
   const stFile = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
   // the state file is written lazily (deferred stringify chain) — give it a tick
   for (let i = 0; i < 40 && !existsSync(stFile); i++) await sleep(10)
-  assert(existsSync(stFile), 'the fallback persisted the institute state to State/institute.v5state.json')
+  assert(existsSync(stFile), 'the backend persisted the institute state to State/institute.v5state.json')
   if (existsSync(stFile)) {
     const parsed = JSON.parse(readFileSync(stFile, 'utf8'))
     const inst = parsed.institutes['default::institute']
-    assert(!!inst && inst.members.length === 3, 'the persisted fallback state holds 1 academician + 2 researchers (got ' + (inst ? inst.members.length : 'none') + ')')
+    assert(!!inst && inst.members.length === 3, 'the persisted state holds 1 academician + 2 researchers (got ' + (inst ? inst.members.length : 'none') + ')')
   }
+  assert(h.ROOT_SESSION._events.length === 0, 'the whole founding wrote NOTHING to the host session log (' + h.ROOT_SESSION._events.length + ' events)')
 }
 
 // ---------- 2. simulated PROCESS RESTART ----------
 console.log('\n[2] simulated process restart (fresh host, fresh backend, same workspace)')
 {
   const WS = mkdtempSync(join(tmpdir(), 'vibe-v5r2-restart-'))
-  const h1 = makeHost({ pluginModule, withProjections: false, ws: WS })
+  const h1 = makeHost({ pluginModule, ws: WS })
   await h1.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 2 })
   await h1.settleSpawns()
-  const stFile = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
+  const stFile = statePathOf(WS)
   for (let i = 0; i < 40 && !existsSync(stFile); i++) await sleep(10)
   assert(existsSync(stFile), 'first process persisted its state')
 
   // a genuinely fresh host = new backend instance, empty in-memory state
-  const h2 = makeHost({ pluginModule, withProjections: false, ws: WS })
+  const h2 = makeHost({ pluginModule, ws: WS })
   const s2 = await h2.callTool('vibe_v5_status', {})
   assert(s2.members.length === 3, 'a FRESH host reads the persisted roster back (got ' + s2.members.length + ' members)')
   const res = await h2.callTool('vibe_v5_resume', {})
@@ -267,16 +269,24 @@ console.log('\n[3] duplicate subagent/end idempotence')
   const h = makeHost({ pluginModule })
   await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 2 })
   const cid = h.childOf('r-1')
-  // settle the founding turn normally, then REPLAY the exact same end event
-  const before = h.ROOT_SESSION._events.length
+  // settle the founding turn normally, then REPLAY the exact same end event. "Committed" is
+  // observed where the state now lives — State/institute.v5state.json (`artifactCount` is what
+  // recording a card bumps) — and the host session log must stay untouched either way.
+  const logBefore = h.ROOT_SESSION._events.length
   h.fireEnd(cid, { progress: '唯一一次', record: [{ kind: 'proposition', id: 'dup-x', statement: 's', value: 0.5, motive: 'm', p: 0.5 }] })
-  await sleep(40)
-  const afterFirst = h.ROOT_SESSION._events.length
+  const inst1 = await waitInst(h.WS, (x) => Number(x.artifactCount) >= 1)
+  const afterFirst = inst1 ? Number(inst1.artifactCount) : 0
   h.fireEnd(cid, { progress: '重复投递', record: [{ kind: 'proposition', id: 'dup-x', statement: 's', value: 0.5, motive: 'm', p: 0.5 }] })
-  await sleep(40)
-  const afterSecond = h.ROOT_SESSION._events.length
-  assert(afterSecond === afterFirst, 'a replayed end commits NOTHING new (' + afterFirst + ' -> ' + afterSecond + ' events)')
-  assert(afterFirst > before, 'the first end did commit state')
+  await sleep(60)
+  const inst2 = await waitInst(h.WS)
+  const afterSecond = inst2 ? Number(inst2.artifactCount) : 0
+  assert(afterSecond === afterFirst, 'a replayed end commits NOTHING new (' + afterFirst + ' -> ' + afterSecond + ' artifacts in the v5state JSON)')
+  assert(afterFirst >= 1, 'the first end did commit state (artifactCount=' + afterFirst + ' in State/institute.v5state.json)')
+  assert(h.ROOT_SESSION._events.length === logBefore, 'neither end appended anything to the host session log (' + logBefore + ' -> ' + h.ROOT_SESSION._events.length + ' events)')
+  // the card itself is durable too, and the replay did not append a second progress entry
+  const prog = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Members', 'r-1', 'Progress', 'progress.md')
+  const progText = existsSync(prog) ? readFileSync(prog, 'utf8') : ''
+  assert(/唯一一次/.test(progText) && !/重复投递/.test(progText), 'only the FIRST end reached the member\'s progress log')
 }
 
 // ---------- 4. hire quotas ----------
@@ -492,26 +502,86 @@ console.log('\n[13] compaction directive appears only when warranted')
   if (later) h.fireEnd(later.childId, { progress: 'y', contextPct: 15 })
 }
 
-// ---------- 14. session-log REPLAY reproduces state ----------
-console.log('\n[14] session-log replay reproduces the institute in a new session')
+// ---------- 14. the host session log is never written; the JSON file is the reload path ----------
+console.log('\n[14] nothing is appended to the host session log; state survives a reload through the JSON file')
 {
   const h = makeHost({ pluginModule })
   await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 2 })
   await h.settleSpawns()
   const s0 = await h.callTool('vibe_v5_status', {})
-  const events = h.ROOT_SESSION._events.filter(e => String(e.type).indexOf('vibe5/') === 0)
-  assert(events.length > 0, 'the session log holds institute events (' + events.length + ')')
-  // replay those events into a brand-new session and read the state through a new root
-  const replayed = makeSession('sess-REPLAY', undefined)
-  replayed.header.cwd = h.WS
-  replayed._drive = (ev) => h.projections._drive(replayed, ev)
-  for (const e of events) replayed.append(e.type, e.data)
-  const ROOT2 = { id: 'sess-REPLAY', options: {}, session: replayed }
-  const s1 = await h.callTool('vibe_v5_status', {}, ROOT2)
-  assert(s1.members.length === s0.members.length, 'replay reproduced the roster (' + s1.members.length + ' vs ' + s0.members.length + ')')
-  assert(s1.quorum.m === s0.quorum.m, 'replay reproduced the quorum')
-  assert(s1.tasks.length === s0.tasks.length, 'replay reproduced the task board')
-  assert(s1.institute === s0.institute && s1.project === s0.project, 'replay reproduced the institute identity')
+  const appended = h.ROOT_SESSION._events.filter(e => String(e.type).indexOf('vibe5/') === 0)
+  assert(h.ROOT_SESSION._events.length === 0 && appended.length === 0,
+    '★ the plugin appends NOTHING to the host session log (' + h.ROOT_SESSION._events.length + ' events): an institute event in the log would make the user session unresumable')
+  const stFile = statePathOf(h.WS)
+  for (let i = 0; i < 40 && !existsSync(stFile); i++) await sleep(10)
+  assert(existsSync(stFile), 'the institute state is on disk instead (State/institute.v5state.json)')
+  // A brand-new host over the same workspace is a genuine reload: fresh backend, empty memory.
+  const h2 = makeHost({ pluginModule, ws: h.WS })
+  const s1 = await h2.callTool('vibe_v5_status', {})
+  assert(s1.members.length === s0.members.length, 'the reload reproduced the roster (' + s1.members.length + ' vs ' + s0.members.length + ')')
+  assert(s1.quorum.m === s0.quorum.m, 'the reload reproduced the quorum')
+  assert(s1.tasks.length === s0.tasks.length, 'the reload reproduced the task board')
+  assert(s1.institute === s0.institute && s1.project === s0.project, 'the reload reproduced the institute identity')
+  assert(h2.ROOT_SESSION._events.length === 0, 'the reloading host also appended nothing to its session log')
+}
+
+// ---------- 15. the host's live-child cap is survived, named and not re-asked ----------
+// DSH ≥0.2 caps the number of LIVE continuable children per ROOT agent (ActivationPool.reserve,
+// capacity `maxActiveSubagents` on the `subagent` row, default 8; the throw is NOT in the .d.ts).
+// The mock below refuses exactly like the host once the cap is full and frees a slot when a child is
+// interrupted — the two host facts the preset has to survive. NOTE: the preset remembers the ceiling
+// at MODULE scope (a host fact), and every host in this file shares that module, so this case MUST
+// stay the LAST one.
+console.log('\n[15] the host live-child cap (ACTIVATION_LIMIT_REACHED) is named, remembered and not re-asked')
+{
+  const h = makeHost({ pluginModule })
+  const CAP = 2
+  let live = 0
+  let hostCalls = 0
+  const capError = () => {
+    const e = new Error('subagent limit reached (active child limit: ' + CAP + '); wait for an existing child to finish or complete this work with the current agents')
+    e.code = 'ACTIVATION_LIMIT_REACHED'
+    return e
+  }
+  const origStart = h.ctx.subagents.startContinuable
+  h.ctx.subagents.startContinuable = async function (spec) {
+    hostCalls += 1
+    if (live >= CAP) throw capError()
+    live += 1
+    return await origStart.call(this, spec)
+  }
+  const origInterrupt = h.ctx.subagents.interrupt
+  h.ctx.subagents.interrupt = function (childId) { live = Math.max(0, live - 1); return origInterrupt.call(this, childId) }
+  const errs = []
+  const origErr = console.error
+  console.error = function () { errs.push(Array.prototype.join.call(arguments, ' ')) }
+  let started
+  try {
+    started = await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 4, academician: false })
+  } finally { console.error = origErr }
+  assert(started.ok === true, 'the institute still founds a partial team when the host refuses members (' + JSON.stringify(started).slice(0, 140) + ')')
+  assert(h.spawns.length === CAP, 'only the members the host accepted were created (spawns=' + h.spawns.length + ')')
+  const capLines = errs.filter(l => /maxActiveSubagents/.test(l))
+  assert(capLines.length === 1, 'ONE actionable line for the whole founding round, not one per refused member (got ' + capLines.length + ')')
+  assert(capLines.length === 1 && /ACTIVATION_LIMIT_REACHED/.test(capLines[0]),
+    'the line names the host ceiling and the parameter that raises it: ' + String(capLines[0]).slice(0, 160))
+  const st = await h.callTool('vibe_v5_status', {})
+  const refused = st.members.filter(m => m.phase === 'failed')
+  assert(refused.length === 2, 'the refused members are recorded as failed, not left active (got ' + refused.length + ')')
+  assert(refused.every(m => /maxActiveSubagents/.test(m.error)), 'each failed record carries the cap, not the opaque host string: ' + JSON.stringify(refused.map(m => m.error)).slice(0, 200))
+  assert(refused.every(m => m.busy !== true), 'no refused member is left marked busy')
+  // Once the ceiling is KNOWN, a refused provisioning must not even reach the host.
+  const callsBefore = hostCalls
+  const hired = await h.callTool('vibe_v5_hire', { purpose: '被上限拒绝', initial_task: 'x' }, h.childAgent(h.childOf('r-1')))
+  assert(hired.ok === false && hired.code === 'ACTIVATION_LIMIT_REACHED', 'hire reports the host cap by its typed code (' + JSON.stringify(hired).slice(0, 160) + ')')
+  assert(/maxActiveSubagents/.test(hired.message || ''), 'the hire failure names maxActiveSubagents, not the opaque host string')
+  assert(hostCalls === callsBefore, 'the host was NOT asked again once the ceiling was known (skip-before-spawn; hostCalls=' + hostCalls + ')')
+  // The refused work is QUEUED, not lost: freeing a slot (fire a member) lets the next round retry.
+  await h.callTool('vibe_v5_fire', { id: 'r-1', reason: 'cap test' })
+  const resumed = await h.callTool('vibe_v5_resume', {})
+  assert(resumed.ok === true && resumed.respawned >= 1, 'a slot freed by firing a member lets resume rebuild a capped member (respawned=' + (resumed && resumed.respawned) + ')')
+  const st2 = await h.callTool('vibe_v5_status', {})
+  assert(st2.members.filter(m => m.phase === 'active' && m.childId).length === CAP, 'the institute is back at the host ceiling (active=' + st2.members.filter(m => m.phase === 'active').map(m => m.id).join(',') + ')')
 }
 
 console.log('')

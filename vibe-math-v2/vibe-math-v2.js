@@ -2594,13 +2594,17 @@ export function apply(ctx) {
     input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents]' },
     handler: async function (invocation) {
       const s = getSession(invocation && invocation.agent)
-      if (!s) return { kind: 'success', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
+      if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
       const line = String(invocation && invocation.rawInput ? invocation.rawInput : '').trim()
       const parts = line.length > 0 ? line.split(/\s+/) : []
       const cmd = parts[0] || ''
       const rest = parts.slice(1)
       const result = await s.dispatchVibeCommand(cmd, rest)
-      return { kind: 'success', text: JSON.stringify(result, null, 2) }
+      // A business failure (the dispatch result's own ok:false) is a FAILED command: the host's
+      // CommandResult union distinguishes success from error, and returning 'success' made a rejected
+      // invocation look identical to a successful one in the UI.
+      const failed = result !== null && typeof result === 'object' && result.ok === false
+      return { kind: failed ? 'error' : 'success', text: JSON.stringify(result, null, 2) }
     },
   }))
 

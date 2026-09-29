@@ -25,17 +25,32 @@
 // `prompt-v5-integrity.test.mjs` asserts all of that against the real prompt text and
 // writes the full corpus to `prompt-corpus-v5/` for human review (实现方案.md §14.5).
 //
-// Durable state lives in a HOST-ONLY session projection unit (key `vibeMathV5`):
-// institute events are appended to the session log, never enter the model history
-// (zero context cost), are checkpointed by DSH, and are replayed on restore — which
-// structurally removes v4's `State/*.json` corruption/lost-write/resume-staleness
-// class of bugs. A hardened file backend is used only if the projection registry
-// is genuinely absent.
+// Durable state lives in the hardened JSON file `State/<institute>.v5state.json` (see the
+// PERSISTENCE note below): the same pure event fold is applied IN MEMORY and each commit writes the
+// whole snapshot through a serial promise chain, so a late writer can never land a stale subset.
+// Events never enter the model history (zero context cost), and recovery is one code path for both
+// an in-process restart and a cross-process resume: read the file, then fold. That structurally
+// removes v4's `State/*.json` corruption / lost-write / resume-staleness class of bugs without
+// touching any host log. (Historically this was a HOST-ONLY session projection unit whose events were
+// appended to the user's session; that design is gone — see the PERSISTENCE note for the exact
+// reason, and note that the JSON file was once the fallback for hosts without that registry.)
 //
 // NOTE: must declare `inject` for every service read as a ctx property (the Guard
-// rejects undeclared dependencies), and must use the `timer` Service (ctx.timeout),
-// not global setTimeout/clearTimeout, which do not exist in the plugin runtime.
-export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer', 'sessions']
+// rejects undeclared dependencies). `timer` IS injected and used (ctx.timeout) so every
+// timer here is a fiber-owned disposer — but the global setTimeout/clearTimeout DO exist
+// in this preset's runtime: a preset is a FILE row loaded by a plain host-realm import().
+// The vm sandbox that traps require/setTimeout/setInterval/fetch wraps only a DYNAMIC
+// package's host half (@deepseek-ai/dsh-cordis-host-runner/lib/types/sandbox.js, reached
+// only from the dynamic-package start path); v2/v3 use those globals and work. An earlier
+// version of this note claimed the globals do not exist — false for file rows, and it would
+// only become true if this preset were ever converted to a dynamic package.
+//
+// PERSISTENCE (fixed after the DSH 0.2.0 audit): institute state lives ONLY in the hardened JSON file
+// `State/<institute>.v5state.json` (see makeFileBackend/installBackend below). It is never appended
+// to a host session log: DSH's session persistence refuses to load a session that carries an unknown
+// event type unless the writer marked it `ignorable: true`, and `Session.append` cannot set that
+// field — so the old projection-based primary made the user's own session unresumable.
+export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
 const PROJECTION_KEY = 'vibeMathV5'
 const PROJECTION_VERSION = 1
@@ -61,13 +76,40 @@ function v5err(code, message) {
   return e
 }
 
+// ---- host live-child cap (DSH ≥ 0.2) ----------------------------------------
+// The host caps the number of LIVE continuable children PER ROOT AGENT. Evidence (installed
+// dsh-subagent 0.2.0-rc.2): `materialize` calls `ActivationPool.reserve(this.maxActiveSubagents())`
+// and `reserve` throws `SubagentError('subagent limit reached (active child limit: <capacity>);
+// wait for an existing child to finish or complete this work with the current agents',
+// 'ACTIVATION_LIMIT_REACHED')` once every slot is taken. The capacity is the `subagent` row's
+// `maxActiveSubagents` Config key (default 8; no preset sets it), the cap is shared by all
+// descendants of that root, and a slot is released when a child settles. The `.d.ts` does NOT
+// document the throw.
+//
+// The detector and the remembered limit live at MODULE scope because the cap is a property of the
+// HOST (one number for every root of this process), not of one institute. On DSH 0.1.x
+// `subagents.startContinuable` never throws this code, so every branch below is inert there — the
+// error code itself is the feature test, there is no version check anywhere.
+let hostChildLimit                 // undefined until the host tells us its ceiling (via a refusal)
+function isActivationLimitReached(e) { return String((e && e.code) || '') === 'ACTIVATION_LIMIT_REACHED' }
+function noteChildLimit(e) {
+  const m = /active child limit:\s*(\d+)/.exec(String((e && e.message) || e || ''))
+  if (m) hostChildLimit = Number(m[1])
+  return hostChildLimit
+}
+// One actionable sentence naming the HOST ceiling and the knob that raises it.
+function hostChildLimitHint(limit) {
+  const n = (limit === undefined || limit === null) ? '' : ('=' + limit)
+  return '本宿主对「同时在活的续聊子代理」有上限（宿主 subagent 行的 maxActiveSubagents 参数' + n
+    + '，写满后子代理服务抛 ACTIVATION_LIMIT_REACHED）'
+}
+
 export function apply(ctx) {
   const subagents = ctx.subagents
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
   const commands = ctx.commands
-  const store = ctx.sessions
 
   // Optional services are resolved LAZILY at call time, never snapshotted in apply():
   // a `ctx.get()` snapshot taken here is order-sensitive, so a service provided later
@@ -75,7 +117,16 @@ export function apply(ctx) {
   const sandboxPolicyOf = () => { try { return ctx.get('sandboxPolicy') } catch (e) { return undefined } }
   const subprocessOf = () => { try { return ctx.get('subprocess') } catch (e) { return undefined } }
   const compactionOf = () => { try { return ctx.get('compaction') } catch (e) { return undefined } }
-  const projectionsOf = () => { try { return ctx.get('sessionProjections') } catch (e) { return undefined } }
+  // Prefer the AGENT's own context: this preset mounts its compaction row inside the preset's
+  // `compaction` isolate realm, and a realm never falls back to the host-root instance, so the root
+  // object can be a different policy. v4 resolves it this way already.
+  const compactionForAgent = (agent) => {
+    try {
+      const own = agent && agent.ctx && typeof agent.ctx.get === 'function' ? agent.ctx.get('compaction') : undefined
+      if (own !== undefined) return own
+    } catch (e) { /* fall back to the plugin plane */ }
+    return compactionOf()
+  }
 
   // ---- utils -------------------------------------------------------------
   const now = () => Date.now()
@@ -119,10 +170,10 @@ export function apply(ctx) {
     return true
   }
 
-  // ---- projection: pure fold --------------------------------------------
+  // ---- state fold: the one fold every entry point shares ----------------
   // The fold is shared by BOTH persistence backends, so the state machine is
   // defined exactly once. It must return a NEW top-level reference whenever
-  // anything changed (the projection's change feed compares by Object.is).
+  // anything changed (the state store compares by Object.is).
   function emptyInstitute(key, project, institute) {
     return {
       key, project, institute,
@@ -137,7 +188,7 @@ export function apply(ctx) {
       debates: [],
       verdicts: {},
       // Per-object Lean formalization record (docs/formal-verification.md). Kept in the
-      // projection so it survives restore with zero context cost, exactly like verdicts.
+      // state so it survives restore with zero context cost, exactly like verdicts.
       formal: {},
       todo: [],
       queue: [],
@@ -289,38 +340,10 @@ export function apply(ctx) {
     }
   }
 
-  // Minimal structural validator standing in for a zod schema. The projection
-  // registry only ever calls `stateSchema.parse(row.val)` when it reloads a value
-  // from a CHECKPOINT row, so this is the guard against a corrupt persisted row —
-  // a plain object with `.parse` is sufficient and needs no module import (a
-  // preset-local file cannot reliably resolve `zod`).
-  const STATE_SCHEMA = {
-    parse(v) {
-      if (!v || typeof v !== 'object') throw new Error('vibe-math-v5: projection state is not an object')
-      if (v.v !== PROJECTION_VERSION) throw new Error('vibe-math-v5: projection state version mismatch')
-      if (!v.institutes || typeof v.institutes !== 'object') throw new Error('vibe-math-v5: projection state lacks institutes')
-      if (!Array.isArray(v.order)) throw new Error('vibe-math-v5: projection state lacks order')
-      return v
-    },
-  }
-
   // ---- persistence backend ----------------------------------------------
-  // Primary: append an event to the session log and read the folded state back.
-  // Fallback: apply the SAME fold in memory and persist hardened JSON.
-  function makeProjectionBackend(proj, session) {
-    return {
-      kind: 'projection',
-      read() {
-        const s = proj.stateOf(session, PROJECTION_KEY)
-        return s === undefined ? initState() : s
-      },
-      async commit(type, data) {
-        session.append(type, data)
-        try { await store.flush(session) } catch (e) { /* flush is a durability hint */ }
-        return this.read()
-      },
-    }
-  }
+  // The hardened JSON file is the ONLY backend. It applies the same event fold in memory and writes
+  // the whole snapshot under a per-file serialization chain; nothing is written to a host session log
+  // (see the PERSISTENCE note at the top of this file for why the projection backend was removed).
   // `pathOf` is a FUNCTION, not a captured string: the state path depends on the
   // project/institute, which the first successful load syncs back into this session —
   // a captured path would keep writing to the pre-load guess forever.
@@ -491,11 +514,7 @@ export function apply(ctx) {
     async function writeTextRel(rel, content) { return await writeTextAbs(instRoot() + '/' + rel, content) }
 
     function installBackend() {
-      const proj = projectionsOf()
-      const sess = (rootAgent && rootAgent.session) ? rootAgent.session : undefined
-      if (proj && sess && typeof proj.stateOf === 'function') backend = makeProjectionBackend(proj, sess)
-      else if (proj && sess && typeof proj.register === 'function') backend = makeProjectionBackend(proj, sess)
-      else backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
+      backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
       return backend
     }
     // Every entry point that READS state must await this first. Without it the file
@@ -1195,6 +1214,31 @@ export function apply(ctx) {
       } catch (e) { /* ignore */ }
       return 'spawn'
     }
+    // ---- host live-child cap: a refused provisioning must be named, not opaque -----
+    // See the module-scope note. `spawnMember` is the ONLY place a member child is created, so the
+    // pre-check and the cap-naming error live here; the callers (founding loop, resume, hire,
+    // addResearcher) only have to say what happened.
+    let childLimitLoggedThisRound = false   // ONE actionable line per ROUND, not one per refused member
+    function beginSpawnRound() { childLimitLoggedThisRound = false }
+    // LIVE continuable children of THIS institute: a member that holds a childId and has not been
+    // stopped. A member whose spawn was refused keeps childId '' (see the rollback in spawnMember
+    // and fire()), so it can never inflate the count it is measured against.
+    function liveChildCount() {
+      try { return inst().members.filter((m) => m.childId && m.phase !== 'stopped').length } catch (e) { return 0 }
+    }
+    // Say ONCE per round what the host refused and what raises the ceiling. The member itself is
+    // recorded as `failed` by the caller with the same sentence, so the refusal stays auditable.
+    function noteSpawnLimitOnce(member) {
+      if (childLimitLoggedThisRound) return
+      childLimitLoggedThisRound = true
+      console.error('vibe-math-v5: ' + activationLimitText(hostChildLimit) + (member ? ('（本轮被拒：' + member.id + '）') : ''))
+    }
+    // The operator-facing sentence used for BOTH the typed error and the durable member record.
+    function activationLimitText(limit) {
+      return hostChildLimitHint(limit) + '；本所已有的在活成员已占满该上限，暂时无法再创建成员。'
+        + '可在宿主的 subagent 行把 maxActiveSubagents 调大后重试，或先 vibe_v5_fire 解雇不用的临时工腾出位置。'
+    }
+
     // Bring a member into being. ORDER IS LOAD-BEARING and is the fix for the
     // "every brief describes the wrong person" bug:
     //   1. commit the member as ACTIVE first, so that everything derived from
@@ -1211,6 +1255,14 @@ export function apply(ctx) {
     // session is being rebuilt: the latter must NOT be told it "just joined the
     // institute" and must not be shown the induction blurb.
     async function spawnMember(member, initialTask, mode) {
+      // Host live-child cap (DSH ≥0.2): once we KNOW the ceiling and our OWN live members fill it,
+      // do not even call the host — it would refuse with the bare "subagent limit reached (active
+      // child limit: N)". One line per ROUND (not per member); the caller records the member as
+      // `failed` with the same sentence, and resume() retries cap-failed members once a slot frees.
+      if (hostChildLimit !== undefined && liveChildCount() >= hostChildLimit) {
+        noteSpawnLimitOnce(member)
+        throw v5err('ACTIVATION_LIMIT_REACHED', activationLimitText(hostChildLimit))
+      }
       const provider = member.provider || pickProvider()
       const ao = memberAgentOptions()
       const tf = memberToolFilter(member)
@@ -1235,15 +1287,17 @@ export function apply(ctx) {
       await writeRosterMirror()
       let started
       try {
-        started = await subagents.startContinuable({
-          provider,
-          label: 'vibe5 ' + member.id + ' (' + kindLabel(member.kind) + ')',
-          request: Object.assign({
-            prompt: [textBlock(prompt)],
-            parent: rootAgent,
-            persona,
-          }, Object.keys(ao).length ? { agentOptions: ao } : {}, tf ? { toolFilter: tf } : {}),
-          signal: makeSignal(params.activityTimeoutMs),
+        started = await startWithToolFilter(tf, function (f) {
+          return {
+            provider,
+            label: 'vibe5 ' + member.id + ' (' + kindLabel(member.kind) + ')',
+            request: Object.assign({
+              prompt: [textBlock(prompt)],
+              parent: rootAgent,
+              persona,
+            }, Object.keys(ao).length ? { agentOptions: ao } : {}, f ? { toolFilter: f } : {}),
+            signal: makeSignal(params.activityTimeoutMs),
+          }
         })
       } catch (e) {
         // Roll the in-memory marks back so a failed provisioning leaves no phantom
@@ -1253,7 +1307,15 @@ export function apply(ctx) {
         wakeKind.delete(member.id)
         rounds.delete(member.id)
         roundsSinceCompact.delete(member.id)
-        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: String((e && e.message) || e) }))
+        // The host's live-child cap is a HOST limit (maxActiveSubagents on the `subagent` row), not
+        // a defect in this member: remember the ceiling, report it BY NAME instead of relaying the
+        // opaque host string, and throw the TYPED error so the founding loop / hire / addResearcher
+        // name it too instead of surfacing the raw host message.
+        const limitHit = isActivationLimitReached(e)
+        if (limitHit) { noteChildLimit(e); noteSpawnLimitOnce(member) }
+        const message = limitHit ? activationLimitText(hostChildLimit) : String((e && e.message) || e)
+        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: message }))
+        if (limitHit) throw v5err('ACTIVATION_LIMIT_REACHED', message)
         throw e
       }
       member.childId = started.childId
@@ -1269,6 +1331,10 @@ export function apply(ctx) {
     // Deliver one prompt to a member. MUST use `subagents.sendMessage` — the
     // `subagents` SERVICE has no `followup` (that is only an Agent method); calling
     // it threw a TypeError on every wake and silently stalled the whole group (v4 §25).
+    // Unlike v4 there is no legacy fallback branch here, and none is needed: the service
+    // method existed only up to DSH 0.1.2-alpha.*, was dropped in 0.1.2-rc.1, and every
+    // release this preset targets exposes startContinuable/sendMessage/
+    // drainContinuableChildren only (checked against dsh-subagent 0.2.0-rc.2).
     async function wakeMember(member, promptText, kind) {
       if (!member || !member.childId || member.phase !== 'active') return false
       clearHeartbeat()
@@ -1889,7 +1955,7 @@ export function apply(ctx) {
     async function writeFormalIndex() {
       const recs = formalRecords()
       const L = ['# Lean 形式化索引｜' + instituteName + '｜' + fmtTime(), '',
-        '> 本文件由框架维护（工具调用时更新；`vibe_v5_lean_lib` 会重建）。权威状态在会话日志投影里。', '',
+        '> 本文件由框架维护（工具调用时更新；`vibe_v5_lean_lib` 会重建）。权威状态在 State/<研究所>.v5state.json 里。', '',
         '| 对象 | 状态 | 形式化文件 | 归档证明 | 最近运行 | 难度判断 / 阻塞原因 |', '|---|---|---|---|---|---|']
       const keys = Object.keys(recs)
       if (!keys.length) L.push('| （暂无） | | | | | |')
@@ -2440,7 +2506,7 @@ export function apply(ctx) {
     async function writeTaskboardMirror() {
       const ts = listTasks()
       const lines = ['# 任务板（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
-        '> 权威状态在会话日志投影里；本文件只是给人和所办看的快照，勿手改。', '']
+        '> 权威状态在 State/<研究所>.v5state.json 里；本文件只是给人和所办看的快照，勿手改。', '']
       if (!ts.length) lines.push('（暂无任务）')
       for (const t of ts) {
         lines.push('- [' + t.status + '] ' + t.id + '｜' + t.subject + '｜owner=' + (t.owner || t.ownerName || '(未认领)') +
@@ -2452,12 +2518,12 @@ export function apply(ctx) {
       await writeTextRel('Shared/TaskBoard.md', lines.join('\n'))
     }
     // The roster mirror (§8.4): a human-readable staffing table. Like the task-board
-    // mirror it is WRITE-ONLY — the authoritative roster is the session-log projection,
+    // mirror it is WRITE-ONLY — the authoritative roster is State/<研究所>.v5state.json,
     // so losing or hand-editing this file can never corrupt the institute.
     async function writeRosterMirror() {
       const s = inst()
       const lines = ['# 研究所编制表（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
-        '> 权威状态在会话日志投影里；本文件只是快照，勿手改。', '']
+        '> 权威状态在 State/<研究所>.v5state.json 里；本文件只是快照，勿手改。', '']
       lines.push('- 求真门槛：m = ' + quorumM() + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
       lines.push('- 阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
       lines.push('')
@@ -3171,6 +3237,10 @@ export function apply(ctx) {
         await spawnMember(member, initialTask)
       } catch (e) {
         await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: String((e && e.message) || e) }))
+        // Name the host's live-child cap (maxActiveSubagents) instead of relaying its opaque
+        // "subagent limit reached (active child limit: N)" string, and use the typed code so the
+        // hirer can tell a HOST ceiling from a broken provider.
+        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: '临时工创建失败：' + activationLimitText(hostChildLimit) } }
         return { ok: false, code: 'V5_PROVISIONING_CONFLICT', message: '临时工创建失败：' + String((e && e.message) || e) }
       }
       await saveChatLine('【雇佣】' + (office ? '所办' : callerId) + ' 雇入临时工 ' + member.id + '，用途：' + purpose)
@@ -3630,18 +3700,63 @@ export function apply(ctx) {
       if (member.activeMeetingId) delete member.activeMeetingId
       await scheduleNext()
     }
+    // ---- toolFilter names the host may not register -------------------------
+    // Same guard as v2/v3/v4: `tools.restrict` throws for an unregistered name and the throw escapes
+    // child creation, so a stale `vibe_v5_set{toolAllow|toolDeny|tempToolAllow|tempToolDeny}` would
+    // make every member spawn fail silently. The host names the registered tools in its rejection.
+    function registeredToolsFromError(message){
+      const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+      if(!m) return undefined
+      const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
+      return names.length > 0 ? new Set(names) : undefined
+    }
+    function sanitizeToolFilter(filter, known){
+      if(!filter || !(known instanceof Set) || known.size === 0) return filter
+      const out = {}
+      for(const key of ['allow','deny']){
+        const list = filter[key]
+        if(!Array.isArray(list)) continue
+        const kept = list.filter(function(n){ return known.has(String(n).trim()) })
+        if(kept.length > 0) out[key] = kept
+      }
+      return (out.allow || out.deny) ? out : undefined
+    }
+    async function startWithToolFilter(toolFilter, makeSpec){
+      try {
+        return await subagents.startContinuable(makeSpec(toolFilter))
+      } catch(e){
+        const message = String((e && e.message) || e)
+        const retry = sanitizeToolFilter(toolFilter, registeredToolsFromError(message))
+        if(retry===undefined){
+          console.error('vibe-math-v5: 配置的工具过滤只包含本宿主未注册的工具名，拒绝在不带过滤的情况下启动成员。filter=' + JSON.stringify(toolFilter) + ' 宿主提示：' + message)
+          throw e
+        }
+        if(JSON.stringify(retry) === JSON.stringify(toolFilter)) throw e
+        console.error('vibe-math-v5: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
+        // a FRESH spec (and a fresh timeout signal) for the retry
+        return await subagents.startContinuable(makeSpec(retry))
+      }
+    }
+
     async function maybeRealCompact(childId, member) {
       const roundN = roundsSinceCompact.get(member.id) || 0
       const pct = contextPct.get(member.id) || 0
       const soft = pct >= Number(params.compactThreshold) || roundN >= Number(params.compactAfterRounds)
       if (!soft) return
-      const comp = compactionOf()
       const agent = liveAgentOf(childId)
-      if (comp && agent && agent.session && typeof comp.compactIfNeeded === 'function') {
-        try {
-          const r = await comp.compactIfNeeded(agent, 'pressure', makeSignal(params.activityTimeoutMs))
-          if (r) { roundsSinceCompact.set(member.id, 0); needReanchor.add(member.id); return }
-        } catch (e) { /* fall through to the soft path */ }
+      const comp = compactionForAgent(agent)
+      if (comp && agent && agent.session) {
+        // Prefer the FORCING verb when the host has it: `compactIfNeeded` is a policy call that may
+        // decide not to compact and return null without saying so, while `compactNow` does what the
+        // operator asked for. Feature-detected so older hosts keep the policy call.
+        const force = typeof comp.compactNow === 'function'
+        const ask = typeof comp.compactIfNeeded === 'function'
+        if (force || ask) {
+          try {
+            const r = force ? await comp.compactNow(agent, makeSignal(params.activityTimeoutMs)) : await comp.compactIfNeeded(agent, 'pressure', makeSignal(params.activityTimeoutMs))
+            if (r) { roundsSinceCompact.set(member.id, 0); needReanchor.add(member.id); return }
+          } catch (e) { /* fall through to the soft path */ }
+        }
       }
       needReanchor.add(member.id)
     }
@@ -3779,11 +3894,11 @@ export function apply(ctx) {
       await writeTextRel('State/README.md', [
         '# 关于 State/',
         '',
-        '本研究所的**权威状态在会话日志投影里**（投影键 `vibeMathV5`），不是这里的文件。',
+        '本研究所的**权威状态就在本目录的 `<研究所>.v5state.json` 里**，不在任何宿主会话日志里。',
         '本目录只存放人可读的镜像/说明，**请勿手改**；改动不会影响真正的状态。',
         '要查看状态请用 `vibe_v5_status` / `vibe_v5_report`。',
         '',
-        '唯一例外：当宿主没有 `sessionProjections` 服务时，v5 会回退到',
+        '研究所状态只写在加固 JSON 里（见下），不写入宿主会话日志：',
         '`State/<institute>.v5state.json`（加固 JSON 后端），此时它才是权威源。',
         '安装器会在启动自检里报告这一降级。',
         '',
@@ -3829,6 +3944,10 @@ export function apply(ctx) {
         '从已知的相近结论出发，看能否推广或加强得到所需结果。',
       ]
       const spawned = []
+      // A refused provisioning (the host's live-child cap) is remembered for this founding round so
+      // the aggregate failure below can NAME the cap instead of blaming the provider.
+      let limitRefused = false
+      beginSpawnRound()   // the whole founding loop is ONE round for the cap notice
       // The academician is founded FIRST so it is on the roster for every later member's
       // induction brief, and so it can begin overseeing the founding round. Each member
       // is committed to the ACTIVE roster before its own brief is built (see
@@ -3841,6 +3960,7 @@ export function apply(ctx) {
             + '你打算如何组织全所（谁适合做什么、先做什么）？把你的判断写进你的 Progress/，并把关键结论在群聊里说出来。')
           spawned.push(m.id)
         } catch (e) {
+          if (isActivationLimitReached(e)) limitRefused = true
           await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
         }
       }
@@ -3851,11 +3971,18 @@ export function apply(ctx) {
           await spawnMember(m, null)
           spawned.push(m.id)
         } catch (e) {
+          if (isActivationLimitReached(e)) limitRefused = true
           await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
         }
       }
       if (!spawned.length) {
         await patchInstitute({ phase: 'idle' })
+        // When the HOST's per-root child cap refused every member, say so: the generic
+        // "check the provider" message made a real host ceiling look like a broken host.
+        if (limitRefused) {
+          return { ok: false, code: 'ACTIVATION_LIMIT_REACHED',
+            message: '没有任何成员创建成功：' + activationLimitText(hostChildLimit) }
+        }
         return { ok: false, code: 'V5_PROVISIONING_CONFLICT', message: '没有任何成员创建成功；请检查 subagents 提供者与会话持久化是否可用' }
       }
       running = true
@@ -3895,9 +4022,16 @@ export function apply(ctx) {
       syncParamsFromState()
       if (autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'this institute already concluded; configure a new one in a new session' }
       const members = activeMembers()
-      if (!members.length) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'no active member to resume' }
+      // Members the host's live-child cap refused are NOT dead: they are still wanted, and a slot
+      // may have been released since (a temp was fired, another child settled). They are the
+      // "queued" half of the cap handling, retried in this round — gated on the RECORDED cap error
+      // so an ordinary failed member (broken provider, rejected tool filter) is never resurrected
+      // by a resume. `members` keeps its meaning for the return value below.
+      const queued = inst().members.filter((m) => m.phase === 'failed' && /active child limit|maxActiveSubagents/.test(String(m.error || '')))
+      if (!members.length && !queued.length) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'no active member to resume' }
       let respawned = 0
-      for (const m of members) {
+      beginSpawnRound()   // the whole re-spawn loop is ONE round for the cap notice
+      for (const m of members.concat(queued)) {
         if (m.childId) continue
         try {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
@@ -4071,6 +4205,7 @@ export function apply(ctx) {
         await spawnMember(m, null)
       } catch (e) {
         await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
+        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: activationLimitText(hostChildLimit) } }
         return { ok: false, code: 'V5_PROVISIONING_CONFLICT', message: String((e && e.message) || e) }
       }
       await saveChatLine('【编制】所办增聘常驻研究员 ' + m.id + (direction ? '（方向：' + direction + '）' : '') +
@@ -4156,7 +4291,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s) => s.initStop())
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in the session-log projection). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
@@ -4315,22 +4450,11 @@ export function apply(ctx) {
     },
   }))
 
-  // ── the institute-state projection unit (registered ONCE, host-only) ──────
-  // No `wire`, so this unit is omitted from client snapshots but is checkpointed like
-  // every other unit — verified on this host: checkpoint() carries it, restore()
-  // refolds it from checkpoint + log tail, and it never enters `deriveMessages()`.
-  const projections = projectionsOf()
-  if (projections && typeof projections.register === 'function') {
-    ctx.effect(() => projections.register({
-      key: PROJECTION_KEY,
-      stateVersion: PROJECTION_VERSION,
-      stateSchema: STATE_SCHEMA,
-      init: initState,
-      apply: applyV5Event,
-    }))
-  } else {
-    console.error('vibe-math-v5: sessionProjections unavailable — falling back to the hardened JSON state file (State/<institute>.v5state.json)')
-  }
+  // ── institute state on disk ──────────────────────────────────────────────
+  // State/<institute>.v5state.json is written by the file backend above (installBackend); it is the
+  // only durable authority. The host's session projections are deliberately NOT used: DSH refuses to
+  // load a session whose log carries event types outside its known set, so writing institute events
+  // into the user's session made that session unresumable.
 
   // ── agent lifecycle wiring ───────────────────────────────────────────────
   // Capture the live child Agent while it is STILL registered: `subagent/end` is

@@ -117,22 +117,74 @@ function writeState(path, state) {
   }
 }
 
-// DSH 适配性自检（能力检测，而非版本号——DSH 不向插件暴露版本）。
+// DSH 适配性自检（版本 + preset 形态 + 能力）。
 // 检查 preset 运行时需要的宿主服务与关键 API 形状是否可用，缺失时打 warning。
-// Best-effort DSH host-version detection. DSH does NOT expose its version through a documented
-// service/context property or a guaranteed env var, so we probe in order: an explicit env var
-// (future-proofing), then the installed @deepseek-ai/dsh package.json. This is layout-dependent
-// (works for a typical global install where @deepseek-ai/dsh is a sibling of this plugin); when it
-// cannot resolve, the capability self-check below is still the authoritative gate.
+// Best-effort DSH host-version detection, in order of authority:
+//   1. `process.env.DSH_VERSION` — an explicit override, always honoured first;
+//   2. the `pluginManager` service's bundle list — every host bundle carries the runtime version and
+//      `@deepseek-ai/dsh-base` is present in every base-backed profile (service since 0.1.7);
+//   3. `@deepseek-ai/dsh-app-boot`'s exported `getDshRuntimeVersion()` — the documented API; it only
+//      resolves when this plugin's module scope can reach the host packages;
+//   4. the installed `@deepseek-ai/dsh/package.json` — the historical probe, still the only source
+//      that works on a global <= 0.1.6 install.
+// When none resolves, the capability self-check below is still the authoritative gate.
 const __require = createRequire(import.meta.url)
-function detectDshVersion() {
-  try { const v = process.env.DSH_VERSION; if (v && String(v).trim()) return String(v).trim() } catch (e) {}
+async function detectDshVersion(ctx) {
+  try { const v = process.env.DSH_VERSION; if (v && String(v).trim()) return { version: String(v).trim(), source: 'DSH_VERSION' } } catch (e) {}
+  try {
+    const pm = (ctx && ctx.get) ? ctx.get('pluginManager') : undefined
+    if (pm && typeof pm.listBundles === 'function') {
+      const bundles = await pm.listBundles()
+      const host = (bundles || []).find((b) => b && (b.name === '@deepseek-ai/dsh-base' || b.name === '@deepseek-ai/dsh'))
+      if (host && host.version) return { version: String(host.version), source: 'pluginManager:' + host.name }
+    }
+  } catch (e) { /* no such service, or it cannot list yet */ }
+  try {
+    const boot = await import('@deepseek-ai/dsh-app-boot')
+    if (boot && typeof boot.getDshRuntimeVersion === 'function') {
+      return { version: String(boot.getDshRuntimeVersion()), source: 'dsh-app-boot' }
+    }
+  } catch (e) { /* host packages are not reachable from this plugin's module scope */ }
   try {
     const p = __require.resolve('@deepseek-ai/dsh/package.json')
     const v = (JSON.parse(readFileSync(p, 'utf8')).version || '').trim()
-    if (v) return v
-  } catch (e) { /* host package not resolvable from here — rely on capability check */ }
+    if (v) return { version: v, source: '@deepseek-ai/dsh/package.json' }
+  } catch (e) { /* not a global install layout — rely on the capability check */ }
   return undefined
+}
+
+/**
+ * How this host declares agent presets.
+ *   'rows'      — DSH >= 0.1.7: composition rows declared in this package's cordis.patch.yml (the rows
+ *                 name our own preset-declaration module, which calls `agentPresets.register`).
+ *                 Nothing reads the preset directory any more.
+ *   'directory' — DSH <= 0.1.6: <DSH_HOME>/.agent-presets/<id>/agent.cordis.yml, which is what the
+ *                 copy in apply() installs.
+ *
+ * Judged from the LOADER TREE, not from the version and not from the `agentPresets` service: that
+ * service exists on BOTH lines with different meaning (a directory scanner below 0.1.7, a row registry
+ * from 0.1.7 on), and it may not be up yet when a bundle is activated on its own. Missing the row line
+ * would skip the only working install path, so this decision has to be the reliable one.
+ */
+function detectPresetMechanism(ctx) {
+  // 1) the LOADER TREE: only the row-based line mounts the agent-preset package (or its registry).
+  //    This is visible before any plugin activates, which matters because a bundle activation can run
+  //    this installer before the services are up (then ctx.get('agentPresets') is still undefined).
+  try {
+    const loader = (ctx && ctx.get) ? ctx.get('loader') : undefined
+    if (loader && typeof loader.entries === 'function') {
+      const entries = loader.entries()
+      for (const entry of entries) {
+        const name = entry && entry.options ? entry.options.name : undefined
+        if (name === '@deepseek-ai/dsh-agent-preset' || name === '@deepseek-ai/dsh-agent-preset-registry') return 'rows'
+      }
+    }
+  } catch (e) { /* no loader service: fall through to the service probe */ }
+  // 2) the service itself (>= 0.1.7), when it is already available.
+  try {
+    const ap = (ctx && ctx.get) ? ctx.get('agentPresets') : undefined
+    return (ap !== undefined && typeof ap.list === 'function') ? 'rows' : 'directory'
+  } catch (e) { return 'directory' }
 }
 
 /**
@@ -278,7 +330,10 @@ async function checkHostCapabilities(ctx, logger) {
   try { manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')) } catch (e) {}
   const dshRel = (manifest.dsh && manifest.dsh.compatibility && manifest.dsh.compatibility.dshReleases) || {}
   const supported = Object.keys(dshRel).sort()
-  const dshVersion = detectDshVersion()
+  const detected = await detectDshVersion(ctx)
+  const dshVersion = detected && detected.version
+  const versionSource = detected && detected.source
+  const mechanism = detectPresetMechanism(ctx)
   if (dshVersion) {
     const verdict = dshVersionVerdict(dshVersion, manifest)
     if (verdict.status === 'incompatible') {
@@ -309,12 +364,10 @@ async function checkHostCapabilities(ctx, logger) {
     { svc: 'subprocess', methods: ['spawn'], required: false },
     { svc: 'sandboxPolicy', methods: ['resolve'], required: false },
     { svc: 'compaction', methods: ['compactIfNeeded'], required: false },
-  // v5 keeps its institute state in a HOST-ONLY session projection unit, so it wants
-  // the projection registry and the session store. Both are mounted by dsh-base; if
-  // either is absent v5 falls back to a hardened JSON state file, so this is a
-  // degradation rather than a mounting gate.
-  { svc: 'sessionProjections', methods: ['register', 'stateOf'], required: false },
-  { svc: 'sessions', methods: ['flush'], required: false },
+  // v5 keeps its institute state in a hardened JSON file (State/<institute>.v5state.json) and does
+  // NOT use the session-projection registry or the session store any more: DSH refuses to load a
+  // session whose log carries event types outside its known set, so writing institute events into
+  // the user's session used to make that session unresumable. Neither service is checked here.
   ]
   const degradations = []
   for (let i = 0; i < checks.length; i++) {
@@ -359,13 +412,14 @@ async function checkHostCapabilities(ctx, logger) {
     }
   } catch (e) { /* 探测失败不致命 */ }
   if (degradations.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 可选宿主服务缺失，功能会静默降级（不影响挂载）：' + degradations.join('；') + '。subprocess 缺失则无法用 shell 创建目录树（仅靠 fs 自动建父目录兜底）；sandboxPolicy 缺失则插件写入不带显式围栏；compaction 缺失则 v4 的真实 /compact 路径与 v5 的真实压缩不生效（v5 回退到自述浓缩）；sessionProjections 缺失则 v5 的研究所状态回退到加固 JSON 文件（权威源从会话日志投影变为 State/<institute>.v5state.json，跨进程恢复能力下降）。')
+    logger?.warn?.('[dsh-vibe-math] 可选宿主服务缺失，功能会静默降级（不影响挂载）：' + degradations.join('；') + '。subprocess 缺失则无法用 shell 创建目录树（仅靠 fs 自动建父目录兜底）；sandboxPolicy 缺失则插件写入不带显式围栏；compaction 缺失则 v4 的真实 /compact 路径与 v5 的真实压缩不生效（v5 回退到自述浓缩）')
   }
   if (problems.length > 0) {
-    logger?.warn?.('[dsh-vibe-math] 宿主自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4/v5 预设依赖这些宿主服务/API，旧版或未经声明兼容的 DSH 可能无法挂载' + (dshVersion ? '（当前检测到 DSH v' + dshVersion + '，本包适配 ' + (supported.length ? supported.join(' / ') : '(未声明)') + '）' : '') + '。')
+    logger?.warn?.('[dsh-vibe-math] 宿主自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4/v5 预设依赖这些宿主服务/API，旧版或未经声明兼容的 DSH 可能无法挂载' + (dshVersion ? '（当前检测到 DSH v' + dshVersion + '，来源 ' + versionSource + '，本包适配 ' + (supported.length ? supported.join(' / ') : '(未声明)') + '）' : '') + '。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (degradations.length === 0 ? '，可选服务 subprocess / sandboxPolicy / compaction / sessionProjections / sessions 亦齐备' : '（可选服务有缺失，见上方警告）') + (dshVersion ? '（当前 DSH v' + dshVersion + '，本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
+    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (degradations.length === 0 ? '，可选服务 subprocess / sandboxPolicy / compaction 亦齐备' : '（可选服务有缺失，见上方警告）') + (dshVersion ? '（当前 DSH v' + dshVersion + '，来源 ' + versionSource + '；本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
   }
+  return { dshVersion, versionSource, mechanism }
 }
 
 export async function apply(ctx) {
@@ -375,6 +429,20 @@ export async function apply(ctx) {
     const here = dirname(fileURLToPath(import.meta.url))
     const presetRoot = join(dshHome, '.agent-presets')
     const stateFile = join(presetRoot, STATE_FILE)
+
+    // WHICH MECHANISM THIS HOST USES decides whether the directory work below means anything, so it
+    // is decided (and reported) before anything is written. The host self-check runs here too.
+    const host = await checkHostCapabilities(ctx, logger)
+    if (host && host.mechanism === 'rows') {
+      logger?.info?.('[dsh-vibe-math] preset 声明方式：本宿主以组合行声明 agent preset' +
+        (host.dshVersion ? '（DSH v' + host.dshVersion + '）' : '') + '，本包随附的 cordis.patch.yml 已声明四个 preset（dsh-vibe-math/preset-declaration）；' +
+        '跳过 ' + presetRoot + ' 目录同步（该目录自 DSH 0.1.7 起不再被读取）。')
+      if (existsSync(stateFile)) {
+        logger?.info?.('[dsh-vibe-math] 提示：' + presetRoot + ' 里还留着旧版 DSH（≤ 0.1.6）读取过的 preset 副本，' +
+          '当前宿主不会再读它们，可以安全删除（要自定义 preset，请在预设选择器里复制一份，或改 profile 的 cordis.patch.yml）。')
+      }
+      return
+    }
 
     // current package version (the source of truth for "is this an upgrade?")
     let pkgVersion = ''
@@ -525,7 +593,7 @@ export async function apply(ctx) {
       logger?.info?.('[dsh-vibe-math] preset files untouched (v' + pkgVersion + ' unchanged): ' + kept +
         ' file(s) differ from the shipped copy; they will be replaced on the next version change (原件会先备份)')
     }
-    await checkHostCapabilities(ctx, logger)
+    /* the host self-check ran at the top of apply() — it also decides the preset mechanism */
   } catch (err) {
     logger?.warn?.('[dsh-vibe-math] preset install/update failed: %s', String((err && err.message) || err))
   }

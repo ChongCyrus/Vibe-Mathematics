@@ -14,7 +14,7 @@ English | [中文](README.md)
 > - **`vibe-math-v2` (probability-driven · JSON data layer) ✅ Recommended**: `qs.json` problem list + `Propos/` proposition library + probability-driven scheduling + code heuristic scheduling;
 > - **`vibe-math-v3` (third generation · paper-style md + planner agent + method library) ✅ Recommended**: all knowledge is stored and extended in **Markdown paper/research-report form** (`Problems/` problem list + dependencies + source motivation, `Progress/` research log, `Propos/` proposition library, `Methods/` general theory invention library, `Verified/` absolutely trustworthy); before scheduling, the **planner agent** autonomously draws up a plan for the next N steps; theories/frameworks/tools/methods/ideas invented during solving are distilled by the **Method Keeper** into a reusable method system (as in inventing group theory or functional analysis).
 > - **`vibe-math-v4` (fourth generation · resident self-organizing collaborative research) 🧪 Experimental**: a group of **persistent resident subagents** **leave messages for one another + hold meetings**, and autonomously decide all task arrangements (no central scheduler); each accumulates its own progress/proposition/method/subproblem libraries and consults the others; verification is written to `Verified/` **only when all residents agree (true or false)**, otherwise it remains in the library with a probability attached; when the context reaches a threshold it automatically `/compact`s; it stops only when all agree that the original problem has been solved.
-> - **`vibe-math-v5` (fifth generation · institute system) 🧪 Experimental · Latest**: upgrades the residents into an **institute** — **academicians** (leaders / the organizing and coordinating center, responsible for decomposition and **assignment**, setting priorities, chairing meetings, and supervising progress) + **resident researchers** (with voting rights, able to autonomously hire/fire their own temp workers) + **temp workers** (no voting rights); it has a **public charter**, **group chat and meetings**, a **compare-and-set task board**, and **real firing**; a boolean agreement of **≥ m votes** is required to write to `Verified/` (opposing votes block, abstentions are not counted, and if the threshold is not met it remains in the library with an average probability attached); state is stored in **host-only projection units of the session log**, at zero token cost.
+> - **`vibe-math-v5` (fifth generation · institute system) 🧪 Experimental · Latest**: upgrades the residents into an **institute** — **academicians** (leaders / the organizing and coordinating center, responsible for decomposition and **assignment**, setting priorities, chairing meetings, and supervising progress) + **resident researchers** (with voting rights, able to autonomously hire/fire their own temp workers) + **temp workers** (no voting rights); it has a **public charter**, **group chat and meetings**, a **compare-and-set task board**, and **real firing**; a boolean agreement of **≥ m votes** is required to write to `Verified/` (opposing votes block, abstentions are not counted, and if the threshold is not met it remains in the library with an average probability attached); state is written to the **hardened JSON file** `State/<institute>.v5state.json` under the institute directory (serial writes, a mandatory load before read) — **never into the host session log** — at zero token cost.
 
 After installing this plugin package (or manually copying the presets), **four** agent presets appear in DSH's preset selector.
 
@@ -79,7 +79,7 @@ flowchart TB
     subgraph FW["⚙️ Framework vibe-v5 —— only a medium (middleware), never assigns tasks"]
         M["Message relay · meetings/debates · task board CAS+DAG<br/>m-vote consensus verification · context and liveness · roster and hiring · scheduler"]
     end
-    PROJ["💾 host-only session log projection cell (key vibeMathV5)<br/>11 kinds of events · pure fold applyV5Event · DSH handles checkpoint/restore"]
+    PROJ["💾 State/&lt;institute&gt;.v5state.json (hardened JSON, authoritative)<br/>11 kinds of events · pure fold applyV5Event · serial writes · recovery = load before read"]
     FS["📁 Members/&lt;id&gt;/* · Shared/* · Verified/ · Problems/"]
     RULE{{"Truth gate: Boolean unanimity and Boolean votes ≥ m = min(quorumCap, number of registered voting members)"}}
     OFF <-->|"vibe_v5_* / /v5 commands　↔　status / report"| M
@@ -141,16 +141,17 @@ Voting has two stages: first [independent initial assessment] (mutually invisibl
 
 #### State and Persistence
 
-Institute state lives in a **host-only projection cell of the session log** (key `vibeMathV5`): the framework's only side effect is appending 11 kinds of events to the
-session log, from which `applyV5Event` purely folds out the state. Therefore
+Institute state is written **only** to the **hardened JSON file** `State/<institute>.v5state.json` under the institute directory: the framework's only side effect is to hand 11 kinds of events to
+`applyV5Event`, which purely folds them into a state, and then to write that whole snapshot **serially to disk** (one serialization chain per file). Therefore
 
 - **Zero token cost**: these events **do not enter the model context** and do not consume members' conversation budget;
-- **Recovery takes the same code path**: both cross-process restarts and resume after an in-process abort are covered by DSH's checkpoint/restore;
+- **Recovery takes the same code path**: both cross-process restarts and resume after an in-process abort are covered by the "mandatory load before read", which is the same code either way;
 - the whole class of problems caused by v4's direct writes to `State/*.json` — "corrupted silent overwrite / concurrent lost writes / stale cross-process snapshots" — is eliminated by construction.
 
-If the host has no `sessionProjections` service, v5 automatically falls back to hardened JSON (`State/<institute>.v5state.json`, the same fold,
-serial writes, and a mandatory load before read), and the installer's startup self-check reports this degradation. Files outside the projection (member output libraries, group chat, meeting minutes,
-debate records, roster mirror, task board mirror) are all **human-readable artifacts**, and breaking them by hand does not damage the institute.
+**v5 no longer writes institute events into the host session log**: DSH's session persistence **refuses to load an entire session** whose log carries an event type it does not know
+(unless the writer marked it `ignorable: true`, and `Session.append` cannot set that field) — which would make **your own session unopenable on the next resume**.
+Everything except the state file (member output libraries, group chat, meeting minutes, debate records, roster mirror, task board mirror) is a **human-readable artifact**,
+and breaking it by hand does not damage the institute.
 
 #### How the Prompt Is Composed
 
@@ -184,7 +185,7 @@ and **only one message is delivered per prompt**.
 │   ├─ TaskBoard.md              # task board mirror
 │   └─ State-of-institute.md     # snapshot of members' judgment on "whether it is solved"
 ├─ Verified/<type>/<id>.md       # conclusion (read-only; only this can be treated as established)
-└─ State/README.md               # explains that "the authoritative state is in the session log projection, not here"
+└─ State/README.md               # explains that "the files here are mirrors — do not hand-edit them"
 ```
 
 #### Tool Surface
@@ -200,7 +201,7 @@ and **only one message is delivered per prompt**.
 - **There is a leader**: v4 has no central scheduling and everything emerges from discussion; v5 has an academician responsible for organization and assignment **inside the institute**
   (**the framework still never assigns** —— the assigner is the academician, who is likewise bound by the m votes).
 - **The truth gate changes from "all-unanimous" to "≥ m unanimous"** (switchable back to the v4 standard).
-- **State is stored in the session log's host-only projection cell**, with DSH responsible for checkpoint/recovery (see above).
+- **State is stored in the hardened JSON file** `State/<institute>.v5state.json` under the institute directory (serial writes, a mandatory load before read): recovery is simply that load-before-read (see above).
 - **Three classes of positions + hireable temp workers**: the roster is mutable, and hiring/firing are real reversible operations.
 - **No npm experimental package is introduced**: v5 is a single `.js` file within the preset, with zero dependencies.
 - **Meetings and verification are strictly mutually exclusive** (queued in both directions).
@@ -231,9 +232,9 @@ See [the v5 specification](vibe-math-v5/实现方案.md) (written specification)
 - **Persistent self-organization (v4)**: at the start, N **persistent resident subagents** are created, after which **all task arrangements are decided by those subagents themselves through leaving messages for each other + holding meetings** (the framework only provides the message bus/meetings/task board, and never assigns tasks).
 - **Institute system (v5)**: on top of v4's self-organization, it introduces the **organizational form of a real research institute** — the **academician** (leader) is responsible for decomposition, **assignment**, prioritization, chairing meetings, and supervising progress; **resident researchers** have voting rights and can **autonomously hire/fire their own temp workers**; **temp workers** have no voting rights; all organizational actions are performed by **members of the institute**, and the framework still only acts as the medium. See the [Vibe Math V5](#vibe-math-v5-institute-system--experimental--latest) section above for details.
 - **Adjustable quorum (v5)**: for an object to enter `Verified/`, **≥ m = min(`quorumCap`, number of enrolled voters)** voters must cast a **consistent boolean vote** (all `1` or all `0`); **an opposing vote blocks**, and **abstentions do not count as votes but do count toward the average probability**; if the threshold is not reached, the object is **kept in the library with the average probability and the complete debate record**, without forcing an adjudication.
-- **Zero-token-cost state persistence (v5)**: the institute state is stored in a **host-only projection unit of the session log** and does not enter the model context; cross-process and same-process recovery go through the same code path.
+- **Zero-token-cost state persistence (v5)**: the institute state is written to the **hardened JSON file under the institute directory** (`State/<institute>.v5state.json`) and does not enter the model context; cross-process and same-process recovery go through the same code path (a mandatory load before read).
 - **Genuinely reversible roster (v5)**: hiring creates a resident child session; firing cancels in-flight turns, releases the child session, reclaims its tasks, and discards undelivered mail; a codename is never reused.
-- **Human-readable mirror (v4/v5)**: the roster table, task board, meeting minutes, debate records, and closing records are all written to disk as Markdown and are readable by humans at any time; but **the authoritative state is not in these files** (in v5 it is in the projection unit), so manually corrupting them will not break the institute.
+- **Human-readable mirror (v4/v5)**: the roster table, task board, meeting minutes, debate records, and closing records are all written to disk as Markdown and are readable by humans at any time; but **the authoritative state is not in these files** (in v5 it is `State/<institute>.v5state.json`), so manually corrupting them will not break the institute.
 
 ---
 
@@ -340,44 +341,44 @@ Two installation methods, choose either one (they can also coexist):
 
 ### Method A: one-click install as a plugin package (recommended, installs all four presets at once)
 
+On the desktop app, install `dsh-vibe-math` from **Settings → Plugins**; on the command line, use a profile:
+
 ```sh
 dsh plugin --profile <your profile> add dsh-vibe-math
 # Or install directly from GitHub:
 dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-During installation the plugin automatically writes the four presets into `~/.dsh/.agent-presets/`: `vibe-math-v2/`, `vibe-math-v3/`, `vibe-math-v4/` and `vibe-math-v5/`.
 Then start a new session and pick **Vibe Math V3** (v3, **primary recommendation**), **Vibe Math V2** (v2, **primary recommendation**), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — v2 and v3 are equally primary recommendations, choose according to your actual needs (see "How to choose").
-**After upgrading the package version, restart DSH; the managed files in these four preset directories will be replaced wholesale with the new version's bytes — including files you edited by hand.**
-This is intentional: a preset that is "half old version, half new version" will fail to mount or behave strangely, and you cannot tell from the outside. **The hand edits that get replaced are not lost**:
-the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup/<old version>/<preset>/`, and the file names are listed in the log (see the installer notes at the end for details).
-**If you want to customize a preset, do not edit these managed files** — make a copy (the copy action in the preset picker, or copy the directory yourself into a new id); that copy belongs to you and package updates will not touch it.
+**The two DSH generations land in different places, and this package adapts to both**:
 
-### Method B: manual install as an agent preset
+- **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares all four presets in `cordis.patch.yml` (each row hands that preset's full plugin list to the host's `agentPresets` service), and **writes nothing into `~/.dsh/.agent-presets/`** — that directory has not been read since 0.1.7.
+- **DSH ≤ 0.1.6**: presets are still directories, and the installer writes the four presets into `~/.dsh/.agent-presets/` (`vibe-math-v2/` … `vibe-math-v5/`); the declaration rows in the same `cordis.patch.yml` register nothing on those versions, so older hosts **do not error** at boot.
 
-1. Copy the files from the corresponding directory of this repository into the preset directory:
+**After upgrading the package version, restart DSH: the managed content is replaced wholesale with the new version's bytes — including files you edited by hand.** This is intentional: a preset that is "half old version, half new version" will fail to mount or behave strangely, and you cannot tell from the outside. **The hand edits that get replaced are not lost**: in the directory form the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup/<old version>/<preset>/`, and the file names are listed in the log.
+**If you want to customize a preset, do not edit managed content** — make a copy (the copy action in the preset picker, or declare it under a new id in your own bundle). Note: on current DSH, if you save your own declaration for the **same id**, this package skips registration and logs one line saying so — your declaration wins.
 
-   ```
-   C:\Users\<you>\.dsh\.agent-presets\vibe-math-v2\   ← copy agent.cordis.yml / preset.yml / vibe-math-v2.js from vibe-math-v2/
-   C:\Users\<you>\.dsh\.agent-presets\vibe-math-v3\   ← copy agent.cordis.yml / preset.yml / vibe-math-v3.js from vibe-math-v3/
-   C:\Users\<you>\.dsh\.agent-presets\vibe-math-v4\   ← copy agent.cordis.yml / preset.yml / vibe-math-v4.js from vibe-math-v4/
-   C:\Users\<you>\.dsh\.agent-presets\vibe-math-v5\   ← copy agent.cordis.yml / preset.yml / vibe-math-v5.js from vibe-math-v5/
-   ```
+### Method B: manual declaration (customization / secondary development)
 
-2. Start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **"Vibe Math V4"** / **"Vibe Math V5"** in the preset picker.
-3. Once the session starts it is ready to use: v2/v3 tools are `vibe_math_*`, v4 is `vibe_v4_*`, v5 is `vibe_v5_*`; typing `/vibe`, `/v4`, `/v5` in the input box gives autocompletion.
+- **DSH ≥ 0.1.7**: put the whole of `vibe-math-vN/agent.cordis.yml` into a declaration row as its `plugins` — either copy the `dsh-vibe-math/preset-declaration` row from this package's `cordis.patch.yml`, or use the host's own `@deepseek-ai/dsh-agent-preset` row; install this bundle into your profile. Full rules: the DSH skill `editing-cordis-compositions`.
+- **DSH ≤ 0.1.6**: copy `agent.cordis.yml` / `preset.yml` / `vibe-math-vN.js` from `vibe-math-vN/` into `~/.dsh/.agent-presets/vibe-math-vN/`.
 
-> After modifying preset files you must **restart the DSH process** before starting a new session (a preset's standing mount is cached until the process exits).
+Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **"Vibe Math V4"** / **"Vibe Math V5"** in the preset picker; once the session starts it is ready to use: v2/v3 tools are `vibe_math_*`, v4 is `vibe_v4_*`, v5 is `vibe_v5_*`; typing `/vibe`, `/v4`, `/v5` in the input box gives autocompletion.
+
+> After changing a preset definition you must **restart the DSH process** before starting a new session (a preset's standing mount is cached until the process exits).
 
 ### DSH version adaptation and dependencies
 
-- **Form dependencies**: the four presets depend on DSH's standard **agent-preset mechanism** (`~/.dsh/.agent-presets/<id>/` + preset picker) and **bundle patch mechanism** (`cordis.patch.yml` injects the installer).
+- **Form dependencies (two lines, one bundle covers both)**: the **bundle patch mechanism** (`cordis.patch.yml`; `dsh.bundle.patch` must stay a **string** — 0.1.5/0.1.6 pass that value straight into `path.join`, and an array breaks the profile boot); **DSH ≥ 0.1.7** uses **composition-row declarations** (the `agentPresets` service), **DSH ≤ 0.1.6** uses the `~/.dsh/.agent-presets/<id>/` directory + preset picker.
 - **Host plugin rows**: `agent.cordis.yml` references the `@deepseek-ai/dsh-*` plugin rows provided by the host (persona, agent-instructions, tool-bash/pwsh, tool-fs/fs-search, tool-jobs, skill-filesystem, tool-skill, tool-goal, plan-mode, compaction, subagent/workflow, ask-user, todo, web, etc., about 21 unique package names). Missing rows on the host cause the preset mount to fail (an error is reported when the session starts).
-- **Host service APIs**: the preset plugins consume `subagents` (startContinuable / **sendMessage** (continue/wake; `followup` is only a method of the `Agent` object, **not** a `subagents` service method) / interrupt / drainContinuableChildren (used by v5 for **real dismissal**)), `agents` (get/roots), `tools` (register/restrict), `commands` (register), `fs` (resolve/stat/readText/writeText/listDir), plus the **optional** `subprocess` / `sandboxPolicy` / `compaction` / `sessionProjections` / `sessions`. These API shapes evolve with DSH versions; this project **has checked and adapted to them item by item on `dsh-v0.1.5-rc.2`** (`dsh.testedVersion` in `package.json`). **Note: starting with DSH 0.1.2, `subagents.startContinuable`'s `agentOptions` / `toolFilter` require the host provider to declare the corresponding capability** (both the in-process spawn / fork providers support it; v4/v5's ability to specify member models/routes and tool permissions depends on this).
+- **Host service APIs**: the preset plugins consume `subagents` (startContinuable / **sendMessage** (continue/wake; `followup` is only a method of the `Agent` object, **not** a `subagents` service method) / interrupt / drainContinuableChildren (used by v5 for **real dismissal**)), `agents` (get/roots), `tools` (register/restrict), `commands` (register), `fs` (resolve/stat/readText/writeText/listDir), plus the **optional** `subprocess` / `sandboxPolicy` / `compaction`. These API shapes evolve with DSH versions; this project **has checked and adapted to them item by item on `dsh-v0.2.0-rc.2`** (`dsh.testedVersion` in `package.json`), and is aligned with `0.1.5-rc.2` as well. **Note: starting with DSH 0.1.2, `subagents.startContinuable`'s `agentOptions` / `toolFilter` require the host provider to declare the corresponding capability** (both the in-process spawn / fork providers support it; v4/v5's ability to specify member models/routes and tool permissions depends on this).
+  - **v5 keeps its institute state only in `State/<institute>.v5state.json`** (hardened JSON, serial writes, a mandatory load before read). v5 **no longer** writes institute events into the host session log: DSH's session persistence **refuses to load an entire session** whose log carries an event type it does not know (unless the writer marked it `ignorable: true`, and `Session.append` cannot set that field) — which would make **your own session unopenable on the next resume**.
+  - **Live residents are capped by the host**: DSH ≥ 0.1.7 caps the **live continuable children** of each root agent (the `subagent` row's `maxActiveSubagents`, default 8). v4/v5 report a clear message when they hit the cap and defer that spawn to the next round, instead of letting the start loop crash halfway.
   > **2026 compatibility fix highlights** (see `docs/COMPAT-AUDIT-ROUND2.md` for details): ① `tools.restrict()` **throws on unregistered tool names**, and the filter is applied when a subagent is created, so the permission name table must contain only names actually registered in this deployment — v2/v3 previously hard-coded `web`/`fetch`/`bash` (of which `bash` is `disabled` on Windows), which caused "when you want to tighten permissions, the subagent can never start"; ② v4's real `/compact` previously looked up `agents.get()` in `subagent/end`, but that event fires only after the subagent **has already been removed from the registry**, making it dead code; it now captures the reference in `subagent/start`; ③ optional services are now read **lazily** instead of being snapshotted in `apply()` (otherwise mount order could leave `subprocess` permanently undefined and silently skip directory creation).
-- **DSH STORE compatibility declaration**: `dsh.compatibility.dshReleases` in `package.json` declares `compatible` / `incompatible` / `unknown` item by item for each complete DSH version (currently 8 versions from `0.1.2-alpha.4` … `0.1.5-rc.2` are declared `compatible`, with `0.1.5-rc.2` as the tested target); `engines.node` is `^22.19.0 || >=24.0.0`.
-- **Runtime self-check (capability + version dual check)**: on every start the installer (bundle plugin): **① makes a best-effort probe of the DSH version** (reads `@deepseek-ai/dsh/package.json` or the `DSH_VERSION` environment variable; DSH does not expose its version through a public service/context, so this is best effort and is skipped if the probe fails). If a version is detected and is not declared `compatible` in `dshReleases`, a clear notice is given; **② then runs a capability self-check against host services and key APIs** (this is the real mount gate): `subagents`/`agents`/`tools`/`commands`/`fs` are **required** (missing means a warning), while `subprocess`/`sandboxPolicy`/`compaction`/`sessionProjections`/`sessions` are **optional** (missing only prompts that "functionality will silently degrade" and does not affect mounting; when `sessionProjections` is missing, v5's institute state falls back to hardened JSON), and it also includes an `fs.resolve` return-shape check and a subagent `agentOptions`/`toolFilter` capability check. If a preset fails to mount, look first at the self-check warnings in the DSH log.
-- **Upgrade path**: after upgrading DSH there is no need to reinstall this package; to upgrade this package use `dsh plugin --profile <your profile> add dsh-vibe-math@latest` (`dsh plugin`'s `--profile` is mandatory; use `add` rather than `update`, because a profile may pin the version to an exact value, in which case `update` will not cross over), and after restarting DSH the installer updates the managed files of the four presets wholly to the new version (modified files are likewise replaced, with the original text first going to `<presetRoot>/.vibe-math-backup/`; see the "Installation" notes above).
+- **DSH STORE compatibility declaration**: `dsh.compatibility.dshReleases` in `package.json` declares `compatible` / `incompatible` / `unknown` item by item for each complete DSH version (currently 11 versions from `0.1.2-alpha.4` … `0.2.0-rc.2` are declared `compatible`, with `0.2.0-rc.2` as the tested target); `engines.dsh` is `>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0`; `engines.node` is `^22.19.0 || >=24.0.0`.
+  It also declares `peerDependencies` (`@deepseek-ai/dsh-base`, marked optional): DSH ≥ 0.1.7 compares the plugin's declared peer range against **its own version** and, when it does not match, **skips the whole bundle with a clear message** instead of mounting a preset that cannot run.
+- **Runtime self-check (version + form + capabilities)**: on every start the installer (bundle plugin): **① probes the DSH version in priority order** — the `DSH_VERSION` environment variable → the `pluginManager` service's bundle list (the version of `@deepseek-ai/dsh-base` is the host version, 0.1.7+) → `getDshRuntimeVersion()` exported by `@deepseek-ai/dsh-app-boot` (a public API since 0.2.0) → `@deepseek-ai/dsh/package.json` (global 0.1.x installs), and the log names the **source**; when a detected version is not declared `compatible` in `dshReleases`, a clear notice is given. **② decides the preset form**: whether `@deepseek-ai/dsh-agent-preset` (or its registry) is mounted in the loader entry tree tells it whether this host uses "composition rows" or "directories", which decides whether it syncs `~/.dsh/.agent-presets/` — on the new host it skips that and logs that the old directory can safely be deleted. **③ runs the capability self-check** (the real mount gate): `subagents`/`agents`/`tools`/`commands`/`fs` are **required** (missing means a warning), while `subprocess`/`sandboxPolicy`/`compaction` are **optional** (missing only prompts that "functionality will silently degrade"), plus an `fs.resolve` return-shape check and a subagent `agentOptions`/`toolFilter` capability check. If a preset fails to mount, look first at the self-check warnings in the DSH log.
+- **Upgrade path**: after upgrading DSH there is no need to reinstall this package; to upgrade this package use `dsh plugin --profile <your profile> add dsh-vibe-math@latest` (`dsh plugin`'s `--profile` is mandatory; use `add` rather than `update`, because a profile may pin the version to an exact value, in which case `update` will not cross over), and after restarting DSH the managed content is updated wholly to the new version (on the DSH ≤ 0.1.6 directory form: modified files are likewise replaced, with the original text first going to `<presetRoot>/.vibe-math-backup/`; on DSH ≥ 0.1.7 the presets come from the composition rows instead — see the "Installation" notes above).
 
 ---
 
@@ -402,7 +403,7 @@ the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup
 >   - **organized self-organization** — like a real research institute, with a **leader (academician)** responsible for decomposition, assignment, prioritization, chairing meetings and supervising progress, but **judgment still belongs to each individual**;
 >   - a **roster that can grow or shrink** — resident researchers + temp workers who can be **autonomously hired/dismissed** (temp workers have no voting rights, suitable for chores such as checking, trial computation and material organization);
 >   - an **adjustable consistency threshold** — `m = min(quorumCap, number of voting members)` boolean-consistent votes settle the matter (easier to converge than "unanimity", while **opposing votes still block**, so a minority will not be drowned out by abstentions);
->   - **zero-token-cost state persistence** — the institute state is stored in a host-only projection unit of the session log and does not consume member context budget.
+>   - **zero-token-cost state persistence** — the institute state is written to a hardened JSON file under the institute directory and does not consume member context budget.
 >
 > **⚠️ `vibe-math-v2` and `vibe-math-v3` are mature primary architectures; `vibe-math-v4` and `vibe-math-v5` are experimental architectures,** all are selectable; the old `vibe-math-v1` has been removed (this package contains only v2/v3/v4/v5).
 
@@ -410,7 +411,7 @@ the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup
 |---|---|---|---|---|
 | Positioning | **Primary** (JSON data layer) | **Primary** (third generation) | **Experimental** (fourth generation) | **Experimental** (fifth generation) |
 | Core idea | Probability-driven: `qs.json` problems + `Propos/` proposition library, scheduled by "correctness probability / value" | **Paper-style md knowledge base + planner agent scheduling + general theory invention library** | **Persistent resident subagents self-organizing**: message each other + meetings decide all tasks, no central scheduling | **Institute**: the academician organizes and assigns, members research on their own; a conclusion requires **≥ m boolean-consistent votes**; temp workers can be hired as needed |
-| Data | `qs/qs.json` + `Propos/<category>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/` (all md, soft-spec anchors + free narration) + `Verified/` | `Problems/` + `Progress|Propos|Methods|Subproblems/<id>/` **owned by resident id** + `Shared/` (meetings/task board/debate) + `Verified/` | Same member-owned layout as v4, plus `Institutes.md` (roster mirror); **the authoritative state is in the session log projection**, and files are only mirrors and workspaces |
+| Data | `qs/qs.json` + `Propos/<category>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/` (all md, soft-spec anchors + free narration) + `Verified/` | `Problems/` + `Progress|Propos|Methods|Subproblems/<id>/` **owned by resident id** + `Shared/` (meetings/task board/debate) + `Verified/` | Same member-owned layout as v4, plus `Institutes.md` (roster mirror); **the authoritative state is `State/<institute>.v5state.json`**, and the other files are only mirrors and workspaces |
 | Roles | explorer → per-direction solver → verifier | **planner (planner agent)** → explorer → per-direction solver → verifier → **method-keeper (method organization agent)** | **N resident researchers** (continuable), no fixed roles | **academician acad** (leader) + **resident researcher r-n** (with voting rights) + **temp worker t-n** (no voting rights, hireable and dismissible) + institute office (does not research and does not vote) |
 | Scheduling | Code heuristics (priority + probability) | **The planner agent produces an N-step plan** (executed after validation, falls back to heuristics on failure) | **No central scheduling**: tasks arise from residents messaging each other / holding meetings (the framework is only a medium and does not assign) | **The framework still does not assign**; the **academician** decomposes/assigns/prioritizes/supervises, and members may object with reasons; the framework only relays, keeps the task board, holds meetings and counts |
 | Closing rule | A solution/proof reaching probability `1` closes it; `never` is never scheduled | Same as v2 (near-consensus adjudication fixes flat misjudgment) | Writes to `Verified/` **only when all residents agree (true or false)**, otherwise leaves it in the library with a probability | Writes to `Verified/` **only when boolean votes ≥ m = min(`quorumCap`, number of voting members) and all are 1 or all are 0**; opposing votes block; abstentions do not count as votes but count toward the average; (can be switched back to the v4 criterion) |
@@ -449,7 +450,7 @@ The framework = **one main agent (assistant) + one code scheduler + one planner 
 | Who judges | Each on its own; a conclusion is reached only when all agree | Each on its own; a conclusion is reached only on **≥ m voting members in boolean agreement** |
 | Coordination mechanism | messages + meetings | messages + meetings (strictly mutually exclusive with verification) + **compare-and-set task board** |
 | Roster | resident, can be spawned/closed | **can grow and shrink**: resident researchers are hired with the institute office's approval; temp workers are hired and fired autonomously by academicians/researchers |
-| State | `State/*.json` written directly | **session-log host-only projection cells** (zero token cost, handled by DSH checkpoint/restore) |
+| State | `State/*.json` written directly | **`State/<institute>.v5state.json` hardened JSON** (zero token cost, serial writes, a mandatory load before read) |
 
 For the complete v5 architecture (including member lifecycle, one-round timeline, consensus state machine, meeting flow, scheduling priority, state folding, prompt composition, task board, authority matrix), see [the v5 detail diagrams](vibe-math-v5/架构图.md); for the textual specification see
 [the v5 specification](vibe-math-v5/实现方案.md).
@@ -525,16 +526,16 @@ For the complete v5 architecture (including member lifecycle, one-round timeline
 │   └─ State-of-institute.md     # snapshot of members' judgment on "whether it is solved"
 ├─ Verified/<type>/<id>.md       # conclusions (read-only; only these may be treated as established)
 └─ State/
-    ├─ README.md                 # explains "the authoritative state is in the session-log projection, not here"
-    └─ <institute>.v5state.json      # fallback authoritative source only when the host lacks sessionProjections
+    ├─ README.md                 # explains that "the files here are mirrors — do not hand-edit them"
+    └─ <institute>.v5state.json      # the authoritative state (hardened JSON, serial writes, a mandatory load before read)
 ```
 
 > Enabling Lean formal verification adds two more directories: this institute's `Formal/` (working files + index + formalization todos) and `Verified/Lean/`
 > (**archived proofs**), plus the **cross-project** `<VibeMath root>/Formal/{Lib,Proved}/` (reusable definitions and already-proved lemmas) — see
 > the "Lean formal verification" section above.
 
-**v5 iron rules**: ① the authoritative state lives in the **session log's host-only projection cells** (key `vibeMathV5`); in the table above, everything except
-`State/<institute>.v5state.json` (degraded fallback) is merely a **mirror/workspace**, and breaking it by hand-editing will not destroy the institute;
+**v5 iron rules**: ① the authoritative state is written only to `State/<institute>.v5state.json` (hardened JSON, serial writes, a mandatory load before read);
+in the table above, every other file is merely a **mirror/workspace**, and breaking it by hand-editing will not destroy the institute;
 ② members **write only their own library** (`Members/<own codename>/`), but may read anyone's library;
 ③ only `Verified/` and cards marked "verified·true/false" are **absolutely trusted**; everything else (including unverified assertions in `Methods/`) is merely experiential reference,
 and citations must be marked "unverified"; ④ entry into the library must state all three of **degree of value / motivation-purpose plan / own probability estimate**, none may be omitted.
@@ -773,7 +774,7 @@ Adjustable via `vibe_v4_set` (persisted to `State/settings.json`):
 
 ### v5 (institute system · experimental) defaults
 
-Adjustable via `vibe_v5_set` (persisted in the session log projection):
+Adjustable via `vibe_v5_set` (persisted in the institute state file `State/<institute>.v5state.json`):
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -808,7 +809,7 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 
 ## 📝 Checkpoint resume & manual intervention (two hard requirements)
 
-- **Checkpoint resume**: all state is persisted to disk (v2: `VibeMath_State/*.json`; v3: `State/*.json`; **v5: the host-only projection units of the session logs**), and every subagent is a DSH **continuable persistent session** (the conversation is saved automatically by DSH). After a restart, open a new session → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` resumes the run. v2/v3 additionally use a **process epoch** to distinguish "same-process pause → resume" (keeping live subagents running) from "cross-process restart" (cleaning up stale tasks). **v3's md knowledge base is itself a narrative breakpoint** — on resume the agent continues writing from the tail of the research log / problem card / proposition card; **in v5 this role is taken by the projection units** — cross-process and same-process recovery go through the same code path, and when member sessions are rebuilt they are re-seeded by "reading back your own Progress/" (rather than making them start over).
+- **Checkpoint resume**: all state is persisted to disk (v2: `VibeMath_State/*.json`; v3: `State/*.json`; **v5: the hardened JSON `State/<institute>.v5state.json` under the institute directory**), and every subagent is a DSH **continuable persistent session** (the conversation is saved automatically by DSH). After a restart, open a new session → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` resumes the run. v2/v3 additionally use a **process epoch** to distinguish "same-process pause → resume" (keeping live subagents running) from "cross-process restart" (cleaning up stale tasks). **v3's md knowledge base is itself a narrative breakpoint** — on resume the agent continues writing from the tail of the research log / problem card / proposition card; **in v5 this role is taken by the state file** — recovery is simply "load before read", cross-process and same-process go through the same code path, and when member sessions are rebuilt they are re-seeded by "reading back your own Progress/" (rather than making them start over).
 - **Intervening mid-run**: `manual` mode suspends decisions at key points (v2: explorer/solver dispatch, verification verdicts; v3: the **plan approval gate** (after the planning agent produces a plan, it waits for your approve/reject), the verification verdict gate, and the **method promotion gate** (project methods → global library)); you can switch back to automatic at any time with `set_mode auto` (which automatically clears all pending decisions); you can `message_agent` / `interrupt_agent` any subagent. **v4/v5 are intervenable by nature**: leave a message for a member at any time (`vibe_v5_message`), convene a meeting, pause the whole institute, add or remove positions — members will see it on their next round.
 - **Progress reporting**: **event-driven** by default — reports are written only when an event such as an agent status update occurs (v2: `Progress_Logs/report.json`; v3: `Progress_Logs/report.json` + `Logs/报告.md`, a paper-style human-readable summary; `reportMode` can be `file`/`push`/`both`, and `push` wakes up resident agents to report proactively via `subagents.sendMessage(root agent, resident subagent, …)` — `followup` is **not** a method of the `subagents` service, it is only a method of the `Agent` object); scheduled automatic reporting (interval in milliseconds) starts only when `reportIntervalMs` is set to >0. **v4/v5 progress reporting is "self-reporting within the institute"**: members write their progress into their own `Progress/`, and state key conclusions in the group chat (in v5 there are also readers of the mirrors `Institutes.md` / `Shared/TaskBoard.md`, the meeting minutes, the debate records, and `Problems/conclusion.md`).
 
@@ -836,8 +837,9 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 ## ⚠️ Known limitations (deliberate simplifications)
 
 **v2**:
-- The installer has **versioned auto-update**: on every DSH start it compares the package version against the record in `<presetRoot>/.vibe-math-installed.json` — **as soon as the version changes (or on the first run of an older installation with no record) it replaces the managed files wholesale, regardless of whether they were modified**; replaced hand-edited originals are first backed up to `<presetRoot>/.vibe-math-backup/<old version>/<preset>/` and listed in the log. Within the same version it **rewrites no files at all** (restarting DSH will not rewrite the presets, nor disturb the generation index it records by mtime), and missing files are restored at any time. To force a full reinstall: delete the `~/.dsh/.agent-presets/vibe-math-v2`, `vibe-math-v3`, `vibe-math-v4` and `vibe-math-v5` directories and restart DSH.
-- **These four directories are owned by the installer**: deleting any file in them or the whole directory only leads to it being restored on the next DSH start (which is exactly why the "force a full reinstall" above works). To get rid of them entirely, uninstall this package (`dsh plugin --profile <your profile> remove dsh-vibe-math`).
+- **(DSH ≤ 0.1.6, the directory form)** The installer has **versioned auto-update**: on every DSH start it compares the package version against the record in `<presetRoot>/.vibe-math-installed.json` — **as soon as the version changes (or on the first run of an older installation with no record) it replaces the managed files wholesale, regardless of whether they were modified**; replaced hand-edited originals are first backed up to `<presetRoot>/.vibe-math-backup/<old version>/<preset>/` and listed in the log. Within the same version it **rewrites no files at all** (restarting DSH will not rewrite the presets, nor disturb the generation index it records by mtime), and missing files are restored at any time. To force a full reinstall: delete those four preset directories and restart DSH.
+  On DSH ≥ 0.1.7 the installer **writes none of these directories** (the composition rows of the "Installation" section above supply the presets); at startup it only logs that leftover copies can safely be deleted.
+- **On DSH ≤ 0.1.6 these four directories are owned by the installer**: deleting any file in them or the whole directory only leads to it being restored on the next DSH start (which is exactly why the "force a full reinstall" above works). On DSH ≥ 0.1.7 they are neither read nor written any more, so you can simply delete them; to get rid of them entirely, uninstall this package (`dsh plugin --profile <your profile> remove dsh-vibe-math`).
 - A `flat` verdict directly rules `0.5` when the debate is inconsistent (high-confidence disagreement such as 0.9 vs 1 is also misjudged as 0.5 — **v3 has fixed this with the near-consensus rule**); `forced` weights by historical accuracy + confidence.
 - Problems/propositions with `never` priority are **never scheduled**, and do not block strict termination (they count as voluntarily abstaining).
 - The four preset files are mutually independent and can coexist; only one preset can be selected in a given session at a time.
@@ -862,8 +864,9 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
   and only after the meeting closes does it go through the full voting procedure.
 - **After `resume`, the round counter restarts from 1** (in-memory state, used only for throttling and compaction hints); the authoritative progress lives in the members' own `Progress/`.
 - **A member's charter is an onboarding snapshot**: upgrading this package will not rewrite the charters of members in an institute that is already running (they keep the version frozen at onboarding).
-  If you need a new charter, open a new institute in a new session; the projection state and file tree need no migration.
-- **Installer behavior is the same as v2** (versioned auto-update; as soon as the version changes it replaces the managed files wholesale, backing up the originals first, and the `vibe-math-v5` directory is likewise managed).
+  If you need a new charter, open a new institute in a new session; the state file and file tree need no migration.
+- **Installer behavior is the same as v2** (on the DSH ≤ 0.1.6 directory form: as soon as the version changes it replaces the managed files wholesale, backing up the originals first, and the `vibe-math-v5` directory is likewise managed;
+  on DSH ≥ 0.1.7 the installer writes no preset directory at all — the presets come from the composition rows).
 - **Lean formalization requires a Lean toolchain on the host**: the framework neither bundles nor downloads one; without a toolchain the three Lean tools truthfully return
   `LEAN_NOT_FOUND`, and formalization code can still be written down and archived, but verification cannot be executed.
 - **The gate in `require` mode is "shelving" rather than "deadlock"**: true/false conclusions that lack formalization are recorded as undecided + entered into the formalization to-do,

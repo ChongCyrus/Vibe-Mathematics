@@ -56,13 +56,18 @@ ok(existsSync(join(HERE, String((pkg.dsh.bundle || {}).patch || 'cordis.patch.ym
 // ---------------------------------------------------------------------------------------------
 // 1. the DSH requirement declaration
 // ---------------------------------------------------------------------------------------------
-// The exact chain in package.json, verified against semver 7.8.5 (npm's bundled copy) BOTH with and
-// without `includePrerelease` — it admits exactly the releases in `dsh.compatibility.dshReleases`
-// (0.1.2-alpha.4 … 0.1.5-rc.2) and rejects 0.1.1-*, 0.2.0-rc.1, 0.2.0 and 1.0.0. Re-verify with:
-//   node -e "const s=require('C:/…/npm/node_modules/semver');console.log(s.satisfies('0.1.5-rc.2', RANGE, {includePrerelease:true}))"
+// The exact chain in package.json, verified against semver BOTH with and without `includePrerelease`
+// — it admits every release in `dsh.compatibility.dshReleases` (0.1.2-alpha.4 … 0.2.0-rc.2) and
+// rejects 0.1.1-*, 0.3.0-rc.1, 0.3.0 and 1.0.0. Re-verify with:
+//   node -e "const s=require('C:/…/npm/node_modules/semver');console.log(s.satisfies('0.2.0-rc.2', RANGE, {includePrerelease:true}))"
 // An exact-match assertion is deliberate: any edit to the range must be re-verified by hand, because
 // a plausible-looking range is precisely how hosts get a wrong verdict on the card.
-const EXPECTED = '>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.2.0-0'
+//
+// EVERY supported line needs its own branch whose tuple carries a prerelease tag: node-semver only
+// admits a prerelease version when a comparator on the SAME [major,minor,patch] tuple also carries
+// one. A branch like >=0.1.5-alpha.1 <0.2.0-0 therefore silently rejects 0.1.6-alpha.x and 0.1.7-rc.x,
+// which is how the DSH 0.2.0 adaptation widened this chain.
+const EXPECTED = '>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0'
 const engineDsh = pkg.engines && pkg.engines.dsh
 const dshEnginesDsh = pkg.dsh && pkg.dsh.engines && pkg.dsh.engines.dsh
 ok(typeof engineDsh === 'string', 'engines.dsh is declared (the position dsh-market reads)', JSON.stringify(engineDsh))
@@ -89,13 +94,23 @@ ok(typeof engineDsh === 'string' && engineDsh.length <= 256, 'the declaration fi
   })
   ok(uncovered.length === 0, 'every release marked compatible in dsh.compatibility is covered by engines.dsh',
     'uncovered: ' + uncovered.join(', ') + (missing.length ? '' : ''))
-  const ceil = /<0\.2\.0-0/.test(engineDsh)
-  ok(ceil, 'the range ends with an explicit prerelease-aware ceiling (<0.2.0-0): a future major host is not silently claimed compatible')
-  // no @deepseek-ai peers is a *deliberate* state for this bundle: the presets depend on host
-  // SERVICES, not on npm packages. If one is ever added, the market will AND it with the engine
-  // declaration, so it must be a prerelease-aware range too.
+  // The ceiling must be the next MINOR of the newest supported line, prerelease-aware (<x.(y+1).0-0),
+  // so a future host line is never silently claimed compatible.
+  const newest = matrix.map((v) => v.split('-')[0]).sort((a, b) => {
+    const [am, an, ap] = a.split('.').map(Number), [bm, bn, bp] = b.split('.').map(Number)
+    return am - bm || an - bn || ap - bp
+  }).pop()
+  const [maj, min] = newest.split('.').map(Number)
+  const ceil = new RegExp('<0*' + maj + '\\.' + (min + 1) + '\\.0-0').test(engineDsh)
+  ok(ceil, 'the range ends with an explicit prerelease-aware ceiling on the next minor of the newest supported line (<' + maj + '.' + (min + 1) + '.0-0)')
+  // @deepseek-ai peers ARE declared now: DSH >= 0.1.7 reads them as its own compatibility gate and
+  // SKIPS the whole bundle on a mismatch. Two properties matter — the peer is optional (pnpm must
+  // never try to install the host into a profile) and its range is the same verified chain.
   const peers = Object.keys(pkg.peerDependencies || {}).filter((n) => n.startsWith('@deepseek-ai/'))
-  ok(peers.length === 0, 'no @deepseek-ai peerDependencies are declared (the presets use host services, not packages)', peers.join(', '))
+  ok(peers.length > 0 && peers.every((n) => (pkg.peerDependenciesMeta || {})[n] && (pkg.peerDependenciesMeta || {})[n].optional === true),
+    'every @deepseek-ai peerDependency is marked optional (the host is present; only the version gate is wanted)', peers.join(', '))
+  const badPeers = peers.filter((n) => pkg.peerDependencies[n] !== engineDsh)
+  ok(badPeers.length === 0, 'each @deepseek-ai peerDependency carries the same verified range as engines.dsh', badPeers.join(', '))
 }
 
 // ---------------------------------------------------------------------------------------------

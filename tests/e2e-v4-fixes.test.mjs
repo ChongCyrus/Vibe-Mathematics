@@ -1149,5 +1149,87 @@ function makeCtx(){
   rmSync(m.WS,{recursive:true,force:true})
 }
 
+// ================= T42: the host's live-child cap is survived, named and not re-asked ============
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T42 host live-child cap refuses a spawn without killing the run --')
+  // DSH ≥0.2 caps the number of LIVE continuable children per ROOT agent (materialize calls
+  // ActivationPool.reserve(maxActiveSubagents), default 8; the throw is NOT documented in the .d.ts).
+  // The mock refuses exactly like the host once the cap is full and frees a slot when a child is
+  // interrupted — the two host facts this preset has to survive. Before the fix the refusal escaped
+  // start()'s spawn loop, leaving running=true, a half-built team and an unhandled rejection.
+  const LIMIT=2
+  let live=0, hostCalls=0
+  const capError=()=>{ const e=new Error('subagent limit reached (active child limit: '+LIMIT+'); wait for an existing child to finish or complete this work with the current agents'); e.code='ACTIVATION_LIMIT_REACHED'; return e }
+  const origStart=m.ctx.subagents.startContinuable
+  m.ctx.subagents.startContinuable=async function(spec){ hostCalls++; if(live>=LIMIT) throw capError(); live++; return await origStart.call(this,spec) }
+  const origInterrupt=m.ctx.subagents.interrupt
+  m.ctx.subagents.interrupt=function(id){ live=Math.max(0,live-1); return origInterrupt.call(this,id) }
+  const errs=[]; const origErr=console.error
+  console.error=function(){ errs.push(Array.prototype.join.call(arguments,' ')) }
+  let start
+  try { start=await m.callTool('vibe_v4_start', { problem:'宿主存活子代理上限', residentCount:4 }) }
+  finally { console.error=origErr }
+  assert(start && start.ok===true, 'T42: start still succeeds when the host refuses part of the team (message='+(start&&start.message)+')')
+  assert(m.spawns.length===LIMIT, 'T42: only the residents the host accepted were created (spawns='+m.spawns.length+')')
+  const capLines=errs.filter(l=>/maxActiveSubagents/.test(l))
+  assert(capLines.length===1, 'T42: ONE actionable line for the whole spawn round, not one per refused resident (got '+capLines.length+')')
+  assert(/maxActiveSubagents/.test((start&&start.message)||''), 'T42: the start message names the host parameter that raises the ceiling (message='+(start&&start.message)+')')
+  const st1=await m.callTool('vibe_v4_status', {})
+  assert(st1.residentCount===LIMIT && st1.pendingSpawns===2, 'T42: only live residents are counted and the refused ones are queued (residentCount='+st1.residentCount+', pendingSpawns='+st1.pendingSpawns+')')
+  assert(st1.busy.length===LIMIT && st1.busy.every(b=>m.spawns.some(sp=>sp.label===b)), 'T42: no half-updated bookkeeping for a refused resident (busy='+JSON.stringify(st1.busy)+')')
+  assert(st1.hostChildLimit===LIMIT, 'T42: the host ceiling is remembered from the refusal (hostChildLimit='+st1.hostChildLimit+')')
+  // The accepted residents still work: finish their brainstorm and the run must reach phase=active
+  // (a refused resident must never be treated as a pending brainstormer that freezes the phase).
+  for(const sp of m.spawns){ m.fireEnd({ id:sp.childId, runId:'cap-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins',solved:false})}] }); await sleep(60) }
+  const st2=await m.callTool('vibe_v4_status', {})
+  assert(st2.phase==='active', 'T42: the run proceeds with the live team instead of dying half-started (phase='+st2.phase+')')
+  // Once the ceiling is KNOWN, a refused spawn must not even reach the host.
+  const callsBefore=hostCalls
+  const am=await m.callTool('vibe_v4_add_member', { direction:'超编' })
+  assert(am.ok===false && am.code==='ACTIVATION_LIMIT_REACHED', 'T42: addMember reports the host cap instead of claiming a resident that does not exist ('+JSON.stringify(am).slice(0,160)+')')
+  assert(hostCalls===callsBefore, 'T42: the host was NOT asked again once the ceiling was known (skip-before-spawn; hostCalls='+hostCalls+')')
+  // The refused work is QUEUED, not lost: freeing a slot makes the next scheduling round create it.
+  await m.callTool('vibe_v4_remove_member', { id:'r-2' })
+  const st3=await m.callTool('vibe_v4_status', {})
+  assert(st3.residents.some(r=>r.id==='r-3'), 'T42: a queued resident is retried as soon as a slot frees (residents='+st3.residents.map(r=>r.id).join(',')+')')
+  assert(st3.residentCount===2 && st3.pendingSpawns===2, 'T42: the retried resident is live while the still-capped ones stay queued (residentCount='+st3.residentCount+', pendingSpawns='+st3.pendingSpawns+')')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
+// ================= T43: a resident refused while RESPAWNING is dropped from the live roster ======
+{
+  const m = makeCtx(); const mod = await import(PLUGIN.href+'?t='+Date.now()+Math.random()); const plugin = mod.default||mod; plugin.apply(m.ctx)
+  console.log('-- e2e-v4-fixes: T43 resume+capped host leaves no childless phantom resident --')
+  // A resume re-spawns residents that are ALREADY in the roster map (their childIds were cleared by
+  // an abort, or are stale after a process restart). If the host's live-child cap refuses one of
+  // those, it must not stay in the map: the meeting/verify consensus requires EVERY resident in the
+  // map to speak/vote and no subagent/end can ever arrive for a child that was never created, so a
+  // childless phantom would hang every consensus round until the stuck watchdog.
+  await m.callTool('vibe_v4_start', { problem:'恢复时撞上限', residentCount:4 })
+  await waitFor(()=>m.spawns.length>=4)
+  await m.callTool('vibe_v4_abort', {})            // clears every childId, keeps all 4 in the roster
+  const LIMIT=2
+  let live=0
+  const origStart=m.ctx.subagents.startContinuable
+  m.ctx.subagents.startContinuable=async function(spec){ if(live>=LIMIT){ const e=new Error('subagent limit reached (active child limit: '+LIMIT+'); wait for an existing child to finish or complete this work with the current agents'); e.code='ACTIVATION_LIMIT_REACHED'; throw e } live++; return await origStart.call(this,spec) }
+  const errs=[]; const origErr=console.error
+  console.error=function(){ errs.push(Array.prototype.join.call(arguments,' ')) }
+  let res
+  try { res=await m.callTool('vibe_v4_resume', {}) }
+  finally { console.error=origErr }
+  assert(res && res.ok===true, 'T43: resume still succeeds when the host refuses part of the roster ('+(res&&res.message)+')')
+  const st=await m.callTool('vibe_v4_status', {})
+  assert(m.spawns.length===4+LIMIT, 'T43: exactly LIMIT residents were re-spawned on the capped host (spawns='+m.spawns.length+')')
+  assert(st.residentCount===LIMIT && st.residents.length===LIMIT, 'T43: a resident refused during RESPAWN is dropped from the live roster, not left as a childless phantom (residentCount='+st.residentCount+', residents='+st.residents.map(r=>r.id).join(',')+')')
+  assert(st.pendingSpawns===LIMIT, 'T43: the refused residents are queued for a later round (pendingSpawns='+st.pendingSpawns+')')
+  assert(st.busy.length===LIMIT, 'T43: only the live residents carry bookkeeping (busy='+JSON.stringify(st.busy)+')')
+  const capLines=errs.filter(l=>/maxActiveSubagents/.test(l))
+  // TWO rounds happened: the resume re-spawn loop (r-3 host-refused, r-4 skipped by the pre-check)
+  // and scheduleNext's queued-retry round (both pre-checked) — i.e. 4 refusals, 2 lines, one each.
+  assert(capLines.length===2, 'T43: one line per ROUND, not per refused resident (4 refusals → '+capLines.length+' lines)')
+  rmSync(m.WS,{recursive:true,force:true})
+}
+
 console.log('=== V4 FIXES RESULT: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed>0?1:0)

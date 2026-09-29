@@ -19,9 +19,9 @@
 # tasks — the academician does that, as a member subject to the same m-vote rule.
 #
 # The vibe-math-v5 plugin row consumes HOST subagents/agents/fs/tools/commands/
-# timer/sessionProjections/sessions services and publishes nothing, so it needs
-# no isolate realm. (Registering a host-only session projection UNIT is a
-# registration on a host registry, like tools.register — not publishing a service.)
+# timer services and publishes nothing, so it needs no isolate realm. Institute
+# state lives in its own hardened JSON file (State/<institute>.v5state.json):
+# the plugin appends NOTHING to any host session log.
 
 # ── identity ────────────────────────────────────────────────────────────────
 
@@ -373,10 +373,10 @@
 # organization & task assignment / m-vote boolean consensus verification /
 # hire & fire / context compaction / resume / human intervention).
 #
-# It consumes HOST subagents/agents/fs/tools/commands/timer services and the HOST
-# projection registry (sessionProjections) + sessions store; it provides no
-# service of its own, so it sits loose (no isolate realm). Registering a
-# host-only projection unit is a registration on a host registry (exactly like
-# tools.register / commands.register), not the publication of a service.
+# It consumes HOST subagents/agents/fs/tools/commands/timer services; it provides
+# no service of its own, so it sits loose (no isolate realm). Institute state is
+# persisted by the plugin itself in State/<institute>.v5state.json — the host
+# session log is never written (DSH refuses to load a session that carries an
+# unknown event type, and Session.append cannot mark one ignorable).
 - id: vibe-math-v5
   name: './vibe-math-v5.js'

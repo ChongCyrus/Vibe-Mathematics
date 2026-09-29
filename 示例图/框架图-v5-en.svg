@@ -112,30 +112,30 @@
 <rect x="248" y="880" width="1410" height="38" rx="10" fill="#ffffff" stroke="#0b6fb8" stroke-width="1.6"/>
 <text x="953" y="903.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Scheduler priority: meeting/verification (mutually exclusive) → queued verification → meetings → active tasks (throttled by activityTimeoutMs) → mail → chat digest → meeting on stall → heartbeat</text>
 <rect x="40" y="964" width="790" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
-<text x="58" y="991" font-size="15" font-weight="700" fill="#125a3c">Source of truth: host-only projection cell of the session log (key vibeMathV5)</text>
-<text x="58" y="1011" font-size="12" fill="#5d7788">The only side effect is appending events to the session log, outside the model context (zero token cost)</text>
+<text x="58" y="991" font-size="15" font-weight="700" fill="#125a3c">Source of truth: hardened JSON file State/&lt;institute&gt;.v5state.json</text>
+<text x="58" y="1011" font-size="12" fill="#5d7788">the same pure applyV5Event fold · serial whole-snapshot writes · load before every read (zero token cost)</text>
 <rect x="62" y="1020" width="360" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
 <text x="242" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">applyV5Event (pure fold, the only copy)</text>
-<text x="242" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">11 kinds of events: institute / member / task /</text>
+<text x="242" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">12 kinds of events: institute / member / task /</text>
 <text x="242" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">message / delivered / meeting / debate /</text>
-<text x="242" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verdict / queue / counters / progress</text>
+<text x="242" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">verdict / formal / queue / counters / progress</text>
 <text x="242" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">unknown/bad event → skipped and recorded in diagnostics:</text>
 <text x="242" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">availability first, one bad event never stalls the field</text>
 <rect x="434" y="1020" width="374" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
-<text x="621" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">checkpoint / restore / resume</text>
-<text x="621" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">the projection is checkpointed with the session log; restore</text>
-<text x="621" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">re-folds snapshot + log tail → across and within processes</text>
-<text x="621" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">one process recovery takes the same code path</text>
-<text x="621" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">fallback: host without sessionProjections → hardened</text>
-<text x="621" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">JSON: State/&lt;institute&gt;.v5state.json</text>
+<text x="621" y="1046.3" font-size="12" font-weight="700" fill="#10202e" text-anchor="middle">the only backend: hardened JSON file</text>
+<text x="621" y="1062.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">never read before load; each commit writes the whole</text>
+<text x="621" y="1078.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">snapshot through a serial chain, so a late writer cannot</text>
+<text x="621" y="1094.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">land a stale subset; across and within processes recovery</text>
+<text x="621" y="1110.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">takes one code path: read file → fold. Institute events</text>
+<text x="621" y="1126.3" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">never enter the host session log; DSH refuses unknown ones</text>
 <rect x="852" y="964" width="828" height="196" rx="14" fill="#eef7f1" stroke="#1f7a52" stroke-width="2"/>
-<text x="870" y="991" font-size="15" font-weight="700" fill="#125a3c">File plane: human-readable artifacts (everything outside the projection is only a mirror)</text>
-<text x="870" y="1011" font-size="12" fill="#5d7788">The authority for consensus is the projection; files are readable artifacts, breaking them by hand does not damage it</text>
+<text x="870" y="991" font-size="15" font-weight="700" fill="#125a3c">File plane: readable artifacts (all except State/&lt;institute&gt;.v5state.json are mirrors)</text>
+<text x="870" y="1011" font-size="12" fill="#5d7788">The authority is State/&lt;institute&gt;.v5state.json; everything else is a readable artifact — hand edits change nothing</text>
 <rect x="874" y="1020" width="784" height="124" rx="10" fill="#ffffff" stroke="#1f7a52" stroke-width="1.6"/>
 <text x="1266" y="1055.1" font-size="11.5" font-weight="700" fill="#10202e" text-anchor="middle">Members/&lt;id&gt;/Progress|Propos|Methods|Subproblems/</text>
 <text x="1266" y="1070.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">only the owner can write, everyone can read (cross-reading is encouraged)</text>
 <text x="1266" y="1086.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/Chat/*.md · Shared/Meetings/&lt;mt-id&gt;.md · Shared/Debates/&lt;obj&gt;.md</text>
-<text x="1266" y="1101.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/TaskBoard.md · Institutes.md (roster mirror) · State/README.md (says the authority is not here)</text>
+<text x="1266" y="1101.6" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Shared/TaskBoard.md · Institutes.md (roster mirror) · State/README.md (says the authority is the sibling v5state.json)</text>
 <text x="1266" y="1117.1" font-size="10.5" font-weight="400" fill="#2c4557" text-anchor="middle">Problems/&lt;id&gt;.md (original problem) · Problems/conclusion.md (conclusion) · Verified/&lt;type&gt;/&lt;id&gt;.md (conclusion, read-only)</text>
 <path d="M 127 290 L 127 700 L 226 700" fill="none" stroke="#5b4bb8" stroke-width="2" marker-start="url(#bothHuman)" marker-end="url(#bothHuman)"/>
 <text x="127" y="336" font-size="12" font-weight="700" fill="#5b4bb8" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">Tool surface</text>
@@ -156,7 +156,7 @@
 <line x1="556" y1="400" x2="578" y2="400" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
 <line x1="556" y1="430" x2="578" y2="430" stroke="#b26a00" stroke-width="1.8" stroke-dasharray="7 5" marker-start="url(#bothHouse)" marker-end="url(#bothHouse)"/>
 <line x1="400" y1="940" x2="400" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
-<text x="392" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">append / fold / stateOf</text>
+<text x="392" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">load / commit / fold</text>
 <line x1="1280" y1="940" x2="1280" y2="964" stroke="#1f7a52" stroke-width="2" marker-start="url(#bothData)" marker-end="url(#bothData)"/>
 <text x="1288" y="956" font-size="10.5" font-weight="400" fill="#1f7a52" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">read/write artifacts</text>
 <text x="52" y="1186" font-size="12" font-weight="700" fill="#10202e" text-anchor="start">Legend</text>
