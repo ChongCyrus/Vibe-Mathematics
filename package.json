@@ -19,6 +19,7 @@
     "./preset-declaration": "./preset-declaration.js"
   },
   "files": [
+    "SECURITY.md",
     "README.md",
     "README.en.md",
     "docs/COMPAT-AUDIT-ROUND2.md",
