@@ -3,12 +3,20 @@
  *
  * These functions parse model-authored Markdown and JSON into the knowledge base.
  * A model can emit almost anything, so they must never throw and never invent
- * structure. This loads each plugin's real implementation text and hammers the
- * pure helpers with hostile inputs.
+ * structure. This imports each plugin module and hammers the pure helpers it exposes
+ * through its `__testHelpers` seam with hostile inputs.
+ *
+ * The helpers used to be discovered by walking the plugin's source text, cutting the
+ * declarations out with brace matching and compiling them through the Function
+ * constructor. That is dynamic code execution (DANGEROUS_DYNAMIC_EXECUTION in a
+ * plugin-catalog security scan) and it fuzzed a re-compiled copy. The plugins now
+ * declare those helpers at module scope and export them through a documented test seam,
+ * so this harness fuzzes the REAL module instances -- the same function objects
+ * `apply()` closes over.
  *
  * Usage: node tests/audit-fuzz-helpers.mjs
  */
-import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -17,24 +25,6 @@ const FILES = {
   'vibe-math-v3': `${REPO}/vibe-math-v3/vibe-math-v3.js`,
   'vibe-math-v4': `${REPO}/vibe-math-v4/vibe-math-v4.js`,
 };
-
-/** Pull a `function name(...) {...}` body declared at EXACTLY `indent` spaces. */
-function grabFunction(src, name, indent) {
-  const pad = ' '.repeat(indent);
-  const start = src.indexOf(`${pad}function ${name}(`);
-  if (start < 0) return undefined;
-  // reject an async or generator declaration (its body may await)
-  const head = src.slice(start, start + 60);
-  if (/async\s/.test(head) || /\*/.test(src.slice(start, src.indexOf('(', start)))) return undefined;
-  let i = src.indexOf('{', start);
-  if (i < 0) return undefined;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === '{') depth += 1;
-    else if (src[j] === '}') { depth -= 1; if (depth === 0) return src.slice(start, j + 1) }
-  }
-  return undefined;
-}
 
 const HOSTILE = [
   '', ' ', '\n', '\r\n', 'null', 'undefined', '{}', '[]', '[', ']', '{', '}',
@@ -47,6 +37,12 @@ const HOSTILE = [
 ];
 
 const NUMERIC = [undefined, null, NaN, Infinity, -Infinity, 0, -0, -1, 1, 1e308, -1e308, '0', '1e999', '', [], {}, 'NaN'];
+
+/** The genuinely fuzzable surface: text/JSON in, structure out. */
+const NAMES = ['parseJson', 'safeJson', 'stripJsonComments', 'slugify', 'safeId', 'idSafe',
+  'clamp01', 'parseProgress', 'blocksToText', 'parseReply', 'parseMethodMd', 'tryJson',
+  'cl', 'clPct', 'posMs', 'shortId', 'uuid', 'fmtTime',
+  'splitHeader', 'splitSections'];
 
 let passed = 0;
 let failed = 0;
@@ -67,60 +63,22 @@ function check(preset, fn, input, thunk) {
 }
 
 for (const [preset, file] of Object.entries(FILES)) {
-  const src = await readFile(file, 'utf8');
-
-  // --- pure string/json helpers present in all three ---
-  // --- single-argument pure helpers present in the plugins (the genuinely
-  // fuzzable surface: text/JSON in, structure out) ---
-  const names = ['parseJson', 'safeJson', 'stripJsonComments', 'slugify', 'safeId', 'idSafe',
-    'clamp01', 'parseProgress', 'blocksToText', 'parseReply', 'parseMethodMd', 'tryJson',
-    'cl', 'clPct', 'posMs', 'shortId', 'uuid', 'fmtTime',
-    'splitHeader', 'splitSections'];
-  /** Helpers pulled in for dependency reasons are NOT fuzzed directly. */
-  const FUZZED = new Set(names);
-  const defs = [];
-  const addDef = (n) => {
-    if (defs.some((d) => d.name === n)) return;
-    for (const indent of [4, 2]) {
-      const body = grabFunction(src, n, indent);
-      if (body && !/\bawait\b/.test(body)) { defs.push({ name: n, body }); return }
-    }
-  };
-  for (const n of names) addDef(n);
-  // Pull in whatever the extracted bodies reference, so the subset is self-contained
-  // (a helper calling another helper is not a product defect).
-  for (let round = 0; round < 6; round++) {
-    const referenced = new Set();
-    for (const d of defs) {
-      for (const m of d.body.matchAll(/\b([a-zA-Z_$][\w$]*)\s*\(/g)) {
-        const n = m[1];
-        if (['function', 'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'new', 'String',
-          'Number', 'Boolean', 'Array', 'Object', 'JSON', 'Math', 'Date', 'parseInt', 'parseFloat',
-          'isNaN', 'isFinite', 'Set', 'Map', 'Promise', 'RegExp', 'Error', 'encodeURIComponent',
-          'decodeURIComponent', 'setTimeout', 'clearTimeout', 'require', 'console'].includes(n)) continue;
-        referenced.add(n);
-      }
-    }
-    let grew = false;
-    for (const n of referenced) { const before = defs.length; addDef(n); if (defs.length > before) grew = true }
-    if (!grew) break;
-  }
-
-  let factory;
-  try {
-    const decls = defs.map((d) => d.body).join('\n');
-    factory = new Function(`${decls}\nreturn {${defs.map((d) => d.name).join(',')}};`);
-  } catch (e) {
-    console.log(`  (${preset}: could not compile helper subset: ${(e && e.message) || e})`);
+  const mod = await import(pathToFileURL(file).href + '?t=' + Date.now());
+  const helpers = mod.__testHelpers;
+  if (!helpers) {
+    console.log(`  (${preset}: module does not export __testHelpers)`);
+    failed += 1;
     continue;
   }
-  let helpers;
-  try { helpers = factory() } catch (e) { console.log(`  (${preset}: factory threw: ${(e && e.message) || e})`); continue }
 
-  console.log(`\n=== ${preset} — ${Object.keys(helpers).length} helpers compiled, ${[...FUZZED].filter((n) => typeof helpers[n] === 'function').length} fuzzed ===`);
-  for (const [name, fn] of Object.entries(helpers)) {
-    if (typeof fn !== 'function') continue;
-    if (!FUZZED.has(name)) continue;
+  /** Only the seed names are fuzzed directly; any other exported helper is a dependency. */
+  const FUZZED = new Set(NAMES);
+  const fuzzable = Object.keys(helpers).filter((n) => typeof helpers[n] === 'function');
+
+  const fuzzed = [...FUZZED].filter((n) => typeof helpers[n] === 'function');
+  console.log(`\n=== ${preset} — ${fuzzable.length} helpers exported, ${fuzzed.length} fuzzed ===`);
+  for (const name of fuzzed) {
+    const fn = helpers[name];
     const isNumeric = /^(clamp01|cl|clPct|posMs|shortId|uuid|fmtTime)$/.test(name);
     const inputs = isNumeric ? NUMERIC : HOSTILE;
     for (const input of inputs) {

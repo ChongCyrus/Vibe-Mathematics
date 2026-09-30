@@ -137,16 +137,10 @@ export function apply(ctx) {
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
-  function now() { return Date.now() }
-  function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
-  function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
-  function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
   function workspaceRoot() { try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) {} const sp = sandboxPolicyOf(); if (sp && sp.workspaceRoot) return sp.workspaceRoot; return '.' }
   function vibeRoot() { return (workspaceRoot() + '/VibeMath').replace(/\\/g, '/') }
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
-  function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
-  function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
   let warnedNoPolicy = false
   function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: sandboxPolicy unavailable; writes go out with no explicit policy') } }
   // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
@@ -155,33 +149,6 @@ export function apply(ctx) {
   // which is not necessarily this session's workspace — a silently different fence.
   function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return sp.resolve({ session: rootAgent.session }) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch (e) { warnNoPolicyOnce() } return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
-  function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
-  function parseJson(text) {
-    if (typeof text !== 'string') return undefined
-    const tryObj = function (s) { try { const v = JSON.parse(s); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : undefined } catch (e) { return undefined } }
-    const fenceRe = /```(?:json)?[ \t]*([\s\S]*?)```/gi
-    let m
-    while ((m = fenceRe.exec(text)) !== null) { const obj = tryObj(m[1].trim()); if (obj !== undefined) return obj }
-    const whole = tryObj(text.trim()); if (whole !== undefined) return whole
-    let best = undefined; let bestLen = -1
-    for (let start = 0; start < text.length; start++) {
-      if (text[start] !== '{') continue
-      let depth = 0, inStr = false, esc = false, end = -1
-      for (let i = start; i < text.length; i++) {
-        const c = text[i]
-        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue }
-        if (c === '"') { inStr = true; continue }
-        if (c === '{') depth++
-        else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
-      }
-      if (end === -1) continue
-      const obj = tryObj(text.slice(start, end + 1))
-      if (obj !== undefined && (end - start + 1) > bestLen) { best = obj; bestLen = end - start + 1 }
-    }
-    return best
-  }
-  function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JSON.parse(v) } catch (e) { return fb } }
-  function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
 
   // ================= parameter schema =================
   const PARAM_SCHEMA = [
@@ -996,7 +963,6 @@ export function apply(ctx) {
     L.push('')
     await writeText('Formal/TODO.md', L.join('\n'))
   }
-  function fmtTime(ms) { try { return new Date(Number(ms) || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return '' } }
   async function rebuildLeanLibIndexes() {
     // 扫描**不执行**工具链：每次问"有什么可复用"就跑一遍 lean 既慢又出人意料。
     // 每个对象的运行结果存在对象记录里，显示在 Formal/Index.md。
@@ -1187,15 +1153,6 @@ export function apply(ctx) {
 
   // progress：结构化 JSON 对象（旧数据可能是 JSON 字符串，两者兼容解析）。
   // 注意：必须保证返回对象含 directions 数组（晋升/判断/子问题等 progress 可能只有来源/说明等字段）。
-  function parseProgress(q) {
-    const raw = (q && q.progress) || null
-    let p = null
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) p = raw
-    else p = safeJson(raw, null)
-    if (!p || typeof p !== 'object' || Array.isArray(p)) return { directions: [], experience: '' }
-    if (!Array.isArray(p.directions)) p.directions = []
-    return p
-  }
   async function saveProgress(qid, progObj) { const qs = await getQs(); const q = qs.find(function (x) { return x.id === qid }); if (!q) return; q.progress = progObj; await writeQs(qs) }
 
   // ================= data layer: Propos =================
@@ -1322,24 +1279,7 @@ export function apply(ctx) {
    * own rejection message, which lists every registered global tool, so this
    * never guesses. Returns undefined when nothing usable remains.
    */
-  function sanitizeToolFilter(filter, known) {
-    if (!filter || !(known instanceof Set) || known.size === 0) return filter
-    const out = {}
-    for (const key of ['allow', 'deny']) {
-      const list = filter[key]
-      if (!Array.isArray(list)) continue
-      const kept = list.filter(function (n) { return known.has(String(n).trim()) })
-      if (kept.length > 0) out[key] = kept
-    }
-    return (out.allow || out.deny) ? out : undefined
-  }
   /** The host names the offending tools and then lists the registered ones. */
-  function registeredToolsFromError(message) {
-    const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
-    if (!m) return undefined
-    const names = m[1].split(',').map(function (s) { return s.trim() }).filter(Boolean)
-    return names.length > 0 ? new Set(names) : undefined
-  }
   function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const net = role === 'solver' ? params.solverAllowNetwork : role === 'verifier' ? params.verifierAllowNetwork : undefined; const scr = role === 'solver' ? params.solverAllowScripts : role === 'verifier' ? params.verifierAllowScripts : undefined; let a = Array.isArray(allow) ? allow.slice() : []; let d = Array.isArray(deny) ? deny.slice() : []; if (net === false) d = d.concat(NETWORK_TOOLS); else if (net === true && a.length > 0) a = a.concat(NETWORK_TOOLS); if (scr === false) d = d.concat(SCRIPT_TOOLS); else if (scr === true && a.length > 0) a = a.concat(SCRIPT_TOOLS); const f = {}; if (a.length > 0) f.allow = a; if (d.length > 0) f.deny = d; return (f.allow || f.deny) ? f : undefined }
   async function spawnChild(label, promptText, meta) {
     const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
@@ -2621,4 +2561,105 @@ export function apply(ctx) {
 
   // tick timer (registered once; ticks every running session at its own pace)
   ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
+}
+
+// ---- test seam: pure, stateless helpers --------------------------------
+// These helpers were declared inside `apply()` and are now declared at module scope, so
+// `apply()` closes over exactly the same function objects this export hands out. The audit
+// suites therefore exercise the REAL implementations by importing this module, instead of
+// extracting source text and compiling function bodies through the Function constructor
+// (dynamic code execution, rejected by the plugin-catalog security scan as
+// DANGEROUS_DYNAMIC_EXECUTION).
+//
+// Contract: every member must stay PURE and STATELESS (no `ctx`, no session state, no
+// mutable module state). Nothing here is used by the plugin at runtime except through
+// `apply()`. Behaviour is identical to the previous in-`apply` declarations.
+export const __testHelpers = {
+  uuid,
+  shortId,
+  clamp01,
+  slugify,
+  safeId,
+  blocksToText,
+  parseJson,
+  safeJson,
+  stripJsonComments,
+  fmtTime,
+  parseProgress,
+  sanitizeToolFilter,
+  registeredToolsFromError,
+}
+
+function now() { return Date.now() }
+
+function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
+
+function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
+
+function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
+
+function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
+
+function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
+
+function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
+
+function parseJson(text) {
+  if (typeof text !== 'string') return undefined
+  const tryObj = function (s) { try { const v = JSON.parse(s); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : undefined } catch (e) { return undefined } }
+  const fenceRe = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+  let m
+  while ((m = fenceRe.exec(text)) !== null) { const obj = tryObj(m[1].trim()); if (obj !== undefined) return obj }
+  const whole = tryObj(text.trim()); if (whole !== undefined) return whole
+  let best = undefined; let bestLen = -1
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== '{') continue
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < text.length; i++) {
+      const c = text[i]
+      if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue }
+      if (c === '"') { inStr = true; continue }
+      if (c === '{') depth++
+      else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end === -1) continue
+    const obj = tryObj(text.slice(start, end + 1))
+    if (obj !== undefined && (end - start + 1) > bestLen) { best = obj; bestLen = end - start + 1 }
+  }
+  return best
+}
+
+function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JSON.parse(v) } catch (e) { return fb } }
+
+function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
+
+function fmtTime(ms) { try { return new Date(Number(ms) || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return '' } }
+
+function parseProgress(q) {
+  const raw = (q && q.progress) || null
+  let p = null
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) p = raw
+  else p = safeJson(raw, null)
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return { directions: [], experience: '' }
+  if (!Array.isArray(p.directions)) p.directions = []
+  return p
+}
+
+function sanitizeToolFilter(filter, known) {
+  if (!filter || !(known instanceof Set) || known.size === 0) return filter
+  const out = {}
+  for (const key of ['allow', 'deny']) {
+    const list = filter[key]
+    if (!Array.isArray(list)) continue
+    const kept = list.filter(function (n) { return known.has(String(n).trim()) })
+    if (kept.length > 0) out[key] = kept
+  }
+  return (out.allow || out.deny) ? out : undefined
+}
+
+function registeredToolsFromError(message) {
+  const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+  if (!m) return undefined
+  const names = m[1].split(',').map(function (s) { return s.trim() }).filter(Boolean)
+  return names.length > 0 ? new Set(names) : undefined
 }

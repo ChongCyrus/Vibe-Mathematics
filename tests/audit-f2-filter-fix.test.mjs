@@ -10,12 +10,21 @@
  *   1. the source no longer names the non-tools 'web'/'fetch';
  *   2. the script-tool list matches THIS platform's registered interpreter;
  *   3. a retry driven by the host's real rejection message yields a filter the
- *      host accepts, by running the plugin's own sanitizer loaded from its source.
+ *      host accepts, by running the plugin's own sanitizer, which the plugin imports
+ *      and exercises as a real module: `mod.__testHelpers`.
+ *
+ * The sanitizer used to be obtained by reading the plugin's source, cutting the two
+ * function bodies out with brace matching and compiling them through the Function
+ * constructor. That is dynamic code execution (DANGEROUS_DYNAMIC_EXECUTION in a
+ * plugin-catalog security scan) and it tested a re-compiled copy rather than the
+ * shipped code. The plugin now declares those helpers at module scope and exports them
+ * through a documented test seam, so this suite imports the module and calls the SAME
+ * function objects `apply()` closes over.
  *
  * Usage: node tests/audit-f2-filter-fix.test.mjs
  */
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 let passed = 0;
 let failed = 0;
@@ -54,26 +63,19 @@ function hostAccepts(filter) {
 }
 
 /**
- * Load the plugin's own sanitizeToolFilter / registeredToolsFromError by
- * evaluating its source in a sandbox that exposes only those declarations.
- * This runs the REAL implementation text, not a re-implementation.
+ * Load the plugin's own sanitizeToolFilter / registeredToolsFromError by importing the
+ * module and reading them off its `__testHelpers` seam. These are the REAL
+ * implementations -- the same declarations `apply()` closes over -- not a
+ * re-implementation or a re-compiled copy.
  */
 async function loadSanitizer(file) {
-  const src = await readFile(file, 'utf8');
-  const grab = (name) => {
-    const start = src.indexOf(`function ${name}(`);
-    if (start < 0) throw new Error(`could not find ${name}`);
-    // brace matching from the first '{' of the body
-    let i = src.indexOf('{', start);
-    let depth = 0;
-    for (let j = i; j < src.length; j++) {
-      if (src[j] === '{') depth += 1;
-      else if (src[j] === '}') { depth -= 1; if (depth === 0) return src.slice(start, j + 1) }
-    }
-    throw new Error(`unterminated ${name}`);
-  };
-  const body = `${grab('sanitizeToolFilter')}\n${grab('registeredToolsFromError')}\nreturn { sanitizeToolFilter, registeredToolsFromError };`;
-  return new Function(body)();
+  const mod = await import(pathToFileURL(file).href + '?t=' + Date.now());
+  const helpers = mod.__testHelpers;
+  if (!helpers) throw new Error(`${file} does not export __testHelpers`);
+  const { sanitizeToolFilter, registeredToolsFromError } = helpers;
+  if (typeof sanitizeToolFilter !== 'function') throw new Error(`${file}: sanitizeToolFilter is missing from __testHelpers`);
+  if (typeof registeredToolsFromError !== 'function') throw new Error(`${file}: registeredToolsFromError is missing from __testHelpers`);
+  return { sanitizeToolFilter, registeredToolsFromError };
 }
 
 for (const [preset, file] of Object.entries(PLUGINS)) {

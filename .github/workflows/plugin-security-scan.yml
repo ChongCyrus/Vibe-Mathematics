@@ -1,0 +1,26 @@
+name: Plugin Security Scan
+
+# The scanner workflow recommended by the AI plugin catalog this project is listed in
+# (hashgraph-online/awesome-ai-plugins, SCANNER_GUIDE.md). It is intentionally minimal:
+# contents:read only, no secrets, checkout credentials not persisted, action pinned to a commit SHA.
+#
+# It exists so the repository keeps passing the catalog's required source scan between releases:
+# score >= 80 with no critical/high findings.
+
+on: [pull_request, push, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: hashgraph-online/ai-plugin-scanner-action@caba2e96aa8ad2feb6cf6fca52442b52e22e779f # v1.2.635
+        with:
+          plugin_dir: "."
+          min_score: 80
+          fail_on_severity: high

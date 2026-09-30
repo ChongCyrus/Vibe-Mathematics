@@ -427,3 +427,34 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ---
 
+## 9. 插件目录安全基线（收录进 awesome-ai-plugins 起）
+
+本项目被 [awesome-ai-plugins](https://github.com/hashgraph-online/awesome-ai-plugins) 收录，其 CI 对**源仓库**跑
+[HOL Guard 扫描器](https://github.com/hashgraph-online/hol-guard)：**评分 ≥80 且不得有 critical/high 发现**才允许合并。
+下面这些是硬门槛，改动代码时不要踩回去（首次提交实测 73 分、2 个 high，被拦下）：
+
+| 扫描规则 | 要求 | 本仓库的做法 |
+|---|---|---|
+| `DANGEROUS_DYNAMIC_EXECUTION` (high) | 仓库里**不得**出现 `eval` / `new Function` —— 包括测试与脚本 | 需要"执行真实实现"的套件改为 `await import(<preset 模块>)` + 预设导出的 `__testHelpers` 测试接缝，不再把源码文本编译成函数；`node:vm` 同样属于动态执行，不要用它绕过 |
+| `SECURITY_MD_MISSING` (low) | 仓库根有 `SECURITY.md`（支持版本 + 上报流程） | `SECURITY.md`（含本包攻击面说明：无网络、无凭据、无动态执行、只写工作区） |
+| `DEPENDABOT_MISSING` (low) | `.github/dependabot.yml` | npm + github-actions，每周 |
+| `DEPENDENCY_LOCKFILE_MISSING` (medium) | 有 `package.json` 就要有 lockfile | `package-lock.json`（本包零运行时依赖，lockfile 只有根条目） |
+| 未固定的 Actions | 第三方 Action 必须钉到 commit SHA | `.github/workflows/plugin-security-scan.yml` 照官方样例钉 SHA，`permissions: contents: read`、`persist-credentials: false` |
+
+另外目录要求的**包侧**条件（`CONTRIBUTING.md`）：`package.json` 里要有可安装的 `dsh.bundle`，插件要导出 `apply(ctx)`，
+并且**在本仓库 README 里写明包名或 `dsh plugin add` 命令**、条目里用**准确的仓库 URL**。
+
+自查方式（无需 Python 环境也能跑：用 DSH 自带运行时里的 Python 装一次 `plugin-scanner`）：
+
+```powershell
+& "<python>" -m pip install plugin-scanner
+& "<python>\Scripts\plugin-scanner.exe" lint "D:\wd\vibemath开发\Vibe-Mathematics" --format json   # 逐条规则
+& "<python>\Scripts\plugin-scanner.exe" scan "D:\wd\vibemath开发\Vibe-Mathematics"                 # 评分
+```
+
+本地 `plugin-scanner` 的评分与他们 CI 的评分**实测一致**（同为 73），因此发布前可以本地清零再推。
+目录侧的检查（格式、字母序、条目可解析）由他们的 `check-alphabetical.py` + `validate-contribution.py` 在 PR 上跑：
+本仓库的条目必须放在 `### DeepSeek Harness Plugins` 小节里、按**显示名小写**字母序（`Vibe-Mathematics` 排在 `humanizer-ru` 之后）。
+
+---
+

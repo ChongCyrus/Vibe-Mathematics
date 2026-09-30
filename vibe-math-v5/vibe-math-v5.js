@@ -129,19 +129,13 @@ export function apply(ctx) {
   }
 
   // ---- utils -------------------------------------------------------------
-  const now = () => Date.now()
   function hex(n) { let s = ''; for (let i = 0; i < n; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)]; return s }
   const shortId = () => hex(8)
-  function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
   // contextPct is a PERCENT (0-100); never clamp to 0-1 or the compactThreshold
   // comparison (e.g. 66) becomes `1.0 >= 66` and never fires (v4 §17 defect).
-  function clPct(x) { const n = Number(x); if (!Number.isFinite(n)) return 0; return Math.max(0, Math.min(100, n)) }
   // Positive duration with a safe fallback: a NEGATIVE/NaN duration parameter must
   // never make a watchdog fire instantly or an idle window never elapse (v4 §30-T41).
-  function posMs(v, def) { const n = Number(v); return (Number.isFinite(n) && n > 0) ? n : (def || 120000) }
   const textBlock = (t) => ({ type: 'text', text: String(t) })
-  function blocksToText(b) { if (!b) return ''; let o = ''; for (const x of b) { if (x && x.type === 'text' && typeof x.text === 'string') o += x.text + '\n' } return o }
-  function fmtTime(ts) { try { return new Date(ts || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return String(ts || '') } }
   function makeSignal(ms) { try { return AbortSignal.timeout(posMs(ms, 30000)) } catch (e) { return undefined } }
 
   // Object ids (verify targets, card ids, member ids) become FILE NAMES and DIRECTORY
@@ -149,10 +143,6 @@ export function apply(ctx) {
   // characters would escape the project tree. Keep every harmless character (incl.
   // Chinese) and replace only separators/control chars; strip leading/trailing dots
   // and dashes so the name is never '.' or '..' (v4 §30-T39).
-  function idSafe(s) {
-    const t = String(s == null ? '' : s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/-{2,}/g, '-').replace(/^[.\-]+|[.\-]+$/g, '')
-    return t
-  }
   // Advisory write-scope normalisation, ported from DSH agent-teams: backslashes to
   // '/', strip a leading './' and trailing '/', reject empty/absolute/drive-letter/
   // '..'-segment scopes.
@@ -3476,30 +3466,6 @@ export function apply(ctx) {
     }
 
     // ---- reply parsing -----------------------------------------------------
-    function tryJson(s) { try { return JSON.parse(s) } catch (e) { return undefined } }
-    function parseReply(text) {
-      let obj
-      const fence = /```(?:json)?[ \t]*([\s\S]*?)```/gi
-      let m
-      while ((m = fence.exec(text)) !== null) {
-        const o = tryJson(String(m[1]).trim())
-        if (o && typeof o === 'object' && !Array.isArray(o)) obj = o
-      }
-      if (!obj) {
-        const w = tryJson(String(text || '').trim())
-        if (w && typeof w === 'object' && !Array.isArray(w)) obj = w
-      }
-      if (!obj) {
-        // Last resort: the outermost {...} span (models sometimes wrap prose around it).
-        const t = String(text || '')
-        const i = t.indexOf('{'), j = t.lastIndexOf('}')
-        if (i !== -1 && j > i) {
-          const o = tryJson(t.slice(i, j + 1))
-          if (o && typeof o === 'object' && !Array.isArray(o)) obj = o
-        }
-      }
-      return obj || {}
-    }
     function normVerdictNumber(v) {
       // verdict is a PURE 0-1 probability. Models often send a quoted number, and a
       // quoted "0.9" used to fall through to a 0.5 default and be silently recorded
@@ -3704,23 +3670,6 @@ export function apply(ctx) {
     // Same guard as v2/v3/v4: `tools.restrict` throws for an unregistered name and the throw escapes
     // child creation, so a stale `vibe_v5_set{toolAllow|toolDeny|tempToolAllow|tempToolDeny}` would
     // make every member spawn fail silently. The host names the registered tools in its rejection.
-    function registeredToolsFromError(message){
-      const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
-      if(!m) return undefined
-      const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
-      return names.length > 0 ? new Set(names) : undefined
-    }
-    function sanitizeToolFilter(filter, known){
-      if(!filter || !(known instanceof Set) || known.size === 0) return filter
-      const out = {}
-      for(const key of ['allow','deny']){
-        const list = filter[key]
-        if(!Array.isArray(list)) continue
-        const kept = list.filter(function(n){ return known.has(String(n).trim()) })
-        if(kept.length > 0) out[key] = kept
-      }
-      return (out.allow || out.deny) ? out : undefined
-    }
     async function startWithToolFilter(toolFilter, makeSpec){
       try {
         return await subagents.startContinuable(makeSpec(toolFilter))
@@ -3903,10 +3852,6 @@ export function apply(ctx) {
         '安装器会在启动自检里报告这一降级。',
         '',
       ].join('\n'))
-    }
-    function slugify(s) {
-      const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')
-      return t || ''
     }
     async function doStart(args) {
       const a = args || {}
@@ -4485,4 +4430,96 @@ export function apply(ctx) {
       })
       .finally(() => s.forgetAgent(info.id))
   })
+}
+
+// ---- test seam: pure, stateless helpers --------------------------------
+// These helpers were declared inside `apply()` and are now declared at module scope, so
+// `apply()` closes over exactly the same function objects this export hands out. The audit
+// suites therefore exercise the REAL implementations by importing this module, instead of
+// extracting source text and compiling function bodies through the Function constructor
+// (dynamic code execution, rejected by the plugin-catalog security scan as
+// DANGEROUS_DYNAMIC_EXECUTION).
+//
+// Contract: every member must stay PURE and STATELESS (no `ctx`, no session state, no
+// mutable module state). Nothing here is used by the plugin at runtime except through
+// `apply()`. Behaviour is identical to the previous in-`apply` declarations.
+export const __testHelpers = {
+  clamp01,
+  clPct,
+  posMs,
+  blocksToText,
+  fmtTime,
+  idSafe,
+  slugify,
+  tryJson,
+  parseReply,
+  sanitizeToolFilter,
+  registeredToolsFromError,
+}
+
+const now = () => Date.now()
+
+function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
+
+function clPct(x) { const n = Number(x); if (!Number.isFinite(n)) return 0; return Math.max(0, Math.min(100, n)) }
+
+function posMs(v, def) { const n = Number(v); return (Number.isFinite(n) && n > 0) ? n : (def || 120000) }
+
+function blocksToText(b) { if (!b) return ''; let o = ''; for (const x of b) { if (x && x.type === 'text' && typeof x.text === 'string') o += x.text + '\n' } return o }
+
+function fmtTime(ts) { try { return new Date(ts || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return String(ts || '') } }
+
+function idSafe(s) {
+  const t = String(s == null ? '' : s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/-{2,}/g, '-').replace(/^[.\-]+|[.\-]+$/g, '')
+  return t
+}
+
+function slugify(s) {
+  const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')
+  return t || ''
+}
+
+function tryJson(s) { try { return JSON.parse(s) } catch (e) { return undefined } }
+
+function parseReply(text) {
+  let obj
+  const fence = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+  let m
+  while ((m = fence.exec(text)) !== null) {
+    const o = tryJson(String(m[1]).trim())
+    if (o && typeof o === 'object' && !Array.isArray(o)) obj = o
+  }
+  if (!obj) {
+    const w = tryJson(String(text || '').trim())
+    if (w && typeof w === 'object' && !Array.isArray(w)) obj = w
+  }
+  if (!obj) {
+    // Last resort: the outermost {...} span (models sometimes wrap prose around it).
+    const t = String(text || '')
+    const i = t.indexOf('{'), j = t.lastIndexOf('}')
+    if (i !== -1 && j > i) {
+      const o = tryJson(t.slice(i, j + 1))
+      if (o && typeof o === 'object' && !Array.isArray(o)) obj = o
+    }
+  }
+  return obj || {}
+}
+
+function sanitizeToolFilter(filter, known){
+  if(!filter || !(known instanceof Set) || known.size === 0) return filter
+  const out = {}
+  for(const key of ['allow','deny']){
+    const list = filter[key]
+    if(!Array.isArray(list)) continue
+    const kept = list.filter(function(n){ return known.has(String(n).trim()) })
+    if(kept.length > 0) out[key] = kept
+  }
+  return (out.allow || out.deny) ? out : undefined
+}
+
+function registeredToolsFromError(message){
+  const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+  if(!m) return undefined
+  const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  return names.length > 0 ? new Set(names) : undefined
 }

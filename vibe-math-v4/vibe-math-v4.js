@@ -109,17 +109,9 @@ export function apply(ctx) {
     const activityLogCap = 200
 
     // ---- utils ----
-    function now(){ return Date.now() }
-    function uuid(){ const h='0123456789abcdef'; let s=''; for(let i=0;i<36;i++){ if(i===8||i===13||i===18||i===23) s+='-'; else s+=h[Math.floor(Math.random()*16)] } return s }
-    function shortId(){ const h='0123456789abcdef'; let s=''; for(let i=0;i<8;i++) s+=h[Math.floor(Math.random()*16)]; return s }
-    function clamp01(v){ const n=Number(v); if(!Number.isFinite(n)) return 0.5; return Math.max(0,Math.min(1,n)) }
-    function fmtTime(ts){ try { return new Date(ts||now()).toISOString().replace('T',' ').slice(0,19) } catch(e){ return String(ts||'') } }
-    function cl(x){ return clamp01(Number(x)) }
     // contextPct is a PERCENT (0-100); never clamp to 0-1 or the compactThreshold
     // comparison (e.g. 66) becomes `1.0 >= 66` and never fires.
-    function clPct(x){ const n=Number(x); if(!Number.isFinite(n)) return 0; return Math.max(0,Math.min(100,n)) }
     function textBlock(t){ return { type:'text', text:String(t) } }
-    function blocksToText(b){ if(!b) return ''; let out=''; for(const x of b){ if(x&&x.type==='text'&&typeof x.text==='string') out+=x.text+'\n' } return out.trim() }
     function logActivity(event,detail){ activityLog.push({at:now(),event,detail:String(detail||'')}); if(activityLog.length>activityLogCap) activityLog.shift() }
     function logDecision(kind,detail){ decisions.push({at:now(),kind,detail:String(detail||'')}) }
     // Record that the project made real progress (new artifact, meeting, verify, task, or a
@@ -135,7 +127,6 @@ export function apply(ctx) {
     // (misconfigured via vibe_v4_set) would otherwise make recoverStallMs negative → every meeting/
     // verify watchdog fires INSTANTLY (abandoning all consensus) and A-fill's idle window would never
     // elapse (waking everyone every pass). Guard every duration read with this.
-    function posMs(v,def){ const n=Number(v); return (Number.isFinite(n)&&n>0)?n:(def||120000) }
     function recoverStallMs(){ return posMs(params.activityTimeoutMs,120000) * 2 }
     function pickProvider(){ try { const n=subagents.list?subagents.list():[]; if(n.indexOf('spawn')!==-1) return 'spawn'; if(n.indexOf('fork')!==-1) return 'fork' } catch(e){} return 'spawn' }
     // Per-resident model/provider inheritance: when params.provider / params.model are set,
@@ -155,16 +146,11 @@ export function apply(ctx) {
     function workspaceRoot(){ try { if(rootAgent&&rootAgent.session&&rootAgent.session.header&&rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch(e){} const sp=sandboxPolicyOf(); if(sp&&sp.workspaceRoot) return sp.workspaceRoot; return '.' }
     function vibeRoot(){ return (workspaceRoot()+'/VibeMath').replace(/\\/g,'/') }
     function frameworkRoot(){ return vibeRoot()+'/Projects/'+currentProject }
-    function slugify(s){ const t=String(s==null?'':s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g,'-').replace(/^-+|-+$/g,''); return t||'project' }
     // Object ids (verify targets, recorded cards) become FILE NAMES and DIRECTORY PATHS
     // (Verified/命题/<id>.md, Shared/debates/<id>.md, Propos/<r>/<id>.md, source-card scans).
     // A hostile/sloppy id containing path separators ('../../x') or Windows-forbidden chars would
     // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
     // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
-    function idSafe(s){
-      const t=String(s==null?'':s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').replace(/-{2,}/g,'-').replace(/^[.\-]+|[.\-]+$/g,'')
-      return t||'id'
-    }
     let warnedNoPolicy = false
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
@@ -273,13 +259,6 @@ export function apply(ctx) {
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
     async function readCurrentProject(){ try { const t=await readTextAbs(vibeRoot()+'/.current'); if(t) return String(t).trim() } catch(e){} return currentProject }
     async function writeCurrentProject(){ try { await writeTextAbs(vibeRoot()+'/.current', currentProject) } catch(e){} }
-    function tryJson(s){ try { return JSON.parse(s) } catch(e){ return undefined } }
-    function parseReply(text){
-      let obj; const fence=/```(?:json)?[ \t]*([\s\S]*?)```/gi; let m
-      while((m=fence.exec(text))!==null){ const o=tryJson(m[1].trim()); if(o&&typeof o==='object'&&!Array.isArray(o)) obj=o }
-      if(!obj){ const w=tryJson(text.trim()); if(w&&typeof w==='object'&&!Array.isArray(w)) obj=w }
-      return obj||{}
-    }
 
     // ================= Lean formal verification ==============================
     // Contract: docs/formal-verification.md (shared by v2/v3/v4/v5).
@@ -1622,23 +1601,6 @@ export function apply(ctx) {
     // fail with no operator-facing message. The host's own rejection lists every registered tool, so
     // the retry below never guesses. FAIL CLOSED: if nothing survives the filter we rethrow instead of
     // spawning WITHOUT one (that would grant exactly what the operator denied).
-    function registeredToolsFromError(message){
-      const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
-      if(!m) return undefined
-      const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
-      return names.length > 0 ? new Set(names) : undefined
-    }
-    function sanitizeToolFilter(filter, known){
-      if(!filter || !(known instanceof Set) || known.size === 0) return filter
-      const out = {}
-      for(const key of ['allow','deny']){
-        const list = filter[key]
-        if(!Array.isArray(list)) continue
-        const kept = list.filter(function(n){ return known.has(String(n).trim()) })
-        if(kept.length > 0) out[key] = kept
-      }
-      return (out.allow || out.deny) ? out : undefined
-    }
     async function startWithToolFilter(toolFilter, makeSpec){
       try {
         return await subagents.startContinuable(makeSpec(toolFilter))
@@ -2258,4 +2220,85 @@ export function apply(ctx) {
       // release only delays collection rather than leaking the Agent.
       .finally(()=>{ if(s.forgetAgent) s.forgetAgent(info.id) })
   })
+}
+
+// ---- test seam: pure, stateless helpers --------------------------------
+// These helpers were declared inside `apply()` and are now declared at module scope, so
+// `apply()` closes over exactly the same function objects this export hands out. The audit
+// suites therefore exercise the REAL implementations by importing this module, instead of
+// extracting source text and compiling function bodies through the Function constructor
+// (dynamic code execution, rejected by the plugin-catalog security scan as
+// DANGEROUS_DYNAMIC_EXECUTION).
+//
+// Contract: every member must stay PURE and STATELESS (no `ctx`, no session state, no
+// mutable module state). Nothing here is used by the plugin at runtime except through
+// `apply()`. Behaviour is identical to the previous in-`apply` declarations.
+export const __testHelpers = {
+  uuid,
+  shortId,
+  clamp01,
+  fmtTime,
+  cl,
+  clPct,
+  blocksToText,
+  posMs,
+  slugify,
+  idSafe,
+  tryJson,
+  parseReply,
+  sanitizeToolFilter,
+  registeredToolsFromError,
+}
+
+function now(){ return Date.now() }
+
+function uuid(){ const h='0123456789abcdef'; let s=''; for(let i=0;i<36;i++){ if(i===8||i===13||i===18||i===23) s+='-'; else s+=h[Math.floor(Math.random()*16)] } return s }
+
+function shortId(){ const h='0123456789abcdef'; let s=''; for(let i=0;i<8;i++) s+=h[Math.floor(Math.random()*16)]; return s }
+
+function clamp01(v){ const n=Number(v); if(!Number.isFinite(n)) return 0.5; return Math.max(0,Math.min(1,n)) }
+
+function fmtTime(ts){ try { return new Date(ts||now()).toISOString().replace('T',' ').slice(0,19) } catch(e){ return String(ts||'') } }
+
+function cl(x){ return clamp01(Number(x)) }
+
+function clPct(x){ const n=Number(x); if(!Number.isFinite(n)) return 0; return Math.max(0,Math.min(100,n)) }
+
+function blocksToText(b){ if(!b) return ''; let out=''; for(const x of b){ if(x&&x.type==='text'&&typeof x.text==='string') out+=x.text+'\n' } return out.trim() }
+
+function posMs(v,def){ const n=Number(v); return (Number.isFinite(n)&&n>0)?n:(def||120000) }
+
+function slugify(s){ const t=String(s==null?'':s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g,'-').replace(/^-+|-+$/g,''); return t||'project' }
+
+function idSafe(s){
+  const t=String(s==null?'':s).trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').replace(/-{2,}/g,'-').replace(/^[.\-]+|[.\-]+$/g,'')
+  return t||'id'
+}
+
+function tryJson(s){ try { return JSON.parse(s) } catch(e){ return undefined } }
+
+function parseReply(text){
+  let obj; const fence=/```(?:json)?[ \t]*([\s\S]*?)```/gi; let m
+  while((m=fence.exec(text))!==null){ const o=tryJson(m[1].trim()); if(o&&typeof o==='object'&&!Array.isArray(o)) obj=o }
+  if(!obj){ const w=tryJson(text.trim()); if(w&&typeof w==='object'&&!Array.isArray(w)) obj=w }
+  return obj||{}
+}
+
+function sanitizeToolFilter(filter, known){
+  if(!filter || !(known instanceof Set) || known.size === 0) return filter
+  const out = {}
+  for(const key of ['allow','deny']){
+    const list = filter[key]
+    if(!Array.isArray(list)) continue
+    const kept = list.filter(function(n){ return known.has(String(n).trim()) })
+    if(kept.length > 0) out[key] = kept
+  }
+  return (out.allow || out.deny) ? out : undefined
+}
+
+function registeredToolsFromError(message){
+  const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+  if(!m) return undefined
+  const names = m[1].split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  return names.length > 0 ? new Set(names) : undefined
 }

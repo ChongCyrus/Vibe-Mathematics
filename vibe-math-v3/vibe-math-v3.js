@@ -197,17 +197,10 @@ export function apply(ctx) {
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
-  function now() { return Date.now() }
-  function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
-  function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
-  function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
-  function fmtTime(ts) { try { return new Date(ts || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return String(ts || '') } }
   function workspaceRoot() { try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) {} const sp = sandboxPolicyOf(); if (sp && sp.workspaceRoot) return sp.workspaceRoot; return '.' }
   function vibeRoot() { return (workspaceRoot() + '/VibeMath').replace(/\\/g, '/') }
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
-  function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
-  function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
   /**
    * 把模型/用户提供的对象 id 消毒成**单个安全文件名**。v4 已有等价的 idSafe（见
    * vibe-math-v4.js），v3 此前缺这一步：saveProblem/saveProposition/saveVerified 直接
@@ -215,14 +208,6 @@ export function apply(ctx) {
    * 这里替换路径分隔符与控制字符、折叠连续连字符，并剥掉首尾的点/连字符，
    * 保证结果永不为 `.` / `..`、也不含分隔符。
    */
-  function idSafe(s) {
-    const t = String(s == null ? '' : s).trim()
-      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
-      .replace(/-{2,}/g, '-')
-      .replace(/^[.\-]+|[.\-]+$/g, '')
-      .slice(0, 80)
-    return t || 'id'
-  }
   let warnedNoPolicy = false
   function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: sandboxPolicy unavailable; writes go out with no explicit policy') } }
   // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
@@ -231,33 +216,6 @@ export function apply(ctx) {
   // which is not necessarily this session's workspace — a silently different fence.
   function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return sp.resolve({ session: rootAgent.session }) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch (e) { warnNoPolicyOnce() } return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
-  function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
-  function parseJson(text) {
-    if (typeof text !== 'string') return undefined
-    const tryObj = function (s) { try { const v = JSON.parse(s); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : undefined } catch (e) { return undefined } }
-    const fenceRe = /```(?:json)?[ \t]*([\s\S]*?)```/gi
-    let m
-    while ((m = fenceRe.exec(text)) !== null) { const obj = tryObj(m[1].trim()); if (obj !== undefined) return obj }
-    const whole = tryObj(text.trim()); if (whole !== undefined) return whole
-    let best = undefined; let bestLen = -1
-    for (let start = 0; start < text.length; start++) {
-      if (text[start] !== '{') continue
-      let depth = 0, inStr = false, esc = false, end = -1
-      for (let i = start; i < text.length; i++) {
-        const c = text[i]
-        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue }
-        if (c === '"') { inStr = true; continue }
-        if (c === '{') depth++
-        else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
-      }
-      if (end === -1) continue
-      const obj = tryObj(text.slice(start, end + 1))
-      if (obj !== undefined && (end - start + 1) > bestLen) { best = obj; bestLen = end - start + 1 }
-    }
-    return best
-  }
-  function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JSON.parse(v) } catch (e) { return fb } }
-  function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
 
   // ================= parameter schema =================
   const PARAM_SCHEMA = [
@@ -466,75 +424,14 @@ export function apply(ctx) {
   // ================= md soft-spec helpers =================
   // 软规范：对象 md 头部锚点行（唯一强制部分）+ 正文自由叙述。调度器只解析
   // 头部锚点与条目标题行（### 解法/证明/证伪 N｜标题｜概率X｜状态Y），从不解析正文散文。
-  function splitHeader(text) {
-    const idx = String(text).search(/\n## /)
-    const head = idx === -1 ? String(text) : String(text).slice(0, idx)
-    const body = idx === -1 ? '' : String(text).slice(idx + 1)
-    return { head: head, body: body }
-  }
-  function parseAnchors(head) {
-    const anchors = {}
-    const re = /^-\s*([A-Za-z\u4e00-\u9fa5/]+)\s*:\s*(.*)$/gm
-    let m
-    while ((m = re.exec(head)) !== null) anchors[m[1].trim()] = m[2].trim()
-    return anchors
-  }
   function anchorLine(k, v) { return '- ' + k + ': ' + String(v == null ? '' : v) }
   // 解析条目标题行 + 其后正文，直到下一个 ### / ## 标题。返回 [{heading, text}]
-  function parseEntries(body, kindRe) {
-    const out = []
-    const lines = String(body).split('\n')
-    let cur = null
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      const m = kindRe.exec(line)
-      if (m) {
-        if (cur) out.push(cur)
-        // 约定：m[1]=标题段，m[2]=概率段，m[3]=状态段（应用记录正则只有 m[1]）
-        cur = { heading: line.trim(), title: (m[1] || '').trim(), prob: m[2] !== undefined ? Number(m[2]) : undefined, status: (m[3] || '').trim(), text: [] }
-        continue
-      }
-      if (/^#{2,3}\s/.test(line)) {
-        if (cur) { out.push(cur); cur = null }
-        continue
-      }
-      if (cur) cur.text.push(line)
-    }
-    if (cur) out.push(cur)
-    for (const e of out) e.text = e.text.join('\n').trim()
-    return out
-  }
-  function section(body, name) {
-    const re = new RegExp('^##\\s+' + name + '\\s*$', 'm')
-    const m = re.exec(String(body))
-    if (!m) return ''
-    const rest = String(body).slice(m.index + m[0].length)
-    const end = rest.search(/\n##\s/)
-    return (end === -1 ? rest : rest.slice(0, end)).trim()
-  }
   /**
    * 按顺序切出正文里的所有 `## ` 顶层段。用于"无损往返"：compose 只重新生成自己管理的
    * 那几段，其余段（例如 经验与教训、或代理自加的任何段）必须原样保留，否则每次调度器
    * 回写都会把代理写进卡片的内容抹掉（违反 实现方案.md「正文只追加，不覆盖」）。
    */
-  function parseBodySections(body) {
-    const text = String(body || '')
-    const re = /^##\s+(.+?)\s*$/gm
-    const found = []
-    let m
-    while ((m = re.exec(text)) !== null) found.push({ name: m[1].trim(), from: m.index, bodyFrom: m.index + m[0].length })
-    for (let i = 0; i < found.length; i++) {
-      const to = i + 1 < found.length ? found[i + 1].from : text.length
-      found[i].text = text.slice(found[i].bodyFrom, to).trim()
-    }
-    return found
-  }
   /** 未被 compose 接管的段：原样保留，避免回写时丢失。 */
-  function extraBodySections(body, managedNames) {
-    return parseBodySections(body)
-      .filter(function (s) { return !managedNames.includes(s.name) })
-      .map(function (s) { return { name: s.name, text: s.text } })
-  }
   /** 把保留段追加到 compose 输出末尾（无则原样返回），保证正文只增不减。 */
   function withExtraSections(lines, extras) {
     if (!Array.isArray(extras) || extras.length === 0) return lines
@@ -691,34 +588,6 @@ export function apply(ctx) {
    * 必须把 问题/方向 取回来：compose 会按本对象的字段重写该标题行，若解析时丢成空串，
    * 每次回写都会把"用在哪"永久抹掉（实现方案.md 要求记录 问题/方向）。
    */
-  function parseAppTitle(title) {
-    const t = String(title || '')
-    const mQ = /问题\s*(\S+)/.exec(t)
-    const mD = /方向\s*(\S+)/.exec(t)
-    // `at` = 第一段（时间戳）。取第一个 '｜' 之前的部分。
-    const at = t.split('｜')[0].trim()
-    return { at: at, 问题: mQ ? mQ[1] : '', 方向: mD ? mD[1] : '' }
-  }
-  function parseMethodMd(id, text) {
-    const { head, body } = splitHeader(text)
-    const a = parseAnchors(head)
-    const apps = parseEntries(body, /^###\s*应用\s*\d+｜(.*?)$/).map(function (e) {
-      const t = parseAppTitle(e.title)
-      return { at: t.at, 问题: t.问题, 方向: t.方向, text: e.text }
-    })
-    // 改进历史必须真正解析回来：此前硬编码 [] 导致每次 compose 都写成占位符，
-    // 于是"下一次用到该方法"就把代理沉淀的改进历史静默销毁（违反「正文只追加，不覆盖」）。
-    const improvements = parseEntries(body, /^###\s*v(\d+)\s*（(.*?)）\s*$/).map(function (e) {
-      return { v: Number(e.title) || 0, 原因: e.status || '', text: e.text }
-    })
-    return {
-      id: id, 标题: a['标题'] || id, 类型: a['类型'] || '方法', 状态: a['状态'] || '经验',
-      可信断言: safeJson(a['可信断言'], []), 上级体系: safeJson(a['上级体系'], []), 子方法: safeJson(a['子方法'], []), 相关: safeJson(a['相关'], []),
-      适用场景: a['适用场景'] || '', 核心内容: section(body, '核心内容'), 定义与记号: section(body, '定义与记号'),
-      applications: apps, improvements: improvements, 来源: a['来源'] || '',
-      extraSections: extraBodySections(body, ['核心内容', '定义与记号', '应用记录', '改进历史']),
-    }
-  }
 
   // ---- compose: Verified card ----
   function composeVerifiedMd(card) {
@@ -1096,24 +965,7 @@ export function apply(ctx) {
    * own rejection message, which lists every registered global tool, so this
    * never guesses. Returns undefined when nothing usable remains.
    */
-  function sanitizeToolFilter(filter, known) {
-    if (!filter || !(known instanceof Set) || known.size === 0) return filter
-    const out = {}
-    for (const key of ['allow', 'deny']) {
-      const list = filter[key]
-      if (!Array.isArray(list)) continue
-      const kept = list.filter(function (n) { return known.has(String(n).trim()) })
-      if (kept.length > 0) out[key] = kept
-    }
-    return (out.allow || out.deny) ? out : undefined
-  }
   /** The host names the offending tools and then lists the registered ones. */
-  function registeredToolsFromError(message) {
-    const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
-    if (!m) return undefined
-    const names = m[1].split(',').map(function (s) { return s.trim() }).filter(Boolean)
-    return names.length > 0 ? new Set(names) : undefined
-  }
   function buildToolFilter(role) {
     const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined
     const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined
@@ -3798,4 +3650,209 @@ export function apply(ctx) {
 
   // tick timer (registered once; ticks every running session at its own pace)
   ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
+}
+
+// ---- test seam: pure, stateless helpers --------------------------------
+// These helpers were declared inside `apply()` and are now declared at module scope, so
+// `apply()` closes over exactly the same function objects this export hands out. The audit
+// suites therefore exercise the REAL implementations by importing this module, instead of
+// extracting source text and compiling function bodies through the Function constructor
+// (dynamic code execution, rejected by the plugin-catalog security scan as
+// DANGEROUS_DYNAMIC_EXECUTION).
+//
+// Contract: every member must stay PURE and STATELESS (no `ctx`, no session state, no
+// mutable module state). Nothing here is used by the plugin at runtime except through
+// `apply()`. Behaviour is identical to the previous in-`apply` declarations.
+export const __testHelpers = {
+  uuid,
+  shortId,
+  clamp01,
+  fmtTime,
+  slugify,
+  safeId,
+  idSafe,
+  blocksToText,
+  parseJson,
+  safeJson,
+  stripJsonComments,
+  splitHeader,
+  parseAnchors,
+  parseEntries,
+  section,
+  parseBodySections,
+  extraBodySections,
+  parseAppTitle,
+  parseMethodMd,
+  sanitizeToolFilter,
+  registeredToolsFromError,
+}
+
+function now() { return Date.now() }
+
+function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
+
+function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
+
+function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
+
+function fmtTime(ts) { try { return new Date(ts || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return String(ts || '') } }
+
+function slugify(s) { const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, ''); return t || 'project' }
+
+function safeId(s) { return String(s == null ? 'anon' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'anon' }
+
+function idSafe(s) {
+  const t = String(s == null ? '' : s).trim()
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[.\-]+|[.\-]+$/g, '')
+    .slice(0, 80)
+  return t || 'id'
+}
+
+function blocksToText(blocks) { if (!blocks) return ''; let out = ''; for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; if (b && b.type === 'text' && typeof b.text === 'string') out += b.text + '\n' } return out.trim() }
+
+function parseJson(text) {
+  if (typeof text !== 'string') return undefined
+  const tryObj = function (s) { try { const v = JSON.parse(s); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : undefined } catch (e) { return undefined } }
+  const fenceRe = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+  let m
+  while ((m = fenceRe.exec(text)) !== null) { const obj = tryObj(m[1].trim()); if (obj !== undefined) return obj }
+  const whole = tryObj(text.trim()); if (whole !== undefined) return whole
+  let best = undefined; let bestLen = -1
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== '{') continue
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < text.length; i++) {
+      const c = text[i]
+      if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue }
+      if (c === '"') { inStr = true; continue }
+      if (c === '{') depth++
+      else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end === -1) continue
+    const obj = tryObj(text.slice(start, end + 1))
+    if (obj !== undefined && (end - start + 1) > bestLen) { best = obj; bestLen = end - start + 1 }
+  }
+  return best
+}
+
+function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JSON.parse(v) } catch (e) { return fb } }
+
+function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
+
+function splitHeader(text) {
+  const idx = String(text).search(/\n## /)
+  const head = idx === -1 ? String(text) : String(text).slice(0, idx)
+  const body = idx === -1 ? '' : String(text).slice(idx + 1)
+  return { head: head, body: body }
+}
+
+function parseAnchors(head) {
+  const anchors = {}
+  const re = /^-\s*([A-Za-z\u4e00-\u9fa5/]+)\s*:\s*(.*)$/gm
+  let m
+  while ((m = re.exec(head)) !== null) anchors[m[1].trim()] = m[2].trim()
+  return anchors
+}
+
+function parseEntries(body, kindRe) {
+  const out = []
+  const lines = String(body).split('\n')
+  let cur = null
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const m = kindRe.exec(line)
+    if (m) {
+      if (cur) out.push(cur)
+      // 约定：m[1]=标题段，m[2]=概率段，m[3]=状态段（应用记录正则只有 m[1]）
+      cur = { heading: line.trim(), title: (m[1] || '').trim(), prob: m[2] !== undefined ? Number(m[2]) : undefined, status: (m[3] || '').trim(), text: [] }
+      continue
+    }
+    if (/^#{2,3}\s/.test(line)) {
+      if (cur) { out.push(cur); cur = null }
+      continue
+    }
+    if (cur) cur.text.push(line)
+  }
+  if (cur) out.push(cur)
+  for (const e of out) e.text = e.text.join('\n').trim()
+  return out
+}
+
+function section(body, name) {
+  const re = new RegExp('^##\\s+' + name + '\\s*$', 'm')
+  const m = re.exec(String(body))
+  if (!m) return ''
+  const rest = String(body).slice(m.index + m[0].length)
+  const end = rest.search(/\n##\s/)
+  return (end === -1 ? rest : rest.slice(0, end)).trim()
+}
+
+function parseBodySections(body) {
+  const text = String(body || '')
+  const re = /^##\s+(.+?)\s*$/gm
+  const found = []
+  let m
+  while ((m = re.exec(text)) !== null) found.push({ name: m[1].trim(), from: m.index, bodyFrom: m.index + m[0].length })
+  for (let i = 0; i < found.length; i++) {
+    const to = i + 1 < found.length ? found[i + 1].from : text.length
+    found[i].text = text.slice(found[i].bodyFrom, to).trim()
+  }
+  return found
+}
+
+function extraBodySections(body, managedNames) {
+  return parseBodySections(body)
+    .filter(function (s) { return !managedNames.includes(s.name) })
+    .map(function (s) { return { name: s.name, text: s.text } })
+}
+
+function parseAppTitle(title) {
+  const t = String(title || '')
+  const mQ = /问题\s*(\S+)/.exec(t)
+  const mD = /方向\s*(\S+)/.exec(t)
+  // `at` = 第一段（时间戳）。取第一个 '｜' 之前的部分。
+  const at = t.split('｜')[0].trim()
+  return { at: at, 问题: mQ ? mQ[1] : '', 方向: mD ? mD[1] : '' }
+}
+
+function parseMethodMd(id, text) {
+  const { head, body } = splitHeader(text)
+  const a = parseAnchors(head)
+  const apps = parseEntries(body, /^###\s*应用\s*\d+｜(.*?)$/).map(function (e) {
+    const t = parseAppTitle(e.title)
+    return { at: t.at, 问题: t.问题, 方向: t.方向, text: e.text }
+  })
+  // 改进历史必须真正解析回来：此前硬编码 [] 导致每次 compose 都写成占位符，
+  // 于是"下一次用到该方法"就把代理沉淀的改进历史静默销毁（违反「正文只追加，不覆盖」）。
+  const improvements = parseEntries(body, /^###\s*v(\d+)\s*（(.*?)）\s*$/).map(function (e) {
+    return { v: Number(e.title) || 0, 原因: e.status || '', text: e.text }
+  })
+  return {
+    id: id, 标题: a['标题'] || id, 类型: a['类型'] || '方法', 状态: a['状态'] || '经验',
+    可信断言: safeJson(a['可信断言'], []), 上级体系: safeJson(a['上级体系'], []), 子方法: safeJson(a['子方法'], []), 相关: safeJson(a['相关'], []),
+    适用场景: a['适用场景'] || '', 核心内容: section(body, '核心内容'), 定义与记号: section(body, '定义与记号'),
+    applications: apps, improvements: improvements, 来源: a['来源'] || '',
+    extraSections: extraBodySections(body, ['核心内容', '定义与记号', '应用记录', '改进历史']),
+  }
+}
+
+function sanitizeToolFilter(filter, known) {
+  if (!filter || !(known instanceof Set) || known.size === 0) return filter
+  const out = {}
+  for (const key of ['allow', 'deny']) {
+    const list = filter[key]
+    if (!Array.isArray(list)) continue
+    const kept = list.filter(function (n) { return known.has(String(n).trim()) })
+    if (kept.length > 0) out[key] = kept
+  }
+  return (out.allow || out.deny) ? out : undefined
+}
+
+function registeredToolsFromError(message) {
+  const m = /known global tools:\s*([^]*)$/.exec(String(message || ''))
+  if (!m) return undefined
+  const names = m[1].split(',').map(function (s) { return s.trim() }).filter(Boolean)
+  return names.length > 0 ? new Set(names) : undefined
 }
