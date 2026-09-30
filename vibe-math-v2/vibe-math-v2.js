@@ -1,5 +1,5 @@
-// Vibe Math V2 — host plugin implementing the NEW architecture spec
-// ("新架构-vibe-math-实现方案.md"): probability-driven scheduling over a
+// Vibe Math V2 — host plugin implementing the classic-architecture spec
+// ("vibe-math-v2/实现方案.md"): probability-driven scheduling over a
 // problem list (qs/qs.json) and a proposition knowledge base (Propos/),
 // multi-agent independent review → debate → consensus verification, with
 // checkpoint resume, manual intervention, and file/push progress reporting.
@@ -2571,9 +2571,11 @@ export function apply(ctx) {
 // (dynamic code execution, rejected by the plugin-catalog security scan as
 // DANGEROUS_DYNAMIC_EXECUTION).
 //
-// Contract: every member must stay PURE and STATELESS (no `ctx`, no session state, no
-// mutable module state). Nothing here is used by the plugin at runtime except through
-// `apply()`. Behaviour is identical to the previous in-`apply` declarations.
+// Contract: no member may touch `ctx`, session state or mutable module state. Most are pure;
+// three are deliberately non-deterministic (`uuid`/`shortId` use Math.random, `fmtTime` falls back
+// to the clock) and `parseProgress` normalises the object it is handed in place (pre-existing).
+// Nothing here is used by the plugin at runtime except through `apply()`, and behaviour is
+// byte-identical to the previous in-`apply` declarations.
 export const __testHelpers = {
   uuid,
   shortId,

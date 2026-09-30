@@ -24,6 +24,7 @@ const FILES = {
   'vibe-math-v2': `${REPO}/vibe-math-v2/vibe-math-v2.js`,
   'vibe-math-v3': `${REPO}/vibe-math-v3/vibe-math-v3.js`,
   'vibe-math-v4': `${REPO}/vibe-math-v4/vibe-math-v4.js`,
+  'vibe-math-v5': `${REPO}/vibe-math-v5/vibe-math-v5.js`,
 };
 
 const HOSTILE = [
@@ -34,6 +35,9 @@ const HOSTILE = [
   '- 概率: NaN\n- 概率: Infinity\n- 概率: -1\n- 概率: 2\n',
   '- 依赖: [not json]\n', ' -  ID :  x  \n', '###\n###\n###\n',
   '{"a":1}{"b":2}', 'NaN', 'Infinity', '-0',
+  // reaches two branches nothing else can (v3): parseAppTitle's `### 应用 N｜…` gate and the
+  // improvements mapping inside parseMethodMd's `### vN（…）` gate.
+  '### 应用 1｜问题q1 方向d1\n正文\n### 应用 2｜问题q2\n\n### v2（改进原因）\n改进了\n',
 ];
 
 const NUMERIC = [undefined, null, NaN, Infinity, -Infinity, 0, -0, -1, 1, 1e308, -1e308, '0', '1e999', '', [], {}, 'NaN'];
