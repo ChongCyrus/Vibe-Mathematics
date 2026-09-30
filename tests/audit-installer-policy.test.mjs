@@ -23,7 +23,7 @@
 //                        (_oneoff/probe-installer-policy.mjs) uses this to prove these assertions
 //                        really do detect the previous, edit-preserving policy.
 // ============================================================================================
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync, symlinkSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -423,6 +423,35 @@ console.log('=== 15. a failed state write is reported (not swallowed), and does 
   ok(healed.provenance === 'user',
     'the next boot records what the failed write lost (self-healing)')
   ok(!existsSync(H.state + '.' + process.pid + '.0.tmp'), 'the temp path is free again after the successful write')
+}
+
+console.log('=== 16. an UNREADABLE stale file is not deleted (there is no backup it could make) ===')
+{
+  const H = tmpHome('16')
+  await applyFrom(pkgA, H.home, [])
+  const staleDir = join(H.root, 'vibe-math-v1')
+  mkdirSync(staleDir, { recursive: true })
+  // A directory junction sitting at the stale FILE path: existsSync() is true, readFileSync()
+  // throws (EISDIR), and unlinkSync() WOULD succeed — exactly the shape the policy must refuse.
+  // (POSIX ignores the 'junction' type and makes a plain symlink to the directory, which behaves
+  // identically here.) The previous code unlinked it with no backup; the rule is now
+  // "back up before deleting, or do not delete".
+  const target = join(tmp, 'unreadable-target-16')
+  mkdirSync(target, { recursive: true })
+  symlinkSync(target, join(staleDir, 'legacy.js'), 'junction')
+  const state = readJson(H.state) || { files: {} }
+  state.files['vibe-math-v1/legacy.js'] = { hash: sha('bytes this installer wrote long ago\n'), provenance: 'package' }
+  writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
+  const logs = await applyFrom(pkgA, H.home, [])
+  ok(existsSync(join(staleDir, 'legacy.js')),
+    'a stale file whose bytes cannot be read is KEPT (the delete is skipped, not performed unbacked)')
+  ok(logs.some((l) => l.includes('无法读取')), '...and the log names it as unreadable',
+    logs.filter((l) => l.includes('无法读取')).join(' | ').slice(0, 200))
+  ok(!logs.some((l) => l.includes('被改过')),
+    '...and it is NOT called a proven edit the installer can see', logs.filter((l) => l.includes('被改过')).join(' | '))
+  ok(!logs.some((l) => l.includes('legacy.js') && l.includes('.vibe-math-backup')),
+    '...and no backup is claimed for it (there were no bytes to back up)')
+  ok(existsSync(staleDir), 'the stale preset directory is kept too, while the file inside it is kept')
 }
 
 rmSync(tmp, { recursive: true, force: true })

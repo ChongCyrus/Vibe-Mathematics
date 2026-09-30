@@ -12,8 +12,14 @@
 //     not exist there fails to import and is reported as an activation failure on every boot.
 //   * DSH <= 0.1.6 — presets are directories under <DSH_HOME>/.agent-presets, written by installer.js,
 //     and the composition those presets mount names packages that only the older line ships
-//     (`@deepseek-ai/dsh-workflow-worker-thread`). There is no `agentPresets` service here, so this
-//     module registers nothing and the directory copy remains the mechanism. Silence, not a warning.
+//     (`@deepseek-ai/dsh-workflow-worker-thread`). Treat "this module registers nothing here" as a
+//     LATENT RISK this branch guards against, NOT as an observed fact: "there is no `agentPresets`
+//     service on that line" is not what the record shows — a real 0.1.6-alpha.2 boot DID expose the
+//     service, with a working `list()` over the directory roster (_oneoff/roster-016a2.json). What
+//     the old line lacks is `register` (npm: 0.1.6-alpha.2 ships no `@deepseek-ai/dsh-agent-preset`,
+//     0.1.7-rc.2 adds it), which is the one capability `installer.js detectPresetMechanism` probes
+//     for. Should such a host ever expose `register`, this module would register the preset as a row
+//     and the directory copy would no longer be the only mechanism. Silence, not a warning.
 //
 // The `agentPresets` service is read through `ctx.inject`, so ordering does not matter and a host
 // without the service simply never invokes the callback.

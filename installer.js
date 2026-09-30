@@ -273,11 +273,15 @@ export function detectPresetMechanism(ctx) {
   } catch (e) { /* no loader service: fall through to the service probe */ }
   // 2) the service itself, when it is already available. The PRECISE capability difference between
   //    the two lines is `register`: the >= 0.1.7 row registry has it, while the <= 0.1.6 directory
-  //    scanner has `list()` and NO `register` (recorded from a real 0.1.6-alpha.2 boot — service
-  //    present, `list()` returning the directory roster — in _oneoff/roster-016a2.json). Testing
-  //    `list`, which BOTH lines have, classified a service-ready old host as the row line, and
-  //    apply() then returned before writing a single preset directory: "installed but invisible",
-  //    the 2.4.0 defect mirrored onto the older line. Never test a capability both lines share.
+  //    service is recorded WITHOUT it (a real 0.1.6-alpha.2 boot exposed the service and its
+  //    `list()` returned the directory roster — _oneoff/roster-016a2.json). The misclassification
+  //    this guards against is a LATENT RISK, not an observed failure: testing `list` (which BOTH
+  //    lines have) would classify a service-ready old host as the row line, and apply() would then
+  //    return before writing a single preset directory — "installed but invisible", the 2.4.0
+  //    defect mirrored onto the older line. But that outcome was never observed: the recorded 0.1.6
+  //    boot DID write all four preset directories, and the `no register` premise is INFERRED from
+  //    the package difference (npm: 0.1.6-alpha.2 ships no `@deepseek-ai/dsh-agent-preset`, while
+  //    0.1.7-rc.2 adds it), not measured. Never test a capability both lines share.
   try {
     const ap = (ctx && ctx.get) ? ctx.get('agentPresets') : undefined
     if (ap !== undefined) return typeof ap.register === 'function' ? 'rows' : 'directory'
@@ -663,6 +667,7 @@ export async function apply(ctx) {
     const removedDirs = []
     const backedUpStale = []
     const backupFailedStale = []
+    const unreadableStale = []
     const keptUserDirs = new Set()
     const stale = new Map() // prefix -> [keys]
     for (const key of Object.keys(prevFiles)) {
@@ -684,8 +689,10 @@ export async function apply(ctx) {
           try { buf = readFileSync(f) } catch (e) { /* unreadable: treated as "cannot prove it is ours" */ }
           // A file that still matches its recorded hash IS the copy this installer wrote, so deleting
           // it destroys nothing. Anything else — edited bytes, or a legacy record with no hash that
-          // cannot tell — is copied to the backup root first. An unreadable file cannot be proven
-          // either way and is not counted as a package copy (the log makes no claim about it).
+          // cannot tell — is copied to the backup root first. An unreadable file can be proven
+          // neither way AND cannot be backed up, so the "back up before deleting" rule REFUSES its
+          // delete: it is KEPT and named in the log. Deleting it unbacked would destroy bytes the
+          // installer can neither reproduce nor prove are its own (the old code unlinked it here).
           const isPackageCopy = buf !== null && typeof rec.hash === 'string' && sha256(buf) === rec.hash
           if (isPackageCopy) {
             matchedPackageFiles += 1
@@ -693,8 +700,10 @@ export async function apply(ctx) {
             const cut = key.lastIndexOf('/')
             const backup = backupReplacedFile(presetRoot, fromVersion, key.slice(0, cut), key.slice(cut + 1), buf)
             if (backup === 'failed') backupFailedStale.push(key); else backedUpStale.push(key)
+          } else {
+            unreadableStale.push(key)
           }
-          try { unlinkSync(f); removedFiles += 1 } catch (e) {}
+          if (buf !== null) { try { unlinkSync(f); removedFiles += 1 } catch (e) {} }
         }
         if (existsSync(f)) dirEmpty = false
       }
@@ -708,6 +717,7 @@ export async function apply(ctx) {
     if (matchedPackageFiles > 0) cleanupNotes.push(matchedPackageFiles + ' 个仍是本安装器写入的字节（删掉的不是你的改动）')
     if (backedUpStale.length > 0) cleanupNotes.push(backedUpStale.length + ' 个的字节与上一次安装不同（被改过），原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + backedUpStale.join(', '))
     if (backupFailedStale.length > 0) cleanupNotes.push(backupFailedStale.length + ' 个被改过的文件**备份失败**（原文未保留）：' + backupFailedStale.join(', '))
+    if (unreadableStale.length > 0) cleanupNotes.push(unreadableStale.length + ' 个文件**无法读取**（既不能证明是本安装器写入的，也无法备份），已跳过删除并保留原文件：' + unreadableStale.join(', '))
     if (keptUserFiles > 0) cleanupNotes.push(keptUserFiles + ' 个记为用户所有的文件被保留（' + [...keptUserDirs].join(', ') + '），要清理请手动删除')
     if (removedFiles > 0 || removedDirs.length > 0 || cleanupNotes.length > 0) {
       logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped' +

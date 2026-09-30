@@ -4,15 +4,19 @@
  * only observable by driving the REAL scheduler against a mock host with real timers, so this
  * file does exactly that; every workspace is a mkdtemp and is removed at the end.
  *
- *   1. v3 project-lock LEASE must survive a tick longer than projectLockTimeoutMs.
- *      Round A renewed the lease from `tick()`, so one slow awaited call inside a tick let the
- *      on-disk `at` go stale and a second session took the lock with NO `override` while the
- *      owner was alive (`_oneoff/rb-probe-v3-locklease.mjs` measured 5803 ms against a 2500 ms
- *      timeout). Here a mocked shell call stalls a whole tick; the lease age is sampled from
- *      disk throughout and must stay below the timeout, a second live session must be REFUSED,
- *      and the crash-recovery path (a lease that really did expire) must still allow takeover.
+ *   1. v3 project-lock LEASE must be RENEWED while the scheduler keeps running.
+ *      Round A renewed the lease only from `tick()`, so one slow awaited call inside a tick let the
+ *      on-disk `at` go stale and a second session took the lock with NO `override` while the owner
+ *      was alive (`_oneoff/rb-probe-v3-locklease.mjs` measured 5803 ms against a 2500 ms timeout).
+ *      Round C moved renewal into an independent interval (vibe-math-v3.js:3869-3897). What is
+ *      asserted here is the contract that IS observable from this fixture: across a window several
+ *      times the timeout the lease age stays below projectLockTimeoutMs, the on-disk `at` really is
+ *      rewritten, and a second LIVE session is still REFUSED — while the crash-recovery path (a
+ *      lease that really did expire) still allows takeover. SCOPE: this does NOT distinguish
+ *      interval renewal from a tick-top renewal, because the fixture never holds a tick (see the
+ *      comment at the age assertion); the placement itself is not covered by an executable probe.
  *
- *   2. v4 must deliver queued mail while the run is still in `brainstorm`.
+ *   2. v4 must deliver queued mail while the run is still `brainstorm`.
  *      `scheduleNext` returned before `deliverNextMailbox` in that phase, so a wake that failed
  *      left the message re-queued (or, for an immediate delivery, discarded) and every later
  *      heartbeat was a no-op. Here r-1 stays busy so the message must be QUEUED and the first
@@ -32,10 +36,9 @@ const V3 = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
 async function makeV3Host(tag) {
   const WS = mkdtempSync(join(tmpdir(), 'roundC-v3' + tag + '-'));
   const listeners = {}; const toolRegs = [];
-  const state = { stallShell: false, stallMs: 0 };
   const ctx = {
     get(n) {
-      if (n === 'subprocess') return { async spawn() { if (state.stallShell) await sleep(state.stallMs); return { done: Promise.resolve({ exitCode: 0 }) } } };
+      if (n === 'subprocess') return { async spawn() { return { done: Promise.resolve({ exitCode: 0 }) } } };
       return undefined;
     },
     on(e, fn) { (listeners[e] = listeners[e] || []).push(fn); },
@@ -65,15 +68,15 @@ async function makeV3Host(tag) {
   const call = async (n, a, who) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: roots[who || 'A'] }));
   const lockOf = (project) => join(WS, 'VibeMath', 'Projects', project, 'State', 'project_lock.json');
   const readLock = (project) => { try { return JSON.parse(readFileSync(lockOf(project || 'leaseproj'), 'utf8')); } catch (e) { return null; } };
-  return { WS, call, roots, lockOf, readLock, state };
+  return { WS, call, roots, lockOf, readLock };
 }
 
 {
-  console.log('\n-- v3: the project-lock lease survives a tick longer than projectLockTimeoutMs --');
+  console.log('\n-- v3: the project-lock lease is RENEWED while the scheduler runs, and stays exclusive --');
   const LOCK_TIMEOUT = 2500;   // projectLockTimeoutMs
-  const SHELL_STALL = 4000;    // one awaited shell call inside a tick
+  const WINDOW = (LOCK_TIMEOUT * 2) + 1000;   // observed window: several renewal periods long
   const H = await makeV3Host('lease');
-  const { WS, call, readLock, state } = H;
+  const { WS, call, readLock } = H;
 
   await call('vibe_math_new_project', { name: 'leaseproj' });
   await call('vibe_math_add_problem', { id: 'q1', description: 'x' });
@@ -81,20 +84,29 @@ async function makeV3Host(tag) {
   const st = await call('vibe_math_start', {});
   assert(st.ok === true, 'session A acquires the project lock and starts (' + String(st.message || st.code) + ')');
   await sleep(300);
+  const at0 = (readLock() || {}).at;
 
-  // One deliberately slow tick: every shell call now stalls SHELL_STALL ms while ticks fire every 200 ms.
-  state.stallShell = true; state.stallMs = SHELL_STALL;
-  await call('vibe_math_set_params', { priorityAdjust: 'none' });
+  // Sample the on-disk lease for a window several times the timeout, while the scheduler ticks.
+  //
+  // SCOPE OF THIS ASSERTION — deliberately narrow. It proves the lease IS renewed at all: with no
+  // renewal point the age passes LOCK_TIMEOUT across this window and BOTH this bound and the
+  // exclusivity check below go red. It does NOT prove WHERE renewal lives: this fixture never holds
+  // a tick (the mock has no service a tick awaits and stalls on), so a renewal that only ran at the
+  // top of each fast tick would keep the lease exactly as fresh and stay green. The placement claim
+  // in vibe-math-v3.js:3869-3897 therefore has NO executable probe here; only "renewed, and still
+  // exclusive" is guarded. (An earlier revision stalled a mocked shell call and claimed it held a
+  // tick — it did not, and the claim is gone.)
   const t0 = Date.now();
   let worst = 0;
-  while (Date.now() - t0 < SHELL_STALL + 1500) {
+  while (Date.now() - t0 < WINDOW) {
     const l = readLock();
     if (l && l.sessionId) { const age = Date.now() - Number(l.at); if (age > worst) worst = age; }
     await sleep(50);
   }
-  state.stallShell = false;
-  assert(worst < LOCK_TIMEOUT, 'worst observed lease age ' + worst + 'ms stays below projectLockTimeoutMs ' + LOCK_TIMEOUT + 'ms while a single tick stalls ' + SHELL_STALL + 'ms (Round A measured 5803ms here)');
-  assert(worst > 0 && readLock() && readLock().sessionId === 'S-A', 'the lease is still held by session A after the long tick (' + JSON.stringify(readLock()) + ')');
+  const l1 = readLock();
+  assert(worst < LOCK_TIMEOUT, 'worst observed lease age ' + worst + 'ms stays below projectLockTimeoutMs ' + LOCK_TIMEOUT + 'ms across a ' + WINDOW + 'ms window (no renewal would exceed it)');
+  assert(l1 && l1.at > at0, 'the on-disk lease was really rewritten during the window (at ' + at0 + ' → ' + (l1 && l1.at) + '), so the age bound is not vacuous');
+  assert(l1 && l1.sessionId === 'S-A', 'the lease is still held by session A after the window (' + JSON.stringify(l1) + ')');
 
   // A second LIVE session on the SAME project must be refused without `override`. The current
   // project is session state, so B has to be pointed at the same project first — otherwise it

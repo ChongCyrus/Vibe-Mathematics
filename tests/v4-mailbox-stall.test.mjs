@@ -79,9 +79,12 @@ async function runScenario(failFirst) {
   await h.T('vibe_v4_configure').execute({ project: 'p', problem: 'q', params: { activityTimeoutMs: 1000, maxParallel: 3, compactAfterRounds: 999, stallAutoMeetingMs: 9999999 } }, { agent: h.ROOT })
   await h.T('vibe_v4_start').execute({ residentCount: 2 }, { agent: h.ROOT })
   await sleep(20)
-  // BOTH residents must finish their brainstorm: in `brainstorm` there is no A-fill pass at all,
-  // so nothing could retry anything regardless of the fix (that is why the audit's first probe
-  // stopped there and could not tell a fix from a coincidence).
+  // BOTH residents must finish their brainstorm so the run stands in `active`, the phase this
+  // scenario observes. (The Round-A rationale — "in brainstorm there is no A-fill pass at all, so
+  // nothing could retry anything" — is STALE: Round C added a delivery pass that runs BEFORE the
+  // brainstorm branch, vibe-math-v4.js:1868, so brainstorm now retries as well. The phase is
+  // finished here to exercise the active-phase heartbeat specifically, not because brainstorm
+  // could not retry.)
   for (const rid of ['r-1', 'r-2']) { await h.end('child-' + rid, { summary: 'insight ' + rid, contextPct: 10 }); await sleep(20) }
   const st0 = JSON.parse(await h.T('vibe_v4_status').execute({}, { agent: h.ROOT }))
   const before = h.sends.length

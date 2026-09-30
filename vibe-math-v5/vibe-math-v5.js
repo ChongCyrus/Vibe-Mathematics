@@ -1588,8 +1588,8 @@ export function apply(ctx) {
     // Is this caller PROVABLY the office — the session root itself? `memberIdOfAgent` answers
     // 'office' both for the root AND for any descendant of the root that is not a member child
     // (a dismissed member's stale child, a nested helper agent), so it cannot tell them apart;
-    // only the direct root test can (audit L6). `isOffice(id)` additionally treats '' as the
-    // office, which is exactly why the office-only handlers must resolve their caller HERE.
+    // only the direct root test can (audit L6). `isOffice(id)` no longer treats '' as the office
+    // either, so the office-capable handlers resolve their caller HERE and refuse on ''.
     function isProvablyOffice(agent) {
       try { return !!agent && sessionIdOf(agent) !== undefined && rootOf(agent) === agent } catch (e) { return false }
     }
@@ -2235,7 +2235,7 @@ export function apply(ctx) {
         await writeFormalIndex()
       }
       if (run.ok) {
-        await saveChatLine('【形式化】' + (memberId || 'office') + ' 运行 Lean 通过：' + run.file
+        await saveChatLine('【形式化】' + memberId + ' 运行 Lean 通过：' + run.file
           + '（' + (run.ms / 1000).toFixed(1) + 's）' + (args.target ? '｜对象 ' + args.target + ' 记为已尝试（若此前已通过/已阻塞则保留原状态）' : ''))
       }
       return Object.assign({ ok: !!run.ok }, run, {
@@ -2347,7 +2347,14 @@ export function apply(ctx) {
     }
 
     // ---- artifact libraries (per member, append/write by the member itself) ----
-    const isOffice = (id) => !id || id === 'office'
+    // ONLY the literal 'office' is the office. An EMPTY id means "nobody identifiable" and is
+    // NOT the office: `memberIdOfAgent` answers '' for an unrelated descendant of the root (a
+    // dismissed member's stale child, a nested helper under the office root) and for a synthetic
+    // context with no known member, so `!id || id === 'office'` let such a caller pass EVERY
+    // office gate and sign its writes as the office (audit L6 follow-up). Office-capable tool
+    // handlers now resolve their caller with `officeCaller` and refuse on '' before reaching
+    // here; this predicate fails closed as the second line of defence.
+    const isOffice = (id) => id === 'office'
     const isAcademician = (id) => { const m = memberById(id); return !!m && m.kind === 'academician' }
     // MUST be awaited by its callers: `inst()` reads `stateCache`, which `commit` only updates
     // once its own await resolves. Fire-and-forget here meant two cards written in one reply
@@ -2541,6 +2548,10 @@ export function apply(ctx) {
       return taskView(t)
     }
     async function taskUpdate(memberId, o) {
+      // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
+      // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
+      // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
+      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
       const args = o || {}
       const id = String(args.task_id || args.taskId || '')
       const task = inst().tasks.find((x) => x.id === id)
@@ -2637,6 +2648,7 @@ export function apply(ctx) {
     // it can never make any statement true, and the assignee may object with reasons
     // (the objection is broadcast, not silently swallowed).
     async function taskAssign(memberId, o) {
+      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
       if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can assign tasks' }
       }
@@ -2680,6 +2692,7 @@ export function apply(ctx) {
       return { ok: true, task: taskView(withMeta) }
     }
     async function taskPrioritize(memberId, o) {
+      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
       if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can set priorities' }
       }
@@ -3563,6 +3576,7 @@ export function apply(ctx) {
       return { ok: true, dismissed: id, reclaimedTasks: reclaimed, reason }
     }
     async function nudge(callerId, o) {
+      if (!callerId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
       if (!isOffice(callerId) && !(isAcademician(callerId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can nudge members' }
       }
@@ -4541,6 +4555,19 @@ export function apply(ctx) {
   }
   const S = { type: 'string' }, N = { type: 'number' }, I = { type: 'integer' }, B = { type: 'boolean' }
   const SA = { type: 'array', items: { type: 'string' } }
+  /**
+   * Resolve the caller of a WRITING tool through `officeCaller` and refuse when nobody can be
+   * identified. `memberIdOfAgent` answers '' for a caller that is neither a member child nor the
+   * session root itself (a dismissed member's stale child, a nested helper under the office root,
+   * a synthetic context with no known member), and the office gates used to treat '' as the office
+   * (`isOffice`), so such a caller could sign assignments/priorities/tasks as 'office' (audit L6
+   * follow-up). A real member id and the provable session root ('office') still pass unchanged.
+   */
+  function withCaller(s, x, what, fn) {
+    const caller = s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: ' + what + ' needs a resolved member id or the office (the session root)' }
+    return fn(caller)
+  }
 
   // ── office / host controls ────────────────────────────────────────────────
   registerTool('vibe_v5_configure', 'Create/configure the research institute (project, institute name, problem, params) WITHOUT starting it. Use this FIRST, then vibe_v5_start.', objParams({ project: S, institute: S, problem: S, params: { type: 'object' } }), (s, a) => s.configure(a))
@@ -4609,12 +4636,12 @@ export function apply(ctx) {
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
-  registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => s.maybeQueueVerify(a.target, a.kind, s.memberIdOfAgent(x), a.reason))
+  registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = abstention (not counted toward m, counted in the mean).', objParams({ target: S, verdict: N, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
-  registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => s.taskCreate(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
   registerTool('vibe_v5_task_list', '(member) List shared tasks with readiness, owner, revision, blockers and write-scope warnings.', objParams({ status: S, owner: S, ready: B }), (s, a) => ({ ok: true, tasks: s.taskList(a) }))
   registerTool('vibe_v5_task_get', '(member) Read one task\'s latest value BEFORE changing it (the revision is the CAS precondition).', objParams({ task_id: S }, ['task_id']), (s, a) => ({ ok: true, task: s.getTask(a.task_id) }))
-  registerTool('vibe_v5_task_update', '(member) Compare-and-set a task action: claim|release|edit|set_dependencies|complete|reopen|reassign|delete. Pass expected_revision from task_get/task_list; a stale revision is refused.', objParams({ task_id: S, expected_revision: I, action: S, subject: S, description: S, blocked_by: SA, write_scopes: SA, owner: S }, ['task_id', 'expected_revision', 'action']), (s, a, x) => s.taskUpdate(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_task_update', '(member) Compare-and-set a task action: claim|release|edit|set_dependencies|complete|reopen|reassign|delete. Pass expected_revision from task_get/task_list; a stale revision is refused.', objParams({ task_id: S, expected_revision: I, action: S, subject: S, description: S, blocked_by: SA, write_scopes: SA, owner: S }, ['task_id', 'expected_revision', 'action']), (s, a, x) => withCaller(s, x, 'a task mutation', (caller) => s.taskUpdate(caller, a)))
 
   // ── the academician's organizational tools ────────────────────────────────
   registerTool('vibe_v5_overview', '(academician) Institute-wide view: roster, task board, every member\'s Progress tail, recent chat, and stall warnings. Use it instead of guessing.', objParams({}), async (s) => {
@@ -4656,17 +4683,17 @@ export function apply(ctx) {
     parts.push('- 距上次实质进展：' + Math.round(idleFor / 1000) + ' 秒')
     return { ok: true, overview: parts.join('\n') }
   })
-  registerTool('vibe_v5_assign', '(academician) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => s.taskAssign(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_prioritize', '(academician) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => s.taskPrioritize(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_nudge', '(academician) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => s.nudge(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_assign', '(academician) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
+  registerTool('vibe_v5_prioritize', '(academician) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => withCaller(s, x, 'setting priorities', (caller) => s.taskPrioritize(caller, a)))
+  registerTool('vibe_v5_nudge', '(academician) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => withCaller(s, x, 'a nudge', (caller) => s.nudge(caller, a)))
 
   // ── Lean formal verification (docs/formal-verification.md) ────────────────
   // These three tools are registered UNCONDITIONALLY: tool registration is static (a
   // dynamic registration would depend on a runtime knob and break the effect discipline),
   // while the MODE only decides whether the framework TELLS members about them. In 'off'
   // mode they still work if a human or agent calls them deliberately.
-  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT, and a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => s.leanRunTool(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => s.leanArchive(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT, and a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
+  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
   registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
     const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
     const st = s.status()

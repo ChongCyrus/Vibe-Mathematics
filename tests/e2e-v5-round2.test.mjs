@@ -794,8 +794,10 @@ console.log('\n[20] invalid numeric params are clamped instead of silently destr
 console.log('\n[21] office-only tools refuse a caller that is neither a member nor the session root')
 {
   // `memberIdOfAgent` answers 'office' for the root AND '' for an unrelated descendant, and
-  // `isOffice('')` is true — so the old handlers fell back to the office and let any unresolvable
-  // caller convene meetings / hire / fire as the office (audit L6). `officeCaller` now refuses.
+  // `isOffice('')` used to be true — so the old handlers fell back to the office and let any
+  // unresolvable caller convene meetings / hire / fire / ASSIGN / NUDGE / create tasks as the
+  // office (audit L6 and its follow-up). `officeCaller` now refuses, every writing tool resolves
+  // through it, and `isOffice` itself only accepts the literal 'office'.
   const h = makeHost({ pluginModule })
   await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
   await h.settleSpawns()
@@ -806,6 +808,40 @@ console.log('\n[21] office-only tools refuse a caller that is neither a member n
   const res = await h.callTool('vibe_v5_add_researcher', { direction: 'x' }, ghost)
   assert(res.ok === false && res.code === 'V5_MEMBER_NOT_FOUND',
     'add_researcher is refused for the same caller (' + JSON.stringify(res).slice(0, 90) + ')')
+  // The whole family of writing tools must refuse that caller, not just the office-only ones:
+  // each of these used to receive '' from memberIdOfAgent and treat it as the office. A REAL task
+  // is opened first so the ghost's task_update / prioritize have live state to damage.
+  const t1 = await h.callTool('vibe_v5_task_create', { subject: '真实任务' })
+  assert(t1.ok === true, 'a real caller can still open a task (' + JSON.stringify(t1).slice(0, 90) + ')')
+  const boardBefore = (await h.callTool('vibe_v5_task_list', {})).tasks.length
+  const ghostWrites = [
+    ['vibe_v5_assign', { subject: '冒充分派', to: 'r-1', why: 'w', acceptance: 'a' }],
+    ['vibe_v5_nudge', { to: 'r-1', why: 'w' }],
+    ['vibe_v5_task_create', { subject: '冒充所办建的任务' }],
+    ['vibe_v5_task_update', { task_id: t1.task.id, expected_revision: 1, action: 'delete' }],
+    ['vibe_v5_prioritize', { order: [{ task_id: t1.task.id, priority: 9 }], why: 'w' }],
+    ['vibe_v5_propose_verify', { target: 'p-ghost', kind: 'proposition', reason: 'r' }],
+    ['vibe_v5_lean_run', { file: 'Formal/ghost.lean' }],
+  ]
+  for (const [name, args] of ghostWrites) {
+    const r = await h.callTool(name, args, ghost)
+    assert(r.ok === false && r.code === 'V5_MEMBER_NOT_FOUND',
+      name + ' is refused for the unidentifiable caller (' + JSON.stringify(r).slice(0, 90) + ')')
+  }
+  const boardAfter = await h.callTool('vibe_v5_task_list', {})
+  const t1After = boardAfter.tasks.find((t) => t.id === t1.task.id)
+  assert(boardAfter.tasks.length === boardBefore,
+    'no refused write reached the board (before=' + boardBefore + ', after=' + boardAfter.tasks.length + ')')
+  assert(t1After && t1After.status !== 'deleted', 'the refused task_update did not delete a real task')
+  assert(t1After && t1After.priority === 0, 'the refused prioritize did not reorder a real task (priority=' + (t1After && t1After.priority) + ')')
+  // ...and the real identities still work: the office signs as the office, a member acts as itself.
+  const asgOffice = await h.callTool('vibe_v5_assign', { subject: '所办分派', to: 'r-1', why: 'w', acceptance: 'a' })
+  assert(asgOffice.ok === true && asgOffice.task && asgOffice.task.assignedBy === 'office',
+    'the office still assigns and is signed as office (' + JSON.stringify(asgOffice).slice(0, 110) + ')')
+  const tcOffice = await h.callTool('vibe_v5_task_create', { subject: '所办任务' })
+  assert(tcOffice.ok === true && tcOffice.task.createdBy === 'office', 'the office task_create still records createdBy=office')
+  const nudgeAcad = await h.callTool('vibe_v5_nudge', { to: 'r-1', why: '院士督办' }, h.childAgent(h.childOf('acad')))
+  assert(nudgeAcad.ok === true, 'the academician still nudges (' + JSON.stringify(nudgeAcad).slice(0, 90) + ')')
   const office = await h.callTool('vibe_v5_meeting', { agenda: '所办直接开会', kind: 'sync' })
   assert(office.ok === true, 'the real office (session root) still convenes a meeting (' + JSON.stringify(office).slice(0, 90) + ')')
 }
