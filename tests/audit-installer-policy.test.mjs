@@ -454,6 +454,30 @@ console.log('=== 16. an UNREADABLE stale file is not deleted (there is no backup
   ok(existsSync(staleDir), 'the stale preset directory is kept too, while the file inside it is kept')
 }
 
+console.log('=== 16b. a stale file whose BACKUP FAILS is kept, not deleted unbacked ===')
+{
+  const H = tmpHome('16b')
+  await applyFrom(pkgA, H.home, [])
+  const staleDir = join(H.root, 'vibe-math-v1')
+  mkdirSync(staleDir, { recursive: true })
+  writeFileSync(join(staleDir, 'legacy.js'), "the user's own bytes\n")
+  // Every backup attempt must fail: a FILE sits where the backup ROOT directory would be, so the
+  // recursive mkdir throws (ENOTDIR/EEXIST). This is the rule's hardest case — the bytes exist,
+  // they differ from the package, and preserving them is impossible — so the delete must be
+  // skipped. (Round C's fix only covered the UNREADABLE case; a failed backup still deleted.)
+  writeFileSync(join(H.root, '.vibe-math-backup'), 'not a directory\n')
+  const state = readJson(H.state) || { files: {} }
+  state.files['vibe-math-v1/legacy.js'] = { hash: sha('bytes this installer wrote long ago\n'), provenance: 'package' }
+  writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
+  const logs = await applyFrom(pkgA, H.home, [])
+  ok(existsSync(join(staleDir, 'legacy.js')) && readFileSync(join(staleDir, 'legacy.js'), 'utf8') === "the user's own bytes\n",
+    'a stale file whose BACKUP fails is KEPT (the delete is skipped, not performed unbacked)')
+  ok(logs.some((l) => l.includes('备份失败') && l.includes('跳过删除')),
+    "...and the log reports the failed backup as a skipped delete (not as 'the original was lost')",
+    logs.filter((l) => l.includes('备份失败')).join(' | ').slice(0, 220))
+  rmSync(join(H.root, '.vibe-math-backup'), { force: true })
+}
+
 rmSync(tmp, { recursive: true, force: true })
 
 console.log('')

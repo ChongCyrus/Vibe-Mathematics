@@ -4568,13 +4568,35 @@ export function apply(ctx) {
     if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: ' + what + ' needs a resolved member id or the office (the session root)' }
     return fn(caller)
   }
+  /**
+   * Resolve the caller of an OFFICE-ONLY control and refuse anything that is not the PROVABLE
+   * session root. `officeCaller` answers 'office' for that root, a member id for a member child, and
+   * '' for everyone else — an unidentifiable descendant of the root (a nested helper, a dismissed
+   * member's stale child) or a context with no session. A member child and the office share ONE
+   * institute session, so without this every lifecycle control (configure/start/resume/pause/stop/
+   * set) could be driven by a member: it could stop the institute or rewrite quorum/params as the
+   * office (audit L6 follow-up). ABSENCE of a caller is not the office either — that is exactly the
+   * shape an unidentifiable caller has, and the tool wrapper already refuses an agent-less call
+   * ('no session') before this point, so nothing here re-admits one.
+   */
+  function withOffice(s, x, what, fn) {
+    const caller = s.officeCaller(x)
+    if (caller !== 'office') {
+      return {
+        ok: false, code: 'V5_NOT_OFFICE',
+        message: 'only the office (the PROVABLE session root) may ' + what +
+          (caller ? '; the caller is member ' + caller : '; no caller could be identified'),
+      }
+    }
+    return fn()
+  }
 
   // ── office / host controls ────────────────────────────────────────────────
-  registerTool('vibe_v5_configure', 'Create/configure the research institute (project, institute name, problem, params) WITHOUT starting it. Use this FIRST, then vibe_v5_start.', objParams({ project: S, institute: S, problem: S, params: { type: 'object' } }), (s, a) => s.configure(a))
-  registerTool('vibe_v5_start', 'Found the institute: create the academician + N permanent researchers and begin. They brainstorm independently, then self-organize (the academician organizes and assigns; the framework only facilitates).', objParams({ problem: S, researcherCount: I, academician: B, params: { type: 'object' }, seedDirections: SA }), (s, a) => s.doStart(a))
-  registerTool('vibe_v5_resume', 'Resume a persisted institute: reconcile members against their durable sessions, rebuild any missing one from its Progress/, refresh consensus watchdogs, and restart scheduling.', objParams({}), (s) => s.resume())
-  registerTool('vibe_v5_pause', 'Pause the institute (in-flight turns finish; no new wakes until resume).', objParams({}), (s) => s.setPause())
-  registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s) => s.initStop())
+  registerTool('vibe_v5_configure', 'Create/configure the research institute (project, institute name, problem, params) WITHOUT starting it. Use this FIRST, then vibe_v5_start.', objParams({ project: S, institute: S, problem: S, params: { type: 'object' } }), (s, a, x) => withOffice(s, x, 'configure the institute', () => s.configure(a)))
+  registerTool('vibe_v5_start', 'Found the institute: create the academician + N permanent researchers and begin. They brainstorm independently, then self-organize (the academician organizes and assigns; the framework only facilitates).', objParams({ problem: S, researcherCount: I, academician: B, params: { type: 'object' }, seedDirections: SA }), (s, a, x) => withOffice(s, x, 'found the institute', () => s.doStart(a)))
+  registerTool('vibe_v5_resume', 'Resume a persisted institute: reconcile members against their durable sessions, rebuild any missing one from its Progress/, refresh consensus watchdogs, and restart scheduling.', objParams({}), (s, a, x) => withOffice(s, x, 'resume the institute', () => s.resume()))
+  registerTool('vibe_v5_pause', 'Pause the institute (in-flight turns finish; no new wakes until resume).', objParams({}), (s, a, x) => withOffice(s, x, 'pause the institute', () => s.setPause()))
+  registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
   registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
@@ -4586,8 +4608,16 @@ export function apply(ctx) {
     formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
     leanCommand: S, leanArgs: SA, leanTimeoutMs: I,
     provider: S, model: S, staffPersona: S, toolAllow: SA, toolDeny: SA, tempToolAllow: SA, tempToolDeny: SA,
-  }), (s, a) => s.setParams(a))
-  registerTool('vibe_v5_message', 'Relay a message from the office/human into the institute (to a member id, to "all", or to "voters").', objParams({ to: S, content: S }, ['to', 'content']), (s, a) => {
+  }), (s, a, x) => withOffice(s, x, 'tune institute parameters', () => s.setParams(a)))
+  registerTool('vibe_v5_message', 'Relay a message from the office/human into the institute (to a member id, to "all", or to "voters").', objParams({ to: S, content: S }, ['to', 'content']), (s, a, x) => {
+    // The relay is SIGNED as the office (`say('office', …)`), so only the PROVABLE session root may
+    // send it. `memberIdOfAgent` answers '' for an unidentifiable descendant of the root (a nested
+    // helper, a dismissed member's stale child) and for a synthetic context, and a member child is
+    // not the office either — without this check ANY caller's text was delivered as the office
+    // (audit L6 follow-up; the tool's own description says "from the office/human").
+    const caller = s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: relaying a message as the office needs the office (the session root)' }
+    if (caller !== 'office') return { ok: false, code: 'V5_NOT_OFFICE', message: 'vibe_v5_message relays the OFFICE voice; a member speaks with vibe_v5_say' }
     const to = String(a.to || 'all')
     return s.say('office', { to, text: String(a.content), kind: to === 'all' || to === 'voters' ? 'office' : 'dm' })
   })
@@ -4612,7 +4642,15 @@ export function apply(ctx) {
     if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: adding a permanent researcher is the office\'s decision (the session root)' }
     return s.addResearcher(caller, a && a.direction)
   })
-  registerTool('vibe_v5_remove_researcher', 'Office only: dismiss a PERMANENT researcher.', objParams({ id: S }, ['id']), (s, a) => s.removeResearcher(a.id))
+  // "Office only" (the tool's own description) must be ENFORCED, not just documented: the handler
+  // used to call `removeResearcher` with no caller at all, so any member child — or an
+  // unidentifiable descendant of the root — could dismiss a PERMANENT researcher (audit L6
+  // follow-up; the academician can only PROPOSE additions/removals).
+  registerTool('vibe_v5_remove_researcher', 'Office only: dismiss a PERMANENT researcher.', objParams({ id: S }, ['id']), (s, a, x) => withCaller(s, x, 'removing a permanent researcher', (caller) => (
+    s.isOffice(caller)
+      ? s.removeResearcher(a.id)
+      : { ok: false, code: 'V5_NOT_OFFICE', message: 'only the office (the session root) may dismiss a permanent researcher' }
+  )))
 
   // ── member-facing controls ────────────────────────────────────────────────
   registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
@@ -4715,6 +4753,18 @@ export function apply(ctx) {
       const s = getSession(inv && inv.agent)
       if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no session' }) }
       await s.ready()
+      // The `/v5` line is the OFFICE/human control surface (README: the institute-office row) and
+      // EVERY subcommand below acts AS the office (`say('office', …)`, `hire('office', …)`,
+      // `removeResearcher`, `setParams`, `initStop` …). It used to accept ANY caller whose session
+      // maps to the institute — a member child maps to the same office session — so the caller is
+      // resolved here too and refused unless it is the PROVABLE session root (audit L6 follow-up:
+      // the command surface had no caller check at all). Read-only subcommands are gated with the
+      // rest: a member reads state with vibe_v5_status / vibe_v5_report / vibe_v5_members.
+      const caller = s.officeCaller(inv && inv.agent)
+      if (caller !== 'office') {
+        const refused = { ok: false, code: 'V5_NOT_OFFICE', message: 'the /v5 control line belongs to the office (the session root); members use the vibe_v5_* tools' }
+        return { kind: 'error', text: JSON.stringify(refused, null, 2) }
+      }
       const line = String(inv && inv.rawInput ? inv.rawInput : '').trim()
       const parts = line.split(/\s+/)
       const cmd = parts[0] || ''

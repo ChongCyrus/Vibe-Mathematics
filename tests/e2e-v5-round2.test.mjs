@@ -844,6 +844,98 @@ console.log('\n[21] office-only tools refuse a caller that is neither a member n
   assert(nudgeAcad.ok === true, 'the academician still nudges (' + JSON.stringify(nudgeAcad).slice(0, 90) + ')')
   const office = await h.callTool('vibe_v5_meeting', { agenda: '所办直接开会', kind: 'sync' })
   assert(office.ok === true, 'the real office (session root) still convenes a meeting (' + JSON.stringify(office).slice(0, 90) + ')')
+  // Two office-impersonation holes the independent verifier found AFTER Round D — same L6 class,
+  // and neither was covered by the assertions above: `vibe_v5_message` signed EVERY caller's text
+  // as the office (no caller resolution at all), and `vibe_v5_remove_researcher` ("Office only")
+  // accepted any caller. Both now resolve through `officeCaller` and refuse.
+  const ghostMsg = await h.callTool('vibe_v5_message', { to: 'all', content: '冒充所办通知' }, ghost)
+  assert(ghostMsg.ok === false && ghostMsg.code === 'V5_MEMBER_NOT_FOUND',
+    'vibe_v5_message is refused for the unidentifiable caller (' + JSON.stringify(ghostMsg).slice(0, 90) + ')')
+  const memberMsg = await h.callTool('vibe_v5_message', { to: 'all', content: '成员冒充所办通知' }, h.childAgent(h.childOf('r-1')))
+  assert(memberMsg.ok === false && memberMsg.code === 'V5_NOT_OFFICE',
+    'vibe_v5_message is refused for a MEMBER too — the relay is signed as the office, members use vibe_v5_say (' + JSON.stringify(memberMsg).slice(0, 90) + ')')
+  const ghostRm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' }, ghost)
+  assert(ghostRm.ok === false && ghostRm.code === 'V5_MEMBER_NOT_FOUND',
+    'vibe_v5_remove_researcher is refused for the unidentifiable caller (' + JSON.stringify(ghostRm).slice(0, 90) + ')')
+  const memberRm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' }, h.childAgent(h.childOf('r-1')))
+  assert(memberRm.ok === false && memberRm.code === 'V5_NOT_OFFICE',
+    '...and refused for a member (the tool says Office only), not just for ghosts (' + JSON.stringify(memberRm).slice(0, 90) + ')')
+  const r1Still = (await h.callTool('vibe_v5_members', {})).members.find((m) => m.id === 'r-1')
+  assert(r1Still && r1Still.phase === 'active', 'neither refused call dismissed r-1 (phase=' + JSON.stringify(r1Still && r1Still.phase) + ')')
+  const officeMsg = await h.callTool('vibe_v5_message', { to: 'all', content: '所办通知' })
+  assert(officeMsg.ok === true, 'the office still relays a message (' + JSON.stringify(officeMsg).slice(0, 90) + ')')
+  // The `/v5` SLASH-COMMAND line is the third surface of the same class: it hardcoded 'office' for
+  // every subcommand (`remove`/`fire`/`hire`/`set`/`stop`/`message`…), and a member child maps to
+  // the same institute session — so a member (or an unidentifiable descendant) could drive it. It
+  // now resolves the caller too.
+  const cmdV5 = h.commandRegs.find((c) => c.name === 'v5')
+  const cmdGhost = JSON.parse((await cmdV5.handler({ agent: ghost, rawInput: 'remove r-1' })).text)
+  assert(cmdGhost.ok === false && cmdGhost.code === 'V5_NOT_OFFICE',
+    '/v5 remove is refused for the unidentifiable caller (' + JSON.stringify(cmdGhost).slice(0, 90) + ')')
+  const cmdMember = JSON.parse((await cmdV5.handler({ agent: h.childAgent(h.childOf('r-1')), rawInput: 'remove r-1' })).text)
+  assert(cmdMember.ok === false && cmdMember.code === 'V5_NOT_OFFICE',
+    '/v5 remove is refused for a member child too (' + JSON.stringify(cmdMember).slice(0, 90) + ')')
+  const r1AfterCmd = (await h.callTool('vibe_v5_members', {})).members.find((m) => m.id === 'r-1')
+  assert(r1AfterCmd && r1AfterCmd.phase === 'active', 'the refused /v5 remove did not dismiss r-1 (phase=' + JSON.stringify(r1AfterCmd && r1AfterCmd.phase) + ')')
+  const cmdOffice = JSON.parse((await cmdV5.handler({ agent: h.ROOT, rawInput: 'status' })).text)
+  assert(cmdOffice.ok === true, 'the office still drives the /v5 line (' + JSON.stringify(cmdOffice).slice(0, 90) + ')')
+  const officeRm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' })
+  assert(officeRm.ok === true, 'the office can still dismiss a permanent researcher (' + JSON.stringify(officeRm).slice(0, 90) + ')')
+}
+
+// ---------- 22. the office-only LIFECYCLE controls resolve their caller too ----------
+console.log('\n[22] configure/start/resume/pause/stop/set belong to the PROVABLE session root')
+{
+  // A member child and the office share ONE institute session, so `getSession()` alone let a member
+  // (or an unidentifiable descendant of the root) drive these handlers as the office: stop the
+  // institute, or rewrite quorum/params. Absence of a caller is NOT the office either.
+  const h = makeHost({ pluginModule })
+  // (a) the root/UI path keeps working end-to-end: these are exactly the handlers `/v5` drives.
+  const cfg = await h.callTool('vibe_v5_configure', { institute: 'life', problem: PROBLEM })
+  assert(cfg.ok === true, 'the office configures the institute (' + JSON.stringify(cfg).slice(0, 90) + ')')
+  const started = await h.callTool('vibe_v5_start', { researcherCount: 1 })
+  assert(started.ok === true, 'the office founds it (' + JSON.stringify(started).slice(0, 90) + ')')
+  await h.settleSpawns()
+  const setOk = await h.callTool('vibe_v5_set', { maxParallel: 2 })
+  assert(setOk.ok === true && setOk.params.maxParallel === 2, 'the office tunes parameters (' + JSON.stringify(setOk).slice(0, 90) + ')')
+  const pauseOk = await h.callTool('vibe_v5_pause', {})
+  assert(pauseOk.ok === true, 'the office pauses (' + JSON.stringify(pauseOk).slice(0, 90) + ')')
+  const resumeOk = await h.callTool('vibe_v5_resume', {})
+  assert(resumeOk.ok === true, 'the office resumes (' + JSON.stringify(resumeOk).slice(0, 90) + ')')
+  // (b) a MEMBER child and an unidentifiable descendant of the office root are both refused.
+  const member = h.childAgent(h.childOf('r-1'))
+  const ghost = h.childAgent('c-nobody')
+  const officeOnly = [
+    ['vibe_v5_configure', { institute: 'stolen', problem: 'x' }],
+    ['vibe_v5_start', { researcherCount: 3 }],
+    ['vibe_v5_resume', {}],
+    ['vibe_v5_pause', {}],
+    ['vibe_v5_stop', {}],
+    ['vibe_v5_set', { maxParallel: 9 }],
+  ]
+  for (const [name, args] of officeOnly) {
+    const asMember = await h.callTool(name, args, member)
+    assert(asMember.ok === false && asMember.code === 'V5_NOT_OFFICE',
+      name + ' is refused for a MEMBER child (' + JSON.stringify(asMember).slice(0, 80) + ')')
+    const asGhost = await h.callTool(name, args, ghost)
+    assert(asGhost.ok === false && asGhost.code === 'V5_NOT_OFFICE',
+      name + ' is refused for the unidentifiable caller (' + JSON.stringify(asGhost).slice(0, 80) + ')')
+  }
+  // (c) NO caller at all is not the office either — driven through the real registered wrapper (the
+  // harness' callTool defaults to ROOT, so `agent: undefined` is passed explicitly here). The wrapper
+  // refuses it as 'no session' BEFORE the gate, i.e. absence never reaches the office path.
+  const stopSpec = h.toolRegs.find((t) => t.name === 'vibe_v5_stop')
+  const noCaller = JSON.parse(await stopSpec.execute({}, { agent: undefined }))
+  assert(noCaller.ok === false,
+    'an agent-less call never reaches the lifecycle handler as the office (' + JSON.stringify(noCaller).slice(0, 80) + ')')
+  // (d) nothing the refusals asked for took effect.
+  const after = await h.callTool('vibe_v5_status', {})
+  assert(after && after.ok !== false && after.params && after.params.maxParallel === 2,
+    'no refused lifecycle call took effect (maxParallel=' + (after.params && after.params.maxParallel) + ')')
+  assert(after.members && after.members.some((m) => m.phase !== 'dismissed'),
+    'the refused stop did not dissolve the roster (' + (after.members || []).map((m) => m.id + ':' + m.phase).join(',') + ')')
+  const finalStop = await h.callTool('vibe_v5_stop', {})
+  assert(finalStop.ok === true, 'the office can still stop it (' + JSON.stringify(finalStop).slice(0, 90) + ')')
 }
 
 console.log('')
