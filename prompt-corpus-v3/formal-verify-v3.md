@@ -184,7 +184,7 @@ PROJECT: lean-off
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-off_1790767250252.json
+- Logs/Verification/r-p-off_<TIME>.json
 - Propos/数论/p-off.md
 - State/index.json
 - Verified/命题/p-off.md
@@ -1041,7 +1041,7 @@ PROJECT: lean-verify
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-enc_1790767251983.json
+- Logs/Verification/r-p-enc_<TIME>.json
 - Propos/数论/p-enc.md
 - State/formal.json
 - State/index.json
@@ -2353,7 +2353,7 @@ PROJECT: lean-reply
 [EVIDENCE INDEX] (only files that exist)
 - Formal/Index.md
 - Formal/TODO.md
-- Logs/Verification/r-p-reply_1790767255366.json
+- Logs/Verification/r-p-reply_<TIME>.json
 - Propos/数论/p-reply.md
 - State/formal.json
 - State/index.json
@@ -3024,7 +3024,7 @@ PROJECT: lean-defect-nonote
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nonote-defect.lean
-- Logs/Verification/r-p-nonote-defect_1790767258005.json
+- Logs/Verification/r-p-nonote-defect_<TIME>.json
 - Propos/数论/p-nonote-defect.md
 - State/formal.json
 - State/index.json
@@ -3376,7 +3376,7 @@ PROJECT: lean-defect-nodelete
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nodelete.lean
-- Logs/Verification/r-p-nodelete_1790767259590.json
+- Logs/Verification/r-p-nodelete_<TIME>.json
 - Propos/数论/p-nodelete.md
 - State/formal.json
 - State/index.json
@@ -3588,7 +3588,7 @@ PROJECT: lean-stale-card
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-stale.lean
-- Logs/Verification/r-p-stale_1790767260087.json
+- Logs/Verification/r-p-stale_<TIME>.json
 - Propos/数论/p-stale.md
 - State/formal.json
 - State/index.json

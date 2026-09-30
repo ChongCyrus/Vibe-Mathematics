@@ -90,7 +90,7 @@ export function apply(ctx) {
       leanCommand: 'lean',
       leanArgs: [],            // inserted BEFORE the file name (e.g. ['env','lean'] with lake)
       leanTimeoutMs: 120000,
-      // ---- final paper (spec-final-paper v1 §1) ----------------------------------
+      // ---- final paper (docs/final-paper.md §1) ----------------------------------
       // The run's conclusion is a PAPER the whole team co-authors once consensus has converged.
       // finalPaper=true triggers it automatically at that moment (idempotent); the other four knobs
       // decide what is produced, in which language, whether PDFs are attempted, and WHO finalises.
@@ -114,7 +114,7 @@ export function apply(ctx) {
     // whether its verdict may take effect.
     let formal = {}, formalTodos = [], formalPersisted = false
     let meetingState = null, verifyState = null, pendingVerify = [], pendingMeeting = null   // pendingVerify: FIFO queue (several residents may independently propose different objects before any verify runs — a single slot silently DROPPED all but the last proposal)
-    // The final-paper flow (spec-final-paper v1 + v2 amendments). In-memory only: the DURABLE
+    // The final-paper flow (docs/final-paper.md, v1 + v2 amendments). In-memory only: the DURABLE
     // idempotency record is `Paper/<run id>/paper.meta.json` on disk (finalizedAt + per-artifact
     // existence, v2 §C), so a re-trigger after a restart is still recognised even though this object
     // did not survive. While a paper is in flight this holds the whole team-authoring state machine.
@@ -1489,7 +1489,7 @@ export function apply(ctx) {
         const allSolved = allSpoke && speakers.length>0 && speakers.every(iv=>iv.voteSolved===true)
         logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
         if(allSolved){
-          // ── FINAL PAPER ENTRY (spec v2 §A1) ─────────────────────────────────────────────────
+          // ── FINAL PAPER ENTRY (docs/final-paper.md §A1) ─────────────────────────────────────────────────
           // The paper phase MUST start HERE, BEFORE `running=false; autoDone=true` and before the
           // coordination state is released: afterwards `startMeeting` refuses (autoDone), this
           // handler's meeting/verify branches return early on `!running||autoDone`, and
@@ -1888,7 +1888,7 @@ export function apply(ctx) {
         clearHeartbeat(); return
       }
       // The run is CONCLUDING (its closing meeting voted unanimously to stop): the ONLY remaining
-      // work is the final paper. No new research round may be dispatched behind it (spec v2 §A1).
+      // work is the final paper. No new research round may be dispatched behind it (docs/final-paper.md §A1).
       if(paperState&&paperState.status!=='done'&&paperState.status!=='failed'){
         try{ await paperAdvance('scheduler-paper') }catch(e){ console.error('vibe-math-v4: paper pass failed: '+String((e&&e.message)||e)) }
         return
@@ -2034,7 +2034,7 @@ export function apply(ctx) {
       const parsed=parseReply(output)
       const kind=wakeKind.get(r.rId)||'normal'
       postmark(r, parsed, kind)   // context/compact bookkeeping — a mid-consensus turn may NOT ack a compaction it never received
-      // The final-paper flow (spec v2 §A1) has its own wake kinds and its own state machine. It is
+      // The final-paper flow (docs/final-paper.md §A1) has its own wake kinds and its own state machine. It is
       // handled BEFORE the meeting/verify branches and before their `!running||autoDone` guards,
       // because a manually triggered paper legitimately runs on an already-concluded run.
       if(kind.indexOf('paper:')===0){ await onPaperWakeEnd(r,parsed); return }
@@ -2095,7 +2095,7 @@ export function apply(ctx) {
       await saveAll(); await scheduleNext()
     }
 
-    // ================= final paper (spec-final-paper v1 §3-§5) =================
+    // ================= final paper (docs/final-paper.md §3-§5) =================
     // When v4's consensus has converged (§2: the unanimous "solved" meeting closed, no ballot in
     // flight, nothing queued) the run must produce a PAPER, not stop at a chat log. The team
     // co-authors it: every resident writes the part it owns, the facilitator (the framework)
@@ -2118,7 +2118,7 @@ export function apply(ctx) {
     // empty") is stricter than the code and would never fire, so the paper phase is entered from
     // inside that exact branch and any still-未决 item is flagged in the paper instead.
     const PAPER_CLOSURE_SIGNAL='finalizeMeeting/allSolved（一致性会议的一致停止票）'
-    const PAPER_MAX_ROUNDS=2          // bounded iterations after dissent (spec §4: "有上限")
+    const PAPER_MAX_ROUNDS=2          // bounded iterations after dissent (docs/final-paper.md §4: "有上限")
     const PAPER_NUDGE_TRIES=2         // paced re-asks before the step deadline declares a timeout
     const PAPER_WAIT_FLOOR_MS=2000    // a step's deadline is at least this (tests run with tiny timeouts)
     const PAPER_KINDS={part:'paper:part',review:'paper:review',final:'paper:final',vote:'paper:vote',revise:'paper:revise'}
@@ -2127,11 +2127,11 @@ export function apply(ctx) {
     const PAPER_HEAD_EN=['Title, Authors, Date and Abstract','Introduction and Problem Background','Complete Solution of the Original Problem','Verified Propositions','Solved Sub-problems and Intermediate Results','Valuable Creations and Discoveries','Patterns and Reusable Principles','Discussion, Limitations and Outlook','Appendix: Evidence and File Index']
 
     function paperTitles(lang){ return lang==='en'?PAPER_HEAD_EN:PAPER_HEAD_ZH }
-    /** The run id doubles as the v4 "institute id": Paper/<run id>/ (spec §5). Sanitised through
+    /** The run id doubles as the v4 "institute id": Paper/<run id>/ (docs/final-paper.md §5). Sanitised through
      *  `idSafe`+`slugify`, so a hostile problem text/title can never produce `../`. */
     function paperIdFor(){ return idSafe(slugify('v4-'+problemId))+'-'+idSafe(runId) }
     function paperDirFor(){ return 'Paper/'+paperIdFor() }
-    /** Containment (spec §6): every paper write must stay inside `Paper/<id>/`. */
+    /** Containment (docs/final-paper.md §6): every paper write must stay inside `Paper/<id>/`. */
     async function paperWriteRel(rel,content){
       const dir=paperState?paperState.dir:paperDirFor()
       const norm=String(rel).replace(/\\/g,'/')
@@ -2200,7 +2200,7 @@ export function apply(ctx) {
       }
     }
     function paperHash(s){ let h=5381; const t=String(s==null?'':s); for(let i=0;i<t.length;i++) h=((h*33)^t.charCodeAt(i))>>>0; return h.toString(16).padStart(8,'0') }
-    /** Idempotency is per (run id, finalizedAt) plus per-artifact existence — spec v2 §C explicitly
+    /** Idempotency is per (run id, finalizedAt) plus per-artifact existence — docs/final-paper.md §C explicitly
      *  drops v1's multi-file inputsHash. This only fingerprints one string for the log, never a
      *  decision. */
     function paperFingerprint(ev){ return paperHash([ev.problemId,ev.runId,ev.problem,ev.index.join('|')].join('\n')) }
@@ -2518,12 +2518,12 @@ export function apply(ctx) {
         '\\title{'+texEsc(title)+'}','\\author{Vibe-Mathematics v4}','\\date{'+texEsc(fmtTime(now()).slice(0,10))+'}',
         '\\begin{document}','\\maketitle','',texBody,'','\\end{document}',''].join('\n')
     }
-    /** tex escaping (spec §5): every `_ % & # $ { } ~ ^ \\` becomes a safe command/escape. */
+    /** tex escaping (docs/final-paper.md §5): every `_ % & # $ { } ~ ^ \\` becomes a safe command/escape. */
     function texEsc(s){
       const M={'\\':'\\textbackslash{}','{':'\\{','}':'\\}','$':'\\$','&':'\\&','#':'\\#','^':'\\textasciicircum{}','_':'\\_','%':'\\%','~':'\\textasciitilde{}'}
       let out=''; for(const ch of String(s==null?'':s)) out+=(M[ch]||ch); return out
     }
-    // ---- compilation (detect → compile twice → capped repair → degrade; spec v2 §D/§E) ----
+    // ---- compilation (detect → compile twice → capped repair → degrade; docs/final-paper.md §D/§E) ----
     // The host fs is TEXT-ONLY (dsh-fs has no writeBytes), so `paper.pdf` can only ever be produced
     // by the compiler subprocess inside `Paper/<id>/` — the plugin just `stat`s it. The Lean seam
     // (`sub.resolveExecutable` + `sub.spawn`) is reused verbatim so a fake compiler is injectable.
@@ -2728,7 +2728,7 @@ export function apply(ctx) {
         return {ok:true,id,dir,status:paperState.status,alreadyRunning:true,message:'最终论文正在进行（'+paperState.status+'）'}
       if(paperState && paperState.id!==id && paperState.status!=='done' && paperState.status!=='failed' && !force)
         return {ok:false,code:'V4_PAPER_BUSY',message:'另一篇论文正在进行（'+paperState.id+'），完成或 force 后再试'}
-      // Idempotency (spec v2 §C): the run id IS the directory, so a finalizedAt in THAT directory
+      // Idempotency (docs/final-paper.md §C): the run id IS the directory, so a finalizedAt in THAT directory
       // means this run already has its paper; only per-artifact existence is re-checked.
       const meta=await readJson(dir+'/paper.meta.json')
       if(!force && meta && meta.finalizedAt){
@@ -2984,7 +2984,7 @@ export function apply(ctx) {
       // Degrading to a STRONGER mode would let a typo silently gate every conclusion — the exact
       // failure mode `require` is supposed to avoid.
       if(k==='formalVerify') return FORMAL_MODES.indexOf(String(v))!==-1?String(v):'off'
-      // ---- final paper (spec v2 §B): booleans and enums are coerced HERE, because `/v4 set` hands
+      // ---- final paper (docs/final-paper.md §B): booleans and enums are coerced HERE, because `/v4 set` hands
       // the parameter layer RAW STRINGS ('false' must become false, not stay truthy) and an unknown
       // value must fall back to the default instead of silently keeping a bogus strong setting. ----
       if(k==='finalPaper'||k==='paperCompilePdf'){
@@ -3082,7 +3082,7 @@ export function apply(ctx) {
       rememberAgent, forgetAgent,
       setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
-      // Final paper (spec-final-paper v1/v2): the session API used by the `/v4 paper` command and by
+      // Final paper (docs/final-paper.md): the session API used by the `/v4 paper` command and by
       // the suites. `paperStatus` is the same view `status()`/`report()` expose.
       runPaperCommand, paperStatus:()=>paperStatusSummary(),
       /** Does this session own the given child id? (used by the `subagent/start` capture) */
@@ -3297,7 +3297,7 @@ export function apply(ctx) {
         }
       }
       else if(cmd==='paper'){
-        // Manual trigger (spec §2). `lang=` / `format=` / `editor=` override THIS invocation only;
+        // Manual trigger (docs/final-paper.md §2). `lang=` / `format=` / `editor=` override THIS invocation only;
         // a bare `force` rewrites an already-finalized paper. An unknown token becomes an unknown
         // OPTION and is rejected by runPaperCommand → kind:'error' (never a silent success).
         const o={}; let force=false

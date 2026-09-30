@@ -26,7 +26,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 ### 1.1 随包发布 vs 仅仓库（`npm pack --dry-run --json`）
 
-`package.json` 的 `files` 只发 `tests/` 的一个**子集**（发布物共 102 个文件，其中 `tests/` 18 项），
+`package.json` 的 `files` 只发 `tests/` 的一个**子集**（发布物共 104 个文件，其中 `tests/` 18 项），
 所以安装用户跑 `node tests/run-tests.mjs` 得到的是子集的结果——runner 会把缺失的跳过项打印出来，
 不会静默少跑：
 
@@ -35,7 +35,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
   `audit-v5-sensitivity.mjs`、`selfdrive-v5.mjs`；套件 **10** 个：`audit-installer-compat`、
   `audit-installer-policy`、`audit-persona-surface`、`audit-preset-rows`、`e2e-v5-round2`、
   `formal-verify-v2`、`formal-verify-v3`、`formal-verify-v4`、`formal-verify-v5`、`prompt-v5-integrity`。
-- **仅仓库（不发）**：其余 28 个套件（v2/v3/v4 的 e2e、`selfdrive-v3`/`v4`、v2/v3 修复探针、
+- **仅仓库（不发）**：其余 29 个套件（v2/v3/v4 的 e2e、`selfdrive-v3`/`v4`、v2/v3 修复探针、
   `audit-fuzz-helpers` 之外的若干 `audit-*`……）与 7 个脚本（`audit-fuzz-helpers`、
   `audit-registration`、`audit-roundtrip-idempotence`、`audit-tool-exec`、
   `audit-v3-registration-parity`、`selfdrive-v3`、`selfdrive-v4`）。
@@ -46,10 +46,10 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**56 项** = 38 套件 + 18 探针/变体） | ≈ 629 s | **≈ 208 s**（并发 4，speed-up x3.02） | `TOTAL 56  PASS 56  FAIL 0  (suites 38 · probes 18)`；关键路径 = `audit-formal-sensitivity` 208 s |
+| `tests/run-tests.mjs`（**57 项** = 39 套件 + 18 探针/变体） | ≈ 629 s | **≈ 208 s**（并发 4，speed-up x3.02） | `TOTAL 57  PASS 57  FAIL 0  (suites 39 · probes 18)`；关键路径 = `audit-formal-sensitivity` 208 s |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4） | 803 s | **≈ 208 s** | 关键路径 = 12 个 v2 探针（每个 ≈42–60 s） |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
-| `tests/audit-persona-sensitivity.mjs`（11 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
+| `tests/audit-persona-sensitivity.mjs`（13 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
 | `tests/audit-prompt-invariants.mjs`（157 条） | ≈ 1.9 s | — | 静态 |
 | `tests/audit-prompt-invariants.mjs --self-probe`（5 探针） | ≈ 7.4 s | — | 每个探针 = 一次自我重跑 |
 | `tests/audit-spec-traceability.mjs`（94 条） | ≈ 0.2 s | — | 静态 |
@@ -63,6 +63,10 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/v2-fix-probes.test.mjs` | ≈ 8.6 s | — | v2 的 flat 等权均值 / ≥2 名验证者 / runShell 失败分支（26 条） |
 | `tests/v2-path-escape.test.mjs` | ≈ 2.2 s | — | 验证日志路径逃逸（7 条） |
 | `tests/v2-tool-cap.test.mjs` | ≈ 0.4 s | — | 能力表来自真实组合、*MaxToolCalls 只是提示（10 条） |
+
+> 上表 `≈629 s / ≈208 s` 两列是 **56 项（38 套件）** 时的实测；第 39 个套件是随 final-paper 功能加入的
+> `tests/v4-final-paper.test.mjs`，本表尚未单独计时，所以全量的绝对时间会比 208 s 略大——数字**形状**
+> （`TOTAL 57 … suites 39 · probes 18`）以 runner 每次运行的输出为准。
 
 单套件耗时（并行时的关键路径按此排序）：
 

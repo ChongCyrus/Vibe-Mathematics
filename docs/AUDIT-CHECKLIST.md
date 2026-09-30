@@ -95,7 +95,7 @@
 - [ ] 人设里写的路径/模式名（`Formal/Lib`、`off|encourage|require`）是否与实现中的字符串**逐字**一致？
 
 `audit-persona-surface.test.mjs` 把上述各条变成断言（"未文档化工具"用**显式快照**表示：
-新增工具必须主动改快照、或在 persona 里写清）；`audit-persona-sensitivity.mjs` 用 11 条探针
+新增工具必须主动改快照、或在 persona 里写清）；`audit-persona-sensitivity.mjs` 用 13 条探针
 证明这套断言真的会变红。**v2.3.0 修的就是这一类缺陷**：三个 `*_lean_*` 工具无条件注册，
 而 v2/v3/v4 的 persona 从未列出它们（只有 v5 列了），v4 的 `vibe_v4_set` 参数表也漏了
 `formalVerify`/`leanCommand`/`leanArgs`/`leanTimeoutMs`——当时**所有既有套件全绿**。
@@ -217,7 +217,7 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
       只发 `tests/` 的 **18 项**（其中 `.test.mjs` **10** 个），完整门禁（`node tests/run-tests.mjs`，
-      Round B 起 **56 项 = 38 套件 + 18 探针/变体**）只在开发检出里成立。两边的清单见
+      Round B 起 **57 项 = 39 套件 + 18 探针/变体**）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过

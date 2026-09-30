@@ -725,6 +725,15 @@ The main agent `vibe_math_status`: in `qs/qs.json`, `q1` has been written back w
 | `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
 | `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
 | `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
+| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
+| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
+| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
+| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
+| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+
+#### Final paper
+
+All four presets have it **on by default**: after the closure signal fires and **before the run is marked complete**, the run enters the paper phase. In v2 a dedicated "paper writer" subagent assembles the concluded evidence into `Paper/<project>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` only when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); with no engine or a failed compile the tex+md are still delivered with only a logged warning — the finalisation is never blocked and an existing pdf is never overwritten. Full contract: `docs/final-paper.md`.
 
 ### v3 (paper-style md + planner agent + method library) defaults
 
@@ -749,6 +758,15 @@ Added/adjusted on top of all v2 parameters:
 | `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
 | `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
 | `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
+| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
+| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
+| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
+| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
+| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+
+#### Final paper
+
+v3 uses the same switch and the same ordering as v2 (strict termination; the writer is spawned **before** the scheduler stops): a dedicated "paper writer" subagent produces `Paper/<project>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. No engine or a failed compile still delivers tex+md, logs a warning and never blocks the finalisation. Full contract: `docs/final-paper.md`.
 
 ### v4 (resident self-organization · experimental) defaults
 
@@ -771,6 +789,16 @@ Adjustable via `vibe_v4_set` (persisted to `State/settings.json`):
 | `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
 | `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
 | `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
+| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
+| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
+| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
+| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
+| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+| `paperEditor` | `office` | Who finalises: `office` (the session root / human side, default) or `resident:<id>` (if that resident has left, it degrades to office and the meta/log say so) |
+
+#### Final paper
+
+On by default; v4 enters the paper phase after the closing meeting casts its unanimous stop vote and **before** the run is marked complete. Team flow: each resident writes its own part → merge (deduplicate, unify terms and notation) → at least one **cross-review** round → the editor named by `paperEditor` (default `office`, or `resident:<id>`) turns it into the final draft → the paper is finalised only on **unanimous "deliverable"** (objections keep iterating; past the round cap a warning is recorded and the disagreement goes into the appendix). Manual: `/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`. Output: `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` when an engine is available). Full contract: `docs/final-paper.md`.
 
 ### v5 (institute system · experimental) defaults
 
@@ -802,6 +830,16 @@ Adjustable via `vibe_v5_set` (persisted in the institute state file `State/<inst
 | `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
 | `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
 | `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
+| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
+| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
+| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
+| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
+| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+| `paperEditor` | `academician` | Who finalises: `academician` (default, the only editor an unattended run can reach) or `office` (manual `/v5 paper editor=office` only, and only after consulting the whole institute) |
+
+#### Final paper
+
+On by default; v5 enters the paper phase after `checkSolved` concludes the problem is solved and **before** the run is marked complete. The permanent staff and the academician write their own parts, merge them and cross-review; the editor is set by `paperEditor`: the **automatic flow always uses `academician`** (the office is the root session and has no wake path), while `office` is available only through the manual `/v5 paper editor=office`. That path requires the office to consult the whole institute first (>=1 `vibe_v5_message` plus >=1 `vibe_v5_meeting`), state the conclusion in the finalisation note, and then call `vibe_v5_finalize_paper`; without both counts it is refused (`V5_PAPER_CONSULT_REQUIRED`). Tools: `vibe_v5_paper`, `vibe_v5_finalize_paper`. Output: `Paper/<institute id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` when an engine is available). Full contract: `docs/final-paper.md`.
 
 Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (start work) → `vibe_v5_report` / `vibe_v5_status`; `vibe_v5_message` / `vibe_v5_meeting` / `vibe_v5_members` / `vibe_v5_hire` / `vibe_v5_fire` (temp worker) / `vibe_v5_add_researcher` / `vibe_v5_remove_researcher` (add/remove residents, institute office only) / `vibe_v5_pause` / `vibe_v5_resume` / `vibe_v5_stop`; slash command `/v5`.
 
@@ -825,8 +863,9 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 - **Four sets of Lean prompt corpora**: [`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md) (each covering off / encourage / **require** / fidelity branches / work rounds / receipt contract; the workspace is normalized to `<WS>` and the VibeMath root to `<VIBEMATH>`)
 - **The persona source text of the four presets**: [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) (the prompts the main agent actually receives: which tools, which parameters, which slash subcommands; generated by `audit-persona-surface.test.mjs` and shipped with the package)
 - **Lean formal verification (a contract shared by the four architectures)**: [`docs/formal-verification.md`](docs/formal-verification.md)
-- **Test timing baseline and parallel run recipes**: [`docs/test-timing.md`](docs/test-timing.md) (`node tests/run-tests.mjs` runs **every suite AND every probe** in parallel: `TOTAL 56` (38 suites + 18 probes/variants) in ≈3.5 min; which 18 of them ship in the package and which are repository-only is in §1.1 of that document; every runner prints its elapsed time/speedup so the next strategy can be chosen from data)
-- **Static prompt-surface consistency (persona ↔ tool registry ↔ slash command hint/usage)**: [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) (196 assertions, and generates [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) for manual review) + [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) (11 sensitivity probes) — guarding "every registered tool must appear in the persona / every name in the persona must really be registered / the `prefix` and `text` blocks must match line by line / hint, usage, and the actual branch must agree in all three places"
+- **Final paper (a contract shared by the four architectures)**: [`docs/final-paper.md`](docs/final-paper.md) (the five parameters plus `paperEditor` on v4/v5, the "paper phase before the run is marked complete" ordering, the `Paper/<id>/` artifacts and the nine-section skeleton, LaTeX detection with repair-then-degrade, the v4/v5 team co-authoring flow and the v5 office-consultation rule)
+- **Test timing baseline and parallel run recipes**: [`docs/test-timing.md`](docs/test-timing.md) (`node tests/run-tests.mjs` runs **every suite AND every probe** in parallel: `TOTAL 57` (39 suites + 18 probes/variants) in ≈3.5 min; which 18 of them ship in the package and which are repository-only is in §1.1 of that document; every runner prints its elapsed time/speedup so the next strategy can be chosen from data)
+- **Static prompt-surface consistency (persona ↔ tool registry ↔ slash command hint/usage)**: [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) (196 assertions, and generates [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) for manual review) + [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) (13 sensitivity probes) — guarding "every registered tool must appear in the persona / every name in the persona must really be registered / the `prefix` and `text` blocks must match line by line / hint, usage, and the actual branch must agree in all three places"
 - **Mandatory checklist for a full review**: [`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md) (this repository's mandatory audit process; §1.9 specifically checks "whether the tool parameter schema can accommodate them")
 - **Prompt/interaction invariants (all four sets together, re-checkable in one command)**: [`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs) (157 assertions) — encoding, one by one, "the classes of prompt/tool-surface defects that have really occurred historically" as static invariants (abbreviated tool names, projecting a fidelity defect as 0, `defect` written only in the prompt but not implemented, a receipt contract missing `defect`, passing without a note, wrong field names, the `off` tier still being able to write state in its receipt, uncertain corpora, missing probes, **a tool's closed schema that cannot accommodate the parameters in its own documentation**, **keys that the schema declares at the parameter level but silently drops**). Adding `--self-probe` injects these defect shapes in memory and requires the corresponding invariants to **turn red** while the unmutated control run **stays green** (5/5); the script itself additionally carries six self-checks X5–X8b (the comment scanner must recognize regex literals — including regexes **after a keyword** such as `return /…/` — `//` inside strings must be preserved, stripping comments must not change line structure, and the parse-level criterion that "the four sets of source, with comments stripped, must still parse under `node --check`")
 - **Specification ↔ code traceability (all four sets together)**: [`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs) (94 assertions) — tools promised in `实现方案.md`/README must really be registered; the four Lean parameters must be accepted by both the documentation and the code

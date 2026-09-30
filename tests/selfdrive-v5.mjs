@@ -450,7 +450,7 @@ assert(sNo.autoDone === false && sNo.running === true, 'a non-unanimous solve vo
 solvePlan = true
 const m2 = await callTool('vibe_v5_meeting', { agenda: '再次表决是否已解决', kind: 'solve-vote' }, childAgent(childOf('acad')))
 assert(m2.ok === true, 'the second solve-vote meeting is requested (' + JSON.stringify(m2).slice(0, 100) + ')')
-// ★ SPEC v2 §A1: the unanimous solve vote does NOT flip the completion flags any more. The
+// ★ docs/final-paper.md §3: the unanimous solve vote does NOT flip the completion flags any more. The
 // final-paper phase runs FIRST (after phase='solved' the machinery refuses to wake members,
 // convene meetings or dispatch an end, so the co-writing could never run). This loop must
 // therefore land on "paper active, run still alive" — that IS the contract, and the loop

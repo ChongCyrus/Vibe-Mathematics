@@ -201,7 +201,7 @@ const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
 const PROBLEM = '证明素数有无穷多个'
 
 // ── final-paper test helpers ────────────────────────────────────────────────
-// A FAKE LaTeX toolchain (spec §6: "临时目录里放一个假的 xelatex/latexmk 脚本，或注入 runner").
+// A FAKE LaTeX toolchain (docs/final-paper.md §10: "临时目录里放一个假的 xelatex/latexmk 脚本，或注入 runner").
 // It is injected through the SAME `subprocess` service the plugin detects and compiles with, so
 // the plugin's real detection/compile/repair code runs unchanged; only the toolchain is fake.
 // `installed`      — which engine names resolve (others throw, like a missing binary)
@@ -273,6 +273,9 @@ async function drivePaper(h, opts) {
     } else {
       reply = o.final ? o.final(who, prompt) : ({ paper_final: { decision: 'deliverable', note: '已核对合并稿与互审意见，统一术语与符号。', conclusion: '题设范围内结论成立。' } })
     }
+    // `capture` lets a case assert on the TEXT the member really received (the evidence-only
+    // clause lives in the prompt, not only in the plugin source).
+    if (o.capture) o.capture.push({ kind, who, prompt })
     h.fireEnd(w.childId, reply)
     steps++
     await sleep(20)
@@ -1152,7 +1155,7 @@ console.log('\n[26] fake LaTeX compiler: success path produces paper.pdf')
   assert(meta.compile.status === 'compiled' && meta.compile.engine === 'xelatex' && meta.compile.attempts.length === 1,
     'the meta records compiled/xelatex on the FIRST attempt (' + JSON.stringify(meta.compile) + ')')
   assert(fake.calls.length >= 2 && fake.calls.every(c => c.args.indexOf('-interaction=nonstopmode') !== -1),
-    '★ the engine ran twice with -interaction=nonstopmode (spec §5)')
+    '★ the engine ran twice with -interaction=nonstopmode (docs/final-paper.md §8)')
 }
 
 // ---------- 27. fake LaTeX: a failing package is repaired, then it degrades ----------
@@ -1202,7 +1205,7 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
   assert(meta3.compile.status === 'compiled' && meta3.compile.engine === 'pdflatex' && (meta3.compile.attempts || []).length === 3,
     '★ engine swap: xelatex fails twice, pdflatex succeeds on the third attempt (' + JSON.stringify({ e: meta3.compile.engine, n: (meta3.compile.attempts || []).length }) + ')')
   // paperFormat=md with paperCompilePdf=true must skip compilation SILENTLY (no "missing tex"
-  // warning) — spec v2 §E.
+  // warning) — docs/final-paper.md §8.
   const hm = makeHost({ pluginModule, subprocess: fakeLatex({ installed: ['xelatex'] }) })
   await hm.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
   await hm.settleSpawns()
@@ -1303,6 +1306,106 @@ console.log('\n[30] unanimity: an objection does NOT finalise, the cap records t
   const md = readFileSync(join(paperDirOf(h, 'institute'), 'paper.md'), 'utf8')
   assert(md.indexOf('分歧记录') !== -1 && md.indexOf('证据不足，需补充') !== -1,
     '★ the unresolved disagreement is written into the APPENDIX of the paper')
+}
+
+// ---------- 31. the DEFAULT auto trigger: the paper phase runs BEFORE completion ----------
+console.log('\n[31] a unanimous solve vote with finalPaper=true enters the paper phase BEFORE completion')
+{
+  // The mutant guard: deleting the auto-trigger branch in `checkSolved`
+  // (`if (params.finalPaper !== false)` -> `if (false)`) used to leave this whole suite green,
+  // because every other paper case drives the flow through the MANUAL vibe_v5_paper tool and
+  // the only auto assertion was "finalPaper=false => no paper" (which the mutant satisfies).
+  // This case pins the real contract: the default path must NOT complete the run until the
+  // paper is finalised, and the run must be observably alive with a paper in progress.
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  await h.callTool('vibe_v5_set', { activityTimeoutMs: 50 })
+  h.solvePlan = true
+  await h.callTool('vibe_v5_meeting', { agenda: '是否已解决原问题？', kind: 'solve-vote' })
+  await h.drain(24)
+  const mid = await h.callTool('vibe_v5_status', {})
+  assert(mid.autoDone === false,
+    '★ a unanimous solve vote with finalPaper=true does NOT complete the run immediately (got autoDone=' + mid.autoDone + ')')
+  const p0 = mid.paper || {}
+  assert(!!mid.paper && p0.status !== 'finalized',
+    '★ ... it ENTERS the paper phase instead (' + JSON.stringify({ s: p0.status, e: p0.editor }) + ')')
+  assert(p0.editor === 'academician' && p0.completesRun === true,
+    'the automatic run is edited by the wakeable academician and is marked as completing the run (' + JSON.stringify({ e: p0.editor, c: p0.completesRun }) + ')')
+  assert(mid.running === true, 'the run stays ALIVE while the paper phase runs (the machinery would refuse a concluded institute)')
+  const capture = []
+  await drivePaper(h, { capture })
+  let done = null
+  for (let i = 0; i < 40; i++) {
+    done = await h.callTool('vibe_v5_status', {})
+    if (done.autoDone) break
+    await drivePaper(h, { max: 4, capture })
+    await sleep(20)
+  }
+  assert(done.autoDone === true && done.running === false,
+    '★ the run is marked complete only AFTER the paper finalised (' + JSON.stringify({ a: done.autoDone, r: done.running }) + ')')
+  assert(done.paper && done.paper.status === 'finalized', 'the paper reached the finalized stage (' + JSON.stringify(done.paper && done.paper.status) + ')')
+  assert(existsSync(join(paperDirOf(h, 'institute'), 'paper.md')), 'the automatic path delivered Paper/<id>/paper.md')
+  // The members' own prompts carry the evidence-only clause (never invent content).
+  const write = capture.find(c => c.kind === 'write')
+  assert(!!write && /不得编造/.test(write.prompt) && /只写你自己库里已有证据支撑/.test(write.prompt),
+    '★ the paper write prompt says only-evidence/no-fabrication: ' + JSON.stringify(write && write.prompt.slice(0, 120)))
+  assert(!!write && /未决 \/ 被否证的条目必须显式标注/.test(write.prompt), 'the prompt requires undecided/refuted items to be marked explicitly')
+}
+
+// ---------- 32. a run that has NOT closed writes no Paper/ directory ----------
+console.log('\n[32] a run that has NOT closed writes NO Paper/ directory')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  // Real, non-closing work: one verification concludes, and the solve vote is NOT unanimous.
+  await h.callTool('vibe_v5_record_proposition', { id: 'p-not-closed', statement: '未收口就不得产出论文目录', value: 0.8, motive: '负用例', p: 1 }, h.childAgent(h.childOf('r-1')))
+  await h.callTool('vibe_v5_propose_verify', { target: 'p-not-closed', kind: 'proposition', reason: '负用例' }, h.childAgent(h.childOf('r-1')))
+  h.plannedVotes = new Map([['acad', 1], ['r-1', 1]])
+  await h.drain(12)
+  h.solvePlan = false
+  await h.callTool('vibe_v5_meeting', { agenda: '是否已解决？（未达成一致）', kind: 'solve-vote' })
+  await h.drain(16)
+  const st = await h.callTool('vibe_v5_status', {})
+  assert(st.autoDone === false && !st.paper, 'the run is still open and no paper phase started (' + JSON.stringify({ a: st.autoDone, p: st.paper }) + ')')
+  const paperRoot = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Paper')
+  assert(!existsSync(paperRoot), '★ a run that has NOT closed writes no Paper/ directory at all')
+  const rel = await h.callTool('vibe_v5_report', {})
+  assert(String(rel.report || '').indexOf('最终论文') !== -1 && String(rel.report || '').indexOf('尚未开始') !== -1,
+    'the report tells the operator the paper has not started yet')
+}
+
+// ---------- 33. an existing paper.pdf is never clobbered ----------
+console.log('\n[33] an existing Paper/<id>/paper.pdf is never overwritten or deleted')
+{
+  const PRE = '%PDF-1.4 PRE-EXISTING DELIVERY\n'
+  // (a) a compiler that WOULD succeed: the existing pdf must make the flow skip compilation.
+  const fake = fakeLatex({ installed: ['xelatex'] })
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const dir = paperDirOf(h, 'institute')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'paper.pdf'), PRE, 'utf8')
+  await h.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h)
+  assert(readFileSync(join(dir, 'paper.pdf'), 'utf8') === PRE, '★ the pre-existing pdf is byte-identical after the run (never overwritten)')
+  assert(fake.calls.length === 0, '★ compilation was SKIPPED entirely because a pdf already existed (never clobber)')
+  const meta = JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8'))
+  assert(meta.compile.status === 'kept-existing', 'the meta records compile=kept-existing (' + meta.compile.status + ')')
+  // (b) a compiler that ALWAYS FAILS: still skipped, so a failing toolchain cannot destroy it.
+  const fake2 = fakeLatex({ installed: ['xelatex'], alwaysFail: true })
+  const h2 = makeHost({ pluginModule, subprocess: fake2 })
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h2.settleSpawns()
+  const dir2 = paperDirOf(h2, 'institute')
+  mkdirSync(dir2, { recursive: true })
+  writeFileSync(join(dir2, 'paper.pdf'), PRE, 'utf8')
+  await h2.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h2)
+  assert(readFileSync(join(dir2, 'paper.pdf'), 'utf8') === PRE, '★ even an always-failing toolchain leaves the existing pdf untouched')
+  assert(fake2.calls.length === 0, 'no compiler process was launched for the already-delivered pdf')
 }
 
 console.log('')

@@ -1,7 +1,7 @@
 // ============================================================
-// V4 FINAL PAPER SUITE  (spec-final-paper v1 + v2 amendments)
+// V4 FINAL PAPER SUITE  (docs/final-paper.md, v1 + v2 amendments)
 //
-// Covers the v4 side of spec §6:
+// Covers the v4 side of docs/final-paper.md §6:
 //   · the five/six new parameters: defaults, schema presence, boolean/enum coercion of RAW STRINGS
 //     (the `/v4 set` path hands the parameter layer strings) and rejection/fallback of bad values;
 //   · the trigger: NOT fired on a run that has not closed, fired on the closing meeting's unanimous
@@ -17,12 +17,18 @@
 //   · `Paper/<id>/` containment for a hostile problem id, and no pollution of Verified/State;
 //   · `/v4 paper` with parameter overrides, `force`, and `kind:'error'` on a bad option.
 //
+// V4_PLUGIN overrides the plugin under test: a sensitivity probe MUST point this suite at a mutated
+// copy, otherwise the probe would exercise the unmutated plugin and stay green
+// (AUDIT-CHECKLIST §2.5).
+//
 // Run: node tests/v4-final-paper.test.mjs
 // ============================================================
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+const PLUGIN = process.env.V4_PLUGIN
+  ? new URL('file:///' + String(process.env.V4_PLUGIN).replace(/\\/g, '/'))
+  : new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 let passed = 0, failed = 0
 const failures = []
@@ -30,6 +36,9 @@ const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else 
 const section = (t) => console.log('\n[' + t + ']')
 const JSONX = o => '```json\n' + JSON.stringify(o) + '\n```'
 const readIf = (p) => { try { return readFileSync(p, 'utf8') } catch (e) { return '' } }
+/** Parse a JSON artifact, or `null` when it is missing/unparseable — a missing artifact must be ONE
+ *  clean assertion failure, never an uncaught SyntaxError that swallows the rest of the file. */
+const readJsonIf = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')) } catch (e) { return null } }
 
 // ---- injectable fake LaTeX compiler ------------------------------------------------------------
 // The host fs is text-only, so paper.pdf can ONLY come from the compiler subprocess. This mock is
@@ -199,7 +208,7 @@ section('1 parameters: defaults, schema, raw-string coercion, rejection')
     'the schema narrows paperFormat/paperLanguage to their real enums')
   assert(/finalPaper/.test(setSpec.description) && /paperEditor/.test(setSpec.description) && /paperLatexCommand/.test(setSpec.description),
     '★ the tool HELP names the paper parameters (a schema key the help never mentions is not discoverable)')
-  // RAW STRINGS are what `/v4 set` hands the parameter layer (spec v2 §B): 'false' must not stay truthy.
+  // RAW STRINGS are what `/v4 set` hands the parameter layer (docs/final-paper.md §B): 'false' must not stay truthy.
   const r1 = await m.callTool('vibe_v4_set', { finalPaper: 'false', paperFormat: 'tex', paperLanguage: 'en', paperCompilePdf: '0', paperEditor: 'resident:r-2' })
   assert(r1.paper.params.finalPaper === false && r1.paper.params.paperFormat === 'tex' && r1.paper.params.paperLanguage === 'en' && r1.paper.params.paperCompilePdf === false && r1.paper.params.paperEditor === 'resident:r-2',
     '★ raw strings are coerced: finalPaper="false"→false, paperCompilePdf="0"→false, enums accepted (got ' + JSON.stringify(r1.paper.params) + ')')
@@ -243,24 +252,33 @@ section('3 automatic trigger on the unanimous stop vote + full team flow + 9-sec
   await m.callToolAs('vibe_v4_record_proposition', { id: 'p-unres', title: '未决命题', statement: 's', prob: 0.4, value: 0.3, motivation: 'm' }, m.spawns[0].childId)
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex', 'latexmk']
   const st = await closeRun(m)
-  assert(st.autoDone === true && st.running === false, '★ the paper completed and only THEN the run was marked done (v2 §A1; paper=' + st.paper.status + ')')
+  // The PAPER must actually have run: without `st.paper.status==='done' && finalizedAt>0` this
+  // assertion also holds when the paper phase is disabled (docs/final-paper.md §A1 mutant), and the case would
+  // only die later on a missing artifact. It is the paper phase's own success that must be asserted.
+  assert(st.autoDone === true && st.running === false && st.paper.status === 'done' && st.paper.finalizedAt > 0 && st.paper.trigger === 'auto',
+    '★ the paper ran to completion (status=' + st.paper.status + ', finalizedAt=' + st.paper.finalizedAt + ', trigger=' + st.paper.trigger + ') and only THEN the run was marked done (docs/final-paper.md §A1)')
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
   const md = readIf(join(dir, 'paper.md')), tex = readIf(join(dir, 'paper.tex')), log = readIf(join(dir, 'paper.log.md'))
-  assert(existsSync(dir) && md && tex && log && meta.dir === 'Paper/' + meta.id, '★ Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md} all exist (meta.dir=' + meta.dir + ')')
+  assert(existsSync(dir) && !!md && !!tex && !!log && meta.dir === 'Paper/' + meta.id, '★ Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md} all exist (meta.dir=' + meta.dir + ')')
   const heads = ['标题、作者、日期与摘要', '引言与问题背景', '原问题的完整解法', '已检验通过的命题', '已解决的子问题与中间成果', '创造或发现的有价值之物', '规律总结', '讨论、局限与展望', '附录：证据与文件索引']
-  assert(heads.every((h, i) => md.indexOf('## ' + (i + 1) + '. ' + h) !== -1), '★ the md carries the exact 9-section skeleton (spec §3)')
+  assert(heads.every((h, i) => md.indexOf('## ' + (i + 1) + '. ' + h) !== -1), '★ the md carries the exact 9-section skeleton (docs/final-paper.md §3)')
   assert(heads.every((h, i) => tex.indexOf('\\section{' + h + '}') !== -1), '★ the tex carries the same 9 sections')
   assert(/\\documentclass\[11pt\]\{ctexart\}/.test(tex) && /\\usepackage\{amsmath\}/.test(tex) && /\\usepackage\{hyperref\}/.test(tex),
-    'the zh template is ctexart with the documented package set (spec §5)')
+    'the zh template is ctexart with the documented package set (docs/final-paper.md §5)')
   assert(/Verified\/命题\/p-ok\.md|Propos\//.test(md) && /p-ok/.test(md), '★ the evidence index names real card paths')
-  assert(/\[未决\]/.test(md) && /p-unres/.test(md), '★ an unverified object is explicitly flagged [未决] (spec §3 writing rule)')
+  assert(/\[未决\]/.test(md) && /p-unres/.test(md), '★ an unverified object is explicitly flagged [未决] (docs/final-paper.md §3 writing rule)')
   assert(/Vibe-Mathematics v4/.test(md) && /团队合写测试/.test(md), 'the title/abstract carry the preset name and the original problem')
-  assert(meta.finalizedAt > 0 && meta.trigger === 'auto' && meta.params.paperFormat === 'both' && meta.params.paperLanguage === 'zh',
+  assert(meta.finalizedAt > 0 && meta.trigger === 'auto' && meta.params && meta.params.paperFormat === 'both' && meta.params.paperLanguage === 'zh',
     '★ paper.meta.json records the trigger, the params, the language and finalizedAt')
-  assert(meta.parts && meta.parts.length === 2 && meta.reviews && meta.reviews.length === 2 && meta.deliverable.length === 2,
+  assert((meta.parts || []).length === 2 && (meta.reviews || []).length === 2 && (meta.deliverable || []).length === 2,
     '★ meta records who wrote a part, who reviewed (and whom), and every deliverability statement')
-  assert(meta.reviews.every(r => r.reviewed && r.reviewed !== r.id), '★ every review names ANOTHER participant (spec §4.3)')
+  assert((meta.reviews || []).every(r => r.reviewed && r.reviewed !== r.id), '★ every review names ANOTHER participant (docs/final-paper.md §4.3)')
+  // The no-invention contract must reach EVERY paper wake (v2/v3 already assert it; v4 shipped the
+  // clause in the prompt but nothing guarded it — a prompt-level regression would have been silent).
+  const paperPrompts = m.followups.map(f => (f.blocks && f.blocks[0] && f.blocks[0].text) || '').filter(t => /\[PAPER /.test(t))
+  assert(paperPrompts.length >= 6 && paperPrompts.every(t => /只整理\*\*已有证据\*\*/.test(t) && /不得编造/.test(t) && /未决\/被否证的条目必须显式标注/.test(t)),
+    '★ every one of the ' + paperPrompts.length + ' paper wakes carries the no-invention contract: only reorganise EXISTING evidence, never invent, and flag unresolved/refuted items explicitly')
   assert(/互审/.test(log) && /已采纳/.test(log) && /交付表态/.test(log) && /定稿/.test(log),
     '★ paper.log.md records who wrote what, who raised which review point and how it was handled')
   assert(/facilitator 合并|合并完成/.test(log) && meta.mergeNotes && typeof meta.mergeNotes.dups === 'number',
@@ -310,6 +328,10 @@ section('5 /v4 paper overrides: lang=en, format=tex, editor, and error kind')
   const tex = readIf(join(dir, 'paper.tex'))
   assert(existsSync(join(dir, 'paper.tex')) && !existsSync(join(dir, 'paper.md')), '★ format=tex produces paper.tex and NO paper.md')
   assert(/\\documentclass\[11pt\]\{article\}/.test(tex), '★ lang=en switches the template to article (no ctexart)')
+  // The English variant must carry the same no-invention contract as the zh one.
+  const enPaperPrompts = m.followups.map(f => (f.blocks && f.blocks[0] && f.blocks[0].text) || '').filter(t => /\[PAPER /.test(t))
+  assert(enPaperPrompts.length > 0 && enPaperPrompts.every(t => /Only organise EXISTING evidence/.test(t) && /never invent/.test(t) && /flag unresolved\/refuted items explicitly/.test(t)),
+    '★ the lang=en paper wakes carry the English no-invention contract too (' + enPaperPrompts.length + ' wakes)')
   assert(/\[PAPER DELIVERABLE\]/.test(m.followups.map(f => (f.blocks && f.blocks[0] && f.blocks[0].text) || '').join('\n')), 'the deliverability vote was held')
   const bad = await m.cmd('paper nonsense=1')
   assert(bad.kind === 'error' && JSON.parse(bad.text).ok === false, '★ a bad /v4 paper option returns kind:\'error\' (never a silent success)')
@@ -393,7 +415,7 @@ section('8 dissent: bounded iteration, then the appendix records it and a warnin
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
   const md = readIf(join(dir, 'paper.md')), meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
   assert(st.paper.status === 'done' && meta.dissent.indexOf('r-1') !== -1, '★ dissent did not block finalisation forever: the run iterated and then recorded the dissent (rounds=' + meta.rounds + '/' + meta.maxRounds + ')')
-  assert(/附录：交付分歧|Appendix: deliverability dissent/.test(md), '★ the disagreement is written into the appendix (spec §4.5)')
+  assert(/附录：交付分歧|Appendix: deliverability dissent/.test(md), '★ the disagreement is written into the appendix (docs/final-paper.md §4.5)')
   assert(/迭代达到上限/.test(meta.warning || ''), '★ and the cap is warned about in meta.log')
   rmSync(m.WS, { recursive: true, force: true })
 }

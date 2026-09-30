@@ -586,5 +586,117 @@ console.log('\n-- PAPER §A2: ACTIVATION_LIMIT_REACHED → queue + retry + visib
   h.restore(); rmSync(h.WS, { recursive: true, force: true })
 }
 
+console.log('\n-- PAPER §1: a hung writer can never wedge the paper (force refuses early, reaps after the window) --')
+{
+  const h = harness({ latex: null }); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { finalPaper: false })   // 本节只考 force 的回收判定：关掉自动重派以保证确定性
+  // 纯函数判定（两条分支 + child 已消失）
+  assert(h.H.paperWriterVerdict({ inFlight: false }) === 'none', 'no in-flight writer → none')
+  assert(h.H.paperWriterVerdict({ inFlight: true, force: false, ageMs: 1000, staleMs: 600000, childInRegistry: true }) === 'none', 'fresh writer + no force → none (a normal skip)')
+  assert(h.H.paperWriterVerdict({ inFlight: true, force: true, ageMs: 1000, staleMs: 600000, childInRegistry: true }) === 'refuse', '★ force before the stale window → refuse (actionable error, not a wedge)')
+  assert(h.H.paperWriterVerdict({ inFlight: true, force: false, ageMs: 700000, staleMs: 600000, childInRegistry: true }) === 'reap', '★ past the stale window → reap (the heartbeat degrades automatically)')
+  assert(h.H.paperWriterVerdict({ inFlight: true, force: true, ageMs: 700000, staleMs: 600000, childInRegistry: true }) === 'reap', '★ force past the stale window → reap')
+  assert(h.H.paperWriterVerdict({ inFlight: true, force: false, ageMs: 10, staleMs: 600000, childInRegistry: false }) === 'reap', '★ child gone from the registry → reap immediately, whatever the age')
+  // 驱动：派遣一个永不返回的撰写者
+  const r1 = JSON.parse((await h.cmd('paper')).text)
+  assert(r1.dispatched === true, 'a writer is dispatched')
+  const w1 = h.spawns.filter((s) => s.label.startsWith('paper-writer:'))[0]
+  const refused = await h.cmd('paper force')
+  const rb = JSON.parse(refused.text)
+  assert(refused.kind === 'error' && rb.reason === 'writer-in-flight', '★★ force before the window returns kind:error with reason=writer-in-flight (old code silently skipped: the wedge)')
+  assert(/在途/.test(rb.message) && /10 分钟/.test(rb.message) && /回收/.test(rb.message), '★★ and the message is ACTIONABLE (names the in-flight child, the window and the automatic reap)')
+  assert(h.spawns.filter((s) => s.label.startsWith('paper-writer:')).length === 1, 'no second writer was dispatched by the refused force')
+  const st = await h.call('vibe_math_status', {})
+  assert(st.paper.inFlight === w1.childId && st.paper.staleMs === 600000 && st.paper.inFlightAgeMs !== null, 'status exposes the in-flight writer, its age and the stale window')
+  // 时间旅行到窗口之后：force 必须回收并重派（"死掉的撰写者不会永久卡住论文"）
+  const realNow = Date.now
+  let after
+  try {
+    Date.now = () => realNow.call(Date) + 11 * 60 * 1000
+    await wait(50)
+    after = JSON.parse((await h.cmd('paper force')).text)
+  } finally { Date.now = realNow }
+  assert(after.dispatched === true, '★ force past the stale window reaps the hung writer and dispatches a fresh one')
+  assert(h.spawns.filter((s) => s.label.startsWith('paper-writer:')).length === 2, 'a fresh writer really was dispatched')
+  const log = readFileSync(join(h.paperDir('p'), 'paper.log.md'), 'utf8')
+  assert(/\[reap\]/.test(log), '★★ the reap is logged honestly (with its reason)')
+  assert(/\[force-refused\]/.test(log), 'the earlier force refusal is logged too')
+  firePaper(h)
+  const meta = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
+  assert(!!meta, '★★ after reap+force the paper is produced — a dead writer can no longer wedge it')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+console.log('\n-- PAPER §1b: the heartbeat reaps a stalled writer and re-dispatches automatically --')
+{
+  const h = harness({ latex: null }); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { finalPaper: true })
+  const r = JSON.parse((await h.cmd('paper')).text)
+  assert(r.dispatched === true, 'a writer is dispatched')
+  const realNow = Date.now
+  Date.now = () => realNow.call(Date) + 11 * 60 * 1000
+  const second = await h.find(() => (h.spawns.filter((s) => s.label.startsWith('paper-writer:')).length >= 2 ? true : undefined), 60)
+  Date.now = realNow
+  assert(!!second, '★★ the apply-level heartbeat reaped the stalled writer and auto-dispatched a replacement (independent of scheduler.running)')
+  const log = readFileSync(join(h.paperDir('p'), 'paper.log.md'), 'utf8')
+  assert(/\[reap\]/.test(log) && /\[retry-after-reap\]/.test(log), 'the reap and the bounded auto-retry are both logged')
+  const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+  assert(/回收卡死的论文撰写子代理/.test(acts), 'and the reap is visible on the activity log (not silent)')
+  firePaper(h)
+  const meta = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
+  assert(!!meta, 'the auto-recovered writer finalized the paper (no permanent wedge even without /vibe paper force)')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+console.log('\n-- PAPER §2: a pre-existing paper.pdf is never deleted or overwritten --')
+{
+  const PDF = '%PDF-1.4 pre-existing bytes\n'
+  // (a) 无 LaTeX ⇒ not-detected：既有 pdf 必须逐字节不变
+  const a = harness({ latex: null }); await load(a)
+  await a.call('vibe_math_new_project', { name: 'p' })
+  await a.cmd('paper')
+  mkdirSync(a.paperDir('p'), { recursive: true })
+  writeFileSync(join(a.paperDir('p'), 'paper.pdf'), PDF, 'utf8')
+  firePaper(a)
+  let m = await a.find(() => (existsSync(join(a.paperDir('p'), 'paper.meta.json')) ? readMeta(a, 'p') : undefined), 40)
+  assert(!!m && m.compile === 'not-detected' && m.pdfPreserved === true, '★ (a) no engine → not-detected and meta records pdfPreserved')
+  assert(readFileSync(join(a.paperDir('p'), 'paper.pdf'), 'utf8') === PDF, '★★ (a) the pre-existing paper.pdf is byte-identical after a not-detected run')
+  a.restore(); rmSync(a.WS, { recursive: true, force: true })
+  // (b) 编译器持续失败 ⇒ failed：既有 pdf 仍必须逐字节不变
+  const b = harness({ latex: { engines: ['xelatex', 'latexmk'], alwaysFail: true } }); await load(b)
+  await b.call('vibe_math_new_project', { name: 'p' })
+  await b.cmd('paper')
+  mkdirSync(b.paperDir('p'), { recursive: true })
+  writeFileSync(join(b.paperDir('p'), 'paper.pdf'), PDF, 'utf8')
+  firePaper(b)
+  m = await b.find(() => (existsSync(join(b.paperDir('p'), 'paper.meta.json')) ? readMeta(b, 'p') : undefined), 40)
+  assert(!!m && m.compile === 'failed' && m.pdfPreserved === true, '★ (b) persistent failure → failed + pdfPreserved')
+  assert(readFileSync(join(b.paperDir('p'), 'paper.pdf'), 'utf8') === PDF, '★★ (b) the pre-existing paper.pdf survives a failed compile byte-identically (never deleted, never overwritten)')
+  b.restore(); rmSync(b.WS, { recursive: true, force: true })
+  // (c) paperFormat=md ⇒ 连引擎探测都不做，pdf 更不可能被碰
+  const c = harness({ latex: { engines: ['xelatex'] } }); await load(c)
+  await c.call('vibe_math_new_project', { name: 'p' })
+  const runsAtStart = c.latexRuns.length
+  await c.cmd('paper')
+  firePaper(c)
+  const meta1 = await c.find(() => (existsSync(join(c.paperDir('p'), 'paper.meta.json')) ? readMeta(c, 'p') : undefined), 40)
+  assert(!!meta1 && meta1.artifacts.tex === true, '(c) the first (default both) run produced tex and probed the engines')
+  const runsAfterTex = c.latexRuns.length
+  assert(runsAfterTex > runsAtStart, '(c) the both-format run really probed/ran an engine')
+  // 这台编译器的产物已经落到 paper.pdf；现在放一个**哨兵** pdf，验证 md-only 运行绝不碰它
+  writeFileSync(join(c.paperDir('p'), 'paper.pdf'), PDF, 'utf8')
+  const beforeAt = meta1.finalizedAt
+  const mdRun = JSON.parse((await c.cmd('paper format=md force')).text)
+  assert(mdRun.dispatched === true, '(c) a forced md-only rewrite is dispatched')
+  firePaper(c)
+  const m2 = await c.find(() => { const x = readMeta(c, 'p'); return x.finalizedAt !== beforeAt ? x : undefined }, 40)
+  assert(!!m2 && m2.params.paperFormat === 'md' && m2.compile === 'skipped', '★ (c) paperFormat=md skips compilation entirely')
+  assert(c.latexRuns.length === runsAfterTex, '★★ (c) md-only never even probes the LaTeX engines')
+  assert(readFileSync(join(c.paperDir('p'), 'paper.pdf'), 'utf8') === PDF, '★★ (c) the pre-existing paper.pdf is untouched by an md-only run')
+  c.restore(); rmSync(c.WS, { recursive: true, force: true })
+}
+
 console.log('\nFIXES PROBE: ' + passed + ' passed, ' + failed + ' failed')
 process.exit(failed === 0 ? 0 : 1)

@@ -726,6 +726,15 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
 | `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
+| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+
+#### 最终论文（final paper）
+
+四个预设都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
 
 ### v3（论文式 md + 规划代理 + 方法库）默认值
 
@@ -750,6 +759,15 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
 | `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
+| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+
+#### 最终论文（final paper）
+
+v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之前**派遣撰写者）：专职「论文撰写」子代理产出 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。无引擎或编译失败仍交付 tex+md、记警告、不阻塞定稿。完整契约见 `docs/final-paper.md`。
 
 ### v4（常驻自组织 · 实验）默认值
 
@@ -772,6 +790,16 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
 | `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
+| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+| `paperEditor` | `office` | 定稿代表：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明） |
+
+#### 最终论文（final paper）
+
+默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（引擎可用时另有 `paper.pdf`）。完整契约见 `docs/final-paper.md`。
 
 ### v5（研究所体系 · 实验）默认值
 
@@ -803,6 +831,16 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 | `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
 | `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
+| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+| `paperEditor` | `academician` | 定稿代表：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
+
+#### 最终论文（final paper）
+
+默认开启；v5 在 `checkSolved` 判定「已解决」后、**标记完成之前**进入 paper 阶段。常驻研究员与院士各自写、合并、交叉互审，定稿代表由 `paperEditor` 决定：**自动流程固定用 `academician`**（所办是根会话，没有唤醒路径）；`office` 只能通过手动 `/v5 paper editor=office` 选择，此时**所办必须先与全所交流、商讨、优化、审查**（≥1 条 `vibe_v5_message` + ≥1 次 `vibe_v5_meeting`），把结论写进定稿说明，再调用 `vibe_v5_finalize_paper`；缺一即被拒（`V5_PAPER_CONSULT_REQUIRED`）。工具入口：`vibe_v5_paper`、`vibe_v5_finalize_paper`。产物 `Paper/<研究所 id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（引擎可用时另有 `paper.pdf`）。完整契约见 `docs/final-paper.md`。
 
 常用控制：`vibe_v5_configure`（先配置）→ `vibe_v5_start`（开工）→ `vibe_v5_report` / `vibe_v5_status`；`vibe_v5_message` / `vibe_v5_meeting` / `vibe_v5_members` / `vibe_v5_hire` / `vibe_v5_fire`（临时工）/ `vibe_v5_add_researcher` / `vibe_v5_remove_researcher`（增删常驻，仅所办）/ `vibe_v5_pause` / `vibe_v5_resume` / `vibe_v5_stop`；斜杠命令 `/v5`。
 
@@ -826,8 +864,9 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 56`（38 套件 + 18 探针/变体）≈3.5 min；哪 18 项随包发布、哪些仅仓库见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
-- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（196 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
+- **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 57`（39 套件 + 18 探针/变体）≈3.5 min；哪 18 项随包发布、哪些仅仓库见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（196 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（13 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
 - **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受

@@ -877,7 +877,7 @@ await callTool('vibe_v5_say', { to: 'r-1', text: '请你就"是否已解决"表�
 await settle(); await drainWakes(4, RM)
 const stSolved = await callTool('vibe_v5_status', {}, RM)
 assert(stSolved.solveVotes.length >= 2, 'both voters recorded a solve vote outside any meeting (' + JSON.stringify(stSolved.solveVotes) + ')')
-// SPEC v2 §A1: the unanimous solve vote no longer flips the completion flags immediately — the
+// docs/final-paper.md §3: the unanimous solve vote no longer flips the completion flags immediately — the
 // FINAL PAPER phase runs first (after phase='solved' the machinery refuses to wake members,
 // convene meetings or dispatch an end). What this case exists for is that `checkSolved` is
 // re-evaluated on a vote that arrived OUTSIDE a meeting, and the paper phase starting is that

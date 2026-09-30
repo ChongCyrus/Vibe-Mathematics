@@ -164,7 +164,7 @@ export function apply(ctx) {
     leanCommand: 'lean',          // 要执行的 Lean 可执行文件（例：'lake'）
     leanArgs: [],                 // 插在文件名之前的附加参数（例：['env','lean'] 配合 leanCommand='lake'）
     leanTimeoutMs: 120000,        // 单次 Lean 运行的超时上限（毫秒）
-    // ---- 最终论文（规格：_oneoff/spec-final-paper.md；v2/v3 为单作者变体）----
+    // ---- 最终论文（规格：docs/final-paper.md；v2/v3 为单作者变体）----
     finalPaper: true,             // 收口时是否自动撰写最终论文（false 只关自动触发；/vibe paper 仍可用）
     paperFormat: 'both',          // both = md + tex | md = 只写 markdown | tex = 只写 latex
     paperLanguage: 'zh',          // zh = 中文（ctexart/xelatex 优先）| en = 英文（article/pdflatex 优先）
@@ -2687,7 +2687,7 @@ export function apply(ctx) {
   function cardOk(r) { return !!(r && r.ok) }
 
   // ==========================================================================================
-  // 最终论文（规格：_oneoff/spec-final-paper.md + **修订 v2** amendments）—— 会话侧。
+  // 最终论文（规格：docs/final-paper.md（含本轮修订））—— 会话侧。
   //
   // 时序（修订 §A2）：v2 的收口信号是严格终止（本文件 tick() 的 branch，见 `strict termination`）。
   // `scheduler.running=false` 之后 `scheduleTick()` 变空操作，所以**撰写子代理必须在停止翻转之前**
@@ -2698,9 +2698,14 @@ export function apply(ctx) {
   // paper.meta.json 最后写（提交点）。幂等 = run id + finalizedAt + 逐产物存在性（不引入材料稳定哈希）。
   // ==========================================================================================
   let paperInFlight = ''            // 正在撰写的 childId（空 = 无）
+  let paperInFlightAt = 0           // 派遣时刻（判定卡死窗口；force 与心跳都据它降级）
+  let paperReaps = 0                // 本 run 内已回收卡死撰写者的次数（自动重派上限）
+  const paperAbandoned = {}         // childId -> true：已放弃的撰写者；它事后返回时输出被丢弃并留痕
   let paperPending = null           // 激活上限排队重试：{ tries, retryAt, reason, limit, trigger, opts }
   const PAPER_RETRY_MS = 5000       // 激活上限拒绝后的重试间隔
   const PAPER_MAX_RETRIES = 12      // 连续被拒上限（超过则放弃并给可见告警）
+  const PAPER_STALE_MS = 10 * 60 * 1000 // 撰写者卡死窗口：超过它，force 与心跳都会回收并重派（10 分钟）
+  const PAPER_MAX_AUTO_REAPS = 2    // 心跳自动回收+重派的次数上限，之后交给 /vibe paper force
   const PAPER_LOCK_STALE_MS = 120000 // paper 作用域锁的失效时间（跨会话/跨进程尽力而为）
   /** 宿主激活上限（maxActiveSubagents）报错里的人数：v4/v5 用的同一判据。 */
   function activationLimitFrom(message) { const m = /active child limit:\s*(\d+)/.exec(String(message == null ? '' : message)); return m ? Number(m[1]) : undefined }
@@ -2742,6 +2747,28 @@ export function apply(ctx) {
     const rel = paperDir(id) + '/paper.lock.json'
     const cur = await readJson(rel)
     if (cur && cur.sessionId === sessionId) await writeJson(rel, { sessionId: '', at: now(), released: true })
+  }
+  /**
+   * 回收一个卡死的撰写者（修订 §1：死掉的撰写者绝不能把论文永久卡住）。
+   * 做法：清状态 + 尽力中断 + 从 agentRegistry 摘除（否则它一直算"活跃子代理"，也会挡住后续派发）
+   * + 记进 paperAbandoned（事后返回的输出被明确丢弃并留痕，不是静默消失）+ 可见告警。
+   */
+  async function paperReapWriter(id, why) {
+    const cid = paperInFlight
+    paperInFlight = ''; paperInFlightAt = 0
+    if (cid) {
+      try { await interruptChild(cid) } catch (e) { /* best effort */ }
+      delete agentRegistry[cid]
+      paperAbandoned[cid] = true
+    }
+    await paperAppendLog(id, 'reap', '回收卡死的撰写者 ' + (cid || '(未知)') + '：' + why + '（论文不会被永久卡住；force/心跳会继续）')
+    logActivity('paper', '回收卡死的论文撰写子代理 ' + (cid || '(未知)') + '：' + why)
+    console.error('vibe-math-v2: reaped a stalled paper writer (' + (cid || 'unknown') + '): ' + why)
+    reportDirty = true
+    return cid
+  }
+  function paperWriterVerdictNow(force) {
+    return paperWriterVerdict({ inFlight: !!paperInFlight, force: !!force, ageMs: now() - Number(paperInFlightAt || 0), staleMs: PAPER_STALE_MS, childInRegistry: paperInFlight ? (agentRegistry[paperInFlight] !== undefined) : true })
   }
   function paperOneLine(s, cap) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, cap || 400) }
   /** 证据索引（spec §3.9）：只列**确实存在**的文件；绝不含 Paper/ 自己（否则输入哈希会自我污染）。
@@ -2991,6 +3018,9 @@ export function apply(ctx) {
       return { ok: false, message: 'paper writer dispatch failed: ' + message, id: id, dir: relDir }
     }
     paperInFlight = childId
+    paperInFlightAt = now()
+    // 只有"非自动重试"的派遣才重置回收计数：auto-retry 必须保留计数，否则卡死重派会无限循环。
+    if (trigger !== 'auto-retry') paperReaps = 0
     paperPending = null
     const material = paperMaterialSummary(digest)
     await paperAppendLog(id, 'dispatch', 'trigger=' + trigger + ' child=' + childId + ' format=' + o.format + ' lang=' + o.lang + ' compilePdf=' + o.compilePdf + (o.force ? ' force=true' : '') + ' run=' + (Number(scheduler.startedAt) || 0) + ' material=' + material.chars + ' chars/' + material.lines + ' lines')
@@ -3019,7 +3049,20 @@ export function apply(ctx) {
       const filled = await paperEmitArtifacts(id, o, { title: meta.title, abstract: meta.abstract, sections: meta.sectionBodies || {}, evidence: meta.evidence, raw: meta.raw, notes: (meta.notes || []).concat(['补写缺失产物：' + missing.join(', ')]), trigger: meta.trigger || trigger, material: meta.material })
       return { ok: true, skipped: true, reason: 'filled-missing-artifacts', filled: missing, id: id, dir: relDir, finalizedAt: filled.finalizedAt, artifacts: filled.artifacts, compile: filled.compile }
     }
-    if (paperInFlight) return { ok: true, skipped: true, reason: 'writer-in-flight', childId: paperInFlight, id: id, dir: relDir }
+    if (paperInFlight) {
+      const verdict = paperWriterVerdictNow(o.force)
+      if (verdict === 'reap') {
+        const gone = agentRegistry[paperInFlight] === undefined
+        await paperReapWriter(id, gone ? '子代理已不在 agentRegistry（end 事件丢失 / 宿主丢弃）' : ('超过卡死窗口 ' + Math.round(PAPER_STALE_MS / 60000) + ' 分钟未返回'))
+        // 回收后继续走下面的 paper 锁 + 派遣路径（force 与收口重试都是这个语义）
+      } else if (verdict === 'refuse') {
+        const ageMs = now() - Number(paperInFlightAt || 0)
+        await paperAppendLog(id, 'force-refused', '仍有在途撰写者 ' + paperInFlight + '（' + Math.round(ageMs / 1000) + 's）：超过 ' + Math.round(PAPER_STALE_MS / 60000) + ' 分钟才会被 force 放弃')
+        return { ok: false, reason: 'writer-in-flight', childId: paperInFlight, ageMs: ageMs, staleMs: PAPER_STALE_MS, id: id, dir: relDir, message: '已有在途的论文撰写子代理 ' + paperInFlight + '（已 ' + Math.round(ageMs / 1000) + 's 未返回）。等它返回，或等超过 ' + Math.round(PAPER_STALE_MS / 60000) + ' 分钟后 force 会自动回收并重派（心跳也会自动回收）。' }
+      } else {
+        return { ok: true, skipped: true, reason: 'writer-in-flight', childId: paperInFlight, ageMs: now() - Number(paperInFlightAt || 0), staleMs: PAPER_STALE_MS, id: id, dir: relDir }
+      }
+    }
     if (paperPending) return { ok: true, queued: true, reason: 'retry-queued', retryAt: paperPending.retryAt, tries: paperPending.tries, id: id, dir: relDir }
     const lock = await paperLockAcquire(id)
     if (!lock.ok) {
@@ -3030,14 +3073,34 @@ export function apply(ctx) {
   }
   /** apply 级心跳用：有排队的论文派遣且到点了吗（同步判断，便宜）。 */
   function paperRetryDue() { return !!(paperPending && now() >= Number(paperPending.retryAt || 0)) }
-  /** 排队重试 + 在途时续租 paper 锁（由 apply 级心跳每秒调用一次）。 */
+  /**
+   * 心跳（修订 §1）：在途 → 续租 paper 锁；**卡死则自动回收**（child 不在注册表，或超过卡死窗口），
+   * 并自动重派（上限 PAPER_MAX_AUTO_REAPS，之后给出可执行提示交给 /vibe paper force）；有排队则重试派遣。
+   */
   async function runPaperRetry() {
-    if (paperInFlight) { try { await paperLockAcquire(paperId()) } catch (e) { /* 续租失败不致命 */ } return }
+    const id = paperId()
+    if (paperInFlight) {
+      if (paperWriterVerdictNow(false) === 'reap') {
+        const gone = agentRegistry[paperInFlight] === undefined
+        await paperReapWriter(id, gone ? '子代理已不在 agentRegistry（end 事件丢失 / 宿主丢弃）' : ('超过卡死窗口 ' + Math.round(PAPER_STALE_MS / 60000) + ' 分钟未返回'))
+        const meta = await paperReadMeta(id)
+        if (params.finalPaper !== false && !(meta && meta.finalizedAt) && Number(paperReaps || 0) < PAPER_MAX_AUTO_REAPS) {
+          paperReaps = Number(paperReaps || 0) + 1
+          await paperAppendLog(id, 'retry-after-reap', '第 ' + paperReaps + ' 次自动重派（上限 ' + PAPER_MAX_AUTO_REAPS + '）')
+          await paperDispatch('auto-retry', paperOpts({}), id, 0)
+        } else {
+          await paperAppendLog(id, 'reap-giveup', '自动重派已达上限 ' + PAPER_MAX_AUTO_REAPS + '（或已有定稿）：不再自动派遣，请用 /vibe paper force 手动重写')
+          logActivity('paper', '论文撰写子代理连续卡死/已放弃：不再自动重派，可用 /vibe paper force 手动重写')
+        }
+        return
+      }
+      try { await paperLockAcquire(id) } catch (e) { /* 续租失败不致命 */ }
+      return
+    }
     if (!paperRetryDue()) return
     const p = paperPending
     paperPending = null
     const o = paperOpts(p.opts)
-    const id = paperId()
     await paperDispatch(p.trigger || 'auto-retry', o, id, Number(p.tries || 0))
   }
   /** `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`（spec §2/§6）。非法参数 → ok:false（命令层转 kind:'error'）。 */
@@ -3066,7 +3129,8 @@ export function apply(ctx) {
   /** 论文撰写子代理结束（spec §4）：解析回复 → 组装 9 节 → 落盘 → 编译 → 记日志 → 释放 paper 锁。 */
   async function handlePaperWriter(childId, meta, output) {
     const id = meta.paperId || paperId()
-    paperInFlight = ''
+    paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0
+    delete paperAbandoned[childId]
     const o = paperOpts({ lang: meta.lang, format: meta.format, compilePdf: meta.compilePdf })
     const parsed = parseJson(output)
     const info = paperSkeletonFromReply(parsed, output)
@@ -3094,6 +3158,9 @@ export function apply(ctx) {
     const meta = await paperReadMeta(id)
     return {
       id: id, dir: paperDir(id), inFlight: paperInFlight || null,
+      inFlightSince: paperInFlight ? Number(paperInFlightAt || 0) : null,
+      inFlightAgeMs: paperInFlight ? (now() - Number(paperInFlightAt || 0)) : null,
+      staleMs: PAPER_STALE_MS, reapedThisRun: Number(paperReaps || 0),
       queued: paperPending ? { tries: paperPending.tries, retryAt: paperPending.retryAt, reason: paperPending.reason, limit: paperPending.limit === undefined ? null : paperPending.limit } : null,
       autoFinalPaper: params.finalPaper !== false, format: params.paperFormat, language: params.paperLanguage, compilePdf: params.paperCompilePdf !== false,
       finalizedAt: meta ? meta.finalizedAt : null, artifacts: meta ? (meta.artifacts || {}) : {}, compile: meta ? meta.compile : null,
@@ -3103,7 +3170,15 @@ export function apply(ctx) {
   // ================= child result dispatch =================
   async function onChildEnd(info) {
     const meta = agentRegistry[info.id]
-    if (meta === undefined) return
+    if (meta === undefined) {
+      // 已放弃（回收）的撰写者事后才返回：输出被丢弃，但必须**留痕**，不能静默消失（修订 §1）。
+      if (paperAbandoned[info.id]) {
+        delete paperAbandoned[info.id]
+        logActivity('paper', '已回收的论文撰写子代理 ' + info.id + ' 事后返回：其输出被丢弃（已重派新的撰写者）')
+        reportDirty = true
+      }
+      return
+    }
     const output = blocksToText(info.lastAssistantMessage)
     try {
       if (meta.role === 'explorer') await handleExplorer(info.id, meta, output)
@@ -3136,7 +3211,7 @@ export function apply(ctx) {
         // 论文的派遣态是本进程内存态：子代理已被中断/丢弃，排队与在途标记必须一起清掉，
         // 否则 paperInFlight 会永久挡住后续 /vibe paper（修订 §A2 的"静默消失"同类问题）。
         if (paperInFlight || paperPending) logActivity('paper', '重启/跨进程恢复：清空论文撰写态（inFlight=' + (paperInFlight || '-') + (paperPending ? ', queued' : '') + '）')
-        paperInFlight = ''; paperPending = null
+        paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null
       }
       // 并发计数由 agentRegistry 推导：清空 registry 后自然归零，无需显式赋值。
     }
@@ -3147,7 +3222,7 @@ export function apply(ctx) {
   async function startScheduler() { const r = await init(true); if (!r.ok) return r; abandonGatedDecision('scheduler restarted'); scheduler.running = true; scheduler.startedAt = now(); logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; abandonGatedDecision('scheduler resumed (离开那次运行，挂起的节点不再等待)'); scheduler.running = true; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; abandonGatedDecision('scheduler aborted'); const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; paperInFlight = ''; paperPending = null; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; abandonGatedDecision('scheduler aborted'); const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
@@ -3201,7 +3276,7 @@ export function apply(ctx) {
     else abandonGatedDecision('project switched')
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
     if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; paperInFlight = ''; paperPending = null
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null
     formalState = { records: {}, todo: [] } // 形式化记录随项目切换（loadState 会读新项目的 formal.json）
     await loadSettings(); await migrateLegacyParams(); await loadState(); await saveAll()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
@@ -3438,7 +3513,7 @@ export function apply(ctx) {
 // Nothing here is used by the plugin at runtime except through `apply()`, and behaviour is
 // byte-identical to the previous in-`apply` declarations.
 // ============================================================================================
-// 最终论文（规格：_oneoff/spec-final-paper.md）—— **纯函数部分**（module scope，v2/v3 逐字同构；
+// 最终论文（规格：docs/final-paper.md）—— **纯函数部分**（module scope，v2/v3 逐字同构；
 // 只有数据来源不同）。会话相关的落盘/派遣/编译在 makeSession 里（见 paperCommand/maybeWritePaper）。
 // ============================================================================================
 /** 固定 9 节骨架（spec §3）。key 同时是 md 的 `## ` 标题与 tex 的 `\section{}`。 */
@@ -3467,6 +3542,21 @@ function texEscape(s) { return String(s == null ? '' : s).replace(/[\\_%&#${}~^]
 function paperMaterialSummary(digest) {
   const t = String(digest == null ? '' : digest)
   return { chars: t.length, lines: t.split('\n').length }
+}
+/**
+ * 撰写者卡死判定（纯函数，便于守卫覆盖两条分支）：
+ *   'none'   正常在途（还没到卡死窗口，且 force 未要求放弃）
+ *   'reap'   必须回收：child 已不在 agentRegistry（end 事件丢失 / 宿主丢弃，它永远不会再回来），
+ *            或已超过卡死窗口——force 与心跳都据此自动降级，论文不能被一个死掉的撰写者永久卡住
+ *   'refuse' force 但还没到窗口：调用方必须给出**可执行**的报错（告诉调用者还要等多久）
+ */
+function paperWriterVerdict(o) {
+  if (!(o && o.inFlight)) return 'none'
+  if (o.childInRegistry === false) return 'reap'
+  const age = Number((o && o.ageMs) || 0)
+  const stale = Math.max(1, Number((o && o.staleMs) || 0))
+  if (age >= stale) return 'reap'
+  return (o && o.force) ? 'refuse' : 'none'
 }
 /** 行内 md → tex：``code`` / **bold** / *em* 转成命令，其余文本按 spec §5 转义；`$...$` 原样保留（数学模式由作者书写）。 */
 function paperInlineToTex(s) {
@@ -3699,6 +3789,7 @@ export const __testHelpers = {
   PAPER_ENGINE_ORDER_EN,
   texEscape,
   paperMaterialSummary,
+  paperWriterVerdict,
   paperInlineToTex,
   paperMdToTexBody,
   paperTexDoc,

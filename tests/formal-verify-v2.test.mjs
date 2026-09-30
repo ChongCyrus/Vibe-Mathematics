@@ -1295,6 +1295,9 @@ section('16 the captured prompt corpus is written for human review')
       .split(ws + '\\VibeMath').join('<VIBEMATH>')
       .split(slash).join('<WS>')
       .split(ws).join('<WS>')
+      // Epoch-ms in a verification-log FILE NAME is run metadata: the final-paper material embeds the
+      // evidence index verbatim, so it must be normalised or the shipped corpus changes every run.
+      .replace(/_[0-9]{10,16}\.json/g, '_<TIME>.json')
   }
   const entries = []
   for (const h of hosts) {

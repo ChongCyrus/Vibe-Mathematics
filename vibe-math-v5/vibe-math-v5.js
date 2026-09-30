@@ -68,15 +68,15 @@ const EV = {
   formal: 'vibe5/formal',
 }
 
-// ── final paper (spec-final-paper.md + v2 amendments) ─────────────────────────
+// ── final paper (docs/final-paper.md) ─────────────────────────────────────────
 // The run's LAST deliverable. The permanent staff each write their own part, cross-review
 // each other's part, and the editor named by `paperEditor` finalises — but ONLY after the
 // whole institute has agreed the parts are deliverable, and (when the office edits) only
 // after the office has consulted the institute. The phase runs BEFORE the completion flags
-// are flipped (spec v2 §A1): after `phase='solved'` the machinery refuses to wake members
-// (`wakeIfIdle`), to convene meetings (`startMeeting`) or to dispatch an end.
+// are flipped (docs/final-paper.md §3): after `phase='solved'` the machinery refuses to wake
+// members (`wakeIfIdle`), to convene meetings (`startMeeting`) or to dispatch an end.
 const PAPER_MAX_ROUNDS = 3
-// Chinese first (spec §5): xelatex covers CJK out of the box; English prefers pdflatex.
+// Chinese first (docs/final-paper.md §8): xelatex covers CJK out of the box; English prefers pdflatex.
 const PAPER_ENGINE_ORDER = {
   zh: ['xelatex', 'latexmk', 'pdflatex', 'lualatex', 'tectonic'],
   en: ['pdflatex', 'latexmk', 'lualatex', 'tectonic', 'xelatex'],
@@ -551,7 +551,7 @@ export function apply(ctx) {
       leanCommand: 'lean',
       leanArgs: [],
       leanTimeoutMs: 120000,
-      // ── final paper (spec-final-paper.md; the phase runs BEFORE the completion flags) ──
+      // ── final paper (docs/final-paper.md; the phase runs BEFORE the completion flags) ──
       // finalPaper        — write the final paper when the run concludes (manual /v5 paper
       //                     still works when this is false, and says so).
       // paperFormat       — 'both' | 'md' | 'tex'
@@ -1307,7 +1307,7 @@ export function apply(ctx) {
       await putCounters(counters)
       // The office talking to the institute is HALF of the `paperEditor='office'` consultation
       // requirement; counting it here (the one place a message really is queued) means the gate
-      // cannot be satisfied by merely intending to consult (spec v2 §A6).
+      // cannot be satisfied by merely intending to consult (docs/final-paper.md §7).
       if (from === 'office') await notePaperConsult('message')
       notifyActivity()
       // Kick one scheduling pass so an ADDRESSED message (dm/office/assign) wakes its
@@ -3373,7 +3373,7 @@ export function apply(ctx) {
       await putMeeting({ id, agenda: meeting.agenda, kind: meeting.kind, at: now(), file: 'Shared/Meetings/' + id + '.md' })
       await saveChatLine('【会议 ' + id + '】召开：' + meeting.agenda + '（类型：' + meeting.kind + '｜召集人：' + meeting.by + '）')
       // A meeting that ACTUALLY begins and was convened by the office is the other half of the
-      // `paperEditor='office'` consultation requirement (spec v2 §A6). Counted here, not at the
+      // `paperEditor='office'` consultation requirement (docs/final-paper.md §7). Counted here, not at the
       // request: a parked/refused request is not a consultation. A FRAMEWORK-convened stall
       // meeting (`auto:true`) is not the office's own act, so it does not count either.
       if (meeting.by === 'office' && opts.auto !== true) await notePaperConsult('meeting')
@@ -3499,7 +3499,7 @@ export function apply(ctx) {
       const vs = voters().map((m) => m.id)
       if (!vs.length) return false
       if (!vs.every((id) => solveVotes.get(id) === true)) return false
-      // ── THE FINAL PAPER PHASE COMES FIRST (spec v2 §A1) ────────────────────────────────
+      // ── THE FINAL PAPER PHASE COMES FIRST (docs/final-paper.md §3) ────────────────────────────────
       // `finishRun` flips phase='solved' / autoDone / running=false, after which the machinery
       // REFUSES: `wakeIfIdle` returns false, `startMeeting` rejects a concluded institute and
       // nothing schedules — so the co-writing, the cross-review and the office consultation
@@ -3550,8 +3550,8 @@ export function apply(ctx) {
       notifyActivity()
     }
 
-    // ================= final paper (spec-final-paper.md; v2 amendments) ============
-    // THE PHASE RUNS BEFORE `finishRun` (spec v2 §A1). After `phase='solved'` the machinery
+    // ================= final paper (docs/final-paper.md) ============
+    // THE PHASE RUNS BEFORE `finishRun` (docs/final-paper.md §3). After `phase='solved'` the machinery
     // refuses: `wakeIfIdle` (:3257) returns false, `startMeeting` refuses a concluded
     // institute, and a concluded run has no scheduling at all — so the co-writing, the
     // cross-review and the office consultation could never run. `checkSolved` therefore
@@ -3751,7 +3751,11 @@ export function apply(ctx) {
           }) : cur))
         }
       }
-      if (asked) return false
+      // Nothing to advance yet. ALWAYS re-arm: the pass that got here may have skipped an ask
+      // because its member is busy or still inside the ask window, and `schedulePass` returns
+      // from the paper branch BEFORE its own heartbeat arming — without this a paper whose ask
+      // was paced out would stall until some unrelated member turn ended.
+      if (asked) { armHeartbeat(); return false }
       // Stall watchdog (same clock as meetings/verifications): a member whose turn never ends
       // must not wedge the paper forever. The stuck members are recorded as non-participants.
       const stale = now() - Number(p.updatedAt || p.createdAt || now())
@@ -3766,6 +3770,7 @@ export function apply(ctx) {
         await paperLog('看门狗', warn)
         return await paperAdvance(paper(), paperActiveParticipants(paper()))
       }
+      armHeartbeat()
       return false
     }
     async function paperAdvance(p, active) {
@@ -3818,11 +3823,13 @@ export function apply(ctx) {
         return false
       }
       const m = memberById(id)
-      if (!m || m.phase !== 'active' || busy.has(id)) return false
+      if (!m || m.phase !== 'active') return false
+      if (busy.has(id)) { armHeartbeat(); return false }
       const last = (p.lastAskAt || {})[id] || 0
-      if (last && (now() - last) < paperAskEvery()) return false
+      if (last && (now() - last) < paperAskEvery()) { armHeartbeat(); return false }
       const ok = await wakeMember(m, paperFinalPrompt(m, p), 'paper')
       if (ok) await mutatePaper((cur) => (cur ? Object.assign({}, cur, { lastAskAt: Object.assign({}, cur.lastAskAt || {}, { [id]: now() }), updatedAt: now() }) : cur))
+      armHeartbeat()
       return false
     }
     // The ONE driver. Called from `onMemberEnd` (after the reply is folded), from the manual
@@ -3860,7 +3867,7 @@ export function apply(ctx) {
       const participants = paperParticipants()
       // A per-call editor override (`/v5 paper editor=office`) is ONE-SHOT: it is not written
       // back into the persisted params. An AUTOMATIC (run-complete) trigger always uses the
-      // academician — the office is the root session and has no wake path (spec v2 §A6).
+      // academician — the office is the root session and has no wake path (docs/final-paper.md §7).
       const configured = (o.editor === 'office' || o.editor === 'academician') ? o.editor : paperConfiguredEditor()
       const editor = trg === 'run-complete' ? 'academician' : configured
       const configWantsOffice = configured === 'office'
@@ -4228,7 +4235,7 @@ export function apply(ctx) {
       L.push('\\end{document}')
       return L.join('\n') + '\n'
     }
-    // The repair pass keeps only the packages the text itself needs (spec v1 §5 / v2 §E):
+    // The repair pass keeps only the packages the text itself needs (docs/final-paper.md §8):
     // every optional or unknown package is dropped before the engine swap retry.
     function texStripOptionalPackages(tex) {
       return String(tex).split('\n').filter((line) => {
@@ -4288,11 +4295,11 @@ export function apply(ctx) {
       const exitCode = outcome ? outcome.exitCode : null
       return { ok: exitCode === 0, exitCode, ms: now() - started, message: '' }
     }
-    // Compile attempts are CAPPED (spec v2 §E): full → nonstopmode rerun → engine swap with
+    // Compile attempts are CAPPED (docs/final-paper.md §8): full → nonstopmode rerun → engine swap with
     // the optional packages stripped → one minimal-template retry → report and degrade.
     async function compilePaperTex(id, tex, lang) {
       if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) {
-        return { status: 'kept-existing', engine: '', reason: 'Paper/' + id + '/paper.pdf 已存在：不覆盖（spec v2 §D）', attempts: [] }
+        return { status: 'kept-existing', engine: '', reason: 'Paper/' + id + '/paper.pdf 已存在：不覆盖（docs/final-paper.md §5）', attempts: [] }
       }
       const det = await latexEngines(lang)
       if (!det.engines.length) return { status: 'not-detected', engine: '', reason: det.reason, attempts: [] }
@@ -4322,7 +4329,7 @@ export function apply(ctx) {
         ? ['-X', 'paper.tex']
         : (a.nonstopOnly ? ['-interaction=nonstopmode', 'paper.tex'] : ['-interaction=nonstopmode', '-halt-on-error', 'paper.tex'])
       const argv = [a.engine.exe].concat(args)
-      // TWO passes (spec §5): the second resolves references/TOC. A failed first pass is not
+      // TWO passes (docs/final-paper.md §8): the second resolves references/TOC. A failed first pass is not
       // rerun — the retry PLAN is what varies the command, not a blind repeat.
       const first = await runPaperProcess(argv, dirAbs)
       if (!first.ok) return { label: a.label, engine: a.engine.name, ok: false, exitCode: first.exitCode, ms: now() - started, message: first.message || 'first pass failed' }
@@ -4412,7 +4419,7 @@ export function apply(ctx) {
         if (await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)) files.push('paper.tex')
       }
       // `paperFormat=md` with `paperCompilePdf=true` must NOT warn about a missing tex: no tex
-      // was produced, so compilation is skipped silently (spec v2 §E).
+      // was produced, so compilation is skipped silently (docs/final-paper.md §8).
       let compile
       if (p.format === 'md') compile = { status: 'skipped', engine: '', reason: 'paperFormat=md：未产出 tex，跳过编译', attempts: [] }
       else if (p.pdf !== true) compile = { status: 'skipped', engine: '', reason: 'paperCompilePdf=false', attempts: [] }
@@ -4444,7 +4451,7 @@ export function apply(ctx) {
       }) : cur))
       await saveChatLine('【论文】最终论文已定稿：Paper/' + id + '/（' + (files.join('、') || '（无产物）') + '；编译 ' + compile.status + '）。')
       notifyActivity()
-      // The run is only now complete (spec v2 §A1): the paper phase ran BEFORE the flags.
+      // The run is only now complete (docs/final-paper.md §3): the paper phase ran BEFORE the flags.
       if (p.completesRun && !autoDone) await finishRun('全体有表决权者一致认为原问题已解决')
       return {
         ok: true, finalized: true, id, dir: 'Paper/' + id + '/', files,
@@ -4657,7 +4664,7 @@ export function apply(ctx) {
         await beginMeeting({ agenda: p.agenda, kind: p.kind, target: p.target, by: p.by })
         return
       }
-      // The final-paper phase (spec v2 §A1) owns the room once it is active: a paper ask is its
+      // The final-paper phase (docs/final-paper.md §3) owns the room once it is active: a paper ask is its
       // own kind of turn, and a research round must not be mistaken for a paper answer. While
       // the flow waits for the OFFICE the institute keeps working normally — the required
       // consultation needs office messages and a real meeting to be deliverable.
@@ -5022,7 +5029,7 @@ export function apply(ctx) {
         'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand']
       const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs']
       for (const k of ints) if (input[k] !== undefined) { const n = Math.floor(Number(input[k])); if (Number.isFinite(n)) out[k] = n }
-      // Explicit boolean coercion (spec v2 §B): the old `=== true || === 'true'` turned a
+      // Explicit boolean coercion (docs/final-paper.md §2): the old `=== true || === 'true'` turned a
       // legitimate `1` / `'yes'` into FALSE and left junk values truthy-looking. An
       // unrecognised spelling is REJECTED (the default wins) rather than guessed.
       for (const k of bools) if (input[k] !== undefined) out[k] = coerceBool(input[k], false)
@@ -5565,7 +5572,7 @@ export function apply(ctx) {
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
-      // final paper (spec-final-paper.md; the phase runs BEFORE finishRun)
+      // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
@@ -5695,7 +5702,7 @@ export function apply(ctx) {
       ? s.removeResearcher(a.id)
       : { ok: false, code: 'V5_NOT_OFFICE', message: 'only the office (the session root) may dismiss a permanent researcher' }
   )))
-  // ── final paper (spec-final-paper.md) ─────────────────────────────────────
+  // ── final paper (docs/final-paper.md) ─────────────────────────────────────
   registerTool('vibe_v5_paper', 'Final paper: start (or re-run) the team-authored paper for this run. The permanent staff write their own part, cross-review another member\'s part, and the editor named by paperEditor finalises. lang/format override paperLanguage/paperFormat for THIS paper; editor overrides paperEditor for THIS paper only (office = the manual path, which parks the flow until the office consults the institute and calls vibe_v5_finalize_paper); force rewrites an already-finalised paper (idempotent otherwise: it only fills artifacts that are missing).', objParams({ lang: S, format: S, editor: { type: 'string', enum: ['office', 'academician'] }, force: B, reason: S }), (s, a, x) => withOffice(s, x, 'write the final paper', () => {
     const lang = a.lang === undefined ? undefined : String(a.lang)
     const format = a.format === undefined ? undefined : String(a.format)
@@ -5856,7 +5863,7 @@ export function apply(ctx) {
         if (!bad && o.editor !== undefined && ['office', 'academician'].indexOf(o.editor) === -1) bad = 'editor must be office|academician'
         if (bad) return { kind: 'error', text: JSON.stringify({ ok: false, code: 'V5_INVALID_ARGUMENT', message: bad }, null, 2) }
         // `editor=office` is the manual path that uses the office as the finalising
-        // representative (spec v2 §A6 — never reachable from an automatic run). One-shot: it
+        // representative (docs/final-paper.md §7 — never reachable from an automatic run). One-shot: it
         // does not rewrite the persisted `paperEditor`.
         r = await s.startPaper('manual', { lang: o.lang, format: o.format, editor: o.editor, force })
       } else if (cmd === 'set') {
@@ -5964,7 +5971,7 @@ function slugify(s) {
   return t || ''
 }
 
-// Explicit parameter coercion (spec v2 §B). A boolean parameter spelled `'false'`, `0`, `'no'`
+// Explicit parameter coercion (docs/final-paper.md §2). A boolean parameter spelled `'false'`, `0`, `'no'`
 // or `'off'` must be false — the old `=== true || === 'true'` silently treated `1`/`'yes'` as
 // false. An unrecognised spelling is REJECTED (the caller's default wins), never guessed.
 function coerceBool(v, def) {
