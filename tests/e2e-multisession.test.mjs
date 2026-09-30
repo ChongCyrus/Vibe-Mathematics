@@ -142,6 +142,12 @@ assert(curAchk.project === 'proja', 'session A back to projA')
 console.log('\n-- Scenario 1: session isolation of spawn parent --')
 // add a problem in session A's project first, then start (real usage order)
 await callTool('vibe_math_add_problem', { id: 'pa', description: 'test problem A' }, ROOT_A)
+// Turn the final-paper feature OFF for both sessions: session B has no problems at all, so it reaches
+// strict termination immediately and would (correctly, by design) dispatch its own paper writer — which
+// is a legitimate child under sess-B and would mask the isolation assertions below. The assertions stay
+// exactly as strong: they are about session isolation, not about the paper feature.
+await callTool('vibe_math_set_params', { finalPaper: false }, ROOT_A)
+await callTool('vibe_math_set_params', { finalPaper: false }, ROOT_B)
 const sA = await callTool('vibe_math_start', {}, ROOT_A)
 assert(sA.ok === true && sA.project === 'proja', 'session A starts scheduler (projA)')
 const sB = await callTool('vibe_math_start', {}, ROOT_B)

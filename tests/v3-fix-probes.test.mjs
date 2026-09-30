@@ -56,16 +56,41 @@ console.log('\n-- M7: parseAppTitle does not eat the ｜ separator --');
 }
 
 // ================= H4 + H5: drive the real plugin =================
-const listeners = {}; const toolRegs = []; const spawns = [];
+const listeners = {}; const toolRegs = []; const spawns = []; const cmdRegs = []; const latexRuns = [];
+// ---- final-paper 探针用的可变宿主配置（spec §6）：无 LaTeX = latexCfg null（真机形态）----
+let latexCfg = null          // { engines: [...], failFirst?, alwaysFail?, mode? }
+let refuseNext = 0           // 接下来的 N 次 startContinuable 抛宿主激活上限（ACTIVATION_LIMIT_REACHED）
+let lastPrompt = ''          // 最近一次子代理提示词（断言用）
+const latexSeen = {};
 const ctx = {
   get(name) {
     if (name === 'subprocess') {
-      return { async spawn({ argv }) {
-        const script = argv[argv.length - 1] || '';
-        const fsmod = await import('node:fs');
-        if (/New-Item/.test(script)) { const m = script.match(/-Path\s+(?:'((?:[^']|'')*)'|"((?:[^"]|"")*)")/); const raw = (m && (m[1] || m[2])) || ''; for (const p of raw.split(',').map((x) => x.replace(/''/g, "'"))) if (p) fsmod.mkdirSync(p, { recursive: true }); }
-        return { done: Promise.resolve({ exitCode: 0 }) };
-      } };
+      return {
+        async resolveExecutable(cmd) {
+          if (!latexCfg) return undefined                       // 真机：没有任何 LaTeX
+          if (latexCfg.mode === 'resolver-empty') return undefined
+          return (latexCfg.engines || []).indexOf(cmd) !== -1 ? ('C:/fake/' + cmd) : undefined
+        },
+        // NOTE: sync on purpose — the plugin reads `handle.done` right after the call (Lean seam shape).
+        // An `async spawn` would hand back a Promise and `handle.done` would be undefined.
+        spawn({ argv, cwd }) {
+          const script = argv[argv.length - 1] || '';
+          if (/New-Item/.test(script)) { const m = script.match(/-Path\s+(?:'((?:[^']|'')*)'|"((?:[^"]|"")*)")/); const raw = (m && (m[1] || m[2])) || ''; for (const p of raw.split(',').map((x) => x.replace(/''/g, "'"))) if (p) mkdirSync(p, { recursive: true }); }
+          if (/paper\.tex/.test(argv.join(' '))) {
+            const nm = String(argv[0]).split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '');
+            latexSeen[nm] = (latexSeen[nm] || 0) + 1;
+            const failThis = !!latexCfg.alwaysFail || (!!latexCfg.failFirst && nm === (latexCfg.engines || [])[0]);
+            latexRuns.push({ name: nm, fail: failThis });
+            if (!failThis && cwd) { try { mkdirSync(cwd, { recursive: true }); writeFileSync(join(cwd, 'paper.pdf'), '%PDF-1.4 fake\n', 'utf8'); } catch (e) { /* ignore */ } }
+            return {
+              done: Promise.resolve({ exitCode: failThis ? 1 : 0, signal: null }),
+              collected: { stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }, stderr: { readFrom: () => ({ text: failThis ? '! LaTeX Error: fake failure' : '', nextOffset: 0, lossy: false }) } },
+              terminate() {},
+            };
+          }
+          return { done: Promise.resolve({ exitCode: 0 }) };
+        },
+      };
     }
     return undefined;
   },
@@ -73,8 +98,17 @@ const ctx = {
   effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d(); }; },
   logger: { info() {}, warn() {}, error() {} },
   tools: { register(spec) { toolRegs.push(spec); } },
-  commands: { register() {} },
-  subagents: { list() { return ['spawn']; }, async startContinuable({ label }) { const childId = 'c' + (spawns.length + 1); spawns.push({ label, childId }); return { childId }; }, async sendMessage() {}, async followup() {}, interrupt() {} },
+  commands: { register(spec) { cmdRegs.push(spec); return () => {}; } },
+  subagents: {
+    list() { return ['spawn']; },
+    async startContinuable({ label, request }) {
+      if (refuseNext > 0) { refuseNext -= 1; throw new Error('ACTIVATION_LIMIT_REACHED: cannot start a new child: active child limit: 2'); }
+      const childId = 'c' + (spawns.length + 1);
+      lastPrompt = (request && request.prompt && request.prompt[0] && request.prompt[0].text) || '';
+      spawns.push({ label, childId, request }); return { childId };
+    },
+    async sendMessage() {}, async followup() {}, interrupt() {},
+  },
   agents: { roots() { return []; }, get() { return undefined; } },
   fs: {
     async resolve(rel, opts) { return join((opts && opts.cwd) || WS, ...String(rel).split('/')); },
@@ -89,6 +123,10 @@ const ROOT = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } }
 const call = async (n, a) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: ROOT }));
 const fireEnd = (info) => { for (const fn of (listeners['subagent/end'] || [])) fn(info); };
 const read = (p) => { try { return existsSync(p) ? readFileSync(p, 'utf8') : ''; } catch { return ''; } };
+const cmd = async (raw) => { const spec = cmdRegs.find((s) => s.name === 'vibe'); return await spec.handler({ agent: ROOT, rawInput: raw }); };
+const projDir = (proj) => join(WS, 'VibeMath', 'Projects', proj);
+const pdir = (proj, id) => join(projDir(proj), 'Paper', id === undefined ? proj : id);
+const readMeta = (proj, id) => JSON.parse(read(join(pdir(proj, id), 'paper.meta.json')) || 'null');
 
 const PROJECT = join(WS, 'VibeMath', 'Projects', 'fx');
 const waitFor = async (pred, ms = 6000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pred()) return true; await sleep(80); } return false; };
@@ -231,6 +269,203 @@ console.log('\n-- L2: a defect on an object that NEVER had an archived proof mus
   assert(!existsSync(join(proj, 'Verified', 'Lean', 'pNever.lean')), '★ no Verified/Lean/pNever.lean was fabricated for an object that never had a proof');
   const ann = read(join(proj, 'Logs', '形式化.md'));
   assert(/此前没有任何归档证明，无需撤回/.test(ann), 'the announcement says there was nothing to withdraw (got ' + JSON.stringify(ann.slice(-160)) + ')');
+}
+
+// ================================================================ final paper (spec §6, v3)
+const PAPER_REPLY = {
+  title: '假论文｜收敛后的整理',
+  abstract: '原问题是「假问题」；主要结论是假定理成立。',
+  sections: [
+    { name: '引言与问题背景', body: '背景：变量 a_b 与占比 50%，以及行内数学 $x^2+y^2$。' },
+    { name: '原问题的完整解法', body: '解法步骤：\n- 第一步\n- 第二步' },
+    { name: '已检验通过的命题', body: '命题 pClosed 的布尔估计为 1（经 ≥2 名验证者定论）。' },
+    { name: '已解决的子问题与中间成果', body: '子问题 qSub 已解决。' },
+    { name: '创造或发现的有价值之物', body: '方法 m1（可复用）。' },
+    { name: '规律总结', body: '规律：先化简再归纳。' },
+    { name: '讨论、局限与展望', body: '局限：pOpen 仍为 0.5（未定论），不得当成已成立。' },
+  ],
+}
+const paperSpawns = (id) => spawns.filter((s) => s.label.startsWith('paper-writer:' + (id === undefined ? '' : id)))
+const firePaper = (id, reply) => {
+  const w = paperSpawns(id); const last = w[w.length - 1]
+  if (!last) return false
+  fireEnd({ id: last.childId, runId: 'pw-' + last.childId, provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n' + JSON.stringify(reply || PAPER_REPLY) + '\n```' }] })
+  return true
+}
+const asyncFind = async (pred, tries = 60, ms = 150) => { for (let i = 0; i < tries; i++) { const v = await pred(); if (v) return v; await sleep(ms) } return undefined }
+
+console.log('\n-- PAPER §6.1 (v3): params — defaults, schema, coercion, both registration tables --')
+{
+  await call('vibe_math_new_project', { name: 'pparams' })
+  const setup = await call('vibe_math_setup', {})
+  const by = {}; for (const p of setup.parameters) by[p.name] = p
+  for (const k of ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand']) assert(!!by[k], 'v3 setup schema exposes ' + k)
+  assert(by.finalPaper.default === true && by.paperFormat.default === 'both' && by.paperLanguage.default === 'zh' && by.paperCompilePdf.default === true && by.paperLatexCommand.default === '', 'v3 paper defaults are true/both/zh/true/""')
+  assert(JSON.stringify(by.paperFormat.options) === JSON.stringify(['both', 'md', 'tex']) && JSON.stringify(by.paperLanguage.options) === JSON.stringify(['zh', 'en']), 'v3 enums are documented in the schema/help text')
+  const bad = await call('vibe_math_set_params', { paperFormat: 'weird', paperLanguage: 'xx', finalPaper: 'false', paperCompilePdf: 'no', paperLatexCommand: '  ' })
+  assert(bad.params.paperFormat === 'both' && bad.params.paperLanguage === 'zh', 'v3 illegal enum values fall back to the defaults')
+  assert(bad.params.finalPaper === true && bad.params.paperCompilePdf === true, '★★ v3: a string "false"/"no" is NOT accepted as a boolean (spec v2 §B)')
+  const good = await call('vibe_math_set_params', { paperFormat: 'md', paperLanguage: 'en', finalPaper: false, paperCompilePdf: false, paperLatexCommand: 'xelatex' })
+  assert(good.params.paperFormat === 'md' && good.params.paperLanguage === 'en' && good.params.finalPaper === false && good.params.paperCompilePdf === false && good.params.paperLatexCommand === 'xelatex', 'v3 legal values are accepted verbatim')
+  const regs = toolRegs.filter((s) => s.name === 'vibe_math_set_params')
+  assert(regs.length === 1 && ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand'].every((k) => !!regs[0].parameters.properties[k]), 'the registered v3 tool schema carries all five paper keys')
+  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8')
+  assert((src.match(/paperCompilePdf: \{ type: 'boolean' \}/g) || []).length === 2, '★★ BOTH v3 set_params tables were updated (spec v2 §B)')
+  assert(/paper \[lang=zh\|en\] \[format=both\|md\|tex\] \[force\]/.test(src), 'the /vibe hint and usage advertise `paper`')
+}
+
+console.log('\n-- PAPER §6.2/§6.3 (v3): closure trigger (leftoverVerify), idempotence, content --')
+{
+  latexCfg = { engines: ['xelatex'] }
+  await call('vibe_math_new_project', { name: 'ppaper' })
+  await call('vibe_math_set_params', { tickIntervalMs: 200, plannerEnabled: false, finalPaper: true, paperFormat: 'both', paperCompilePdf: true })
+  await call('vibe_math_add_problem', { id: 'qOpen', description: '未解决问题', priority: 0 })
+  await call('vibe_math_add_proposition', { id: 'pOpen', 概述: '仍未定论', 概率: 0.5, 分类: '分析', '价值/关键性': 0.3 })
+  await call('vibe_math_start', {})
+  await sleep(900)
+  assert(paperSpawns('ppaper').length === 0, '★ v3 NOT converged (unsolved problem + verify candidate) → no paper writer')
+  await call('vibe_math_pause', {})
+  // 停靠到"真实可收口"的状态：问题 已解决/never；命题 优先级=never（未定论但不再是验证候选）。
+  // 这正是 v3 的真实完整性判据 leftoverVerify 为空（§A4）。
+  const qf = join(projDir('ppaper'), 'Problems', 'qOpen.md')
+  writeFileSync(qf, read(qf).replace('- 状态: 求解中', '- 状态: 已解决').replace(/- 优先级: \d+/, '- 优先级: never'), 'utf8')
+  const pf = join(projDir('ppaper'), 'Propos', '分析', 'pOpen.md')
+  writeFileSync(pf, read(pf).replace(/- 优先级: \d+/, '- 优先级: never'), 'utf8')
+  await call('vibe_math_abort', {})
+  await call('vibe_math_index', {})
+  await call('vibe_math_start', {})
+  const w = await asyncFind(() => (paperSpawns('ppaper').length ? paperSpawns('ppaper') : undefined), 60)
+  assert(!!w && w.length === 1, '★ v3 closure (leftoverVerify empty + no agents/tasks/plans) dispatched exactly one paper writer')
+  const prompt = (w && w[0].request && w[0].request.prompt[0].text) || ''
+  assert(prompt.indexOf('DEDICATED PAPER WRITER') !== -1, 'the writer prompt is the single-author paper contract')
+  for (const s of H.PAPER_SKELETON) assert(prompt.indexOf(s.key) !== -1, 'v3 prompt carries skeleton section: ' + s.key)
+  assert(/\[STILL UNVERIFIED/.test(prompt) && /\[UNRESOLVED \/ REFUTED/.test(prompt) && /pOpen/.test(prompt), '★★ the prompt marks the undecided item explicitly (spec v2 §A4)')
+  assert(/NEVER invent content/.test(prompt), 'the prompt forbids inventing content')
+  const st = await call('vibe_math_status', {})
+  assert(!!st.paper && st.paper.inFlight === (w && w[0].childId), 'status reports the in-flight paper writer')
+  firePaper('ppaper')
+  const meta = await asyncFind(() => readMeta('ppaper', 'ppaper'), 60)
+  assert(!!meta && meta.trigger === 'auto' && Number(meta.runStartedAt) > 0, 'v3 meta records the auto trigger + run id')
+  const md = read(join(pdir('ppaper', 'ppaper'), 'paper.md'))
+  const tex = read(join(pdir('ppaper', 'ppaper'), 'paper.tex'))
+  assert((md.match(/^## /gm) || []).length === 9, '★ v3 md carries exactly the 9-section skeleton')
+  for (const s of H.PAPER_SKELETON) assert(md.indexOf('## ' + s.key) !== -1, 'v3 md section present: ' + s.key)
+  assert(md.indexOf('### 证据与文件索引') !== -1 && md.indexOf('`Problems/qOpen.md`') !== -1 && md.indexOf('`Propos/分析/pOpen.md`') !== -1, '★ v3 appendix carries the evidence index built from the real md cards')
+  assert(md.indexOf('未定论') !== -1, 'the unresolved item is labelled in the paper')
+  assert((tex.match(/\\section\{/g) || []).length === 9, '★ v3 tex carries the same 9 sections')
+  assert(tex.indexOf('\\documentclass[11pt]{ctexart}') !== -1, 'v3 zh uses ctexart')
+  assert(tex.indexOf('a\\_b') !== -1 && tex.indexOf('50\\%') !== -1 && tex.indexOf('a_b') === -1 && tex.indexOf('50%') === -1, '★★ v3 tex escaping covers _ and %')
+  assert(tex.indexOf('$x^2+y^2$') !== -1, 'v3 inline math is passed through')
+  assert(meta.artifacts.md === true && meta.artifacts.tex === true && meta.artifacts.pdf === true && meta.compile === 'ok', '★ v3 fake compiler produced the pdf (compile=' + meta.compile + ')')
+  const log = read(join(pdir('ppaper', 'ppaper'), 'paper.log.md'))
+  assert(/\[dispatch\]/.test(log) && /\[finalize\]/.test(log) && /\[compile\]/.test(log), 'v3 paper.log.md carries the fixed single-author log format')
+  // 幂等（同一 run）+ 缺失产物补写 + force
+  const again = JSON.parse((await cmd('paper')).text)
+  assert(again.skipped === true && again.reason === 'already-finalized-this-run', '★ v3 repeat trigger in the same run is idempotent')
+  assert(paperSpawns('ppaper').length === 1, '★★ v3 idempotent path did NOT dispatch a second writer')
+  rmSync(join(pdir('ppaper', 'ppaper'), 'paper.tex'), { force: true })
+  const filled = JSON.parse((await cmd('paper')).text)
+  assert(filled.skipped === true && filled.reason === 'filled-missing-artifacts' && filled.filled.indexOf('paper.tex') !== -1, '★ v3 re-derives a missing artifact from the finalized content (no new writer)')
+  assert(existsSync(join(pdir('ppaper', 'ppaper'), 'paper.tex')) && paperSpawns('ppaper').length === 1, 'v3 tex is back and still no second writer')
+  const beforeForce = meta.finalizedAt
+  const forced = JSON.parse((await cmd('paper force')).text)
+  assert(forced.dispatched === true && paperSpawns('ppaper').length === 2, '★ v3 /vibe paper force re-dispatches')
+  firePaper('ppaper')
+  await asyncFind(() => { const m = readMeta('ppaper', 'ppaper'); return m && m.finalizedAt !== beforeForce ? m : undefined }, 40)
+}
+
+console.log('\n-- PAPER §6.2b (v3): finalPaper=false → the AUTO trigger does not fire --')
+{
+  latexCfg = null
+  await call('vibe_math_new_project', { name: 'pautooff' })
+  await call('vibe_math_set_params', { tickIntervalMs: 200, plannerEnabled: false, finalPaper: false })
+  await call('vibe_math_start', {})   // 空项目 ⇒ 立刻收口
+  await sleep(1400)
+  assert(paperSpawns('pautooff').length === 0, '★★ v3 finalPaper=false → closure does NOT dispatch a paper writer')
+  const st = await call('vibe_math_status', {})
+  assert(!!st.paper && st.paper.autoFinalPaper === false, 'v3 status reports the automatic paper trigger as disabled')
+  const man = JSON.parse((await cmd('paper')).text)
+  assert(man.dispatched === true && man.autoDisabled === true, 'v3 manual command still works and says the automatic trigger is off')
+}
+
+console.log('\n-- PAPER §6.4 (v3): compile branches (ok / repaired / failed / no LaTeX) --')
+{
+  // (a) 成功
+  latexCfg = { engines: ['xelatex'] }; latexRuns.length = 0
+  await call('vibe_math_new_project', { name: 'pc1' })
+  await cmd('paper'); firePaper('pc1')
+  let m = await asyncFind(() => readMeta('pc1', 'pc1'), 60)
+  assert(!!m && m.compile === 'ok' && m.artifacts.pdf === true, '★ v3 (a) success → pdf generated, compile=ok')
+  // (b) 换引擎修复
+  latexCfg = { engines: ['xelatex', 'latexmk'], failFirst: true }; latexRuns.length = 0
+  await call('vibe_math_new_project', { name: 'pc2' })
+  await cmd('paper'); firePaper('pc2')
+  m = await asyncFind(() => readMeta('pc2', 'pc2'), 60)
+  assert(!!m && m.compile === 'repaired' && m.compileEngine === 'latexmk' && m.compileAttempts[0].ok === false && m.compileAttempts[1].ok === true, '★ v3 (b) engine swap repaired the compile (' + (m && m.compile) + '/' + (m && m.compileEngine) + ')')
+  // (c) 持续失败 → 降级
+  latexCfg = { engines: ['xelatex', 'latexmk'], alwaysFail: true }; latexRuns.length = 0
+  await call('vibe_math_new_project', { name: 'pc3' })
+  await cmd('paper'); firePaper('pc3')
+  m = await asyncFind(() => readMeta('pc3', 'pc3'), 60)
+  assert(!!m && m.compile === 'failed' && m.artifacts.pdf === false && m.artifacts.md === true && m.artifacts.tex === true, '★ v3 (c) persistent failure → degrade to tex+md, compile=failed')
+  assert(!existsSync(join(pdir('pc3', 'pc3'), 'paper.pdf')), 'v3 (c) no pdf was faked')
+  const acts = (await call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+  assert(/编译失败/.test(acts), '★ v3 (c) the failure is reported on the activity log')
+  // (d) 真机无 LaTeX（本机形态）→ 干净降级
+  latexCfg = null
+  await call('vibe_math_new_project', { name: 'pc4' })
+  await cmd('paper'); firePaper('pc4')
+  m = await asyncFind(() => readMeta('pc4', 'pc4'), 60)
+  assert(!!m && m.compile === 'not-detected' && m.artifacts.tex === true && m.artifacts.md === true && m.artifacts.pdf === false, '★ v3 (d) no LaTeX → compile=not-detected with tex+md only')
+  assert(read(join(pdir('pc4', 'pc4'), 'paper.log.md')).indexOf('未检测到任何 LaTeX 引擎') !== -1, 'v3 (d) the log records why no pdf was produced')
+  // (e) resolver 在但一个引擎都解析不到
+  latexCfg = { mode: 'resolver-empty' }
+  await call('vibe_math_new_project', { name: 'pc5' })
+  await cmd('paper'); firePaper('pc5')
+  m = await asyncFind(() => readMeta('pc5', 'pc5'), 60)
+  assert(!!m && m.compile === 'not-detected', '★ v3 (e) an empty resolver also degrades to not-detected')
+  latexCfg = null
+}
+
+console.log('\n-- PAPER §6.5/§6.6 (v3): paths/id confinement, command surface, activation limit --')
+{
+  for (const raw of ['../../etc/passwd', 'a/b', '..', 'C:\\x\\y']) {
+    const id = H.paperDirId(raw)
+    assert(id.indexOf('/') === -1 && id.indexOf('\\') === -1 && id.indexOf('..') === -1, 'v3 paperDirId(' + JSON.stringify(raw) + ') is one safe segment (' + JSON.stringify(id) + ')')
+  }
+  latexCfg = { engines: ['xelatex'] }
+  await call('vibe_math_new_project', { name: 'pcmd' })
+  await call('vibe_math_set_params', { finalPaper: false })
+  const r = JSON.parse((await cmd('paper')).text)
+  assert(r.ok === true && r.dispatched === true && r.autoDisabled === true && /自动触发已关闭/.test(r.message), '★ v3 /vibe paper works with finalPaper=false and says the auto trigger is off')
+  firePaper('pcmd')
+  const meta = await asyncFind(() => readMeta('pcmd', 'pcmd'), 60)
+  assert(!!meta && meta.dir === 'Paper/pcmd' && meta.trigger === 'manual', 'v3 manual run recorded under Paper/<id>/ with trigger=manual')
+  const files = readdirSync(pdir('pcmd', 'pcmd')).sort()
+  assert(files.every((f) => ['paper.md', 'paper.tex', 'paper.pdf', 'paper.meta.json', 'paper.log.md', 'paper.lock.json'].indexOf(f) !== -1), '★ v3 only paper artifacts live in Paper/<id>/ (got ' + JSON.stringify(files) + ')')
+  assert(!existsSync(join(projDir('pcmd'), 'Space')) && !existsSync(join(WS, 'etc')) && !existsSync(join(WS, 'y')), 'v3 no file was written outside the project tree')
+  const bl = await cmd('paper lang=xx'); const bf = await cmd('paper format=nope'); const bo = await cmd('paper what=1')
+  assert(bl.kind === 'error' && bf.kind === 'error' && bo.kind === 'error', '★ v3 illegal/unknown paper options return kind:error')
+  const beforeMd = readMeta('pcmd', 'pcmd').finalizedAt
+  const mdRun = JSON.parse((await cmd('paper lang=en format=md force')).text)
+  assert(mdRun.dispatched === true, 'v3 lang=/format= override dispatches')
+  firePaper('pcmd')
+  const m2 = await asyncFind(() => { const m = readMeta('pcmd', 'pcmd'); return m && m.finalizedAt !== beforeMd ? m : undefined }, 40)
+  assert(!!m2 && m2.params.paperFormat === 'md' && m2.params.paperLanguage === 'en' && m2.compile === 'skipped', '★★ v3 paperFormat=md records the override and skips compilation entirely (§E)')
+  // 激活上限：排队 + 心跳重试 + 可见告警
+  latexCfg = null
+  await call('vibe_math_new_project', { name: 'pqueue' })
+  refuseNext = 1
+  const q = JSON.parse((await cmd('paper')).text)
+  assert(q.ok === true && q.queued === true && q.reason === 'activation-limit-reached' && q.tries === 1 && q.limit === 2, '★ v3 activation-limit refusal is QUEUED with the host limit recorded')
+  const stq = await call('vibe_math_status', {})
+  assert(!!stq.paper && !!stq.paper.queued && stq.paper.queued.tries === 1, 'v3 status exposes the queued retry')
+  assert(/激活上限/.test((await call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')), '★★ v3 queueing is visible on the activity log')
+  const retried = await asyncFind(() => (paperSpawns().some((s) => s.label === 'paper-writer:pqueue') ? true : undefined), 80, 200)
+  assert(!!retried, '★★ v3 the paper heartbeat retried after the refusal (independent of scheduler.running)')
+  firePaper('pqueue')
+  const mq = await asyncFind(() => readMeta('pqueue', 'pqueue'), 60)
+  assert(!!mq, 'v3 the retried writer still finalized the paper')
 }
 
 console.log(`\n=== V3 FIX PROBE RESULT: ${passed} passed, ${failed} failed ===`);

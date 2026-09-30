@@ -862,7 +862,7 @@ assert(stq2.verify === null || stq2.verify.target === 'p-second',
 await endCase(RL)
 
 // =============== CASE 9c: a solve vote OUTSIDE a meeting ==========================
-section('9c a unanimous solve vote landing outside a meeting still stops the institute')
+section('9c a unanimous solve vote landing outside a meeting still triggers the stop evaluation')
 const RM = makeRoot()
 await callTool('vibe_v5_start', { problem: '会外表决停工测试', researcherCount: 1 }, RM)
 for (const sp of spawnsFor(RM)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
@@ -877,8 +877,14 @@ await callTool('vibe_v5_say', { to: 'r-1', text: '请你就"是否已解决"表�
 await settle(); await drainWakes(4, RM)
 const stSolved = await callTool('vibe_v5_status', {}, RM)
 assert(stSolved.solveVotes.length >= 2, 'both voters recorded a solve vote outside any meeting (' + JSON.stringify(stSolved.solveVotes) + ')')
-assert(stSolved.autoDone === true,
-  'the institute STOPPED on a unanimous solve vote that arrived outside a meeting ' + JSON.stringify({ autoDone: stSolved.autoDone, solveVotes: stSolved.solveVotes }))
+// SPEC v2 §A1: the unanimous solve vote no longer flips the completion flags immediately — the
+// FINAL PAPER phase runs first (after phase='solved' the machinery refuses to wake members,
+// convene meetings or dispatch an end). What this case exists for is that `checkSolved` is
+// re-evaluated on a vote that arrived OUTSIDE a meeting, and the paper phase starting is that
+// evaluation firing; `selfdrive-v5`/`e2e-v5-round2` carry the run all the way to autoDone.
+assert(stSolved.autoDone === false && !!stSolved.paper && stSolved.paper.status !== 'finalized',
+  'the unanimous solve vote outside a meeting reached the stop EVALUATION and entered the final-paper phase ' +
+  JSON.stringify({ autoDone: stSolved.autoDone, solveVotes: stSolved.solveVotes, paper: stSolved.paper && stSolved.paper.status }))
 await endCase(RM)
 
 // =============== CASE 10: meeting prompts =======================================

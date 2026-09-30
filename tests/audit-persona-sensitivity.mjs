@@ -148,27 +148,54 @@ const probes = [
     name: 'v4-usage-advertises-phantom-subcommand',
     preset: 'vibe-math-v4', file: 'vibe-math-v4.js', nth: 'first', expect: 1,
     guarantee: 'the unknown-subcommand usage string must not advertise a subcommand that no branch implements',
-    // The anchor must be the CURRENT literal: Round A changed both the usage string and the
+    // The anchor must be the CURRENT literal. Round A changed both the usage string and the
     // hint to advertise `start [problem]` / `set <k=v>...` (vibe-math-v4.js:2492). While the
     // anchor kept the pre-fix literal it matched 0 times, so this probe reported SETUP-FAIL
     // every run and the F-section agreement between usage and branches had NO sensitivity
     // proof at all (the hint probe at :155 was updated, this one was not).
-    from: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set <k=v>...'",
-    to: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|scan|set <k=v>...'",
+    // Round H (final paper) inserted `paper [...]` into both the usage and the hint; the anchor
+    // follows the new literal again, so the probe keeps proving the usage<->branches agreement.
+    from: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...'",
+    to: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|scan|set <k=v>...'",
   },
   {
     name: 'v4-hint-advertises-unimplemented-subcommand',
     preset: 'vibe-math-v4', file: 'vibe-math-v4.js', nth: 'first', expect: 1,
     guarantee: 'the typing hint must not advertise a subcommand the handler does not implement',
-    from: "message <to|all> <content>|meeting|members|add|remove|set]'",
-    to: "message <to|all> <content>|meeting|add|remove|set]'",
+    // Same reason as above: the hint now carries the `paper [...]` entry between `meeting` and
+    // `members`, so the anchor names the current literal and drops an IMPLEMENTED subcommand
+    // (`members`) from the mutated hint — the suite's implemented-subset-of-hint check must fail.
+    from: "message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set]'",
+    to: "message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|add|remove|set]'",
   },
   {
     name: 'v5-persona-slash-list-drops-add-remove',
     preset: 'vibe-math-v5', file: 'agent.cordis.yml', nth: 'all', expect: 2,
     guarantee: "the persona's /v5 list must match the command hint (a human reading the persona must see every subcommand)",
-    from: 'meeting|hire|fire|add|remove|set)',
-    to: 'meeting|hire|fire|set)',
+    // Round H appended `|paper` to the persona's /v5 list (and to the command hint), so the
+    // anchor carries the new tail; the mutation still drops the two subcommands whose absence
+    // the Round-G persona actually had (`add|remove`), which the hint<->persona equality check
+    // must catch.
+    from: 'meeting|hire|fire|add|remove|set|paper)',
+    to: 'meeting|hire|fire|set|paper)',
+  },
+  // ── final-paper surface (Round H) ──────────────────────────────────────────
+  // These two pin the surface the final-paper feature ADDED, so a later edit cannot quietly
+  // drop it: the v4 hint must keep advertising the subcommand its handler implements, and the
+  // v5 persona must keep naming the tools the plugin actually registers.
+  {
+    name: 'v4-hint-stops-advertising-paper',
+    preset: 'vibe-math-v4', file: 'vibe-math-v4.js', nth: 'first', expect: 1,
+    guarantee: 'the /v4 hint must keep advertising the final-paper subcommand the handler implements',
+    from: "|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set]'",
+    to: "|meeting|members|add|remove|set]'",
+  },
+  {
+    name: 'v5-paper-tool-renamed-in-plugin',
+    preset: 'vibe-math-v5', file: 'vibe-math-v5.js', nth: 'first', expect: 1,
+    guarantee: 'renaming the final-paper tool must be caught (the persona still advertises vibe_v5_paper)',
+    from: "  registerTool('vibe_v5_paper',",
+    to: "  registerTool('vibe_v5_paperX',",
   },
 ]
 

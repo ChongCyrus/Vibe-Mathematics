@@ -156,6 +156,12 @@ const wakeKindOf = (prompt) => {
   if (/【研究所会议/.test(prompt)) return 'meeting'
   if (/【求真表决/.test(prompt)) return 'verify'
   if (/【心跳检查/.test(prompt)) return 'checkpoint'
+  // The final paper is a phase of its own (it runs BEFORE the run is marked complete):
+  // each member writes its own part, cross-reviews another member's part, and the
+  // academician finalises.
+  if (/【最终论文·撰写/.test(prompt)) return 'paper-write'
+  if (/【最终论文·互审/.test(prompt)) return 'paper-review'
+  if (/【最终论文·定稿/.test(prompt)) return 'paper-final'
   return 'normal'
 }
 const memberLabelOf = (childId) => { const s = spawns.find(x => x.childId === childId); const m = s ? /vibe5 (\S+) /.exec(s.label) : null; return m ? m[1] : '' }
@@ -193,6 +199,20 @@ async function answerWake(w) {
     reply = { verdict: { target, verdict: v, reason: who + ' 的判断：' + (v === 1 ? '成立' : v === 0 ? '不成立' : '不确定') }, contextPct: 20 }
   } else if (kind === 'meeting') {
     reply = { input: who + '：我的意见已写在 Progress/ 里。', vote_solved: solvePlan === true, solved: solvePlan === true, contextPct: 20 }
+  } else if (kind === 'paper-write') {
+    reply = {
+      paper_part: {
+        title: who + ' 的贡献', solution: who + '：原问题的完整解法——最小反例归约（仅写有证据的部分）。',
+        methods: who + ' 的方法与经验：归约 + 边界情形枚举。', rules: who + ' 归纳的规律：先最小反例，再边界。',
+        limits: who + ' 的局限：部分边界情形仍未定论（已显式标注）。',
+        evidence: ['Members/' + who + '/Propos/p-' + who + '.md'],
+      }, contextPct: 20,
+    }
+  } else if (kind === 'paper-review') {
+    const om = /待审部分（([^）]*)）/.exec(prompt)
+    reply = { paper_review: { of: om ? om[1] : '', deliverable: true, comments: who + '：证据与表决记录一致，术语清楚，可交付。' }, contextPct: 20 }
+  } else if (kind === 'paper-final') {
+    reply = { paper_final: { decision: 'deliverable', note: who + '：已核对合并稿与互审意见，统一了术语与符号，可定稿。', conclusion: '原问题在题设范围内得证。' }, contextPct: 20 }
   } else {
     reply = { progress: who + '：本轮继续推进最小反例路线。', solved: false, contextPct: 20 }
   }
@@ -430,16 +450,47 @@ assert(sNo.autoDone === false && sNo.running === true, 'a non-unanimous solve vo
 solvePlan = true
 const m2 = await callTool('vibe_v5_meeting', { agenda: '再次表决是否已解决', kind: 'solve-vote' }, childAgent(childOf('acad')))
 assert(m2.ok === true, 'the second solve-vote meeting is requested (' + JSON.stringify(m2).slice(0, 100) + ')')
+// ★ SPEC v2 §A1: the unanimous solve vote does NOT flip the completion flags any more. The
+// final-paper phase runs FIRST (after phase='solved' the machinery refuses to wake members,
+// convene meetings or dispatch an end, so the co-writing could never run). This loop must
+// therefore land on "paper active, run still alive" — that IS the contract, and the loop
+// below proves the run concludes only once the paper is finalised.
+let sPaper = null
 for (let i = 0; i < 60; i++) {
   const s = await callTool('vibe_v5_status', {})
+  if (s.paper && s.paper.status !== 'finalized') { sPaper = s; break }
   if (s.autoDone) break
   await drainWakes(6)
   await sleep(15)
 }
-const sDone = await callTool('vibe_v5_status', {})
-assert(sDone.autoDone === true, 'a unanimous solve vote from every voting member DOES stop the institute — ' +
-  JSON.stringify({ autoDone: sDone.autoDone, running: sDone.running, meeting: sDone.meeting, parked: sDone.parkedMeeting, solveVotes: sDone.solveVotes }))
-assert(sDone.running === false, 'scheduling halted after the unanimous solve vote')
+assert(!!sPaper, 'the unanimous solve vote enters the FINAL PAPER phase before completion — ' +
+  JSON.stringify({ autoDone: (sPaper || {}).autoDone, paper: (sPaper || {}).paper }))
+assert(sPaper && sPaper.autoDone === false && sPaper.running === true,
+  'the run stays ALIVE while the paper phase runs (a concluded run refuses the wakes it needs)')
+assert(sPaper && sPaper.paper && sPaper.paper.status === 'writing' && sPaper.paper.editor === 'academician',
+  'the automatic paper is in its writing stage with the academician as the default editor (' + JSON.stringify(sPaper && sPaper.paper && { status: sPaper.paper.status, editor: sPaper.paper.editor }) + ')')
+// Drive the paper to completion: parts -> cross-review -> academician finalises -> the run is
+// marked complete and the conclusion record is written.
+let sDone = sPaper
+for (let i = 0; i < 160; i++) {
+  sDone = await callTool('vibe_v5_status', {})
+  if (sDone.autoDone) break
+  await drainWakes(8)
+  await sleep(15)
+}
+assert(sDone.autoDone === true, 'the run is marked complete once the final paper is finalised — ' +
+  JSON.stringify({ autoDone: sDone.autoDone, running: sDone.running, paper: sDone.paper && { status: sDone.paper.status, compile: sDone.paper.compile } }))
+assert(sDone.running === false, 'scheduling halted after the paper was finalised')
+assert(sDone.paper && sDone.paper.status === 'finalized', 'status reports the paper as finalised (' + JSON.stringify(sDone.paper && sDone.paper.status) + ')')
+const paperDir = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Paper', 'institute')
+const paperMd = existsSync(join(paperDir, 'paper.md')) ? readFileSync(join(paperDir, 'paper.md'), 'utf8') : ''
+const paperTex = existsSync(join(paperDir, 'paper.tex')) ? readFileSync(join(paperDir, 'paper.tex'), 'utf8') : ''
+const paperMeta = existsSync(join(paperDir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(paperDir, 'paper.meta.json'), 'utf8')) : null
+assert(/## 1\. /.test(paperMd) && /## 9\. /.test(paperMd), '★ the delivered paper carries the 9-section skeleton')
+assert(/\\documentclass/.test(paperTex) && /\\begin\{document\}/.test(paperTex), '★ the tex version is produced as well')
+assert(!!paperMeta && paperMeta.compile && paperMeta.compile.status === 'not-detected',
+  '★ no LaTeX on this host: the meta records compile=not-detected and the md+tex are still delivered (' + JSON.stringify(paperMeta && paperMeta.compile) + ')')
+assert(existsSync(join(paperDir, 'paper.log.md')), 'the paper log records who wrote and reviewed what')
 const concl = existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Problems', 'conclusion.md'))
 assert(concl, 'a conclusion record was written on completion')
 

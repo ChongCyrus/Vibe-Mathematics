@@ -2796,7 +2796,55 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [43] spawn · verifier:r-pFree:0 · case=nogate
+## [43] spawn · paper-writer:proj · case=persist
+
+```text
+You are the DEDICATED PAPER WRITER (single-author mode) of a math research run that has just CONVERGED.
+Write its final paper in 中文（Chinese）, using ONLY the evidence in the MATERIAL section below.
+
+HARD RULES:
+- NEVER invent content: no new proposition, no new computation, no citation that is not in the MATERIAL.
+- Unresolved or refuted items MUST be explicitly labelled (「未定论」/「已被否证」, or "unresolved"/"refuted" in English); never present them as established.
+- Fixed 9-section skeleton — provide bodies for these EXACT `## ` headings (the framework writes the headings, author/date and the evidence index itself):
+    1. 摘要 — 1 标题、作者、日期、摘要（原问题 + 主要结论）
+    2. 引言与问题背景 — 2 原问题的完整陈述
+    3. 原问题的完整解法 — 3 最终答案 + 完整推理链
+    4. 已检验通过的命题 — 4 逐条列出，含判定为真的估计值与证据来源
+    5. 已解决的子问题与中间成果 — 5
+    6. 创造或发现的有价值之物 — 6 方法、理论、思想、有价值经验、数学理解
+    7. 规律总结 — 7 从上述条目归纳出的可复用规律
+    8. 讨论、局限与展望 — 8
+    9. 附录：证据与文件索引 — 9 Verified/、Logs/、关键卡片路径
+- A section with no evidence must be exactly 「（本节暂无证据支持的内容——不编造。）」 (do not pad it).
+- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
+
+OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
+{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}
+
+MATERIAL (evidence only — do not add anything beyond it):
+PRESET: vibe-math-v2 (single-author)
+PROJECT: proj
+
+[ORIGINAL PROBLEMS] (qs/qs.json)
+- (none)
+
+[PROPOSITIONS] (Propos/*.json)
+- (none)
+
+[UNRESOLVED / REFUTED — 论文里必须显式标注，不得当成已成立的结论]
+- (none — 所有对象均已定论)
+
+[EVIDENCE INDEX] (only files that exist)
+- Formal/Index.md
+- Formal/TODO.md
+- Formal/pPersist.lean
+- Progress_Logs/report.json
+- Verified/Lean/pPersist.lean
+- VibeMath_State/formal.json
+- qs/qs.json
+```
+
+## [44] spawn · verifier:r-pFree:0 · case=nogate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -2863,7 +2911,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pFree","decision":"used|blocked|defect","file":"Formal/r-pFree.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [44] spawn · verifier:r-pFree:1 · case=nogate
+## [45] spawn · verifier:r-pFree:1 · case=nogate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -2930,7 +2978,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pFree","decision":"used|blocked|defect","file":"Formal/r-pFree.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [45] spawn · explorer:qKeep · case=nogate
+## [46] spawn · explorer:qKeep · case=nogate
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -2991,7 +3039,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [46] spawn · verifier:r-pReply:0 · case=reply
+## [47] spawn · verifier:r-pReply:0 · case=reply
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3058,7 +3106,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pReply","decision":"used|blocked|defect","file":"Formal/r-pReply.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [47] spawn · verifier:r-pReply:1 · case=reply
+## [48] spawn · verifier:r-pReply:1 · case=reply
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3125,7 +3173,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pReply","decision":"used|blocked|defect","file":"Formal/r-pReply.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [48] spawn · explorer:qKeep · case=reply
+## [49] spawn · explorer:qKeep · case=reply
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -3186,7 +3234,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [49] wake · verifier:r-pReply:0 · case=reply
+## [50] wake · verifier:r-pReply:0 · case=reply
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -3251,7 +3299,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pReply","decision":"used|blocked|defect","file":"Formal/r-pReply.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [50] wake · verifier:r-pReply:1 · case=reply
+## [51] wake · verifier:r-pReply:1 · case=reply
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -3316,7 +3364,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pReply","decision":"used|blocked|defect","file":"Formal/r-pReply.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [51] spawn · explorer:qKeep · case=defect
+## [52] spawn · explorer:qKeep · case=defect
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -3377,7 +3425,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [52] spawn · verifier:r-pDefect:0 · case=defect
+## [53] spawn · verifier:r-pDefect:0 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3445,7 +3493,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [53] spawn · verifier:r-pDefect:1 · case=defect
+## [54] spawn · verifier:r-pDefect:1 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3513,7 +3561,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [54] spawn · verifier:r-pDefect:0 · case=defect
+## [55] spawn · verifier:r-pDefect:0 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3580,7 +3628,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [55] spawn · verifier:r-pDefect:1 · case=defect
+## [56] spawn · verifier:r-pDefect:1 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3647,7 +3695,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [56] spawn · verifier:r-pDefect:0 · case=defect
+## [57] spawn · verifier:r-pDefect:0 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3714,7 +3762,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [57] spawn · verifier:r-pDefect:1 · case=defect
+## [58] spawn · verifier:r-pDefect:1 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3781,7 +3829,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [58] spawn · verifier:r-pDefect:0 · case=defect
+## [59] spawn · verifier:r-pDefect:0 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3848,7 +3896,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [59] spawn · verifier:r-pDefect:1 · case=defect
+## [60] spawn · verifier:r-pDefect:1 · case=defect
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -3915,7 +3963,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [60] wake · verifier:r-pDefect:0 · case=defect
+## [61] wake · verifier:r-pDefect:0 · case=defect
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -3986,7 +4034,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [61] wake · verifier:r-pDefect:1 · case=defect
+## [62] wake · verifier:r-pDefect:1 · case=defect
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -4057,7 +4105,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pDefect","decision":"used|blocked|defect","file":"Formal/r-pDefect.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [62] spawn · explorer:qKeep · case=defect-rid
+## [63] spawn · explorer:qKeep · case=defect-rid
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -4118,7 +4166,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [63] spawn · verifier:r-pDefect2:0 · case=defect-rid
+## [64] spawn · verifier:r-pDefect2:0 · case=defect-rid
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4186,7 +4234,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect2","decision":"used|blocked|defect","file":"Formal/r-pDefect2.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [64] spawn · verifier:r-pDefect2:1 · case=defect-rid
+## [65] spawn · verifier:r-pDefect2:1 · case=defect-rid
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4254,7 +4302,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pDefect2","decision":"used|blocked|defect","file":"Formal/r-pDefect2.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [65] spawn · explorer:qKeep · case=gate-objid
+## [66] spawn · explorer:qKeep · case=gate-objid
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -4315,7 +4363,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [66] spawn · verifier:r-pObjId:0 · case=gate-objid
+## [67] spawn · verifier:r-pObjId:0 · case=gate-objid
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4383,7 +4431,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pObjId","decision":"used|blocked|defect","file":"Formal/r-pObjId.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [67] spawn · verifier:r-pObjId:1 · case=gate-objid
+## [68] spawn · verifier:r-pObjId:1 · case=gate-objid
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4451,7 +4499,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pObjId","decision":"used|blocked|defect","file":"Formal/r-pObjId.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [68] spawn · explorer:qKeep · case=defect-alias
+## [69] spawn · explorer:qKeep · case=defect-alias
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -4512,7 +4560,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [69] spawn · verifier:r-pAlias:0 · case=defect-alias
+## [70] spawn · verifier:r-pAlias:0 · case=defect-alias
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4580,7 +4628,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAlias","decision":"used|blocked|defect","file":"Formal/r-pAlias.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [70] spawn · verifier:r-pAlias:1 · case=defect-alias
+## [71] spawn · verifier:r-pAlias:1 · case=defect-alias
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4648,7 +4696,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAlias","decision":"used|blocked|defect","file":"Formal/r-pAlias.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [71] spawn · verifier:r-pStale:0 · case=defect-nosub
+## [72] spawn · verifier:r-pStale:0 · case=defect-nosub
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4716,7 +4764,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pStale","decision":"used|blocked|defect","file":"Formal/r-pStale.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [72] spawn · verifier:r-pStale:1 · case=defect-nosub
+## [73] spawn · verifier:r-pStale:1 · case=defect-nosub
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4784,7 +4832,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pStale","decision":"used|blocked|defect","file":"Formal/r-pStale.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [73] spawn · explorer:qKeep · case=defect-nosub
+## [74] spawn · explorer:qKeep · case=defect-nosub
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -4845,7 +4893,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [74] spawn · explorer:qKeep · case=defect-ambig
+## [75] spawn · explorer:qKeep · case=defect-ambig
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -4906,7 +4954,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [75] spawn · verifier:r-pAmb:0 · case=defect-ambig
+## [76] spawn · verifier:r-pAmb:0 · case=defect-ambig
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -4974,7 +5022,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAmb","decision":"used|blocked|defect","file":"Formal/r-pAmb.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [76] spawn · verifier:r-pAmb:1 · case=defect-ambig
+## [77] spawn · verifier:r-pAmb:1 · case=defect-ambig
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5042,7 +5090,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAmb","decision":"used|blocked|defect","file":"Formal/r-pAmb.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [77] spawn · verifier:r-pAmb-s1:0 · case=defect-ambig
+## [78] spawn · verifier:r-pAmb-s1:0 · case=defect-ambig
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5110,7 +5158,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAmb-s1","decision":"used|blocked|defect","file":"Formal/r-pAmb-s1.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [78] spawn · verifier:r-pAmb-s1:1 · case=defect-ambig
+## [79] spawn · verifier:r-pAmb-s1:1 · case=defect-ambig
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5178,7 +5226,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pAmb-s1","decision":"used|blocked|defect","file":"Formal/r-pAmb-s1.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [79] spawn · explorer:qA · case=anchor-poison
+## [80] spawn · explorer:qA · case=anchor-poison
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -5239,7 +5287,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [80] spawn · solver:qA:d1 · case=anchor-poison
+## [81] spawn · solver:qA:d1 · case=anchor-poison
 
 ```text
 You are a dedicated solver agent working ONE solution direction of a math problem (agent_self_iteration).
@@ -5310,7 +5358,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"status":"continue|success|dead-end","solution":"complete solution text, or null","solution_probability":0.85,"lemmas":[{"title":"...","statement":"...","proof":"...","细类型":{"分类名":{}},"布尔估计":0.6,"价值/关键性":0.5,"优先级":1}],"routes":[{"title":"...","progress":"...","feasibility_signal":"...","blocker":"..."}],"lessons":["..."],"survival_probability":0.5,"dead_end_reason":"... or null","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}
 ```
 
-## [81] spawn · verifier:r-qJudge-s0:0 · case=judge-gate
+## [82] spawn · verifier:r-qJudge-s0:0 · case=judge-gate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5379,7 +5427,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-qJudge-s0","decision":"used|blocked|defect","file":"Formal/r-qJudge-s0.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [82] spawn · verifier:r-qJudge-s0:1 · case=judge-gate
+## [83] spawn · verifier:r-qJudge-s0:1 · case=judge-gate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5448,7 +5496,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-qJudge-s0","decision":"used|blocked|defect","file":"Formal/r-qJudge-s0.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [83] spawn · explorer:qJudge · case=judge-gate
+## [84] spawn · explorer:qJudge · case=judge-gate
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -5509,7 +5557,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [84] spawn · explorer:qKeep · case=judge-gate
+## [85] spawn · explorer:qKeep · case=judge-gate
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -5570,7 +5618,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [85] spawn · verifier:r-pJudgeSrc:0 · case=judge-gate
+## [86] spawn · verifier:r-pJudgeSrc:0 · case=judge-gate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5637,7 +5685,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pJudgeSrc","decision":"used|blocked|defect","file":"Formal/r-pJudgeSrc.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [86] spawn · verifier:r-pJudgeSrc:1 · case=judge-gate
+## [87] spawn · verifier:r-pJudgeSrc:1 · case=judge-gate
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5704,7 +5752,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pJudgeSrc","decision":"used|blocked|defect","file":"Formal/r-pJudgeSrc.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [87] spawn · explorer:qKeep · case=used-keep
+## [88] spawn · explorer:qKeep · case=used-keep
 
 ```text
 You are a research mathematician orchestrating strategy for one problem.
@@ -5765,7 +5813,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}]}
 ```
 
-## [88] spawn · verifier:r-pUsedKeep:0 · case=used-keep
+## [89] spawn · verifier:r-pUsedKeep:0 · case=used-keep
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5833,7 +5881,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pUsedKeep","decision":"used|blocked|defect","file":"Formal/r-pUsedKeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [89] spawn · verifier:r-pUsedKeep:1 · case=used-keep
+## [90] spawn · verifier:r-pUsedKeep:1 · case=used-keep
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -5901,7 +5949,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pUsedKeep","decision":"used|blocked|defect","file":"Formal/r-pUsedKeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [90] wake · verifier:r-pUsedKeep:0 · case=used-keep
+## [91] wake · verifier:r-pUsedKeep:0 · case=used-keep
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -5973,7 +6021,7 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pUsedKeep","decision":"used|blocked|defect","file":"Formal/r-pUsedKeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [91] wake · verifier:r-pUsedKeep:1 · case=used-keep
+## [92] wake · verifier:r-pUsedKeep:1 · case=used-keep
 
 ```text
 You are one reviewer in a DEBATE ("交流群") about this object.
@@ -6045,13 +6093,56 @@ Respond with ONLY a single JSON object wrapped in a ```json code fence — no pr
 {"Result":0.5,"Reason":"updated logic chain / counterexample / proof / refutation","changed":"brief reason if you changed your Result, else null","formal":{"target":"r-pUsedKeep","decision":"used|blocked|defect","file":"Formal/r-pUsedKeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [92] push · main-agent · case=push-report
+## [93] spawn · paper-writer:proj · case=push-report
+
+```text
+You are the DEDICATED PAPER WRITER (single-author mode) of a math research run that has just CONVERGED.
+Write its final paper in 中文（Chinese）, using ONLY the evidence in the MATERIAL section below.
+
+HARD RULES:
+- NEVER invent content: no new proposition, no new computation, no citation that is not in the MATERIAL.
+- Unresolved or refuted items MUST be explicitly labelled (「未定论」/「已被否证」, or "unresolved"/"refuted" in English); never present them as established.
+- Fixed 9-section skeleton — provide bodies for these EXACT `## ` headings (the framework writes the headings, author/date and the evidence index itself):
+    1. 摘要 — 1 标题、作者、日期、摘要（原问题 + 主要结论）
+    2. 引言与问题背景 — 2 原问题的完整陈述
+    3. 原问题的完整解法 — 3 最终答案 + 完整推理链
+    4. 已检验通过的命题 — 4 逐条列出，含判定为真的估计值与证据来源
+    5. 已解决的子问题与中间成果 — 5
+    6. 创造或发现的有价值之物 — 6 方法、理论、思想、有价值经验、数学理解
+    7. 规律总结 — 7 从上述条目归纳出的可复用规律
+    8. 讨论、局限与展望 — 8
+    9. 附录：证据与文件索引 — 9 Verified/、Logs/、关键卡片路径
+- A section with no evidence must be exactly 「（本节暂无证据支持的内容——不编造。）」 (do not pad it).
+- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
+
+OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
+{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}
+
+MATERIAL (evidence only — do not add anything beyond it):
+PRESET: vibe-math-v2 (single-author)
+PROJECT: proj
+
+[ORIGINAL PROBLEMS] (qs/qs.json)
+- (none)
+
+[PROPOSITIONS] (Propos/*.json)
+- (none)
+
+[UNRESOLVED / REFUTED — 论文里必须显式标注，不得当成已成立的结论]
+- (none — 所有对象均已定论)
+
+[EVIDENCE INDEX] (only files that exist)
+- Progress_Logs/report.json
+- qs/qs.json
+```
+
+## [94] push · main-agent · case=push-report
 
 ```text
 [Vibe Math V2] 进度更新：当前项目 "proj" 运行中=true，问题 0/0 已解决，命题 0/0 已定论，活跃代理轮数=0，待人工决策=0。请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。
 ```
 
-## [93] spawn · verifier:r-pFeed:0 · case=gate-feedback
+## [95] spawn · verifier:r-pFeed:0 · case=gate-feedback
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -6118,7 +6209,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pFeed","decision":"used|blocked|defect","file":"Formal/r-pFeed.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [94] spawn · verifier:r-pFeed:1 · case=gate-feedback
+## [96] spawn · verifier:r-pFeed:1 · case=gate-feedback
 
 ```text
 You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
@@ -6185,7 +6276,7 @@ Independently output your initial review. Respond with ONLY a single JSON object
 {"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence","formal":{"target":"r-pFeed","decision":"used|blocked|defect","file":"Formal/r-pFeed.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
 
-## [95] feedback · activity-log · case=gate-feedback
+## [97] feedback · activity-log · case=gate-feedback
 
 ```text
 formal-gate: 【形式化】r-pFeed 的裁定被 require 模式搁置：formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 none）｜裁定 真（已记入 Formal/TODO.md）

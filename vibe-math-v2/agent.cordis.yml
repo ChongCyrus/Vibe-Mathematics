@@ -28,7 +28,7 @@
       - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
       - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
       - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
+      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require, finalPaper true|false, paperFormat both|md|tex, paperLanguage zh|en, paperCompilePdf true|false, paperLatexCommand <engine>).
       - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -37,6 +37,10 @@
         verification (execute / archive / list the reuse library). The scheduler's child agents
         use them too; they work in every mode.
 
+      Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
+      automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
+      automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
+      paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
       A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
       (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
       and survives restarts via vibe_math_resume.
@@ -94,7 +98,7 @@
       - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
       - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
       - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
+      - vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require, finalPaper true|false, paperFormat both|md|tex, paperLanguage zh|en, paperCompilePdf true|false, paperLatexCommand <engine>).
       - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -103,6 +107,10 @@
         verification (execute / archive / list the reuse library). The scheduler's child agents
         use them too; they work in every mode.
 
+      Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
+      automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
+      automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
+      paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
       A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
       (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
       and survives restarts via vibe_math_resume.

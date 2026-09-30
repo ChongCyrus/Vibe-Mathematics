@@ -68,6 +68,34 @@ const EV = {
   formal: 'vibe5/formal',
 }
 
+// ── final paper (spec-final-paper.md + v2 amendments) ─────────────────────────
+// The run's LAST deliverable. The permanent staff each write their own part, cross-review
+// each other's part, and the editor named by `paperEditor` finalises — but ONLY after the
+// whole institute has agreed the parts are deliverable, and (when the office edits) only
+// after the office has consulted the institute. The phase runs BEFORE the completion flags
+// are flipped (spec v2 §A1): after `phase='solved'` the machinery refuses to wake members
+// (`wakeIfIdle`), to convene meetings (`startMeeting`) or to dispatch an end.
+const PAPER_MAX_ROUNDS = 3
+// Chinese first (spec §5): xelatex covers CJK out of the box; English prefers pdflatex.
+const PAPER_ENGINE_ORDER = {
+  zh: ['xelatex', 'latexmk', 'pdflatex', 'lualatex', 'tectonic'],
+  en: ['pdflatex', 'latexmk', 'lualatex', 'tectonic', 'xelatex'],
+}
+// The repair pass keeps only what the text itself needs; everything else (hyperref,
+// longtable, booktabs, an unknown package) is dropped before the retry.
+const PAPER_REPAIR_CORE = ['amsmath', 'amssymb', 'amsthm', 'geometry', 'ctex']
+const PAPER_SECTIONS = [
+  '标题、作者、日期与摘要',
+  '引言与问题背景',
+  '原问题的完整解法',
+  '已检验通过的命题',
+  '已解决的子问题 / 中间成果',
+  '创造或发现的有价值之物：方法、理论、思想、经验与数学理解',
+  '规律总结',
+  '讨论、局限与展望',
+  '附录：证据与文件索引',
+]
+
 // Stable error codes (ported from DSH agent-teams' typed-error discipline).
 function v5err(code, message) {
   const e = new Error(message || code)
@@ -189,6 +217,9 @@ export function apply(ctx) {
       lastProgressAt: now(),
       artifactCount: 0,
       diagnostics: [],
+      // The final-paper flow (stage machine + its artifacts state). Durable like everything
+      // else, so a restart resumes the same stage instead of writing a second paper.
+      paper: null,
     }
   }
   function initState() { return { v: PROJECTION_VERSION, institutes: {}, order: [] } }
@@ -228,6 +259,16 @@ export function apply(ctx) {
           if (patch.runId !== undefined) n.runId = String(patch.runId)
           if (patch.lastProgressAt !== undefined) n.lastProgressAt = Number(patch.lastProgressAt) || 0
           if (patch.artifactCount !== undefined) n.artifactCount = Number(patch.artifactCount) || 0
+          // The final-paper state. A FUNCTION is a MUTATION applied inside the fold (the same
+          // trick the verify queue uses): the paper stage, its parts and its office-consultation
+          // counters are updated from several places (member replies, office messages, meetings),
+          // and a whole-object read-modify-write outside the fold would lose updates.
+          if (patch.paper !== undefined) {
+            const next = typeof patch.paper === 'function'
+              ? patch.paper(n.paper === undefined ? null : n.paper)
+              : patch.paper
+            if (next !== undefined) n.paper = next
+          }
           return n
         })
       }
@@ -510,6 +551,22 @@ export function apply(ctx) {
       leanCommand: 'lean',
       leanArgs: [],
       leanTimeoutMs: 120000,
+      // ── final paper (spec-final-paper.md; the phase runs BEFORE the completion flags) ──
+      // finalPaper        — write the final paper when the run concludes (manual /v5 paper
+      //                     still works when this is false, and says so).
+      // paperFormat       — 'both' | 'md' | 'tex'
+      // paperLanguage     — 'zh' | 'en'
+      // paperCompilePdf   — compile a PDF when a LaTeX engine is detected
+      // paperEditor       — 'academician' (default: the only editor reachable unattended) |
+      //                     'office' (manual /v5 paper only: the office must consult the
+      //                     institute first — messages + at least one meeting)
+      // paperLatexCommand — force ONE engine command instead of auto-detection ('' = auto)
+      finalPaper: true,
+      paperFormat: 'both',
+      paperLanguage: 'zh',
+      paperCompilePdf: true,
+      paperEditor: 'academician',
+      paperLatexCommand: '',
       // ── model / tools ────────────────────────────────────────────────────
       provider: '',
       model: '',
@@ -1248,6 +1305,10 @@ export function apply(ctx) {
       }
       counters.message = n
       await putCounters(counters)
+      // The office talking to the institute is HALF of the `paperEditor='office'` consultation
+      // requirement; counting it here (the one place a message really is queued) means the gate
+      // cannot be satisfied by merely intending to consult (spec v2 §A6).
+      if (from === 'office') await notePaperConsult('message')
       notifyActivity()
       // Kick one scheduling pass so an ADDRESSED message (dm/office/assign) wakes its
       // recipient promptly instead of waiting for the digest window. Plain chat stays
@@ -3311,6 +3372,11 @@ export function apply(ctx) {
       solveVotes.clear()
       await putMeeting({ id, agenda: meeting.agenda, kind: meeting.kind, at: now(), file: 'Shared/Meetings/' + id + '.md' })
       await saveChatLine('【会议 ' + id + '】召开：' + meeting.agenda + '（类型：' + meeting.kind + '｜召集人：' + meeting.by + '）')
+      // A meeting that ACTUALLY begins and was convened by the office is the other half of the
+      // `paperEditor='office'` consultation requirement (spec v2 §A6). Counted here, not at the
+      // request: a parked/refused request is not a consultation. A FRAMEWORK-convened stall
+      // meeting (`auto:true`) is not the office's own act, so it does not count either.
+      if (meeting.by === 'office' && opts.auto !== true) await notePaperConsult('meeting')
       await mkdirs()
       await writeTextRel('Shared/Meetings/' + id + '.md', [
         '# 会议纪要｜' + id + '｜' + instituteName,
@@ -3429,9 +3495,24 @@ export function apply(ctx) {
     // Stop ONLY on a unanimous true solve-vote from every VOTING member. There is no
     // forced/flat/near-consensus closure: any objection keeps the institute working.
     async function checkSolved() {
+      if (autoDone) return true
       const vs = voters().map((m) => m.id)
       if (!vs.length) return false
       if (!vs.every((id) => solveVotes.get(id) === true)) return false
+      // ── THE FINAL PAPER PHASE COMES FIRST (spec v2 §A1) ────────────────────────────────
+      // `finishRun` flips phase='solved' / autoDone / running=false, after which the machinery
+      // REFUSES: `wakeIfIdle` returns false, `startMeeting` rejects a concluded institute and
+      // nothing schedules — so the co-writing, the cross-review and the office consultation
+      // could never run. The run therefore stays alive here until the paper is finalised
+      // (or degraded with a report), and `finalizePaper` calls `finishRun` for us.
+      if (params.finalPaper !== false) {
+        const p = paper()
+        if (!p) { await startPaper('run-complete', {}); return true }
+        if (p.status !== 'finalized') {
+          if (!p.completesRun) await mutatePaper((cur) => (cur ? Object.assign({}, cur, { completesRun: true }) : cur))
+          return true
+        }
+      }
       await finishRun('全体有表决权者一致认为原问题已解决')
       return true
     }
@@ -3467,6 +3548,909 @@ export function apply(ctx) {
       ].join('\n'))
       await saveChatLine('【结题】' + reason + '。本所停止推进；成果已归档在项目目录。')
       notifyActivity()
+    }
+
+    // ================= final paper (spec-final-paper.md; v2 amendments) ============
+    // THE PHASE RUNS BEFORE `finishRun` (spec v2 §A1). After `phase='solved'` the machinery
+    // refuses: `wakeIfIdle` (:3257) returns false, `startMeeting` refuses a concluded
+    // institute, and a concluded run has no scheduling at all — so the co-writing, the
+    // cross-review and the office consultation could never run. `checkSolved` therefore
+    // enters this phase while the run is still alive and only calls `finishRun` once the
+    // paper is finalised (or degraded with a report).
+    //
+    // Only evidence that ALREADY exists is written down: verified verdicts, the task board,
+    // the Lean records, the members' libraries and the members' own text. The framework never
+    // invents content — sections 3/6/7/8 are the members' own words, 4/5/9 are derived from
+    // durable state, and undecided/refuted items are always marked as such.
+    const PAPER_FILE = (id, file) => 'Paper/' + id + '/' + file
+    function paper() { return inst().paper || null }
+    function paperActive() { const p = paper(); return !!p && p.status !== 'finalized' }
+    function paperParticipants() {
+      return activeMembers().filter((m) => m.kind === 'academician' || m.kind === 'researcher').map((m) => m.id)
+    }
+    function paperActiveParticipants(p) {
+      return ((p && p.participants) || []).filter((id) => { const m = memberById(id); return !!m && m.phase === 'active' })
+    }
+    function paperConfiguredEditor() { return params.paperEditor === 'office' ? 'office' : 'academician' }
+    function paperIdFromState() {
+      const a = idSafe(instituteName)
+      if (a) return a
+      const b = idSafe(String(runId || (inst() && inst().runId) || ''))
+      return b || 'institute'
+    }
+    async function fileExistsAbs(abs) {
+      try { const t = await fsTargetAbs(abs); return (await fs.stat(t)) !== undefined } catch (e) { return false }
+    }
+    function paperAbs(id, file) { return instRoot() + '/' + PAPER_FILE(id, file) }
+    function paperDirRel(id) { return 'Paper/' + id }
+    async function mutatePaper(fn) {
+      await patchInstitute({ paper: (cur) => { const next = fn(cur === undefined ? null : cur); return next === undefined ? (cur === undefined ? null : cur) : next } })
+      return paper()
+    }
+    async function paperLog(title, body) {
+      const p = paper()
+      const id = (p && p.id) || paperIdFromState()
+      const rel = PAPER_FILE(id, 'paper.log.md')
+      const prev = (await readTextRel(rel)) || ('# 最终论文流程日志｜' + id + '\n\n')
+      await writeTextRel(rel, prev + '## ' + title + '\n\n' + String(body || '') + '\n\n')
+      return rel
+    }
+    function paperAskEvery() { return posMs(params.activityTimeoutMs, 120000) }
+    function paperNextStep(p) {
+      if (!p) return 'no paper flow yet: finish the run with finalPaper=true, or trigger /v5 paper manually'
+      if (p.status === 'finalized') return 'finalised — /v5 paper force rewrites it'
+      if (p.status === 'writing') return 'waiting for the staff parts (round ' + p.round + '/' + PAPER_MAX_ROUNDS + ')'
+      if (p.status === 'reviewing') return 'waiting for the cross-reviews (each reviewer judges another part)'
+      if (p.status === 'awaiting-editor' && p.editor === 'office') {
+        return 'awaiting the OFFICE: send >=1 office message and convene >=1 meeting, then call vibe_v5_finalize_paper (consultation so far: messages=' +
+          Number((p.consult || {}).messages || 0) + ', meetings=' + Number((p.consult || {}).meetings || 0) + ')'
+      }
+      if (p.status === 'awaiting-editor') return 'waiting for the academician to finalise'
+      return p.status
+    }
+    function paperAutoNote() {
+      return params.finalPaper === false ? '自动已关闭（finalPaper=false）；本次为手动触发，仍会生成论文。' : ''
+    }
+    function paperSummary() {
+      const p = paper()
+      if (!p) return null
+      return {
+        id: p.id, status: p.status, stage: p.stage, round: p.round,
+        editor: p.editor, editorFallback: !!p.editorFallback, completesRun: !!p.completesRun,
+        participants: p.participants || [],
+        parts: Object.keys(p.parts || {}).map((id) => ({ member: id, round: (p.parts[id] || {}).round, title: (p.parts[id] || {}).title || '' })),
+        reviews: Object.keys(p.reviews || {}).map((id) => ({ member: id, of: (p.reviews[id] || {}).of || '', round: (p.reviews[id] || {}).round, deliverable: (p.reviews[id] || {}).deliverable === true })),
+        reviewOf: p.reviewOf || {},
+        consult: Object.assign({ messages: 0, meetings: 0 }, p.consult || {}),
+        lang: p.lang, format: p.format, compilePdf: p.pdf === true,
+        compile: p.compile || null, engine: p.engine || '', artifacts: p.artifacts || [],
+        warnings: p.warnings || [], disagreement: p.disagreement || [], skipped: p.skipped || [],
+        forcedAfterCap: !!p.forcedAfterCap, finalizedAt: p.finalizedAt || null,
+        dir: 'Paper/' + p.id + '/', next: paperNextStep(p),
+        meta: p.status === 'finalized' ? 'Paper/' + p.id + '/paper.meta.json' : null,
+      }
+    }
+
+    // ---- the three asks ----------------------------------------------------
+    function paperWritePrompt(member, p) {
+      const L = []
+      L.push('【最终论文·撰写 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
+      L.push('本所对原问题的一致结论已经达成，现在撰写**最终论文**（第 ' + p.round + '/' + PAPER_MAX_ROUNDS + ' 轮）。')
+      L.push('请你**只写你自己库里已有证据支撑**的内容：')
+      L.push('- 直接引用你的卡片（Members/' + member.id + '/Propos|Methods|Subproblems/）、Members/' + member.id + '/Progress/progress.md、你参与的表决记录；')
+      L.push('- **不得编造**：没有证据的推测不要写成结论；未决 / 被否证的条目必须显式标注“未定论 / 已被否证”；')
+      L.push('- 在 evidence 里写清证据路径，附录会逐条索引。')
+      if (p.round > 1) {
+        const rv = (p.reviews || {})[member.id]
+        L.push('')
+        L.push('上一轮互审给你（' + member.id + '）部分的意见：' + (rv ? String(rv.comments || '（无具体意见）') : '（无）'))
+        L.push('请据此修订；若不同意该意见，请在 limits 里写明理由。')
+      }
+      L.push('')
+      L.push('------------')
+      L.push(stateBlock(member))
+      L.push('------------')
+      L.push('结束时只输出一个 JSON 对象：')
+      L.push('{ "paper_part": {')
+      L.push('    "title": "你这部分的标题",')
+      L.push('    "solution": "你对**原问题完整解法**的贡献（推理链与结论，只写有证据的）",')
+      L.push('    "methods": "你创造/发现的方法、理论、思想、有价值经验、数学理解",')
+      L.push('    "rules": "你从这些工作中归纳出的可复用规律",')
+      L.push('    "limits": "局限、未决、被否证之处（必须诚实、显式）",')
+      L.push('    "evidence": ["Members/' + member.id + '/Propos/p-x.md"] } }')
+      return L.join('\n')
+    }
+    function paperReviewPrompt(member, p, ofId) {
+      const part = ofId ? (p.parts || {})[ofId] : null
+      const L = []
+      L.push('【最终论文·互审 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
+      L.push('请你审阅 **' + (ofId || '（未指定）') + '** 撰写的部分，判断它是否可以交付（deliverable）。')
+      L.push('要点：证据是否充分；是否与已定论的表决一致；有无编造或未标注的未决项；术语与符号是否清楚。')
+      L.push('')
+      L.push('------------ 待审部分（' + (ofId || '') + '）------------')
+      L.push('标题：' + ((part && part.title) || '(无)'))
+      L.push('【完整解法】' + String((part && part.solution) || '(空)').slice(0, 6000))
+      L.push('【方法/理论/思想/经验/理解】' + String((part && part.methods) || '(空)').slice(0, 4000))
+      L.push('【规律】' + String((part && part.rules) || '(空)').slice(0, 3000))
+      L.push('【局限/未决】' + String((part && part.limits) || '(空)').slice(0, 3000))
+      L.push('【声称的证据】' + ((((part && part.evidence) || []).join('、')) || '(无)'))
+      L.push('------------')
+      L.push('')
+      L.push(stateBlock(member))
+      L.push('')
+      L.push('结束时只输出一个 JSON 对象：')
+      L.push('{ "paper_review": { "of": "' + (ofId || '') + '", "deliverable": true, "comments": "具体意见" } }')
+      L.push('deliverable 必须是 true（可交付）或 false（不可交付，需修改）。只有**全体参与成员**都投 true，定稿代表才能定稿。')
+      return L.join('\n')
+    }
+    function paperFinalPrompt(member, p) {
+      const L = []
+      L.push('【最终论文·定稿（院士）—— ' + member.id + '】')
+      L.push('全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：')
+      L.push('核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。')
+      L.push('')
+      L.push('------------ 合并稿（各成员部分）------------')
+      for (const id of paperActiveParticipants(p)) {
+        const part = (p.parts || {})[id] || {}
+        L.push('### ' + id + '｜' + String(part.title || ''))
+        L.push('【完整解法】' + String(part.solution || '').slice(0, 3000))
+        L.push('【方法/规律】' + (String(part.methods || '') + ' ' + String(part.rules || '')).slice(0, 2000))
+        L.push('【局限】' + String(part.limits || '').slice(0, 1500))
+        L.push('')
+      }
+      L.push('------------ 互审结论 ------------')
+      for (const id of Object.keys(p.reviews || {})) {
+        const rv = p.reviews[id] || {}
+        L.push('- ' + id + ' 审 ' + (rv.of || '?') + '：deliverable=' + (rv.deliverable === true) + '｜' + String(rv.comments || '').slice(0, 500))
+      }
+      if ((p.disagreement || []).length) L.push('- ⚠ 已达轮次上限仍有分歧：' + JSON.stringify(p.disagreement[p.disagreement.length - 1]).slice(0, 500))
+      L.push('------------')
+      L.push('')
+      L.push(stateBlock(member))
+      L.push('')
+      L.push('结束时只输出一个 JSON 对象：')
+      L.push('{ "paper_final": { "decision": "deliverable" | "revise",')
+      L.push('    "note": "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",')
+      L.push('    "conclusion": "（可选）定稿代表对原问题的最终结论（只写有证据的）" } }')
+      L.push('decision="revise" 会退回继续修订（有轮次上限）。')
+      return L.join('\n')
+    }
+
+    // ---- the stage driver --------------------------------------------------
+    let paperLock = false
+    async function paperStep() {
+      const p = paper()
+      if (!p || p.status === 'finalized' || p.status === 'awaiting-editor') return false
+      const active = paperActiveParticipants(p)
+      if (!active.length) return await paperAdvance(p, active)
+      const parts = p.parts || {}
+      const reviews = p.reviews || {}
+      const missing = p.status === 'writing'
+        ? active.filter((id) => !(parts[id] && parts[id].round === p.round))
+        : active.filter((id) => !(reviews[id] && reviews[id].round === p.round))
+      if (!missing.length) return await paperAdvance(p, active)
+      const budget = Math.max(1, Math.floor(Number(params.maxParallel) || 3))
+      let asked = 0
+      for (const id of missing) {
+        if (asked >= budget) break
+        if (busy.has(id)) continue
+        const m = memberById(id)
+        if (!m || m.phase !== 'active') continue
+        const last = (p.lastAskAt || {})[id] || 0
+        if (last && (now() - last) < paperAskEvery()) continue
+        const prompt = p.status === 'writing'
+          ? paperWritePrompt(m, p)
+          : paperReviewPrompt(m, p, (p.reviewOf || {})[id])
+        // `wakeMember`, not `wakeIfIdle`: the paper phase deliberately drives members with a
+        // dedicated ask, and a research round must never be mistaken for a paper answer.
+        const ok = await wakeMember(m, prompt, 'paper')
+        if (ok) {
+          asked += 1
+          await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+            lastAskAt: Object.assign({}, cur.lastAskAt || {}, { [id]: now() }), updatedAt: now(),
+          }) : cur))
+        }
+      }
+      if (asked) return false
+      // Stall watchdog (same clock as meetings/verifications): a member whose turn never ends
+      // must not wedge the paper forever. The stuck members are recorded as non-participants.
+      const stale = now() - Number(p.updatedAt || p.createdAt || now())
+      if (stale >= recoverStallMs()) {
+        const stuck = missing.filter((id) => busy.has(id))
+        const name = stuck.length ? stuck : missing
+        const warn = '看门狗：' + name.join('、') + ' 在 ' + Math.round(stale / 1000) + 's 内没有交稿，已按“未参与”处理并记入附录。'
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          warnings: (cur.warnings || []).concat([warn]),
+          skipped: Array.from(new Set((cur.skipped || []).concat(name))), updatedAt: now(),
+        }) : cur))
+        await paperLog('看门狗', warn)
+        return await paperAdvance(paper(), paperActiveParticipants(paper()))
+      }
+      return false
+    }
+    async function paperAdvance(p, active) {
+      if (p.status === 'writing') {
+        const reviewOf = {}
+        for (let i = 0; i < active.length; i++) reviewOf[active[i]] = active[(i + 1) % active.length]
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          status: 'reviewing', stage: 'reviewing', reviewOf, reviews: {}, lastAskAt: {}, updatedAt: now(),
+        }) : cur))
+        await paperLog('进入互审（第 ' + p.round + ' 轮）', active.map((a) => a + ' 审 ' + reviewOf[a]).join('；') || '（无参与成员）')
+        return true
+      }
+      if (p.status === 'reviewing') {
+        const reviews = p.reviews || {}
+        const refusers = active.filter((id) => !(reviews[id] && reviews[id].deliverable === true))
+        if (!refusers.length) {
+          await mutatePaper((cur) => (cur ? Object.assign({}, cur, { status: 'awaiting-editor', stage: 'awaiting-editor', lastAskAt: {}, updatedAt: now() }) : cur))
+          await paperLog('互审一致：可交付', '全体参与成员（' + active.join('、') + '）均表示可交付。定稿代表：' + p.editor)
+          return true
+        }
+        const detail = refusers.map((id) => id + '：' + String((reviews[id] || {}).comments || '未说明')).join('；')
+        const entry = { round: p.round, members: refusers, detail, at: now() }
+        if (p.round < PAPER_MAX_ROUNDS) {
+          await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+            status: 'writing', stage: 'writing', round: cur.round + 1, lastAskAt: {}, updatedAt: now(),
+            disagreement: (cur.disagreement || []).concat([entry]),
+          }) : cur))
+          await paperLog('互审未达成一致 → 进入第 ' + (p.round + 1) + ' 轮', detail)
+          return true
+        }
+        const warn = '互审在 ' + PAPER_MAX_ROUNDS + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录。'
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          status: 'awaiting-editor', stage: 'awaiting-editor', lastAskAt: {}, updatedAt: now(),
+          warnings: (cur.warnings || []).concat([warn]), disagreement: (cur.disagreement || []).concat([entry]), forcedAfterCap: true,
+        }) : cur))
+        await paperLog('达到轮次上限：转交定稿代表', warn)
+        return true
+      }
+      return false
+    }
+    async function paperAwaitEditor(p) {
+      if (p.editor !== 'academician') return false   // office: waits for vibe_v5_finalize_paper
+      const id = academicianId()
+      if (!id) {
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          editor: 'office', editorFallback: true, updatedAt: now(),
+          warnings: (cur.warnings || []).concat(['定稿代表 academician 不在册：已回退为 office（需人工定稿）。']),
+        }) : cur))
+        await paperLog('定稿代表回退', 'academician 不在册，回退为 office：用 /v5 paper 或 vibe_v5_finalize_paper 定稿（仍需先与全所交流并开会）。')
+        return false
+      }
+      const m = memberById(id)
+      if (!m || m.phase !== 'active' || busy.has(id)) return false
+      const last = (p.lastAskAt || {})[id] || 0
+      if (last && (now() - last) < paperAskEvery()) return false
+      const ok = await wakeMember(m, paperFinalPrompt(m, p), 'paper')
+      if (ok) await mutatePaper((cur) => (cur ? Object.assign({}, cur, { lastAskAt: Object.assign({}, cur.lastAskAt || {}, { [id]: now() }), updatedAt: now() }) : cur))
+      return false
+    }
+    // The ONE driver. Called from `onMemberEnd` (after the reply is folded), from the manual
+    // tools/command, from the resume path and from `schedulePass`; `paperLock` keeps it single.
+    async function paperPass() {
+      if (paperLock) return false
+      paperLock = true
+      try {
+        for (let i = 0; i < 6; i++) {
+          const p = paper()
+          if (!p || p.status === 'finalized') return false
+          if (p.status === 'awaiting-editor') { await paperAwaitEditor(p); return false }
+          const advanced = await paperStep()
+          if (!advanced) return false
+        }
+        return false
+      } catch (e) {
+        console.error('vibe-math-v5: paper pass: ' + String((e && e.stack) || e))
+        return false
+      } finally { paperLock = false }
+    }
+
+    // ---- start / record / consult / finalize -------------------------------
+    async function startPaper(trigger, opts) {
+      const o = opts || {}
+      const trg = String(trigger || 'manual')
+      const existing = paper()
+      if (existing && existing.status === 'finalized' && !o.force) {
+        const refill = await refillPaperArtifacts(existing)
+        return { ok: true, alreadyFinalized: true, id: existing.id, dir: 'Paper/' + existing.id + '/', refill, autoDisabled: params.finalPaper === false, note: paperAutoNote() }
+      }
+      if (existing && existing.status !== 'finalized' && !o.force) {
+        return { ok: true, alreadyRunning: true, id: existing.id, status: existing.status, stage: existing.stage, round: existing.round, next: paperNextStep(existing), autoDisabled: params.finalPaper === false, note: paperAutoNote() }
+      }
+      const participants = paperParticipants()
+      // A per-call editor override (`/v5 paper editor=office`) is ONE-SHOT: it is not written
+      // back into the persisted params. An AUTOMATIC (run-complete) trigger always uses the
+      // academician — the office is the root session and has no wake path (spec v2 §A6).
+      const configured = (o.editor === 'office' || o.editor === 'academician') ? o.editor : paperConfiguredEditor()
+      const editor = trg === 'run-complete' ? 'academician' : configured
+      const configWantsOffice = configured === 'office'
+      const editorNote = (trg === 'run-complete' && configWantsOffice)
+        ? 'paperEditor=office 已配置，但自动（收口）触发必须由**可唤醒**的院士定稿（所办是根会话，没有唤醒路径）；本次自动流程用 academician。要所办定稿请在收尾后用 /v5 paper 手动触发。'
+        : (editor === 'office' ? '所办定稿：必须先与全所交流（>=1 条所办消息）并至少召开一次会议，结论写进定稿说明，然后调用 vibe_v5_finalize_paper。' : '')
+      const lang = (o.lang === 'en' || o.lang === 'zh') ? o.lang : (params.paperLanguage === 'en' ? 'en' : 'zh')
+      const format = ['both', 'md', 'tex'].indexOf(o.format) !== -1 ? o.format : (['both', 'md', 'tex'].indexOf(params.paperFormat) !== -1 ? params.paperFormat : 'both')
+      const p = {
+        id: paperIdFromState(), status: 'writing', stage: 'writing', round: 1,
+        trigger: trg, createdAt: now(), updatedAt: now(),
+        participants, parts: {}, reviews: {}, reviewOf: {}, final: null,
+        editor, editorNote, completesRun: trg === 'run-complete',
+        lang, format, pdf: params.paperCompilePdf !== false,
+        consult: { messages: 0, meetings: 0 },
+        lastAskAt: {}, warnings: editorNote ? [editorNote] : [], disagreement: [], skipped: [], artifacts: [],
+        forced: !!o.force, forceReason: o.force ? String(o.reason || 'manual force') : '',
+      }
+      await patchInstitute({ paper: p })
+      await paperLog('流程开始（' + (trg === 'run-complete' ? '收口自动触发' : '手动触发') + '）', [
+        '- 目录：Paper/' + p.id + '/',
+        '- 语言：' + p.lang + '｜格式：' + p.format + '｜编译 PDF：' + p.pdf,
+        '- 参与成员：' + (participants.join('、') || '（无常驻成员）'),
+        '- 定稿代表：' + editor + (editorNote ? '（' + editorNote + '）' : ''),
+      ].join('\n'))
+      await paperPass()
+      return {
+        ok: true, started: true, id: p.id, dir: 'Paper/' + p.id + '/', status: 'writing',
+        participants, editor, next: paperNextStep(paper()),
+        autoDisabled: params.finalPaper === false, note: paperAutoNote(),
+      }
+    }
+    async function paperRecordPart(memberId, raw) {
+      const p = paper()
+      if (!p || p.status !== 'writing') return { ok: false, code: 'V5_PAPER_STATE', message: 'the paper flow is not in its writing stage (now: ' + (p ? p.status : 'none') + ')' }
+      if ((p.participants || []).indexOf(memberId) === -1) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: memberId + ' is not a writing participant of this paper' }
+      const part = {
+        member: memberId, round: p.round,
+        title: String(raw.title || '').slice(0, 300),
+        solution: String(raw.solution || '').slice(0, 20000),
+        methods: String(raw.methods || '').slice(0, 20000),
+        rules: String(raw.rules || '').slice(0, 12000),
+        limits: String(raw.limits || '').slice(0, 12000),
+        evidence: Array.isArray(raw.evidence) ? raw.evidence.map(String).slice(0, 50) : [],
+        at: now(),
+      }
+      if (!part.title && !part.solution && !part.methods && !part.rules && !part.limits) {
+        await notice(memberId, 'paper_part 是空的：请至少给出 title 与你的贡献正文（solution/methods/rules/limits），只写库里已有证据支撑的内容。')
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'paper_part carries no content' }
+      }
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, { parts: Object.assign({}, cur.parts || {}, { [memberId]: part }), updatedAt: now() }) : cur))
+      await paperLog('收到 ' + memberId + ' 的部分（第 ' + p.round + ' 轮）', '- 标题：' + (part.title || '(无)') + '\n- 声称证据：' + (part.evidence.length || 0) + ' 条')
+      return { ok: true, recorded: memberId, round: p.round }
+    }
+    async function paperRecordReview(memberId, raw) {
+      const p = paper()
+      if (!p || p.status !== 'reviewing') return { ok: false, code: 'V5_PAPER_STATE', message: 'the paper flow is not in its cross-review stage (now: ' + (p ? p.status : 'none') + ')' }
+      if ((p.participants || []).indexOf(memberId) === -1) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: memberId + ' is not a review participant of this paper' }
+      if (raw.deliverable !== true && raw.deliverable !== false) {
+        await notice(memberId, 'paper_review.deliverable 必须是 true 或 false（你敢不敢交付？未表态不算可交付）。')
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'paper_review.deliverable must be a boolean' }
+      }
+      const assigned = (p.reviewOf || {})[memberId]
+      const rev = {
+        member: memberId, of: String(raw.of || assigned || ''), round: p.round,
+        deliverable: raw.deliverable === true,
+        comments: String(raw.comments || '').slice(0, 8000), at: now(),
+      }
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, { reviews: Object.assign({}, cur.reviews || {}, { [memberId]: rev }), updatedAt: now() }) : cur))
+      await paperLog('互审意见｜' + memberId + ' → ' + rev.of, '- deliverable：' + rev.deliverable + '\n- 意见：' + (rev.comments || '（无）').slice(0, 2000))
+      return { ok: true, recorded: memberId, of: rev.of, deliverable: rev.deliverable }
+    }
+    async function paperRecordFinal(memberId, raw) {
+      const p = paper()
+      if (!p || p.status !== 'awaiting-editor') return { ok: false, code: 'V5_PAPER_STATE', message: 'the paper is not awaiting its editor (now: ' + (p ? p.status : 'none') + ')' }
+      if (p.editor !== 'academician' || memberId !== academicianId()) {
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'paperEditor is "' + p.editor + '": the academician does not finalise this paper' }
+      }
+      const decision = String(raw.decision || '')
+      if (decision !== 'deliverable' && decision !== 'revise') {
+        await notice(memberId, "paper_final.decision 必须是 'deliverable' 或 'revise'（收到 " + decision + '）。')
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'decision must be deliverable|revise' }
+      }
+      const fin = { by: memberId, decision, note: String(raw.note || '').slice(0, 4000), conclusion: String(raw.conclusion || '').slice(0, 20000), at: now() }
+      if (decision === 'deliverable') {
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, { final: fin, updatedAt: now() }) : cur))
+        return await finalizePaper('academician-deliverable')
+      }
+      if (p.round < PAPER_MAX_ROUNDS) {
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          final: fin, status: 'writing', stage: 'writing', round: cur.round + 1, lastAskAt: {}, updatedAt: now(),
+          disagreement: (cur.disagreement || []).concat([{ round: cur.round, members: [memberId], detail: '定稿代表要求修订：' + fin.note, at: now() }]),
+        }) : cur))
+        await paperLog('定稿代表要求修订 → 第 ' + (p.round + 1) + ' 轮', fin.note || '（未说明）')
+        return { ok: true, revised: true, round: p.round + 1 }
+      }
+      const warn = '定稿代表在第 ' + PAPER_MAX_ROUNDS + ' 轮上限仍要求修订；按规格记警告并定稿（分歧写入附录）。'
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+        final: fin, warnings: (cur.warnings || []).concat([warn]), forcedAfterCap: true, updatedAt: now(),
+        disagreement: (cur.disagreement || []).concat([{ round: cur.round, members: [memberId], detail: '定稿代表要求修订：' + fin.note, at: now() }]),
+      }) : cur))
+      await paperLog('达到轮次上限：定稿代表仍要求修订', warn)
+      return await finalizePaper('academician-revise-at-cap')
+    }
+    // The office consultation gate (v2 §A6 / the user's requirement): the office may finalise
+    // ONLY after it has actually talked to the institute (>=1 office message) AND convened at
+    // least one meeting; both counts are recorded in the finalisation note and the meta.
+    async function finalizePaperByOffice(o) {
+      const args = o || {}
+      const p = paper()
+      if (!p) return { ok: false, code: 'V5_PAPER_STATE', message: 'no paper flow has been started (finish the run with finalPaper=true, or use /v5 paper)' }
+      if (p.status === 'finalized' && !args.force) {
+        const refill = await refillPaperArtifacts(p)
+        return { ok: true, alreadyFinalized: true, id: p.id, refill, autoDisabled: params.finalPaper === false, note: paperAutoNote() }
+      }
+      if (p.status !== 'awaiting-editor') {
+        return { ok: false, code: 'V5_PAPER_STATE', message: 'the paper flow is in stage "' + p.status + '"; the editor finalises only after every part is written and cross-reviewed' }
+      }
+      if (p.editor !== 'office') {
+        return { ok: false, code: 'V5_NOT_OFFICE', message: 'paperEditor="academician": the academician finalises from its own round; the office does not' }
+      }
+      const decision = String(args.decision || '')
+      if (decision !== 'deliverable' && decision !== 'revise') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "decision must be 'deliverable' or 'revise'" }
+      const note = String(args.note || '').trim()
+      if (decision === 'deliverable' && !note) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '定稿说明（note）是必填的：写明你如何与全所交流、商讨、优化、审查，以及结论' }
+      }
+      const consult = Object.assign({ messages: 0, meetings: 0 }, p.consult || {})
+      if (!(Number(consult.messages) > 0) || !(Number(consult.meetings) > 0)) {
+        return {
+          ok: false, code: 'V5_PAPER_CONSULT_REQUIRED',
+          message: 'paperEditor="office" 要求所办先与全所交流、商讨、优化、审查：至少 1 条所办消息（vibe_v5_message）+ 至少 1 次会议（vibe_v5_meeting），然后才能定稿。当前：messages=' +
+            Number(consult.messages || 0) + ', meetings=' + Number(consult.meetings || 0),
+          consult: { messages: Number(consult.messages || 0), meetings: Number(consult.meetings || 0) },
+        }
+      }
+      const fin = {
+        by: 'office', decision, note: String(note).slice(0, 4000),
+        conclusion: String(args.conclusion || '').slice(0, 20000),
+        consult: { messages: Number(consult.messages || 0), meetings: Number(consult.meetings || 0) },
+        at: now(),
+      }
+      if (decision === 'deliverable') {
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, { final: fin, updatedAt: now() }) : cur))
+        return await finalizePaper('office-deliverable')
+      }
+      if (p.round < PAPER_MAX_ROUNDS) {
+        await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+          final: fin, status: 'writing', stage: 'writing', round: cur.round + 1, lastAskAt: {}, updatedAt: now(),
+          disagreement: (cur.disagreement || []).concat([{ round: cur.round, members: ['office'], detail: '所办要求修订：' + fin.note, at: now() }]),
+        }) : cur))
+        await paperLog('所办要求修订 → 第 ' + (p.round + 1) + ' 轮', fin.note)
+        return { ok: true, revised: true, round: p.round + 1 }
+      }
+      const warn = '所办在第 ' + PAPER_MAX_ROUNDS + ' 轮上限仍要求修订；按规格记警告并定稿（分歧写入附录）。'
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+        final: fin, warnings: (cur.warnings || []).concat([warn]), forcedAfterCap: true, updatedAt: now(),
+        disagreement: (cur.disagreement || []).concat([{ round: cur.round, members: ['office'], detail: '所办要求修订：' + fin.note, at: now() }]),
+      }) : cur))
+      await paperLog('达到轮次上限：所办仍要求修订', warn)
+      return await finalizePaper('office-revise-at-cap')
+    }
+    // Count the office's consultation evidence. Called from the ONE place each act really
+    // happens (`say` for a message, `beginMeeting` for a meeting that actually starts), so the
+    // gate cannot be satisfied by merely intending to consult.
+    async function notePaperConsult(kind) {
+      const p = paper()
+      if (!p || p.status === 'finalized') return
+      const key = kind === 'meeting' ? 'meetings' : 'messages'
+      await mutatePaper((cur) => {
+        if (!cur || cur.status === 'finalized') return cur
+        const consult = Object.assign({ messages: 0, meetings: 0 }, cur.consult || {})
+        consult[key] = Number(consult[key] || 0) + 1
+        return Object.assign({}, cur, { consult, updatedAt: now() })
+      })
+    }
+
+    // ---- artifacts ---------------------------------------------------------
+    function paperEvidence() {
+      const s = inst()
+      const V = s.verdicts || {}
+      const keys = Object.keys(V)
+      const closed = (o) => keys.filter((k) => V[k] && V[k].closed && V[k].outcome === o)
+      const tasks = (s.tasks || []).filter((t) => t && t.status !== 'deleted')
+      const formal = formalRecords()
+      return {
+        s, V,
+        trueV: closed('true'), falseV: closed('false'), undecidedV: closed('undecided'),
+        openV: keys.filter((k) => V[k] && !V[k].closed),
+        tasks, done: tasks.filter((t) => t.status === 'completed'), openT: tasks.filter((t) => t.status !== 'completed'),
+        formal, formalKeys: Object.keys(formal),
+        members: s.members || [],
+      }
+    }
+    function verdictCardRel(kind, id) { return 'Verified/' + (kind === 'subproblem' ? '问题' : kind === 'method' ? '方法' : '命题') + '/' + id + '.md' }
+    function cardDirOf(kind) { return kind === 'method' ? 'Methods' : kind === 'subproblem' ? 'Subproblems' : 'Propos' }
+    function paperTitle(p) {
+      const st = String((inst().problem || {}).statement || '').trim()
+      const head = st ? st.split(/\n/)[0].slice(0, 100) : ''
+      return head || ('研究所成果论文｜' + p.id)
+    }
+    function paperSources(p, active, ev) {
+      const out = []
+      out.push('Problems/conclusion.md（结题记录）')
+      if ((inst().problem || {}).id) out.push('Problems/' + inst().problem.id + '.md（原问题卡）')
+      out.push('State/' + instituteName + '.v5state.json（权威状态）')
+      for (const k of ev.trueV.concat(ev.falseV)) out.push(verdictCardRel((ev.V[k] || {}).kind, k) + '（Verified 卡片）')
+      for (const k of ev.trueV.concat(ev.falseV)) out.push('Shared/Debates/' + k + '.md（辩论录）')
+      for (const k of ev.formalKeys) {
+        const r = ev.formal[k] || {}
+        if (r.file) out.push(r.file + '（Lean 工作文件）')
+        if (r.proof) out.push(r.proof + '（归档证明）')
+      }
+      if (ev.formalKeys.length) out.push('Formal/Index.md', 'Formal/TODO.md')
+      for (const m of ev.members) {
+        out.push('Members/' + m.id + '/Progress/progress.md（' + m.id + ' 的研究日志）')
+        out.push('Members/' + m.id + '/{Propos,Methods,Subproblems}/（' + m.id + ' 的卡片）')
+      }
+      out.push('Institutes.md（编制镜像）', 'Shared/TaskBoard.md（任务板镜像）')
+      out.push('Paper/' + p.id + '/paper.log.md（本论文流程往来）')
+      for (const id of active) {
+        const part = (p.parts || {})[id] || {}
+        for (const e of (part.evidence || [])) out.push(String(e) + '（' + id + ' 声称的证据）')
+      }
+      return Array.from(new Set(out))
+    }
+    function paperSections(p, active, skipped, ev, extra) {
+      const o = extra || {}
+      const fin = o.final || p.final || null
+      const prob = ev.s.problem || {}
+      const S = []
+      // 1
+      const b1 = []
+      b1.push({ p: '标题：' + paperTitle(p) })
+      b1.push({ ul: [
+        '作者：' + ((p.participants || []).map((id) => id + '（' + ((memberById(id) || {}).kind === 'academician' ? '院士' : '常驻研究员') + '）').join('、') || '（无在册作者）'),
+        '研究所：' + instituteName + '｜项目：' + project + '｜运行：' + (ev.s.runId || runId || '（无）'),
+        '日期：' + fmtTime(p.finalizedAt || now()).slice(0, 10) + '｜语言：' + p.lang + '｜定稿代表：' + p.editor,
+      ] })
+      const mainConclusions = ev.trueV.length
+        ? ('已由表决确立的结论：' + ev.trueV.join('、'))
+        : '尚无经表决确立为真的结论（见第 4、8 节）。'
+      b1.push({ p: '摘要：' + (prob.statement ? String(prob.statement).replace(/\s+/g, ' ').slice(0, 400) : '（未设定原问题）') + '。' + mainConclusions })
+      if (fin && fin.note) b1.push({ p: '定稿说明：' + fin.note + (fin.consult ? '（定稿前与全所交流：消息 ' + fin.consult.messages + ' 条、会议 ' + fin.consult.meetings + ' 次）' : '') })
+      if (fin && fin.conclusion) b1.push({ p: '定稿结论：' + fin.conclusion })
+      S.push({ title: PAPER_SECTIONS[0], blocks: b1 })
+      // 2
+      S.push({ title: PAPER_SECTIONS[1], blocks: [
+        { p: prob.statement ? String(prob.statement) : '（本所未记录原问题的完整陈述——请勿在论文中补写。）' },
+        { p: '问题 ID：' + (prob.id || '（无）') + '｜参与成员：' + (p.participants || []).join('、') },
+      ] })
+      // 3
+      const b3 = []
+      const solvers = active.filter((id) => String(((p.parts || {})[id] || {}).solution || '').trim())
+      if (solvers.length) {
+        for (const id of solvers) {
+          const part = (p.parts || {})[id] || {}
+          b3.push({ h: id + '｜' + String(part.title || '贡献') })
+          b3.push({ p: String(part.solution) })
+        }
+      } else {
+        b3.push({ p: '（参与成员未提交可引用的完整解法叙述；请以第 4 节的表决结论与证据索引为准。）' })
+      }
+      if (o.conclusionText) b3.push({ h: '结题记录（Problems/conclusion.md）' }, { p: String(o.conclusionText).slice(0, 4000) })
+      S.push({ title: PAPER_SECTIONS[2], blocks: b3 })
+      // 4
+      const b4 = []
+      if (ev.trueV.length) {
+        b4.push({ p: '以下对象经 m 票布尔一致判定为**真**（证据：Verified 卡片 + 辩论录）：' })
+        b4.push({ ul: ev.trueV.map((k) => {
+          const v = ev.V[k] || {}
+          return '**' + k + '**（判为真；平均概率 ' + Number(v.mean || 0).toFixed(2) + '；m=' + (v.m || '?') + '；表决者 ' + ((v.voters || []).join('、') || '?') +
+            '；证据：' + verdictCardRel(v.kind, k) + '；辩论：Shared/Debates/' + k + '.md；提出者：' + (v.proposer || '(office)') + '）'
+        }) })
+      } else b4.push({ p: '（没有经表决判定为真的命题。）' })
+      if (ev.falseV.length) {
+        b4.push({ p: '**已被否证（显式标注，不得当作结论使用）**：' })
+        b4.push({ ul: ev.falseV.map((k) => {
+          const v = ev.V[k] || {}
+          return k + '（判为假；平均概率 ' + Number(v.mean || 0).toFixed(2) + '；m=' + (v.m || '?') + '；证据：' + verdictCardRel(v.kind, k) + '）'
+        }) })
+      }
+      S.push({ title: PAPER_SECTIONS[3], blocks: b4 })
+      // 5
+      const b5 = []
+      const subV = ev.trueV.filter((k) => (ev.V[k] || {}).kind === 'subproblem')
+      if (subV.length) b5.push({ ul: subV.map((k) => '子问题 ' + k + '（已判定为真；证据：' + verdictCardRel('subproblem', k) + '）') })
+      if (ev.done.length) b5.push({ ul: ev.done.map((t) => '任务 ' + t.id + '：' + String(t.subject || '') + '（owner=' + (t.ownerId || '?') + '；镜像：Shared/TaskBoard.md）') })
+      if (!subV.length && !ev.done.length) b5.push({ p: '（没有已完成的子问题或任务被记录。）' })
+      S.push({ title: PAPER_SECTIONS[4], blocks: b5 })
+      // 6
+      const b6 = []
+      const methodParts = active.filter((id) => String(((p.parts || {})[id] || {}).methods || '').trim())
+      for (const id of methodParts) b6.push({ h: id + '｜' + String(((p.parts || {})[id] || {}).title || '') }, { p: String(((p.parts || {})[id] || {}).methods) })
+      if (!methodParts.length) b6.push({ p: '（参与成员未提交方法/理论/思想/经验/数学理解的叙述。）' })
+      S.push({ title: PAPER_SECTIONS[5], blocks: b6 })
+      // 7
+      const b7 = []
+      const ruleParts = active.filter((id) => String(((p.parts || {})[id] || {}).rules || '').trim())
+      for (const id of ruleParts) b7.push({ h: id + '｜' + String(((p.parts || {})[id] || {}).title || '') }, { p: String(((p.parts || {})[id] || {}).rules) })
+      if (!ruleParts.length) b7.push({ p: '（参与成员未归纳出可复用规律。）' })
+      S.push({ title: PAPER_SECTIONS[6], blocks: b7 })
+      // 8
+      const b8 = []
+      const limitParts = active.filter((id) => String(((p.parts || {})[id] || {}).limits || '').trim())
+      for (const id of limitParts) b8.push({ h: id }, { p: String(((p.parts || {})[id] || {}).limits) })
+      const unresolved = []
+      for (const k of ev.undecidedV) unresolved.push('未定论：' + k + '（平均概率 ' + Number((ev.V[k] || {}).mean || 0).toFixed(2) + '，m=' + ((ev.V[k] || {}).m || '?') + '）')
+      for (const k of ev.openV) unresolved.push('尚未裁决：' + k)
+      for (const t of ev.openT) unresolved.push('未完成任务：' + t.id + '｜' + String(t.subject || '') + '（' + t.status + '）')
+      for (const m of ev.members.filter((x) => x.phase === 'failed' || x.phase === 'dismissed')) unresolved.push('成员 ' + m.id + '：' + m.phase + (m.error ? '（' + String(m.error).slice(0, 120) + '）' : ''))
+      for (const id of skipped) unresolved.push('未交稿/未参与：' + id)
+      if (unresolved.length) b8.push({ p: '**未决与未参与（显式标注）**：' }, { ul: unresolved })
+      if ((p.warnings || []).length) b8.push({ p: '流程警告：' }, { ul: (p.warnings || []).map(String) })
+      if (!limitParts.length && !unresolved.length && !(p.warnings || []).length) b8.push({ p: '（无特别记录的局限。）' })
+      S.push({ title: PAPER_SECTIONS[7], blocks: b8 })
+      // 9
+      const b9 = [{ p: '以下路径均相对于研究所根目录（与 State/<institute>.v5state.json 同级）。' }]
+      b9.push({ ul: paperSources(p, active, ev) })
+      if ((p.disagreement || []).length) {
+        b9.push({ h: '分歧记录（未达成全体一致 / 定稿代表要求修订）' })
+        b9.push({ ul: (p.disagreement || []).map((d) => '第 ' + d.round + ' 轮｜' + (d.members || []).join('、') + '：' + String(d.detail || '')) })
+      }
+      if (skipped.length) b9.push({ p: '按“未参与”处理的成员：' + skipped.join('、') })
+      S.push({ title: PAPER_SECTIONS[8], blocks: b9 })
+      return S
+    }
+    function renderPaperMd(p, S) {
+      const L = ['# ' + paperTitle(p), '']
+      S.forEach((sec, i) => {
+        L.push('## ' + (i + 1) + '. ' + sec.title)
+        L.push('')
+        for (const b of sec.blocks) {
+          if (b.h) { L.push('### ' + b.h); L.push('') }
+          else if (b.p !== undefined) { L.push(String(b.p)); L.push('') }
+          else if (b.ul) { for (const it of b.ul) L.push('- ' + String(it)); L.push('') }
+        }
+      })
+      return L.join('\n')
+    }
+    const TEX_ESCAPES = { '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#', '_': '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}' }
+    function texEscape(s) { return String(s == null ? '' : s).replace(/[\\&%$#_{}~^]/g, (c) => TEX_ESCAPES[c]) }
+    function renderPaperTex(p, S) {
+      const zh = p.lang !== 'en'
+      const L = [
+        '\\documentclass[11pt]{' + (zh ? 'ctexart' : 'article') + '}',
+        '\\usepackage{amsmath,amssymb,amsthm}',
+        '\\usepackage[margin=2.5cm]{geometry}',
+        '\\usepackage[hidelinks]{hyperref}',
+        '\\usepackage{longtable,booktabs}',
+        '\\title{' + texEscape(paperTitle(p)) + '}',
+        '\\author{' + texEscape(((p.participants || []).join('、')) || (zh ? '研究所' : 'Institute')) + '}',
+        '\\date{' + texEscape(fmtTime(p.finalizedAt || now()).slice(0, 10)) + '}',
+        '\\begin{document}',
+        '\\maketitle',
+      ]
+      S.forEach((sec, i) => {
+        L.push('\\section{' + texEscape((i + 1) + '. ' + sec.title) + '}')
+        for (const b of sec.blocks) {
+          if (b.h) L.push('\\subsection{' + texEscape(b.h) + '}')
+          else if (b.p !== undefined) L.push(texEscape(b.p) + '\n')
+          else if (b.ul) { L.push('\\begin{itemize}'); for (const it of b.ul) L.push('\\item ' + texEscape(it)); L.push('\\end{itemize}') }
+        }
+      })
+      L.push('\\end{document}')
+      return L.join('\n') + '\n'
+    }
+    // The repair pass keeps only the packages the text itself needs (spec v1 §5 / v2 §E):
+    // every optional or unknown package is dropped before the engine swap retry.
+    function texStripOptionalPackages(tex) {
+      return String(tex).split('\n').filter((line) => {
+        if (/^\s*\\(?:input|include)\b/.test(line)) return false
+        const m = /^\s*\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/.exec(line)
+        if (!m) return true
+        return m[1].split(',').map((x) => x.trim()).some((pk) => PAPER_REPAIR_CORE.indexOf(pk) !== -1)
+      }).join('\n')
+    }
+    function texMinimal(tex, lang) {
+      const body = String(tex).replace(/[\s\S]*?\\begin\{document\}/, '').replace(/\\end\{document\}[\s\S]*$/, '')
+      return '\\documentclass[11pt]{' + (lang === 'en' ? 'article' : 'ctexart') + '}\n\\begin{document}\n' + body.trim() + '\n\\end{document}\n'
+    }
+    function paperEngineCandidates(lang) {
+      const order = PAPER_ENGINE_ORDER[lang === 'en' ? 'en' : 'zh'].slice()
+      const forced = String(params.paperLatexCommand || '').trim()
+      if (!forced) return order
+      return [forced].concat(order.filter((n) => n !== forced))
+    }
+    async function latexEngines(lang) {
+      const sub = subprocessOf()
+      if (!sub || typeof sub.resolveExecutable !== 'function') {
+        return { engines: [], reason: '宿主没有 subprocess 服务：无法检测或调用 LaTeX' }
+      }
+      const engines = []
+      for (const name of paperEngineCandidates(lang)) {
+        try { const exe = await sub.resolveExecutable(name); if (exe) engines.push({ name: String(name), exe: String(exe) }) } catch (e) { /* not installed */ }
+      }
+      return { engines, reason: engines.length ? '' : ('未检测到 LaTeX 引擎（' + paperEngineCandidates(lang).join('/') + '）') }
+    }
+    // ONE engine invocation. NEVER throws: every failure becomes a readable result (the Lean
+    // seam's discipline) and a timeout really terminates the process.
+    async function runPaperProcess(argv, cwd) {
+      const sub = subprocessOf()
+      const started = now()
+      if (!sub || typeof sub.spawn !== 'function') return { ok: false, exitCode: null, ms: 0, message: 'no subprocess service' }
+      let handle
+      try {
+        handle = sub.spawn({ argv, cwd, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: 120000 })
+      } catch (e) { return { ok: false, exitCode: null, ms: now() - started, message: String((e && e.message) || e) } }
+      let outcome = null
+      let timer = null
+      try {
+        const ran = Promise.resolve(handle.done).then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e }))
+        const r = await Promise.race([
+          ran,
+          new Promise((resolve) => {
+            timer = ctx.timeout(() => {
+              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
+              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
+            }, 120000)
+          }),
+        ])
+        if (!r.settled) return { ok: false, exitCode: null, ms: now() - started, message: String((r.error && r.error.message) || r.error) }
+        outcome = r.value
+      } finally { if (timer) { try { timer() } catch (e) { /* already settled */ } } }
+      const exitCode = outcome ? outcome.exitCode : null
+      return { ok: exitCode === 0, exitCode, ms: now() - started, message: '' }
+    }
+    // Compile attempts are CAPPED (spec v2 §E): full → nonstopmode rerun → engine swap with
+    // the optional packages stripped → one minimal-template retry → report and degrade.
+    async function compilePaperTex(id, tex, lang) {
+      if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) {
+        return { status: 'kept-existing', engine: '', reason: 'Paper/' + id + '/paper.pdf 已存在：不覆盖（spec v2 §D）', attempts: [] }
+      }
+      const det = await latexEngines(lang)
+      if (!det.engines.length) return { status: 'not-detected', engine: '', reason: det.reason, attempts: [] }
+      const e0 = det.engines[0], e1 = det.engines[1] || e0
+      const plan = [
+        { label: 'full', engine: e0, text: tex, nonstopOnly: false },
+        { label: 'nonstopmode-rerun', engine: e0, text: tex, nonstopOnly: true },
+        { label: 'engine-swap+stripped', engine: e1, text: texStripOptionalPackages(tex), nonstopOnly: true },
+        { label: 'minimal-template', engine: e0, text: texMinimal(tex, lang), nonstopOnly: true },
+      ]
+      const attempts = []
+      for (const a of plan) {
+        const r = await runLatexAttempt(id, a)
+        attempts.push(r)
+        if (r.ok) return { status: 'compiled', engine: a.engine.name, attempts }
+      }
+      return { status: 'failed', engine: '', reason: '编译在 ' + attempts.length + ' 次尝试后仍失败（已保留 paper.tex 与 paper.md）', attempts }
+    }
+    async function runLatexAttempt(id, a) {
+      const dirRel = paperDirRel(id)
+      const dirAbs = instRoot() + '/' + dirRel
+      if (!await writeTextRel(dirRel + '/paper.tex', a.text)) {
+        return { label: a.label, engine: a.engine.name, ok: false, exitCode: null, ms: 0, message: 'tex 写入失败' }
+      }
+      const started = now()
+      const args = a.engine.name === 'tectonic'
+        ? ['-X', 'paper.tex']
+        : (a.nonstopOnly ? ['-interaction=nonstopmode', 'paper.tex'] : ['-interaction=nonstopmode', '-halt-on-error', 'paper.tex'])
+      const argv = [a.engine.exe].concat(args)
+      // TWO passes (spec §5): the second resolves references/TOC. A failed first pass is not
+      // rerun — the retry PLAN is what varies the command, not a blind repeat.
+      const first = await runPaperProcess(argv, dirAbs)
+      if (!first.ok) return { label: a.label, engine: a.engine.name, ok: false, exitCode: first.exitCode, ms: now() - started, message: first.message || 'first pass failed' }
+      const second = await runPaperProcess(argv, dirAbs)
+      const pdf = await fileExistsAbs(paperAbs(id, 'paper.pdf'))
+      return { label: a.label, engine: a.engine.name, ok: second.ok && pdf, exitCode: second.exitCode, ms: now() - started, message: pdf ? (second.message || '') : '编译器没有产出 paper.pdf' }
+    }
+    function paperMeta(p, extra) {
+      const o = extra || {}
+      const active = paperActiveParticipants(p)
+      const skipped = (p.participants || []).filter((x) => active.indexOf(x) === -1)
+      return {
+        id: p.id,
+        dir: 'Paper/' + p.id + '/',
+        institute: instituteName, project, runId: inst().runId || runId || '',
+        problemId: (inst().problem || {}).id || '',
+        trigger: p.trigger,
+        finalizedAt: o.finalizedAt || (p.finalizedAt || now()),
+        language: p.lang, format: p.format, compilePdf: p.pdf === true,
+        editor: p.editor, editorNote: p.editorNote || '', editorFallback: !!p.editorFallback,
+        finalisation: p.final || null,
+        consultation: Object.assign({ messages: 0, meetings: 0 }, p.consult || {}),
+        participants: p.participants || [], skipped,
+        rounds: p.round, maxRounds: PAPER_MAX_ROUNDS,
+        parts: Object.keys(p.parts || {}).map((id) => ({ member: id, round: (p.parts[id] || {}).round, title: (p.parts[id] || {}).title || '', evidence: ((p.parts[id] || {}).evidence || []).length })),
+        reviews: Object.keys(p.reviews || {}).map((id) => ({ member: id, of: (p.reviews[id] || {}).of, round: (p.reviews[id] || {}).round, deliverable: (p.reviews[id] || {}).deliverable === true })),
+        disagreement: p.disagreement || [], warnings: o.warnings || p.warnings || [],
+        forcedAfterCap: !!p.forcedAfterCap,
+        sections: PAPER_SECTIONS.length,
+        compile: o.compile || { status: p.compile || 'unknown', engine: p.engine || '', attempts: [] },
+        params: {
+          finalPaper: params.finalPaper, paperFormat: params.paperFormat, paperLanguage: params.paperLanguage,
+          paperCompilePdf: params.paperCompilePdf, paperEditor: params.paperEditor, paperLatexCommand: params.paperLatexCommand,
+        },
+        files: o.files || [],
+      }
+    }
+    async function refillPaperArtifacts(p) {
+      const id = p.id
+      const active = paperActiveParticipants(p)
+      const skipped = (p.participants || []).filter((x) => active.indexOf(x) === -1)
+      const conclusionText = await readTextRel('Problems/conclusion.md')
+      const S = paperSections(p, active, skipped, paperEvidence(), { final: p.final, conclusionText })
+      const filled = []
+      if (p.format !== 'tex' && (await readTextAbs(paperAbs(id, 'paper.md'))) === undefined) {
+        if (await writeTextRel(PAPER_FILE(id, 'paper.md'), renderPaperMd(p, S))) filled.push('paper.md')
+      }
+      let tex = await readTextAbs(paperAbs(id, 'paper.tex'))
+      if (p.format !== 'md' && tex === undefined) {
+        tex = renderPaperTex(p, S)
+        if (await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)) filled.push('paper.tex')
+      }
+      if (p.format !== 'md' && p.pdf === true && !await fileExistsAbs(paperAbs(id, 'paper.pdf'))) {
+        const c = await compilePaperTex(id, tex || renderPaperTex(p, S), p.lang)
+        if (c.status === 'compiled') filled.push('paper.pdf')
+        // Same rule as finalizePaper: the delivered tex is always the canonical generated one.
+        if (tex !== undefined && tex !== null) await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)
+      }
+      if ((await readTextAbs(paperAbs(id, 'paper.meta.json'))) === undefined) {
+        if (await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(paperMeta(p, { refilled: true }), null, 2) + '\n')) filled.push('paper.meta.json')
+      }
+      if ((await readTextAbs(paperAbs(id, 'paper.log.md'))) === undefined) {
+        await paperLog('重复触发：补写缺失产物', '- 本次补写：' + (filled.join('、') || '（无缺失）'))
+        filled.push('paper.log.md')
+      } else if (filled.length) {
+        await paperLog('重复触发：补写缺失产物', '- 本次补写：' + filled.join('、'))
+      }
+      return { filled }
+    }
+    async function finalizePaper(reason) {
+      const p = paper()
+      if (!p) return { ok: false, code: 'V5_PAPER_STATE', message: 'no paper flow' }
+      const id = p.id
+      const active = paperActiveParticipants(p)
+      const skipped = (p.participants || []).filter((x) => active.indexOf(x) === -1)
+      const ev = paperEvidence()
+      const conclusionText = await readTextRel('Problems/conclusion.md')
+      const finalizedAt = now()
+      const S = paperSections(p, active, skipped, ev, { final: p.final, conclusionText })
+      const files = []
+      if (p.format !== 'tex') {
+        if (await writeTextRel(PAPER_FILE(id, 'paper.md'), renderPaperMd(p, S))) files.push('paper.md')
+      }
+      let tex = ''
+      if (p.format !== 'md') {
+        tex = renderPaperTex(p, S)
+        if (await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)) files.push('paper.tex')
+      }
+      // `paperFormat=md` with `paperCompilePdf=true` must NOT warn about a missing tex: no tex
+      // was produced, so compilation is skipped silently (spec v2 §E).
+      let compile
+      if (p.format === 'md') compile = { status: 'skipped', engine: '', reason: 'paperFormat=md：未产出 tex，跳过编译', attempts: [] }
+      else if (p.pdf !== true) compile = { status: 'skipped', engine: '', reason: 'paperCompilePdf=false', attempts: [] }
+      else compile = await compilePaperTex(id, tex, p.lang)
+      // The repair attempts overwrite `paper.tex` with stripped/minimal variants to get past a
+      // broken engine. Whatever the compile outcome, the DELIVERED tex must be the real,
+      // fully-generated one (the attempts are recorded in the meta either way).
+      if (p.format !== 'md') await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)
+      if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) files.push('paper.pdf')
+      const warnings = (p.warnings || []).slice()
+      if (compile.status === 'failed') warnings.push('LaTeX 编译失败（已保留 paper.tex 与 paper.md，不阻塞定稿）：' + (compile.attempts || []).map((a) => a.engine + '/' + a.label + ' exit=' + a.exitCode + (a.message ? '(' + a.message + ')' : '')).join('；'))
+      if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。')
+      const meta = paperMeta(Object.assign({}, p, { finalizedAt, compile: compile.status, engine: compile.engine || '' }), {
+        finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', attempts: compile.attempts || [] }, files,
+      })
+      if (await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(meta, null, 2) + '\n')) files.push('paper.meta.json')
+      await paperLog('定稿（' + reason + '）', [
+        '- 目录：Paper/' + id + '/',
+        '- 产物：' + files.join('、'),
+        '- 编译：' + compile.status + (compile.engine ? '（' + compile.engine + '）' : '') + '｜尝试 ' + (compile.attempts || []).length + ' 次',
+        '- 定稿代表：' + p.editor + '｜轮次：' + p.round + '/' + PAPER_MAX_ROUNDS,
+        '- 所办交流：消息 ' + Number((p.consult || {}).messages || 0) + ' 条、会议 ' + Number((p.consult || {}).meetings || 0) + ' 次',
+        (p.final && p.final.note ? '- 定稿说明：' + p.final.note : ''),
+        (warnings.length ? '- 警告：\n  - ' + warnings.join('\n  - ') : ''),
+      ].filter(Boolean).join('\n'))
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
+        status: 'finalized', stage: 'finalized', finalizedAt, compile: compile.status,
+        engine: compile.engine || '', warnings, artifacts: files, updatedAt: now(),
+      }) : cur))
+      await saveChatLine('【论文】最终论文已定稿：Paper/' + id + '/（' + (files.join('、') || '（无产物）') + '；编译 ' + compile.status + '）。')
+      notifyActivity()
+      // The run is only now complete (spec v2 §A1): the paper phase ran BEFORE the flags.
+      if (p.completesRun && !autoDone) await finishRun('全体有表决权者一致认为原问题已解决')
+      return {
+        ok: true, finalized: true, id, dir: 'Paper/' + id + '/', files,
+        compile: compile.status, engine: compile.engine || '', attempts: (compile.attempts || []).length,
+        warnings, agreement: !(p.disagreement || []).length, rounds: p.round,
+      }
     }
 
     // ---- hire / fire -------------------------------------------------------
@@ -3673,6 +4657,16 @@ export function apply(ctx) {
         await beginMeeting({ agenda: p.agenda, kind: p.kind, target: p.target, by: p.by })
         return
       }
+      // The final-paper phase (spec v2 §A1) owns the room once it is active: a paper ask is its
+      // own kind of turn, and a research round must not be mistaken for a paper answer. While
+      // the flow waits for the OFFICE the institute keeps working normally — the required
+      // consultation needs office messages and a real meeting to be deliverable.
+      if (paperActive()) {
+        await paperPass()
+        const cur = paper()
+        const waitingForOffice = !!cur && cur.status === 'awaiting-editor' && cur.editor === 'office'
+        if (!waitingForOffice) return
+      }
       const budget = Math.max(1, Math.floor(Number(params.maxParallel) || 3))
       const idleMs = posMs(params.activityTimeoutMs, 120000)
       let filled = 0
@@ -3723,7 +4717,7 @@ export function apply(ctx) {
       const stallMs = posMs(params.stallAutoMeetingMs, 360000)
       if (!meeting && !pendingMeeting && !hasVerifyInFlight() && phase === 'active' &&
         busy.size === 0 && (now() - lastProgressAt) >= stallMs) {
-        await startMeeting('office', { agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？', kind: 'sync' })
+        await startMeeting('office', { agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？', kind: 'sync', auto: true })
         return
       }
       // (e) heartbeat: push the longest-idle member to make progress rather than just
@@ -3897,6 +4891,12 @@ export function apply(ctx) {
       }
       // (10) solve votes / personal judgement
       if (p.vote_solved !== undefined) await recordSolveVote(member.id, p.vote_solved === true)
+      // (10b) final-paper channels: the member's own part, a cross-review, or the editor's
+      // decision. Each is only honoured in the stage that asked for it (the record functions
+      // refuse otherwise), so a stray/stale field can never advance the paper.
+      if (p.paper_part && typeof p.paper_part === 'object') await paperRecordPart(member.id, p.paper_part)
+      if (p.paper_review && typeof p.paper_review === 'object') await paperRecordReview(member.id, p.paper_review)
+      if (p.paper_final && typeof p.paper_final === 'object') await paperRecordFinal(member.id, p.paper_final)
       // (11) meeting input collection (keyed on the LIVE member set, so a member who
       // joined mid-meeting still has to speak and a dismissed one stops blocking it)
       if (kind === 'meeting' && meeting) {
@@ -3952,6 +4952,9 @@ export function apply(ctx) {
       try { await maybeRealCompact(childId, member) } catch (e) { /* compaction is best-effort */ }
       wakeKind.delete(member.id)
       if (member.activeMeetingId) delete member.activeMeetingId
+      // The final-paper phase is driven by member turns, exactly like a meeting: the reply was
+      // just folded, so advance the paper BEFORE asking the (possibly inert) scheduler.
+      try { await paperPass() } catch (e) { console.error('vibe-math-v5: paper after end: ' + String((e && e.message) || e)) }
       await scheduleNext()
     }
     // ---- toolFilter names the host may not register -------------------------
@@ -4014,11 +5017,15 @@ export function apply(ctx) {
       const ints = ['researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
-      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign']
-      const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand']
+      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf']
+      const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
+        'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand']
       const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs']
       for (const k of ints) if (input[k] !== undefined) { const n = Math.floor(Number(input[k])); if (Number.isFinite(n)) out[k] = n }
-      for (const k of bools) if (input[k] !== undefined) out[k] = (input[k] === true || input[k] === 'true')
+      // Explicit boolean coercion (spec v2 §B): the old `=== true || === 'true'` turned a
+      // legitimate `1` / `'yes'` into FALSE and left junk values truthy-looking. An
+      // unrecognised spelling is REJECTED (the default wins) rather than guessed.
+      for (const k of bools) if (input[k] !== undefined) out[k] = coerceBool(input[k], false)
       for (const k of strs) if (input[k] !== undefined) out[k] = String(input[k])
       for (const k of arrs) {
         if (input[k] === undefined) continue
@@ -4032,6 +5039,12 @@ export function apply(ctx) {
         out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'off'
       }
       if (out.leanCommand !== undefined && !String(out.leanCommand).trim()) out.leanCommand = 'lean'
+      // ── final-paper enums (closed sets; an unknown value degrades to the documented
+      // default instead of silently becoming an unreachable fourth mode) ────────────────
+      if (out.paperFormat !== undefined) out.paperFormat = coercePaperEnum('paperFormat', out.paperFormat, ['both', 'md', 'tex'], 'both')
+      if (out.paperLanguage !== undefined) out.paperLanguage = coercePaperEnum('paperLanguage', out.paperLanguage, ['zh', 'en'], 'zh')
+      if (out.paperEditor !== undefined) out.paperEditor = coercePaperEnum('paperEditor', out.paperEditor, ['office', 'academician'], 'academician')
+      if (out.paperLatexCommand !== undefined) out.paperLatexCommand = String(out.paperLatexCommand).trim()
       // Guard every duration against a negative/NaN value: such a value would make a
       // watchdog fire instantly and abandon all consensus (v4 §30-T41).
       for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {
@@ -4076,6 +5089,10 @@ export function apply(ctx) {
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
         formalVerify: params.formalVerify, leanCommand: params.leanCommand,
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
+        // ── final paper ──────────────────────────────────────────────────────
+        finalPaper: params.finalPaper, paperFormat: params.paperFormat,
+        paperLanguage: params.paperLanguage, paperCompilePdf: params.paperCompilePdf,
+        paperEditor: params.paperEditor, paperLatexCommand: params.paperLatexCommand,
         provider: params.provider, model: params.model,
         toolAllow: params.toolAllow, toolDeny: params.toolDeny,
       }
@@ -4318,6 +5335,9 @@ export function apply(ctx) {
       await saveChatLine('【恢复】研究所继续推进（重建成员 ' + respawned + ' 名）。')
       notifyActivity()
       await scheduleNext()
+      // An interrupted FINAL PAPER resumes its own stage (the paper phase runs before the
+      // completion flags, so a crash there leaves a live, resumable institute).
+      if (paperActive()) { try { await paperPass() } catch (e) { console.error('vibe-math-v5: paper after resume: ' + String((e && e.message) || e)) } }
       return { ok: true, resumed: true, members: members.map((m) => m.id), respawned, running: true }
     }
     function setPause() {
@@ -4394,6 +5414,10 @@ export function apply(ctx) {
           blocked: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'blocked'),
           todo: formalTodo(),
         },
+        // The final-paper flow: stage, who wrote/reviewed what, the office-consultation
+        // counters and the compile result. Without this an operator cannot tell whether the
+        // run is waiting for the office, for a member, or for nobody.
+        paper: paperSummary(),
         lastProgressAt, params: visibleParams(),
       }
     }
@@ -4458,6 +5482,21 @@ export function apply(ctx) {
         L.push('- 已记录阻塞：' + (Object.keys(s.formal || {}).filter((k) => (s.formal || {})[k].status === 'blocked').join('、') || '（无）'))
         L.push('- 形式化待办：' + ((s.todo || []).map((t) => t.id).join('、') || '（无）'))
         L.push('- 可复用库：VibeMath/Formal/{Lib,Proved}/（跨项目）｜本所形式化：Formal/｜归档证明：Verified/Lean/')
+      }
+      L.push('')
+      L.push('## 最终论文')
+      {
+        const pp = paper()
+        if (!pp) L.push('- 尚未开始（' + (params.finalPaper === false ? '自动已关闭（finalPaper=false），可用 /v5 paper 手动生成' : '收口时会自动开始；也可用 /v5 paper 手动开始') + '）')
+        else {
+          L.push('- 目录：Paper/' + pp.id + '/｜状态：' + pp.status + '｜阶段：' + pp.stage + '｜轮次：' + pp.round + '/' + PAPER_MAX_ROUNDS)
+          L.push('- 定稿代表：' + pp.editor + (pp.editorFallback ? '（原定代表不在册，已回退）' : '') + '｜语言：' + pp.lang + '｜格式：' + pp.format)
+          L.push('- 交稿：' + (Object.keys(pp.parts || {}).join('、') || '（无）') + '｜互审：' + (Object.keys(pp.reviews || {}).map((k) => k + '→' + ((pp.reviews[k] || {}).of || '?') + (pp.reviews[k] && pp.reviews[k].deliverable === true ? '(可交付)' : '(需修改)')).join('、') || '（无）'))
+          L.push('- 所办交流：消息 ' + Number((pp.consult || {}).messages || 0) + ' 条｜会议 ' + Number((pp.consult || {}).meetings || 0) + ' 次')
+          if (pp.compile) L.push('- 编译：' + pp.compile + (pp.engine ? '（' + pp.engine + '）' : ''))
+          if ((pp.warnings || []).length) L.push('- 警告：' + pp.warnings.join('；'))
+          L.push('- 下一步：' + paperNextStep(pp))
+        }
       }
       L.push('')
       L.push('## 文件位置')
@@ -4526,6 +5565,8 @@ export function apply(ctx) {
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      // final paper (spec-final-paper.md; the phase runs BEFORE finishRun)
+      startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
     }
@@ -4599,7 +5640,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). Unknown spellings of these enums fall back to the documented default.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
@@ -4607,6 +5648,9 @@ export function apply(ctx) {
     activityTimeoutMs: I, stallAutoMeetingMs: I, chatDigestMs: I, chatDigestMax: I, meetingKeepEvery: I,
     formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
     leanCommand: S, leanArgs: SA, leanTimeoutMs: I,
+    finalPaper: B, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] },
+    paperLanguage: { type: 'string', enum: ['zh', 'en'] },
+    paperCompilePdf: B, paperEditor: { type: 'string', enum: ['office', 'academician'] }, paperLatexCommand: S,
     provider: S, model: S, staffPersona: S, toolAllow: SA, toolDeny: SA, tempToolAllow: SA, tempToolDeny: SA,
   }), (s, a, x) => withOffice(s, x, 'tune institute parameters', () => s.setParams(a)))
   registerTool('vibe_v5_message', 'Relay a message from the office/human into the institute (to a member id, to "all", or to "voters").', objParams({ to: S, content: S }, ['to', 'content']), (s, a, x) => {
@@ -4651,6 +5695,16 @@ export function apply(ctx) {
       ? s.removeResearcher(a.id)
       : { ok: false, code: 'V5_NOT_OFFICE', message: 'only the office (the session root) may dismiss a permanent researcher' }
   )))
+  // ── final paper (spec-final-paper.md) ─────────────────────────────────────
+  registerTool('vibe_v5_paper', 'Final paper: start (or re-run) the team-authored paper for this run. The permanent staff write their own part, cross-review another member\'s part, and the editor named by paperEditor finalises. lang/format override paperLanguage/paperFormat for THIS paper; editor overrides paperEditor for THIS paper only (office = the manual path, which parks the flow until the office consults the institute and calls vibe_v5_finalize_paper); force rewrites an already-finalised paper (idempotent otherwise: it only fills artifacts that are missing).', objParams({ lang: S, format: S, editor: { type: 'string', enum: ['office', 'academician'] }, force: B, reason: S }), (s, a, x) => withOffice(s, x, 'write the final paper', () => {
+    const lang = a.lang === undefined ? undefined : String(a.lang)
+    const format = a.format === undefined ? undefined : String(a.format)
+    if (lang !== undefined && lang !== 'zh' && lang !== 'en') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'lang must be zh|en' }
+    if (format !== undefined && ['both', 'md', 'tex'].indexOf(format) === -1) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'format must be both|md|tex' }
+    if (a.editor !== undefined && ['office', 'academician'].indexOf(String(a.editor)) === -1) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'editor must be office|academician' }
+    return s.startPaper(a.reason === 'run-complete' ? 'run-complete' : 'manual', { lang, format, editor: a.editor, force: a.force === true, reason: a.reason })
+  }))
+  registerTool('vibe_v5_finalize_paper', 'Office: finalise the final paper after consulting the whole institute. Required when paperEditor="office": at least one office message (vibe_v5_message) AND at least one meeting convened by the office must happen first (paper.meta.json records them, and the note must state the conclusion). decision="revise" asks for another writing round (bounded).', objParams({ decision: { type: 'string', enum: ['deliverable', 'revise'] }, note: S, conclusion: S, force: B }, ['decision']), (s, a, x) => withOffice(s, x, 'finalise the final paper', () => s.finalizePaperByOffice(a)))
 
   // ── member-facing controls ────────────────────────────────────────────────
   registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
@@ -4748,7 +5802,7 @@ export function apply(ctx) {
   // ── /v5 slash command ────────────────────────────────────────────────────
   ctx.effect(() => commands.register({
     name: 'v5', description: 'control the Vibe Math V5 research institute',
-    input: { hint: '[configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set]' },
+    input: { hint: '[configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper [lang=en] [format=tex] [editor=office] [force]]' },
     handler: async function (inv) {
       const s = getSession(inv && inv.agent)
       if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no session' }) }
@@ -4784,7 +5838,28 @@ export function apply(ctx) {
       else if (cmd === 'fire') r = await s.fire('office', { id: rest[0] || '', reason: rest.slice(1).join(' ') })
       else if (cmd === 'add') r = await s.addResearcher('office', rest.join(' '))
       else if (cmd === 'remove') r = await s.removeResearcher(rest[0] || '')
-      else if (cmd === 'set') {
+      else if (cmd === 'paper') {
+        // `/v5 paper [lang=en] [format=tex] [force] [editor=office|academician]`
+        const o = {}
+        let force = false
+        let bad = ''
+        for (const tok of rest) {
+          if (tok === 'force') { force = true; continue }
+          const eq = tok.indexOf('=')
+          if (eq <= 0) { bad = 'unknown paper argument: ' + tok; break }
+          const k = tok.slice(0, eq), v = tok.slice(eq + 1)
+          if (k === 'lang' || k === 'format' || k === 'editor') o[k] = v
+          else { bad = 'unknown paper option: ' + k + ' (use lang=zh|en format=both|md|tex editor=office|academician force)'; break }
+        }
+        if (!bad && o.lang !== undefined && o.lang !== 'zh' && o.lang !== 'en') bad = 'lang must be zh|en'
+        if (!bad && o.format !== undefined && ['both', 'md', 'tex'].indexOf(o.format) === -1) bad = 'format must be both|md|tex'
+        if (!bad && o.editor !== undefined && ['office', 'academician'].indexOf(o.editor) === -1) bad = 'editor must be office|academician'
+        if (bad) return { kind: 'error', text: JSON.stringify({ ok: false, code: 'V5_INVALID_ARGUMENT', message: bad }, null, 2) }
+        // `editor=office` is the manual path that uses the office as the finalising
+        // representative (spec v2 §A6 — never reachable from an automatic run). One-shot: it
+        // does not rewrite the persisted `paperEditor`.
+        r = await s.startPaper('manual', { lang: o.lang, format: o.format, editor: o.editor, force })
+      } else if (cmd === 'set') {
         const upd = {}
         for (const tok of rest) {
           const eq = tok.indexOf('=')
@@ -4794,7 +5869,7 @@ export function apply(ctx) {
           upd[k] = Number.isFinite(n) && v !== '' ? n : (v === 'true' ? true : v === 'false' ? false : v)
         }
         r = await s.setParams(upd)
-      } else r = { ok: false, usage: 'configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set' }
+      } else r = { ok: false, usage: 'configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper [lang=zh|en] [format=both|md|tex] [editor=office|academician] [force]' }
       // A business failure (the dispatch result's own ok:false) is a FAILED command: the host's
       // CommandResult union distinguishes success from error, and returning 'success' made a rejected
       // invocation look identical to a successful one (same fix as v2/v3).
@@ -4887,6 +5962,32 @@ function idSafe(s) {
 function slugify(s) {
   const t = String(s == null ? '' : s).trim().toLowerCase().replace(/[^a-z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')
   return t || ''
+}
+
+// Explicit parameter coercion (spec v2 §B). A boolean parameter spelled `'false'`, `0`, `'no'`
+// or `'off'` must be false — the old `=== true || === 'true'` silently treated `1`/`'yes'` as
+// false. An unrecognised spelling is REJECTED (the caller's default wins), never guessed.
+function coerceBool(v, def) {
+  if (v === undefined) return def
+  if (v === true || v === 1 || v === '1') return true
+  if (v === false || v === 0 || v === '0') return false
+  const t = String(v).trim().toLowerCase()
+  if (['true', 'yes', 'on', 'y', 't'].indexOf(t) !== -1) return true
+  if (['false', 'no', 'off', 'n', 'f', ''].indexOf(t) !== -1) return false
+  return def
+}
+
+// Enum coercion with legacy aliases (.v5 / older flat spellings) and a documented fallback.
+const ENUM_ALIASES = {
+  paperFormat: { markdown: 'md', latex: 'tex', texonly: 'tex', all: 'both' },
+  paperLanguage: { cn: 'zh', chinese: 'zh', 'zh-cn': 'zh', english: 'en', 'en-us': 'en' },
+  paperEditor: { root: 'office', host: 'office', acad: 'academician', dean: 'academician' },
+}
+function coercePaperEnum(key, v, allowed, def) {
+  const t = String(v == null ? '' : v).trim().toLowerCase()
+  if (allowed.indexOf(t) !== -1) return t
+  const alias = (ENUM_ALIASES[key] || {})[t]
+  return alias !== undefined && allowed.indexOf(alias) !== -1 ? alias : def
 }
 
 function tryJson(s) { try { return JSON.parse(s) } catch (e) { return undefined } }

@@ -179,6 +179,12 @@ export function apply(ctx) {
     leanCommand: 'lean',          // 要执行的 Lean 可执行文件（例：'lake'）
     leanArgs: [],                 // 插在文件名之前的附加参数（例：['env','lean'] 配 leanCommand='lake'）
     leanTimeoutMs: 120000,        // 单次 Lean 运行超时上限（毫秒，正整数）
+    // ---- 最终论文（规格：_oneoff/spec-final-paper.md + 修订 v2；v2/v3 为单作者变体）----
+    finalPaper: true,             // 收口时是否自动撰写最终论文（false 只关自动触发；/vibe paper 仍可用）
+    paperFormat: 'both',          // both = md + tex | md = 只写 markdown | tex = 只写 latex
+    paperLanguage: 'zh',          // zh = 中文（ctexart/xelatex 优先）| en = 英文（article/pdflatex 优先）
+    paperCompilePdf: true,        // 检测到 LaTeX 时是否编译 paper.pdf
+    paperLatexCommand: '',        // 指定 LaTeX 引擎（空 = 按语言探测 xelatex/latexmk/pdflatex/lualatex/tectonic）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
   let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导（防漂移，同 v2）
@@ -299,6 +305,11 @@ export function apply(ctx) {
     { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
     { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
     { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）', suggestion: 120000 },
+    { name: 'finalPaper', type: 'boolean', description: '收口（checkTermination 的完整收口分支：无未解决问题、无待验证对象、无任务/计划/门）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已定论命题/解法/方法整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
+    { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md（跳过编译）；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
+    { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
+    { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志（不阻塞定稿）', suggestion: true },
+    { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。解析不到时按"未检测到"降级', suggestion: '' },
   ]
 
   // ================= fs (adapted to DSH 0.1.1: resolve returns {targetKey, displayPath}) =================
@@ -389,7 +400,7 @@ export function apply(ctx) {
     const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'planningHorizon', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'projectLockTimeoutMs']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'leanArgs']
-    const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild']
+    const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild', 'finalPaper', 'paperCompilePdf']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
       const v = obj[k]
@@ -408,6 +419,10 @@ export function apply(ctx) {
       else if (k === 'leanCommand') { const s = String(v == null ? '' : v).trim(); out[k] = s || 'lean' }
       else if (k === 'leanTimeoutMs') { const n = Number(v); out[k] = (Number.isFinite(n) && n > 0) ? Math.floor(n) : DEFAULT_PARAMS[k] }
       else if (k === 'solverAllowNetwork' || k === 'verifierAllowNetwork' || k === 'solverAllowScripts' || k === 'verifierAllowScripts') { out[k] = (v === true || v === false || v === '') ? v : DEFAULT_PARAMS[k] }
+      // 最终论文（spec v2 §B）：布尔/枚举必须**显式归一化**，不允许未知键直通（'false' 会保持真值）。
+      else if (k === 'paperFormat') { out[k] = (v === 'both' || v === 'md' || v === 'tex') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'paperLanguage') { out[k] = (v === 'zh' || v === 'en') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'paperLatexCommand') { const s = String(v == null ? '' : v).trim(); out[k] = s }
       else { out[k] = v }
     }
     return out
@@ -3289,6 +3304,412 @@ export function apply(ctx) {
     return best
   }
 
+  // ==========================================================================================
+  // 最终论文（规格：_oneoff/spec-final-paper.md + 修订 v2）—— 会话侧（v3 数据来源：md 知识库）。
+  //
+  // 时序（修订 §A2/§A3）：v3 的收口信号是 checkTermination() 的完整收口分支（无未解决问题、
+  // `leftoverVerify` 为空——**这才是真实完整性判据**（§A4）、无真实在途代理、无任务/计划/挂起门）。
+  // 撰写子代理必须在 `scheduler.running=false` 与 `releaseProjectLock()` **之前**派遣
+  // （停止后 scheduleTick() 是空操作；提前释放项目锁后另一会话可能写同一棵树）。派不出去
+  // （宿主激活上限 ACTIVATION_LIMIT_REACHED）→ 排队 + apply 级心跳重试 + 可见告警。
+  // 落盘（§C/§D）：md/tex 是文本；**paper.pdf 只能由编译器子进程生成**、插件只 stat 且**永不删除/覆盖**；
+  // paper.meta.json 最后写（原子提交点）；幂等 = run id + finalizedAt + 逐产物存在性（不用稳定哈希）。
+  // ==========================================================================================
+  let paperInFlight = ''            // 正在撰写的 childId
+  let paperPending = null           // 激活上限排队重试：{ tries, retryAt, reason, limit, trigger, opts }
+  const PAPER_RETRY_MS = 5000
+  const PAPER_MAX_RETRIES = 12
+  const PAPER_LOCK_STALE_MS = 120000
+  function activationLimitFrom(message) { const m = /active child limit:\s*(\d+)/.exec(String(message == null ? '' : message)); return m ? Number(m[1]) : undefined }
+  function paperId(opts) { return paperDirId((opts && opts.id) || currentProject) }
+  function paperDir(id) { return 'Paper/' + paperDirId(id) }
+  function paperAbsDir(id) { return frameworkRoot() + '/' + paperDir(id) }
+  function paperAuthorLine() { return 'Vibe Math V3（单作者：论文撰写子代理）· 项目 ' + currentProject }
+  function paperOpts(opts) {
+    const o = opts || {}
+    const fmt = (o.format === 'md' || o.format === 'tex' || o.format === 'both') ? o.format : ((params.paperFormat === 'md' || params.paperFormat === 'tex') ? params.paperFormat : 'both')
+    const lang = (o.lang === 'en' || o.lang === 'zh') ? o.lang : (params.paperLanguage === 'en' ? 'en' : 'zh')
+    const compilePdf = (o.compilePdf === true || o.compilePdf === false) ? o.compilePdf : (params.paperCompilePdf !== false)
+    return { format: fmt, lang: lang, compilePdf: compilePdf, force: o.force === true, id: o.id }
+  }
+  async function paperReadMeta(id) { const m = await readJson(paperDir(id) + '/paper.meta.json'); return (m && typeof m === 'object' && !Array.isArray(m)) ? m : undefined }
+  async function paperPathExists(rel) { try { const t = await fsTarget(rel); return (await fs.stat(t)) !== undefined } catch (e) { return false } }
+  async function paperAppendLog(id, tag, text) {
+    const rel = paperDir(id) + '/paper.log.md'
+    const prev = await readText(rel)
+    const head = (prev === undefined || !String(prev).trim()) ? (paperLogHead(id).join('\n') + '\n') : String(prev)
+    await writeText(rel, head + paperLogLine(now(), tag, text) + '\n')
+  }
+  /** paper 作用域锁（修订 §A3）：v3 在收口时已释放项目锁，用它防止两个会话同时写同一棵 Paper/ 树。 */
+  async function paperLockAcquire(id) {
+    const rel = paperDir(id) + '/paper.lock.json'
+    const cur = await readJson(rel)
+    if (cur && cur.sessionId && cur.sessionId !== sessionId && (now() - Number(cur.at || 0)) < PAPER_LOCK_STALE_MS) return { ok: false, holder: String(cur.sessionId), at: Number(cur.at || 0) }
+    await writeJson(rel, { sessionId: sessionId, at: now(), project: currentProject })
+    return { ok: true }
+  }
+  async function paperLockRelease(id) {
+    const rel = paperDir(id) + '/paper.lock.json'
+    const cur = await readJson(rel)
+    if (cur && cur.sessionId === sessionId) await writeJson(rel, { sessionId: '', at: now(), released: true })
+  }
+  function paperOneLine(s, cap) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, cap || 400) }
+  /** 证据索引（spec §3.9）：只列**确实存在**的文件；排除 Paper/ 自己（避免自我污染）。
+   *  formalVerify=off 必须真的是无操作（formal-verify-v3 的语料守卫断言"off 的提示词里零 Lean 文本"），
+   *  所以 off 档不把形式化路径写进材料。 */
+  async function paperEvidenceIndex() {
+    const formalNow = formalOn()
+    const out = []
+    if (formalNow && await paperPathExists('State/formal.json')) out.push('State/formal.json')
+    if (await paperPathExists('State/index.json')) out.push('State/index.json')
+    for (const p of allProblems()) out.push(problemRel(p))
+    for (const p of allPropos()) out.push(propositionRel(p))
+    for (const m of methods.values()) out.push(methodRel(m, false))
+    const dirs = ['Verified/命题', 'Verified/问题', 'Logs/Verification', 'Logs/Plans', 'Progress'].concat(formalNow ? ['Verified/Lean', 'Formal'] : [])
+    for (let i = 0; i < dirs.length; i++) { const files = await listFiles(dirs[i]); for (let j = 0; j < files.length; j++) out.push(dirs[i] + '/' + files[j]) }
+    const seen = {}, uniq = []
+    for (let i = 0; i < out.length; i++) { const x = String(out[i]); if (seen[x] || x.indexOf('Paper/') === 0) continue; seen[x] = true; uniq.push(x) }
+    return uniq.sort()
+  }
+  /** 汇总材料（spec §4 + 修订 §A4）：只含既有证据；未决项（含 leftoverVerify 的待验证对象）显式标注。 */
+  async function buildPaperDigest() {
+    const L = []
+    L.push('PRESET: vibe-math-v3 (single-author)')
+    L.push('PROJECT: ' + currentProject)
+    const qs = allProblems()
+    L.push('')
+    L.push('[ORIGINAL PROBLEMS] (Problems/*.md)')
+    if (qs.length === 0) L.push('- (none)')
+    for (let i = 0; i < qs.length; i++) {
+      const q = qs[i]
+      L.push('- id=' + q.id + ' | 状态=' + q.状态 + ' | 优先级=' + q.优先级 + ' | 依赖=' + JSON.stringify(q.依赖 || []) + ' | 来源=' + (q.来源 || '原始') + ' | 陈述=' + paperOneLine(q.陈述, 800))
+      const dirs = getDirState(q.id)
+      if (dirs.length) L.push('    · 方向：' + dirs.map(function (d) { return d.id + ':' + d.status }).join(', '))
+      const sols = q.solutions || []
+      if (sols.length === 0) L.push('    · 解法：无')
+      for (let j = 0; j < sols.length; j++) L.push('    · 解法#' + j + ' 概率=' + sols[j].prob + ' 状态=' + (sols[j].status || '') + ' 证据=Verified/问题/ 与 Logs/Verification/ | ' + paperOneLine(sols[j].text, 1200))
+    }
+    const ps = allPropos()
+    L.push('')
+    L.push('[PROPOSITIONS] (Propos/<分类>/<id>.md)')
+    if (ps.length === 0) L.push('- (none)')
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]
+      const rec = formalOn() ? formalOf(p.id) : null   // off 档不把形式化字段写进材料（off 是真无操作）
+      L.push('- id=' + p.id + ' | 概率=' + p.概率 + ' | 状态=' + p.状态 + ' | 优先级=' + p.优先级 + ' | 价值/关键性=' + p.价值关键性 + ' | 来源问题=' + (p.来源问题 || '') + (rec ? (' | 形式化=' + ((rec && rec.status) || 'none') + (rec && rec.proof ? ('（' + rec.proof + '）') : '')) : '') + ' | 陈述=' + paperOneLine(p.陈述, 800))
+      const sides = [['证明', p.proofs || []], ['证伪', p.refutes || []]]
+      for (let k = 0; k < sides.length; k++) { const arr = sides[k][1]; for (let j = 0; j < arr.length; j++) if (arr[j] && arr[j].prob === 1) L.push('    · 已检验通过：' + sides[k][0] + '#' + j + ' | ' + paperOneLine(arr[j].text, 900)) }
+    }
+    L.push('')
+    L.push('[METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)')
+    const ms = Array.from(methods.values()).concat(Array.from(globalMethods.values()))
+    if (ms.length === 0) L.push('- (none)')
+    for (let i = 0; i < ms.length; i++) {
+      const m = ms[i]
+      L.push('- id=' + m.id + ' | 标题=' + m.标题 + ' | 类型=' + m.类型 + ' | 状态=' + m.状态 + ' | 可信断言=' + JSON.stringify(m.可信断言 || []) + ' | 应用次数=' + ((m.applications || []).length) + ' | 核心内容=' + paperOneLine(m.核心内容, 900))
+    }
+    // §A4：v3 的真实完整性判据是 leftoverVerify（buildVerifyCandidates）——把仍未验证的对象列出来。
+    let cands = []
+    try { cands = await buildVerifyCandidates() } catch (e) { /* 尽力而为 */ }
+    L.push('')
+    L.push('[STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]')
+    if (cands.length === 0) L.push('- (none — 没有待验证对象)')
+    for (let i = 0; i < cands.length; i++) L.push('- 未决：' + cands[i].rId + '（' + cands[i].kind + '，' + paperOneLine(cands[i].概述, 200) + (cands[i].prob === undefined ? '' : ('，prob=' + cands[i].prob)) + '）')
+    L.push('')
+    L.push('[UNRESOLVED / REFUTED — 论文里必须显式标注，不得当成已成立的结论]')
+    let any = false
+    for (let i = 0; i < ps.length; i++) {
+      if (!(ps[i].概率 === 1 || ps[i].概率 === 0)) { any = true; L.push('- 未定论：命题 ' + ps[i].id + '（概率=' + ps[i].概率 + '）') }
+      else if (ps[i].概率 === 0) L.push('- 已被否证：命题 ' + ps[i].id)
+    }
+    for (let i = 0; i < qs.length; i++) {
+      const sols = qs[i].solutions || []
+      for (let j = 0; j < sols.length; j++) if (!(sols[j].prob === 1 || sols[j].prob === 0)) { any = true; L.push('- 未定论：问题 ' + qs[i].id + ' 的解法#' + j + '（概率=' + sols[j].prob + '）') }
+    }
+    if (!any && cands.length === 0) L.push('- (none — 所有对象均已定论)')
+    L.push('')
+    L.push('[EVIDENCE INDEX] (only files that exist)')
+    const ev = await paperEvidenceIndex()
+    for (let i = 0; i < ev.length; i++) L.push('- ' + ev[i])
+    return L.join('\n')
+  }
+  /** 「论文撰写」子代理提示词（单作者；与 v2 同一形状/同一骨架）。 */
+  function paperWriterPrompt(digest, o) {
+    const langName = o.lang === 'en' ? 'English' : '中文（Chinese）'
+    return 'You are the DEDICATED PAPER WRITER (single-author mode) of a math research run that has just CONVERGED.\n' +
+      'Write its final paper in ' + langName + ', using ONLY the evidence in the MATERIAL section below.\n\n' +
+      'HARD RULES:\n' +
+      '- NEVER invent content: no new proposition, no new computation, no citation that is not in the MATERIAL.\n' +
+      '- Unresolved or refuted items MUST be explicitly labelled (「未定论」/「已被否证」, or "unresolved"/"refuted" in English); never present them as established.\n' +
+      '- Fixed 9-section skeleton — provide bodies for these EXACT `## ` headings (the framework writes the headings, author/date and the evidence index itself):\n' +
+      PAPER_SKELETON.map(function (s, i) { return '    ' + (i + 1) + '. ' + s.key + ' — ' + s.spec }).join('\n') + '\n' +
+      '- A section with no evidence must be exactly 「' + PAPER_NO_EVIDENCE + '」 (do not pad it).\n' +
+      '- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.\n\n' +
+      'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' +
+      '{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}\n\n' +
+      'MATERIAL (evidence only — do not add anything beyond it):\n' + digest
+  }
+  /** LaTeX 检测（spec §5 + 修订 §D）：paperLatexCommand 非空时只用它；否则按语言顺序探测。 */
+  async function paperDetectLatex(lang) {
+    const sub = subprocessOf()
+    if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess' }
+    if (typeof sub.resolveExecutable !== 'function') return { available: [], reason: 'no-resolveExecutable' }
+    const forced = String(params.paperLatexCommand || '').trim()
+    if (forced) {
+      try { const p = await sub.resolveExecutable(forced); return p ? { available: [{ name: forced, path: String(p) }], reason: 'ok', forced: true } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
+      catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
+    }
+    const order = lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH
+    const available = []
+    for (let i = 0; i < order.length; i++) {
+      try { const p = await sub.resolveExecutable(order[i]); if (p) available.push({ name: order[i], path: String(p) }) } catch (e) { /* 未安装 */ }
+    }
+    return { available: available, reason: available.length ? 'ok' : 'none' }
+  }
+  function paperArgvFor(engine) {
+    if (engine.name === 'latexmk') return [engine.path, '-pdf', '-interaction=nonstopmode', '-halt-on-error', 'paper.tex']
+    if (engine.name === 'tectonic') return [engine.path, '--keep-logs', 'paper.tex']
+    return [engine.path, '-interaction=nonstopmode', '-halt-on-error', 'paper.tex']
+  }
+  /** 一次编译（nonstopmode），带主动超时 terminate。 */
+  async function paperRunOnce(engine, dirAbs, capMs) {
+    const sub = subprocessOf()
+    if (sub === undefined || typeof sub.spawn !== 'function') return { ok: false, exitCode: null, code: 'NO_SUBPROCESS' }
+    let handle
+    try { handle = sub.spawn({ argv: paperArgvFor(engine), cwd: dirAbs, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: capMs }) }
+    catch (e) { return { ok: false, exitCode: null, code: 'SPAWN_FAILED', message: String((e && e.message) || e) } }
+    let timedOut = false, timer = null, outcome
+    try {
+      outcome = await Promise.race([
+        handle.done,
+        new Promise(function (resolve) { timer = setTimeout(function () { timedOut = true; try { if (handle && typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* best effort */ } resolve({ exitCode: null }) }, capMs) }),
+      ])
+    } catch (e) { if (timer !== null) clearTimeout(timer); return { ok: false, exitCode: null, code: 'RUN_FAILED', message: String((e && e.message) || e) } }
+    if (timer !== null) clearTimeout(timer)
+    let err = ''
+    try { if (handle.collected && handle.collected.stderr) err = String(handle.collected.stderr.readFrom(0).text || '') } catch (e) { /* best effort */ }
+    return { ok: !timedOut && !!outcome && outcome.exitCode === 0, exitCode: outcome ? outcome.exitCode : null, timedOut: timedOut, stderr: err.slice(-1200) }
+  }
+  /**
+   * 编译（spec §5 + 修订 §D/§E）：主引擎（nonstopmode，两遍）→ 换引擎 → 去不支持宏包 → 最小模板再试一次；
+   * 然后报告并降级。**永不删除/覆盖已有 pdf**：成功判据 = 本次运行 exit 0 **且** pdf 存在。
+   */
+  async function paperCompile(id, o, texPrimary, bodyTex) {
+    const relDir = paperDir(id), absDir = paperAbsDir(id)
+    const attempts = []
+    if (!o.compilePdf) return { compile: 'skipped', reason: 'paperCompilePdf=false', engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
+    if (o.format === 'md') return { compile: 'skipped', reason: 'paperFormat=md（不产出 tex，跳过编译）', engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
+    const det = await paperDetectLatex(o.lang)
+    if (det.available.length === 0) {
+      await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）')
+      return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
+    }
+    await paperAppendLog(id, 'latex', '检测到引擎 ' + det.available.map(function (x) { return x.name }).join(', ') + (det.forced ? '（paperLatexCommand 指定）' : ('（顺序 ' + (o.lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH).join(' > ') + '）')))
+    const plan = [{ engine: det.available[0], tex: texPrimary, mode: 'primary' }]
+    if (det.available[1]) plan.push({ engine: det.available[1], tex: texPrimary, mode: 'engine-fallback' })
+    plan.push({ engine: det.available[0], tex: paperSanitizeTex(texPrimary), mode: 'drop-unsupported-packages' })
+    plan.push({ engine: det.available[0], tex: paperMinimalTexDoc({ lang: o.lang, bodyTex: bodyTex }), mode: 'minimal-template' })
+    const cap = 120000
+    for (let i = 0; i < plan.length; i++) {
+      const step = plan[i]
+      await writeText(relDir + '/paper.tex', step.tex)
+      const runs = []
+      for (let pass = 0; pass < 2; pass++) runs.push(await paperRunOnce(step.engine, absDir, cap))
+      const last = runs[runs.length - 1]
+      const pdf = !!last.ok && await paperPathExists(relDir + '/paper.pdf')
+      attempts.push({ engine: step.engine.name, mode: step.mode, ok: pdf, exitCode: last.exitCode, timedOut: !!last.timedOut, stderr: last.stderr || '' })
+      await paperAppendLog(id, 'compile', step.mode + ' engine=' + step.engine.name + ' → ' + (pdf ? 'ok（paper.pdf 已生成）' : ('failed（exit=' + String(last.exitCode) + (last.timedOut ? ', timeout' : '') + '）')))
+      if (pdf) return { compile: (i === 0) ? 'ok' : 'repaired', engine: step.engine.name, mode: step.mode, attempts: attempts, pdfPreserved: false }
+    }
+    await writeText(relDir + '/paper.tex', texPrimary)
+    const preserved = await paperPathExists(relDir + '/paper.pdf')
+    await paperAppendLog(id, 'compile', '所有尝试均失败：保留 paper.tex + paper.md' + (preserved ? '（paper.pdf 是**上一次成功编译**留下的，未被覆盖）' : '，未生成 paper.pdf') + '（不阻塞定稿）')
+    logActivity('paper', '论文 pdf 编译失败（已尝试换引擎/去不支持宏包/最小模板），已保留 tex+md：' + relDir)
+    reportDirty = true
+    return { compile: 'failed', engine: det.available[0].name, attempts: attempts, pdfPreserved: preserved }
+  }
+  /** 落盘 md/tex/pdf/meta（meta **最后**写 = 原子提交点；spec §2/§5）。 */
+  async function paperEmitArtifacts(id, o, info) {
+    const relDir = paperDir(id)
+    const dateStr = fmtTime(now()).slice(0, 10)
+    const author = paperAuthorLine()
+    const evidence = info.evidence || (await paperEvidenceIndex())
+    const title = String(info.title || '').trim() || ('研究报告：' + currentProject)
+    const md = paperBuildMarkdown({ title: title, author: author, date: dateStr, abstract: info.abstract, sections: info.sections, evidence: evidence })
+    const artifacts = { md: false, tex: false, pdf: false }
+    let compile = 'skipped', engine = null, attempts = [], pdfPreserved = false
+    if (o.format === 'md' || o.format === 'both') { await writeText(relDir + '/paper.md', md); artifacts.md = true }
+    if (o.format === 'tex' || o.format === 'both') {
+      const bodyTex = paperMdToTexBody(md)
+      const tex = paperTexDoc({ title: title, author: author, date: dateStr, lang: o.lang, bodyTex: bodyTex })
+      await writeText(relDir + '/paper.tex', tex)
+      artifacts.tex = true
+      const c = await paperCompile(id, o, tex, bodyTex)
+      compile = c.compile; engine = c.engine || null; attempts = c.attempts || []
+      pdfPreserved = !!c.pdfPreserved
+      if (compile === 'ok' || compile === 'repaired') artifacts.pdf = await paperPathExists(relDir + '/paper.pdf')
+    }
+    const filled = PAPER_SKELETON.map(function (s) { return s.key }).filter(function (k) { return !!(info.sections && String(info.sections[k] || '').trim()) })
+    const meta = {
+      id: id, dir: relDir, preset: 'vibe-math-v3', singleAuthor: true, project: currentProject,
+      title: title, author: author, date: dateStr, abstract: String(info.abstract || ''),
+      sectionBodies: info.sections || {}, sections: PAPER_SKELETON.map(function (s) { return s.key }), filledSections: filled,
+      raw: String(info.raw == null ? '' : info.raw), notes: Array.isArray(info.notes) ? info.notes : [],
+      trigger: info.trigger || 'manual', runStartedAt: Number(scheduler.startedAt) || 0,
+      params: { finalPaper: params.finalPaper !== false, paperFormat: o.format, paperLanguage: o.lang, paperCompilePdf: !!o.compilePdf, paperLatexCommand: String(params.paperLatexCommand || '') },
+      finalizedAt: now(), finalizedAtText: fmtTime(now()),
+      artifacts: artifacts, compile: compile, compileEngine: engine, compileAttempts: attempts, pdfPreserved: pdfPreserved,
+      material: info.material || null, evidence: evidence,
+    }
+    await writeJson(relDir + '/paper.meta.json', meta)
+    return meta
+  }
+  async function paperMissingArtifacts(id, o) {
+    const relDir = paperDir(id)
+    const need = []
+    if (o.format === 'md' || o.format === 'both') { if (!(await paperPathExists(relDir + '/paper.md'))) need.push('paper.md') }
+    if (o.format === 'tex' || o.format === 'both') { if (!(await paperPathExists(relDir + '/paper.tex'))) need.push('paper.tex') }
+    return need
+  }
+  /** 派遣（内部）：激活上限拒绝 → 排队重试（修订 §A2）。 */
+  async function paperDispatch(trigger, o, id, prevTries) {
+    const relDir = paperDir(id)
+    const digest = await buildPaperDigest()
+    let childId
+    try {
+      childId = await spawnChild('paper-writer:' + id, paperWriterPrompt(digest, o), { role: 'paper', paperId: id, trigger: trigger, lang: o.lang, format: o.format, compilePdf: o.compilePdf })
+    } catch (e) {
+      const message = String((e && e.message) || e)
+      const limit = activationLimitFrom(message)
+      if (limit !== undefined || /ACTIVATION_LIMIT_REACHED|active child limit/i.test(message)) {
+        const tries = Number(prevTries || 0) + 1
+        if (tries > PAPER_MAX_RETRIES) {
+          paperPending = null
+          await paperAppendLog(id, 'dispatch-failed', '宿主激活上限连续拒绝 ' + PAPER_MAX_RETRIES + ' 次，已放弃自动派遣：' + message)
+          logActivity('paper', '论文撰写子代理被宿主激活上限连续拒绝（' + PAPER_MAX_RETRIES + ' 次），已放弃自动派遣（稍后可 /vibe paper force 重试）：' + message)
+          console.error('vibe-math-v3: paper writer refused by the host activation limit ' + PAPER_MAX_RETRIES + ' times; giving up (retry later with /vibe paper force) — ' + message)
+          await paperLockRelease(id)
+          return { ok: false, message: 'paper writer refused by the activation limit ' + PAPER_MAX_RETRIES + ' times: ' + message, id: id, dir: relDir, limit: limit }
+        }
+        paperPending = { tries: tries, retryAt: now() + PAPER_RETRY_MS, reason: message, limit: limit, trigger: trigger, opts: { lang: o.lang, format: o.format, compilePdf: o.compilePdf } }
+        if (tries === 1 || tries % 3 === 0) {
+          await paperAppendLog(id, 'dispatch-queued', '宿主激活上限（' + (limit === undefined ? '?' : limit) + '）拒绝派遣（第 ' + tries + ' 次）：' + (PAPER_RETRY_MS / 1000) + 's 后重试')
+          logActivity('paper', '论文撰写子代理被宿主激活上限拒绝（第 ' + tries + ' 次），已排队重试：' + message)
+          console.error('vibe-math-v3: paper writer queued after an activation-limit refusal (try ' + tries + '): ' + message)
+        }
+        reportDirty = true
+        return { ok: true, queued: true, reason: 'activation-limit-reached', tries: tries, retryAt: paperPending.retryAt, limit: limit, id: id, dir: relDir }
+      }
+      await paperAppendLog(id, 'dispatch-failed', message)
+      logActivity('paper', '「论文撰写」子代理派遣失败：' + message)
+      await paperLockRelease(id)
+      return { ok: false, message: 'paper writer dispatch failed: ' + message, id: id, dir: relDir }
+    }
+    paperInFlight = childId
+    paperPending = null
+    const material = paperMaterialSummary(digest)
+    await paperAppendLog(id, 'dispatch', 'trigger=' + trigger + ' child=' + childId + ' format=' + o.format + ' lang=' + o.lang + ' compilePdf=' + o.compilePdf + (o.force ? ' force=true' : '') + ' run=' + (Number(scheduler.startedAt) || 0) + ' material=' + material.chars + ' chars/' + material.lines + ' lines')
+    logActivity('paper', '已派遣「论文撰写」子代理（' + trigger + '，' + o.format + '/' + o.lang + '）→ ' + relDir)
+    reportDirty = true
+    return { ok: true, dispatched: true, childId: childId, id: id, dir: relDir, trigger: trigger, format: o.format, lang: o.lang, compilePdf: o.compilePdf }
+  }
+  /** 触发入口（spec §2/§3 + 修订 §A2/§A3）：自动（收口）与手动命令共用。 */
+  async function maybeWritePaper(trigger, opts) {
+    const o = paperOpts(opts)
+    const id = paperId(opts)
+    const relDir = paperDir(id)
+    const meta = await paperReadMeta(id)
+    const sameRun = !!meta && Number(meta.runStartedAt || 0) === (Number(scheduler.startedAt) || 0)
+    if (!o.force && meta && meta.finalizedAt && sameRun) {
+      const missing = await paperMissingArtifacts(id, o)
+      if (missing.length === 0) {
+        await paperAppendLog(id, 'skip', '幂等：同一 run（' + (Number(scheduler.startedAt) || 0) + '）已有定稿且产物齐全 → 不重复撰写（/vibe paper force 可重写）')
+        return { ok: true, skipped: true, reason: 'already-finalized-this-run', id: id, dir: relDir, finalizedAt: meta.finalizedAt, artifacts: meta.artifacts || {}, compile: meta.compile, note: '同一 run 只写一次；重复触发只补写缺失产物（spec §2）' }
+      }
+      await paperAppendLog(id, 'fill', '幂等：已有定稿但缺少 ' + missing.join(', ') + ' → 用已存的定稿内容补写（不重新派遣作者）')
+      const filled = await paperEmitArtifacts(id, o, { title: meta.title, abstract: meta.abstract, sections: meta.sectionBodies || {}, evidence: meta.evidence, raw: meta.raw, notes: (meta.notes || []).concat(['补写缺失产物：' + missing.join(', ')]), trigger: meta.trigger || trigger, material: meta.material })
+      return { ok: true, skipped: true, reason: 'filled-missing-artifacts', filled: missing, id: id, dir: relDir, finalizedAt: filled.finalizedAt, artifacts: filled.artifacts, compile: filled.compile }
+    }
+    if (paperInFlight) return { ok: true, skipped: true, reason: 'writer-in-flight', childId: paperInFlight, id: id, dir: relDir }
+    if (paperPending) return { ok: true, queued: true, reason: 'retry-queued', retryAt: paperPending.retryAt, tries: paperPending.tries, id: id, dir: relDir }
+    const lock = await paperLockAcquire(id)
+    if (!lock.ok) {
+      await paperAppendLog(id, 'skip', 'paper 锁由会话 ' + lock.holder + ' 持有（未过期）→ 本次不派遣（修订 §A3 的 paper 作用域锁）')
+      return { ok: true, skipped: true, reason: 'locked-by-another-session', holder: lock.holder, id: id, dir: relDir }
+    }
+    return await paperDispatch(trigger, o, id, 0)
+  }
+  function paperRetryDue() { return !!(paperPending && now() >= Number(paperPending.retryAt || 0)) }
+  /** 排队重试 + 在途时续租 paper 锁（apply 级心跳每秒调用一次）。 */
+  async function runPaperRetry() {
+    if (paperInFlight) { try { await paperLockAcquire(paperId()) } catch (e) { /* 续租失败不致命 */ } return }
+    if (!paperRetryDue()) return
+    const p = paperPending
+    paperPending = null
+    const o = paperOpts(p.opts)
+    const id = paperId()
+    await paperDispatch(p.trigger || 'auto-retry', o, id, Number(p.tries || 0))
+  }
+  /** `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`（spec §2/§6）。 */
+  async function paperCommand(args) {
+    const rest = Array.isArray(args) ? args : []
+    const opts = {}
+    for (let i = 0; i < rest.length; i++) {
+      const a = String(rest[i] || '')
+      if (a === 'force') { opts.force = true; continue }
+      const eq = a.indexOf('=')
+      const k = eq > 0 ? a.slice(0, eq).toLowerCase() : ''
+      const v = eq > 0 ? a.slice(eq + 1).toLowerCase() : ''
+      if (k === 'lang') { if (v !== 'zh' && v !== 'en') return { ok: false, message: '/vibe paper lang= 只接受 zh|en（收到 ' + JSON.stringify(a) + '）' }; opts.lang = v; continue }
+      if (k === 'format') { if (v !== 'both' && v !== 'md' && v !== 'tex') return { ok: false, message: '/vibe paper format= 只接受 both|md|tex（收到 ' + JSON.stringify(a) + '）' }; opts.format = v; continue }
+      return { ok: false, message: 'unknown /vibe paper option: ' + a + '（可用 lang=zh|en、format=both|md|tex、force）' }
+    }
+    const r = await maybeWritePaper('manual', opts)
+    if (r.ok === false) return r
+    const autoNote = params.finalPaper === false ? '（自动触发已关闭 finalPaper=false；手动命令仍可用）' : ''
+    const msg = r.dispatched ? ('已派遣「论文撰写」子代理，产物将写入 ' + r.dir + '/')
+      : r.queued ? ('宿主激活上限已满：论文撰写已排队，' + (PAPER_RETRY_MS / 1000) + 's 后自动重试（第 ' + r.tries + ' 次）')
+        : (r.reason === 'already-finalized-this-run' ? '同一 run 已有定稿且产物齐全：不重复撰写（需要重写请用 /vibe paper force）'
+          : (r.reason === 'filled-missing-artifacts' ? ('已用既有定稿补写缺失产物：' + (r.filled || []).join(', ')) : ('未重新派遣：' + (r.reason || ''))))
+    return Object.assign({}, r, { message: msg + autoNote, autoDisabled: params.finalPaper === false })
+  }
+  /** 论文撰写子代理结束（spec §4）：解析回复 → 组装 9 节 → 落盘 → 编译 → 记日志 → 释放 paper 锁。 */
+  async function handlePaperWriter(childId, meta, output) {
+    const id = meta.paperId || paperId()
+    paperInFlight = ''
+    const o = paperOpts({ lang: meta.lang, format: meta.format, compilePdf: meta.compilePdf })
+    const parsed = parseJson(output)
+    const info = paperSkeletonFromReply(parsed, output)
+    if (!info.title) info.title = paperTitleFromMd(String(output || '')) || ('研究报告：' + currentProject)
+    for (let i = 0; i < info.notes.length; i++) await paperAppendLog(id, 'note', info.notes[i])
+    if (!String(output || '').trim()) await paperAppendLog(id, 'reply', '作者回复为空：只写骨架 + 占位说明（绝不编造内容）')
+    let written
+    try {
+      written = await paperEmitArtifacts(id, o, { title: info.title, abstract: info.abstract, sections: info.sections, raw: String(output || ''), notes: info.notes, trigger: meta.trigger || 'auto', material: paperMaterialSummary(await buildPaperDigest()) })
+    } catch (e) {
+      await paperAppendLog(id, 'finalize-failed', String((e && e.message) || e))
+      logActivity('paper', '论文落盘失败：' + String((e && e.message) || e))
+      await paperLockRelease(id)
+      return
+    }
+    await paperAppendLog(id, 'finalize', '产物 ' + JSON.stringify(written.artifacts) + ' compile=' + written.compile + (written.compileEngine ? (' engine=' + written.compileEngine) : '') + ' run=' + (Number(scheduler.startedAt) || 0))
+    logActivity('paper', '论文（最终稿）已落盘：' + paperDir(id) + '/（' + Object.keys(written.artifacts).filter(function (k) { return written.artifacts[k] }).join('/') + '，编译=' + written.compile + '）')
+    await paperLockRelease(id)
+    reportDirty = true
+    await saveAll()
+  }
+  /** status 里的论文视图（spec §2/§6）。 */
+  async function paperStatusView() {
+    const id = paperId()
+    const meta = await paperReadMeta(id)
+    return {
+      id: id, dir: paperDir(id), inFlight: paperInFlight || null,
+      queued: paperPending ? { tries: paperPending.tries, retryAt: paperPending.retryAt, reason: paperPending.reason, limit: paperPending.limit === undefined ? null : paperPending.limit } : null,
+      autoFinalPaper: params.finalPaper !== false, format: params.paperFormat, language: params.paperLanguage, compilePdf: params.paperCompilePdf !== false,
+      finalizedAt: meta ? meta.finalizedAt : null, artifacts: meta ? (meta.artifacts || {}) : {}, compile: meta ? meta.compile : null,
+    }
+  }
+
   // ================= child result dispatch =================
   async function onChildEnd(info) {
     // 子代理结束/中断：自动释放它持有的所有写锁（防锁残留导致文件被永久锁住）
@@ -3303,6 +3724,9 @@ export function apply(ctx) {
       else if (meta.role === 'verifier') await handleVerifier(info.id, meta, output, info.stopReason)
       else if (meta.role === 'planner') await handlePlanner(info.id, meta, output)
       else if (meta.role === 'method-keeper') await handleMethodKeeper(info.id, meta, output)
+      // 修订 §A2：论文撰写子代理必须有**自己的分支**——未知 role 的产出会被静默丢弃。
+      else if (meta.role === 'paper') await handlePaperWriter(info.id, meta, output)
+      else console.error('vibe-math-v3: subagent ' + info.id + ' ended with an unknown role "' + String(meta.role) + '" — its output is dropped')
     } catch (e) { console.error('vibe-math-v3 onChildEnd error: ' + String((e && e.stack) || e)) }
     await saveAll()
     await maybePromoteMethods()
@@ -3321,6 +3745,9 @@ export function apply(ctx) {
       if (Object.keys(agentRegistry).length > 0 || Object.keys(tasks).length > 0) {
         logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
         agentRegistry = {}; tasks = {}
+        // 论文派遣态是本进程内存态：子代理已被中断/丢弃，排队与在途标记必须一起清掉（修订 §A2）。
+        if (paperInFlight || paperPending) logActivity('paper', '重启/跨进程恢复：清空论文撰写态（inFlight=' + (paperInFlight || '-') + (paperPending ? ', queued' : '') + '）')
+        paperInFlight = ''; paperPending = null
       }
     }
     await writeJson('State/process_epoch.json', processEpoch)
@@ -3376,7 +3803,7 @@ export function apply(ctx) {
   async function startScheduler(override) { const r = await init(true); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject + '（v3：md 知识库 + 规划代理调度 + 方法库）'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler(override) { const r = await init(false); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; await releaseProjectLock(); logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; planQueue = []; await releaseProjectLock(); logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; planQueue = []; paperInFlight = ''; paperPending = null; await releaseProjectLock(); logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
     for (let i = 0; i < pending.length; i++) {
@@ -3413,6 +3840,8 @@ export function apply(ctx) {
       plannerEnabled: params.plannerEnabled, plannerFails: plannerFails,
       formal: formalSummary(),
       recentActivity: activityLog.slice(-Math.min(10, Number(params.activityLogCap) || 100)), params: params,
+      // 最终论文的可观测面（spec §2/§6）。
+      paper: await paperStatusView(),
     }
   }
   async function checkTermination() {
@@ -3431,8 +3860,14 @@ export function apply(ctx) {
     // H1：在途的 **planner 不算"活跃工作"**。planner 不产出知识、不持有验证任务，只是"问下一步做什么"；
     // 旧判定把刚派出的 planner 也算成活跃代理，于是本 tick 的停机判定永远被自己派出的 planner 挡掉，
     // 空闲时形成"每 tick 一个 planner"的活锁。排除它之后，空闲的那一 tick 就能正常收口停机。
-    const realAgents = Object.keys(agentRegistry).filter(function (cid) { const m = agentRegistry[cid]; return m && m.role !== 'planner' }).length
+    const realAgents = Object.keys(agentRegistry).filter(function (cid) { const m = agentRegistry[cid]; return m && m.role !== 'planner' && m.role !== 'paper' }).length
     if (unsolved.length === 0 && !leftoverVerify && realAgents === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
+      // ★ 最终论文（修订 §A2/§A3）：必须在 running=false 与 releaseProjectLock() **之前**派遣——
+      //   停止之后 scheduleTick() 是空操作；提前放锁后另一会话可能开始写同一棵树（paper 锁兜底）。
+      //   触发点就是这个分支本身：`leftoverVerify` 为空才是 v3 的真实完整性判据（§A4）。
+      if (params.finalPaper !== false) {
+        try { await maybeWritePaper('auto') } catch (e) { logActivity('paper', '自动撰写最终论文失败：' + String((e && e.message) || e)) }
+      }
       scheduler.running = false
       await releaseProjectLock()
       logActivity('stop', 'all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)')
@@ -3464,7 +3899,7 @@ export function apply(ctx) {
     if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
-    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0; formalState = { records: {}, todo: [], libRuns: {} }
+    params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0; formalState = { records: {}, todo: [], libRuns: {} }; paperInFlight = ''; paperPending = null
     await loadSettings(); await migrateLegacyParams(); await loadState(); await loadKnowledgeBase(); await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
@@ -3483,7 +3918,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -3745,7 +4180,8 @@ export function apply(ctx) {
     }
     if (cmd === 'decisions') return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) }
     if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
-    return { ok: false, usage: 'start [override] | resume [override] | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | methods | index | plan | lock | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
+    if (cmd === 'paper') return await paperCommand(args)
+    return { ok: false, usage: 'start [override] | resume [override] | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | methods | index | plan | lock | project [list|new <name>|<name>] | decisions | agents | paper [lang=zh|en] [format=both|md|tex] [force]', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
   }
 
   // ================= session surface =================
@@ -3766,6 +4202,10 @@ export function apply(ctx) {
     handlers: handlers,
     refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
     getRunning: function () { return scheduler.running },
+    // apply 级心跳用（修订 §A2）：running=false 之后 scheduleTick() 是空操作，论文的排队重试
+    // （激活上限）与 paper 锁续租必须由**独立于调度器**的心跳驱动。
+    paperRetryDue: paperRetryDue,
+    runPaperRetry: runPaperRetry,
     // childOwner 裁剪用（审计 L1）：这个会话当前仍"可能再发 subagent/end"的 child
     // = 在册子代理 + 任何任务正在等的那几个。
     referencedChildIds: function () {
@@ -3804,7 +4244,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
@@ -3837,7 +4277,7 @@ export function apply(ctx) {
   ctx.effect(() => commands.register({
     name: 'vibe',
     description: 'control the Vibe Math V3 solver (start/pause/projects/setup/save/decisions/agents/methods/index/plan/lock)',
-    input: { hint: '[start [override]|resume [override]|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents]' },
+    input: { hint: '[start [override]|resume [override]|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]]' },
     handler: async function (invocation) {
       const s = getSession(invocation && invocation.agent)
       if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
@@ -3899,7 +4339,12 @@ export function apply(ctx) {
   ctx.effect(() => {
     let beat = 0
     return everyMs(1000, function () {
-      for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() }
+      for (const s of sessions.values()) {
+        if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick()
+        // 论文心跳（修订 §A2）：**独立于 scheduler.running** —— 收口后 running=false，但被激活上限
+        // 拒绝的撰写派遣仍要重试，在途时还要续租 paper 锁。runPaperRetry() 无事可做时立即返回。
+        if (typeof s.runPaperRetry === 'function') s.runPaperRetry().catch(function (e) { console.error('vibe-math-v3: paper retry failed: ' + String((e && e.message) || e)) })
+      }
       // childOwner 裁剪（审计 L1）：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
       if ((++beat % 30) === 0) {
         try { pruneChildOwner() } catch (e) { console.error('vibe-math-v3: pruneChildOwner failed: ' + String((e && e.message) || e)) }
@@ -3921,6 +4366,240 @@ export function apply(ctx) {
 // to the clock) and `parseProgress` normalises the object it is handed in place (pre-existing).
 // Nothing here is used by the plugin at runtime except through `apply()`, and behaviour is
 // byte-identical to the previous in-`apply` declarations.
+// ============================================================================================
+// 最终论文（规格：_oneoff/spec-final-paper.md + 修订 v2）—— **纯函数部分**（module scope；
+// 与 v2 逐字同构，只有数据来源不同）。会话相关的落盘/派遣/编译在 makeSession 里。
+// ============================================================================================
+/** 固定 9 节骨架（spec §3）。key 同时是 md 的 `## ` 标题与 tex 的 `\section{}`。 */
+const PAPER_SKELETON = [
+  { key: '摘要', spec: '1 标题、作者、日期、摘要（原问题 + 主要结论）' },
+  { key: '引言与问题背景', spec: '2 原问题的完整陈述' },
+  { key: '原问题的完整解法', spec: '3 最终答案 + 完整推理链' },
+  { key: '已检验通过的命题', spec: '4 逐条列出，含判定为真的估计值与证据来源' },
+  { key: '已解决的子问题与中间成果', spec: '5' },
+  { key: '创造或发现的有价值之物', spec: '6 方法、理论、思想、有价值经验、数学理解' },
+  { key: '规律总结', spec: '7 从上述条目归纳出的可复用规律' },
+  { key: '讨论、局限与展望', spec: '8' },
+  { key: '附录：证据与文件索引', spec: '9 Verified/、Logs/、关键卡片路径' },
+]
+const PAPER_NO_EVIDENCE = '（本节暂无证据支持的内容——不编造。）'
+const PAPER_EVIDENCE_HEADING = '证据与文件索引'
+/** LaTeX 引擎检测顺序（spec §5）：中文优先 xelatex，英文优先 pdflatex/latexmk。 */
+const PAPER_ENGINE_ORDER_ZH = ['xelatex', 'latexmk', 'pdflatex', 'lualatex', 'tectonic']
+const PAPER_ENGINE_ORDER_EN = ['pdflatex', 'latexmk', 'xelatex', 'lualatex', 'tectonic']
+/** 只用常见宏包（spec §5）；修复阶段会丢弃不在这个名单里的 \usepackage。 */
+const PAPER_ALLOWED_PACKAGES = ['amsmath', 'amssymb', 'amsthm', 'geometry', 'hyperref', 'longtable', 'booktabs']
+/** tex 必须转义的 10 个字符（spec §5）：\ _ % & # $ { } ~ ^ ——一次替换，避免二次转义。 */
+const PAPER_TEX_MAP = { '\\': '\\textbackslash{}', '_': '\\_', '%': '\\%', '&': '\\&', '#': '\\#', '$': '\\$', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}' }
+function texEscape(s) { return String(s == null ? '' : s).replace(/[\\_%&#${}~^]/g, function (c) { return PAPER_TEX_MAP[c] }) }
+/** 材料摘要（只作记录；幂等判定用 run id + finalizedAt + 逐产物存在性，修订 §C）。 */
+function paperMaterialSummary(digest) {
+  const t = String(digest == null ? '' : digest)
+  return { chars: t.length, lines: t.split('\n').length }
+}
+/** 行内 md → tex：``code`` / **bold** / *em* 转成命令，其余按 spec §5 转义；`$...$` 原样保留。 */
+function paperInlineToTex(s) {
+  const t = String(s == null ? '' : s)
+  let out = ''
+  let i = 0
+  while (i < t.length) {
+    const c = t[i]
+    if (c === '$') { const j = t.indexOf('$', i + 1); if (j > i) { out += t.slice(i, j + 1); i = j + 1; continue } }
+    if (c === '`') { const j = t.indexOf('`', i + 1); if (j > i) { out += '\\texttt{' + texEscape(t.slice(i + 1, j)) + '}'; i = j + 1; continue } }
+    if (c === '*' && t[i + 1] === '*') { const j = t.indexOf('**', i + 2); if (j > i) { out += '\\textbf{' + paperInlineToTex(t.slice(i + 2, j)) + '}'; i = j + 2; continue } }
+    if (c === '*') { const j = t.indexOf('*', i + 1); if (j > i) { out += '\\emph{' + paperInlineToTex(t.slice(i + 1, j)) + '}'; i = j + 1; continue } }
+    out += PAPER_TEX_MAP[c] !== undefined ? PAPER_TEX_MAP[c] : c
+    i++
+  }
+  return out
+}
+/** md 正文 → tex 正文（标题/列表/段落；只认 compose 侧约定的最小语法）。 */
+function paperMdToTexBody(md) {
+  const out = []
+  let inList = false
+  let buf = []
+  const flush = function () { if (buf.length) { out.push(paperInlineToTex(buf.join(' '))); buf = [] } }
+  const closeList = function () { if (inList) { out.push('\\end{itemize}'); inList = false } }
+  const lines = String(md == null ? '' : md).split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, '')
+    const h = /^(#{1,4})\s+(.*)$/.exec(line)
+    if (h) {
+      flush(); closeList()
+      const txt = paperInlineToTex(h[2])
+      const lv = h[1].length
+      out.push(lv <= 1 ? ('\\section*{' + txt + '}') : lv === 2 ? ('\\section{' + txt + '}') : lv === 3 ? ('\\subsection{' + txt + '}') : ('\\subsubsection{' + txt + '}'))
+      continue
+    }
+    const li = /^\s*[-*]\s+(.*)$/.exec(line)
+    if (li) { flush(); if (!inList) { out.push('\\begin{itemize}'); inList = true } out.push('  \\item ' + paperInlineToTex(li[1])); continue }
+    if (!line.trim()) { flush(); closeList(); out.push(''); continue }
+    buf.push(line.trim())
+  }
+  flush(); closeList()
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+/** 主模板（spec §5）：中文 ctexart / 英文 article，只加常见宏包。 */
+function paperTexDoc(o) {
+  const lang = (o && o.lang === 'en') ? 'en' : 'zh'
+  return [
+    '\\documentclass[11pt]{' + (lang === 'en' ? 'article' : 'ctexart') + '}',
+    '\\usepackage[margin=2.5cm]{geometry}',
+    '\\usepackage{amsmath,amssymb,amsthm}',
+    '\\usepackage{hyperref}',
+    '\\usepackage{longtable,booktabs}',
+    '\\title{' + texEscape(o && o.title) + '}',
+    '\\author{' + texEscape(o && o.author) + '}',
+    '\\date{' + texEscape(o && o.date) + '}',
+    '\\begin{document}',
+    '\\maketitle',
+    String((o && o.bodyTex) || ''),
+    '\\end{document}',
+  ].join('\n') + '\n'
+}
+/** 修复阶段的**最小模板**（spec §5）：只留 documentclass + 正文。 */
+function paperMinimalTexDoc(o) {
+  const lang = (o && o.lang === 'en') ? 'en' : 'zh'
+  return [
+    '\\documentclass[11pt]{' + (lang === 'en' ? 'article' : 'ctexart') + '}',
+    '\\begin{document}',
+    String((o && o.bodyTex) || ''),
+    '\\end{document}',
+  ].join('\n') + '\n'
+}
+/** 修复阶段：丢弃不在常见宏包名单里的 \usepackage（其余原样保留）。 */
+function paperSanitizeTex(tex) {
+  const keep = []
+  const lines = String(tex == null ? '' : tex).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^\s*\\usepackage(\[[^\]]*\])?\{([^}]*)\}\s*$/.exec(lines[i])
+    if (m) {
+      const pkgs = String(m[2]).split(',').map(function (x) { return x.trim() }).filter(Boolean)
+      const ok = pkgs.filter(function (p) { return PAPER_ALLOWED_PACKAGES.indexOf(p) >= 0 })
+      if (ok.length === 0) continue
+      keep.push('\\usepackage' + (m[1] || '') + '{' + ok.join(',') + '}')
+      continue
+    }
+    keep.push(lines[i])
+  }
+  return keep.join('\n')
+}
+/** 骨架名匹配：允许带序号/前缀，或只写节名的一部分（例如「附录」）。 */
+function paperSkeletonKey(name) {
+  const n = String(name == null ? '' : name).replace(/^#+\s*/, '').trim()
+  if (!n) return undefined
+  for (const s of PAPER_SKELETON) if (n === s.key) return s.key
+  for (const s of PAPER_SKELETON) if (n.indexOf(s.key) !== -1 || s.key.indexOf(n) !== -1) return s.key
+  return undefined
+}
+/** 按 `## ` 把任意 markdown 切成 [{name,text}]（无标题时 name=''）。 */
+function paperSplitByHeadings(md) {
+  const out = []
+  let cur = { name: '', text: [] }
+  const lines = String(md == null ? '' : md).split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const h = /^##\s+(.*?)\s*$/.exec(lines[i])
+    if (h) { if (cur.name || cur.text.length) out.push({ name: cur.name, text: cur.text.join('\n').trim() }); cur = { name: h[1], text: [] }; continue }
+    cur.text.push(lines[i])
+  }
+  if (cur.name || cur.text.length) out.push({ name: cur.name, text: cur.text.join('\n').trim() })
+  return out
+}
+/** 把「论文撰写」子代理的回复映射到 9 节骨架上（**绝不编造**：缺的节由调用方填占位说明）。 */
+function paperSkeletonFromReply(reply, fallbackText) {
+  const sections = {}
+  const notes = []
+  let title = ''
+  let abstract = ''
+  const put = function (key, body) {
+    const b = String(body == null ? '' : body).trim()
+    if (!b) return
+    sections[key] = sections[key] ? (sections[key] + '\n\n' + b) : b
+  }
+  const absorbUnknown = function (name, text) {
+    if (!name && !String(text || '').trim()) return
+    notes.push('作者写了一节「' + (name || '(无名)') + '」，不属于固定 9 节骨架，已并入「讨论、局限与展望」')
+    put('讨论、局限与展望', (name ? ('**' + name + '**\n\n') : '') + text)
+  }
+  const obj = (reply && typeof reply === 'object' && !Array.isArray(reply)) ? reply : null
+  if (obj) {
+    title = String(obj.title || obj.标题 || '').trim()
+    abstract = String(obj.abstract || obj.摘要 || '').trim()
+    const list = Array.isArray(obj.sections) ? obj.sections : (Array.isArray(obj.章节) ? obj.章节 : [])
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i]
+      if (!s) continue
+      const name = String(s.name || s.key || s.heading || s.标题 || '')
+      const body = String(s.body != null ? s.body : (s.content != null ? s.content : (s.内容 != null ? s.内容 : '')))
+      const key = paperSkeletonKey(name)
+      if (key === undefined) absorbUnknown(name.trim(), body)
+      else put(key, body)
+    }
+    const bodyField = String(obj.body || obj.content || obj.md || obj.正文 || '')
+    if (bodyField.trim()) {
+      const parts = paperSplitByHeadings(bodyField)
+      for (let i = 0; i < parts.length; i++) {
+        const key = paperSkeletonKey(parts[i].name)
+        if (key === undefined) { if (!parts[i].name && !abstract && !sections['摘要']) abstract = parts[i].text; else if (parts[i].name) absorbUnknown(parts[i].name, parts[i].text) }
+        else put(key, parts[i].text)
+      }
+    }
+  } else {
+    const parts = paperSplitByHeadings(String(fallbackText == null ? '' : fallbackText))
+    let matched = 0
+    for (let i = 0; i < parts.length; i++) {
+      const key = paperSkeletonKey(parts[i].name)
+      if (key === undefined) { if (parts[i].name) absorbUnknown(parts[i].name, parts[i].text) }
+      else { put(key, parts[i].text); matched++ }
+    }
+    if (matched === 0) {
+      const raw = String(fallbackText == null ? '' : fallbackText).trim()
+      if (raw) { notes.push('作者回复不是契约 JSON，也没有可识别的 `## ` 节标题；其原样正文已记入「讨论、局限与展望」'); put('讨论、局限与展望', raw) }
+      else notes.push('作者回复为空：没有任何内容可写（不得编造）')
+    }
+  }
+  return { title: title, abstract: abstract, sections: sections, notes: notes }
+}
+/** 组装 md（spec §3）：9 节固定骨架 + 确定性证据索引；缺证据的节写占位说明。 */
+function paperBuildMarkdown(o) {
+  const sec = (o && o.sections) || {}
+  const ev = ((o && o.evidence) || []).slice()
+  const L = []
+  const ttl = String((o && o.title) || '').trim() || '研究报告'
+  L.push('# ' + ttl)
+  L.push('')
+  L.push('- 作者：' + String((o && o.author) || ''))
+  L.push('- 日期：' + String((o && o.date) || ''))
+  L.push('')
+  for (let i = 0; i < PAPER_SKELETON.length; i++) {
+    const key = PAPER_SKELETON[i].key
+    L.push('## ' + key)
+    L.push('')
+    let body = String(sec[key] || '').trim()
+    if (key === '摘要') { const ab = String((o && o.abstract) || '').trim(); if (ab) body = body ? (ab + '\n\n' + body) : ab }
+    if (key === '附录：证据与文件索引' && ev.length) {
+      const idx = '### ' + PAPER_EVIDENCE_HEADING + '\n\n' + ev.map(function (x) { return '- `' + String(x) + '`' }).join('\n')
+      body = body ? (body + '\n\n' + idx) : idx
+    }
+    L.push(body || PAPER_NO_EVIDENCE)
+    L.push('')
+  }
+  return L.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
+}
+/** paper.log.md 的**唯一格式**（v2/v3 逐字一致，spec §4）。 */
+function paperLogHead(id) {
+  return ['# 论文写作日志｜' + String(id), '',
+    '> 单作者流程（v2/v3 同一格式）：收口触发 → 派遣「论文撰写」子代理 → 落盘 md/tex → 编译 pdf。', '']
+}
+function paperLogLine(at, tag, text) { return '- ' + fmtTime(at) + ' [' + String(tag) + '] ' + String(text == null ? '' : text) }
+/** 论文目录 id：只允许安全字符（同一把归一化 ⇒ 不可能写出 Paper/ 之外，spec §6 越权用例）。 */
+function paperDirId(raw) { return (idSafe(String(raw == null ? '' : raw).trim()) || 'run') }
+/** 从回复里抽出可能存在的标题行（md 非契约路径的兜底）。 */
+function paperTitleFromMd(md) {
+  const m = /^#\s+(.*?)\s*$/m.exec(String(md == null ? '' : md))
+  return m ? m[1].trim() : ''
+}
+
 export const __testHelpers = {
   uuid,
   shortId,
@@ -3948,6 +4627,26 @@ export const __testHelpers = {
   parseMethodMd,
   sanitizeToolFilter,
   registeredToolsFromError,
+  // final paper（spec §6 的纯函数守卫面；与 v2 同构）
+  PAPER_SKELETON,
+  PAPER_NO_EVIDENCE,
+  PAPER_ALLOWED_PACKAGES,
+  PAPER_ENGINE_ORDER_ZH,
+  PAPER_ENGINE_ORDER_EN,
+  texEscape,
+  paperMaterialSummary,
+  paperInlineToTex,
+  paperMdToTexBody,
+  paperTexDoc,
+  paperMinimalTexDoc,
+  paperSanitizeTex,
+  paperSkeletonKey,
+  paperSkeletonFromReply,
+  paperBuildMarkdown,
+  paperLogHead,
+  paperLogLine,
+  paperDirId,
+  paperTitleFromMd,
 }
 
 function now() { return Date.now() }
@@ -3968,7 +4667,7 @@ const TOOL_DESC = {
   vibe_math_set_mode: 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.',
   // set_params 的 schema 现在也收 mode（M10）：同一能力既有专用工具 vibe_math_set_mode，也可用这个键；
   // 两条注册路径共用这一份描述，`--self-probe` 会证明漂移能被抓到。
-  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。',
+  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic），产物在 Paper/<项目>/。',
   vibe_math_setup: 'Return the interactive parameter schema for guided configuration.',
   vibe_math_save_settings: 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.',
   vibe_math_template: 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.',

@@ -16,7 +16,7 @@
 //   · the host session log is NEVER written, and the state reloads through the JSON file
 // Run: node tests/e2e-v5-round2.test.mjs
 // ============================================================
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 
@@ -70,6 +70,9 @@ function makeHost(opts) {
       if (name === 'sandboxPolicy') return undefined
       if (name === 'compaction') return o.compaction
       if (name === 'subprocess') {
+        // o.subprocess injects a FAKE LaTeX toolchain for the final-paper tests (the plugin
+        // detects/compiles through this exact service, the same seam the Lean tests use).
+        if (o.subprocess) return o.subprocess
         return {
           async spawn({ argv }) {
             const script = argv[argv.length - 1] || ''
@@ -196,6 +199,86 @@ function makeHost(opts) {
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
 const PROBLEM = '证明素数有无穷多个'
+
+// ── final-paper test helpers ────────────────────────────────────────────────
+// A FAKE LaTeX toolchain (spec §6: "临时目录里放一个假的 xelatex/latexmk 脚本，或注入 runner").
+// It is injected through the SAME `subprocess` service the plugin detects and compiles with, so
+// the plugin's real detection/compile/repair code runs unchanged; only the toolchain is fake.
+// `installed`      — which engine names resolve (others throw, like a missing binary)
+// `failEngines`    — engines whose process exits 1
+// `failOn`         — a RegExp: if the tex on disk matches, the run exits 1 (drives the repair)
+// `alwaysFail`     — every run exits 1 (drives the degrade path)
+function fakeLatex(opts) {
+  const o = opts || {}
+  const calls = []
+  const installed = o.installed || ['xelatex', 'pdflatex']
+  return {
+    calls,
+    async resolveExecutable(name) {
+      if (installed.indexOf(name) === -1) throw new Error('ENOENT: ' + name)
+      return 'C:/fake/' + name
+    },
+    spawn(spec) {
+      const argv = spec.argv || []
+      const name = String(argv[0] || '').split(/[\\/]/).pop()
+      const dir = String(spec.cwd || '')
+      let tex = ''
+      try { tex = readFileSync(join(dir, 'paper.tex'), 'utf8') } catch (e) { /* first attempt may race */ }
+      calls.push({ name, args: argv.slice(1), dir, tex })
+      let ok = true
+      if (o.failEngines && o.failEngines.indexOf(name) !== -1) ok = false
+      if (o.failOn && o.failOn.test(tex)) ok = false
+      if (o.alwaysFail) ok = false
+      if (ok) {
+        try { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'paper.pdf'), '%PDF-1.4 fake\n', 'utf8') } catch (e) { ok = false }
+      }
+      return { done: Promise.resolve({ exitCode: ok ? 0 : 1 }), terminate() {} }
+    },
+  }
+}
+const paperKindOf = (p) => /【最终论文·撰写/.test(p) ? 'write'
+  : /【最终论文·互审/.test(p) ? 'review'
+    : /【最终论文·定稿/.test(p) ? 'final' : ''
+const paperDirOf = (h, id) => join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Paper', id || 'institute')
+function listFilesUnder(root, rel) {
+  const out = []
+  const base = rel === undefined ? '' : rel
+  for (const e of readdirSync(root, { withFileTypes: true })) {
+    const r = base ? base + '/' + e.name : e.name
+    if (e.isDirectory()) out.push(...listFilesUnder(join(root, e.name), r))
+    else out.push(r)
+  }
+  return out
+}
+// Answer the paper phase's own prompts until the flow stops asking: each member writes its
+// part, cross-reviews another member's part, and the editor finalises. `opts.write/review/final`
+// override the default (deliverable) replies, which is how the objection/cap paths are driven.
+async function drivePaper(h, opts) {
+  const o = opts || {}
+  let steps = 0, idle = 0
+  while (steps < (o.max || 40) && idle < 8) {
+    const i = h.wakes.findIndex(w => paperKindOf((w.blocks && w.blocks[0] && w.blocks[0].text) || ''))
+    if (i === -1) { idle++; await sleep(25); continue }
+    idle = 0
+    const w = h.wakes.splice(i, 1)[0]
+    const prompt = (w.blocks && w.blocks[0] && w.blocks[0].text) || ''
+    const kind = paperKindOf(prompt)
+    const who = h.labelOf(w.childId)
+    let reply
+    if (kind === 'write') {
+      reply = o.write ? o.write(who, prompt) : ({ paper_part: { title: who + ' 的贡献', solution: who + '：原问题的完整解法（只写有证据的部分）。', methods: who + ' 的方法与经验。', rules: who + ' 归纳的规律。', limits: who + ' 的局限（未定论项已标注）。', evidence: ['Members/' + who + '/Propos/p-' + who + '.md'] } })
+    } else if (kind === 'review') {
+      const om = /待审部分（([^）]*)）/.exec(prompt)
+      reply = o.review ? o.review(who, om ? om[1] : '', prompt) : ({ paper_review: { of: om ? om[1] : '', deliverable: true, comments: who + '：证据与表决记录一致，可交付。' } })
+    } else {
+      reply = o.final ? o.final(who, prompt) : ({ paper_final: { decision: 'deliverable', note: '已核对合并稿与互审意见，统一术语与符号。', conclusion: '题设范围内结论成立。' } })
+    }
+    h.fireEnd(w.childId, reply)
+    steps++
+    await sleep(20)
+  }
+  return steps
+}
 
 // The durable authority is the hardened JSON file. A commit is applied to the in-memory
 // snapshot immediately but written through a deferred per-file chain, so a test that wants to
@@ -936,6 +1019,290 @@ console.log('\n[22] configure/start/resume/pause/stop/set belong to the PROVABLE
     'the refused stop did not dissolve the roster (' + (after.members || []).map((m) => m.id + ':' + m.phase).join(',') + ')')
   const finalStop = await h.callTool('vibe_v5_stop', {})
   assert(finalStop.ok === true, 'the office can still stop it (' + JSON.stringify(finalStop).slice(0, 90) + ')')
+}
+
+// ---------- 23. final-paper params: closed schema, defaults, explicit coercion ----------
+console.log('\n[23] final-paper params: closed schema, defaults and explicit coercion')
+{
+  const h = makeHost({ pluginModule })
+  const setSpec = h.toolRegs.find(t => t.name === 'vibe_v5_set')
+  const keys = ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperEditor', 'paperLatexCommand']
+  assert(!!setSpec && keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
+    '★ vibe_v5_set advertises all six final-paper keys (the schema is closed, so an unlisted key is unreachable)')
+  const props = setSpec.parameters.properties
+  assert(JSON.stringify(props.paperFormat.enum) === JSON.stringify(['both', 'md', 'tex']) &&
+    JSON.stringify(props.paperLanguage.enum) === JSON.stringify(['zh', 'en']) &&
+    JSON.stringify(props.paperEditor.enum) === JSON.stringify(['office', 'academician']),
+    'the three enums are narrowed in the schema (a typo must not become a fourth mode)')
+  const s0 = (await h.callTool('vibe_v5_status', {})).params
+  assert(s0.finalPaper === true && s0.paperFormat === 'both' && s0.paperLanguage === 'zh' && s0.paperCompilePdf === true &&
+    s0.paperEditor === 'academician' && s0.paperLatexCommand === '',
+    'the documented defaults are live (' + JSON.stringify({ f: s0.finalPaper, fmt: s0.paperFormat, lang: s0.paperLanguage, pdf: s0.paperCompilePdf, ed: s0.paperEditor }) + ')')
+  const r = await h.callTool('vibe_v5_set', { finalPaper: 'false', paperFormat: 'bogus', paperLanguage: 'EN', paperEditor: 'root', paperCompilePdf: 1, paperLatexCommand: 'lualatex' })
+  assert(r.ok === true && r.params.finalPaper === false, "★ finalPaper:'false' is coerced to false (v2 §B: an unknown spelling must not stay truthy)")
+  assert(r.params.paperFormat === 'both', 'an unknown paperFormat falls back to both')
+  assert(r.params.paperLanguage === 'en' && r.params.paperEditor === 'office', 'enums are case-insensitive and legacy aliases resolve (EN → en, root → office)')
+  assert(r.params.paperCompilePdf === true && r.params.paperLatexCommand === 'lualatex', 'paperCompilePdf accepts 1 as true; paperLatexCommand is stored')
+}
+
+// ---------- 24. the team flow with the OFFICE as editor (+ the consultation gate) ----------
+console.log('\n[24] manual paper, office editor: parts → cross-review → consultation → finalise')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  // ONE verified object, so section 4 has real evidence to index.
+  await h.callTool('vibe_v5_record_proposition', { id: 'p-paper', statement: '最终论文只整理已有证据，不得编造', value: 0.9, motive: '论文证据', p: 1 }, h.childAgent(h.childOf('r-1')))
+  await h.callTool('vibe_v5_propose_verify', { target: 'p-paper', kind: 'proposition', reason: '论文证据' }, h.childAgent(h.childOf('r-1')))
+  h.plannedVotes = new Map([['acad', 1], ['r-1', 1]])
+  await h.drain(10)
+  const sv = await h.callTool('vibe_v5_status', {})
+  assert(sv.verified.indexOf('p-paper') !== -1, 'precondition: one object is verified (the paper needs evidence)')
+  assert(sv.paper === null, 'NEGATIVE: a run that has NOT concluded does not auto-start a paper')
+  // A second object is left UNDECIDED (both voters abstain), so section 8 has an unresolved item
+  // that MUST be marked as such.
+  await h.callTool('vibe_v5_set', { verdictMaxRounds: 1 })
+  await h.callTool('vibe_v5_record_proposition', { id: 'p-open', statement: '仍未定论的对象必须显式标注', value: 0.5, motive: '未决项', p: 0.5 }, h.childAgent(h.childOf('r-1')))
+  await h.callTool('vibe_v5_propose_verify', { target: 'p-open', kind: 'proposition', reason: '未决项' }, h.childAgent(h.childOf('r-1')))
+  h.plannedVotes = new Map([['acad', 0.5], ['r-1', 0.5]])
+  await h.drain(10)
+  const su = await h.callTool('vibe_v5_status', {})
+  assert(su.undecided.indexOf('p-open') !== -1, 'precondition: one object is recorded as 未定论 (got ' + JSON.stringify(su.undecided) + ')')
+  h.plannedVotes = new Map()
+  const started = await h.callTool('vibe_v5_paper', { lang: 'en', format: 'both', editor: 'office' })
+  assert(started.ok === true && started.started === true && started.editor === 'office',
+    'the manual paper starts with the office as its editor (' + JSON.stringify(started).slice(0, 130) + ')')
+  await drivePaper(h)
+  let st = await h.callTool('vibe_v5_status', {})
+  assert(st.paper && st.paper.status === 'awaiting-editor' && st.paper.parts.length === 2 && st.paper.reviews.length === 2,
+    '★ both permanent members wrote a part and cross-reviewed another part (' + JSON.stringify({ s: st.paper && st.paper.status, parts: st.paper && st.paper.parts.length, reviews: st.paper && st.paper.reviews.length }) + ')')
+  const refused = await h.callTool('vibe_v5_finalize_paper', { decision: 'deliverable', note: 'x' })
+  assert(refused.ok === false && refused.code === 'V5_PAPER_CONSULT_REQUIRED',
+    '★ NEGATIVE: the office cannot finalise before consulting the institute (' + JSON.stringify(refused).slice(0, 140) + ')')
+  const msg = await h.callTool('vibe_v5_message', { to: 'all', content: '请各自核对证据与结论，我们随后定稿。' })
+  assert(msg.ok === true, 'the office message is delivered')
+  await h.callTool('vibe_v5_meeting', { agenda: '定稿前审查：证据与结论是否一致', kind: 'sync' })
+  await h.drain(12)
+  st = await h.callTool('vibe_v5_status', {})
+  assert(st.paper.consult.messages >= 1 && st.paper.consult.meetings >= 1,
+    '★ the office consultation is RECORDED (messages=' + st.paper.consult.messages + ', meetings=' + st.paper.consult.meetings + ')')
+  const fin = await h.callTool('vibe_v5_finalize_paper', { decision: 'deliverable', note: '已与全所逐条核对证据，术语与符号统一，结论与表决记录一致。', conclusion: '题设范围内结论成立。' })
+  assert(fin.ok === true && fin.finalized === true, 'the office finalises after consulting (' + JSON.stringify(fin).slice(0, 150) + ')')
+  assert(fin.compile === 'not-detected', '★ this machine has no LaTeX: the compile degrades to not-detected instead of failing (' + fin.compile + ')')
+  const dir = paperDirOf(h, 'institute')
+  const md = existsSync(join(dir, 'paper.md')) ? readFileSync(join(dir, 'paper.md'), 'utf8') : ''
+  const tex = existsSync(join(dir, 'paper.tex')) ? readFileSync(join(dir, 'paper.tex'), 'utf8') : ''
+  const meta = existsSync(join(dir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8')) : null
+  const heads = (md.match(/^## \d+\. /gm) || []).length
+  assert(heads === 9, '★ the md carries exactly the 9-section skeleton (got ' + heads + ')')
+  assert(md.indexOf('p-paper') !== -1, '★ the verified proposition is listed with its evidence path')
+  assert(md.indexOf('未定论：p-open') !== -1, '★ an undecided object is EXPLICITLY marked in the paper (never silently dropped or promoted)')
+  assert(tex.indexOf('\\documentclass') !== -1 && /\\section\{1\. /.test(tex), '★ the tex version is generated from the same sections')
+  assert(md.indexOf('已与全所逐条核对证据') !== -1, 'the office finalisation note is written into the paper')
+  assert(!!meta && meta.editor === 'office' && meta.consultation.messages >= 1 && meta.consultation.meetings >= 1 && meta.compile.status === 'not-detected',
+    'the meta records the editor, the consultation evidence and the compile result')
+  assert(existsSync(join(dir, 'paper.log.md')), 'the paper log records who wrote/reviewed what')
+  const instRoot = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  const stray = listFilesUnder(instRoot).filter(p => /(^|\/)paper\.(md|tex|pdf|meta\.json|log\.md)$/i.test(p) && p.indexOf('Paper/institute/') !== 0)
+  assert(stray.length === 0, '★ every paper artifact lives under Paper/<id>/ only (no Verified//State/ pollution): ' + JSON.stringify(stray))
+  assert((await h.callTool('vibe_v5_status', {})).autoDone === false, 'a MANUAL paper does not conclude the run')
+}
+
+// ---------- 25. idempotency: a repeated trigger only fills missing artifacts ----------
+console.log('\n[25] paper idempotency: repeated triggers only fill missing artifacts')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const first = await h.callTool('vibe_v5_paper', {})
+  assert(first.ok === true && first.started === true, 'the single-member institute starts its paper')
+  await drivePaper(h)
+  const dir = paperDirOf(h, 'institute')
+  const metaPath = join(dir, 'paper.meta.json')
+  assert(existsSync(join(dir, 'paper.md')) && existsSync(metaPath), 'the first run delivered md + meta')
+  const meta1 = readFileSync(metaPath, 'utf8')
+  const again = await h.callTool('vibe_v5_paper', {})
+  assert(again.ok === true && again.alreadyFinalized === true, 'a repeated trigger reports alreadyFinalized instead of re-running the team (' + JSON.stringify(again).slice(0, 120) + ')')
+  assert(readFileSync(metaPath, 'utf8') === meta1, '★ paper.meta.json is NOT rewritten (finalizedAt/inputs untouched)')
+  unlinkSync(join(dir, 'paper.md'))
+  const refill = await h.callTool('vibe_v5_paper', {})
+  assert(refill.ok === true && existsSync(join(dir, 'paper.md')), '★ the missing artifact is refilled (' + JSON.stringify(refill.refill) + ')')
+  assert(readFileSync(metaPath, 'utf8') === meta1, 'the refill did not touch the settled meta either')
+  const forced = await h.callTool('vibe_v5_paper', { force: true, reason: 'manual force' })
+  assert(forced.ok === true && forced.started === true && !forced.alreadyFinalized,
+    '★ force re-runs the whole team flow instead of refilling (' + JSON.stringify(forced).slice(0, 120) + ')')
+  const stF = await h.callTool('vibe_v5_status', {})
+  assert(stF.paper.status === 'writing' && stF.paper.round === 1, 'the forced run restarted at round 1')
+}
+
+// ---------- 26. fake LaTeX: the success path produces paper.pdf ----------
+console.log('\n[26] fake LaTeX compiler: success path produces paper.pdf')
+{
+  const fake = fakeLatex({ installed: ['xelatex', 'pdflatex'] })
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  await h.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h)
+  const st = await h.callTool('vibe_v5_status', {})
+  assert(st.paper && st.paper.status === 'finalized' && st.paper.compile === 'compiled', 'the paper finalised with the fake compiler (' + JSON.stringify(st.paper && { s: st.paper.status, c: st.paper.compile }) + ')')
+  const dir = paperDirOf(h, 'institute')
+  assert(existsSync(join(dir, 'paper.pdf')), '★ paper.pdf was produced by the compiler subprocess inside Paper/<id>/')
+  const meta = JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8'))
+  assert(meta.compile.status === 'compiled' && meta.compile.engine === 'xelatex' && meta.compile.attempts.length === 1,
+    'the meta records compiled/xelatex on the FIRST attempt (' + JSON.stringify(meta.compile) + ')')
+  assert(fake.calls.length >= 2 && fake.calls.every(c => c.args.indexOf('-interaction=nonstopmode') !== -1),
+    '★ the engine ran twice with -interaction=nonstopmode (spec §5)')
+}
+
+// ---------- 27. fake LaTeX: a failing package is repaired, then it degrades ----------
+console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degradation')
+{
+  // The fake refuses `\\usepackage[hidelinks]{hyperref}`; the repair pass strips optional
+  // packages, so attempt 3 succeeds (attempts 1-2 fail on the full tex).
+  const fake = fakeLatex({ installed: ['xelatex'], failOn: /\\usepackage\[hidelinks\]\{hyperref\}/ })
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  await h.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h)
+  const dir = paperDirOf(h, 'institute')
+  const meta = JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8'))
+  const at = meta.compile.attempts || []
+  assert(meta.compile.status === 'compiled' && existsSync(join(dir, 'paper.pdf')), '★ the repair retry turned a failing compile into a PDF')
+  assert(at.length === 3 && at[0].ok === false && at[1].ok === false && at[2].ok === true && at[2].label.indexOf('stripped') !== -1,
+    '★ attempts: full FAIL → nonstopmode rerun FAIL → stripped-package SUCCESS (' + JSON.stringify(at.map(a => a.label + ':' + a.ok)) + ')')
+  // A compiler that always fails must degrade, not throw, and must not block finalisation.
+  const fake2 = fakeLatex({ installed: ['xelatex'], alwaysFail: true })
+  const h2 = makeHost({ pluginModule, subprocess: fake2 })
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h2.settleSpawns()
+  const fin = await h2.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h2)
+  const st2 = await h2.callTool('vibe_v5_status', {})
+  const dir2 = paperDirOf(h2, 'institute')
+  const meta2 = JSON.parse(readFileSync(join(dir2, 'paper.meta.json'), 'utf8'))
+  assert(fin.ok === true && st2.paper.status === 'finalized' && st2.paper.compile === 'failed',
+    '★ a persistent compile failure DEGRADES (finalisation still succeeds, compile=failed) (' + st2.paper.compile + ')')
+  assert(existsSync(join(dir2, 'paper.tex')) && existsSync(join(dir2, 'paper.md')) && !existsSync(join(dir2, 'paper.pdf')),
+    'tex+md are kept and no bogus pdf is written')
+  assert(/\\title\{/.test(readFileSync(join(dir2, 'paper.tex'), 'utf8')),
+    '★ the DELIVERED tex is the canonical generated one, not the minimal repair variant used by the last attempt')
+  assert((meta2.compile.attempts || []).length === 4, '★ the retry plan is CAPPED at 4 attempts (full → nonstopmode → stripped/engine-swap → minimal template)')
+  assert((meta2.warnings || []).join(' ').indexOf('编译失败') !== -1, 'the failure is reported as a warning in the meta')
+  // Engine swap: the first installed engine fails, so attempt 3 (the NEXT engine) succeeds.
+  const fake3 = fakeLatex({ installed: ['xelatex', 'pdflatex'], failEngines: ['xelatex'] })
+  const h3 = makeHost({ pluginModule, subprocess: fake3 })
+  await h3.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h3.settleSpawns()
+  await h3.callTool('vibe_v5_paper', { format: 'both' })
+  await drivePaper(h3)
+  const dir3 = paperDirOf(h3, 'institute')
+  const meta3 = JSON.parse(readFileSync(join(dir3, 'paper.meta.json'), 'utf8'))
+  assert(meta3.compile.status === 'compiled' && meta3.compile.engine === 'pdflatex' && (meta3.compile.attempts || []).length === 3,
+    '★ engine swap: xelatex fails twice, pdflatex succeeds on the third attempt (' + JSON.stringify({ e: meta3.compile.engine, n: (meta3.compile.attempts || []).length }) + ')')
+  // paperFormat=md with paperCompilePdf=true must skip compilation SILENTLY (no "missing tex"
+  // warning) — spec v2 §E.
+  const hm = makeHost({ pluginModule, subprocess: fakeLatex({ installed: ['xelatex'] }) })
+  await hm.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await hm.settleSpawns()
+  await hm.callTool('vibe_v5_paper', { format: 'md' })
+  await drivePaper(hm)
+  const dm = paperDirOf(hm, 'institute')
+  const metam = JSON.parse(readFileSync(join(dm, 'paper.meta.json'), 'utf8'))
+  assert(existsSync(join(dm, 'paper.md')) && !existsSync(join(dm, 'paper.tex')) && !existsSync(join(dm, 'paper.pdf')),
+    'paperFormat=md delivers md only (no tex, no pdf)')
+  assert(metam.compile.status === 'skipped' && !/编译|tex/.test((metam.warnings || []).join(' ')),
+    '★ paperFormat=md skips compilation silently (no missing-tex warning): ' + JSON.stringify(metam.warnings))
+}
+
+// ---------- 28. office-only surface + id normalisation ----------
+console.log('\n[28] the final-paper surface is office-only and its directory id cannot escape Paper/')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const member = h.childAgent(h.childOf('r-1'))
+  const asMember = await h.callTool('vibe_v5_paper', {}, member)
+  assert(asMember.ok === false && asMember.code === 'V5_NOT_OFFICE', 'a member cannot start the paper (' + JSON.stringify(asMember).slice(0, 100) + ')')
+  const finAsMember = await h.callTool('vibe_v5_finalize_paper', { decision: 'deliverable', note: 'x' }, member)
+  assert(finAsMember.ok === false && finAsMember.code === 'V5_NOT_OFFICE', 'a member cannot finalise the paper')
+  // A traversal-shaped institute name must never become a path in the paper id.
+  const h2 = makeHost({ pluginModule })
+  await h2.callTool('vibe_v5_configure', { institute: 'evil/../x' })
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h2.settleSpawns()
+  await h2.callTool('vibe_v5_paper', {})
+  await drivePaper(h2)
+  const p2 = (await h2.callTool('vibe_v5_status', {})).paper
+  const id = String(p2.dir || '').replace(/^Paper\//, '').replace(/\/$/, '')
+  assert(id.length > 0 && id.indexOf('/') === -1 && id.indexOf('\\') === -1 && id !== '.' && id !== '..',
+    '★ the paper directory id is ONE normalised name (never a path): ' + JSON.stringify(id))
+  assert(existsSync(join(h2.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'x', 'Paper', id, 'paper.log.md')),
+    'the paper landed under Paper/<id>/ inside the resolved institute tree')
+}
+
+// ---------- 29. /v5 paper: overrides, force, kind:error; finalPaper=false gates AUTO ----------
+console.log('\n[29] /v5 paper: one-shot overrides, kind:error, and finalPaper=false')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const cmd = h.commandRegs.find(c => c.name === 'v5')
+  assert(!!cmd, 'the /v5 command is registered')
+  const bad = await cmd.handler({ agent: h.ROOT, rawInput: 'paper bogus=1' })
+  assert(bad.kind === 'error', '★ an unknown paper option is a FAILED command (kind:error): ' + String(bad.text).slice(0, 100))
+  const memberCall = await cmd.handler({ agent: h.childAgent(h.childOf('acad')), rawInput: 'paper' })
+  assert(memberCall.kind === 'error', 'a member child cannot drive the /v5 control line')
+  const okCmd = await cmd.handler({ agent: h.ROOT, rawInput: 'paper lang=en format=tex editor=office' })
+  assert(okCmd.kind === 'success', 'the paper subcommand succeeds: ' + String(okCmd.text).slice(0, 120))
+  const st = await h.callTool('vibe_v5_status', {})
+  assert(st.paper && st.paper.lang === 'en' && st.paper.format === 'tex' && st.paper.editor === 'office',
+    '★ the command overrides language/format/editor FOR THIS PAPER (' + JSON.stringify({ l: st.paper.lang, f: st.paper.format, e: st.paper.editor }) + ')')
+  assert(st.params.paperLanguage === 'zh' && st.params.paperEditor === 'academician',
+    'the one-shot overrides do NOT rewrite the persisted params')
+  // finalPaper=false: the AUTO trigger is off, the run concludes immediately, the manual path says so.
+  const h2 = makeHost({ pluginModule })
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h2.settleSpawns()
+  await h2.callTool('vibe_v5_set', { finalPaper: false })
+  h2.solvePlan = true
+  await h2.callTool('vibe_v5_meeting', { agenda: '是否已解决原问题？', kind: 'solve-vote' })
+  await h2.drain(24)
+  const s2 = await h2.callTool('vibe_v5_status', {})
+  assert(s2.autoDone === true && !s2.paper, '★ finalPaper=false: the run concludes WITHOUT starting a paper (' + JSON.stringify({ autoDone: s2.autoDone, paper: s2.paper }) + ')')
+  const manual = await h2.callTool('vibe_v5_paper', {})
+  assert(manual.ok === true && manual.autoDisabled === true && /自动已关闭/.test(String(manual.note)),
+    'the manual command still works when finalPaper=false and says the automatic path is off (' + JSON.stringify(manual).slice(0, 220) + ')')
+}
+
+// ---------- 30. unanimity is required; the round cap records the disagreement ----------
+console.log('\n[30] unanimity: an objection does NOT finalise, the cap records the disagreement in the appendix')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const objecting = () => ({ paper_review: { deliverable: false, comments: '证据不足，需补充' } })
+  await h.callTool('vibe_v5_paper', {})
+  // Round 1 stopped after its write+review: the objection must NOT finalise anything.
+  await drivePaper(h, { max: 2, review: () => objecting() })
+  let st = await h.callTool('vibe_v5_status', {})
+  assert(st.paper && st.paper.status === 'writing' && st.paper.round === 2,
+    '★ an objection does NOT finalise: the flow iterates to the next round (status=' + st.paper.status + ', round=' + st.paper.round + ')')
+  assert(st.paper.disagreement.length >= 1, 'the objection is recorded as a disagreement')
+  // Keep objecting; at the cap the editor (academician) is asked and asks to revise again — the
+  // spec says a cap is reached, a warning is recorded and the disagreement goes into the appendix.
+  await drivePaper(h, {
+    review: () => objecting(),
+    final: () => ({ paper_final: { decision: 'revise', note: '仍有未达成一致的意见' } }),
+  })
+  const st2 = await h.callTool('vibe_v5_status', {})
+  assert(st2.paper && st2.paper.status === 'finalized' && st2.paper.forcedAfterCap === true,
+    '★ the round cap was enforced, the disagreement recorded, and the editor finalised (' + JSON.stringify({ s: st2.paper && st2.paper.status, cap: st2.paper && st2.paper.forcedAfterCap }) + ')')
+  assert((st2.paper.warnings || []).join(' ').indexOf('上限') !== -1, 'the cap produced a WARNING (' + JSON.stringify(st2.paper.warnings) + ')')
+  const md = readFileSync(join(paperDirOf(h, 'institute'), 'paper.md'), 'utf8')
+  assert(md.indexOf('分歧记录') !== -1 && md.indexOf('证据不足，需补充') !== -1,
+    '★ the unresolved disagreement is written into the APPENDIX of the paper')
 }
 
 console.log('')

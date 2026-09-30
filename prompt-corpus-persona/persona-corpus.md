@@ -6,7 +6,7 @@
 ## vibe-math-v2
 
 - 注册工具数：**25**
-- 斜杠命令 hint：`start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents`
+- 斜杠命令 hint：`start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]`
 
 ### config.prefix
 
@@ -28,7 +28,7 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
 - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
 - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
 - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-- vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
+- vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require, finalPaper true|false, paperFormat both|md|tex, paperLanguage zh|en, paperCompilePdf true|false, paperLatexCommand <engine>).
 - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
 - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
 - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -37,6 +37,10 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
   verification (execute / archive / list the reuse library). The scheduler's child agents
   use them too; they work in every mode.
 
+Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
+automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
+automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
+paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
 A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
 (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
 and survives restarts via vibe_math_resume.
@@ -97,7 +101,7 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
 - vibe_math_status / vibe_math_report — read scheduler status / full progress report (report also writes Progress_Logs/report.json).
 - vibe_math_pause / vibe_math_abort — pause / abort (abort interrupts all children).
 - vibe_math_set_mode {mode: manual|auto} — switch manual / auto control.
-- vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require).
+- vibe_math_set_params {...} — tune any parameter (see vibe_math_setup for the full schema; e.g. reportMode file|push|both, promoteValueThreshold, verdictMode flat|forced, formalVerify off|encourage|require, finalPaper true|false, paperFormat both|md|tex, paperLanguage zh|en, paperCompilePdf true|false, paperLatexCommand <engine>).
 - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
 - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
 - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -106,6 +110,10 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
   verification (execute / archive / list the reuse library). The scheduler's child agents
   use them too; they work in every mode.
 
+Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
+automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
+automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
+paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
 A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
 (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
 and survives restarts via vibe_math_resume.
@@ -150,7 +158,7 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
 ## vibe-math-v3
 
 - 注册工具数：**33**
-- 斜杠命令 hint：`start [override]|resume [override]|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents`
+- 斜杠命令 hint：`start [override]|resume [override]|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]`
 
 ### config.prefix
 
@@ -188,7 +196,10 @@ is experiential reference.
   plannerEnabled/plannerProvider/plannerModel/plannerPersona, planMinIntervalMs, plannerMaxFails,
   methodKeepIntervalMs/methodKeepEvery, methodAutoPromote, indexAutoRebuild, projectLockTimeoutMs,
   formalVerify/leanCommand/leanArgs/leanTimeoutMs — Lean 形式化验证（off = 默认不额外要求，
-  encourage = 按实现难度自行形式化、Lean 通过后审查对象变为忠实性，require = 同上并加结论门禁）).
+  encourage = 按实现难度自行形式化、Lean 通过后审查对象变为忠实性，require = 同上并加结论门禁）,
+  finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand — 最终论文（收口时自动派遣
+  「论文撰写」子代理，把已收口的解法/命题/成果整理成 Paper/<project>/；finalPaper=false 只关自动触发，
+  /vibe paper 仍可手动触发）。
 - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
 - vibe_math_plan {force?} — show queued plan / last plan, or force a planning round.
 - vibe_math_index — rebuild State/index.json from the Markdown knowledge base.
@@ -203,7 +214,7 @@ is experiential reference.
   use them too; they work in every mode.
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|...).
+<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
 Data survives restarts via vibe_math_resume.
 
 Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
@@ -273,7 +284,10 @@ is experiential reference.
   plannerEnabled/plannerProvider/plannerModel/plannerPersona, planMinIntervalMs, plannerMaxFails,
   methodKeepIntervalMs/methodKeepEvery, methodAutoPromote, indexAutoRebuild, projectLockTimeoutMs,
   formalVerify/leanCommand/leanArgs/leanTimeoutMs — Lean 形式化验证（off = 默认不额外要求，
-  encourage = 按实现难度自行形式化、Lean 通过后审查对象变为忠实性，require = 同上并加结论门禁）).
+  encourage = 按实现难度自行形式化、Lean 通过后审查对象变为忠实性，require = 同上并加结论门禁）,
+  finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand — 最终论文（收口时自动派遣
+  「论文撰写」子代理，把已收口的解法/命题/成果整理成 Paper/<project>/；finalPaper=false 只关自动触发，
+  /vibe paper 仍可手动触发）。
 - vibe_math_setup / vibe_math_save_settings / vibe_math_template — guided configuration / persist defaults / generate template.
 - vibe_math_plan {force?} — show queued plan / last plan, or force a planning round.
 - vibe_math_index — rebuild State/index.json from the Markdown knowledge base.
@@ -288,7 +302,7 @@ is experiential reference.
   use them too; they work in every mode.
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|...).
+<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
 Data survives restarts via vibe_math_resume.
 
 Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
@@ -326,7 +340,7 @@ When the user asks about progress, call vibe_math_report and summarize in plain 
 ## vibe-math-v4
 
 - 注册工具数：**32**
-- 斜杠命令 hint：`configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set`
+- 斜杠命令 hint：`configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set`
 
 ### config.prefix
 
@@ -375,7 +389,7 @@ Data lives under {{cwd}}/VibeMath/Projects/<project>/:
 Main controls (recommended flow: configure FIRST, then start):
   - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
   - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-  - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain.
+  - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
   - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
   - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
   - vibe_v4_meeting {agenda} — force a meeting.
@@ -386,7 +400,11 @@ Main controls (recommended flow: configure FIRST, then start):
   - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
     objects, recorded blockers, formalization TODO, library paths).
   - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
-A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set <k=v>...).
+A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...).
+Final paper: after the unanimous stop vote the run enters a PAPER phase — every resident writes their part, each
+cross-reviews at least one other part, and the paperEditor finalises (office = the human/assistant side, or one named
+resident); only then is the run marked complete. finalPaper=false skips the phase; /v4 paper [lang=zh|en]
+[format=md|tex|both] [editor=office|resident:<id>] [force] starts or re-runs it by hand.
 
 TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
 trustworthy; everything else — unverified resident claims, Progress/, Method claims —
@@ -470,7 +488,7 @@ Data lives under {{cwd}}/VibeMath/Projects/<project>/:
 Main controls (recommended flow: configure FIRST, then start):
   - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
   - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-  - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain.
+  - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
   - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
   - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
   - vibe_v4_meeting {agenda} — force a meeting.
@@ -481,7 +499,11 @@ Main controls (recommended flow: configure FIRST, then start):
   - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
     objects, recorded blockers, formalization TODO, library paths).
   - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
-A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set <k=v>...).
+A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...).
+Final paper: after the unanimous stop vote the run enters a PAPER phase — every resident writes their part, each
+cross-reviews at least one other part, and the paperEditor finalises (office = the human/assistant side, or one named
+resident); only then is the run marked complete. finalPaper=false skips the phase; /v4 paper [lang=zh|en]
+[format=md|tex|both] [editor=office|resident:<id>] [force] starts or re-runs it by hand.
 
 TRUST RULE: only Verified/ (and Propos/ entries marked 已验证·真/假) are absolutely
 trustworthy; everything else — unverified resident claims, Progress/, Method claims —
@@ -521,8 +543,8 @@ When the user asks about progress, call vibe_v4_report and summarize in plain la
 
 ## vibe-math-v5
 
-- 注册工具数：**35**
-- 斜杠命令 hint：`configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set`
+- 注册工具数：**37**
+- 斜杠命令 hint：`configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper [lang=en] [format=tex] [editor=office] [force]`
 
 ### config.prefix
 
@@ -587,17 +609,19 @@ Data lives under {{cwd}}/VibeMath/Projects/<project>/Institutes/<institute>/:
 Main controls (recommended flow: configure FIRST, then start):
   - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
   - vibe_v5_start {problem?, researcherCount?, academician?, seedDirections?} — found the institute (academician + researchers) and begin.
-  - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools.
+  - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools; finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperEditor/paperLatexCommand tune the FINAL PAPER.
   - vibe_v5_pause / vibe_v5_resume / vibe_v5_stop / vibe_v5_status / vibe_v5_report.
   - vibe_v5_message {to|all, content} — relay a human message into the institute.
   - vibe_v5_meeting {agenda, kind} — convene a meeting.
   - vibe_v5_members — roster (office/employer/status/direction).
   - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
   - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+  - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
+  - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
   - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
     verification (execute / archive / list the reuse library). Members use them
     too; they work in every mode.
-A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
 LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
   - 'off' (default, no extra requirement) | 'encourage' (members decide by
@@ -686,17 +710,19 @@ Data lives under {{cwd}}/VibeMath/Projects/<project>/Institutes/<institute>/:
 Main controls (recommended flow: configure FIRST, then start):
   - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
   - vibe_v5_start {problem?, researcherCount?, academician?, seedDirections?} — found the institute (academician + researchers) and begin.
-  - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools.
+  - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools; finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperEditor/paperLatexCommand tune the FINAL PAPER.
   - vibe_v5_pause / vibe_v5_resume / vibe_v5_stop / vibe_v5_status / vibe_v5_report.
   - vibe_v5_message {to|all, content} — relay a human message into the institute.
   - vibe_v5_meeting {agenda, kind} — convene a meeting.
   - vibe_v5_members — roster (office/employer/status/direction).
   - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
   - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+  - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
+  - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
   - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
     verification (execute / archive / list the reuse library). Members use them
     too; they work in every mode.
-A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
 LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
   - 'off' (default, no extra requirement) | 'encourage' (members decide by

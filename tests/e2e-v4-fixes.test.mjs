@@ -549,7 +549,12 @@ function makeCtx(){
   // under the parallel runner's CPU contention it abandoned the meeting before every resident had
   // spoken (`dup=0, autoDone=false`), which made this case fail ~2 runs in 6. 200 ms (→400 ms
   // watchdog) keeps the case's own drives (it answers every wake) comfortably ahead of the clock.
-  await m.callTool('vibe_v4_set', { activityTimeoutMs: 200 })
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 200, finalPaper: false })
+  // `finalPaper:false` on purpose: since spec-final-paper v2 §A1 the closing branch enters the PAPER
+  // phase BEFORE it flips `autoDone`, so with the default `finalPaper:true` a unanimous stop no
+  // longer concludes the run immediately. That deferral is covered by `tests/v4-final-paper.test.mjs`
+  // (auto trigger + deferred completion); THIS case is about finalizeMeeting/finalizeVerify REENTRY,
+  // so it pins the pre-paper closing behaviour.
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   await m.callTool('vibe_v4_meeting', { agenda:'表决' })
   // Drain all meeting wakes. On the LAST two speaker completions fire the ends back-to-back in the same
@@ -667,11 +672,14 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T24 resume after unanimous stop is refused (no zombie revival) --')
   await m.callTool('vibe_v4_start', { problem:'完成后再恢复', residentCount:1 })
   await waitFor(()=>m.spawns.length>=1)
-  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1 })
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1, finalPaper:false })
   const rc = m.spawns[0].childId
   m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
   await sleep(80)
   // single resident convenes & unanimously votes solved → run concludes (autoDone)
+  // `finalPaper:false`: the paper phase (spec-final-paper v2 §A1) now runs BEFORE `autoDone` flips;
+  // this case's subject is resume() of a CONCLUDED run, and the paper flow has its own suite
+  // (tests/v4-final-paper.test.mjs).
   await m.callTool('vibe_v4_meeting', { agenda:'表决是否完成' })
   let fi=0, votedSolved=false
   for(let i=0;i<200;i++){
@@ -1065,10 +1073,12 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T38 stop clears meeting state & addMember is refused after stop --')
   await m.callTool('vibe_v4_start', { problem:'停后清理', residentCount:1 })
   await waitFor(()=>m.spawns.length>=1)
-  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1 })
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:999999, verdictMaxRounds:1, finalPaper:false })
   const cid=m.spawns[0].childId
   m.fireEnd({ id: cid, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
   await sleep(80)
+  // `finalPaper:false`: this case checks the state left behind by a stop and that addMember is
+  // refused afterwards; the paper phase (spec v2 §A1) defers `autoDone` and has its own suite.
   await m.callTool('vibe_v4_meeting', { agenda:'全体一致停止' })
   let fi=0, stopped=false
   for(let i=0;i<250;i++){

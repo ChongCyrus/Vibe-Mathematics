@@ -170,9 +170,11 @@ const PRESETS = [
     dir: 'vibe-math-v5',
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
-    tools: 35,
+    tools: 37,
     // member- and academician-facing tools; the office (main agent) holds only the
-    // institute-level controls plus the hiring authority.
+    // institute-level controls plus the hiring authority. The final-paper pair is an
+    // OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper),
+    // so it must not appear in this snapshot.
     undocumented: [
       'vibe_v5_wait', 'vibe_v5_record_progress', 'vibe_v5_record_proposition',
       'vibe_v5_record_method', 'vibe_v5_record_subproblem', 'vibe_v5_read_library',

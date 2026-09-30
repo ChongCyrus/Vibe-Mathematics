@@ -89,17 +89,19 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
         - vibe_v5_start {problem?, researcherCount?, academician?, seedDirections?} — found the institute (academician + researchers) and begin.
-        - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools.
+        - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools; finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperEditor/paperLatexCommand tune the FINAL PAPER.
         - vibe_v5_pause / vibe_v5_resume / vibe_v5_stop / vibe_v5_status / vibe_v5_report.
         - vibe_v5_message {to|all, content} — relay a human message into the institute.
         - vibe_v5_meeting {agenda, kind} — convene a meeting.
         - vibe_v5_members — roster (office/employer/status/direction).
         - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
         - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+        - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
+        - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
         - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
           verification (execute / archive / list the reuse library). Members use them
           too; they work in every mode.
-      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
         - 'off' (default, no extra requirement) | 'encourage' (members decide by
@@ -185,17 +187,19 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
         - vibe_v5_start {problem?, researcherCount?, academician?, seedDirections?} — found the institute (academician + researchers) and begin.
-        - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools.
+        - vibe_v5_set {…} — tune params (persisted). provider/model override staff LLM routes (empty = inherit YOUR route); toolAllow/toolDeny restrict staff tools; finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperEditor/paperLatexCommand tune the FINAL PAPER.
         - vibe_v5_pause / vibe_v5_resume / vibe_v5_stop / vibe_v5_status / vibe_v5_report.
         - vibe_v5_message {to|all, content} — relay a human message into the institute.
         - vibe_v5_meeting {agenda, kind} — convene a meeting.
         - vibe_v5_members — roster (office/employer/status/direction).
         - vibe_v5_hire / vibe_v5_fire — temp workers: hire one (office, academician or a permanent researcher) / dismiss one for real.
         - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
+        - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
+        - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
         - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
           verification (execute / archive / list the reuse library). Members use them
           too; they work in every mode.
-      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set).
+      A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
         - 'off' (default, no extra requirement) | 'encourage' (members decide by
