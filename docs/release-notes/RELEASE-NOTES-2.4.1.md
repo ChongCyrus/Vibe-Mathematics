@@ -6,9 +6,8 @@
 
 ## 概览
 
-- 本包现已被两个插件目录收录：**[dsh-market（awesome-dsh-plugin）](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** 与
-  **[awesome-ai-plugins](https://github.com/hashgraph-online/awesome-ai-plugins)**（条目分别位于前者的 `### Workflow & Automation`
-  与后者的 `### DeepSeek Harness Plugins` 小节，均按字母序排列）。
+- 本包现已被 **[awesome-ai-plugins](https://github.com/hashgraph-online/awesome-ai-plugins)** 收录
+  （条目位于其 `### DeepSeek Harness Plugins` 小节，按字母序排列）。
 - 为通过 `awesome-ai-plugins` 的**源仓库安全扫描**（要求评分 ≥80 且无 critical/high），移除了测试工具里的**动态代码执行**：
   仓库里不再出现 `eval` / `new Function` / `node:vm`。该项此前是把收录 PR 拦下的唯一硬性原因。
 - 随后做的一轮独立复查修掉 13 处不一致，其中两处是**文档里的不实声明**（安全策略与发布门禁的描述），
@@ -67,9 +66,8 @@ npm i dsh-vibe-math@latest
 
 ## Overview
 
-- The package is now listed in two plugin catalogs: **[dsh-market (awesome-dsh-plugin)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)**
-  and **[awesome-ai-plugins](https://github.com/hashgraph-online/awesome-ai-plugins)** — in the former's
-  `### Workflow & Automation` and the latter's `### DeepSeek Harness Plugins` section, both in alphabetical order.
+- The package is now listed in **[awesome-ai-plugins](https://github.com/hashgraph-online/awesome-ai-plugins)**
+  (in its `### DeepSeek Harness Plugins` section, in alphabetical order).
 - To pass `awesome-ai-plugins`'s **source-repository security scan** (score ≥ 80 with no critical/high
   finding), **dynamic code execution was removed from the test tooling**: the repository no longer
   contains `eval` / `new Function` / `node:vm`. That rule was the one hard blocker on the listing PR.
