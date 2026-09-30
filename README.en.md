@@ -9,10 +9,10 @@ English | [中文](README.md)
 > A set of **agent presets** running inside **DeepSeek Harness** (`vibe-math-v2` / `vibe-math-v3` / `vibe-math-v4` / `vibe-math-v5`),
 > which use multi-agent collaboration to automatically solve mathematical problems and perform multi-agent cross-verification of the conclusions. All four presets share the foundational capabilities of "**checkpoint resume**,
 > **mid-run manual intervention**, **progress reporting**, and **natural-language driving**", but adopt four generations of different solving architectures:
-> **💡 `vibe-math-v2` and `vibe-math-v3` are recommended at the same level** — both are mature, usable, actively maintained recommended architectures; choose according to your actual needs (see "How to choose" below); `vibe-math-v4` is the "resident self-organizing collaborative research" architecture, and `vibe-math-v5` is the latest "institute system" (both are experimental).
+> **💡 All four architectures are peers** — `vibe-math-v2` and `vibe-math-v3` are the **classic** architectures (mature, usable, actively maintained); `vibe-math-v4` is the "resident self-organizing collaborative research" architecture and `vibe-math-v5` is the latest "institute system" (both labelled experimental); choose according to your actual needs (see "How to choose" below).
 >
-> - **`vibe-math-v2` (probability-driven · JSON data layer) ✅ Recommended**: `qs.json` problem list + `Propos/` proposition library + probability-driven scheduling + code heuristic scheduling;
-> - **`vibe-math-v3` (third generation · paper-style md + planner agent + method library) ✅ Recommended**: all knowledge is stored and extended in **Markdown paper/research-report form** (`Problems/` problem list + dependencies + source motivation, `Progress/` research log, `Propos/` proposition library, `Methods/` general theory invention library, `Verified/` absolutely trustworthy); before scheduling, the **planner agent** autonomously draws up a plan for the next N steps; theories/frameworks/tools/methods/ideas invented during solving are distilled by the **Method Keeper** into a reusable method system (as in inventing group theory or functional analysis).
+> - **`vibe-math-v2` (probability-driven · JSON data layer) · classic**: `qs.json` problem list + `Propos/` proposition library + probability-driven scheduling + code heuristic scheduling;
+> - **`vibe-math-v3` (third generation · paper-style md + planner agent + method library) · classic**: all knowledge is stored and extended in **Markdown paper/research-report form** (`Problems/` problem list + dependencies + source motivation, `Progress/` research log, `Propos/` proposition library, `Methods/` general theory invention library, `Verified/` absolutely trustworthy); before scheduling, the **planner agent** autonomously draws up a plan for the next N steps; theories/frameworks/tools/methods/ideas invented during solving are distilled by the **Method Keeper** into a reusable method system (as in inventing group theory or functional analysis).
 > - **`vibe-math-v4` (fourth generation · resident self-organizing collaborative research) 🧪 Experimental**: a group of **persistent resident subagents** **leave messages for one another + hold meetings**, and autonomously decide all task arrangements (no central scheduler); each accumulates its own progress/proposition/method/subproblem libraries and consults the others; verification is written to `Verified/` **only when all residents agree (true or false)**, otherwise it remains in the library with a probability attached; when the context reaches a threshold it automatically `/compact`s; it stops only when all agree that the original problem has been solved.
 > - **`vibe-math-v5` (fifth generation · institute system) 🧪 Experimental · Latest**: upgrades the residents into an **institute** — **academicians** (leaders / the organizing and coordinating center, responsible for decomposition and **assignment**, setting priorities, chairing meetings, and supervising progress) + **resident researchers** (with voting rights, able to autonomously hire/fire their own temp workers) + **temp workers** (no voting rights); it has a **public charter**, **group chat and meetings**, a **compare-and-set task board**, and **real firing**; a boolean agreement of **≥ m votes** is required to write to `Verified/` (opposing votes block, abstentions are not counted, and if the threshold is not met it remains in the library with an average probability attached); state is written to the **hardened JSON file** `State/<institute>.v5state.json` under the institute directory (serial writes, a mandatory load before read) — **never into the host session log** — at zero token cost.
 
@@ -31,13 +31,13 @@ After installing this plugin package (or manually copying the presets), **four**
 > (zero-dependency Node → **SVG**, `node docs/generate_framework_diagram_v4.mjs`; add `--lang=en` for `示例图/框架图-v4-en.svg`).
 > SVG is used from v4 onward: plain text, diff-friendly, crisp at any zoom; when PNG is needed, screenshot with a headless browser (the command is at the top of the generation script).
 
-### Vibe Math V2 (probability-driven · JSON data layer) ✅ Recommended
+### Vibe Math V2 (probability-driven · JSON data layer) · classic
 
 ![Vibe Math V2 architecture diagram](示例图/框架图-v2-en.svg)
 
 **One-sentence pipeline**: `qs.json` takes problems by priority → Explorer splits out directions (if all are dead ends, re-derive) → one Solver per direction iterates over multiple rounds (lemmas go into `Propos/`, solutions go back to `qs.json`, all probabilities <1) → the scheduler picks r (proposition / proposition+proof·disproof / problem+solution) and dispatches ≥3 verifiers for independent review → debate → ruling → at probability=1 it automatically closes out (problem solved, proposition 1/0, priority set to `never`); state is written to disk throughout, `resume` continues from the checkpoint, and `reportMode` can report by file/push/both.
 
-### Vibe Math V3 (paper-style md + planner agent + methods library) ✅ Recommended
+### Vibe Math V3 (paper-style md + planner agent + methods library) · classic
 
 ![Vibe Math V3 architecture diagram](示例图/框架图-v3-en.svg)
 
@@ -349,7 +349,7 @@ dsh plugin --profile <your profile> add dsh-vibe-math
 dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-Then start a new session and pick **Vibe Math V3** (v3, **primary recommendation**), **Vibe Math V2** (v2, **primary recommendation**), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — v2 and v3 are equally primary recommendations, choose according to your actual needs (see "How to choose").
+Then start a new session and pick **Vibe Math V3** (v3, classic), **Vibe Math V2** (v2, classic), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — the four architectures are peers, choose according to your actual needs (see "How to choose").
 **The two DSH generations land in different places, and this package adapts to both**:
 
 - **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares all four presets in `cordis.patch.yml` (each row hands that preset's full plugin list to the host's `agentPresets` service), and **writes nothing into `~/.dsh/.agent-presets/`** — that directory has not been read since 0.1.7.
@@ -384,7 +384,7 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 
 ## 🧭 How to choose among the four presets
 
-> **💡 `vibe-math-v2` and `vibe-math-v3` are equally primary recommendations; choose according to your actual needs:**
+> **💡 All four architectures are peers; choose according to your actual needs:**
 >
 > - **Choose `vibe-math-v2` (probability-driven · JSON data layer)** if you:
 >   - prefer **structured JSON data** (`qs.json` / `Propos/<category>_Propos.json` / `Verified/` cards), convenient for programmatic retrieval and further processing;
@@ -405,11 +405,11 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 >   - an **adjustable consistency threshold** — `m = min(quorumCap, number of voting members)` boolean-consistent votes settle the matter (easier to converge than "unanimity", while **opposing votes still block**, so a minority will not be drowned out by abstentions);
 >   - **zero-token-cost state persistence** — the institute state is written to a hardened JSON file under the institute directory and does not consume member context budget.
 >
-> **⚠️ `vibe-math-v2` and `vibe-math-v3` are mature primary architectures; `vibe-math-v4` and `vibe-math-v5` are experimental architectures,** all are selectable; the old `vibe-math-v1` has been removed (this package contains only v2/v3/v4/v5).
+> **⚠️ `vibe-math-v2` and `vibe-math-v3` are the classic architectures; `vibe-math-v4` and `vibe-math-v5` are experimental architectures,** all four are peers and all are selectable; the old `vibe-math-v1` has been removed (this package contains only v2/v3/v4/v5).
 
-| | **v2 (probability-driven · primary)** | **v3 (paper-style md · primary)** | **v4 (resident self-organization · experimental)** | **v5 (institute system · experimental)** |
+| | **v2 (probability-driven · classic)** | **v3 (paper-style md · classic)** | **v4 (resident self-organization · experimental)** | **v5 (institute system · experimental)** |
 |---|---|---|---|---|
-| Positioning | **Primary** (JSON data layer) | **Primary** (third generation) | **Experimental** (fourth generation) | **Experimental** (fifth generation) |
+| Positioning | **Classic** (JSON data layer) | **Classic** (third generation) | **Experimental** (fourth generation) | **Experimental** (fifth generation) |
 | Core idea | Probability-driven: `qs.json` problems + `Propos/` proposition library, scheduled by "correctness probability / value" | **Paper-style md knowledge base + planner agent scheduling + general theory invention library** | **Persistent resident subagents self-organizing**: message each other + meetings decide all tasks, no central scheduling | **Institute**: the academician organizes and assigns, members research on their own; a conclusion requires **≥ m boolean-consistent votes**; temp workers can be hired as needed |
 | Data | `qs/qs.json` + `Propos/<category>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/` (all md, soft-spec anchors + free narration) + `Verified/` | `Problems/` + `Progress|Propos|Methods|Subproblems/<id>/` **owned by resident id** + `Shared/` (meetings/task board/debate) + `Verified/` | Same member-owned layout as v4, plus `Institutes.md` (roster mirror); **the authoritative state is `State/<institute>.v5state.json`**, and the other files are only mirrors and workspaces |
 | Roles | explorer → per-direction solver → verifier | **planner (planner agent)** → explorer → per-direction solver → verifier → **method-keeper (method organization agent)** | **N resident researchers** (continuable), no fixed roles | **academician acad** (leader) + **resident researcher r-n** (with voting rights) + **temp worker t-n** (no voting rights, hireable and dismissible) + institute office (does not research and does not vote) |
@@ -420,12 +420,12 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 | Ad hoc capabilities | Automatic promotion of proposition "value/criticality" to the problem list; `reportMode file/push/both`; `priorityAdjust` | **Method library accumulation loop** (`methods_used`/`new_inventions` → Method Keeper); **plan approval gate/method promotion gate**; **project lock**; follow-up problem "source and motivation" as a first-class citizen | **Residents accumulate individually + read each other**; **unanimous verification**; **add/close residents at any time, intervene by message**; **checkpoint resume** | All v4 capabilities, plus: **real hiring/dismissal** (releases sub-sessions, reclaims tasks); **compare-and-set task board + dependency DAG**; **strict mutual exclusion between meetings and verification**; **roster mirror and conclusion records**; **zero-token-cost state** |
 
 All four support: checkpoint resume (`vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume`), manual intervention and pause/resume,
-per-project isolation, subagent permission control, and natural-language driving. **v2 and v3 are both equally primary recommendations** — choose v2 if you prefer structured JSON data and deterministic scheduling,
+per-project isolation, subagent permission control, and natural-language driving. **All four architectures are peers** — choose v2 if you prefer structured JSON data and deterministic scheduling,
 choose v3 if you prefer paper-style md, the planner agent and the theory invention library; v4 is fully self-organizing resident collaborative research, and v5 is an institute system with "a leader + a roster that can grow or shrink + an adjustable threshold".
 
 ---
 
-## 🧠 Architecture and Division of Labor (v3 · third generation) ✅ recommended
+## 🧠 Architecture and Division of Labor (v3 · third generation) · classic
 
 The framework = **one main agent (assistant) + one code scheduler + one planner agent + six kinds of subagents**.
 
@@ -460,7 +460,7 @@ For the complete v5 architecture (including member lifecycle, one-round timeline
 
 ## 📁 Directory Structure
 
-### v2 (probability-driven · recommended)
+### v2 (probability-driven · classic)
 
 ```
 <session workspace>/VibeMath/
@@ -477,7 +477,7 @@ For the complete v5 architecture (including member lifecycle, one-round timeline
    └─ VibeMath_State/                  # scheduler-private persistent state (for checkpoint resume)
 ```
 
-### v3 (paper-style md + planner agent + method library) ✅ recommended
+### v3 (paper-style md + planner agent + method library) · classic
 
 ```
 <session workspace>/VibeMath/
@@ -694,7 +694,7 @@ The main agent `vibe_math_status`: in `qs/qs.json`, `q1` has been written back w
 
 ## ⚙️ Parameter quick reference
 
-### v2 (probability-driven · main recommendation) defaults
+### v2 (probability-driven · classic) defaults
 
 | Parameter | Default | Description |
 |---|---|---|
