@@ -349,7 +349,7 @@ dsh plugin --profile <你的 profile> add dsh-vibe-math
 dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-之后新建会话，预设选择器里选择 **Vibe Math V3**（v3，经典）、**Vibe Math V2**（v2，经典）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——四个架构同级，按实际需求自选（见「怎么选」）。
+之后新建会话，预设选择器里选择 **Vibe Math V2**（v2，经典）、**Vibe Math V3**（v3，经典）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——四个架构同级，按实际需求自选（见「怎么选」）。
 **两个 DSH 世代的落点不同，本包自动适配**：
 
 - **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml` 里声明四个 preset（每行把该 preset 的完整插件清单交给宿主的 `agentPresets` 服务注册），**不往 `~/.dsh/.agent-presets/` 写任何东西**——该目录自 0.1.7 起不再被读取。
@@ -378,7 +378,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 - **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前声明 `0.1.2-alpha.4` … `0.2.0-rc.2` 共 11 个版本为 `compatible`，实测目标为 `0.2.0-rc.2`）；`engines.dsh` 为 `>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0`；`engines.node` 为 `^22.19.0 || >=24.0.0`。
   另外声明了 `peerDependencies`（`@deepseek-ai/dsh-base`，并标为 optional）：DSH ≥ 0.1.7 会用**宿主自己的版本**去比对插件声明的 peer 范围，不满足时**跳过整个 bundle 并给出明确提示**，而不是挂上一个跑不通的预设。
 - **运行时自检（版本 + 形态 + 能力）**：安装器（bundle 插件）每次启动时：**① 按优先级探测 DSH 版本**——`DSH_VERSION` 环境变量 → `pluginManager` 服务的 bundle 列表（`@deepseek-ai/dsh-base` 的版本即宿主版本，0.1.7+）→ `@deepseek-ai/dsh-app-boot` 导出的 `getDshRuntimeVersion()`（0.2.0+ 的公开 API）→ `@deepseek-ai/dsh/package.json`（全局 0.1.x 安装），日志会写明**来源**；探测到且未被 `dshReleases` 声明为 `compatible` 时给出明确提示。**② 判断 preset 形态**：从 loader 入口树里是否挂了 `@deepseek-ai/dsh-agent-preset`（或其 registry）判断本宿主是"组合行"还是"目录"，据此决定是否同步 `~/.dsh/.agent-presets/`——新宿主上会跳过并在日志里说明旧目录可安全删除。**③ 能力自检**（真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction` 为**可选**（缺失只提示"功能会静默降级"），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
-- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（`dsh plugin` 的 `--profile` 是必填项；用 `add` 而不是 `update`，因为 profile 里可能把版本钉成精确值，那时 `update` 不会跨过去），重启 DSH 后安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；见上文「安装」说明）。
+- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（`dsh plugin` 的 `--profile` 是必填项；用 `add` 而不是 `update`，因为 profile 里可能把版本钉成精确值，那时 `update` 不会跨过去），重启 DSH 后（DSH ≤ 0.1.6 的目录形式下）安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；DSH ≥ 0.1.7 的 preset 来自组合行，安装器不写任何文件）——见上文「安装」说明。
 
 ---
 

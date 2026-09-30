@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-Security fixes are released for the latest published minor line. Older lines are supported only for
-the DSH host versions they were built against.
+Security fixes are released for the latest published line. The previous line receives security fixes
+only for the DSH host versions it was built against.
 
 | Version | Supported | Notes |
 |---|---|---|
 | 2.4.x (latest) | ✅ | Current line — DSH 0.1.2-alpha.4 … 0.2.0-rc.2 |
-| 2.3.x | ⚠️ security fixes only | Still installs on DSH ≤ 0.1.6 hosts |
+| 2.3.x | ⚠️ security fixes only | Superseded by 2.4.x, which also covers DSH ≤ 0.1.6; **cannot run on DSH 0.2.x** |
 | ≤ 2.2.x | ❌ | Please upgrade |
 
 ## Reporting a vulnerability
@@ -33,10 +33,14 @@ Knowing the design makes reports much easier to triage:
   the user granted that host — it does not add privileges of its own.
 - **No dynamic code execution.** The package contains no `eval` and no `new Function`. Its behaviour
   is fixed at install time; nothing in a session can inject code into it.
-- **Filesystem.** It reads and writes only inside the session workspace (the project directory that
-  DSH hands to the session) — `VibeMath/…` — plus, on DSH ≤ 0.1.6 only, the legacy
-  `~/.dsh/.agent-presets/` directory that the old host line reads. Every write goes through the
-  host's `fs` service, so the host's sandbox policy applies.
+- **Filesystem.** The presets read and write only inside the session workspace (the project directory
+  that DSH hands to the session) — `VibeMath/…` — through the host's `fs` service, so the host's
+  sandbox policy applies there. The **installer** additionally syncs preset files for hosts it does
+  not detect as using composition rows (the DSH ≤ 0.1.6 directory line) into the legacy
+  `<DSH_HOME>/.agent-presets/` directory (default `~/.dsh/.agent-presets/`), including its
+  `.vibe-math-installed.json` state file and `.vibe-math-backup/` copies of replaced files. That sync
+  uses Node's own `fs` **inside the host process**, not the host `fs` service, so only the host's
+  OS-level sandbox applies to it.
 - **No network, no credentials, no telemetry.** The package itself makes no outbound requests and
   reads no secrets or tokens. Model traffic, if any, is the host's own LLM service.
 - **Subprocesses.** The Lean toolchain and shell helpers are invoked only when a preset tool is
@@ -47,5 +51,6 @@ Knowing the design makes reports much easier to triage:
 ## Verifying what you install
 
 - Published tarballs: `npm view dsh-vibe-math dist.shasum dist.integrity`
-- The repository's release gate re-runs every guard before a release; the exact suite/probe counts
-  and the packaging checksum of a release are recorded in its release notes.
+- The release gate the maintainer runs before publishing lives outside this repository (it re-runs every
+  guard, the packaging checks, and the plugin-catalog compliance scan); the artifact hashes above are
+  the verifiable output of a release.

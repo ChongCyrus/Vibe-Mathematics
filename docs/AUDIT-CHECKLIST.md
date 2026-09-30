@@ -437,9 +437,9 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 |---|---|---|
 | `DANGEROUS_DYNAMIC_EXECUTION` (high) | 仓库里**不得**出现 `eval` / `new Function` —— 包括测试与脚本 | 需要"执行真实实现"的套件改为 `await import(<preset 模块>)` + 预设导出的 `__testHelpers` 测试接缝，不再把源码文本编译成函数；`node:vm` 同样属于动态执行，不要用它绕过 |
 | `SECURITY_MD_MISSING` (low) | 仓库根有 `SECURITY.md`（支持版本 + 上报流程） | `SECURITY.md`（含本包攻击面说明：无网络、无凭据、无动态执行、只写工作区） |
-| `DEPENDABOT_MISSING` (low) | `.github/dependabot.yml` | npm + github-actions，每周 |
+| `DEPENDABOT_MISSING` (low) | `.github/dependabot.yml` | 本仓库**不配置**（§9.1：低危可接受，实测 94 分仍通过） |
 | `DEPENDENCY_LOCKFILE_MISSING` (medium) | 有 `package.json` 就要有 lockfile | `package-lock.json`（本包零运行时依赖，lockfile 只有根条目） |
-| 未固定的 Actions | 第三方 Action 必须钉到 commit SHA | `.github/workflows/plugin-security-scan.yml` 照官方样例钉 SHA，`permissions: contents: read`、`persist-credentials: false` |
+| 未固定的 Actions | 第三方 Action 必须钉到 commit SHA | 本仓库**无工作流**（§9.2）；将来若引入，必须钉 SHA 且保留版本注释，`permissions: contents: read`、`persist-credentials: false` |
 
 另外目录要求的**包侧**条件（`CONTRIBUTING.md`）：`package.json` 里要有可安装的 `dsh.bundle`，插件要导出 `apply(ctx)`，
 并且**在本仓库 README 里写明包名或 `dsh plugin add` 命令**、条目里用**准确的仓库 URL**。
@@ -452,7 +452,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 & "<python>\Scripts\plugin-scanner.exe" scan "D:\wd\vibemath开发\Vibe-Mathematics"                 # 评分
 ```
 
-本地 `plugin-scanner` 的评分与他们 CI 的评分**实测一致**（同为 73），因此发布前可以本地清零再推。
+本地 `plugin-scanner` 的评分与他们 CI 的评分**实测一致**（首次提交时两边同为 73），所以本地复现即可预判 CI；本仓库当前为 **94 分、1 个低危**（见 §9.1），达标线是 §9.2 的「≥80 且无 critical/high」。
 目录侧的检查（格式、字母序、条目可解析）由他们的 `check-alphabetical.py` + `validate-contribution.py` 在 PR 上跑：
 本仓库的条目必须放在 `### DeepSeek Harness Plugins` 小节里、按**显示名小写**字母序（`Vibe-Mathematics` 排在 `humanizer-ru` 之后）。
 
@@ -473,9 +473,9 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 结论：**低危项不是必需的**——阈值 80，去掉它仍有 95 分。本仓库零运行时依赖，依赖面只有 `.github/workflows` 里两个 Action，
 为它们维护一个每周开 PR 的机器人，**换来的是维护者每次都要做决定**，不划算。改为：
 
-- `node scripts/check-action-versions.mjs`（npm script：`npm run check:actions`）——读出工作流里所有
+- ~~`node scripts/check-action-versions.mjs`（npm script：`npm run check:actions`）~~（当时的做法，已随工作流一并删除，见 §9.2）——它曾读出工作流里所有
   `uses: owner/repo@<sha> # vX.Y.Z`，用 GitHub API 比对上游最新 release，落后的打印**可直接替换的整行**，退出码 1；
-- **例行检查与每次发布时跑一次**（发布清单里带上），需要升级时由维护者显式改这一行，而不是被动接 PR。
+- ~~**例行检查与每次发布时跑一次**（发布清单里带上），需要升级时由维护者显式改这一行，而不是被动接 PR。~~（同上，已删除）
 
 顺带记住两条与它相关的既有纪律：工作流里的第三方 Action **必须钉 commit SHA**（目录扫描器与供应链原则都要求），
 且钉法要**同时保留版本注释**（否则别人无法判断钉的是哪版）。

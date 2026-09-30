@@ -16,7 +16,7 @@ You are a coding agent powered by the {{model}} model.
 ## Vibe Math V2 toolkit
 
 This session includes the "Vibe Math V2" multi-agent mathematical problem-solving and
-verification framework (NEW architecture). It is driven by a background scheduler (code),
+verification framework (classic architecture). It is driven by a background scheduler (code),
 NOT by the model: you only issue the control tools below and read status; the scheduler
 programmatically runs explorer (direction setting) → per-direction solvers (agent_self_iteration)
 → multi-reviewer independent review → debate → verdict, and promotes/updates data itself.
@@ -82,7 +82,7 @@ You are a coding agent powered by the {{model}} model. Your working directory is
 ## Vibe Math V2 toolkit
 
 This session includes the "Vibe Math V2" multi-agent mathematical problem-solving and
-verification framework (NEW architecture). It is driven by a background scheduler (code),
+verification framework (classic architecture). It is driven by a background scheduler (code),
 NOT by the model: you only issue the control tools below and read status; the scheduler
 programmatically runs explorer (direction setting) → per-direction solvers (agent_self_iteration)
 → multi-reviewer independent review → debate → verdict, and promotes/updates data itself.

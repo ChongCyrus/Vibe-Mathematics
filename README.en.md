@@ -349,7 +349,7 @@ dsh plugin --profile <your profile> add dsh-vibe-math
 dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 ```
 
-Then start a new session and pick **Vibe Math V3** (v3, classic), **Vibe Math V2** (v2, classic), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — the four architectures are peers, choose according to your actual needs (see "How to choose").
+Then start a new session and pick **Vibe Math V2** (v2, classic), **Vibe Math V3** (v3, classic), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — the four architectures are peers, choose according to your actual needs (see "How to choose").
 **The two DSH generations land in different places, and this package adapts to both**:
 
 - **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares all four presets in `cordis.patch.yml` (each row hands that preset's full plugin list to the host's `agentPresets` service), and **writes nothing into `~/.dsh/.agent-presets/`** — that directory has not been read since 0.1.7.

@@ -1,6 +1,6 @@
 # The `vibe-math-v2` agent preset: the full coding agent (`standard`), plus the
-# NEW-architecture multi-agent mathematical problem-solving & verification
-# framework (see 新架构-vibe-math-实现方案.md).
+# classic-architecture multi-agent mathematical problem-solving & verification
+# framework (see vibe-math-v2/实现方案.md).
 #
 # The vibe-math-v2 plugin row consumes the HOST subagents/agents/fs/tools/commands
 # services and publishes nothing, so it needs no isolate realm.
@@ -16,7 +16,7 @@
       ## Vibe Math V2 toolkit
 
       This session includes the "Vibe Math V2" multi-agent mathematical problem-solving and
-      verification framework (NEW architecture). It is driven by a background scheduler (code),
+      verification framework (classic architecture). It is driven by a background scheduler (code),
       NOT by the model: you only issue the control tools below and read status; the scheduler
       programmatically runs explorer (direction setting) → per-direction solvers (agent_self_iteration)
       → multi-reviewer independent review → debate → verdict, and promotes/updates data itself.
@@ -79,7 +79,7 @@
       ## Vibe Math V2 toolkit
 
       This session includes the "Vibe Math V2" multi-agent mathematical problem-solving and
-      verification framework (NEW architecture). It is driven by a background scheduler (code),
+      verification framework (classic architecture). It is driven by a background scheduler (code),
       NOT by the model: you only issue the control tools below and read status; the scheduler
       programmatically runs explorer (direction setting) → per-direction solvers (agent_self_iteration)
       → multi-reviewer independent review → debate → verdict, and promotes/updates data itself.
@@ -285,7 +285,7 @@
 
 # ── Vibe Math V2 ────────────────────────────────────────────────────────────
 
-# The NEW-architecture framework: a preset-local plugin (./vibe-math-v2.js)
+# The classic-architecture framework: a preset-local plugin (./vibe-math-v2.js)
 # that registers the vibe_math_* tools, a /vibe slash command, and a background
 # scheduler (explorer → per-direction solvers → multi-reviewer verification).
 # It consumes the HOST subagents/agents/fs/tools/commands services and provides
