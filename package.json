@@ -117,8 +117,7 @@
     "scripts/build-preset-rows.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
-    "docs/COMPAT-AUDIT-ROUND3.md",
-    "scripts/check-action-versions.mjs"
+    "docs/COMPAT-AUDIT-ROUND3.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -177,7 +176,6 @@
     }
   },
   "scripts": {
-    "build:presets": "node scripts/build-preset-rows.mjs",
-    "check:actions": "node scripts/check-action-versions.mjs"
+    "build:presets": "node scripts/build-preset-rows.mjs"
   }
 }
