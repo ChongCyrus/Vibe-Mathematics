@@ -79,7 +79,7 @@ flowchart TB
     subgraph FW["⚙️ Framework vibe-v5 —— only a medium (middleware), never assigns tasks"]
         M["Message relay · meetings/debates · task board CAS+DAG<br/>m-vote consensus verification · context and liveness · roster and hiring · scheduler"]
     end
-    PROJ["💾 State/&lt;institute&gt;.v5state.json (hardened JSON, authoritative)<br/>11 kinds of events · pure fold applyV5Event · serial writes · recovery = load before read"]
+    PROJ["💾 State/&lt;institute&gt;.v5state.json (hardened JSON, authoritative)<br/>12 kinds of events · pure fold applyV5Event · serial writes · recovery = load before read"]
     FS["📁 Members/&lt;id&gt;/* · Shared/* · Verified/ · Problems/"]
     RULE{{"Truth gate: Boolean unanimity and Boolean votes ≥ m = min(quorumCap, number of registered voting members)"}}
     OFF <-->|"vibe_v5_* / /v5 commands　↔　status / report"| M
@@ -402,7 +402,7 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 > - **Choose `vibe-math-v5` (institute system)** if you want:
 >   - **organized self-organization** — like a real research institute, with a **leader (academician)** responsible for decomposition, assignment, prioritization, chairing meetings and supervising progress, but **judgment still belongs to each individual**;
 >   - a **roster that can grow or shrink** — resident researchers + temp workers who can be **autonomously hired/dismissed** (temp workers have no voting rights, suitable for chores such as checking, trial computation and material organization);
->   - an **adjustable consistency threshold** — `m = min(quorumCap, number of voting members)` boolean-consistent votes settle the matter (easier to converge than "unanimity", while **opposing votes still block**, so a minority will not be drowned out by abstentions);
+>   - an **adjustable consistency threshold** — `m = min(quorumCap, number of voting members)` boolean-consistent votes settle the matter (because an opposing vote blocks, the effective threshold is still "every Boolean vote points the same way"; it differs only when fewer than `m` members cast a Boolean vote);
 >   - **zero-token-cost state persistence** — the institute state is written to a hardened JSON file under the institute directory and does not consume member context budget.
 >
 > **⚠️ `vibe-math-v2` and `vibe-math-v3` are the classic architectures; `vibe-math-v4` and `vibe-math-v5` are experimental architectures,** all four are peers and all are selectable; the old `vibe-math-v1` has been removed (this package contains only v2/v3/v4/v5).
@@ -704,7 +704,7 @@ The main agent `vibe_math_status`: in `qs/qs.json`, `q1` has been written back w
 | `directionsPerSolver` | 1 | Total number of directions visible to each solver prompt (1 = only its own direction, no mutual interference; N>1 = its own plus summaries of up to N-1 other active directions) |
 | `verifierCount` | 3 | Number of independent verifiers per verification target |
 | `debateMaxRounds` | 5 | Maximum number of rounds of verification debate (chat group) |
-| `verdictMode` | `flat` | `flat` = balanced mechanism (inconsistency judged 0.5) / `forced` = forced verdict (historical accuracy + rigor weighting) |
+| `verdictMode` | `flat` | `flat` = the **equal-weight mean** of the probabilities the verifiers report (an inconsistency is no longer judged 0.5) / `forced` = forced verdict (weighted by historical accuracy + rigor; accuracy is tracked per model and scored only when the object later receives a boolean verdict) |
 | `reportMode` | `file` | `file` = write a report file / `push` = push a report to the main agent / `both` |
 | `promoteValueThreshold` | 0.7 | A proposition in Propos with "value/criticality" ≥ this value and undecided (0,1) is automatically added to qs.json |
 | `priorityAdjust` | `none` | `none` / `deadend-deprioritize` (deprioritize all dead ends) / `survival-map` (recompute by survival rate) |
@@ -732,7 +732,7 @@ Added/adjusted on top of all v2 parameters:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `verdictMode` | `forced` | v3 first makes a **near-consensus determination** (all results on the same side with a mean ≥0.85/≤0.15 takes the mean), otherwise `forced` = weighted by historical accuracy + rigor / `flat` = balanced (0.5). Fixes the v2 flat problem of misjudging "0.9 vs 1" as 0.5 |
+| `verdictMode` | `forced` | v3 first makes a **near-consensus determination** (all results on the same side with a mean ≥0.85/≤0.15 takes the mean), otherwise the **equal-weight mean** of the reported probabilities (no accuracy weighting; strict 1/0 still act as absolute votes) / `flat` likewise takes the equal-weight mean (0.5). Fixes the v2 flat problem of misjudging "0.9 vs 1" as 0.5 |
 | `planningHorizon` | 3 | Maximum number of actions in one plan by the planner agent ("the next n times") |
 | `plannerEnabled` | true | false = fully use the built-in heuristic scheduling (planner agent disabled) |
 | `plannerProvider` / `plannerModel` | empty | Planner agent model route (empty = inherit the root agent) |
@@ -857,7 +857,7 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 - **`≥ m` agreement ≠ mathematically proved**: the quorum only guarantees that "a consistent judgment has been reached within the institute", not that the conclusion is really correct.
   The depth of truth-seeking rests on the members' own derivations and the paper trail in the debate records; objects that do not reach quorum are **kept in the library with their average probability attached** and are not forcibly ruled true or false.
 - **The consistency quorum is not "majority rule"**: any single opposing boolean vote blocks a conclusion, and abstention helps neither truth nor falsehood.
-  To converge more easily, lower `quorumCap` or reduce the number of members with voting rights; for stricter behavior, switch to `quorumMode: "all-unanimous"`.
+  Under this rule (`m = min(quorumCap, number of voting members)`) **as soon as anyone casts a Boolean vote, the threshold is effectively "every Boolean vote points the same way"**: lowering `quorumCap` only lowers how many Boolean votes are required (`m`) and does **not** make convergence easier; for stricter behavior, switch to `quorumMode: "all-unanimous"` (which does not even allow abstentions).
 - **A member whose round never ends will not be forcibly released** (the same boundary as v4): the heartbeat re-arms it every time,
   so the scheduler will not freeze permanently; when manual intervention is needed, use `vibe_v5_fire` (temp worker) or have the institute office add or remove positions.
 - **Meetings and verification are strictly mutually exclusive**: while one is in progress, the other queues/is held. Therefore "concluding an object on the spot in a meeting" first queues,

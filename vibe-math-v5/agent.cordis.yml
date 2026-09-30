@@ -81,8 +81,10 @@
         Shared/TaskBoard.md (human view), Shared/Chat/<day>.md,
         Shared/Meetings/<id>.md, Shared/Debates/<target>.md,
         Problems/<id>.md, Verified/<kind>/<id>.md (read-only; m-vote only),
-        State/ (a human-readable MIRROR only — the authoritative state is the
-        session log projection; never hand-edit State/).
+        State/ (the AUTHORITATIVE state is State/<institute>.v5state.json in this
+        directory; it is a hardened JSON file, never a host session log. Everything
+        else here and elsewhere in the tree is a human-readable MIRROR — never
+        hand-edit any of it).
 
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.
@@ -175,8 +177,10 @@
         Shared/TaskBoard.md (human view), Shared/Chat/<day>.md,
         Shared/Meetings/<id>.md, Shared/Debates/<target>.md,
         Problems/<id>.md, Verified/<kind>/<id>.md (read-only; m-vote only),
-        State/ (a human-readable MIRROR only — the authoritative state is the
-        session log projection; never hand-edit State/).
+        State/ (the AUTHORITATIVE state is State/<institute>.v5state.json in this
+        directory; it is a hardened JSON file, never a host session log. Everything
+        else here and elsewhere in the tree is a human-readable MIRROR — never
+        hand-edit any of it).
 
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v5_configure {project?, institute?, problem?, params?} — create/configure the institute WITHOUT starting it.

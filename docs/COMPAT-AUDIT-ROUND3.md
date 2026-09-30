@@ -74,6 +74,8 @@ DSH 0.1.7 起 agent preset **只**由组合行声明；`$DSH_HOME/.agent-presets
 宿主的 `CommandResult` 联合是 `{kind:'success',text?} | {kind:'error',text}`；四套预设的 `/vibe`、`/v4`、`/v5`
 在**所有失败路径**上都返回 `{kind:'success', text:'{"ok":false,…}'}` → UI 永远显示不出"这条命令被拒绝了"。
 修复：按 dispatch 结果自身的 `ok:false` 返回 `kind:'error'`（该联合在 0.1.5 上同样存在，故旧线安全）。
+**更正（2.4.1 后的复查）**：那次只落到 v2 与 v3（`vibe-math-v2.js` / `vibe-math-v3.js` 的命令 handler）；
+v4 与 v5 当时仍是 `kind:'success'`，已在随后一轮一并修正，本节的"四套"应读作"v2/v3 当时、四套最终"。
 
 ### G-9 文档、镜像与工具描述与实现不符
 

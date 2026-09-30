@@ -43,6 +43,28 @@ export function apply(ctx) {
   // ================= per-session registry =================
   const sessions = new Map() // rootAgentId -> Session
   const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+  // childOwner 的**有界化**（审计 H6）。一条 childId→rootAgentId 的映射只在"这个 child 还可能再发
+  // subagent/end"时有价值；子代理结束后它就是垃圾，而这里以前明确说"不要回收"（为了修 verdict 收口），
+  // 代价是每个历史子代理永久留下一条记录、进程生命周期内无界增长。现在改为**引用 + 宽限期**：
+  //   · 仍被某个任务（t.children）或 agentRegistry 引用的一律保留；
+  //   · 没有引用、且距最近一次 subagent/end 已超过宽限期，才回收。
+  // 宽限期是必需的：辩论/续轮会在**同一个 child** 上再次 end（这正是当初"结束后立即删"导致
+  // 'problem solved after verdict 1' 失败的原因），所以不能只看"当前是否有引用"。
+  const CHILD_OWNER_GRACE_MS = 5 * 60 * 1000
+  const lastChildEndAt = new Map() // childId -> 最近一次 subagent/end 的时间
+  function pruneChildOwner() {
+    const keep = new Set()
+    for (const s of sessions.values()) {
+      try { for (const id of s.referencedChildIds()) keep.add(id) } catch (e) { /* 尽力而为 */ }
+    }
+    const cutoff = now() - CHILD_OWNER_GRACE_MS
+    for (const cid of Array.from(childOwner.keys())) {
+      if (keep.has(cid)) continue
+      const ended = lastChildEndAt.get(cid)
+      if (ended === undefined || ended > cutoff) continue
+      childOwner.delete(cid); lastChildEndAt.delete(cid)
+    }
+  }
   // Process epoch: PROCESS-level (one per apply, shared by every session), written to
   // VibeMath_State/process_epoch.json at init; a DIFFERENT persisted epoch means a
   // previous DSH process wrote this state (in-flight children are gone), while an
@@ -90,7 +112,7 @@ export function apply(ctx) {
     directionsPerSolver: 1,       // 每个 solver 提示词附带的方向数量（1 = 只看自己方向）
     verifierCount: 3,             // independent reviewers per verification
     debateMaxRounds: 5,           // debate round cap (spec example)
-    verdictMode: 'flat',          // flat = 均衡机制(0.5) | forced = 强制裁决(weighted)
+    verdictMode: 'flat',          // flat = 均衡机制（不一致时取各评审自报概率的均值）| forced = 强制裁决（按验证者历史准确率+布尔票置信度加权）
     provider: '',
     model: '',
     solverPersona: '',
@@ -113,7 +135,7 @@ export function apply(ctx) {
     priorityAdjust: 'none',       // none | deadend-deprioritize | survival-map
     proposPriorityAdjust: 'none', // none | progress-graded（按定论接近度+证明/证伪材料量动态调命题优先级）
     tickIntervalMs: 2000,         // 调度器心跳间隔（毫秒）
-    activityLogCap: 100,          // 活动日志保留条数（report.recentActivity 最多显示 30 条）
+    activityLogCap: 100,          // 活动日志保留条数（status/report 的 recentActivity 最多显示 ACTIVITY_REPORT_MAX = 30 条）
     maxExplorerRetries: 3,        // explorer 重派生上限（拆方向失败重试次数）
     // ---- Lean 形式化验证（契约：docs/formal-verification.md §1，四架构同名同语义）----
     formalVerify: 'off',          // off = 无任何额外要求（真无操作）| encourage = 鼓励但不强制 | require = 强制 + 定论门禁
@@ -125,7 +147,8 @@ export function apply(ctx) {
   let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导，不再作为字段
   let agentRegistry = {}
   let decisionQueue = []
-  let verifierAccuracy = {}
+  let verifierAccuracy = {}       // 稳定身份键（'m:<provider>/<model>'）→ { correct, total }
+  let pendingReviewScores = {}    // 对象 id → [{key,result}]：等对象**后来**取得布尔定论时才计分
   let tasks = {}                  // verify tasks keyed by 'verify:<rId>'
   let activityLog = []
   let lastReportWrite = 0
@@ -134,6 +157,16 @@ export function apply(ctx) {
   let tickInFlight = false
   let lastTickAt = 0
   let explorerRetries = {}
+  // 状态/报告里最近活动最多显示多少条（**一个常量**）：此前 buildReport 用 min(30, cap)、getStatus
+  // 硬编码 min(10, cap)，同一个字段两个端点给出不同答案，而参数说明承诺的是 30（审计 M15）。
+  const ACTIVITY_REPORT_MAX = 30
+  // 至少 2 名独立评审才能出裁决（审计 M11）：一票裁决会把单个验证者的判断写成"完全验证"的布尔结论。
+  const MIN_REVIEWERS = 2
+  // 中段裁决（0<正确概率<1）的**重验冷却**（审计 M12）：中段值是"为真的概率"，不是定论，对象不能
+  // 被永久搁置；但每个 tick 都重开一轮完整辩论会把调度器饿死（那正是当初加 `已验证` 单向闩锁的原因）。
+  // 冷却期过后重新入选，所以没有任何对象会被永久停在中间概率上。
+  const REVERIFY_COOLDOWN_MS = 5 * 60 * 1000
+  function reverifyDue(x) { const at = Number(x && x.最近验证时间) || 0; return (now() - at) >= REVERIFY_COOLDOWN_MS }
 
   // ================= helpers =================
   function textBlock(t) { return { type: 'text', text: String(t) } }
@@ -150,15 +183,57 @@ export function apply(ctx) {
   function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return sp.resolve({ session: rootAgent.session }) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch (e) { warnNoPolicyOnce() } return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
 
+  // ================= capability / tool-name lists =================
+  // Tool names for the permission filter, taken from the names the host ACTUALLY
+  // registers (dsh-tool-web registers 'web_search'/'web_fetch'; 'web'/'fetch' are
+  // only presentation card/kind fields, not tool names), and split by platform
+  // because each preset's composition gates them:
+  //   dsh-tool-bash  disabled: process.platform === 'win32'
+  //   dsh-tool-pwsh  disabled: process.platform !== 'win32'
+  // dsh-tools' restrict() THROWS on any name outside its registered set, and the
+  // host applies the filter when establishing a continuable child
+  // (dsh-subagent: childCtx.tools.restrict(...)), so a stale name meant the child
+  // was never created at all.
+  const IS_WINDOWS = process.platform === 'win32'
+  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
+  // 这两个名字是否真的存在取决于**本次组合**：v2 自己的 agent.cordis.yml 把 tool-web 行设成
+  // fetch:false，于是 web_search 在、web_fetch 不在，而 filter 里只要有一个宿主不注册的名字，
+  // restrict() 就整条拒绝 → 子代理先失败一次再走 sanitizeToolFilter 重试，日志还会谎称"你的配置过期"
+  // （审计 M8/M9）。所以能力清单**向宿主的可见工具面查询**（tools.schemas，宿主自己在
+  // dsh-tools/lib/index.js 里就是这么用的），查不到/不可信时才退回静态候选表。
+  const NETWORK_TOOLS = ['web_search', 'web_fetch']
+  /**
+   * 本会话可见的工具名集合；null = 无法可信地确定（此时一律保留候选名，行为与改动前一致）。
+   * 自校验：这张表必须包含本插件自己注册的工具，否则说明这个 scope 视图不是子代理真正看到的
+   * 组合面（例如只返回全局层）——据它裁剪能力清单会**静默丢掉**用户要的工具，比多一次重试更糟。
+   */
+  function composedToolNames() {
+    try {
+      if (!tools || typeof tools.schemas !== 'function' || !rootAgent) return null
+      const list = tools.schemas(rootAgent)
+      if (!Array.isArray(list) || list.length === 0) return null
+      const names = new Set()
+      for (let i = 0; i < list.length; i++) { const n = list[i] && list[i].name; if (n) names.add(String(n)) }
+      if (!names.has('vibe_math_status')) return null
+      return names
+    } catch (e) { return null }
+  }
+  /** 候选工具名 ∩ 本次组合真正注册的名字（不确定时原样返回候选）。 */
+  function composedToolList(candidates) {
+    const names = composedToolNames()
+    if (!names) return candidates.slice()
+    return candidates.filter(function (n) { return names.has(n) })
+  }
+
   // ================= parameter schema =================
   const PARAM_SCHEMA = [
     { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
     { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
     { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
     { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向（互不干扰）；N>1 = 额外附带最多 N 个其他活跃方向摘要用于协调', suggestion: 1 },
-    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
+    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（下限 2：一票不裁决）。并发预算紧张时单个对象同时最多占用 maxParallelThreshold-2 个槽位（至少 2），以保证另一个对象也凑得齐 2 票', suggestion: 3 },
     { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
-    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致直接判 0.5）；forced = 强制裁决（按历史准确率+严谨性加权）', suggestion: 'flat' },
+    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致时取各评审自报概率的**均值**，绝不折叠成固定的 0.5）；forced = 强制裁决（按验证者历史准确率+布尔票置信度加权）。准确率按 provider/model 这种稳定身份记，且只在对象**后来**取得布尔定论时才计分', suggestion: 'flat' },
     { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
     { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
     { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
@@ -169,19 +244,19 @@ export function apply(ctx) {
     { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
     { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
     { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
-    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承全部；true=允许（在已有 allow 列表时补入网络工具）；false=禁止 web_search/web/fetch', suggestion: '' },
+    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承全部；true=允许（在已有 allow 列表时补入本次组合真正注册的网络工具）；false=禁止网络工具', suggestion: '' },
     { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关（同 solverAllowNetwork）', suggestion: '' },
-    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关：空=继承全部；true=允许（在已有 allow 列表时补入）；false=禁止 bash/pwsh', suggestion: '' },
+    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关：空=继承全部；true=允许（在已有 allow 列表时补入）；false=禁止 ' + SCRIPT_TOOLS.join('/'), suggestion: '' },
     { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关（同 solverAllowScripts）', suggestion: '' },
-    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
-    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
+    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
+    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
     { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 同时按该间隔定时自动汇报', suggestion: 0 },
     { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
     { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
     { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
     { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整：none=不自动调；progress-graded=按「定论接近度（|布尔估计-0.5|）+ 证明/证伪材料量」重算，越接近定论越优先验证', suggestion: 'none' },
     { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
-    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 report.recentActivity 的细节量，报告最多显示 30 条）', suggestion: 100 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
     { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限（达到后该问题标记为方向耗尽）', suggestion: 3 },
     { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证档位：off=不额外要求（默认，提示词里不出现 Lean）；encourage=鼓励按实现难度自行形式化，一旦 Lean 通过则验证重点转为「忠实性审查」；require=同 encourage 且加门禁——对象的 formal.status 未达到 passed/blocked 前，真/假裁定记为未定论（原因 formal-required）并写入 Formal/TODO.md', suggestion: 'off' },
     { name: 'leanCommand', type: 'string', description: '要执行的 Lean 可执行文件（默认 lean；用 lake 时配合 leanArgs=["env","lean"]）', suggestion: 'lean' },
@@ -263,6 +338,20 @@ export function apply(ctx) {
       return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode }
     } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
   }
+  /**
+   * `runShell` 已经**明确告诉我们失败原因**（'no-subprocess' / spawn 异常 / 非零退出码），但它的
+   * 返回值此前无人查看：没有 subprocess 服务的宿主上目录树根本不会建、归档证明的删除静默降级，而
+   * 日志里一个字都没有——"mkdir 失败"和"mkdir 成功"完全无法区分（审计 H5）。
+   * 这里把每个调用点的失败**如实记一次**（按 调用点+原因 去重，避免每 tick 刷屏）。
+   */
+  const shellWarned = {}
+  function warnShellOnce(where, r) {
+    const why = (r && (r.error || (r.exitCode === undefined ? undefined : ('exit code ' + r.exitCode)))) || 'unknown failure'
+    const key = String(where) + '|' + why
+    if (shellWarned[key]) return
+    shellWarned[key] = true
+    console.error('vibe-math-v2: ' + where + ' failed (' + why + ')')
+  }
   // 目录布局（docs/formal-verification.md §3）：
   //   项目内：Formal/（对象形式化工作文件 + Index.md + TODO.md）、Verified/Lean/（归档证明）
   //   全局（**不在项目内**，跨项目复用）：<VibeMath 根>/Formal/Lib/（可复用定义）、Formal/Proved/（已证引理）
@@ -270,9 +359,16 @@ export function apply(ctx) {
     const base = frameworkRoot()
     const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verified/Lean', 'Verification_logs', 'Progress_Logs', 'VibeMath_State', 'Formal']
     const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d }))
-    return await runShell(mkdirCmd(paths))
+    const r = await runShell(mkdirCmd(paths))
+    if (!r || !r.ok) warnShellOnce('ensureDirs (mkdir ' + base + ')', r)
+    return r
   }
-  async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
+  async function removeFile(rel) {
+    const base = frameworkRoot()
+    const r = await runShell(rmCmd(base + '/' + rel))
+    if (!r || !r.ok) warnShellOnce('removeFile(' + rel + ')', r)
+    return r
+  }
 
   // ================= settings =================
   function sanitizeParams(obj) {
@@ -379,13 +475,30 @@ export function apply(ctx) {
    * 从 registry 长度推导后，两者不可能不一致，"丢一次 end 就永久停摆"这一类故障从根上消失。
    */
   function activeCount() { return Object.keys(agentRegistry).length }
+  /**
+   * 只保留**稳定身份键**（'m:…'）的准确率记录：老版本按一次性的 childId 记的那份数据是自指的
+   * （拿聚合值给同一批评审打分），既无意义又会随历史子代理数无界增长（审计 H4/M13）。
+   */
+  function sanitizeAccuracy(va) {
+    const out = {}
+    if (!va || typeof va !== 'object' || Array.isArray(va)) return out
+    for (const k of Object.keys(va)) {
+      if (k.indexOf('m:') !== 0) continue
+      const rec = va[k]
+      if (!rec || typeof rec !== 'object') continue
+      const correct = Number(rec.correct); const total = Number(rec.total)
+      if (!Number.isFinite(correct) || !Number.isFinite(total) || total < 0) continue
+      out[k] = { correct: Math.max(0, correct), total: Math.max(0, total) }
+    }
+    return out
+  }
   async function loadState() {
     const s = await readJson('VibeMath_State/scheduler_state.json')
     // 丢弃历史持久化的 activeCount：旧值可能已经漂移，绝不能覆盖推导值（见 activeCount()）。
     if (s) { const restored = Object.assign({}, s); delete restored.activeCount; scheduler = Object.assign({}, scheduler, restored) }
     const r = await readJson('VibeMath_State/agent_registry.json'); if (r) agentRegistry = r
     const dq = await readJson('VibeMath_State/decision_queue.json'); if (dq) decisionQueue = dq
-    const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = va
+    const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = sanitizeAccuracy(va)
     const tk = await readJson('VibeMath_State/tasks.json'); if (tk) tasks = tk
     const er = await readJson('VibeMath_State/explorer_retries.json'); if (er) explorerRetries = er
     // 形式化记录（docs/formal-verification.md §4）：v2 没有会话投影，这条状态必须自己持久化，
@@ -1212,7 +1325,7 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
-      recentActivity: activityLog.slice(-Math.min(30, Number(params.activityLogCap) || 100)),
+      recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)),
       // Lean 形式化：可调档位与开关同处可读参数表（契约 §1），并附当前形式化记录概况。
       formal: {
         mode: formalMode(), required: formalRequired(),
@@ -1259,28 +1372,13 @@ export function apply(ctx) {
   // ================= child spawn / followup =================
   function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
-  // Tool names for the permission filter, taken from the names the host ACTUALLY
-  // registers (dsh-tool-web registers 'web_search'/'web_fetch'; 'web'/'fetch' are
-  // only presentation card/kind fields, not tool names), and split by platform
-  // because each preset's composition gates them:
-  //   dsh-tool-bash  disabled: process.platform === 'win32'
-  //   dsh-tool-pwsh  disabled: process.platform !== 'win32'
-  // dsh-tools' restrict() THROWS on any name outside its registered set, and the
-  // host applies the filter when establishing a continuable child
-  // (dsh-subagent: childCtx.tools.restrict(...)), so a stale name meant the child
-  // was never created at all.
-  const IS_WINDOWS = process.platform === 'win32'
-  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
-  // 'web_fetch' is only registered when the composition enables fetch (the v4
-  // preset sets `fetch: false`), so it is a candidate that sanitizeToolFilter drops.
-  const NETWORK_TOOLS = ['web_search', 'web_fetch']
   /**
    * Drop filter names this host does not register. `known` comes from the host's
    * own rejection message, which lists every registered global tool, so this
    * never guesses. Returns undefined when nothing usable remains.
    */
   /** The host names the offending tools and then lists the registered ones. */
-  function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const net = role === 'solver' ? params.solverAllowNetwork : role === 'verifier' ? params.verifierAllowNetwork : undefined; const scr = role === 'solver' ? params.solverAllowScripts : role === 'verifier' ? params.verifierAllowScripts : undefined; let a = Array.isArray(allow) ? allow.slice() : []; let d = Array.isArray(deny) ? deny.slice() : []; if (net === false) d = d.concat(NETWORK_TOOLS); else if (net === true && a.length > 0) a = a.concat(NETWORK_TOOLS); if (scr === false) d = d.concat(SCRIPT_TOOLS); else if (scr === true && a.length > 0) a = a.concat(SCRIPT_TOOLS); const f = {}; if (a.length > 0) f.allow = a; if (d.length > 0) f.deny = d; return (f.allow || f.deny) ? f : undefined }
+  function buildToolFilter(role) { const allow = role === 'solver' ? params.solverToolAllow : role === 'verifier' ? params.verifierToolAllow : undefined; const deny = role === 'solver' ? params.solverToolDeny : role === 'verifier' ? params.verifierToolDeny : undefined; const net = role === 'solver' ? params.solverAllowNetwork : role === 'verifier' ? params.verifierAllowNetwork : undefined; const scr = role === 'solver' ? params.solverAllowScripts : role === 'verifier' ? params.verifierAllowScripts : undefined; let a = Array.isArray(allow) ? allow.slice() : []; let d = Array.isArray(deny) ? deny.slice() : []; const netTools = composedToolList(NETWORK_TOOLS); const scrTools = composedToolList(SCRIPT_TOOLS); if (net === false) d = d.concat(netTools); else if (net === true && a.length > 0) a = a.concat(netTools); if (scr === false) d = d.concat(scrTools); else if (scr === true && a.length > 0) a = a.concat(scrTools); const f = {}; if (a.length > 0) f.allow = a; if (d.length > 0) f.deny = d; return (f.allow || f.deny) ? f : undefined }
   async function spawnChild(label, promptText, meta) {
     const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
     const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf
@@ -1319,7 +1417,10 @@ export function apply(ctx) {
         throw e2
       }
     }
-    agentRegistry[started.childId] = Object.assign({ createdAt: now() }, meta || {})
+    const registered = Object.assign({ createdAt: now() }, meta || {})
+    // 验证者的**稳定身份**随 meta 一起登记：forced 模式的历史准确率必须能跨 child 复用（审计 H4）。
+    if (registered.role === 'verifier' && !registered.verificationKey) registered.verificationKey = verifierIdentityKey()
+    agentRegistry[started.childId] = registered
     childOwner.set(started.childId, sessionId)
     // 并发计数由 agentRegistry 推导，此处无需手工 +1（见 activeCount()）。
     await saveAll(); return started.childId
@@ -1389,9 +1490,9 @@ export function apply(ctx) {
     if (netOn !== false) toolParts.push('web search / literature lookup')
     if (scrOn !== false) toolParts.push('symbolic/numeric computation (running scripts)')
     let t = '\nYOUR PERMISSIONS / CAPABILITIES:\n'
-    t += '- Network tools (web search / fetch): ' + (netOn === false ? 'DISABLED for you' : 'available') + '; Script/shell tools (bash/pwsh): ' + (scrOn === false ? 'DISABLED for you' : 'available') + ' (your actual tool list is enforced by the framework).\n'
+    t += '- Network tools (web search / fetch): ' + (netOn === false ? 'DISABLED for you' : 'available') + '; Script/shell tools (' + SCRIPT_TOOLS.join('/') + '): ' + (scrOn === false ? 'DISABLED for you' : 'available') + ' (your actual tool list is enforced by the framework).\n'
     t += toolParts.length > 0
-      ? ('- You may use external tools (' + toolParts.join(', ') + ') to assist; ' + ((maxCalls && Number(maxCalls) > 0) ? ('call such external tools AT MOST ' + maxCalls + ' times this round.\n') : 'no per-round limit by default.\n'))
+      ? ('- You may use external tools (' + toolParts.join(', ') + ') to assist; ' + ((maxCalls && Number(maxCalls) > 0) ? ('as a guideline, keep external tool calls to about ' + maxCalls + ' this round (advisory: the framework does not enforce a hard quota).\n') : 'no per-round limit by default.\n'))
       : '- External tools: none enabled for you this round.\n'
     t += '- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).\n'
     t += '- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).\n'
@@ -1510,12 +1611,23 @@ export function apply(ctx) {
     }
     return '\n' + L.join('\n') + '\n'
   }
+  /**
+   * 需求 5：依赖临时假设的结论必须把假设**显式**写出来（"若 p_{q-tmp} 成立，则…"）。记录在命题上
+   * （`依赖假设`）之后，还要把它**送到验证者眼前**——否则验证者会在不知道前提未定的情况下裁决它。
+   */
+  function assumptionNote(r) {
+    if (!r || !r.依赖假设) return ''
+    return '\nDEPENDENCY: this conclusion is stated UNDER the temporary assumption ' + r.依赖假设
+      + '（' + (r.依赖假设已证伪 ? '该假设**已被证伪**：依赖它的结论必须重新审视' : '该假设尚未定论，0 < 布尔估计 < 1') + '）。'
+      + ' The assumption is a SEPARATE object: a verdict on this conclusion is NOT a verdict on the assumption.\n'
+  }
   function verifierReviewPrompt(r) {
     let target = ''
     if (r.kind === 'proposition') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述
     else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
     else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
     return verifierPersonaText() + 'You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.\n\nTARGET (r: ' + r.kind + '):\n' + target + '\n' +
+      assumptionNote(r) +
       knowledgeContextText() +
       capabilitiesText('verifier') +
       formalVerifySection(r) +
@@ -1529,6 +1641,7 @@ export function apply(ctx) {
     else if (r.kind === 'prop-proof') target = 'PROPOSITION (id: ' + r.pId + '): ' + r.概述 + '\n' + r.side + ' PROCESS TO CHECK:\n' + r.process
     else target = 'PROBLEM (id: ' + r.qid + '): ' + r.概述 + '\nSOLUTION TO CHECK:\n' + r.process
     return verifierPersonaText() + 'You are one reviewer in a DEBATE ("交流群") about this object.\n\nTARGET:\n' + target + '\n' +
+      assumptionNote(r) +
       knowledgeContextText() +
       capabilitiesText('verifier') +
       formalVerifySection(r) +
@@ -1560,6 +1673,25 @@ export function apply(ctx) {
     return {}
   }
   async function resolveDecision(id, resolution) { const d = decisionQueue.find(function (x) { return x.id === id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
+  /**
+   * 清掉 gate 时**必须结清它指向的那个人工决策**（审计 M10）。start/resume/abort/切项目都会离开
+   * 需要那次决策的运行，而决策若仍是 `pending`，它会永远留在 `vibe_math_list_decisions` 里反复出现——
+   * 一个已经无人等待的节点看起来仍然等待人工输入。与 `dropStaleGate` 互补：那条处理"决策没了但 gate
+   * 还在"，这条处理"gate 没了但决策还在"。
+   * 注意 `pauseScheduler` **不**清 gate：暂停期间那次决策仍然有效（人还可以 vibe_math_decide），
+   * 只有真正离开它（resume/abort/重启/换项目）才作废；作废是终态，不会再回到 pending。
+   */
+  function abandonGatedDecision(why) {
+    const g = scheduler.gate
+    scheduler.gate = null
+    if (!g) return
+    const d = decisionQueue.find(function (x) { return x.id === g.decisionId })
+    if (d && d.status === 'pending') {
+      d.status = 'resolved'
+      d.resolution = { action: 'abandoned', reason: why }
+      logActivity('gate', 'gated decision ' + g.node + '/' + d.id + ' 已作废（' + why + '）——不再挂起等待人工输入')
+    }
+  }
 
   // ================= scheduler core =================
   function scheduleTick() { tick().catch(function (e) { console.error('vibe-math-v2 tick error: ' + String((e && e.stack) || e)) }) }
@@ -1648,6 +1780,8 @@ export function apply(ctx) {
         cardWritten = cardOk(card)
       }
       if (targetBE !== null && p.布尔估计 !== targetBE) { p.布尔估计 = targetBE; pChanged = true }
+      // 这个对象**现在**取得了布尔定论：用它给此前那些还没被检验过的评审回溯计分（forced 权重）。
+      if (targetBE !== null) await scorePendingReviews(p.id, targetBE)
       if ((p.布尔估计 === 1 || p.布尔估计 === 0) && p.优先级 !== 'never') { p.优先级 = 'never'; pChanged = true }
       if (cardWritten) pChanged = true
       if (p.布尔估计 === 1 || p.布尔估计 === 0) {
@@ -1657,6 +1791,21 @@ export function apply(ctx) {
           if (qj.已解决) continue
           if (qj.判断命题 === p.id) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
           else if (String((qj.progress && typeof qj.progress === 'object' ? (qj.progress.来源命题 || '') : qj.progress) || '').indexOf(p.id) !== -1) { qj.已解决 = true; qj.优先级 = 'never'; closedPromoted = true }
+        }
+      }
+      // 需求 5 第二半：「若该假设被证伪，则依赖它的主线结论需重新审视」。假设的布尔估计被判定为 0 时，
+      // 把依赖它的结论标记出来并**重新放回验证候选**（清掉 已验 / 冷却时间戳），否则那句承诺只是一句
+      // 空话——依赖关系记下了却没人据此行动（审计 M16）。
+      if (p.布尔估计 === 0) {
+        for (let j = 0; j < propos.length; j++) {
+          const depP = propos[j]
+          if (depP === p || depP.id === p.id) continue
+          if (depP.依赖假设 !== p.id || depP.依赖假设已证伪) continue
+          depP.依赖假设已证伪 = true
+          depP.已验 = false
+          depP.最近验证时间 = 0
+          await upsertProposition(depP)
+          logActivity('dependency', '假设 ' + p.id + ' 被证伪：依赖它的结论 ' + depP.id + ' 标记为需重新审视，已重新进入验证候选')
         }
       }
       if (pChanged) await upsertProposition(p)
@@ -1733,8 +1882,18 @@ export function apply(ctx) {
       return // one per tick is enough
     }
   }
+  /**
+   * 临时假设的「判断问题」是**辅助对象**（审计 C2 的种子解法让它可验证）。它的解法只在主线安静时
+   * 入选验证：一个 q_sub 会新增两个问题，若它的验证与主线同时抢并发槽位，默认组合
+   * （maxParallelThreshold=4 / verifierCount=3）下主线连 2 个验证器都派不出来——实测 e2e-business 的
+   * "verifiers spawned for solution" 会从 3 掉到 1。辅助对象让主线先走；主线一旦没有别的可验证对象、
+   * 也没有 explorer/solver 在跑，它立刻轮到（所以 p_{q-tmp} 不再永远停在 0.5）。
+   */
+  function busySolving() { return Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && (m.role === 'explorer' || m.role === 'solver') }) }
   async function processVerify() {
-    const candidates = await buildVerifyCandidates()
+    const all = await buildVerifyCandidates()
+    let candidates = all.filter(function (c) { return !c.auxAssumption })
+    if (candidates.length === 0 && !busySolving()) candidates = all.filter(function (c) { return c.auxAssumption })
     for (let i = 0; i < candidates.length; i++) {
       if (activeCount() >= params.maxParallelThreshold) break
       const c = candidates[i]
@@ -1742,7 +1901,7 @@ export function apply(ctx) {
       if (tasks['verify:' + rId]) continue
       const inflight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'verifier' && m.rId === rId })
       if (inflight) continue
-      tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }
+      tasks['verify:' + rId] = { id: 'verify:' + rId, type: 'verify', r: c, rId: rId, status: 'spawning', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(MIN_REVIEWERS, params.verifierCount), createdAt: now() }
       await saveAll()
       return // one verification at a time keeps scheduling simple; tick will continue next pass
     }
@@ -1756,31 +1915,49 @@ export function apply(ctx) {
       const sols = q.解法列表 || []
       for (let j = 0; j < sols.length; j++) {
         const s = sols[j]
-        if (s.正确概率 === 1 || s.正确概率 === 0 || s.已验) continue
+        if (s.正确概率 === 1 || s.正确概率 === 0) continue
+        // 已验的条目只在**中段值**（0<p<1）且冷却期已过时重新入选（审计 M12：中间概率不是定论，
+        // 对象不能被永久搁置；`最近验证时间` 由 settleVerdict 在中段裁决时写下）。
+        if (s.已验 && !reverifyDue(s)) continue
         if (!String(s.完整解法 || '').trim()) continue
-        out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, prob: Number(s.正确概率) || 0, priority: q.优先级 === 'never' ? 999 : Number(q.优先级) })
+        out.push({ rId: 'r-' + q.id + '-s' + j, kind: 'problem-solution', qid: q.id, 概述: q.概述, process: s.完整解法 || '', idx: j, prob: Number(s.正确概率) || 0, priority: q.优先级 === 'never' ? 999 : Number(q.优先级), 判断命题: q.判断命题, auxAssumption: s.来源 === 'sub-question-assumption' })
       }
     }
     const propos = await getPropos()
     for (let i = 0; i < propos.length; i++) {
       const p = propos[i]
       if (p.布尔估计 === 1 || p.布尔估计 === 0 || p.优先级 === 'never') continue
-      if (p.已验证) continue // 收敛闸门：该命题已由「判断命题」解法裁决过（见 settleVerdict 点5 联动），不再重复入选
+      if (p.已验证 && !reverifyDue(p)) continue // 收敛闸门：该命题已由「判断命题」解法裁决过；中段裁决只上锁到冷却期结束（见 settleVerdict 点5）
       if (p.在问题清单) continue // 已晋升：其证明/证伪经晋升问题的解法验证，避免同一内容双重验证
+      const dep = { 依赖假设: p.依赖假设, 依赖假设已证伪: p.依赖假设已证伪 }
       const proofs = p.证明列表 || []; const refutes = p.证伪列表 || []
       if (proofs.length === 0 && refutes.length === 0) {
         if (String(p.id).indexOf('p-tmp-') === 0) continue // 临时假设由「判断下述命题是否成立：p_{q-tmp}」问题统一验证，避免裸命题验证双重路径
-        out.push({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) })
+        out.push(Object.assign({ rId: 'r-' + p.id, kind: 'proposition', pId: p.id, 概述: p.概述, prob: Number(p.布尔估计) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }, dep))
       } else {
-        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || proofs[j].已验) continue; if (!String(proofs[j].完整过程 || '').trim()) continue; out.push({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
-        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || refutes[j].已验) continue; if (!String(refutes[j].完整过程 || '').trim()) continue; out.push({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, prob: Number(refutes[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }) }
+        for (let j = 0; j < proofs.length; j++) { if (proofs[j].正确概率 === 1 || proofs[j].正确概率 === 0 || (proofs[j].已验 && !reverifyDue(proofs[j]))) continue; if (!String(proofs[j].完整过程 || '').trim()) continue; out.push(Object.assign({ rId: 'r-' + p.id + '-pf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证明', process: proofs[j].完整过程 || '', idx: j, prob: Number(proofs[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }, dep)) }
+        for (let j = 0; j < refutes.length; j++) { if (refutes[j].正确概率 === 1 || refutes[j].正确概率 === 0 || (refutes[j].已验 && !reverifyDue(refutes[j]))) continue; if (!String(refutes[j].完整过程 || '').trim()) continue; out.push(Object.assign({ rId: 'r-' + p.id + '-rf' + j, kind: 'prop-proof', pId: p.id, 概述: p.概述, side: '证伪', process: refutes[j].完整过程 || '', idx: j, prob: Number(refutes[j].正确概率) || 0, priority: p.优先级 === 'never' ? 999 : Number(p.优先级) }, dep)) }
       }
     }
     out.sort(function (a, b) { if (a.priority !== b.priority) return a.priority - b.priority; return (b.prob || 0) - (a.prob || 0) })
     return out
   }
+  /**
+   * 每个验证对象最多**同时**占多少评审槽位（审计 M11 的资源侧）。
+   *
+   * 目标仍是 verifierCount 个独立评审，但并发预算必须给别的验证对象留下至少 MIN_REVIEWERS 个槽位：
+   * 否则一个对象（例如某条引理的证明）就能把 maxParallelThreshold 吃光，后出现的对象（例如主问题的
+   * 解法）只剩 1 票——而一票不允许裁决 ⇒ 它会被反复补派/搁置。容量宽裕时（maxParallelThreshold ≥
+   * verifierCount + MIN_REVIEWERS）这就是 verifierCount，一个都不少。
+   */
+  function reviewerCap() {
+    const target = Math.max(MIN_REVIEWERS, Math.floor(Number(params.verifierCount) || MIN_REVIEWERS))
+    const byThreshold = Math.max(MIN_REVIEWERS, (Number(params.maxParallelThreshold) || MIN_REVIEWERS) - MIN_REVIEWERS)
+    return Math.max(MIN_REVIEWERS, Math.min(target, byThreshold))
+  }
   async function backfillVerifiers(t) {
-    while (t.children.length < t.expectedCount) {
+    const cap = reviewerCap()
+    while (t.children.length < t.expectedCount && t.children.length < cap) {
       if (activeCount() >= params.maxParallelThreshold) break
       const index = t.children.length
       const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
@@ -1793,6 +1970,14 @@ export function apply(ctx) {
     for (let i = 0; i < ids.length; i++) {
       const t = tasks[ids[i]]
       if (t.type !== 'verify') continue
+      if (t.status === 'stalled') {
+        // 票数补不足时任务被置为 stalled（见 finalizeVerification）：冷却结束再重新派发，避免每 tick
+        // 重建同一个对象、反复重试。任务本身保留，所以 processVerify 不会为同一个 rId 造出第二个任务。
+        if (now() >= Number(t.retryAt || 0)) {
+          t.status = 'spawning'; t.reviewerRespawn = 0; t.children = []; t.childResults = {}; t.round = 1
+          logActivity('verify', t.rId + ' 冷却结束，重新派发验证器（凑齐 ≥' + MIN_REVIEWERS + ' 份独立评审）')
+        } else continue
+      }
       if (t.status === 'paused') {
         const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === t.round })
         if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
@@ -1871,12 +2056,17 @@ export function apply(ctx) {
     if (!parsed && !scheduler.running) { delete agentRegistry[childId]; return } // abort：不把方向标记为死路，保留待 resume
     const status = (parsed && parsed.status) || statusFromStop(stopReason)
     dir.round = meta.round
+    // 需求 5 第二半的**记录**侧：本轮产出的引理若处在某条临时假设之下，就把假设 id 记在命题上
+    // （`依赖假设`）。只用**本轮之前**已登记、且尚未被证伪的假设：本轮新报的 q_sub 不算（先有假设
+    // 才有"依赖它的结论"，同一轮里 lemma 可能先于该假设产生）。此前 assumeId 只被存进
+    // dir.sub_questions 而从不被读取，"若 p_{q-tmp} 成立，则…"就只是一句写在提示词里的空话（审计 M16）。
+    const activeAssumptions = await activeAssumptionsOf(dir)
     if (parsed) {
       if (parsed.routes) dir.routes = (dir.routes || []).concat(parsed.routes)
       if (parsed.lessons) dir.lessons = (dir.lessons || []).concat(parsed.lessons)
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
-      if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) { const lid = await addLemmaAsProposition(qid, parsed.lemmas[i]); if (lid) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: lid, title: parsed.lemmas[i].title || '' }) } } }
+      if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) { const lid = await addLemmaAsProposition(qid, parsed.lemmas[i], activeAssumptions.length ? activeAssumptions[activeAssumptions.length - 1] : undefined); if (lid) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: lid, title: parsed.lemmas[i].title || '' }) } } }
       if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const sq = parsed.sub_questions[i]; if (sq && sq.q_sub_statement && dir.sub_questions && dir.sub_questions.some(function (x) { return x.statement === sq.q_sub_statement })) continue; const rec = await addSubQuestion(qid, dirId, sq); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
     }
     if (status === 'success') {
@@ -1923,7 +2113,22 @@ export function apply(ctx) {
     await saveProgress(qid, prog)
   }
   function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
-  async function addLemmaAsProposition(qid, lemma) {
+  /**
+   * 某个方向当前**在力**的临时假设（p_{q-tmp}）id 列表。已被证伪（布尔估计=0）的假设不再"在力"：
+   * 依赖它的结论按需求 5 必须重新审视，而不是继续挂在它下面。
+   */
+  async function activeAssumptionsOf(dir) {
+    const out = []
+    const subs = (dir && Array.isArray(dir.sub_questions)) ? dir.sub_questions : []
+    for (let i = 0; i < subs.length; i++) {
+      const id = subs[i] && subs[i].assumeId
+      if (!id) continue
+      const p = await findProposition(id)
+      if (p && p.布尔估计 !== 0) out.push(id)
+    }
+    return out
+  }
+  async function addLemmaAsProposition(qid, lemma, assumeId) {
     if (!lemma || !lemma.title) return
     let be = clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6)
     if (be >= 1) be = 0.99; else if (be <= 0) be = 0.01 // 写入时概率必须 <1 且 >0（待验证器验证）
@@ -1936,8 +2141,11 @@ export function apply(ctx) {
       '价值/关键性': clamp01(lemma['价值/关键性'] != null ? lemma['价值/关键性'] : 0.5),
       progress: { 来源: 'solver-lemma', 问题: qid, 说明: '由求解器针对问题 ' + qid + ' 的方向迭代产出。' }, 来源问题: qid,
     }
+    // 需求 5：「后续所得命题/结论中凡依赖该假设的，必须把假设作为前提显式写出」——这里把依赖**落库**
+    // （`依赖假设` 字段），于是它可被 list_propositions / 验证提示词 / 证伪联动读取（审计 M16）。
+    if (assumeId) p.依赖假设 = String(assumeId)
     await upsertProposition(p)
-    logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id)
+    logActivity('proposition', 'lemma「' + lemma.title + '」→ ' + p.id + (assumeId ? '（依赖临时假设 ' + assumeId + '）' : ''))
     return p.id
   }
   // 点5（q_sub 严格化）：solver 报告子问题 q_sub 时，注册三个对象：
@@ -1960,7 +2168,18 @@ export function apply(ctx) {
     const judgeId = qid + '-judge-' + shortId()
     const assumeStatement = sq.assumption_statement || sq.assumption_title || ('对子问题「' + (sq.q_sub_title || sq.q_sub_statement) + '」的一种回答（临时假设）')
     qs.push({ id: subId, 概述: sq.q_sub_statement, 已解决: false, 解法列表: [], 优先级: 1, progress: { 类型: 'sub-question', 来源问题: qid, 来源方向: dirId, 说明: '临时子问题：由问题 ' + qid + ' 方向 ' + dirId + ' 分支产生；求解主线在 p_{q-tmp}（' + assumeId + '）假设下推进。' } })
-    qs.push({ id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false, 解法列表: [], 优先级: 1, 判断命题: assumeId, progress: { 类型: 'judge', 假设命题: assumeId, 说明: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。' } })
+    // ★ 判断问题必须**自带一条种子解法**，否则整条链是死的（审计 C2）：buildVerifyCandidates 需要至少
+    //   一条非终态的解法/条目才会为它选验证对象，而裸的 p-tmp-* 命题又被显式跳过（那条路我们故意不放宽：
+    //   裸临时假设不该绕过"判断命题"直接裁决）。解法列表为空 ⇒ 没有任何东西可验证 ⇒ p_{q-tmp} 永远停在
+    //   0.5、判断命题永不收口、终止规则（unsolved.length === 0）不可达。
+    //   种子内容 = 这条临时假设本身（"p_{q-tmp} 成立"这一候选回答），概率 0.5（>0 且 <1：它是待验证的
+    //   候选，不是定论），并打上 `来源` 标记以示它是辅助对象（processVerify 据此让主线先占并发槽位）。
+    qs.push({
+      id: judgeId, 概述: '判断下述命题是否成立：' + assumeStatement, 已解决: false,
+      解法列表: [{ 完整解法: assumeStatement, 正确概率: 0.5, 已验: false, 来源: 'sub-question-assumption', 验证记录: [] }],
+      优先级: 1, 判断命题: assumeId,
+      progress: { 类型: 'judge', 假设命题: assumeId, 说明: '由临时假设 p_{q-tmp}（' + assumeId + '）生成；它是对子问题 ' + subId + ' 的一种回答的命题化。解法列表里那条种子解法就是"该假设成立"这一候选回答，由验证器的裁决决定它成立（1）还是不成立（0）。' },
+    })
     await writeQs(qs)
     const p = {
       id: assumeId, 概述: assumeStatement, 布尔估计: 0.5,
@@ -1984,9 +2203,42 @@ export function apply(ctx) {
   }
 
   // ================= verification (验证器) =================
-  function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
+  // 一票不算共识：≥MIN_REVIEWERS 份独立评审才可能达成/否决共识（审计 M11；与 v3 的最小票数同型）。
+  function consensus(t) { const cids = Object.keys(t.childResults); if (cids.length < MIN_REVIEWERS) return false; const vs = cids.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
   function verifierWeight(cid, rigor) { const acc = verifierAccuracy[cid] || { correct: 0, total: 0 }; const base = acc.total > 0 ? (acc.correct / acc.total) : 0.5; const bonus = (typeof rigor === 'number' && Number.isFinite(rigor)) ? Math.max(-0.2, Math.min(0.2, rigor)) : 0; return Math.max(0.05, Math.min(0.95, base + bonus)) }
+  /**
+   * 验证者的**稳定身份**（provider/model）：forced 模式的"历史准确率"必须按这种跨子代理稳定的键记，
+   * 按一次性的 childId 记等于永远 0.5（审计 H4）。子代理信息里本来没有这个字段，所以在这里算出来，
+   * 由 spawnChild 写进 agentRegistry 的 meta，再随每次投票进入 childResults。
+   */
+  function verifierIdentityKey() { const o = childAgentOptions(); return 'm:' + String(o.provider || '-') + '/' + String(o.model || '-') }
+  const PENDING_SCORE_MAX_OBJECTS = 32
+  /** 记下本轮各评审的投票，等**这个对象后来**取得布尔定论时再回溯计分（见 scorePendingReviews）。 */
+  function recordReviewForScoring(objectId, key, result) {
+    const id = String(objectId || '')
+    if (!id) return
+    let list = pendingReviewScores[id]
+    if (!list) { list = []; pendingReviewScores[id] = list }
+    list.push({ key: String(key || 'm:unknown'), result: clamp01(result) })
+    if (list.length > 8) list.shift()
+    const ids = Object.keys(pendingReviewScores)
+    while (ids.length > PENDING_SCORE_MAX_OBJECTS) delete pendingReviewScores[ids.shift()]
+  }
+  /** 对象取得布尔定论（1/0）时，用它给**此前**那些还没被检验过的评审打分。绝不拿聚合值给同一批打分。 */
+  async function scorePendingReviews(objectId, truth) {
+    const id = String(objectId || '')
+    const list = id ? pendingReviewScores[id] : undefined
+    if (!list || list.length === 0) return
+    delete pendingReviewScores[id]
+    for (let i = 0; i < list.length; i++) {
+      const acc = verifierAccuracy[list[i].key] || { correct: 0, total: 0 }
+      acc.total += 1
+      if (list[i].result === truth) acc.correct += 1
+      verifierAccuracy[list[i].key] = acc
+    }
+    await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
+  }
   async function handleVerifier(childId, meta, output, stopReason) {
     const rId = meta.rId
     const parsed = parseJson(output)
@@ -1997,7 +2249,7 @@ export function apply(ctx) {
     const Result = clamp01((parsed && parsed.Result != null) ? parsed.Result : 0.5)
     const Reason = (parsed && parsed.Reason) || ''
     let t = tasks['verify:' + rId]
-    if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(2, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
+    if (!t) { t = { id: 'verify:' + rId, type: 'verify', r: { kind: 'proposition', pId: rId, 概述: rId }, rId: rId, status: 'debating', children: [], childResults: {}, history: [], round: 1, expectedCount: Math.max(MIN_REVIEWERS, params.verifierCount), createdAt: now() }; tasks[t.id] = t }
     if (!parsed && !scheduler.running) {
       // abort：被中断的验证器没有产出，丢弃该子代理并清理任务簿记（任务在 resume 时由 processVerify 重建）
       delete agentRegistry[childId]
@@ -2007,7 +2259,7 @@ export function apply(ctx) {
       return
     }
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
-    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round }
+    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round, key: meta.verificationKey || verifierIdentityKey() }
     delete agentRegistry[childId]
     const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === meta.round })
     if (!allReported) { await saveAll(); return }
@@ -2042,7 +2294,29 @@ export function apply(ctx) {
       await finalizeVerification(t)
     }
   }
+  /**
+   * 裁决前的**票数下限**（审计 M11）：验证者掉线（followup 失败会把 childResults 里那一票删掉）时，
+   * 只剩一票也会走 finalVerdict —— 一个"完全验证"的布尔结论就这样由单个评审写成。
+   * 票数不足时**不产生任何裁决**：先补派验证器；补不足（未运行 / 并发被占满 / 已重试两次）就把任务置为
+   * `stalled`，冷却期后重试（任务保留 ⇒ processVerify 不会为同一个 rId 另造任务，也不会每 tick 重试）。
+   */
   async function finalizeVerification(t) {
+    const reviews = Object.keys(t.childResults || {}).length
+    if (reviews < MIN_REVIEWERS) {
+      const tried = Number(t.reviewerRespawn || 0)
+      if (scheduler.running && tried < 2 && reviewerCap() >= MIN_REVIEWERS) {
+        t.reviewerRespawn = tried + 1
+        logActivity('verify', t.rId + ' 只有 ' + reviews + ' 份有效评审（需要 ≥' + MIN_REVIEWERS + '），重新派发验证器补足（第 ' + t.reviewerRespawn + ' 次）')
+        t.status = 'spawning'; t.children = []; t.childResults = {}; t.round = 1
+        await saveAll()
+        return
+      }
+      logActivity('verify', t.rId + ' 有效评审不足 ' + MIN_REVIEWERS + ' 份（' + reviews + '），本次**不产生裁决**；' + REVERIFY_COOLDOWN_MS / 60000 + ' 分钟后重试')
+      t.status = 'stalled'; t.retryAt = now() + REVERIFY_COOLDOWN_MS
+      t.children = []; t.childResults = {}
+      await saveAll()
+      return
+    }
     const verdict = finalVerdict(t)
     if (params.mode === 'manual') {
       const d = enqueueDecision('verdict', 'verdict for ' + t.rId + ' (debate finished) = ' + verdict, { rId: t.rId, verdict: verdict, task: JSON.parse(JSON.stringify(t)) })
@@ -2062,7 +2336,10 @@ export function apply(ctx) {
       let num = 0; let den = 0
       const cids = Object.keys(t.childResults)
       for (let i = 0; i < rs.length; i++) {
-        const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
+        // 历史准确率按**稳定身份**取（见 verifierIdentityKey / settleVerdict）：新模型的第一票用 0.5
+        // 先验，此后按"后来的布尔定论"累积。
+        const key = (t.childResults[cids[i]] && t.childResults[cids[i]].key) || 'm:unknown'
+        const acc = verifierAccuracy[key] || { correct: 0, total: 0 }
         const accRate = acc.total > 0 ? (acc.correct / acc.total) : 0.5
         const confident = (rs[i].Result === 1 || rs[i].Result === 0) ? 0.1 : 0
         const w = Math.max(0.05, Math.min(0.95, accRate + confident))
@@ -2070,7 +2347,12 @@ export function apply(ctx) {
       }
       return den > 0 ? Math.max(0.01, Math.min(0.99, num / den)) : 0.5
     }
-    return 0.5 // flat = 均衡机制
+    // flat = 均衡机制：不再"不一致就判 0.5"——各评审自报的 0<Result<1 是**它为真的概率**，
+    // 取它们的均值（用户语义：只有精确的 1/0 是绝对真/假）。均值仍严格落在 (0,1)，绝不当成绝对结论；
+    // 这样 0.9 vs 1 这种高置信分歧得到的是 ≈0.95 而不是被折叠成 0.5（v3 用近共识规则修的就是这一点）。
+    let sum = 0
+    for (let i = 0; i < rs.length; i++) sum += Number(rs[i].Result) || 0
+    return Math.max(0.01, Math.min(0.99, sum / rs.length))
   }
   /**
    * `require` 门禁对**一次具体裁定**的判定（契约 §8）。
@@ -2094,16 +2376,24 @@ export function apply(ctx) {
     const v = clamp01(verdict)
     const r = t.r
     const cids = Object.keys(t.childResults)
-    // update verifier historical accuracy (forced mode audit)
+    // 验证者历史准确率（forced 加权用）。两条不变式（审计 H4/M13）：
+    //   ① 键是**稳定身份**（'m:<provider>/<model>'），不是一次性的 childId —— 按 childId 记的准确率
+    //      在裁决时永远是 {0,0}（每次验证都新开一个 child，handleVerifier 又把它从 registry 删掉），
+    //      于是 accRate 恒 0.5，"按历史准确率加权"根本不可能成立；
+    //   ② **只按后来的布尔定论计分**。拿本轮各评审的 Result 去和"同一批 Result 的聚合值"比较是自指：
+    //      non-unanimous 时没人是错的，flat 0.5 时凡 Result≠0.5 的人全被记错。所以这里先把本轮投票
+    //      记进待计分表（pendingReviewScores），等这个对象**后来**真的取得 0/1 时再回溯计分。
+    const scoreTarget = String(r.pId || r.判断命题 || r.qid || '')
+    if ((v === 1 || v === 0) && scoreTarget) await scorePendingReviews(scoreTarget, v)
     for (let i = 0; i < cids.length; i++) {
-      const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
-      acc.total += 1
-      if (t.childResults[cids[i]].Result === v) acc.correct += 1
-      verifierAccuracy[cids[i]] = acc
+      const res = t.childResults[cids[i]] || {}
+      recordReviewForScoring(scoreTarget, res.key, res.Result)
     }
-    await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
     // debate transcript log
-    await writeJson('Verification_logs/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
+    // 文件名来自 t.rId，而 rId 是**用户可写**的 q.id / p.id 拼出来的（buildVerifyCandidates 里
+    // 'r-' + q.id + '-s' + j）。fs.resolve 只做规范化、并不拒绝 '..'，所以 q.id = 'x/../../../../pwn'
+    // 会让这次写落到项目树之外（审计 C1，已用 pathdemo2.cjs 复现）。路径段一律过 safeId。
+    await writeJson('Verification_logs/' + safeId(String(t.rId)) + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
 
     if (r.kind === 'proposition') {
       const p = await findProposition(r.pId)
@@ -2117,6 +2407,9 @@ export function apply(ctx) {
           p.证明列表 = p.证明列表 || []; p.证伪列表 = p.证伪列表 || []
           p.证明列表.push({ 完整过程: strongestReason(t, 1) || '根据辩论得到的支持性论证', 正确概率: v, '支持信息/依据': '', 已验: true })
           p.证伪列表.push({ 完整过程: strongestReason(t, 0) || '根据辩论得到的反驳性论证', 正确概率: 1 - v, '支持信息/依据': '', 已验: true })
+          // 中段值 = "为真的概率"，不是定论：记下时间戳，冷却期过后这个命题可以**重新入选验证**
+          // （审计 M12：以前它被永久搁置在中间概率上，没有任何回到验证的路径）。
+          p.最近验证时间 = now()
         }
         await upsertProposition(p)
         await writeVerifiedCardIfNeeded(p)
@@ -2133,12 +2426,20 @@ export function apply(ctx) {
           item.已验 = true
           if (v === 1) { item['支持信息/依据'] = strongestReason(t, 1) || item['支持信息/依据'] }
           else if (v === 0) {
-            const other = r.side === '证明' ? (p.证伪列表 = p.证伪列表 || []) : (p.证明列表 = p.证明列表 || [])
-            other.push({ 完整过程: strongestReason(t, 0) || '', 正确概率: 1, '支持信息/依据': '判定 ' + r.side + ' 错误后的反证', 已验: true })
+            // 判 0 = "这份<证明/证伪>无效"，**不是**"命题为假"（反过来说 side=证伪 时也不是"命题为真"）。
+            // 旧实现在这里往对侧列表推入一条 正确概率=1 的反条目，等于用"证明无效"伪造出一个布尔定论：
+            // processStatusUpdates 随即写 布尔估计=0/1、优先级=never 和一张 结论:false/true 的 Verified
+            // 卡片。这与仓库已修过的 defect 事故是同一类（机制本意是让验证更严，却伪造出假否定）。
+            // 现在只把这一条记为无效（已验 / 正确概率 0），判据文字留在支持信息里，绝不伪造概率 1 的反条目。
+            item['支持信息/依据'] = strongestReason(t, 0) || item['支持信息/依据']
+            logActivity('verdict', t.rId + ' 判定' + r.side + '无效：' + r.pId + ' 的布尔估计保持不变（不因此认定命题为假/真）')
           } else {
             const other = r.side === '证明' ? (p.证伪列表 = p.证伪列表 || []) : (p.证明列表 = p.证明列表 || [])
             other.push({ 完整过程: strongestReason(t, v >= 0.5 ? 0 : 1) || '辩论得出的相反方向论证', 正确概率: 1 - v, '支持信息/依据': '', 已验: true })
             item['支持信息/依据'] = strongestReason(t, v >= 0.5 ? 1 : 0) || item['支持信息/依据']
+            // 中段值：条目本身与新增的反向条目都是 (0,1) 的概率，冷却期过后可重新入选验证。
+            item.最近验证时间 = now()
+            other[other.length - 1].最近验证时间 = now()
           }
         }
         await upsertProposition(p)
@@ -2155,6 +2456,8 @@ export function apply(ctx) {
           sol.已验 = true
           sol.验证记录 = sol.验证记录 || []
           sol.验证记录.push({ 结果: v, 时间: now(), 依据: strongestReason(t, v >= 0.5 ? 1 : 0) })
+          // 中段值（0<v<1）= "这份解法为真的概率"，不是定论：冷却期过后可重新入选验证（审计 M12）。
+          if (v !== 1 && v !== 0) sol.最近验证时间 = now()
           // 点3 回写联动：晋升问题的解法验证结果同步回源命题的证明/证伪条目（含内容比对防错位）
           if (sol.来源命题 && (sol.来源列表 === '证明' || sol.来源列表 === '证伪')) {
             const sp = await findProposition(sol.来源命题)
@@ -2184,15 +2487,39 @@ export function apply(ctx) {
                 logActivity('gate', t.rId + ' 对源命题 ' + ap.id + ' 的裁定 ' + v + ' 被 require 模式搁置为未定论（formal-required）')
               } else {
                 ap.布尔估计 = v
-                // 收敛闸门：本条路径只在 v=1/0 时才写入证明/证伪条目，中间裁决（flat 默认给出
-                // 0.5，forced 给出加权浮点）会让 ap 停留在"中间布尔估计 + 两个列表皆空"的状态——
-                // 而这正是 buildVerifyCandidates 认定"裸命题需要验证"的条件。若不在此标记，该命题
-                // 会在每个 tick 重新入选、重开一轮完整辩论；又因 processVerify 每 tick 只跑一个验证，
-                // 其它对象被无限饿死，终止条件（所有问题已解决）永不可达。标记后不再重复消耗验证配额，
-                // 裁决值仍保留在 布尔估计 中。
-                ap.已验证 = true
-                if (v === 1) { ap.证明列表 = ap.证明列表 || []; ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
-                else if (v === 0) { ap.证伪列表 = ap.证伪列表 || []; ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true }); ap.优先级 = 'never' }
+                // 收敛闸门：本条路径只在 v=1/0 时才写入证明/证伪条目，中间裁决（flat 现在给出各评审
+                // 自报概率的均值，forced 给出加权均值）会让 ap 停留在"中间布尔估计 + 两个列表皆空"
+                // 的状态——而这正是 buildVerifyCandidates 认定"裸命题需要验证"的条件。若不留时间戳，
+                // 该命题会在每个 tick 重新入选、重开一轮完整辩论；又因 processVerify 每 tick 只跑一个
+                // 验证，其它对象被无限饿死，终止条件（所有问题已解决）永不可达。
+                // ★ 但**中段值不是定论**（用户语义：只有 1/0 是绝对真/假）：`已验证` 只对布尔裁决生效；
+                //   中段裁决改记时间戳，冷却期过后重新入选——对象不会被永久停在中间概率上（审计 M12）。
+                if (v === 1) {
+                  ap.证明列表 = ap.证明列表 || []
+                  ap.证明列表.push({ 完整过程: strongestReason(t, 1) || '判断问题解法验证通过', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true })
+                  ap.优先级 = 'never'
+                  ap.已验证 = true
+                } else if (v === 0) {
+                  ap.证伪列表 = ap.证伪列表 || []
+                  ap.证伪列表.push({ 完整过程: strongestReason(t, 0) || '判断问题解法判定不成立', 正确概率: 1, '支持信息/依据': '经「判断下述命题是否成立」问题解法验证', 已验: true })
+                  ap.优先级 = 'never'
+                  ap.已验证 = true
+                } else {
+                  ap.最近验证时间 = now()
+                }
+                // 需求 5 第二半的联动：假设被**确认**（v=1）时，它就是对子问题 q_sub 的那一种回答的
+                // 定论——把这份回答作为子问题的解法交回，让 processStatusUpdates 按收口规则正常关闭
+                // 子问题并写问题卡片。否则 q_sub 永远未解决，终止规则（unsolved.length === 0）依然不可达。
+                if (v === 1 && ap.progress && ap.progress.子问题) {
+                  const subQ = qs.find(function (x) { return x.id === ap.progress.子问题 })
+                  if (subQ && !subQ.已解决) {
+                    subQ.解法列表 = subQ.解法列表 || []
+                    if (!subQ.解法列表.some(function (s2) { return s2.正确概率 === 1 })) {
+                      subQ.解法列表.push({ 完整解法: '【假设确认】' + ap.概述 + '（子问题的候选回答经「判断下述命题是否成立」问题验证为真）', 正确概率: 1, 已验: true, 来源: 'sub-question-assumption', 验证记录: [] })
+                      logActivity('subquestion', '子问题 ' + subQ.id + ' 由临时假设 ' + ap.id + ' 的确认回答收口（交由收口规则关闭并写卡片）')
+                    }
+                  }
+                }
                 await upsertProposition(ap)
                 await writeVerifiedCardIfNeeded(ap)
                 logActivity('judge-sync', 'judge problem verdict ' + v + ' synced to proposition ' + ap.id)
@@ -2319,10 +2646,10 @@ export function apply(ctx) {
     await saveAll()
     return { ok: true }
   }
-  async function startScheduler() { const r = await init(true); if (!r.ok) return r; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
-  async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function startScheduler() { const r = await init(true); if (!r.ok) return r; abandonGatedDecision('scheduler restarted'); scheduler.running = true; scheduler.startedAt = now(); logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; abandonGatedDecision('scheduler resumed (离开那次运行，挂起的节点不再等待)'); scheduler.running = true; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; abandonGatedDecision('scheduler aborted'); const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
@@ -2354,7 +2681,7 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       registeredAgents: Object.keys(agentRegistry).length,
-      recentActivity: activityLog.slice(-Math.min(10, Number(params.activityLogCap) || 100)), params: params,
+      recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)), params: params,
       formal: {
         mode: formalMode(), required: formalRequired(),
         leanCommand: params.leanCommand, leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
@@ -2371,6 +2698,7 @@ export function apply(ctx) {
     const exists = (await listDirsAt(vibeRoot(), 'Projects')).indexOf(slug) !== -1
     if (!create && !exists) return { ok: false, message: 'project not found: ' + slug }
     if (scheduler.running) await abortScheduler()
+    else abandonGatedDecision('project switched')
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
     if ((await readJson('qs/qs.json')) === undefined) await writeJson('qs/qs.json', [])
     params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; lastReportWrite = 0; lastPushReport = 0; reportDirty = false
@@ -2398,7 +2726,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -2407,7 +2735,7 @@ export function apply(ctx) {
     const p = { id: args.id, 概述: args.概述, 布尔估计: clamp01(args.布尔估计 != null ? args.布尔估计 : 0.5), 细类型: (args.细类型 && typeof args.细类型 === 'object') ? args.细类型 : { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: (args.优先级 != null) ? args.优先级 : 1, '价值/关键性': clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), progress: { 来源: 'user', 说明: '用户手动添加。' } }
     await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) }
   })
-  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category).', objParams({}), async function () { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } })
+  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category, 依赖假设).', objParams({}), async function () { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category, 依赖假设: p.依赖假设, 依赖假设已证伪: p.依赖假设已证伪 } }) } })
   registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, true) })
   registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
   registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
@@ -2468,6 +2796,16 @@ export function apply(ctx) {
     // 每次工具调用前同步当前项目（按会话读 current.json；多会话互不干扰）
     refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
     getRunning: function () { return scheduler.running },
+    // childOwner 裁剪用：这个会话当前仍"可能再发 subagent/end"的 child（在册的 + 任务正在等的）。
+    referencedChildIds: function () {
+      const out = Object.keys(agentRegistry)
+      const ids = Object.keys(tasks)
+      for (let i = 0; i < ids.length; i++) {
+        const t = tasks[ids[i]]
+        if (t && Array.isArray(t.children)) for (let j = 0; j < t.children.length; j++) out.push(t.children[j])
+      }
+      return out
+    },
     // Lean 形式化验证（docs/formal-verification.md）：状态与工具的内部入口，
     // 供状态/报告与测试直接读取，不必绕过工具层。
     formalMode: formalMode, formalOn: formalOn, formalRequired: formalRequired, formalGateOk: formalGateOk,
@@ -2503,13 +2841,13 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
   registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), 'vibe_math_add_problem')
   registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), 'vibe_math_add_proposition')
-  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category).', objParams({}), 'vibe_math_list_propositions')
+  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category, 依赖假设).', objParams({}), 'vibe_math_list_propositions')
   registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
   registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
   registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), 'vibe_math_list_projects')
@@ -2550,17 +2888,26 @@ export function apply(ctx) {
 
   // subagent/end (registered once; routed to the owning session via childOwner)
   ctx.on('subagent/end', function (info) {
+    // 记下"这个 child 最近一次 end"的时间：裁剪 childOwner 的宽限期从这里算（见 pruneChildOwner）。
+    // **不要**在这里直接回收那条映射：同一个 child 会因辩论/续轮再次 end，丢了映射这次事件就没人路由，
+    // 实测后果是 verdict 收口失效（"problem solved after verdict 1"）。回收交给 pruneChildOwner 的
+    // 引用 + 宽限期判断。
+    lastChildEndAt.set(info.id, now())
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) })
-    // 注意：这里**不要**回收 childOwner 条目。这条映射在子代理 end 之后仍会被后续事件路由
-    // 用到：曾试过在此处回收、也试过在 onChildEnd 末尾回收，两次都导致 e2e-regression 的
-    // verdict 收口失效（"problem solved after verdict 1"）。代价是每个历史子代理留下一条
-    // 小记录（有界增长，实测不影响功能），远小于"验证无法收口"的代价。
   })
 
   // tick timer (registered once; ticks every running session at its own pace)
-  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
+  ctx.effect(() => {
+    let beat = 0
+    const t = setInterval(function () {
+      for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() }
+      // childOwner 裁剪：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
+      if ((++beat % 30) === 0) { try { pruneChildOwner() } catch (e) { console.error('vibe-math-v2: pruneChildOwner failed: ' + String((e && e.message) || e)) } }
+    }, 1000)
+    return () => clearInterval(t)
+  })
 }
 
 // ---- test seam: pure, stateless helpers --------------------------------

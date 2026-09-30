@@ -111,7 +111,7 @@ export function apply(ctx) {
     directionsPerSolver: 1,       // directions shown per solver prompt (1 = own only)
     verifierCount: 3,             // independent reviewers per verification
     debateMaxRounds: 5,           // debate round cap
-    verdictMode: 'forced',        // flat = 均衡(0.5) | forced = 按历史准确率+严谨性加权；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值）
+    verdictMode: 'forced',        // flat = 均衡(0.5) | forced = 对每票**等权**取均值（每票按自己报出的概率贡献；严格 1/0 是绝对投票，其影响通过数值本身拉向端点）。**不再**按"历史准确率"加权：那个统计量统计的是"与本批裁决的一致度"，没有后续真值可纠正它。两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值）
     provider: '',
     model: '',
     solverPersona: '',
@@ -225,7 +225,7 @@ export function apply(ctx) {
     { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向', suggestion: 1 },
     { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
     { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
-    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: '裁决模式：flat = 均衡机制；forced = 强制裁决（按历史准确率+严谨性加权）；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值，修复 v2 flat 误判）', suggestion: 'forced' },
+    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: '裁决模式：flat = 均衡机制（分歧时 0.5）；forced = 强制裁决（对每票等权取均值；严格 1/0 是绝对投票，其影响通过数值本身拉向端点。**不按"历史准确率"加权**——该统计量统计的是与本批裁决的一致度，没有后续真值可纠正）；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值，修复 v2 flat 误判）', suggestion: 'forced' },
     { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
     { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
     { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
@@ -460,6 +460,12 @@ export function apply(ctx) {
     lines.push(anchorLine('依赖', JSON.stringify(p.依赖 || [])))
     lines.push(anchorLine('被依赖', JSON.stringify(p.被依赖 || [])))
     lines.push(anchorLine('来源', p.来源 || '原始'))
+    // 关联锚点（H4）：这两行此前**只读不写** ⇒ 任何一次重载（resume / vibe_math_index /
+    // set_project / 进程重启都会按文件名重新解析卡片）之后，判断问题与它的临时假设命题
+    // 全部失联：processStatusUpdates 的"收口僵尸判断问题"分支、settleVerdict 的"回写源命题"
+    // 分支、Verified 卡的来源字段都只在同进程内有效。写出来才是真正的持久关联。
+    if (p.判断命题) lines.push(anchorLine('判断命题', p.判断命题))
+    if (p.来源命题) lines.push(anchorLine('来源命题', p.来源命题))
     lines.push(anchorLine('计划', p.计划 || ''))
     lines.push('')
     lines.push('## 陈述')
@@ -505,6 +511,10 @@ export function apply(ctx) {
     if (formalAnchorLine(p.id)) lines.push(anchorLine('形式化', formalAnchorLine(p.id)))
     lines.push(anchorLine('优先级', p.优先级 == null ? 1 : p.优先级))
     lines.push(anchorLine('依赖', JSON.stringify(p.依赖 || [])))
+    // 来源锚点（H4）：与问题卡的 判断命题/来源命题 对称——不写盘的话，重载后
+    // 「引理来自哪个问题/方向」丢失，Verified 命题卡的 `- 来源:` 也会永久为空。
+    if (p.来源问题) lines.push(anchorLine('来源问题', p.来源问题))
+    if (p.来源方向) lines.push(anchorLine('来源方向', p.来源方向))
     if (p.价值关键性 != null) lines.push(anchorLine('价值/关键性', p.价值关键性))
     lines.push('')
     lines.push('## 陈述')
@@ -768,6 +778,8 @@ export function apply(ctx) {
   function allProblems() { return Array.from(problems.values()) }
   function allPropos() { return Array.from(propos.values()) }
   function depResolved(id) {
+    // M9：对象键一律是 idSafe(id)（见各写入点），依赖是模型写的原始 id ⇒ 查表前必须走同一把归一化。
+    id = idSafe(id)
     if (problems.has(id)) { const q = problems.get(id); return q.状态 === '已解决' || q.优先级 === 'never' }
     if (propos.has(id)) { const p = propos.get(id); return p.概率 === 1 || p.概率 === 0 || p.优先级 === 'never' } // never = 主动弃权，视为依赖已满足，避免等待依赖死锁
     return true // unknown dependency: treat as resolved (conservative)
@@ -1053,7 +1065,8 @@ export function apply(ctx) {
   function kcObjectModels() {
     return '\n2) OBJECT MODELS（md 卡片，软规范：头部锚点行 + 正文自由叙述）：\n' +
       '- 问题卡 Problems/<id>.md：{ 标题, ID, 类型:问题, 状态:原始|求解中|等待依赖|已解决|死路, 优先级, 依赖:[], 被依赖:[], 来源:原始|后生, 计划（由调度器按规划代理的计划自动更新：一句话说明下一轮安排）, ## 陈述（完整问题陈述，每个记号/对象都要完整定义）, ## 来源与动机（后生问题：产生流程/动机/如何回填主线）, ## 解法候选（### 解法 N｜标题｜概率X｜状态Y + 叙述式完整解法）}。\n' +
-      '- 命题卡 Propos/<分类>/<id>.md：{ 标题, ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], ## 陈述（完整）, ## 证明尝试（### 证明 N｜…｜概率X｜状态Y）, ## 证伪尝试（### 证伪 N｜…｜概率X｜状态Y）}。\n' +
+      '- 命题卡 Propos/<分类>/<id>.md：{ 标题, ID, 类型:命题, 状态:未定论|已验证·真|已验证·假, 概率, 优先级, 依赖:[], 价值/关键性, 来源问题, 来源方向, ## 陈述（完整）, ## 证明尝试（### 证明 N｜…｜概率X｜状态Y）, ## 证伪尝试（### 证伪 N｜…｜概率X｜状态Y）}。\n' +
+      '- `价值/关键性 ∈ [0,1]`（M1）：这条命题对**整个项目主线**有多关键——若它成立/被证伪，能改变多少后续方向。≥ promoteValueThreshold（默认 0.7）且仍未定论(概率∈(0,1))的命题会被自动晋升成「判断下述命题是否成立：…」问题，由求解器专门证明/证伪并把结果回写源命题。你不填就默认 0.5（永不晋升）。**只有你（写卡的代理）能设这个值**——请在你认为"这条引理/猜想值得单独立项"时显式写上。\n' +
       '- 证明/证伪尝试语义：`## 证明尝试`=为证实而写的论证；`## 证伪尝试`=专门反驳/反例的论证。**失败的"找反例未果"/sanity check 是支持性证据，不属于证伪尝试**；不要写入 `## 证伪尝试`（否则系统会当作待验证的反驳去验证）。对仍未完成的证明/证伪，明确标注缺口而非伪装完成。\n' +
       '- 方法卡 Methods/<id>.md：{ 标题, ID, 类型:方法, 状态:经验|应用验证|含已验证断言, 可信断言:[]（只允许已进 Verified/ 的 ID）, 上级体系/子方法/相关, 适用场景, ## 核心内容, ## 定义与记号, ## 应用记录, ## 改进历史 }。\n' +
       '- 收口规则：某个解法/证明/证伪 概率=1 → 问题已解决 / 命题已验证（状态/概率锚点由调度器改写）。\n'
@@ -1079,7 +1092,7 @@ export function apply(ctx) {
   function kcSolverFiles() {
     return '你的归属文件：\n' +
       '- 求解器：把该方向的完整叙述（本轮进展/子路线/可行性信号/教训/完整解法文本）写进 `Progress/<问题id>/<方向id>.md`；聚合索引 `Progress/<问题id>.md` 由调度器维护，不要动它。\n' +
-      '- 新引理：写一张完整命题卡到 `Propos/<分类>/<p-id>.md`，含锚点 `- 标题:`、`- ID/类型/状态/概率/优先级` 与 `## 陈述`；证明写进 `### 证明 1｜标题｜概率X｜状态Y` 段落（完整证明文本是验证必需，否则验证器只能验裸命题）。\n'
+      '- 新引理：写一张完整命题卡到 `Propos/<分类>/<p-id>.md`，含锚点 `- 标题:`、`- ID/类型/状态/概率/优先级/价值关键性` 与 `## 陈述`；证明写进 `### 证明 1｜标题｜概率X｜状态Y` 段落（完整证明文本是验证必需，否则验证器只能验裸命题）。`- 价值/关键性: <0..1>` 表示这条引理对项目主线的关键程度（≥ 阈值会被自动晋升为独立问题），别省。\n'
   }
   // 方法整理代理专属：方法卡
   function kcKeeperFiles() {
@@ -1207,7 +1220,7 @@ export function apply(ctx) {
     head += '\nLEMMA RULES: every lemma you register MUST carry a complete proof in `lemmas[].proof` (and in the card\'s `## 证明尝试`). If a claim is only partly argued, do NOT register it as a finished lemma — either prove it fully or record it as an explicit gap/conjecture stating the missing step, so the verifier knows exactly what is (and is not) being claimed. Incomplete "lemmas" waste verification and can mislead.\n'
     head += '\nOUTPUT CONTRACT — pick ONE channel. Write content into Markdown; only lightweight scheduling metadata (and verification-required proofs) cross the machine reply.\n' +
       'CHANNEL A (recommended, you can write files): write the full round narrative into `Progress/' + q.id + '/' + dir.id + '.md` and each new lemma card into `Propos/<分类>/<id>.md`, then reply ONLY this metadata object:\n' +
-      '{"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '","round":' + round + ',"survival":0.5,"status":"continue|success|dead-end","dead_end_reason":"... or null","lemmas":[{"id":"p-...","title":"...","statement":"...","proof":"<完整证明文本，供验证器核验>","prob":0.6,"分类":"<引理卡目录名，必须与你要写入的 Propos/<分类>/ 目录严格一致>","优先级":1}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}],"solution_prob":0.85,"solution_text":"<完整解法文本，或 null>","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}}\n' +
+      '{"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '","round":' + round + ',"survival":0.5,"status":"continue|success|dead-end","dead_end_reason":"... or null","lemmas":[{"id":"p-...","title":"...","statement":"...","proof":"<完整证明文本，供验证器核验>","prob":0.6,"价值/关键性":0.5,"分类":"<引理卡目录名，必须与你要写入的 Propos/<分类>/ 目录严格一致>","优先级":1}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"...","标题":"...","内容描述":"...","是否已入库":false}],"solution_prob":0.85,"solution_text":"<完整解法文本，或 null>","sub_questions":[{"q_sub_title":"...","q_sub_statement":"完整问题陈述(含所有对象/定义)","assumption_title":"p_{q-tmp} 标题","assumption_statement":"完整假设陈述(含所有定义)"}]}}\n' +
       'CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:\n' +
       '{"__writes":[{"path":"Progress/' + q.id + '/' + dir.id + '.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"' + q.id + '","dirId":"' + dir.id + '",...同上 meta 字段...}}\n' +
       '区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。'
@@ -1364,6 +1377,7 @@ export function apply(ctx) {
     tickInFlight = true
     lastTickAt = now()
     try {
+      await renewProjectLock()
       await syncDependencies()
       await processStatusUpdates()
       await processPriorityAdjust()
@@ -1372,6 +1386,8 @@ export function apply(ctx) {
       await reconcileVerify()
       await executePlanQueue()
       await maybePlan()
+      // 方法整理排在终止判定之前：到期的方法整理是**真实工作**，先把它派出去，
+      // 再让 checkTermination 看到"有在途的 method-keeper"从而不误判停机（H1 修复的配套）。
       await maybeMethodKeepFallback()
       await maybePushReport(false)
       await maybeWriteReport(false)
@@ -1570,7 +1586,9 @@ export function apply(ctx) {
   }
   function verifyTaskBusy(rId) { if (tasks['verify:' + rId]) return true; return Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'verifier' && m.rId === rId }) }
   async function createVerifyTask(c) {
-    const rId = c.rId
+    // M9：验证 id 由对象 id 派生（`r-<对象id>[-sN]`），对象键已归一化 ⇒ rId 也归一化，
+    // 否则原始 id 里的路径分隔符会被拼进 Logs/Verification/<rId>_<ts>.json 造出子目录。
+    const rId = idSafe(c.rId)
     if (verifyTaskBusy(rId)) return false
     // require 门禁的**防空转**（契约 §2「对象留在原库，可形式化后再次提议」）：已经被记为
     // 「形式化待办」、而形式化又还没补齐的对象不再重复表决——重复表决只会一次又一次被同一道
@@ -1657,15 +1675,18 @@ export function apply(ctx) {
     // 规划代理在途时不再重复调用
     const plannerInFlight = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'planner' })
     if (plannerInFlight) return
-    // 有"可调度工作"= 有待解问题方向可推进 或 有验证候选 或 有待沉淀发明 或 有待执行计划。
-    // 修复：仅剩验证候选（如所有问题已解决但 Propos 里仍有未验证命题/解法）时也必须触发规划，
-    // 否则 planner 永远不会被调用、验证永不进行。
+    // 有"可调度工作"= 有待解问题方向可推进 或 有验证候选 或 有**到期**的方法整理 或 有待执行计划。
+    // H1 修复：这里必须用真正的到期判定 methodKeepDue()，而不是"待沉淀发明非空"。
+    // 旧条件在 pendingInventions ∈ [1, methodKeepEvery-1] 时恒真，于是**没有任何工作**的每一
+    // 个 tick 都派生一个 planner：空计划不留痕（lastPlanSummary 不写）、冷却又被"无在途工作"
+    // 绕过、终止判定又被刚派出的 planner 挡掉 ⇒ 按 tick 计费的 planner 热循环永不终止。
+    // 待沉淀发明到期时由 maybeMethodKeepFallback() 处理，不需要（也不应该）叫 planner。
     const verifyWork = (await buildVerifyCandidates()).length > 0
-    if (!hasSchedulableWork() && !verifyWork && methodLog.pendingInventions.length === 0 && planQueue.length === 0) { await maybeMethodKeepFallback(); return }
-    // 冷却：系统空闲且有工作时忽略冷却（避免 30s 空转）
+    if (!hasSchedulableWork() && !verifyWork && !methodKeepDue() && planQueue.length === 0) return
+    // 冷却对**每一次**规划调用生效（含空计划）：空计划同样是一次真实的模型调用，必须退避。
+    // 旧代码用 hasInflight 跳过冷却，本意是"空闲且有工作时不空转"，但那恰好是 H1 的放大器。
     const cooldown = Number(params.planMinIntervalMs) || 0
-    const hasInflight = Object.keys(agentRegistry).length > 0 || planQueue.length > 0
-    if (cooldown > 0 && hasInflight && (now() - lastPlanAt) < cooldown) return
+    if (cooldown > 0 && (now() - lastPlanAt) < cooldown) return
     await callPlanner()
   }
   async function callPlanner() {
@@ -1742,7 +1763,7 @@ export function apply(ctx) {
       if (act === 'spawn') {
         const role = String(a.role || '')
         if (role === 'explorer') {
-          const q = problems.get(String(a.target || ''))
+          const q = problems.get(idSafe(String(a.target || ''))) // M9：问题键已归一化
           if (!q || q.状态 === '已解决' || q.优先级 === 'never') continue
           const dirs = getDirState(q.id)
           const allExhausted = dirs.length > 0 && dirs.every(function (d) { return d.status === 'dead-end' || d.status === 'success' })
@@ -1751,7 +1772,7 @@ export function apply(ctx) {
           if (busy) continue
           if ((explorerRetries[q.id] || 0) >= (Number(params.maxExplorerRetries) || 3)) continue
         } else if (role === 'solver') {
-          const q = problems.get(String(a.target || ''))
+          const q = problems.get(idSafe(String(a.target || ''))) // M9：问题键已归一化
           if (!q || q.状态 === '已解决' || q.优先级 === 'never' || q.状态 === '等待依赖') continue
           const dir = (getDirState(q.id) || []).find(function (d) { return d.id === String(a.direction || '') })
           if (!dir || dir.status !== 'active') continue
@@ -1759,11 +1780,13 @@ export function apply(ctx) {
           const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.qid === q.id && m.direction === dir.id && m.role === 'solver' })
           if (running) continue
         } else if (role === 'verifier') {
-          const rId = String(a.target || '')
+          const rId = idSafe(String(a.target || '')) // M9：与 createVerifyTask 同一把归一化
           if (!rId) continue
           if (verifyTaskBusy(rId)) continue
           const cands = await buildVerifyCandidates()
-          if (!cands.some(function (c) { return c.rId === rId })) continue
+          if (!cands.some(function (c) { return idSafe(c.rId) === rId })) continue
+          out.push({ action: 'spawn', role: role, target: rId, direction: a.direction || '', reason: String(a.reason || '') })
+          continue
         } else if (role === 'method-keeper') {
           // 无目标；允许（由代码兜底去重：一次只允许一个 method-keeper）
           const running = Object.keys(agentRegistry).some(function (cid) { const m = agentRegistry[cid]; return m && m.role === 'method-keeper' })
@@ -1775,10 +1798,10 @@ export function apply(ctx) {
         if (!agentRegistry[cid]) continue
         out.push({ action: 'interrupt', childId: cid, reason: String(a.reason || '') })
       } else if (act === 'promote') {
-        const p = propos.get(String(a.target || ''))
+        const p = propos.get(idSafe(String(a.target || ''))) // M9：命题键已归一化
         if (!p || p.概率 === 1 || p.概率 === 0 || p.优先级 === 'never' || p.在问题清单) continue
         if (Number(p.价值关键性) < Number(params.promoteValueThreshold)) continue
-        out.push({ action: 'promote', target: String(a.target || ''), reason: String(a.reason || '') })
+        out.push({ action: 'promote', target: p.id, reason: String(a.reason || '') })
       } else if (act === 'wait' || act === 'continue' || act === 'stop') {
         out.push(Object.assign({ action: act }, a.childId ? { childId: String(a.childId) } : {}, a.target ? { target: String(a.target) } : {}, { reason: String(a.reason || '') }))
       }
@@ -1974,7 +1997,9 @@ export function apply(ctx) {
       if (parsed.lessons) dir.lessons = (dir.lessons || []).concat(parsed.lessons)
       if (parsed.blockers) dir.blockers = (dir.blockers || []).concat(parsed.blockers)
       if (parsed.dead_end_reason) dir.dead_end_reason = parsed.dead_end_reason
+      // M11：`survival_probability`（遗留扁平名）与 `survival`（提示词名）都接受。
       if (typeof parsed.survival_probability === 'number') dir.survival = clamp01(parsed.survival_probability)
+      else if (typeof parsed.survival === 'number') dir.survival = clamp01(parsed.survival)
       if (parsed.lemmas && parsed.lemmas.length) { for (let i = 0; i < parsed.lemmas.length; i++) { const lid = await addLemmaAsProposition(qid, parsed.lemmas[i]); if (lid) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: lid, title: parsed.lemmas[i].title || '' }) } } }
       if (parsed.sub_questions && parsed.sub_questions.length) { for (let i = 0; i < parsed.sub_questions.length; i++) { const sq = parsed.sub_questions[i]; if (sq && sq.q_sub_statement && dir.sub_questions && dir.sub_questions.some(function (x) { return x.statement === sq.q_sub_statement })) continue; const rec = await addSubQuestion(qid, dirId, sq); if (rec) { dir.sub_questions = dir.sub_questions || []; dir.sub_questions.push(rec) } } }
       // journal narrative (论文式续写：把本轮叙述追加进研究日志)
@@ -1988,11 +2013,16 @@ export function apply(ctx) {
       await consumeMethodFeedback(parsed, { qid: qid, dirId: dirId })
     }
     if (status === 'success') {
-      if (parsed && parsed.solution) {
+      // M11：遗留扁平通道的字段名（solution / solution_probability）与提示词教的名字
+      // （solution_text / solution_prob）不一致 ⇒ 严格按提示词回写的 solver 会掉进 else 分支，
+      // 在轮次上限处被判成"claimed success without solution"并把方向写死。两套名字都接受。
+      const flatSolution = (parsed && parsed.solution != null) ? parsed.solution : (parsed ? parsed.solution_text : undefined)
+      const flatSolutionProb = (parsed && parsed.solution_probability != null) ? parsed.solution_probability : (parsed ? parsed.solution_prob : undefined)
+      if (parsed && flatSolution) {
         dir.status = 'success'
         delete agentRegistry[childId]
         logActivity('solver', qid + '/' + dirId + ' success at round ' + meta.round)
-        await addSolution(qid, parsed.solution, parsed.solution_probability)
+        await addSolution(qid, flatSolution, flatSolutionProb)
       } else {
         if (meta.round >= params.solverMaxRounds) {
           dir.status = 'dead-end'; dir.dead_end_reason = dir.dead_end_reason || 'claimed success without solution at iteration cap'
@@ -2031,12 +2061,14 @@ export function apply(ctx) {
   function statusFromStop(stopReason) { return (stopReason === 'completed' || stopReason === 'max-tokens') ? 'continue' : 'dead-end' }
   async function addLemmaAsProposition(qid, lemma) {
     if (!lemma || !lemma.title) return
-    let be = clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6)
+    // M11：`prob`（提示词名）与 `布尔估计`（遗留扁平名）都接受；`分类` 与 `细类型` 同理。
+    const rawProb = lemmaProb(lemma)
+    let be = clamp01(rawProb != null ? rawProb : 0.6)
     if (be >= 1) be = 0.99; else if (be <= 0) be = 0.01
     const p = {
       id: 'p-' + shortId(), 标题: lemma.title, 状态: '未定论', 概率: be,
       优先级: (lemma.优先级 != null) ? lemma.优先级 : 1, 依赖: [], 价值关键性: clamp01(lemma['价值/关键性'] != null ? lemma['价值/关键性'] : 0.5),
-      分类: categoryOf({ 分类: Object.keys(lemma.细类型 || { 未分类: {} })[0] || '未分类' }),
+      分类: categoryOf({ 分类: lemmaCategory(lemma) || '未分类' }),
       陈述: lemma.statement || lemma.title,
       proofs: [{ title: lemma.title + '（证明）', prob: clamp01(0.7), status: '未定论', text: lemma.proof || '' }],
       refutes: [], 来源问题: qid, 在问题清单: false,
@@ -2101,21 +2133,23 @@ export function apply(ctx) {
     if (Array.isArray(parsed.methods_used)) {
       for (const mu of parsed.methods_used) {
         if (!mu || !mu.id) continue
-        const m = methods.get(mu.id) || globalMethods.get(mu.id)
+        // M9：方法键一律是 idSafe(id)，代理给的是原始 id ⇒ 查表前归一化。
+        const muId = idSafe(mu.id)
+        const m = methods.get(muId) || globalMethods.get(muId)
         if (!m) {
           // 未知 id：solver 引用了一个尚未入卡的方法/技巧 → 作为待沉淀发明记录，防引用丢失（Method Keeper 将据此建卡）
-          methodLog.pendingInventions.push({ at: now(), 来源: ctx.qid ? ('问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '')) : '', 类型: '方法', 标题: String(mu.id), 内容描述: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
-          logActivity('method', 'methods_used referenced unknown method ' + mu.id + ' → queued as pending invention')
+          methodLog.pendingInventions.push({ at: now(), 来源: ctx.qid ? ('问题 ' + ctx.qid + (ctx.dirId ? ' 方向 ' + ctx.dirId : '')) : '', 类型: '方法', 标题: String(muId), 内容描述: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
+          logActivity('method', 'methods_used referenced unknown method ' + muId + ' → queued as pending invention')
           continue
         }
-        if (methods.has(mu.id)) {
+        if (methods.has(muId)) {
           // 只记录"有实际问题/方向上下文"的引用；method-keeper 纯整理时的引用（qid/dirId 皆空）不当作应用，
           // 避免把"整理时引用该方法"误记为"实际应用"，从而污染应用计数并触发错误的全局晋升。
           if (ctx.dirId || ctx.qid) {
             m.applications = m.applications || []
             m.applications.push({ at: fmtTime(), 问题: ctx.qid || '', 方向: ctx.dirId || '', text: (mu.效果 || '') + (mu.建议 ? '；建议：' + mu.建议 : '') })
             await saveMethod(m, false)
-            logActivity('method', 'application record appended to ' + mu.id + ' (问题 ' + ctx.qid + ' 方向 ' + ctx.dirId + ')')
+            logActivity('method', 'application record appended to ' + muId + ' (问题 ' + ctx.qid + ' 方向 ' + ctx.dirId + ')')
           }
         }
       }
@@ -2952,6 +2986,26 @@ export function apply(ctx) {
   }
 
   // ================= verification (验证器) =================
+  /**
+   * 一个判决对象**至少**需要几票。
+   *
+   * H5：此前没有任何下限——`maxParallelThreshold=1` 时 backfillVerifiers 只派出 1 个验证器，
+   * 它一结束 `allReported`（只看"已存在的孩子是否都报了"）即为真，`consensus` 对单元素数组
+   * 恒真，于是跳过全部辩论直接 `finalVerdict → 1 → settleVerdict`，写出 `概率:1/已验证·真`
+   * 并落 `Verified/`。`Verified/` 是所有提示词的"绝对可信"层，一票定论 = 一个验证器的偏见
+   * 直接变成下游全部代理的"已知事实"。
+   *
+   * 下限取 max(2, expectedCount)：verifierCount=1 不是"允许单票"，只是"至少 2 个独立验证器"
+   * （与 createVerifyTask 的 `Math.max(2, ...)` 一致）。
+   */
+  function minVotes(t) { return Math.max(2, Number(t && t.expectedCount) || 0, Number(params.verifierCount) || 0) }
+  function haveEnoughVotes(t) { return Object.keys(t.childResults).length >= minVotes(t) }
+  /** 所有已派出的验证器都报了本轮的票，**且**票数达到下限——否则不得推进/裁决。 */
+  function allReportedWithQuorum(t, round) {
+    if (!t || !Array.isArray(t.children) || t.children.length === 0) return false
+    if (t.children.length < Math.max(2, Number(t.expectedCount) || 0)) return false
+    return t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === round })
+  }
   function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
   async function handleVerifier(childId, meta, output, stopReason) {
@@ -2974,12 +3028,16 @@ export function apply(ctx) {
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
     t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round }
     delete agentRegistry[childId]
-    const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === meta.round })
-    if (!allReported) { await saveAll(); return }
+    // H5：推进/裁决的前置条件是"已凑齐下限票数且本轮都已回报"，不是"目前存在的那几个孩子都报了"。
+    // 未凑齐时保持 spawning，由 reconcileVerify 在后续 tick 里补派验证器（不裁决、不定论）。
+    if (!allReportedWithQuorum(t, meta.round)) { await saveAll(); return }
     await advanceVerification(t, meta.round)
     await saveAll()
   }
   async function advanceVerification(t, round) {
+    // H5 第二道闸门：票数不足下限时**不辩论、不裁决**，回到 spawning 等 reconcileVerify 补派。
+    // 放在最前面：即便 handleVerifier 因为"孩子被删除"等边缘情形推进到这里，也绝不定论。
+    if (!haveEnoughVotes(t)) { t.status = 'spawning'; return }
     if (round < params.debateMaxRounds && !consensus(t) && t.children.length > 0) {
       if (!scheduler.running) { t.status = 'paused'; return }
       if (activeCount() >= params.maxParallelThreshold) { t.status = 'paused'; return }
@@ -3008,6 +3066,8 @@ export function apply(ctx) {
     }
   }
   async function finalizeVerification(t) {
+    // H5 最后一道闸门：票数不足下限时**决不**给出裁决（单票绝不结论）。
+    if (!haveEnoughVotes(t)) { t.status = 'spawning'; return }
     const verdict = finalVerdict(t)
     if (params.mode === 'manual') {
       const d = enqueueDecision('verdict', 'verdict for ' + t.rId + ' (debate finished) = ' + verdict, { rId: t.rId, verdict: verdict, task: JSON.parse(JSON.stringify(t)) })
@@ -3033,16 +3093,14 @@ export function apply(ctx) {
       if (mean >= 0.85 || mean <= 0.15) return Math.max(0.01, Math.min(0.99, mean))
     }
     if (params.verdictMode === 'forced') {
-      let num = 0; let den = 0
-      const cids = Object.keys(t.childResults)
-      for (let i = 0; i < rs.length; i++) {
-        const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
-        const accRate = acc.total > 0 ? (acc.correct / acc.total) : 0.5
-        const confident = (rs[i].Result === 1 || rs[i].Result === 0) ? 0.1 : 0
-        const w = Math.max(0.05, Math.min(0.95, accRate + confident))
-        num += w * rs[i].Result; den += w
-      }
-      return den > 0 ? Math.max(0.01, Math.min(0.99, num / den)) : 0.5
+      // M8：这里**不再**按 verifierAccuracy 加权。那份统计量统计的是"这一票与该次裁决是否一致"，
+      // 而裁决本身就是同一批票的聚合——即"与自己一致"（注：v 为加权均值时 `Result === v` 几乎恒假，
+      // 于是它其实把"从众度"记成 0），且没有任何后续真值（Lean 通过 / 被 defect 撤回 / 命题被反证）
+      // 会纠正它。用这样一个量去加权，放大而非抑制系统性偏见，与"按历史准确率加权"的宣称相反。
+      // 改为**等权**取均值：每票按自己报出的概率贡献，本身就是该验证器的贝叶斯式估计；
+      // 严格的 1/0 是绝对投票，其影响已通过数值本身（拉向端点）自然体现，无需人为加权。
+      let sum = 0; for (let i = 0; i < rs.length; i++) sum += rs[i].Result
+      return Math.max(0.01, Math.min(0.99, sum / rs.length))
     }
     return 0.5
   }
@@ -3050,10 +3108,14 @@ export function apply(ctx) {
     const v = clamp01(verdict)
     const r = t.r
     const cids = Object.keys(t.childResults)
+    // 票数记录保留（Logs/Verification 与 State/verifier_accuracy.json 是审计轨迹），但该统计量
+    // **不再**参与任何加权（见 finalVerdict 的 M8 说明）。这里记的是"该票的实际概率"而非布尔值：
+    // 原来的 `Result === v` 记法在 v 为加权均值时几乎不可能相等，等于把"从众度"记成 0，
+    // 与字段名 correct/total 的含义相去更远。
     for (let i = 0; i < cids.length; i++) {
       const acc = verifierAccuracy[cids[i]] || { correct: 0, total: 0 }
       acc.total += 1
-      if (t.childResults[cids[i]].Result === v) acc.correct += 1
+      if (Number(t.childResults[cids[i]].Result) === v) acc.correct += 1
       verifierAccuracy[cids[i]] = acc
     }
     await writeJson('Logs/Verification/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
@@ -3191,20 +3253,49 @@ export function apply(ctx) {
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true }
   }
-  async function acquireProjectLock() {
+  /**
+   * 项目锁 = 租约（lease），不是一次性写入的时间戳。
+   *
+   * 旧实现只在获取时写一次 `at`，全仓没有任何续租点：运行满 projectLockTimeoutMs（默认 60s）后
+   * 第二个会话就会把锁判为"过期"并直接夺锁，两个进程于是并发写同一棵 md 树——而写锁 fileOwner
+   * 是**进程级**的，跨进程不共享，挡不住这一路。
+   *
+   * 现在：(1) tick 内每 LOCK_RENEW_MS 续租一次（本会话仍在运行时锁永不过期）；
+   * (2) 夺取**其他会话**持有的锁需要显式 override（`{override:true}` / `/vibe resume override`）。
+   * 唯一保留的隐式接管是"锁租约已明确过期"（持有者进程崩溃、不再续租），以免崩溃后项目永久锁死；
+   * 正常运行中的会话不会被接管。
+   */
+  const LOCK_RENEW_MS = 10000
+  let projectLockRenewedAt = 0
+  async function renewProjectLock() {
+    if (!scheduler.running) return
+    if (projectLock.sessionId !== sessionId) return
+    if ((now() - projectLockRenewedAt) < LOCK_RENEW_MS) return
+    projectLockRenewedAt = now()
+    projectLock.at = now()
+    await saveAll()
+  }
+  async function acquireProjectLock(override) {
     const timeout = Number(params.projectLockTimeoutMs) || 60000
-    if (projectLock.sessionId && projectLock.sessionId !== sessionId && (now() - projectLock.at) < timeout) {
-      return { ok: false, message: '项目 "' + currentProject + '" 正被会话 ' + projectLock.sessionId + ' 占用（锁超时 ' + timeout + 'ms）' }
+    const held = projectLock.sessionId && projectLock.sessionId !== sessionId
+    if (held) {
+      const age = now() - (Number(projectLock.at) || 0)
+      // 过期租约 = 持有者进程已不在续租（崩溃） → 允许接管，否则崩溃一次项目就永久锁死。
+      if (age < timeout && !override) {
+        return { ok: false, code: 'PROJECT_LOCKED', message: '项目 "' + currentProject + '" 正被会话 ' + projectLock.sessionId + ' 占用（租约剩余 ' + Math.max(0, timeout - age) + 'ms；确认对方已停止后可显式接管：override=true）' }
+      }
+      logActivity('lock', 'project lock taken over from session ' + projectLock.sessionId + (override ? ' (explicit override)' : ' (lease expired after ' + age + 'ms)'))
     }
     projectLock = { sessionId: sessionId, at: now() }
+    projectLockRenewedAt = now()
     await saveAll()
     return { ok: true }
   }
   async function releaseProjectLock() {
-    if (projectLock.sessionId === sessionId) { projectLock = { sessionId: '', at: 0 }; await saveAll() }
+    if (projectLock.sessionId === sessionId) { projectLock = { sessionId: '', at: 0 }; projectLockRenewedAt = 0; await saveAll() }
   }
-  async function startScheduler() { const r = await init(true); if (!r.ok) return r; const lock = await acquireProjectLock(); if (!lock.ok) return lock; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject + '（v3：md 知识库 + 规划代理调度 + 方法库）'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
-  async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; const lock = await acquireProjectLock(); if (!lock.ok) return lock; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function startScheduler(override) { const r = await init(true); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject + '（v3：md 知识库 + 规划代理调度 + 方法库）'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
+  async function resumeScheduler(override) { const r = await init(false); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; await releaseProjectLock(); logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
   async function abortScheduler() { scheduler.running = false; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; planQueue = []; await releaseProjectLock(); logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   async function autoResolvePending() {
@@ -3258,12 +3349,16 @@ export function apply(ctx) {
     // 注意：待沉淀发明（pendingInventions）不应阻塞终止——它是"批量蒸馏"（积够 methodKeepEvery 才触发），
     // 少量残留不会再有 method-keeper 触发，若纳入会令 scheduler 永不终止（闲置空转）。
     const leftoverVerify = (await buildVerifyCandidates()).length > 0
-    if (unsolved.length === 0 && !leftoverVerify && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
+    // H1：在途的 **planner 不算"活跃工作"**。planner 不产出知识、不持有验证任务，只是"问下一步做什么"；
+    // 旧判定把刚派出的 planner 也算成活跃代理，于是本 tick 的停机判定永远被自己派出的 planner 挡掉，
+    // 空闲时形成"每 tick 一个 planner"的活锁。排除它之后，空闲的那一 tick 就能正常收口停机。
+    const realAgents = Object.keys(agentRegistry).filter(function (cid) { const m = agentRegistry[cid]; return m && m.role !== 'planner' }).length
+    if (unsolved.length === 0 && !leftoverVerify && realAgents === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0) {
       scheduler.running = false
       await releaseProjectLock()
       logActivity('stop', 'all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)')
       await saveAll(); await maybeWriteReport(true); await maybePushReport(true)
-    } else if (!hasPendingGate && Object.keys(agentRegistry).length === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0 && unsolved.length > 0) {
+    } else if (!hasPendingGate && realAgents === 0 && Object.keys(tasks).length === 0 && planQueue.length === 0 && unsolved.length > 0) {
       let allBlocked = true
       for (let i = 0; i < unsolved.length; i++) {
         const q = unsolved[i]
@@ -3302,47 +3397,50 @@ export function apply(ctx) {
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
   const handlers = {}
   function registerTool(name, description, parameters, executeFn) { handlers[name] = executeFn }
-  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V3 scheduler for the current project.', objParams({}), async function () { return await startScheduler() })
-  registerTool('vibe_math_resume', 'Resume the Vibe Math V3 scheduler after a checkpoint/restart.', objParams({}), async function () { return await resumeScheduler() })
-  registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), async function () { return await pauseScheduler() })
-  registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), async function () { return await abortScheduler() })
-  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
-  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json + Logs/报告.md.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
-  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
-  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
-  registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
-  registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
-  registerTool('vibe_math_add_problem', 'Add a problem to the current project (creates Problems/<id>.md).', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), async function (args) { if (problems.has(args.id)) return { ok: false, message: 'problem id already exists' }; problems.set(args.id, { id: args.id, 标题: args.id, 状态: '求解中', 优先级: args.priority || 0, 依赖: Array.isArray(args.dependencies) ? args.dependencies : [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: args.description, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(args.id)); await syncDependencies(); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(args.id)) } })
-  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (creates Propos/<分类>/<id>.md).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 概率: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 分类: { type: 'string' } }, ['id', '概述']), async function (args) {
-    if (propos.has(args.id)) return { ok: false, message: 'proposition id already exists' }
-    const p = { id: args.id, 标题: args.id, 状态: '未定论', 概率: clamp01(args.概率 != null ? args.概率 : 0.5), 优先级: (args.优先级 != null) ? args.优先级 : 1, 依赖: [], 价值关键性: clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), 分类: args.分类 || '未分类', 陈述: args.概述, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }
+  registerTool('vibe_math_start', TOOL_DESC.vibe_math_start, objParams({ override: { type: 'boolean' } }), async function (args) { return await startScheduler(args && args.override) })
+  registerTool('vibe_math_resume', TOOL_DESC.vibe_math_resume, objParams({ override: { type: 'boolean' } }), async function (args) { return await resumeScheduler(args && args.override) })
+  registerTool('vibe_math_pause', TOOL_DESC.vibe_math_pause, objParams({}), async function () { return await pauseScheduler() })
+  registerTool('vibe_math_abort', TOOL_DESC.vibe_math_abort, objParams({}), async function () { return await abortScheduler() })
+  registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), async function () { await refreshParams(); return await getStatus() })
+  registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
+  registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
+  registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), async function () { return await saveSettings() })
+  registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
+  registerTool('vibe_math_add_problem', TOOL_DESC.vibe_math_add_problem, objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), async function (args) { const id = idSafe(args.id); if (problems.has(id)) return { ok: false, message: 'problem id already exists' }; problems.set(id, { id: id, 标题: id, 状态: '求解中', 优先级: args.priority || 0, 依赖: Array.isArray(args.dependencies) ? args.dependencies : [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: String(args.description == null ? '' : args.description), 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(id)); await syncDependencies(); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(id)) } })
+  registerTool('vibe_math_add_proposition', TOOL_DESC.vibe_math_add_proposition, objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 概率: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 分类: { type: 'string' }, 来源问题: { type: 'string' }, 来源方向: { type: 'string' } }, ['id', '概述']), async function (args) {
+    // M9：内存键、对象 id、文件名必须是**同一个**归一化 id。此前内存键用原始 id、文件名用
+    // idSafe(id)、重载键又来自文件名 ⇒ 同一个对象分裂成两个身份（`p-1/2` 与 `p-1-2`）。
+    const id = idSafe(args.id)
+    if (propos.has(id)) return { ok: false, message: 'proposition id already exists' }
+    const p = { id: id, 标题: id, 状态: '未定论', 概率: clamp01(args.概率 != null ? args.概率 : 0.5), 优先级: (args.优先级 != null) ? args.优先级 : 1, 依赖: [], 价值关键性: clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), 分类: args.分类 || '未分类', 陈述: String(args.概述 == null ? '' : args.概述), proofs: [], refutes: [], 来源问题: String(args.来源问题 || ''), 来源方向: String(args.来源方向 || ''), 在问题清单: false }
     propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: propositionRel(p) }
   })
-  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 标题, 概率, 状态, 优先级, 分类).', objParams({}), async function () { const all = allPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 标题: p.标题, 概率: p.概率, 状态: p.状态, 优先级: p.优先级, 分类: categoryOf(p) } }) } })
-  registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, true) })
-  registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
-  registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
-  registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), async function () { return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) } })
-  registerTool('vibe_math_decide', 'Resolve a pending manual decision (plan: approve|reject; verdict: override with verdict 1|0; spawn: approve|reject; method-promote: approve|reject).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; const resolution = { action: args.action, verdict: args.verdict }; const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
-  registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), async function () { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round, rId: m.rId }) } return { ok: true, agents: out, count: out.length } })
-  registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
-  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
-  registerTool('vibe_math_plan', 'Show the queued plan / last plan result, or force a planning round.', objParams({ force: { type: 'boolean' } }), async function (args) { if (args && args.force && scheduler.running && !scheduler.gate) { await callPlanner(); return { ok: true, message: 'planning triggered', queued: planQueue.length } } return { ok: true, queued: planQueue, lastPlan: lastPlanSummary } })
-  registerTool('vibe_math_index', 'Rebuild the machine index (State/index.json) from the Markdown knowledge base.', objParams({}), async function () { await loadKnowledgeBase(); const r = await rebuildIndex(); return { ok: true, index: r, project: currentProject } })
-  registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { if (methods.has(args.id)) return { ok: false, message: 'method id already exists' }; const m = { id: args.id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: methodRel(m, false) } })
-  registerTool('vibe_math_method_list', 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.', objParams({}), async function () { const all = Array.from(methods.values()); const g = Array.from(globalMethods.values()); return { ok: true, count: all.length, globalCount: g.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: false } }).concat(g.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: true } })) } })
-  registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), async function () { return { ok: true, project: currentProject, lock: projectLock } })
-  registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await claimWrite(String(args.target || ''), agent) })
-  registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root). Call after you finished writing it.', objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await releaseWrite(String(args.target || ''), agent) })
-  registerTool('vibe_math_sync_meta', 'Report lightweight scheduling metadata after you wrote content to Markdown files (direction status/survival, registered lemma ids, methods_used/new_inventions, new method cards). Content itself stays in the md files; this only keeps the scheduler index/state in sync.', objParams({ meta: { type: 'object' } }, ['meta']), async function (args, agent) { return await syncMeta(args.meta || {}, agent) })
+  registerTool('vibe_math_list_propositions', TOOL_DESC.vibe_math_list_propositions, objParams({}), async function () { const all = allPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 标题: p.标题, 概率: p.概率, 状态: p.状态, 优先级: p.优先级, 分类: categoryOf(p) } }) } })
+  registerTool('vibe_math_new_project', TOOL_DESC.vibe_math_new_project, objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, true) })
+  registerTool('vibe_math_set_project', TOOL_DESC.vibe_math_set_project, objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
+  registerTool('vibe_math_list_projects', TOOL_DESC.vibe_math_list_projects, objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
+  registerTool('vibe_math_list_decisions', TOOL_DESC.vibe_math_list_decisions, objParams({}), async function () { return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) } })
+  registerTool('vibe_math_decide', TOOL_DESC.vibe_math_decide, objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; const resolution = { action: args.action, verdict: args.verdict }; const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
+  registerTool('vibe_math_list_agents', TOOL_DESC.vibe_math_list_agents, objParams({}), async function () { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round, rId: m.rId }) } return { ok: true, agents: out, count: out.length } })
+  registerTool('vibe_math_message_agent', TOOL_DESC.vibe_math_message_agent, objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
+  registerTool('vibe_math_interrupt_agent', TOOL_DESC.vibe_math_interrupt_agent, objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
+  registerTool('vibe_math_plan', TOOL_DESC.vibe_math_plan, objParams({ force: { type: 'boolean' } }), async function (args) { if (args && args.force && scheduler.running && !scheduler.gate) { await callPlanner(); return { ok: true, message: 'planning triggered', queued: planQueue.length } } return { ok: true, queued: planQueue, lastPlan: lastPlanSummary } })
+  registerTool('vibe_math_index', TOOL_DESC.vibe_math_index, objParams({}), async function () { await loadKnowledgeBase(); const r = await rebuildIndex(); return { ok: true, index: r, project: currentProject } })
+  registerTool('vibe_math_method_add', TOOL_DESC.vibe_math_method_add, objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { const id = idSafe(args.id); if (methods.has(id)) return { ok: false, message: 'method id already exists' }; const m = { id: id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: methodRel(m, false) } })
+  registerTool('vibe_math_method_list', TOOL_DESC.vibe_math_method_list, objParams({}), async function () { const all = Array.from(methods.values()); const g = Array.from(globalMethods.values()); return { ok: true, count: all.length, globalCount: g.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: false } }).concat(g.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态, 可信断言: m.可信断言 || [], applications: (m.applications || []).length, global: true } })) } })
+  registerTool('vibe_math_lock_status', TOOL_DESC.vibe_math_lock_status, objParams({}), async function () { return { ok: true, project: currentProject, lock: projectLock } })
+  registerTool('vibe_math_claim_write', TOOL_DESC.vibe_math_claim_write, objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await claimWrite(String(args.target || ''), agent) })
+  registerTool('vibe_math_release_write', TOOL_DESC.vibe_math_release_write, objParams({ target: { type: 'string' } }, ['target']), async function (args, agent) { return await releaseWrite(String(args.target || ''), agent) })
+  registerTool('vibe_math_sync_meta', TOOL_DESC.vibe_math_sync_meta, objParams({ meta: { type: 'object' } }, ['meta']), async function (args, agent) { return await syncMeta(args.meta || {}, agent) })
 
   // ---- Lean 形式化验证工具（契约 docs/formal-verification.md §5）----
   // **无条件注册**：注册是静态的（与既有 ctx.effect 纪律一致），模式只决定框架是否主动告诉
   // 代理它们存在；off 模式下人/代理主动调用时照常工作。
-  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(agent && agent.id, args) })
-  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(agent && agent.id, args) })
-  registerTool('vibe_math_lean_lib', "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.", objParams({ refresh: { type: 'boolean' } }), async function (args) {
+  registerTool('vibe_math_lean_run', TOOL_DESC.vibe_math_lean_run, objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(agent && agent.id, args) })
+  registerTool('vibe_math_lean_archive', TOOL_DESC.vibe_math_lean_archive, objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(agent && agent.id, args) })
+  registerTool('vibe_math_lean_lib', TOOL_DESC.vibe_math_lean_lib, objParams({ refresh: { type: 'boolean' } }), async function (args) {
     const a = args || {}
     const r = a.refresh === false
       ? { lib: null, proved: null, objects: Object.keys(formalRecords()).length }
@@ -3455,11 +3553,13 @@ export function apply(ctx) {
         if (Array.isArray(meta.lemmas)) {
           for (const l of meta.lemmas) {
             if (!l || (!l.id && !l.title)) continue
-            const pid = l.id || ('p-' + shortId())
+            // M9：代理给的 id 可能与文件名归一化结果不同（`p-1/2` → `p-1-2`）⇒ 键与 id 一并归一化。
+            const pid = l.id ? idSafe(l.id) : ('p-' + shortId())
             if (!propos.has(pid)) {
-              const pn = { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(l.prob != null ? l.prob : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: l.分类 || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }
+              const lProb = lemmaProb(l)
+              const pn = { id: pid, 标题: l.title || pid, 状态: '未定论', 概率: clamp01(lProb != null ? lProb : 0.6), 优先级: l.优先级 != null ? l.优先级 : 1, 依赖: [], 价值关键性: clamp01(l['价值/关键性'] != null ? l['价值/关键性'] : 0.5), 分类: lemmaCategory(l) || '未分类', 陈述: l.statement || l.title || '', proofs: [], refutes: [], 来源问题: qid, 在问题清单: false }
               // 引理证明文本（验证必需）由代理在 sync_meta 的 l.proof 上报（结构化，非长叙述）；无则验证器只能验裸命题
-              if (l.proof) { pn.proofs = [{ title: (l.title || pid) + '（证明）', prob: clamp01(l.prob != null ? l.prob : 0.7), status: '未定论', text: String(l.proof) }] }
+              if (l.proof) { pn.proofs = [{ title: (l.title || pid) + '（证明）', prob: clamp01(lProb != null ? lProb : 0.7), status: '未定论', text: String(l.proof) }] }
               propos.set(pid, pn)
               // 若代理已直接写了该命题卡，保留其内容（不覆盖）；否则写一张标准卡兜底（保证可被索引/验证）
               const rel = propositionRel(pn) // 与 saveProposition 同一路径
@@ -3468,11 +3568,16 @@ export function apply(ctx) {
             if (!(dir.lemmas || []).some(function (x) { return x.id === pid })) { dir.lemmas = dir.lemmas || []; dir.lemmas.push({ id: pid, title: l.title || pid }) }
           }
         }
-        // 解法上报（prob 由代理写进 Problems/<qid>.md；这里只登记）
-        if (meta.solution_prob != null && meta.solution_text) {
+        // 解法上报（prob 由代理写进 Problems/<qid>.md；这里只登记）。
+        // M11：提示词教的是 `solution_text` / `solution_prob`，但遗留扁平通道用的是
+        // `parsed.solution` / `parsed.solution_probability`。**两套拼写都接受**，否则一个
+        // 严格按提示词回 `solution_text` 的 solver 会在这里被判成"声称成功却没有解法"，方向被写死。
+        const solText = (meta.solution_text != null) ? meta.solution_text : meta.solution
+        const solProb = (meta.solution_prob != null) ? meta.solution_prob : meta.solution_probability
+        if (solProb != null && solText) {
           q.solutions = q.solutions || []
-          const p = clamp01(meta.solution_prob)
-          q.solutions.push({ title: '解法 ' + (q.solutions.length + 1), prob: p >= 1 ? 0.99 : (p <= 0 ? 0.01 : p), status: '未定论', text: String(meta.solution_text).slice(0, 2000) })
+          const p = clamp01(solProb)
+          q.solutions.push({ title: '解法 ' + (q.solutions.length + 1), prob: p >= 1 ? 0.99 : (p <= 0 ? 0.01 : p), status: '未定论', text: String(solText).slice(0, 2000) })
         }
         // 子问题/临时假设（与旧 JSON 路径一致）：注册 q_sub 问题 + 判断问题 + p-tmp 假设
         if (Array.isArray(meta.sub_questions)) {
@@ -3491,7 +3596,8 @@ export function apply(ctx) {
     }
     if (kind === 'methods') {
       if (Array.isArray(meta.used)) for (const mu of meta.used) await consumeMethodFeedback({ methods_used: mu ? [mu] : [] }, { qid: '', dirId: '' })
-      if (Array.isArray(meta.created)) for (const mid of meta.created) {
+      if (Array.isArray(meta.created)) for (const rawMid of meta.created) {
+        const mid = idSafe(rawMid) // M9：键、id 与文件名同一把归一化
         if (!methods.has(mid)) {
           const mm = { id: mid, 标题: mid, 类型: '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: '', 核心内容: '', 定义与记号: '', applications: [], improvements: [], 来源: 'agent-written' }
           methods.set(mid, mm)
@@ -3503,12 +3609,13 @@ export function apply(ctx) {
       if (Array.isArray(meta.improvements)) {
         for (const imp of meta.improvements) {
           if (!imp || !imp.id) continue
-          const m = methods.get(imp.id)
-          if (!m) { logActivity('method', 'improvement referenced unknown method ' + imp.id); continue }
+          const impId = idSafe(imp.id) // M9：方法键已归一化，改进目标必须查同一把键
+          const m = methods.get(impId)
+          if (!m) { logActivity('method', 'improvement referenced unknown method ' + impId); continue }
           m.improvements = m.improvements || []
           m.improvements.push({ v: m.improvements.length + 1, 原因: imp.原因 || '', text: imp.改进内容 || '' })
           await saveMethod(m, false)
-          logActivity('method', 'method ' + imp.id + ' improved (v' + m.improvements.length + ')')
+          logActivity('method', 'method ' + impId + ' improved (v' + m.improvements.length + ')')
         }
       }
       await saveAll()
@@ -3517,10 +3624,26 @@ export function apply(ctx) {
     return { ok: false, message: 'unknown meta kind: ' + kind }
   }
 
+  // ---- 会话级 handler 表的工具描述（唯一来源）----
+  //
+  // 提示词审计 M3（v3）：同一批工具在**两条注册路径**上各写了一份 description——会话 handler 表
+  // （registerTool(name, description, …) 只存 handler）与文件末尾真正的 `tools.register`
+  // （模型实际看到的那一份）。两边的**参数 schema 一致**（I13/I14 守），但描述会漂移：
+  // `vibe_math_list_propositions` / `vibe_math_method_list` / `claim_write` / `release_write` /
+  // `sync_meta` 五处曾对不上，模型看到哪一版取决于哪条路径生效。
+  //
+  // 现在这两条路径共用**模块级**常量 TOOL_DESC（定义在文件末尾的 shared helpers 区），
+  // 任何一侧被改都会同时生效，不可能再漂移。`tests/audit-v3-registration-parity.mjs` 守这条不变式。
+
   // ================= slash command /vibe =================
+  // 注意：签名**必须**保持 `dispatchVibeCommand(cmd, args)`——`audit-persona-surface` 的
+  // `commandRegion()` 靠这个字面量把 /vibe 的分支表接进提示词面一致性检查（hint/usage/handler
+  // 三处必须一致）。多一个形参会让那段源码不再被扫到，等于把这条守卫静默关掉。
+  // `override` 通过 args 本身传递（见下面 commands.register 的处理）。
   async function dispatchVibeCommand(cmd, args) {
-    if (cmd === 'start') return await startScheduler()
-    if (cmd === 'resume') return await resumeScheduler()
+    const override = args.indexOf('override') !== -1
+    if (cmd === 'start') return await startScheduler(override)
+    if (cmd === 'resume') return await resumeScheduler(override)
     if (cmd === 'pause') return await pauseScheduler()
     if (cmd === 'abort') return await abortScheduler()
     if (cmd === 'status') { await refreshParams(); return await getStatus() }
@@ -3529,8 +3652,8 @@ export function apply(ctx) {
     if (cmd === 'setup') { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } }
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
-    if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; if (problems.has(id)) return { ok: false, message: 'problem id already exists' }; problems.set(id, { id: id, 标题: id, 状态: '求解中', 优先级: 0, 依赖: [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: desc, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(id)); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(id)) } }
-    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 标题: id, 状态: '未定论', 概率: 0.5, 优先级: 1, 依赖: [], 价值关键性: 0.5, 分类: '未分类', 陈述: desc, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }; propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: propositionRel(p) } }
+    if (cmd === 'add') { const raw = args[0]; const desc = args.slice(1).join(' '); if (!raw || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const id = idSafe(raw); if (problems.has(id)) return { ok: false, message: 'problem id already exists' }; problems.set(id, { id: id, 标题: id, 状态: '求解中', 优先级: 0, 依赖: [], 被依赖: [], 来源: '原始', 计划: '待调度', 陈述: desc, 来源与动机: '', solutions: [], 判断命题: '', 来源命题: '' }); await saveProblem(problems.get(id)); await rebuildIndex(); scheduleTick(); return { ok: true, message: 'problem added', file: problemRel(problems.get(id)) } }
+    if (cmd === 'add-proposition') { const raw = args[0]; const desc = args.slice(1).join(' '); if (!raw || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const id = idSafe(raw); const p = { id: id, 标题: id, 状态: '未定论', 概率: 0.5, 优先级: 1, 依赖: [], 价值关键性: 0.5, 分类: '未分类', 陈述: desc, proofs: [], refutes: [], 来源问题: '', 在问题清单: false }; propos.set(p.id, p); await saveProposition(p); await rebuildIndex(); scheduleTick(); return { ok: true, proposition: p, file: propositionRel(p) } }
     if (cmd === 'list-propositions') { const all = allPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 标题: p.标题, 概率: p.概率, 状态: p.状态, 优先级: p.优先级, 分类: categoryOf(p) } }) } }
     if (cmd === 'methods') { const all = Array.from(methods.values()); return { ok: true, count: all.length, methods: all.map(function (m) { return { id: m.id, 标题: m.标题, 类型: m.类型, 状态: m.状态 } }) } }
     if (cmd === 'index') { await loadKnowledgeBase(); return await rebuildIndex() }
@@ -3543,7 +3666,7 @@ export function apply(ctx) {
     }
     if (cmd === 'decisions') return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) }
     if (cmd === 'agents') { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round }) } return { ok: true, agents: out } }
-    return { ok: false, usage: 'start | resume | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | methods | index | plan | lock | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
+    return { ok: false, usage: 'start [override] | resume [override] | pause | abort | status | report | mode <auto|manual> | setup | save | template [global|project] | add <id> <desc> | add-proposition <id> <概述> | list-propositions | methods | index | plan | lock | project [list|new <name>|<name>] | decisions | agents', message: 'unknown /vibe subcommand: ' + (cmd || '(empty)') }
   }
 
   // ================= session surface =================
@@ -3581,47 +3704,47 @@ export function apply(ctx) {
       },
     }))
   }
-  registerTool('vibe_math_start', 'Start (or restart) the Vibe Math V3 scheduler for the current project.', objParams({}), 'vibe_math_start')
-  registerTool('vibe_math_resume', 'Resume the Vibe Math V3 scheduler after a checkpoint/restart.', objParams({}), 'vibe_math_resume')
-  registerTool('vibe_math_pause', 'Pause the scheduler (in-flight children finish their current turn).', objParams({}), 'vibe_math_pause')
-  registerTool('vibe_math_abort', 'Abort the scheduler and interrupt all active children.', objParams({}), 'vibe_math_abort')
-  registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
-  registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json + Logs/报告.md.', objParams({}), 'vibe_math_report')
-  registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
-  registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
-  registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
-  registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
-  registerTool('vibe_math_add_problem', 'Add a problem to the current project (creates Problems/<id>.md).', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), 'vibe_math_add_problem')
-  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (creates Propos/<分类>/<id>.md).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 概率: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 分类: { type: 'string' } }, ['id', '概述']), 'vibe_math_add_proposition')
-  registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index).', objParams({}), 'vibe_math_list_propositions')
-  registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
-  registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
-  registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), 'vibe_math_list_projects')
-  registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), 'vibe_math_list_decisions')
-  registerTool('vibe_math_decide', 'Resolve a pending manual decision (plan: approve|reject; verdict: override with verdict 1|0; spawn: approve|reject; method-promote: approve|reject).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), 'vibe_math_decide')
-  registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), 'vibe_math_list_agents')
-  registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), 'vibe_math_message_agent')
-  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), 'vibe_math_interrupt_agent')
-  registerTool('vibe_math_plan', 'Show the queued plan / last plan result, or force a planning round.', objParams({ force: { type: 'boolean' } }), 'vibe_math_plan')
-  registerTool('vibe_math_index', 'Rebuild the machine index (State/index.json) from the Markdown knowledge base.', objParams({}), 'vibe_math_index')
-  registerTool('vibe_math_method_add', 'Manually add a method card to Methods/ (creates Methods/<id>.md).', objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), 'vibe_math_method_add')
-  registerTool('vibe_math_method_list', 'List methods from Methods/ (+ global VibeMath/Methods/).', objParams({}), 'vibe_math_method_list')
-  registerTool('vibe_math_lock_status', 'Show the project lock occupancy.', objParams({}), 'vibe_math_lock_status')
-  registerTool('vibe_math_claim_write', 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly.', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_claim_write')
-  registerTool('vibe_math_release_write', 'Release the write lock for one target file (relative to the project root).', objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_release_write')
-  registerTool('vibe_math_sync_meta', 'After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}', objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
+  registerTool('vibe_math_start', TOOL_DESC.vibe_math_start, objParams({ override: { type: 'boolean' } }), 'vibe_math_start')
+  registerTool('vibe_math_resume', TOOL_DESC.vibe_math_resume, objParams({ override: { type: 'boolean' } }), 'vibe_math_resume')
+  registerTool('vibe_math_pause', TOOL_DESC.vibe_math_pause, objParams({}), 'vibe_math_pause')
+  registerTool('vibe_math_abort', TOOL_DESC.vibe_math_abort, objParams({}), 'vibe_math_abort')
+  registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), 'vibe_math_status')
+  registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), 'vibe_math_report')
+  registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), 'vibe_math_setup')
+  registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), 'vibe_math_save_settings')
+  registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
+  registerTool('vibe_math_add_problem', TOOL_DESC.vibe_math_add_problem, objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' }, dependencies: { type: 'array', items: { type: 'string' } } }, ['id', 'description']), 'vibe_math_add_problem')
+  registerTool('vibe_math_add_proposition', TOOL_DESC.vibe_math_add_proposition, objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 概率: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 分类: { type: 'string' }, 来源问题: { type: 'string' }, 来源方向: { type: 'string' } }, ['id', '概述']), 'vibe_math_add_proposition')
+  registerTool('vibe_math_list_propositions', TOOL_DESC.vibe_math_list_propositions, objParams({}), 'vibe_math_list_propositions')
+  registerTool('vibe_math_new_project', TOOL_DESC.vibe_math_new_project, objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
+  registerTool('vibe_math_set_project', TOOL_DESC.vibe_math_set_project, objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
+  registerTool('vibe_math_list_projects', TOOL_DESC.vibe_math_list_projects, objParams({}), 'vibe_math_list_projects')
+  registerTool('vibe_math_list_decisions', TOOL_DESC.vibe_math_list_decisions, objParams({}), 'vibe_math_list_decisions')
+  registerTool('vibe_math_decide', TOOL_DESC.vibe_math_decide, objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), 'vibe_math_decide')
+  registerTool('vibe_math_list_agents', TOOL_DESC.vibe_math_list_agents, objParams({}), 'vibe_math_list_agents')
+  registerTool('vibe_math_message_agent', TOOL_DESC.vibe_math_message_agent, objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), 'vibe_math_message_agent')
+  registerTool('vibe_math_interrupt_agent', TOOL_DESC.vibe_math_interrupt_agent, objParams({ childId: { type: 'string' } }, ['childId']), 'vibe_math_interrupt_agent')
+  registerTool('vibe_math_plan', TOOL_DESC.vibe_math_plan, objParams({ force: { type: 'boolean' } }), 'vibe_math_plan')
+  registerTool('vibe_math_index', TOOL_DESC.vibe_math_index, objParams({}), 'vibe_math_index')
+  registerTool('vibe_math_method_add', TOOL_DESC.vibe_math_method_add, objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), 'vibe_math_method_add')
+  registerTool('vibe_math_method_list', TOOL_DESC.vibe_math_method_list, objParams({}), 'vibe_math_method_list')
+  registerTool('vibe_math_lock_status', TOOL_DESC.vibe_math_lock_status, objParams({}), 'vibe_math_lock_status')
+  registerTool('vibe_math_claim_write', TOOL_DESC.vibe_math_claim_write, objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_claim_write')
+  registerTool('vibe_math_release_write', TOOL_DESC.vibe_math_release_write, objParams({ target: { type: 'string' } }, ['target']), 'vibe_math_release_write')
+  registerTool('vibe_math_sync_meta', TOOL_DESC.vibe_math_sync_meta, objParams({ meta: { type: 'object' } }, ['meta']), 'vibe_math_sync_meta')
   // Lean 形式化验证（docs/formal-verification.md）：三个工具**无条件注册**——注册是静态的，
   // 模式只决定框架是否主动告诉代理它们存在。off 模式下人/代理主动调用时照常工作。
-  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
-  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
-  registerTool('vibe_math_lean_lib', "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.", objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
+  registerTool('vibe_math_lean_run', TOOL_DESC.vibe_math_lean_run, objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
+  registerTool('vibe_math_lean_archive', TOOL_DESC.vibe_math_lean_archive, objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
+  registerTool('vibe_math_lean_lib', TOOL_DESC.vibe_math_lean_lib, objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
     name: 'vibe',
     description: 'control the Vibe Math V3 solver (start/pause/projects/setup/save/decisions/agents/methods/index/plan/lock)',
-    input: { hint: '[start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents]' },
+    input: { hint: '[start [override]|resume [override]|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents]' },
     handler: async function (invocation) {
       const s = getSession(invocation && invocation.agent)
       if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no vibe-math session for this agent' }) }
@@ -3691,11 +3814,73 @@ export const __testHelpers = {
 
 function now() { return Date.now() }
 
+/**
+ * 工具描述的唯一来源（提示词审计 M3）：v3 的每个工具都在**两条路径**上注册——会话 handler 表
+ * （makeSession 内只存 handler）与文件末尾真正生效的 `tools.register`。两条路径必须逐字一致，
+ * 否则模型看到的描述取决于哪条路径生效，任何一侧被改都会静默改变提示词面。
+ * 全部 33 个工具都从此表取描述；`tests/audit-v3-registration-parity.mjs` 逐字比对两条路径。
+ */
+const TOOL_DESC = {
+  vibe_math_start: 'Start (or restart) the Vibe Math V3 scheduler for the current project. override=true forcibly takes over the project lock held by another session (only after you verified that session is gone).',
+  vibe_math_resume: 'Resume the Vibe Math V3 scheduler after a checkpoint/restart. override=true forcibly takes over the project lock held by another session (only after you verified that session is gone).',
+  vibe_math_pause: 'Pause the scheduler (in-flight children finish their current turn).',
+  vibe_math_abort: 'Abort the scheduler and interrupt all active children.',
+  vibe_math_status: 'Show scheduler status, params, active agents, projects, and recent activity.',
+  vibe_math_report: 'Return the full progress report and write it to Progress_Logs/report.json + Logs/报告.md.',
+  vibe_math_set_mode: 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.',
+  // set_params 的 schema 现在也收 mode（M10）：同一能力既有专用工具 vibe_math_set_mode，也可用这个键；
+  // 两条注册路径共用这一份描述，`--self-probe` 会证明漂移能被抓到。
+  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。',
+  vibe_math_setup: 'Return the interactive parameter schema for guided configuration.',
+  vibe_math_save_settings: 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.',
+  vibe_math_template: 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.',
+  vibe_math_add_problem: 'Add a problem to the current project (creates Problems/<id>.md).',
+  vibe_math_add_proposition: 'Add a proposition to Propos/ (creates Propos/<分类>/<id>.md).',
+  vibe_math_list_propositions: 'List propositions from Propos/ (summary index: id, 标题, 概率, 状态, 优先级, 分类).',
+  vibe_math_new_project: 'Create a new math project folder and switch to it.',
+  vibe_math_set_project: 'Switch the current math project.',
+  vibe_math_list_projects: 'List math projects.',
+  vibe_math_list_decisions: 'List pending manual decisions.',
+  vibe_math_decide: 'Resolve a pending manual decision (plan: approve|reject; verdict: override with verdict 1|0; spawn: approve|reject; method-promote: approve|reject).',
+  vibe_math_list_agents: 'List tracked sub-agents (child sessions).',
+  vibe_math_message_agent: 'Send a message to a tracked child agent (next turn).',
+  vibe_math_interrupt_agent: 'Interrupt a tracked child agent.',
+  vibe_math_plan: 'Show the queued plan / last plan result, or force a planning round.',
+  vibe_math_index: 'Rebuild the machine index (State/index.json) from the Markdown knowledge base.',
+  vibe_math_method_add: 'Manually add a method card to Methods/ (creates Methods/<id>.md).',
+  vibe_math_method_list: 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.',
+  vibe_math_lock_status: 'Show the project lock occupancy.',
+  vibe_math_claim_write: 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.',
+  vibe_math_release_write: 'Release the write lock for one target file (relative to the project root). Call after you finished writing it.',
+  vibe_math_sync_meta: 'After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,价值/关键性,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}',
+  vibe_math_lean_run: "(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.",
+  vibe_math_lean_archive: '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).',
+  vibe_math_lean_lib: "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.",
+}
+
 function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
 
 function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
 
 function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
+
+/**
+ * M11：同一个语义两套字段名。提示词教的是 `prob`（`lemmas[].prob`），而遗留扁平 JSON 通道
+ * 用的是 `布尔估计`（`细类型` 同理）。这里统一取值顺序，两套拼写都接受，避免"按提示词回写的
+ * 引理"被当成没有估计值。
+ */
+function lemmaProb(l) {
+  if (l == null) return undefined
+  if (l.prob != null) return l.prob
+  if (l['布尔估计'] != null) return l['布尔估计']
+  return undefined
+}
+function lemmaCategory(l) {
+  if (l == null) return ''
+  if (l['分类'] != null) return String(l['分类'])
+  if (l['细类型'] != null) return String(Object.keys(l['细类型'] || { 未分类: {} })[0] || '未分类')
+  return ''
+}
 
 function fmtTime(ts) { try { return new Date(ts || now()).toISOString().replace('T', ' ').slice(0, 19) } catch (e) { return String(ts || '') } }
 
@@ -3812,8 +3997,12 @@ function extraBodySections(body, managedNames) {
 
 function parseAppTitle(title) {
   const t = String(title || '')
-  const mQ = /问题\s*(\S+)/.exec(t)
-  const mD = /方向\s*(\S+)/.exec(t)
+  // M7：字段名后**必须**有空白才取值为字段，且值里不许含分隔符 `｜`。
+  // 旧写法 `/问题\s*(\S+)/` 在"问题为空、方向非空"时把分隔符也吃进去：
+  // `应用 1｜<时间>｜问题 ｜方向 d1` → 问题='｜方向'（composeMethodMd 恰好会写出这种标题），
+  // 下一次回写就把这个脏值固化进方法卡。
+  const mQ = /(?:^|[\s｜])问题[ \t]+([^｜\s]+)/.exec(t)
+  const mD = /(?:^|[\s｜])方向[ \t]+([^｜\s]+)/.exec(t)
   // `at` = 第一段（时间戳）。取第一个 '｜' 之前的部分。
   const at = t.split('｜')[0].trim()
   return { at: at, 问题: mQ ? mQ[1] : '', 方向: mD ? mD[1] : '' }
@@ -3828,8 +4017,13 @@ function parseMethodMd(id, text) {
   })
   // 改进历史必须真正解析回来：此前硬编码 [] 导致每次 compose 都写成占位符，
   // 于是"下一次用到该方法"就把代理沉淀的改进历史静默销毁（违反「正文只追加，不覆盖」）。
+  //
+  // H3：原因必须从**标题行独立解析**，不能借道 parseEntries 的槽位。约定里 m[1]=标题段、
+  // m[2]=概率段、m[3]=状态段，而改进标题 `### v3（<原因>）` 只有两个捕获组：m[2] 是原因、
+  // m[3] 是 undefined ⇒ `e.status` 恒为 ''，每次回写都写成 `### v1（）`（原因永久丢失）。
   const improvements = parseEntries(body, /^###\s*v(\d+)\s*（(.*?)）\s*$/).map(function (e) {
-    return { v: Number(e.title) || 0, 原因: e.status || '', text: e.text }
+    const m = /^###\s*v(\d+)\s*（(.*?)）\s*$/.exec(e.heading)
+    return { v: m ? Number(m[1]) : 0, 原因: m ? m[2] : '', text: e.text }
   })
   return {
     id: id, 标题: a['标题'] || id, 类型: a['类型'] || '方法', 状态: a['状态'] || '经验',

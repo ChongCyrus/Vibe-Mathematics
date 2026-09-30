@@ -107,8 +107,10 @@ const probes = [
     name: 'v3-tool-registered-but-not-documented',
     preset: 'vibe-math-v3', file: 'vibe-math-v3.js', nth: 'first', expect: 2,
     guarantee: 'a newly registered tool must be documented in the persona (or the snapshot updated on purpose)',
-    from: "  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain",
-    to: "  registerTool('vibe_math_extra_tool', 'x', objParams({}), async function () { return {} })\n  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain",
+    // NOTE: the description argument is now `TOOL_DESC.<name>` (v3 audit of the two
+    // registration paths) — the anchor follows the call shape, not the literal text.
+    from: "  registerTool('vibe_math_lean_run', TOOL_DESC.vibe_math_lean_run,",
+    to: "  registerTool('vibe_math_extra_tool', 'x', objParams({}), async function () { return {} })\n  registerTool('vibe_math_lean_run', TOOL_DESC.vibe_math_lean_run,",
   },
 
   // ── v4 ─────────────────────────────────────────────────────────────────────

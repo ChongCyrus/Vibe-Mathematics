@@ -64,23 +64,34 @@ const allFilesUnder = (root) => {
 console.log('\n-- pathological ids: one file each, all inside the project --');
 const ids = ['..\\..\\a/b', '..', '.', 'x*y?z', '   ', '../../../../escape'];
 const returned = [];
+const rejected = [];
 for (const id of ids) {
   const r = await call('vibe_math_add_proposition', { id: id, 概述: 'x', 分类: '分析' });
   assert(r.ok !== undefined, `add_proposition with id ${JSON.stringify(id)} returned a result (ok=${r.ok})`);
   if (typeof r.file === 'string') returned.push(r.file);
+  else rejected.push(id);
 }
 await sleep(200);
 
-// The tool REPORTS the file it wrote. That report is the observable contract: it must be a
-// clean Propos/<cat>/<name>.md with no ".." segment and no separator in <name>. Asserting on
-// this (rather than only on what the mock filesystem happens to normalise away) is what makes
-// the check able to fail when the sanitizer is removed.
+// M9: the in-memory key, the object id and the file name are ALL `idSafe(id)` now, so ids that
+// sanitize to the same name are the SAME object: the second add must be refused as a duplicate
+// instead of silently creating a second identity for one file. The pathological list below
+// contains three ids that sanitize to `id` (`..`, `.`, `   `) and two that sanitize to `a-b`
+// / `escape`, hence exactly 4 accepted adds out of 6 calls.
+const sanitized = ids.map((i) => i.trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/-{2,}/g, '-').replace(/^[.\-]+|[.\-]+$/g, '').slice(0, 80) || 'id');
+const expectDistinct = new Set(sanitized).size;
+console.log(`      ids → ${JSON.stringify(ids.map((i, n) => i + ' ⇒ ' + sanitized[n]))}`);
 console.log(`      reported files: ${JSON.stringify(returned)}`);
-assert(returned.length === ids.length, `every add reported a file path (${returned.length}/${ids.length})`);
-assert(returned.every((f) => f.replace(/\\/g, '/').startsWith('Propos/')), 'every reported path is under Propos/');
-assert(!returned.some((f) => f.replace(/\\/g, '/').split('/').includes('..')), 'no reported path contains a ".." segment');
-assert(returned.every((f) => f.replace(/\\/g, '/').split('/').length === 3), 'every reported path is exactly Propos/<cat>/<name>.md');
-assert(returned.every((f) => { const n = f.replace(/\\/g, '/').split('/')[2]; return n.length > 0 && n !== '..' && n !== '.'; }), 'no reported file name is "." or ".."');
+console.log(`      refused as duplicates: ${JSON.stringify(rejected)}`);
+assert(returned.length === expectDistinct, `exactly one accepted add per DISTINCT sanitized id (${returned.length}/${expectDistinct})`);
+assert(rejected.length === ids.length - expectDistinct, `the colliding ids were refused as duplicates (${rejected.length})`);
+for (const f of returned) {
+  assert(f.replace(/\\/g, '/').startsWith('Propos/'), 'every reported path is under Propos/ (' + f + ')');
+  assert(!f.replace(/\\/g, '/').split('/').includes('..'), 'no reported path contains a ".." segment (' + f + ')');
+  assert(f.replace(/\\/g, '/').split('/').length === 3, 'every reported path is exactly Propos/<cat>/<name>.md (' + f + ')');
+  const n = f.replace(/\\/g, '/').split('/')[2];
+  assert(n.length > 0 && n !== '..' && n !== '.', 'no reported file name is "." or ".." (' + f + ')');
+}
 
 const files = allFilesUnder(proj);
 console.log(`      files under project: ${JSON.stringify(files.filter((f) => f.startsWith('Propos')))}`);

@@ -86,7 +86,10 @@ async function driveOne(){
     const sp = spawns[spawnIdx]; spawnIdx++
     const rId = sp.label
     // resident records a proposition to its own (current) library
-    const rec = await callTool('vibe_v4_record_proposition', { id: 'p-'+rId, title: '引理 '+rId, statement: '设 f 满足…', proof: '证明：…（完整）', prob: 0.7, value: 0.6, motivation: '用于证明 π 无理' })
+    // The resident records its OWN proposition: the caller identity is the spawned child agent (the
+    // host passes it as exec.agent). Calling as the root agent would be an unattributed host call —
+    // `residentIdOf` deliberately refuses to guess which resident that was (audit F13).
+    const rec = await callTool('vibe_v4_record_proposition', { id: 'p-'+rId, title: '引理 '+rId, statement: '设 f 满足…', proof: '证明：…（完整）', prob: 0.7, value: 0.6, motivation: '用于证明 π 无理' }, resAgent(sp.childId))
     lastRec = rec
     fireEnd({ id: sp.childId, runId: 'br-'+rId, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({ summary: '我的见解：用积分构造矛盾；' + rId, solved:false })}] })
     return true

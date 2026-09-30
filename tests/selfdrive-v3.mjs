@@ -41,7 +41,10 @@ function fireEnd(info){ for(const h of (listeners['subagent/end']||[])) h(info) 
 
 // ---------- seed ----------
 await callTool('vibe_math_new_project',{name:'sd'})
-await callTool('vibe_math_set_params',{ solverMaxRounds:2, verifierCount:2, debateMaxRounds:2, promoteValueThreshold:0.6, methodAutoPromote:false })
+await callTool('vibe_math_set_params',{ solverMaxRounds:2, verifierCount:2, debateMaxRounds:2, promoteValueThreshold:0.6, methodAutoPromote:false, planMinIntervalMs:300 })
+// ↑ planMinIntervalMs=300 是**测试参数**，不是生产默认值（生产默认 30s）。H1 之后每一次规划调用
+// 都受 cooldown 约束（含空计划、"空闲但仍有工作"），所以这个要跑完整流水线的录制器必须把冷却压到
+// 亚秒级，否则默认 30s 冷却会让整个录制停在第一个计划上。
 await callTool('vibe_math_add_problem',{id:'qA',description:'证明 zeta(3) 是无理数',priority:0})
 await callTool('vibe_math_add_problem',{id:'qB',description:'证明 log 2 是无理数',priority:1})
 await callTool('vibe_math_add_proposition',{id:'pX',概述:'欧拉常数 γ 为有理数',概率:0.6,分类:'数论','价值/关键性':0.7})
@@ -158,5 +161,17 @@ const term = LOG.filter(r=>r.kind==='terminate').length
 console.log('terminations detected:', term)
 const emptR = LOG.filter(r=>r.kind==='spawn' && r.reply && r.reply.Result===0.5 && !r.reply.Reason).length
 console.log('empty-Reason verifier replies:', emptR)
+
+// ---------- H1 regression guard ----------
+// Before the H1 fix the idle loop spawned a planner on EVERY tick: this recorder logged
+// 41 planners / 60 interactions, the trailing 33 of them all returning an empty plan, and
+// the scheduler never stopped (`terminations detected: 0`). The planner is now required to
+// be outnumbered by the real work it schedules, and the run must reach a termination.
+const planners = spawns.filter(s => s.label.startsWith('planner:')).length
+const guardFailures = []
+if (!(planners < spawns.length)) guardFailures.push('planner spawns (' + planners + ') are not outnumbered by all spawns (' + spawns.length + ') — the idle planner loop is back')
+if (!(term >= 1)) guardFailures.push('no termination was detected — the scheduler never stopped (H1 idle loop / blocked termination check)')
+for (const f of guardFailures) console.error('  FAIL - ' + f)
+if (guardFailures.length === 0) console.log('H1 guard: planner loop bounded, scheduler terminated')
 rmSync(WS,{recursive:true,force:true})
-process.exit(0)
+process.exit(guardFailures.length === 0 ? 0 : 1)

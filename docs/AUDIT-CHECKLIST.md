@@ -166,8 +166,13 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 ### 1.9 工具参数 schema：文档写了 ≠ 工具收得下
 
 §1.6 查的是"persona 里有没有写"，这一节查**工具的参数 schema 收不收得下**。本仓库所有工具 schema 都由
-`objParams` 收口，并以 `additionalProperties:false` **关闭**：schema 没列出的键会被任何遵守 schema 的
-provider **直接拒绝**。于是"提示词/规格/状态表都写着这个参数"完全可以在**功能根本打不开**的同时全绿。
+`objParams` 收口，并以 `additionalProperties:false` **关闭**。**但"关闭"的强度取决于注册路径**（v3 审计 M5
+的更正）：只有走宿主 `defineTool` 的工具，宿主才会用该 schema 校验实参、把未列出的键**直接拒绝**；
+`tools.register`（裸 `ToolDefinition`）只把 `parameters` 生成给模型的 schema，宿主**从不校验实参**，
+`additionalProperties:false` 在那里只是给模型看的**文档**。所以对 v3 这类裸注册的工具，schema 与参数层
+不一致会**静默成功（fail open）**，而不是被拒——最典型的反例是 `vibe_math_setup` 公布 `mode`、而
+`vibe_math_set_params` 的 schema 里一度没有它：模型看不到这个键，写给它却仍会被 `sanitizeParams` 收下
+（该键已补进 schema，两条注册路径的键集现在一致）。
 
 - [ ] 每个"可调参数"是否同时出现在：**设置工具的参数 schema**、发现面（`vibe_math_setup` 返回的
       `PARAM_SCHEMA` / v4·v5 的 status 参数表）、`<vibe root>/*setting.json` 模板、以及 persona 参数表？

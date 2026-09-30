@@ -1,24 +1,30 @@
-# V4 形式化验证交互语料（prompt corpus）
+# V4 交互语料（prompt corpus）
 
-> 由 `formal-verify-v4.test.mjs` 落盘：非 `off` 模式下常驻**真正会读到**的 Lean 提示词原文
+> 由 `formal-verify-v4.test.mjs` 落盘：常驻**真正会读到**的提示词原文
 > （`vibe_v4_prompts` 的只读回显 + 一条真实投递的工作轮 + 工具 `hint`）。
 > 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`：确定、可 diff、不含任何本机路径。
 
 > 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**
 > （`encourage` / `require` 两种措辞各一份：只有 `require` 会声称"不定论"）、
-> `blocked` 分支、平时工作轮的「顺手形式化」，以及回执契约里的 `formal` 字段。
+> `blocked` 分支、平时工作轮的「顺手形式化」，以及回执契约里的 `formal` 字段；
+> **以及非形式化的交互面**：会议提示（首位发言者 / 已看到他人发言者各一份，含停止表决契约）、
+> 私信框头 `[MESSAGE from …]`、群聊框头 `[群聊]`、认领任务框头 `[YOU CLAIMED TASK …]`。
 
 ## [0] verify · off/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 ```
 
 ## [1] work · off/normal
@@ -39,9 +45,13 @@ Reply with ONLY a JSON object:
 ## [2] verify · encourage/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
@@ -57,7 +67,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（propos
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus","decision":"used|blocked|defect","file":"Formal/p-corpus.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -92,15 +102,20 @@ Reply with ONLY a JSON object:
 
 ```text
 [核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（<VIBEMATH>/Projects/default/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。
+`facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 ```
 
 ## [6] verify · require/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
@@ -116,7 +131,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（propos
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus","decision":"used|blocked|defect","file":"Formal/p-corpus.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -124,9 +139,13 @@ Reply with ONLY a JSON object:
 ## [7] verify · require/verify/debate
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**，并参考他人意见：
 
 
@@ -142,7 +161,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（propos
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus","decision":"used|blocked|defect","file":"Formal/p-corpus.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -167,9 +186,13 @@ Reply with ONLY a JSON object:
 ## [9] verify · passed/fidelity
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
@@ -186,7 +209,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed�
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus-passed","decision":"used|blocked|defect","file":"Formal/p-corpus-passed.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -194,9 +217,13 @@ Reply with ONLY a JSON object:
 ## [10] verify · passed/fidelity (encourage)
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
@@ -213,7 +240,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed�
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus-passed","decision":"used|blocked|defect","file":"Formal/p-corpus-passed.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -221,9 +248,13 @@ Reply with ONLY a JSON object:
 ## [11] verify · blocked/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-blocked（proposition，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-blocked（命题，提出者 ）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
-判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
+**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
+  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
+  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。
+  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。
+判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。
 请给出你**诚实独立的判断**。
 
 
@@ -233,7 +264,7 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus-blocked�
   ▸ 因此请把 verdict 用在"这个阻塞判断是否成立 / 是否仍有别的形式化路线"上，并给出理由。
 
 Reply with ONLY a JSON object:
-{"vote":{"verdict":0.9,"reason":"<your logic>"}}
+{"vote":{"verdict":1,"reason":"<your logic>"}}
 若你本轮做了形式化或给出难度判断，请一并加上：
 {"formal":{"target":"p-corpus-blocked","decision":"used|blocked|defect","file":"Formal/p-corpus-blocked.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -280,4 +311,104 @@ Reply with ONLY a JSON object:
 
 ```text
 复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'。
+```
+
+## [17] meeting · meeting/first speaker (no prior speech)
+
+```text
+Resident r-2 — 团队会议进行中。 A meeting is in progress (agenda: 分工与是否需要验证).
+这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。
+（目前还没人发言，你先说。）
+
+你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。
+**停止表决必须是绝对票**：`voteSolved:true` 只表示你认为原问题**已解决**；只要有一名在册常驻没投 `true`（投 false、弃权、或漏写这个字段），run 就**不会**停止。不确定就投 false。
+Reply with ONLY a JSON object:
+{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}
+```
+
+## [18] meeting · meeting/later speaker (others relayed)
+
+```text
+Resident r-2 — 团队会议进行中。 A meeting is in progress (agenda: 分工与是否需要验证).
+这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。
+
+### 已有发言（他人 input，已转发给你）
+  [r-1] 我建议先验证 p-corpus，并认领引理 A 的整理。
+
+你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。
+**停止表决必须是绝对票**：`voteSolved:true` 只表示你认为原问题**已解决**；只要有一名在册常驻没投 `true`（投 false、弃权、或漏写这个字段），run 就**不会**停止。不确定就投 false。
+Reply with ONLY a JSON object:
+{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}
+```
+
+## [19] work · normal + queued inbox line ([<sender>] content)
+
+```text
+Resident researcher r-1 — 第 1 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+
+团队成员：
+- r-1「（未定）」active·轮1
+- r-2「（未定）」active·轮1
+New items:
+  [facilitator（框架/人类信使，不是常驻成员，不要向它回信；要回话请用本轮回执的 "input" 或 vibe_v4_send_message {to:"all"}）] 请优先核对引理 B 的假设条件。
+
+
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+Reply with ONLY a JSON object:
+{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
+```
+
+## [20] work · normal + delivered message frame ([NEW MESSAGE from ...])
+
+```text
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+
+团队成员：
+- r-1「（未定）」active·轮0
+- r-2「（未定）」active·轮0
+New items:
+  (no new messages)
+
+Reply with ONLY a JSON object:
+{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}
+
+[NEW MESSAGE from facilitator]
+请优先核对引理 B 的假设条件。
+```
+
+## [21] work · normal + group-chat frame ([群聊])
+
+```text
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+
+团队成员：
+- r-1「（未定）」active·轮0
+- r-2「（未定）」active·轮1
+New items:
+  (no new messages)
+
+Reply with ONLY a JSON object:
+{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}
+
+[MESSAGE from r-2]
+[群聊] 我对引理 B 的假设有异议：需要 n≥1。
+```
+
+## [22] work · task frame ([YOU CLAIMED TASK ...])
+
+```text
+Resident researcher r-1 — 第 2 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+
+团队成员：
+- r-1「（未定）」active·轮2
+- r-2「（未定）」active·轮2
+New items:
+  (no new messages)
+
+
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+Reply with ONLY a JSON object:
+{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
+
+[YOU CLAIMED TASK t-cba4ec0d] 核对引理 B 的假设 — 确认 n≥1 是否必要
 ```

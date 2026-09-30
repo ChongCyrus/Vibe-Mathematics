@@ -44,7 +44,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -103,7 +103,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -172,7 +172,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -230,7 +230,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -288,7 +288,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -346,7 +346,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -408,7 +408,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -475,7 +475,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -542,7 +542,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -609,7 +609,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -670,7 +670,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -731,7 +731,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -802,7 +802,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -873,7 +873,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -931,7 +931,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -992,7 +992,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1061,7 +1061,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1130,7 +1130,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1191,7 +1191,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1252,7 +1252,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1325,7 +1325,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1398,7 +1398,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1463,7 +1463,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1528,7 +1528,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1595,7 +1595,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1662,7 +1662,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1723,7 +1723,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1790,7 +1790,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1857,7 +1857,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1925,7 +1925,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -1993,7 +1993,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2054,7 +2054,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2121,7 +2121,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2190,7 +2190,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2259,7 +2259,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2326,7 +2326,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2387,7 +2387,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2450,7 +2450,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2519,7 +2519,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2588,7 +2588,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2651,7 +2651,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2712,7 +2712,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2773,7 +2773,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2834,7 +2834,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2901,7 +2901,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -2968,7 +2968,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3029,7 +3029,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3096,7 +3096,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3163,7 +3163,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3224,7 +3224,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3289,7 +3289,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3354,7 +3354,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3415,7 +3415,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3483,7 +3483,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3551,7 +3551,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3618,7 +3618,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3685,7 +3685,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3752,7 +3752,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3819,7 +3819,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3886,7 +3886,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -3953,7 +3953,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4024,7 +4024,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4095,7 +4095,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4156,7 +4156,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4224,7 +4224,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4292,7 +4292,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4353,7 +4353,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4421,7 +4421,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4489,7 +4489,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4550,7 +4550,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4618,7 +4618,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4686,7 +4686,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4754,7 +4754,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4822,7 +4822,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4883,7 +4883,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -4944,7 +4944,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5012,7 +5012,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5080,7 +5080,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5148,7 +5148,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5216,7 +5216,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5278,7 +5278,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5350,7 +5350,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5419,7 +5419,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5486,7 +5486,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5547,7 +5547,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5608,7 +5608,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5675,7 +5675,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5742,7 +5742,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5803,7 +5803,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5871,7 +5871,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -5939,7 +5939,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
@@ -6011,7 +6011,7 @@ KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
 
 
 YOUR PERMISSIONS / CAPABILITIES:
-- Network tools (web search / fetch): available; Script/shell tools (bash/pwsh): available (your actual tool list is enforced by the framework).
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
 - You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).

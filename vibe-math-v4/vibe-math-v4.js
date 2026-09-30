@@ -106,6 +106,11 @@ export function apply(ctx) {
     let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
     const verifiedRecently = new Map()   // targetId -> timestamp when it was closed as Verified (dedup re-propose)
     let lastActivityAt = now(), lastProgressAt = now(), artifactCount = 0, lastSyncMeetingAt = 0, persistedEpoch = '', heartbeatDisposer = null
+    // `artifactBaseline` = the artifact count observed when the auto-sync-meeting counter was last
+    // re-based (see `countArtifacts`/`syncArtifactCount`): the documented behaviour is "every N NEW
+    // artifacts", so the modulo test must run against the number of artifacts written SINCE the run
+    // started, not against the raw file count of a possibly pre-existing project tree.
+    let artifactBaseline = null
     const activityLogCap = 200
 
     // ---- utils ----
@@ -858,10 +863,21 @@ export function apply(ctx) {
       // `off` mode must not CREATE Lean state: a run that never used the feature leaves no
       // State/formal.json behind. Seeded/live records (or a mode that is on) still persist.
       if(formalOn()||formalPersisted||Object.keys(formal).length||formalTodos.length) await writeJson('State/formal.json', {records:formal,todo:formalTodos})
-      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,lastProgressAt,activityLog,processEpoch,artifactCount})
+      await writeJson('State/session.json', {running,autoDone,phase,problemId,problemText,runId,meetings,reports,lastActivityAt,lastProgressAt,activityLog,processEpoch,artifactCount,artifactBaseline,
+        // In-flight consensus must survive a restart too: a verification that had collected 3 of 4
+        // verdicts and a meeting that had collected half the speeches used to evaporate entirely
+        // (Shared/debates|meetings/<id>.md are only written by finalize*, so the partial debate was
+        // not even on disk) — and the queued proposals in pendingVerify were lost with it.
+        meetingState,verifyState,pendingVerify,pendingMeeting})
     }
     async function loadAll(){
-      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); lastProgressAt=s.lastProgressAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||''; artifactCount=s.artifactCount||0 }
+      const s=await readJson('State/session.json'); if(s){ running=!!s.running; autoDone=!!s.autoDone; phase=s.phase||'idle'; problemId=s.problemId||problemId; problemText=s.problemText||problemText; runId=s.runId||runId; meetings=s.meetings||[]; reports=s.reports||[]; lastActivityAt=s.lastActivityAt||now(); lastProgressAt=s.lastProgressAt||now(); activityLog=s.activityLog||activityLog; persistedEpoch=s.processEpoch||''; artifactCount=s.artifactCount||0; artifactBaseline=(s.artifactBaseline===undefined?null:Number(s.artifactBaseline))
+        // Restore the in-flight consensus (see saveAll). `resume()` refreshes the watchdog clocks right
+        // after this, so a run resumed after a crash gets a fresh stall window instead of being
+        // abandoned by the meeting/verify watchdog on its first serviced pass.
+        meetingState=s.meetingState||null; verifyState=s.verifyState||null
+        pendingVerify=Array.isArray(s.pendingVerify)?s.pendingVerify:[]
+        pendingMeeting=s.pendingMeeting||null }
       const rm=await readJson('State/residents.json'); if(rm&&typeof rm==='object') residents=new Map(Object.entries(rm))
       const mb=await readJson('State/mailboxes.json'); if(mb&&typeof mb==='object') mailboxes=new Map(Object.entries(mb))
       const tb=await readJson('State/taskboard.json'); if(Array.isArray(tb)) taskboard=tb
@@ -878,7 +894,12 @@ export function apply(ctx) {
 
     // ---- resident prompts ----
     function banner(){ const o=[]; for(const [id,r] of residents) o.push('- '+id+'「'+(r.direction||'（未定）')+'」'+r.status+'·轮'+r.rounds); return o.join('\n') }
-    async function inboxText(rId){ const mb=mailboxes.get(rId)||[]; if(mb.length===0) return '  (no new messages)\n'; return mb.map(m=>'  ['+m.from+'] '+m.content).join('\n')+'\n' }
+    // Who sent this? `facilitator` is the framework/human messenger (NOT a resident, not on the
+    // roster): a resident that reads a bare `[facilitator]` line tries to reply to it and gets
+    // `no such resident`. The definition travels WITH the frame, so it is present on the very wake
+    // that shows the message — not only in the once-only onboarding brief.
+    function senderLabel(from){ return String(from)==='facilitator'?'facilitator（框架/人类信使，不是常驻成员，不要向它回信；要回话请用本轮回执的 "input" 或 vibe_v4_send_message {to:"all"}）':String(from) }
+    async function inboxText(rId){ const mb=mailboxes.get(rId)||[]; if(mb.length===0) return '  (no new messages)\n'; return mb.map(m=>'  ['+senderLabel(m.from)+'] '+m.content).join('\n')+'\n' }
     function residentLibraries(){
       const base=frameworkRoot()
       return '你的资料库根目录：'+base+'/\n'
@@ -934,6 +955,7 @@ export function apply(ctx) {
       s.push('### 规则')
       s.push('- 只有 Verified/（或卡片标"已验证·真/假"）算已确立；其余都是你的实验性工作，请区分"猜想/已知"。')
       s.push('- 验证必须**全组一致**（全真或全假）；你只信全票结果。未全票的对象留在库里带概率。')
+      s.push('- `facilitator` 是**框架/人类介入的信使名**（不是常驻成员，不在编制里）：它转达人类或框架的话，但**不要向它回信**（会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。')
       s.push('- 你自己决定做什么，但**优先级/分工由团队讨论决定**，不是固定模式。若你认为问题已解决或接近解决，请**发起会议**让团队表决。')
       s.push('- 退出时**只**输出一个 JSON 对象（放在 ```json 代码围栏内；围栏外不要有文字）。')
       return s.join('\n')
@@ -947,6 +969,7 @@ export function apply(ctx) {
       // dynamic: after a /compact the resident must re-anchor on the rules it is actually
       // living under right now.
       return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
+        +'\n`facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。'
         +(formalOn()?('\n'+formalWorkLine()):'')
     }
     function brainstormPrompt(r){
@@ -975,11 +998,10 @@ export function apply(ctx) {
       const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队会议进行中。 A meeting is in progress (agenda: '+st.agenda+').'
-        +(st.type==='verify'?('\n团队正在验证对象：'+st.targetId+'（'+st.targetType+'，提出者 '+st.targetOwner+'）。请先看他人意见，再给独立判断。'):'')
         +'\n这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。'
         +(prior?('\n\n### 已有发言（他人 input，已转发给你）\n'+prior):'\n（目前还没人发言，你先说。）')
         +'\n\n你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。'
-        +'\nReply with ONLY a JSON object:\n'
+        +'\n**停止表决必须是绝对票**：`voteSolved:true` 只表示你认为原问题**已解决**；只要有一名在册常驻没投 `true`（投 false、弃权、或漏写这个字段），run 就**不会**停止。不确定就投 false。'        +'\nReply with ONLY a JSON object:\n'
         +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
     }
     function verifyPrompt(r, vs){
@@ -990,9 +1012,19 @@ export function apply(ctx) {
       const others=Object.entries(src).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
       const L=[]
       L.push((params.residentPersona?params.residentPersona+'\n':'')
-        +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+vs.targetType+'，提出者 '+vs.targetOwner+'）。\n'
+        +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+targetTypeWord(vs.targetType)+'，提出者 '+vs.targetOwner+'）。\n'
         +'请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。\n'
-        +'判定规则：仅当**全体常驻一致给 1（都认为是真）或一致给 0（都认为是假）**，才按「真/假」写入 Verified/；否则**只作为概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
+        // ── THE VOTE CONTRACT (why the example below is 1 and not 0.9) ──────────────────────────
+        // Only an EXACT 1 or 0 is a vote; anything strictly between is the model's honest
+        // probability of truth, i.e. an ABSTENTION. The old text demonstrated `verdict:0.9` while
+        // the code required `Number(prob)===1`, so a cautious-but-convinced group could never
+        // converge: every round burned and the object stayed unverified forever. The rule is now
+        // stated HERE, the example shows `1`, and 0.9 is explained instead of merely tolerated.
+        +'**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。\n'
+        +'  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。\n'
+        +'  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。\n'
+        +'  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。\n'
+        +'判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
         +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
         +(vs.stage==='debate'&&others?('### 他人上一轮意见（已转发给你）\n'+others+'\n'):''))
@@ -1004,7 +1036,7 @@ export function apply(ctx) {
       }
       L.push('')
       L.push('Reply with ONLY a JSON object:')
-      L.push('{"vote":{"verdict":0.9,"reason":"<your logic>"}}')
+      L.push('{"vote":{"verdict":1,"reason":"<your logic>"}}')
       if(formalOn()){
         // The formal field belongs in the VOTING contract too: voters are exactly the agents who
         // must either formalize the object or record why they judged it infeasible.
@@ -1068,6 +1100,33 @@ export function apply(ctx) {
 
     // ---- resident lifecycle ----
     let residentSeq = 0
+    // Spawns that are currently IN FLIGHT, plus the `subagent/start` payloads seen while they were.
+    //
+    // ORDERING FACT (verified against the installed host, dsh-subagent 0.2.0-rc.2): `subagent/start`
+    // is emitted SYNCHRONOUSLY from inside `startContinuable`'s await — `emit('subagent/start', …)` at
+    // `dsh-subagent/lib/index.js:279` (and again from the lifecycle observer at `:306` once
+    // `observer.start(handle.agent)` runs at `:1116`) — and `startContinuable` resolves only
+    // afterwards. `spawnResident` therefore cannot know `started.childId` when the event fires, and
+    // the payload carries no label (see `SubagentRunInfo`: runId/provider/id/local only), so the ONLY
+    // information available at that moment is "a child of mine just started".
+    //
+    // So: the start handler STASHES the live Agent by child id (no ownership guess at all), and
+    // `spawnResident` CLAIMS the record for its child id as soon as the call resolves — at which point
+    // ownership is known exactly. `labelHints` bridges the (mock-ish) hosts that embed the label in
+    // the id for the handler's own `ownsChild` check.
+    const pendingSpawnLabels = new Set()
+    const pendingStartAgents = new Map()   // childId -> Agent, seen but not yet owned
+    function stashStartAgent(childId, agent){
+      if(!childId || !agent) return
+      if(pendingStartAgents.size>=64) pendingStartAgents.delete(pendingStartAgents.keys().next().value)
+      pendingStartAgents.set(String(childId), agent)
+    }
+    function claimStartAgent(childId){
+      const id=String(childId==null?'':childId)
+      const agent=pendingStartAgents.get(id)
+      if(agent) pendingStartAgents.delete(id)
+      return agent
+    }
     function newResident(dir){ const rId='r-'+(++residentSeq); return {rId,childId:'',direction:dir||'',status:'brainstorm',rounds:0,roundsSinceCompact:0,lastActiveAt:now(),insight:'',contextPct:0,contextSeed:'',needCompact:false} }
     async function spawnResident(r){
       // Skip BEFORE touching the host when we already KNOW the ceiling and our own live children
@@ -1076,6 +1135,8 @@ export function apply(ctx) {
       if(hostChildLimit!==undefined && liveChildCount()>=hostChildLimit){ noteSpawnRefused(r, hostChildLimit); return false }
       const ao=residentAgentOptions(); const tf=residentToolFilter()
       let started
+      // Register the label for the whole in-flight window: `subagent/start` fires inside this await.
+      pendingSpawnLabels.add(r.rId)
       try {
         started=await startWithToolFilter(tf, function(f){ return {provider:pickProvider(),label:r.rId,request:{prompt:[textBlock(brainstormPrompt(r))],parent:rootAgent,agentOptions:ao,...(f?{toolFilter:f}:{})},signal:makeSignal(params.activityTimeoutMs||60000)} })
       } catch(e){
@@ -1085,17 +1146,46 @@ export function apply(ctx) {
         // failure keeps its previous behaviour and still propagates.
         if(!isActivationLimitReached(e)) throw e
         noteSpawnRefused(r, noteChildLimit(e)); return false
-      }
+      } finally { pendingSpawnLabels.delete(r.rId) }
+      // The child just started, so its `subagent/start` payload has already been seen (the host emits
+      // it inside the await above). Claim the stashed Agent for it NOW — ownership is exact here — and
+      // that is what makes the REAL `/compact` path reachable (see the `subagent/start` listener).
+      const claimed=claimStartAgent(started.childId)
+      if(claimed) rememberAgent(started.childId, claimed)
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
       childOwner.set(started.childId,sessionId); busy.add(r.rId); wakeKind.set(r.rId,'normal'); currentResident=r.rId
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
       return true
     }
+    /**
+     * Is `childId` one of THIS session's residents — including a spawn that is still IN FLIGHT?
+     *
+     * `spawnResident` sets `r.childId` (and `childOwner`) only after `startContinuable` resolves, but
+     * the host emits `subagent/start` from inside that await. So "is this mine?" must also consult the
+     * pending-spawn labels registered around the call; without that, the start handler rejects every
+     * child of a fresh spawn and `liveAgents` never gets populated.
+     */
+    function ownsChild(childId){
+      const id=String(childId)
+      for(const [,r] of residents){ if(r.childId===id) return true }
+      for(const r of pendingSpawns){ if(r.childId===id) return true }
+      // During the spawn await the child's id is not recorded anywhere yet, but the framework chose
+      // the spawn's LABEL and `spawnResident` registers it for exactly this window. A host id that
+      // embeds the label (`child-r-1`, the common test/mock shape) is matched by containment; an
+      // opaque host id cannot be matched here, which is why the label is only a
+      // best-effort bridge in addition to the roster checks above.
+      for(const label of pendingSpawnLabels){ if(id===label || id.indexOf(label)>=0) return true }
+      return false
+    }
     async function wakeResident(r, promptText, kind){
       if(!r || !r.childId) return false   // a removed resident must never be woken (else r.childId would crash)
       clearHeartbeat()
       busy.add(r.rId); wakeKind.set(r.rId,kind||'normal'); currentResident=r.rId
-      r.lastActiveAt=now(); r.rounds+=1; r.roundsSinceCompact+=1
+      // `rounds`/`roundsSinceCompact` are advanced only AFTER the send actually succeeded (below), so
+      // a wake that never reached the child cannot consume a "round" of the compaction heuristic nor
+      // inflate the round number the resident is told. `lastActiveAt` still moves here on purpose: a
+      // failed wake must back the A-fill off for one activityTimeoutMs instead of hammering the child.
+      r.lastActiveAt=now()
       // Context compaction has TWO distinct needs. Confusing them is the bug that made
       // '[核心规则重申]+[CONTEXT COMPACT]' repeat at the start of nearly every prompt:
       //   (a) r.needCompact (set by a REAL /compact) => the resident's rules may be blurred, so
@@ -1135,6 +1225,8 @@ export function apply(ctx) {
         } else {
           throw new Error('no subagent continuation API (need sendMessage or followup)')
         }
+        // The turn is really in flight now: count it (F10 — a failed send must not consume a round).
+        r.rounds+=1; r.roundsSinceCompact+=1
         return true
       }
       catch(e){ console.error('vibe-v4 wake '+r.rId+' failed: '+String((e&&e.message)||e)); busy.delete(r.rId); return false }
@@ -1146,18 +1238,74 @@ export function apply(ctx) {
     async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
     async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
     async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
-    // auto-sync meeting: every meetingKeepEvery artifact records, convene a general coordination meeting.
+    // ── auto-sync meeting: every `meetingKeepEvery` NEW artifacts, convene a coordination meeting ──
     //
-    // ⚠ 已知设计缺口（有意保留，未修）：计数口径**只有** record_* 三个便捷工具的调用。而提示词明确
-    // 告诉常驻："vibe_v4_publish_progress/record_* 只是便捷记录器（可选；推荐直接用 fs 写自己的文件）"，
-    // 所以一个完全按推荐方式（fs 直写）工作的团队不会让 artifactCount 增长，
-    // `artifactCount % meetingKeepEvery === 0` 永不成立 —— 文档承诺的"每积累 N 个新产物自动同步
-    // 一次"在推荐工作流下不可达（此时只有"停滞看门狗"那条时间触发路径会开会）。
-    // 试过把"完成的常驻轮次"也计入，但那会改变开会节奏，令 e2e-v4-fixes T4 与 selfdrive-v4 的
-    // 时序断言失败（两套测试都按当前节奏写死了预期）。这属于**设计参数取舍**，需要维护者决定：
-    // 要么改计数口径并同步调整测试预期，要么把"便捷记录器可选"的措辞改为"建议使用以便触发周期同步"。
-    function bumpArtifacts(){ artifactCount+=1; markProgress(); if(!meetingState && !verifyState && !pendingMeeting && Number(params.meetingKeepEvery)>0 && artifactCount % Number(params.meetingKeepEvery)===0){ startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{}) } }
-    function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):''})) }
+    // The counting basis is the RESIDENTS' card libraries themselves (Propos/Methods/Subproblems),
+    // NOT the three `record_*` convenience tools. The prompt tells residents verbatim that those tools
+    // are optional and that they are recommended to write their own files directly with `fs`, so a
+    // team that follows the recommendation never called `bumpArtifacts` and
+    // `artifactCount % meetingKeepEvery === 0` could never fire — the documented "every N new
+    // artifacts auto-sync" was UNREACHABLE in the very workflow the prompt recommends, leaving the
+    // stall watchdog as the only path that ever convenes an auto-meeting.
+    //
+    // Setting `artifactBaseline` also means a tile count of the correct sign, since residents write
+    // the paths `Propos/<r>/<id>.md` explicitly.
+    async function countArtifacts(){
+      let n=0
+      for(const base of ['Propos','Methods','Subproblems']){
+        try {
+          const t=await fs.resolve(base,{cwd:frameworkRoot()})
+          if(await fs.stat(t)===undefined) continue
+          const ents=await fs.listDir(t)
+          for(const e of ents||[]){
+            if(!e||e.type!=='directory') continue
+            try {
+              const dt=await fs.resolve(base+'/'+e.name,{cwd:frameworkRoot()})
+              if(await fs.stat(dt)===undefined) continue
+              const files=await fs.listDir(dt)
+              for(const f of files||[]) if(f&&f.type==='file'&&/\.md$/.test(String(f.name))) n++
+            } catch(e2){ /* a single unreadable library must not stop the scan */ }
+          }
+        } catch(e){ /* best-effort: an absent library counts as zero */ }
+      }
+      return n
+    }
+    /**
+     * Re-base the artifact counter on what is on disk. Called from `start()` (a fresh run: the count
+     * of NEW artifacts starts at 0 even if the project tree already held cards) and from
+     * `scheduleNext` (the single choke point of every scheduling pass, right before the auto-meeting
+     * test), so a group that writes its cards with `fs` still drives the documented cadence.
+     * Costs no writes and never throws into the scheduler.
+     */
+    async function syncArtifactCount(){
+      const n=await countArtifacts()
+      if(artifactBaseline===null) artifactBaseline=n
+      artifactCount=Math.max(artifactCount, n-(artifactBaseline||0))
+      return artifactCount
+    }
+    /**
+     * The `meetingKeepEvery` cadence: every N newly accumulated artifacts, convene ONE coordination
+     * meeting. Called from BOTH paths that can observe the count:
+     *   · `bumpArtifacts` (a `record_*` convenience-tool call — the counter moves immediately), and
+     *   · `scheduleNext` right after `syncArtifactCount()` re-bases the counter on the files on disk,
+     *     which is the ONLY way an `fs`-written card can be seen.
+     * Without the second call site the documented cadence is unreachable in the very workflow the
+     * prompt recommends (`record_*` 可选；推荐直接用 fs 写自己的文件). `lastSyncMeetingAt` is reused as
+     * the count at which the last sync meeting was convened, so the same crossing cannot fire twice.
+     */
+    function maybeArtifactSyncMeeting(){
+      const every=Number(params.meetingKeepEvery)
+      if(!(every>0)) return false
+      if(meetingState || verifyState || pendingMeeting) return false
+      if(!(artifactCount>0) || artifactCount % every !== 0) return false
+      if(artifactCount<=lastSyncMeetingAt) return false   // this crossing already convened a meeting
+      lastSyncMeetingAt=artifactCount
+      logActivity('meeting','定期同步触发：新增产物达到 '+every+' 的倍数（累计 '+artifactCount+'）')
+      startMeeting('定期同步：分工/进展/是否需要验证','general',null).catch(()=>{})
+      return true
+    }
+    function bumpArtifacts(){ artifactCount+=1; markProgress(); maybeArtifactSyncMeeting() }
+    function listResidents(){ return Array.from(residents.values()).map(r=>({id:r.rId,direction:r.direction,status:r.status,rounds:r.rounds,contextPct:r.contextPct,insight:r.insight?r.insight.slice(0,80):'',roundsSinceCompact:r.roundsSinceCompact||0,needCompact:!!r.needCompact,wakeKind:wakeKind.get(r.rId)||''})) }
     // identify WHICH resident is calling a resident-facing tool: match the caller's
     // subagent id to a resident's childId. Fall back to the last-woken resident when
     // the caller is the host/assistant (or an unknown agent). This makes per-resident
@@ -1171,17 +1319,28 @@ export function apply(ctx) {
       // wake the claimer to work on it (framework moves the task, resident decides how).
       // NOT while paused/stopped: a paused run must not start new work — the claim is recorded on the
       // board and the resident (who claimed it) picks it up again after resume.
-      const r=residents.get(claimer); if(r && !busy.has(claimer) && running && !autoDone){ currentResident=claimer; await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll() }
+      const r=residents.get(claimer); if(r && !busy.has(claimer) && running && !autoDone){ currentResident=claimer; const ok=await wakeResident(r, (await normalPrompt(r))+'\n\n[YOU CLAIMED TASK '+id+'] '+t.title+' — '+t.description,'normal'); await saveAll(); if(!ok) armHeartbeat() }
       return {ok:true} }
     async function taskDone(id,claimer){ const t=taskboard.find(x=>x.id===id); if(!t) return {ok:false}; t.status='done'; t.doneBy=claimer; await saveTaskboard(); await writeTaskboard(); markProgress(); logActivity('task','done '+id); return {ok:true} }
     async function saveTaskboard(){ await writeJson('State/taskboard.json',taskboard); await writeTaskboard() }
     function listTasks(){ return taskboard.filter(t=>t.status!=='done') }
     async function reportContext(rId,pct){ const r=residents.get(rId); if(r){ r.contextPct=clPct(pct); if(Number(pct)<30) r.needCompact=false; } return {ok:true} }
-    // Apply context/compact bookkeeping from a resident's reply, so the flag can clear even when
-    // the reply came through a meeting/verify branch (defensive) as well as the normal branch.
-    function postmark(r, parsed){
+    /**
+     * Apply context/compact bookkeeping from a resident's reply.
+     *
+     * `kind` is the wake kind. It matters because the OLD version treated ANY non-empty `summary`
+     * on ANY turn as the acknowledgement of a requested compaction: a meeting/verify reply that
+     * happened to echo a summary (their contracts do not forbid it) cleared `needCompact`, zeroed
+     * `roundsSinceCompact` and clamped `contextPct` to <=25 WITHOUT any compaction happening — so the
+     * soft-compact trigger stayed below threshold and the compaction the flag was asking for was
+     * never issued. Only a real normal research turn can acknowledge the soft directive it received
+     * (`wakeResident` injects `[CONTEXT COMPACT …]` on normal rounds only); `parsed.compacted===true`
+     * stays honoured on every kind, because that is the resident explicitly saying it condensed.
+     */
+    function postmark(r, parsed, kind){
       const cp=Number(parsed.contextPct); if(Number.isFinite(cp)) r.contextPct=clPct(cp)   // tolerate numeric strings ("40")
-      if(parsed.compacted===true || (r.needCompact && parsed.summary)){
+      const isNormalTurn=(kind||'normal')==='normal'
+      if(parsed.compacted===true || (isNormalTurn && r.needCompact && parsed.summary)){
         r.contextSeed=String(parsed.summary||r.contextSeed||'')
         r.contextPct=Math.min(r.contextPct||15,25)
         r.roundsSinceCompact=0
@@ -1195,8 +1354,14 @@ export function apply(ctx) {
       const r=residents.get(to); if(!r) return {ok:false,message:'no such resident'}
       if(!busy.has(to)){
         currentResident=r.rId
-        await wakeResident(r, (await normalPrompt(r))+'\n\n[NEW MESSAGE from '+from+']\n'+content,'normal')
-        await saveAll(); markProgress(); logActivity('message',from+'→'+to); return {ok:true}
+        // An IMMEDIATE delivery. `wakeResident` clears the heartbeat as its first act and clears the
+        // `busy` mark again if the send is rejected, so a failure here would leave NO wake, NO
+        // in-flight turn and NO timer — nothing could ever re-drive the pump and the whole group would
+        // stop with mail still queued (F1; the sibling path is `deliverNextMailbox`, which falls
+        // through to the re-arming tail of `scheduleNext`). Re-arm; the message itself is delivered by
+        // the recipient's own inbox on its next wake.
+        const ok=await wakeResident(r, (await normalPrompt(r))+'\n\n[NEW MESSAGE from '+from+']\n'+content,'normal')
+        await saveAll(); markProgress(); logActivity('message',from+'→'+to+(ok?'':' (wake failed; heartbeat re-armed)')); if(!ok) armHeartbeat(); return {ok:true}
       }
       const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb); await saveAll(); logActivity('message',from+'→'+to+' (queued)'); return {ok:true}
     }
@@ -1287,8 +1452,16 @@ export function apply(ctx) {
           if(iv.claim_task) await claimTask(iv.claim_task, id)
           if(iv.propose_verify) maybeQueueVerify(iv.propose_verify, id)
         }
-        const votes=Object.values(st.inputs).map(x=>x.voteSolved).filter(v=>typeof v==='boolean')
-        const allSolved = allSpoke && votes.length>0 && votes.every(v=>v===true)
+        // ── the STOP vote must be UNANIMOUS, abstentions included ────────────────────────────────
+        // `onResidentEnd` stores `voteSolved` only when it is a real boolean, otherwise `null`. The
+        // old code filtered those nulls OUT and then asked `votes.every(v=>v===true)`, so a resident
+        // that omitted the field (the meeting contract makes every key except `input` optional) or
+        // wrote the string "true" simply dropped out of the electorate — and 3-of-4 voting true read
+        // as "the whole team agrees the problem is solved" and STOPPED the run. `finalizeVerify` was
+        // already written correctly (every resident must have a verdict); this mirrors it: every
+        // speaker must have produced an explicit `true`.
+        const speakers=Object.values(st.inputs)
+        const allSolved = allSpoke && speakers.length>0 && speakers.every(iv=>iv.voteSolved===true)
         logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
         if(allSolved){
           running=false; autoDone=true; phase='done'; clearHeartbeat()
@@ -1369,14 +1542,18 @@ export function apply(ctx) {
           else await closeVerify(vs,allTrue)
           doSchedule=true
         }
-        else if(vs.round+1<params.verdictMaxRounds){
+        else if(vs.round<params.verdictMaxRounds){
+          // `verdictMaxRounds` is documented (README / 实现方案 / persona) as the maximum number of
+          // verification rounds: 1 independent first vote + (verdictMaxRounds-1) debate re-votes. The
+          // old `vs.round+1<verdictMaxRounds` gave one round FEWER than the name and the docs promise
+          // (default 3 → only 2), so the parameter read as an off-by-one from every documented surface.
           // Move to a REAL debate round: snapshot the current votes into history (so the next round's
           // prompt can show others' previous stances), then CLEAR verdicts so every resident is asked to
           // give a fresh independent judgement after seeing the debate. Without the clear, allVoted stays
           // true and the debate rounds burn through with NOBODY being re-asked (a silent no-op).
           vs.history=Object.assign({}, vs.verdicts); vs.verdicts={}
           vs.lastVerdictAt=now()   // fresh deadlock window for the re-vote round
-          vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+' → debate (re-vote after seeing others)'); await saveAll(); doSchedule=true
+          vs.stage='debate'; vs.round+=1; vs.asked=[]; logActivity('verify',vs.targetId+' round '+vs.round+'/'+params.verdictMaxRounds+' → debate (re-vote after seeing others)'); await saveAll(); doSchedule=true
         }
         else {
           const avg=vals.length? vals.reduce((a,x)=>a+(x.prob!=null?x.prob:0.5),0)/vals.length : 0.5
@@ -1440,13 +1617,25 @@ export function apply(ctx) {
     function maybeQueueVerify(target, proposer){
       const t=idSafe(target)   // sanitize BEFORE it becomes file names / dedup keys / status output
       if(!t || t==='id') return false
+      // The object KIND is derived from the id prefix, and it decides BOTH the directory the Verified
+      // card lands in (Verified/命题/ vs Verified/问题/) and the `- 类型:` line of the source card's
+      // write-back. The old fallback mapped EVERY unrecognised id to 'proposition', so proposing a
+      // method/sub-problem whose id does not start with m-/s- (e.g. `2.1`, `lemma-A`) silently wrote a
+      // card into Verified/命题/ carrying `类型: 命题` — a card whose location and declaration disagree.
+      // The prefix IS the coordination contract (the prompt hands residents `p-`/`m-`/`s-`), so an id
+      // that does not carry one is refused HERE, at the single queueing funnel, instead of guessing.
+      const tt=guessTargetType(t)
+      if(!tt){
+        logActivity('verify',t+' 的提议被拒绝：对象 id 必须以 p-（命题）/ m-（方法）/ s-（子问题）开头，否则框架无法确定它属于哪个库（V4_INVALID_ARGUMENT）')
+        return false
+      }
       const last=verifiedRecently.get(t)
       if(last!==undefined && (now()-last) < recoverStallMs()){
         logActivity('verify',t+' re-propose ignored (just verified at '+fmtTime(last)+')')
         return false
       }
       if(pendingVerify.some(p=>String(p.targetId)===t)) return true   // already queued → keep ONE entry
-      pendingVerify.push({targetId:t,targetType:guessTargetType(t),proposer:proposer||'',at:now()})
+      pendingVerify.push({targetId:t,targetType:tt,proposer:proposer||'',at:now()})
       return true
     }
     async function writeDebateDoc(vs,done,val){
@@ -1532,7 +1721,11 @@ export function apply(ctx) {
       next=rewriteCardField(next,'概率',isTrue?'1':'0')
       await writeText(rel,next||text)
     }
-    function guessTargetType(id){ if(/^p-/.test(id)) return 'proposition'; if(/^m-/.test(id)) return 'method'; if(/^s-/.test(id)) return 'subproblem'; return 'proposition' }
+    function guessTargetType(id){ if(/^p-/.test(id)) return 'proposition'; if(/^m-/.test(id)) return 'method'; if(/^s-/.test(id)) return 'subproblem'; return '' }
+    // Human-readable word for the target kind, used in the prompts. Never print the RAW internal
+    // token: the voter is a model, and `proposition`/`method`/`subproblem` in an otherwise Chinese
+    // contract is exactly the kind of untranslated placeholder these audits look for.
+    function targetTypeWord(t){ return t==='method'?'方法':(t==='subproblem'?'子问题':'命题') }
 
     // ---- heartbeat / liveness helpers (boundary-A: event-driven + gated heartbeat) ----
     // A checkpoint wake is NOT "keep working forever": it nudges the least-recently-active
@@ -1660,11 +1853,24 @@ export function apply(ctx) {
       // A meeting requested while a verify held the floor is parked in pendingMeeting; once the
       // verify queue has truly drained (no verifyState / pendingVerify), resume it before anything else.
       if(pendingMeeting){ const pm=pendingMeeting; pendingMeeting=null; await startMeeting(pm.agenda, pm.type, pm.targetId); return }
-      // mailbox delivery
+      // mailbox delivery. `wakeResident` CLEARS the heartbeat as its first act, so a pass that delivers
+      // NOTHING must not return without re-arming one: a rejected `sendMessage`
+      // (subagent/delivery-unavailable, a cold-resumed child whose Activation closed, a transient
+      // persistence failure) re-queues the message, refreshes the recipient's lastActiveAt (so the fill
+      // loop below skips it for a whole activityTimeoutMs) and used to end the pass with no wake, no
+      // heartbeat and no in-flight turn — nothing else could ever re-drive the scheduler, so the whole
+      // group stopped permanently with mail still queued. Falling through instead lets the branches
+      // below re-arm (and B/A still get their chance); on a SUCCESSFUL delivery the recipient's own
+      // subagent/end re-drives the pump, so the pass can end here as before.
       const delivered=await deliverNextMailbox(); if(delivered) return
       // maxParallel: don't start a new wake when the in-flight cap is reached
       const mp=Number(params.maxParallel)||0
       if(mp>0 && busy.size>=mp){ armHeartbeat(); return }
+      // Refresh the artifact counter from the residents' own card libraries (fs-written cards count
+      // too) before the auto-sync test below, so `meetingKeepEvery` measures NEW artifacts — and
+      // convene the sync meeting here, because this is the only place an `fs`-written card is seen.
+      await syncArtifactCount()
+      if(maybeArtifactSyncMeeting()) return
       // B) stall auto-sync meeting (分级保活 B): the group has been idle with NO progress for
       //    stallAutoMeetingMs → convene a sync meeting so the residents coordinate their next move
       //    (framework convenes & records; residents decide — never assigns work). Only when no
@@ -1763,8 +1969,8 @@ export function apply(ctx) {
       realCompact(r).catch(()=>{})   // best-effort real DSH /compact of this resident while idle
       const output=blocksToText(info&&info.lastAssistantMessage)
       const parsed=parseReply(output)
-      postmark(r, parsed)   // context/compact bookkeeping, regardless of wake kind (clears any leak)
       const kind=wakeKind.get(r.rId)||'normal'
+      postmark(r, parsed, kind)   // context/compact bookkeeping — a mid-consensus turn may NOT ack a compaction it never received
       if(kind==='meeting' && meetingState){
         meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
         meetingState.lastInputAt=now()
@@ -1843,6 +2049,9 @@ export function apply(ctx) {
       // carrying a previous run's records over would let a stale `passed` open the new gate.
       formal={}; formalTodos=[]
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
+      // Re-base the artifact counter on the cards already on disk, so the auto-sync meeting counts
+      // artifacts written by THIS run (the project tree may already hold cards from an earlier run).
+      artifactBaseline=null; artifactCount=0; await syncArtifactCount()
       lastActivityAt=now(); lastProgressAt=now()   // fresh stall/activity clock for the new run (else B could fire immediately on a reused session)
       const dirs=Array.isArray(seedDirections)?seedDirections.slice(0,params.residentCount):[]
       pendingSpawns=[]                 // a fresh run replaces the roster: nothing is queued from before
@@ -1883,7 +2092,15 @@ export function apply(ctx) {
       // If the persisted State came from a DIFFERENT process (crash/restart), the saved
       // childIds are stale; clear them so residents re-spawn (their libraries persist on
       // disk and re-seed the resumed run). Same-process pause→resume keeps continuable ids.
+      //
+      // `persistedEpoch` is only ever READ here, so before this fix a same-process pause→resume
+      // compared this process's random epoch against the epoch saved by ITSELF and always concluded
+      // "cross-process": every resident was re-spawned, `busy`/`wakeKind` were thrown away while the
+      // OLD children were still running (`resume()` never interrupts them, so the late
+      // `subagent/end` that the code's own comment warns about was guaranteed, not hypothetical).
+      // Re-sync it on a same-process load, which is the contract `paused` already assumes.
       const crossProcess = persistedEpoch !== processEpoch
+      if(!crossProcess) persistedEpoch = processEpoch
       if(crossProcess){ for(const [,r] of residents){ r.childId=''; r.status='brainstorm'; r.roundsSinceCompact=0 } }
       // ANY re-spawn (cross-process OR a same-process abort that already cleared childIds) must get a FRESH
       // coordination/concurrency state and a brainstorm phase. Otherwise: re-spawned brainstorm residents run
@@ -1913,9 +2130,18 @@ export function apply(ctx) {
       pendingSpawns: pendingSpawns.length, hostChildLimit: (hostChildLimit===undefined?null:hostChildLimit),
       meetingInProgress: !!(meetingState), verifyInProgress: !!(verifyState), pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null, pendingVerifyCount: pendingVerify.length,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
+      // The coordination counters (`spoke k/N`, `voted k/N`, the verification round) used to live only
+      // in `report()`: from `status()` alone an operator could not tell "the group is progressing"
+      // from "the group is stuck at 2/4 votes", which is exactly how F1/F2/F7 stay invisible.
+      consensus: meetingState?{kind:'meeting',id:meetingState.id,agenda:meetingState.agenda,round:meetingState.round,spoke:Object.keys(meetingState.inputs).length,expected:residents.size,solvedVotes:Object.values(meetingState.inputs).filter(iv=>iv.voteSolved===true).length}
+        :(verifyState?{kind:'verify',target:verifyState.targetId,targetType:verifyState.targetType,stage:verifyState.stage,round:verifyState.round,voted:Object.keys(verifyState.verdicts).length,expected:residents.size}:null),
+      artifactCount: artifactCount, artifactBaseline: artifactBaseline,
       // The Lean knobs and the per-object formal records are part of the readable status: without
       // them a `require`-mode run that keeps returning 未定论 would be undiagnosable from outside.
       formal: formalView(),
+      // The parameter NAMES (not just the rendered string) so a caller — the `/v4 set` handler in
+      // particular — can reject an unknown key instead of silently dropping it.
+      paramsKeys: Object.keys(params),
       params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function formalReportText(){
       if(!formalOn()) return '- 未启用（`formalVerify` = off；可用 vibe_v4_set 切到 encourage / require）'
@@ -2003,7 +2229,22 @@ export function apply(ctx) {
       if(min===undefined) return n
       return n < min ? min : n
     }
-    function setParams(upd){ for(const k of Object.keys(upd||{})){ if(k in params){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } saveSettings().catch(()=>{}); return {ok:true} }
+    /**
+     * Apply a parameter update. Keys the parameter layer does not know are NOT silently dropped: the
+     * caller gets them back (`ok:false` + `ignored`), because `{ok:true}` for a call that changed
+     * nothing is the "declared but not received" silent failure AUDIT-CHECKLIST §1.9 names.
+     */
+    function setParams(upd){
+      const keys=Object.keys(upd||{})
+      const ignored=keys.filter(k=>!(k in params))
+      for(const k of keys){ if(k in params){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } }
+      saveSettings().catch(()=>{})
+      if(ignored.length){
+        logActivity('set','忽略未知参数：'+ignored.join(', '))
+        return {ok:false,message:'unknown parameter(s): '+ignored.join(', ')+' — nothing was changed'+(ignored.length<keys.length?('（已应用：'+keys.filter(k=>!(ignored.indexOf(k)>=0)).join(', ')+'）'):''),ignored,applied:keys.filter(k=>!(ignored.indexOf(k)>=0))}
+      }
+      return {ok:true,applied:keys}
+    }
     // ---- create / configure (no auto-start) + settings-file persistence ----
     async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params){ const nv=normalizeParam(k, s[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } } }
     async function saveSettings(){ await writeJson('State/settings.json', params) }
@@ -2041,10 +2282,27 @@ export function apply(ctx) {
       rememberAgent, forgetAgent,
       setPause, initAbort, postMessage, startMeeting, saveAll, broadcast, configure, loadSettings,
       currentResident:()=>currentResident,
+      /** Does this session own the given child id? (used by the `subagent/start` capture) */
+      ownsChild,
+      /** Stash a live Agent seen at `subagent/start` time; claimed by `spawnResident` on resolve. */
+      stashStartAgent,
       // safety kick: drive one scheduler pass (used when an end handler errored, so an exceptional
       // turn can never leave the group with no end-event and no heartbeat to continue it)
       nudge:()=>scheduleNext().catch(()=>{}),
-      residentIdOf:(agent)=>{ const m=residentOfAgent(agent); if(m) return m; const c=currentResident; return (c && residents.has(c)) ? c : '' },
+      /**
+       * Which resident is calling a resident-facing tool?
+       *   1. the caller's subagent id matched against a resident's childId — the exact answer;
+       *   2. the last-woken resident, but ONLY when no caller identity exists at all (the mock/harness
+       *      path, where `exec.agent` is undefined).
+       * An agent that IS present but matches no resident is NOT guessed at: attributing a host call to
+       * whichever resident happened to be woken last writes into that resident's private library with
+       * no indication that the attribution was invented (AUDIT-CHECKLIST §0.2: identity is never
+       * inferred from global mutable state). Such a call now fails explicitly with 'no such resident'.
+       */
+      residentIdOf:(agent)=>{ const m=residentOfAgent(agent); if(m) return m
+        let hasId=false; try { hasId=!!(agent&&agent.id) } catch(e){ hasId=false }
+        if(hasId) return ''
+        const c=currentResident; return (c && residents.has(c)) ? c : '' },
       useResident:(id)=>{ currentResident=id },
       publishProgress, recordProposition, recordMethod, recordSubproblem, listResidents, reportContext,
       proposeTask, claimTask, taskDone, listTasks,
@@ -2071,6 +2329,12 @@ export function apply(ctx) {
         // `vs` mirrors the live verification state ({targetId,targetType,targetOwner,stage,history,verdicts});
         // pass one explicitly to ask "what WOULD the voters read for this object right now?".
         verify:(rId,vs)=>{ const r=residents.get(String(rId)); return r?verifyPrompt(r, vs||verifyState||{targetId:'',targetType:'proposition',targetOwner:'',stage:'independent',verdicts:{}}):'' },
+        // The meeting prompt is the ONLY group-chat / task-allocation / stop-vote surface this preset
+        // has, so a host (or the audit corpus) must be able to READ it. Pass `st` to ask "what would
+        // the next speaker read right now?"; the live meeting state is the default.
+        meeting:(rId,st)=>{ const r=residents.get(String(rId)); if(!r) return ''
+          const s=st||meetingState||{agenda:'（无进行中的会议）',type:'general',inputs:{},order:[]}
+          return meetingPrompt(r,s) },
         formalBlock:(target)=>formalPromptBlock(target),
         formalWorkLine:()=>formalWorkLine(),
       },
@@ -2081,9 +2345,11 @@ export function apply(ctx) {
         if(which==='brainstorm') return brainstormPrompt(r)
         if(which==='heartbeat') return heartbeatPrompt(r)
         if(which==='coreRules') return coreRulesBrief()
+        if(which==='meeting') return (arg&&arg.meeting)?meetingPrompt(r,arg.meeting):(meetingState?meetingPrompt(r,meetingState):meetingPrompt(r,{agenda:'（无进行中的会议）',type:'general',inputs:{},order:[]}))
         if(which==='verify'){
           const target=idSafe(String((arg&&arg.target)||''))
-          return verifyPrompt(r,{targetId:target,targetType:guessTargetType(target),targetOwner:'',stage:String((arg&&arg.stage)||'independent'),history:{},verdicts:{}})
+          const tt=guessTargetType(target)||(String(target).charAt(0)==='m'?'method':String(target).charAt(0)==='s'?'subproblem':'proposition')
+          return verifyPrompt(r,{targetId:target,targetType:tt,targetOwner:'',stage:String((arg&&arg.stage)||'independent'),history:{},verdicts:{}})
         }
         return normalPrompt(r)
       },
@@ -2117,7 +2383,7 @@ export function apply(ctx) {
   // The exact text a resident would receive. "成员读到的文字就是产品" (AUDIT-CHECKLIST §0.1): a host
   // (or an audit) must be able to READ the prompt, not just the tool return values, or a prompt
   // defect stays invisible. Pure builder calls — no side effects on the run.
-  registerTool('vibe_v4_prompts','Read the exact prompt text a resident would receive (which: brainstorm|normal|heartbeat|verify|coreRules). member = resident id; target/stage describe the object for `verify`. Prompt text is the product — this makes it auditable.',objParams({which:{type:'string',enum:['brainstorm','normal','heartbeat','verify','coreRules']},member:{type:'string'},target:{type:'string'},stage:{type:'string'}},['which']),async (s,a)=>{
+  registerTool('vibe_v4_prompts','Read the exact prompt text a resident would receive (which: brainstorm|normal|heartbeat|meeting|verify|coreRules). member = resident id; target/stage describe the object for `verify`. Prompt text is the product — this makes it auditable.',objParams({which:{type:'string',enum:['brainstorm','normal','heartbeat','meeting','verify','coreRules']},member:{type:'string'},target:{type:'string'},stage:{type:'string'}},['which']),async (s,a)=>{
     const which=String(a.which||'normal')
     if(which==='coreRules') return {ok:true,which,text:await s.promptApi.coreRules()}
     const text=await s.promptFor(which,String(a.member||'r-1'),a)
@@ -2135,7 +2401,7 @@ export function apply(ctx) {
   // MODE is dynamic — switching it changes the very next prompt), leanCommand/leanArgs select the
   // executable, leanTimeoutMs bounds one run. Invalid values fall back to the defaults and an
   // unknown mode degrades to 'off' (never to a STRONGER mode).
-  registerTool('vibe_v4_set','Set V4 parameters. model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'}}),(s,a)=>{ s.setParams(a); return s.status() })
+  registerTool('vibe_v4_set','Set V4 parameters: residentCount (how many residents a start spawns), compactThreshold (resident context % that triggers a compaction) and compactAfterRounds (rounds between soft compactions), meetingKeepEvery (every N newly accumulated artifacts an automatic sync meeting is convened), maxParallel (how many residents may be woken concurrently), activityTimeoutMs (idle window before a resident is nudged; also the heartbeat/watchdog period), stallAutoMeetingMs (how long the group may make NO progress before an auto sync meeting is convened), verdictMaxRounds (how many verification rounds one object gets: 1 independent round + re-vote debate rounds), model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain. A key outside this list is refused (ok:false, ignored:[...]) instead of being silently dropped.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'}}),(s,a)=>{ const r=s.setParams(a); const st=s.status(); if(r&&r.ok===false) return Object.assign({},st,{ok:false,warning:r.message,ignored:r.ignored}); return st })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident (to=all broadcasts to the whole team).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>{ const from=s.residentIdOf(x); if(!from) return {ok:false,message:'no such resident'}; if(String(a.to)==='all') return s.broadcast(a.content, from); return s.postMessage(from,a.to,a.content) })
@@ -2152,8 +2418,16 @@ export function apply(ctx) {
   registerTool('vibe_v4_list_tasks','(resident) List open tasks.',objParams({}),(s)=>({ok:true,tasks:s.listTasks()}))
   // context / compact (resident reports its context usage so the framework can /compact-equivalent)
   registerTool('vibe_v4_report_context','(resident) Report your context usage %; the framework compacts (self-summary) when it reaches compactThreshold.',objParams({pct:{type:'number'}},['pct']),(s,a,x)=>s.reportContext(s.residentIdOf(x),a.pct))
-  registerTool('vibe_v4_claim_write','Reserved: shared-file write lock (framework-managed).',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
-  registerTool('vibe_v4_release_write','Reserved: shared-file write lock release.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target}))
+  // NOT IMPLEMENTED — and the description says so. These two tools were registered with
+  // "Reserved: shared-file write lock", which reads as "the lock exists and works": a model following
+  // the v3 convention called `claim_write`, got `{ok:true}` and concluded it held a lock that no code
+  // anywhere implements (this preset has no shared file a resident writes — see the write-scope rule
+  // in `contextBrief`, which restricts every resident to its OWN Progress/Propos/Methods/Subproblems
+  // library, while the framework alone writes Shared/ and State/). They stay registered (removing them
+  // would change the model-visible tool surface) and keep echoing the key, but they now tell the
+  // truth: nothing is reserved, nothing is serialized, write only your own files.
+  registerTool('vibe_v4_claim_write','NOT IMPLEMENTED: no lock exists. This returns {ok:true} without reserving anything. Each resident writes only its own library (Progress/<you>/, Propos/<you>/, Methods/<you>/, Subproblems/<you>/), so overlapping writers are not expected; the framework alone writes Shared/ and State/ (serially, per file). Do not rely on this to exclude another resident.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target,locked:false,note:'no lock is implemented; write only your own library files'}))
+  registerTool('vibe_v4_release_write','NOT IMPLEMENTED: there is no lock to release. Returns {ok:true} as a no-op so an agent that calls it out of habit is not misled into thinking it held a reservation.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target,locked:false,note:'no lock is implemented; nothing was reserved'}))
 
   // ── Lean formal verification (docs/formal-verification.md §5) ─────────────
   // These three tools are registered UNCONDITIONALLY. Registration is STATIC (a mode-dependent
@@ -2180,7 +2454,10 @@ export function apply(ctx) {
       const line=String(inv&&inv.rawInput?inv.rawInput:'').trim(); const parts=line.split(/\s+/); const cmd=parts[0]||''; const rest=parts.slice(1)
       let r
       if(cmd==='configure') r=await s.configure({project:rest[0]||'', problem:parts.slice(2).join(' ')})
-      else if(cmd==='start') r=await s.start({})
+      // `/v4 start <problem>` is the natural way to try this out and the tool it mirrors accepts a
+      // problem, so the arguments are honoured instead of silently dropped (a bare `/v4 start` keeps
+      // using the configured problem).
+      else if(cmd==='start') r=await s.start(rest.length?{problem:rest.join(' ')}:{})
       else if(cmd==='resume') r=await s.resume()
       else if(cmd==='pause') r=s.setPause()
       else if(cmd==='abort') r=await s.initAbort()
@@ -2191,9 +2468,32 @@ export function apply(ctx) {
       else if(cmd==='members') r={ok:true,residents:s.listResidents()}
       else if(cmd==='add') r=await s.addMember(rest.join(' '))
       else if(cmd==='remove') r=await s.removeMember(rest[0]||'')
-      else if(cmd==='set'){ const upd={}; for(const tok of rest){ const eq=tok.indexOf('='); if(eq>0){ const k=tok.slice(0,eq); const rv=tok.slice(eq+1); const n=Number(rv); upd[k]=Number.isFinite(n)?n:rv } } r=s.setParams(upd) }
-      else r={ok:false,usage:'configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set'}
-      return {kind:'success',text:JSON.stringify(r,null,2)}
+      else if(cmd==='set'){
+        // Keys are validated HERE and the value is handed to the same `normalizeParam` the tool path
+        // uses, so `/v4 set` cannot (a) coerce `provider=123` into a number for a string-typed key,
+        // or (b) report success for a typo that `setParams` would silently ignore.
+        const upd={}
+        const known=s.status().paramsKeys||[]
+        for(const tok of rest){
+          const eq=tok.indexOf('='); if(eq<=0) continue
+          const k=tok.slice(0,eq)
+          if(known.indexOf(k)<0){ r={ok:false,message:'unknown parameter: '+k+'（用 /v4 status 查看可调参数）'}; break }
+          upd[k]=tok.slice(eq+1)
+        }
+        if(r===undefined){
+          // Apply, then answer with the SAME shape the `vibe_v4_set` TOOL answers with (the current
+          // status + the applied/ignored bookkeeping): reporting only the raw setParams result would
+          // make the slash command a different, less useful surface than the tool it mirrors.
+          const res=s.setParams(upd)
+          const st=s.status()
+          r=(res&&res.ok===false)?Object.assign({},st,{ok:false,warning:res.message,ignored:res.ignored}):Object.assign({},st,{applied:res.applied})
+        }
+      }
+      else r={ok:false,usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set <k=v>...'}
+      // `kind:'error'` on a rejected business action, exactly as v2/v3 do: every branch above used to
+      // report `success`, so the human's only non-tool control surface read as success on failure.
+      const failed = !r || r.ok === false || (r.ok === undefined && !!r.error)
+      return {kind: failed?'error':'success', text:JSON.stringify(r,null,2)}
     },
   }))
 
@@ -2202,13 +2502,36 @@ export function apply(ctx) {
   // registry (dsh-subagent:1231 dispose -> dsh-agent:508 store.delete ->
   // dsh-subagent:1241 settle/emit), so an end-time `agents.get(childId)` can never
   // resolve. See `liveAgents` in the session body.
+  //
+  // DO NOT key this handler on `childOwner`: the host emits `subagent/start` INSIDE
+  // `startContinuable`'s await (dsh-subagent/lib/index.js:1116 → `observer.start` → emit at `:306`,
+  // and the direct `emit('subagent/start', …)` at `:279`), i.e. BEFORE that call resolves — and
+  // `spawnResident` can only learn `started.childId` after the resolve. Keying on it made this
+  // handler return for EVERY child, so `liveAgents` stayed empty for the whole run and the real
+  // `/compact` path (`liveAgentOf` → `if(!agent || !agent.session) return`) was dead code.
+  //
+  // Ownership is therefore resolved the other way round: the handler finds the (usually single)
+  // session whose spawn window is open and STASHES the Agent under the child id from the payload;
+  // `spawnResident` claims that stash the moment its call resolves. For a host that embeds the spawn
+  // label in the id, `ownsChild` can be decided from the payload alone — that path is used when no
+  // spawn window is open, so a `subagent/start` for a child we did not spawn is never recorded.
   ctx.on('subagent/start', function(info){
     if(!info || !info.id) return
-    const sid=childOwner.get(info.id); const s=sid!==undefined?sessions.get(sid):undefined
-    if(!s) return
     let agent
     try { agent = agents.get(info.id) } catch(e){ agent = undefined }
-    if(agent) s.rememberAgent(info.id, agent)
+    if(!agent) return
+    let s
+    try {
+      for(const [,ss] of sessions){
+        const open=ss.ownsChild && ss.ownsChild(info.id)
+        if(open){ s=ss; break }
+      }
+      if(!s){ const sid=childOwner.get(info.id); if(sid!==undefined) s=sessions.get(sid) }
+    } catch(e){ s=undefined }
+    if(s){ s.rememberAgent(info.id, agent); return }
+    // No owner yet — the spawn this child belongs to is still inside `startContinuable`. Stash it for
+    // the first session whose spawn window is open, so the claim after the resolve can find it.
+    for(const [,ss] of sessions){ if(ss.stashStartAgent){ ss.stashStartAgent(info.id, agent); return } }
   })
 
   ctx.on('subagent/end', function(info){

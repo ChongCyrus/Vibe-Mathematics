@@ -52,7 +52,6 @@
 // field — so the old projection-based primary made the user's own session unresumable.
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
-const PROJECTION_KEY = 'vibeMathV5'
 const PROJECTION_VERSION = 1
 const EV = {
   institute: 'vibe5/institute',
@@ -164,6 +163,9 @@ export function apply(ctx) {
   // The fold is shared by BOTH persistence backends, so the state machine is
   // defined exactly once. It must return a NEW top-level reference whenever
   // anything changed (the state store compares by Object.is).
+  // The acknowledgement ledger is an LRU window, NOT a full history: it exists to answer
+  // "was this message delivered?", and the whole snapshot is rewritten on every commit.
+  const DELIVERED_CAP = 500
   function emptyInstitute(key, project, institute) {
     return {
       key, project, institute,
@@ -266,10 +268,16 @@ export function apply(ctx) {
           for (const id of ids) { if (!set.has(id)) { set.add(id); changed = true } }
           if (!changed) return inst
           // Compact: a message that has been delivered may leave `messages` too, so
-          // the queue never grows without bound over a long run.
+          // the queue never grows without bound over a long run. `delivered` itself is
+          // bounded the same way `debates`/`meetings` are: it is an acknowledgement LEDGER,
+          // and every commit rewrites the whole snapshot, so an ever-growing array of every
+          // message id ever acked would make each write progressively more expensive
+          // (audit M7). Oldest entries are dropped first; `messages` holds only undelivered
+          // ids and is filtered by the same set, so dropping an id can never re-deliver.
           const delivered = Array.from(set)
+          const capped = delivered.length > DELIVERED_CAP ? delivered.slice(delivered.length - DELIVERED_CAP) : delivered
           const messages = inst.messages.filter((m) => !set.has(m.id))
-          return Object.assign({}, inst, { delivered, messages })
+          return Object.assign({}, inst, { delivered: capped, messages })
         })
       }
       if (t === EV.meeting) {
@@ -335,28 +343,84 @@ export function apply(ctx) {
   // the whole snapshot under a per-file serialization chain; nothing is written to a host session log
   // (see the PERSISTENCE note at the top of this file for why the projection backend was removed).
   // `pathOf` is a FUNCTION, not a captured string: the state path depends on the
-  // project/institute, which the first successful load syncs back into this session —
-  // a captured path would keep writing to the pre-load guess forever.
+  // project/institute, which `configure` may change mid-session — a captured path would
+  // keep writing to the pre-load guess forever.
+  //
+  // The load latch is PER PATH, and a write is only allowed for a path whose load
+  // SUCCEEDED. Both are needed to make the state file safe (the 2.4.1 audit's H1):
+  // a boolean "we have loaded something" latch let the first tool call of a session
+  // (typically `vibe_v5_status`, against the DEFAULT institute) latch the backend to the
+  // default path, after which `vibe_v5_configure {institute:'alpha'}` never read alpha's
+  // file and wrote an EMPTY institute over it. Switching paths now re-reads the new path
+  // first, and if that read fails the backend refuses to write instead of clobbering.
   function makeFileBackend(readTextAbs, writeTextAbs, pathOf) {
     let mem = initState()
     let chain = Promise.resolve(true)
-    let loaded = false
-    return {
+    let loadedPath            // the path whose file is currently folded into `mem`
+    let loadOk = false        // did the read of `loadedPath` actually succeed?
+    let loadPromise = null    // the in-flight load (dedupes concurrent callers)
+    let loadPendingPath = null
+    // Fold ONE path into `mem`. `readTextAbs` returning undefined means "no file yet", which
+    // is the only case that licences a later write; anything else (a throw, a parse error, a
+    // version mismatch) leaves `loadOk` false so commit() refuses to clobber it.
+    async function doLoad(p) {
+      let ok = false
+      try {
+        const raw = await readTextAbs(p)
+        if (raw === undefined || raw === null || raw === '') ok = true
+        else {
+          const parsed = JSON.parse(raw)
+          if (parsed && parsed.v === PROJECTION_VERSION) { mem = parsed; ok = true }
+        }
+      } catch (e) { /* a corrupt/unreadable file is ignored; it is not authoritative */ }
+      loadedPath = p
+      loadOk = ok
+      loadPromise = null
+      loadPendingPath = null
+      return mem
+    }
+    const backend = {
       kind: 'file',
       async load() {
-        if (loaded) return mem
-        loaded = true
-        try {
-          const raw = await readTextAbs(pathOf())
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            if (parsed && parsed.v === PROJECTION_VERSION) mem = parsed
-          }
-        } catch (e) { /* a corrupt mirror is ignored; it is not authoritative */ }
-        return mem
+        const path = pathOf()
+        if (loadedPath === path && (loadOk || loadPromise === null)) return mem
+        // A different path (or a previously FAILED load of this one) is read again before it
+        // is ever written to. Switching paths starts from the empty initial state: `mem`
+        // holds only the fold of the file that is on disk for the CURRENT path.
+        if (loadedPath !== path) { mem = initState(); loadPromise = null }
+        if (loadPromise && loadPendingPath === path) return await loadPromise
+        loadPendingPath = path
+        loadPromise = doLoad(path)
+        await loadPromise
+        if (loadedPath === pathOf()) return mem
+        // The path moved again while we were reading: hand back the state for the path
+        // that is current NOW rather than one for a directory we are no longer using.
+        return await backend.load()
       },
       read() { return mem },
+      loadedFor() { return { path: loadedPath, ok: loadOk } },
+      // Read ONE specific path (used by `configure`, which must know whether the institute
+      // it is being pointed at already exists on disk) and report the state belonging to
+      // `useKey`. The path latch deliberately stays on the file that was actually read.
+      async loadAt(path, useKey) {
+        loadedPath = path
+        loadOk = false
+        loadPromise = null
+        loadPendingPath = null
+        mem = initState()
+        await doLoad(path)
+        return { state: mem, institute: useKey === undefined ? undefined : mem.institutes[String(useKey)] }
+      },
       async commit(type, data) {
+        // NEVER write a snapshot whose file was not successfully read first: an unread file
+        // is indistinguishable from "the read never ran", and whole-snapshot writes make
+        // that failure mode destructive.
+        const path = pathOf()
+        if (loadedPath !== path) await backend.load()
+        if (loadedPath !== path || !loadOk) {
+          throw v5err('V5_STATE_NOT_LOADED',
+            'refusing to overwrite ' + path + ' : its state file was never read successfully (a failed or unreadable load must not be clobbered)')
+        }
         mem = applyV5Event(mem, { type, data })
         const snapshot = mem
         // Serialize writes per file and defer JSON.stringify to execution time, so a
@@ -369,6 +433,7 @@ export function apply(ctx) {
         return mem
       },
     }
+    return backend
   }
 
   // ---- session registry --------------------------------------------------
@@ -507,17 +572,36 @@ export function apply(ctx) {
       backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
       return backend
     }
+    // The ONE call site that awaits the backend's load (the sensitivity probe for
+    // "the file fallback must LOAD persisted state before any read" keys on it, and a
+    // duplicated copy of it would make that probe ambiguous).
+    async function awaitBackendLoad() {
+      if (backend.kind === 'file' && typeof backend.load === 'function') await backend.load()
+      return true
+    }
     // Every entry point that READS state must await this first. Without it the file
     // backend's `mem` is still the empty initial state, so a fresh process would report
     // an empty roster and `resume` would refuse with "no active member to resume" —
     // i.e. the fallback would silently lose the whole institute across a restart.
     async function ready() {
       if (!backend) installBackend()
-      if (backend.kind === 'file' && typeof backend.load === 'function') await backend.load()
-      return true
+      return await awaitBackendLoad()
+    }
+    // Load the CURRENT state path before its first read. `state()` is synchronous by design
+    // (the whole fold is read through it), so it kicks the load off eagerly; the caller that
+    // matters — `commit()` — always awaits it before the snapshot may be written.
+    function ensureLoaded() {
+      if (!backend) installBackend()
+      if (backend.kind !== 'file' || typeof backend.load !== 'function') return
+      const p = backend.load()
+      if (p && typeof p.then === 'function') p.catch(() => {})
     }
     function state() {
       if (!backend) installBackend()
+      // A read must never be served from the empty initial state while the path's file has
+      // not been folded in yet (the 2.4.1 audit's H1: a read-less `state()` was half of the
+      // overwrite). `ready()`/`commit()` await the same load; here it only has to START.
+      ensureLoaded()
       stateCache = backend.read()
       return stateCache
     }
@@ -525,10 +609,46 @@ export function apply(ctx) {
       const s = state()
       return s.institutes[key] || emptyInstitute(key, project, instituteName)
     }
+    // The institute stored in ANOTHER (project, institute) state file, or undefined. Used by
+    // `configure` before it switches identity: the requested institute may already exist on
+    // disk, and adopting it is the only alternative to overwriting it (audit H1).
+    async function instituteAt(np, ni, nkey) {
+      if (!backend) installBackend()
+      const path = (vibeRoot() + '/Projects/' + np + '/Institutes/' + ni + '/State/' + ni + '.v5state.json')
+      const r = await backend.loadAt(path, nkey)
+      return r.institute
+    }
+    // A FAILED load of an EXISTING file must never be silent: it is the one state in which
+    // the backend refuses to write (audit H1). The note is buffered here and folded into the
+    // state on the next commit that IS allowed, so it can never recurse into a commit.
+    let pendingLoadNotes = []
+    function noteLoadProblem(text) {
+      const t = String(text || '').slice(0, 300)
+      if (t && pendingLoadNotes.indexOf(t) === -1) pendingLoadNotes.push(t)
+      if (pendingLoadNotes.length > 5) pendingLoadNotes = pendingLoadNotes.slice(-5)
+    }
+    function drainLoadNotes() {
+      if (!pendingLoadNotes.length || !stateCache) return
+      const list = (stateCache.diagnostics || []).concat(pendingLoadNotes.map((t) => ({ at: now(), type: 'vibe5/load', error: t })))
+      pendingLoadNotes = []
+      stateCache = Object.assign({}, stateCache, { diagnostics: list.slice(-50) })
+    }
     async function commit(type, data) {
       if (!backend) installBackend()
-      if (backend.kind === 'file' && backend.load) await backend.load()
-      stateCache = await backend.commit(type, Object.assign({ version: PROJECTION_VERSION, key }, data))
+      // Explicit call (the audit's H3): `await backend.load` awaited the METHOD OBJECT, so
+      // the only load was the one the backend happened to do inside commit.
+      await awaitBackendLoad()
+      const loaded = backend.kind === 'file' && typeof backend.loadedFor === 'function' ? backend.loadedFor() : { ok: true }
+      try {
+        stateCache = await backend.commit(type, Object.assign({ version: PROJECTION_VERSION, key }, data))
+      } catch (e) {
+        // The write was refused because the state file could not be read. Say so loudly
+        // instead of clobbering it, and keep the note for the next write that is allowed.
+        noteLoadProblem('write REFUSED (a failed state-file load must not be clobbered): ' + String((e && e.message) || e))
+        throw e
+      }
+      if (!loaded.ok) noteLoadProblem('the state file ' + String(loaded.path || '?') + ' could not be read (corrupt, unreadable or version-mismatched); it will never be overwritten')
+      drainLoadNotes()
       const cur = stateCache.institutes[key]
       if (cur) {
         phase = cur.phase || phase
@@ -572,6 +692,15 @@ export function apply(ctx) {
       const a = activeMembers().find((m) => m.kind === 'academician')
       return a ? a.id : ''
     }
+    // `academicianId()` resolved against a roster that also counts a member which is NOT yet
+    // committed (the joiner whose charter is being built). Kept separate so the canonical
+    // resolver stays the live-roster one — the sensitivity probe for the leaderless charter
+    // mutates the `academicianId()` CALL, and that mutation must keep reaching the text.
+    function academicianIdWith(extraMember) {
+      if (!extraMember) return academicianId()
+      const a = activeMembers().concat([extraMember]).find((m) => m.kind === 'academician')
+      return a ? a.id : ''
+    }
 
     // ---- the institute charter (public regulations) -----------------------
     // Written into every member's `persona` at hire time. `persona` is part of the
@@ -579,8 +708,12 @@ export function apply(ctx) {
     // context compaction WITHOUT being re-injected into prompts — which is what
     // structurally removes v4's "re-anchor the rules after compaction" patch and
     // the "[核心规则重申]+[CONTEXT COMPACT] every round" leak it caused (§24.1-③).
-    function rosterLine() {
-      const ms = activeMembers()
+    function rosterLine(extraMember) {
+      // Written ONCE, at the member's creation (`newMember`), so the hire-time snapshot is
+      // frozen even for a member the host's live-child cap refuses and `resume` re-spawns
+      // later (audit M5). The joiner is folded in here so its own charter shows the institute
+      // WITH itself on the roster — exactly what the original build-at-spawn code produced.
+      const ms = extraMember ? activeMembers().concat([extraMember]) : activeMembers()
       const acad = ms.filter((m) => m.kind === 'academician').map((m) => m.id)
       const res = ms.filter((m) => m.kind === 'researcher').map((m) => m.id)
       const tmp = ms.filter((m) => m.kind === 'temp').map((m) => m.id + '(' + (m.hiredBy || '?') + '雇)')
@@ -694,7 +827,8 @@ export function apply(ctx) {
       // The leader's REAL id (or '' when the office founded a leaderless institute).
       // Charter text must never name a leader who is not on staff: a member told to
       // "report to the academician" when there is none has no one to report to.
-      const acadId = academicianId()
+      // `member` itself is counted as on-staff even before it is committed (see rosterLine).
+      const acadId = academicianIdWith(member)
       const L = []
       // ── opening ──────────────────────────────────────────────────────────
       if (kind === 'academician') {
@@ -761,7 +895,7 @@ export function apply(ctx) {
         L.push('  · **所办（对外接口）** —— 不参与研究、不投票。代表本所与外部沟通并转达外部指令。')
       }
       L.push('  你入职时的在册编制（这是一份**快照**，此后可能变化）：')
-      L.push(rosterLine())
+      L.push(rosterLine(member))
       L.push('  （权威的在册名单与法定票数 m 以每轮提示里的状态块为准；编制可能变化。）')
       L.push('')
       // ── 二、general rules ────────────────────────────────────────────────
@@ -1022,6 +1156,12 @@ export function apply(ctx) {
         return { ok: o.exitCode === 0, exitCode: o.exitCode }
       } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
     }
+    // Directory creation must go through the INJECTED `fs` service, not the platform shell:
+    // the shell path passes no policy, so a deployment that confines writes through
+    // `fs` (read-only or narrowed workspace) was not confining this one (audit M8). The
+    // local/sandboxed fs backend creates missing parent directories on write
+    // (`writeFileAtomic` → `mkdir(dirname, {recursive:true})`), so writing a marker file per
+    // directory is what actually creates the tree — inside the policy.
     async function mkdirs() {
       const base = instRoot()
       const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Verified/Lean']
@@ -1033,10 +1173,26 @@ export function apply(ctx) {
         for (const d of ['Progress', 'Propos', 'Methods', 'Subproblems']) dirs.push('Members/' + m.id + '/' + d)
       }
       const paths = dirs.map((d) => base + '/' + d).concat(globalDirs.map((d) => vibeRoot() + '/' + d))
+      let fsCreated = 0
+      let fsFailed = false
+      try {
+        if (fs && typeof fs.writeText === 'function' && typeof fs.resolve === 'function') {
+          for (const p of paths) {
+            const t = await fsTargetAbs(p + '/.keep')
+            await fs.writeText(t, '', undefined, undefined, getPolicy())
+            fsCreated += 1
+          }
+        } else fsFailed = true
+      } catch (e) { fsFailed = true }
+      if (!fsFailed && fsCreated === paths.length) return { ok: true, dirs: fsCreated, via: 'fs' }
+      // Guarded fallback for a host whose fs backend refuses (or offers no writeText): the
+      // platform shell still creates the tree, exactly as before this change. It is only
+      // reached when the policy-compliant route failed, and it reports which route ran.
       const script = isWindows()
         ? 'New-Item -Force -ItemType Directory -Path ' + paths.map((p) => psQuote(p)).join(',') + ' | Out-Null'
         : 'mkdir -p ' + paths.map((p) => shQuote(p)).join(' ')
-      return await runShell(script)
+      const r = await runShell(script)
+      return Object.assign({ via: 'shell' }, r)
     }
 
     // ---- communication (durable per-recipient mailbox) --------------------
@@ -1164,7 +1320,12 @@ export function apply(ctx) {
         hiredBy: (opts && opts.hiredBy) || '',
         term: (opts && opts.term) || '',
         provider: String((opts && opts.provider) || 'spawn'),
-        persona: '',   // filled at spawn; kept for the durable-seal record
+        // The charter is FROZEN at hire time — it says "你入职时的在册编制（这是一份**快照**）".
+        // It therefore has to be CAPTURED here, not at the first successful spawn: a member
+        // the host's live-child cap refused is recorded `failed` and only spawned later by
+        // `resume`, and rebuilding the charter then would describe the resume-time roster
+        // (`memberPersona(member)` would also silently drop any `staffPersona` change).
+        persona: memberPersona({ id, kind, direction: String((opts && opts.direction) || ''), hiredBy: (opts && opts.hiredBy) || '' }),
         error: '',
         createdAt: now(),
         dismissedAt: 0,
@@ -1268,7 +1429,8 @@ export function apply(ctx) {
       roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
       // The charter is FROZEN at hire time (it is the durable "seal" record and it says
       // "你入职时的在册编制"). Rebuilding it on resume would silently rewrite that
-      // hire-time snapshot into a resume-time one and make the sentence untrue.
+      // hire-time snapshot into a resume-time one and make the sentence untrue. `newMember`
+      // captures it, so every member has one by the time it can be spawned.
       const persona = member.persona || memberPersona(member)
       member.persona = persona
       const prompt = initialPrompt(member, initialTask, mode)
@@ -1438,9 +1600,9 @@ export function apply(ctx) {
       L.push('  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},')
       L.push('  "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",')
       if (formalOn()) {
-        L.push('  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}')
+        L.push('  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}')
         L.push('             ← Lean 形式化：' + (formalMode() === 'require'
-          ? '**强制**：定论前必须有「Lean 已通过」或显式阻塞原因（note 必填），否则本轮裁定记为未定论，'
+          ? '**强制**：定论前必须有「Lean 已通过」或显式的阻塞记录（decision=\'blocked\' + note；used 的 note 不算），否则本轮裁定记为未定论，'
           : '**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，') + '详见提示词里的【Lean 形式化验证】段')
       }
       L.push('  "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给')
@@ -1595,7 +1757,7 @@ export function apply(ctx) {
         // The formal field belongs in the VOTING contract too: voters are exactly the agents
         // who must either formalize the object or record why they judged it infeasible.
         L.push('若你本轮做了形式化或给出难度判断，请一并加上：')
-        L.push('{"formal":{"target":"' + vs.target + '","decision":"used|blocked|defect","file":"Formal/' + vs.target + '.lean","note":"难度判断/阻塞原因"}}')
+        L.push('{"formal":{"target":"' + vs.target + '","decision":"used|blocked|defect","file":"Formal/' + vs.target + '.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}')
       }
       return L.join('\n')
     }
@@ -1834,24 +1996,33 @@ export function apply(ctx) {
         updatedAt: now(),
       }))
     }
-    // Withdrawing an archived proof needs a DELETE, but the fs service exposes no unlink and
-    // subprocess is optional. Use the shell when it is available; otherwise overwrite the
-    // file with an explicit withdrawal notice, so it can never be read as the object's proof.
+    // Withdrawing an archived proof means the file must stop looking like the object's proof.
+    // The POLICY-COMPLIANT route is an overwrite through the injected `fs` service (it carries
+    // `getPolicy()`); the platform shell is only a fallback, because `subprocess.spawn` has no
+    // policy slot and the shell path therefore sat outside a confining deployment's fs policy
+    // (audit M8). A stub host whose shell exits 0 without deleting anything is also handled by
+    // the read-back check.
     async function removeArchivedProof(rel) {
       const abs = leanAbsPath(rel)
       if (abs === null) return false
+      const withdrawn = '-- 已撤回（' + fmtTime() + '）：该形式化被认定与命题原文不一致。\n'
+        + '-- 原代码保留在工作文件 Formal/' + String(rel).split('/').pop() + '；修正并重新跑通后重新归档。\n'
+      // 1) the fs service (policy-confined) — an overwritten file is no longer a proof.
+      if ((await writeTextAbs(abs, withdrawn)) === true) {
+        const nowText = await readTextAbs(abs)
+        if (nowText !== undefined && nowText.indexOf('已撤回') !== -1) return true
+      }
+      // 2) guarded fallback: a real DELETE through the platform shell, when it exists.
       const sub = subprocessOf()
       if (sub !== undefined && typeof sub.spawn === 'function') {
         const script = isWindows()
           ? 'Remove-Item -LiteralPath ' + psQuote(abs) + ' -Force -ErrorAction SilentlyContinue'
           : 'rm -f ' + shQuote(abs)
         try { await runShell(script) } catch (e) { /* fall through to the overwrite */ }
-        // A shell that exits 0 without removing anything (a stub host, a permissions quirk)
-        // must not leave a withdrawn proof where everyone looks for proofs: verify, fall back.
         if (await readTextAbs(abs) === undefined) return true
       }
-      return (await writeTextAbs(abs, '-- 已撤回（' + fmtTime() + '）：该形式化被认定与命题原文不一致。\n'
-        + '-- 原代码保留在工作文件 Formal/' + String(rel).split('/').pop() + '；修正并重新跑通后重新归档。\n')) !== false
+      // 3) last resort: the overwrite again, in case the delete recreated/left the file.
+      return (await writeTextAbs(abs, withdrawn)) !== false
     }
     // A formalization that says something else than the proposition is NOT a refutation:
     // withdraw the proof instead of letting the group conclude 假 (contract §4.1).
@@ -1876,9 +2047,12 @@ export function apply(ctx) {
       // overwrite also fails. The record is downgraded either way, so say it out loud:
       // otherwise the stale file stays at the exact path everyone looks for proofs, and
       // nothing in any prompt or index would disclose that the withdrawal was incomplete.
+      // `removed` means the archive no longer reads as a proof — either deleted, or
+      // OVERWRITTEN with the withdrawal notice (the fs-service route). Name both honestly:
+      // "deleted" would be false whenever the policy-confined overwrite was the route.
       const stillThere = removed ? [] : ['｜⚠ 归档证明 ', proofRel, ' 未能撤回（宿主删除与覆盖均失败）；记录已降级，请不要把它当作该对象的证明。']
       await saveChatLine('【形式化】' + (memberId || '成员') + ' 认定 ' + t + ' 的形式化**不忠实**：' + why
-        + ' —— 已撤回「已通过」状态' + (removed ? '并从 Verified/Lean/ 删除归档证明' : '') + '；请修正形式化、重新跑通后再投票。' + stillThere.join(''))
+        + ' —— 已撤回「已通过」状态' + (removed ? '，并已使 Verified/Lean/ 中的归档证明失效（删除或覆盖为撤回声明）' : '') + '；请修正形式化、重新跑通后再投票。' + stillThere.join(''))
       return { ok: true, target: t, status: 'attempted', removed }
     }
     function formalPromptBlock(target) {
@@ -1920,14 +2094,16 @@ export function apply(ctx) {
         L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与')
         L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
         if (mode === 'require') {
-          L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive')
-          L.push('    kind=\'blocked\' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，')
+          L.push('  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用')
+          L.push("    vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:{decision:'blocked', note:…}。")
+          L.push('    只有 decision=\'blocked\' 的 note 会写成阻塞记录；decision=\'used\' 的 note 只是难度判断，')
+          L.push('    **不会**打开定论门禁。两者都没有时，本次裁定不会生效，')
           L.push('    会被记为未定论（原因 formal-required）并进入「形式化待办」。')
         } else {
           L.push("  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。")
         }
         L.push('  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。')
-        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。')
+        L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind=\'blocked\' note=… 或回执 formal:{decision:\'blocked\', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。')
       }
       return L.join('\n')
     }
@@ -2115,7 +2291,7 @@ export function apply(ctx) {
     // (b) in the same wake as a soft-compact directive — never on every round. The
     // charter itself lives in `persona` and needs no reinforcement otherwise.
     const CORE_RULES = '[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；' +
-      '任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；' +
+      '任何对象要进 Verified/，必须至少有 m 名有表决权者投出布尔值（恰好 1 或恰好 0）**且没有任何一张反向票**，否则留库附平均概率；' +
       '你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；' +
       '退出时只输出一个 JSON 对象。'
 
@@ -2137,10 +2313,15 @@ export function apply(ctx) {
     // ---- artifact libraries (per member, append/write by the member itself) ----
     const isOffice = (id) => !id || id === 'office'
     const isAcademician = (id) => { const m = memberById(id); return !!m && m.kind === 'academician' }
-    function bumpArtifacts() {
+    // MUST be awaited by its callers: `inst()` reads `stateCache`, which `commit` only updates
+    // once its own await resolves. Fire-and-forget here meant two cards written in one reply
+    // (a single reply can carry `record: [ … ]`) both read the same `artifactCount` and
+    // committed the same `n`, and the `meetingKeepEvery` auto-sync could fire twice on one
+    // count (audit M6).
+    async function bumpArtifacts() {
       const inst0 = inst()
       const n = (Number(inst0.artifactCount) || 0) + 1
-      commit(EV.progress, { at: now(), artifactCount: n }).catch(() => {})
+      await commit(EV.progress, { at: now(), artifactCount: n })
       // Auto-sync meeting every `meetingKeepEvery` artifacts: the framework only
       // CONVENES it, never assigns work. Deferred while a meeting or verification is
       // already in progress so consensus is never preempted (v4 §26).
@@ -2199,7 +2380,7 @@ export function apply(ctx) {
       }
       const ok = await writeTextRel(rel, head.concat(body).join('\n'))
       if (!ok) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
-      bumpArtifacts()
+      await bumpArtifacts()
       notifyActivity()
       return { ok: true, id, file: rel, kind }
     }
@@ -2622,6 +2803,9 @@ export function apply(ctx) {
     // in the mean. Any opposing assertion BLOCKS the verdict, so a minority can never
     // be out-voted by abstention.
     function judgeVerdict(vs) {
+      // E = the LIVE voter set (roster, recomputed on every call). A ballot cast by someone
+      // who is no longer in E — a dismissed member whose entry survived in `vs.votes` — is
+      // NOT counted, in either mode: `Verified/` may only ever be reached by current voters.
       const E = voters().map((m) => m.id)
       const P = E.length
       const m = quorumM()
@@ -2865,8 +3049,7 @@ export function apply(ctx) {
       // `maybeQueueVerify` calls this directly (bypassing schedulePass, whose meeting
       // check is what used to hide the asymmetry). The meeting's watchdog clock would
       // then be starved while two coordination processes competed for the same members.
-      // The proposal stays in the queue; schedulePass reaches this again once the
-      // meeting is over.
+      // The proposal stays in the queue; schedulePass reaches this again once the meeting is over.
       if (meeting) return
       // Only one begin may be in flight. Without this, two callers (a scheduling pass
       // and a fresh proposal) could both pass the `currentVerify()` check before either
@@ -2875,9 +3058,17 @@ export function apply(ctx) {
       if (currentVerify()) return
       beginLock = true
       try {
-        const q = inst().queue.slice()
-        while (q.length) {
-          const p = q.shift()
+        while (true) {
+          // NEVER remove a proposal we are not about to run: the entry leaves the durable
+          // queue only in the same step that starts it. The old code shifted it out and then
+          // returned because a meeting was live, so the proposal existed in neither the queue
+          // nor `verdicts` until some later pass happened to re-arm it (audit M2). Re-check
+          // the exclusion guards here too: `await putQueue` can let a meeting open.
+          const q = inst().queue.slice()
+          if (!q.length) return
+          if (meeting || currentVerify()) return
+          const p = q[0]
+          q.shift()
           await putQueue(q)
           const recent = verifiedRecently.get(p.target)
           if (recent !== undefined && (now() - recent) < recoverStallMs()) continue
@@ -3273,6 +3464,16 @@ export function apply(ctx) {
       roundsSinceCompact.delete(id)
       contextPct.delete(id)
       seeds.delete(id)
+      // A dismissed member is no longer a voter: drop its ballot from every OPEN verdict, so
+      // a verdict that has not closed yet can never be carried by a former member's vote
+      // (audit H2). `judgeVerdict` reads only the live roster anyway; this keeps the durable
+      // record honest too. Already-closed verdicts are history and are left untouched.
+      const openVerdicts = Object.values(inst().verdicts).filter((v) => v && !v.closed && v.votes && v.votes[id] !== undefined)
+      for (const v of openVerdicts) {
+        const votes = Object.assign({}, v.votes)
+        delete votes[id]
+        await putVerdict(v.target, Object.assign({}, v, { votes }))
+      }
       if (meeting) {
         delete meeting.inputs[id]
         delete meeting.extras[id]
@@ -3372,9 +3573,13 @@ export function apply(ctx) {
       dbg.passes += 1
       clearHeartbeat()
       syncParamsFromState()
-      if (meeting) { await continueMeetingRound(); return }
+      // A verification that is ALREADY in flight is served first: the two coordination
+      // processes are mutually exclusive by construction, so the order only decides which
+      // of two impossible states wins — but checking `meeting` first meant a meeting that
+      // can never close starved the verification's own watchdog forever (audit M3).
       const vs = currentVerify()
       if (vs) { await continueVerifyRound(vs); return }
+      if (meeting) { await continueMeetingRound(); return }
       if (!currentVerify()) {
         await armNextVerify()
         if (hasVerifyInFlight()) return
@@ -3786,6 +3991,12 @@ export function apply(ctx) {
     }
     async function configure(args) {
       const a = args || {}
+      // READ THE FILE FOR THE PATH THIS SESSION WAS ALREADY POINTED AT BEFORE ANY WORK.
+      // configure ends in a whole-snapshot commit; without this load the commit is exactly
+      // the write that destroyed a previously-run institute's state file (audit H1: the
+      // session's first tool call — typically `vibe_v5_status` — latched the DEFAULT path,
+      // after which `configure {institute:'alpha'}` never read alpha's file).
+      await ready()
       // configure is the PRE-START setup tool. Switching project/institute while a run
       // is live would split its state across two trees: the members' libraries and
       // briefs point at the OLD root while every later write goes to the NEW one.
@@ -3801,14 +4012,25 @@ export function apply(ctx) {
         const np = patch.project !== undefined ? patch.project : project
         const ni = patch.institute !== undefined ? patch.institute : instituteName
         const nkey = np + '::' + ni
-        if (nkey !== key && !inst().members.length) {
-          key = nkey
-          project = np
-          instituteName = ni
-          patch.project = np
-          patch.institute = ni
-        } else if (nkey !== key) {
-          return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'this session already holds an institute; use a new session to found another' }
+        if (nkey !== key) {
+          // The requested key lives in a DIFFERENT state file. Read that file first: a
+          // previously-run institute must be adopted, never overwritten with an empty one.
+          const stored = await instituteAt(np, ni, nkey)
+          if (stored && Array.isArray(stored.members) && stored.members.length) {
+            key = nkey
+            project = np
+            instituteName = ni
+            patch.project = np
+            patch.institute = ni
+          } else if (!inst().members.length) {
+            key = nkey
+            project = np
+            instituteName = ni
+            patch.project = np
+            patch.institute = ni
+          } else {
+            return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'this session already holds an institute; use a new session to found another' }
+          }
         }
       }
       patch.phase = 'idle'
@@ -3980,6 +4202,8 @@ export function apply(ctx) {
         if (m.childId) continue
         try {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
+          // `mode='resume'` is what makes this a RESUME rather than an instruction: the prompt
+          // prints the seed as "恢复说明" (your own log, restored), not as a task to execute.
           await spawnMember(m, seedText ? seedText.slice(-4000) : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）', 'resume')
           respawned += 1
         } catch (e) {
@@ -3995,6 +4219,11 @@ export function apply(ctx) {
       autoDone = false
       phase = 'active'
       await patchInstitute({ phase: 'active', lastProgressAt: now() })
+      // The mirrors must be refreshed on THIS path too (audit M9): resume is the one place
+      // where members' phase/rounds/employer actually change under them, and a staffing table
+      // that contradicts the authoritative roster is the opposite of a mirror's purpose.
+      await writeRosterMirror()
+      await writeTaskboardMirror()
       await saveChatLine('【恢复】研究所继续推进（重建成员 ' + respawned + ' 名）。')
       notifyActivity()
       await scheduleNext()
@@ -4043,6 +4272,9 @@ export function apply(ctx) {
         institute: instituteName, project, key, phase,
         running, autoDone, runId: s.runId,
         backend: backend ? backend.kind : 'uninitialized',
+        // Skipped/malformed events AND state-file load problems. Without this the two
+        // failure modes that silently drop state were invisible in the operator's view.
+        diagnostics: s.diagnostics || [],
         debug: Object.assign({ scheduling, reschedule }, dbg),
         quorum: { m: quorumM(), mode: params.quorumMode, voters: voters().map((m) => m.id), voterCount: voterCount() },
         members: s.members.map((m) => ({
@@ -4121,6 +4353,11 @@ export function apply(ctx) {
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
       L.push('- 历史会议：' + s.meetings.length + ' 次｜辩论录：' + s.debates.length + ' 份')
       L.push('- 解决票：' + (solveVotes.size ? Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v).join('、') : '（无）'))
+      if ((s.diagnostics || []).length) {
+        L.push('')
+        L.push('## ⚠ 状态诊断（被跳过的事件 / 状态文件读取问题）')
+        for (const d of s.diagnostics.slice(-10)) L.push('- ' + fmtTime(d.at) + '｜' + d.type + '｜' + d.error)
+      }
       L.push('')
       L.push('## Lean 形式化')
       if (!formalOn()) L.push('- 未启用（`formalVerify` = off；可用 vibe_v5_set 切到 encourage / require）')
@@ -4236,7 +4473,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s) => s.initStop())
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record).', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
@@ -4359,7 +4596,7 @@ export function apply(ctx) {
     input: { hint: '[configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set]' },
     handler: async function (inv) {
       const s = getSession(inv && inv.agent)
-      if (!s) return { kind: 'success', text: JSON.stringify({ ok: false, error: 'no session' }) }
+      if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no session' }) }
       await s.ready()
       const line = String(inv && inv.rawInput ? inv.rawInput : '').trim()
       const parts = line.split(/\s+/)
@@ -4391,7 +4628,11 @@ export function apply(ctx) {
         }
         r = await s.setParams(upd)
       } else r = { ok: false, usage: 'configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set' }
-      return { kind: 'success', text: JSON.stringify(r, null, 2) }
+      // A business failure (the dispatch result's own ok:false) is a FAILED command: the host's
+      // CommandResult union distinguishes success from error, and returning 'success' made a rejected
+      // invocation look identical to a successful one (same fix as v2/v3).
+      const failed = r !== null && typeof r === 'object' && r.ok === false
+      return { kind: failed ? 'error' : 'success', text: JSON.stringify(r, null, 2) }
     },
   }))
 

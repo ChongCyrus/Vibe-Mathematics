@@ -595,7 +595,7 @@
 
 【五、表决与定论（求真门槛）】
   · 任何命题 / 论断 / 方法 / 子问题的结论，要进入 Verified/，必须满足：
-      (a) 至少有 m = 2 名有表决权者（院士 + 常驻研究员）投出**布尔概率值**；
+      (a) 至少有 m = 1 名有表决权者（院士 + 常驻研究员）投出**布尔概率值**；
       (b) 这些票**全部**是 1（绝对为真）或**全部**是 0（绝对为假）；
       (c) 若同时出现 1 和 0（分歧），或投布尔票者不足 m 人 → 不能定论。
   · m 随在册有表决权者人数变化（m = min(所办设定的上限, 人数)）；本规章里的 m 是
@@ -808,7 +808,7 @@
 
 【五、表决与定论（求真门槛）】
   · 任何命题 / 论断 / 方法 / 子问题的结论，要进入 Verified/，必须满足：
-      (a) 至少有 m = 3 名有表决权者（院士 + 常驻研究员）投出**布尔概率值**；
+      (a) 至少有 m = 2 名有表决权者（院士 + 常驻研究员）投出**布尔概率值**；
       (b) 这些票**全部**是 1（绝对为真）或**全部**是 0（绝对为假）；
       (c) 若同时出现 1 和 0（分歧），或投布尔票者不足 m 人 → 不能定论。
   · m 随在册有表决权者人数变化（m = min(所办设定的上限, 人数)）；本规章里的 m 是
@@ -3009,7 +3009,7 @@ r-2：初始见解。
 ### 提示词原文
 
 ```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/ 必须 ≥m 名有表决权者一致给出 1 或 0，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
+[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/，必须至少有 m 名有表决权者投出布尔值（恰好 1 或恰好 0）**且没有任何一张反向票**，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
 [CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
 请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
 
@@ -3234,7 +3234,7 @@ r-2：初始见解。
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
   "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}
+  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}
              ← Lean 形式化：**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，详见提示词里的【Lean 形式化验证】段
   "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
              全体表决者（任务仍会执行，但你的理由不会被埋掉），
@@ -3277,7 +3277,7 @@ r-2：初始见解。
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3292,7 +3292,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3325,7 +3325,7 @@ r-2：初始见解。
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3340,7 +3340,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3373,7 +3373,7 @@ r-2：初始见解。
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3388,7 +3388,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-a","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-a","decision":"used|blocked|defect","file":"Formal/p-lean-a.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3435,7 +3435,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3482,7 +3482,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3529,7 +3529,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-b","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-b","decision":"used|blocked|defect","file":"Formal/p-lean-b.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3560,11 +3560,13 @@ r-2：初始见解。
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
-    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用
+    vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:{decision:'blocked', note:…}。
+    只有 decision='blocked' 的 note 会写成阻塞记录；decision='used' 的 note 只是难度判断，
+    **不会**打开定论门禁。两者都没有时，本次裁定不会生效，
     会被记为未定论（原因 formal-required）并进入「形式化待办」。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3579,7 +3581,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3610,11 +3612,13 @@ r-2：初始见解。
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
-    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用
+    vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:{decision:'blocked', note:…}。
+    只有 decision='blocked' 的 note 会写成阻塞记录；decision='used' 的 note 只是难度判断，
+    **不会**打开定论门禁。两者都没有时，本次裁定不会生效，
     会被记为未定论（原因 formal-required）并进入「形式化待办」。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3629,7 +3633,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3660,11 +3664,13 @@ r-2：初始见解。
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
-  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v5_lean_archive
-    kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，
+  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用
+    vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:{decision:'blocked', note:…}。
+    只有 decision='blocked' 的 note 会写成阻塞记录；decision='used' 的 note 只是难度判断，
+    **不会**打开定论门禁。两者都没有时，本次裁定不会生效，
     会被记为未定论（原因 formal-required）并进入「形式化待办」。
   · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。
-  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这两种都算显式阻塞原因，定论门禁可以据此放行。
+  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind='blocked' note=… 或回执 formal:{decision:'blocked', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。
   ▸ 若你在本轮把它形式化并跑通（vibe_v5_lean_archive kind='proof'），后续轮次的
     审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。
 
@@ -3679,7 +3685,7 @@ r-2：初始见解。
 结束时请**只**输出一个 JSON 对象（```json 围栏内）：
 {"verdict":{"target":"p-lean-req","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}
 若你本轮做了形式化或给出难度判断，请一并加上：
-{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断/阻塞原因"}}
+{"formal":{"target":"p-lean-req","decision":"used|blocked|defect","file":"Formal/p-lean-req.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}
 ```
 
 ---
@@ -3721,7 +3727,7 @@ r-2：初始见解。
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
   "input": "本轮会议/辩论的发言正文（会议轮用；也可直接用 say）",
-  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断/阻塞原因"}
+  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}
              ← Lean 形式化：**鼓励**：按实现难度自行决定；做了就归档，没做就写明难度判断，详见提示词里的【Lean 形式化验证】段
   "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
              全体表决者（任务仍会执行，但你的理由不会被埋掉），

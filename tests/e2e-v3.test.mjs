@@ -158,6 +158,10 @@ assert(lock0.ok === true && lock0.project === 'projv3', 'lock_status ok (unlocke
 
 // ================= Scenario B: planner-driven explorer/solver + method feedback =================
 console.log('\n-- Scenario B: planner scheduling + explorer/solver + journal/methods --')
+// H1 之后**每一次**规划调用都受 planMinIntervalMs 约束（含空计划、含"空闲但仍有工作"）：
+// 旧实现在"无在途工作"时故意绕过冷却，正是 planner 每 tick 空转的放大器。这里把冷却压到
+// 亚秒级，让"工作完成后会再次规划"这条断言在测试窗口内仍然可观测。
+await callTool('vibe_math_set_params', { planMinIntervalMs: 700 }, ROOT_A)
 const sA = await callTool('vibe_math_start', {}, ROOT_A)
 assert(sA.ok === true && sA.project === 'projv3', 'session A starts scheduler (projv3)')
 assert(await waitFor('planner spawn', () => spawnByLabel('planner:') !== undefined), 'planner agent called after start')
@@ -172,7 +176,7 @@ assert(jmd.includes('## 方向 d1') && jmd.includes('Niven 积分法'), 'journal
 const m1after = readFileSync(join(WS, 'VibeMath', 'Projects', 'projv3', 'Methods', 'm1.md'), 'utf8')
 assert(m1after.includes('## 应用记录') && m1after.includes('直接复用 Niven 范式'), 'methods_used appended application record to m1.md')
 
-assert(await waitFor('2nd planner call', () => allSpawnsByLabel('planner:').length >= 2), 'planner called again after explorer (cooldown skipped when idle)')
+assert(await waitFor('2nd planner call', () => allSpawnsByLabel('planner:').length >= 2), 'planner called again after explorer completed (work pending → planning continues)')
 const planner2 = allSpawnsByLabel('planner:')[1]
 fireEnd({ id: planner2.childId, runId: 'p2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n{"summary":"solve d1","plan":[{"action":"spawn","role":"solver","target":"q1","direction":"d1","reason":"highest survival"}]}\n```' }] })
 assert(await waitFor('solver q1:d1 spawn', () => spawnByLabel('solver:q1:d1') !== undefined), 'plan executed → solver:q1:d1 spawned')

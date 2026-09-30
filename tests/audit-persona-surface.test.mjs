@@ -143,7 +143,11 @@ const PRESETS = [
     js: 'vibe-math-v3.js',
     prefix: 'vibe_math_',
     tools: 33,
-    undocumented: ['vibe_math_claim_write', 'vibe_math_release_write', 'vibe_math_sync_meta'],
+    // `vibe_math_sync_meta` is no longer undocumented: the promotion-contract line of the
+    // persona now names it as the place to report `lemmas[].价值/关键性` (v3 audit M1 —
+    // without a prompt-side source for that field the promotion main line is unreachable).
+    // The write-lock pair stays out: solver/method-keeper prompts carry it via kcWriteRules().
+    undocumented: ['vibe_math_claim_write', 'vibe_math_release_write'],
     lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib'], extra: [] },
   },
   {
