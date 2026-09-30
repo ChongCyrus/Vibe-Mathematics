@@ -41,7 +41,8 @@ Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper
 automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
 automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
 paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
-A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
+A /vibe slash command mirrors the main controls (/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
+Data lives under {{cwd}}/VibeMath/Projects/<project>/
 (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
 and survives restarts via vibe_math_resume.
 
@@ -114,7 +115,8 @@ Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper
 automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
 automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
 paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
-A /vibe slash command mirrors the main controls. Data lives under {{cwd}}/VibeMath/Projects/<project>/
+A /vibe slash command mirrors the main controls (/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
+Data lives under {{cwd}}/VibeMath/Projects/<project>/
 (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
 and survives restarts via vibe_math_resume.
 
@@ -214,7 +216,7 @@ is experiential reference.
   use them too; they work in every mode.
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
+<auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
 Data survives restarts via vibe_math_resume.
 
 Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
@@ -302,7 +304,7 @@ is experiential reference.
   use them too; they work in every mode.
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-<auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
+<auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
 Data survives restarts via vibe_math_resume.
 
 Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1

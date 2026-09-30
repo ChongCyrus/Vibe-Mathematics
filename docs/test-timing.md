@@ -26,7 +26,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 ### 1.1 随包发布 vs 仅仓库（`npm pack --dry-run --json`）
 
-`package.json` 的 `files` 只发 `tests/` 的一个**子集**（发布物共 104 个文件，其中 `tests/` 18 项），
+`package.json` 的 `files` 只发 `tests/` 的一个**子集**（发布物共 105 个文件，其中 `tests/` 18 项），
 所以安装用户跑 `node tests/run-tests.mjs` 得到的是子集的结果——runner 会把缺失的跳过项打印出来，
 不会静默少跑：
 
@@ -49,7 +49,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/run-tests.mjs`（**57 项** = 39 套件 + 18 探针/变体） | ≈ 629 s | **≈ 208 s**（并发 4，speed-up x3.02） | `TOTAL 57  PASS 57  FAIL 0  (suites 39 · probes 18)`；关键路径 = `audit-formal-sensitivity` 208 s |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4） | 803 s | **≈ 208 s** | 关键路径 = 12 个 v2 探针（每个 ≈42–60 s） |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
-| `tests/audit-persona-sensitivity.mjs`（13 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
+| `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
 | `tests/audit-prompt-invariants.mjs`（157 条） | ≈ 1.9 s | — | 静态 |
 | `tests/audit-prompt-invariants.mjs --self-probe`（5 探针） | ≈ 7.4 s | — | 每个探针 = 一次自我重跑 |
 | `tests/audit-spec-traceability.mjs`（94 条） | ≈ 0.2 s | — | 静态 |

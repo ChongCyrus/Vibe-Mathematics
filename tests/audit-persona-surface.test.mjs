@@ -260,12 +260,19 @@ for (const P of PRESETS) {
   if (!hintOpen) eq(implemented.filter((c) => !hinted.includes(c)).sort(), [], `${P.dir}: implemented slash subcommand(s) are missing from the hint`)
   eq(used.sort(), implemented, `${P.dir}: the usage string and the implemented slash subcommands disagree`)
   const personaEnum = /slash command mirrors[^(]*\(([\s\S]*?)\)/.exec(blocks.prefix.join('\n') + '\n' + blocks.text.join('\n'))
-  if (personaEnum && personaEnum[1].includes('|')) {
+  // An ellipsis must NOT switch this check off (that is how a dropped `paper` entry survived here),
+  // and `...` inside an argument placeholder (`set <k=v>...`) is not an abbreviation at all. So the
+  // persona is compared against the BRANCHES (the ground truth), and every implemented subcommand
+  // must be named EXPLICITLY. Only a HINT that is itself abbreviated makes the reverse direction
+  // (persona ⊆ hint) unprovable, so only that direction is relaxed then.
+  if (!personaEnum) {
+    ok(false, `${P.dir}: the persona never enumerates its /vN subcommands (list them so a human can see every one)`)
+  } else {
     const personaCmds = cmdsFrom(personaEnum[1].replace(/^\s*\/[a-z0-9]+\s+/, ''))
-    if (personaCmds.length) {
-      eq(personaCmds.filter((c) => !hinted.includes(c)).sort(), [], `${P.dir}: the persona enumerates slash subcommand(s) the hint does not know`)
-      if (!/\.\.\./.test(personaEnum[1]) && !hintOpen) eq(personaCmds.slice().sort(), hinted.slice().sort(), `${P.dir}: the persona's /vN list and the command hint disagree`)
-    }
+    ok(personaCmds.length > 0, `${P.dir}: no slash subcommand could be parsed from the persona's /vN list`)
+    eq(personaCmds.filter((c) => !implemented.includes(c)).sort(), [], `${P.dir}: the persona enumerates slash subcommand(s) the handler does not implement`)
+    eq(implemented.filter((c) => !personaCmds.includes(c)).sort(), [], `${P.dir}: the persona's /vN list omits subcommand(s) the handler implements — list them explicitly, do not hide behind "..."`)
+    if (!hintOpen) eq(personaCmds.slice().sort(), implemented.slice().sort(), `${P.dir}: the persona's /vN list and the command hint disagree`)
   }
 
   // ---- E. the Lean feature's prompt surface ----------------------------

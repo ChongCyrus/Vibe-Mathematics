@@ -197,6 +197,32 @@ const probes = [
     from: "  registerTool('vibe_v5_paper',",
     to: "  registerTool('vibe_v5_paperX',",
   },
+  // ── the persona↔hint list itself (the gap that hid `paper` in v2/v3/v4) ────────────────────
+  // The surface suite used to SKIP this comparison whenever the persona list contained `...`
+  // (v3's trailing ellipsis) or an argument placeholder with `...` (v4's `set <k=v>...`), and v2
+  // never enumerated at all. Each probe below drops ONE implemented subcommand from the persona
+  // list and requires the suite to go RED, so a future omission cannot hide behind an ellipsis.
+  {
+    name: 'v2-persona-slash-list-drops-paper',
+    preset: 'vibe-math-v2', file: 'agent.cordis.yml', nth: 'all', expect: 2,
+    guarantee: 'the v2 persona must name EVERY implemented /vibe subcommand explicitly (it never enumerated before)',
+    from: '|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).',
+    to: '|decisions|agents).',
+  },
+  {
+    name: 'v3-persona-slash-list-drops-paper',
+    preset: 'vibe-math-v3', file: 'agent.cordis.yml', nth: 'all', expect: 2,
+    guarantee: "the v3 persona's /vibe list must name every implemented subcommand (the old trailing '...' skipped the check)",
+    from: '|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).',
+    to: '|decisions|agents).',
+  },
+  {
+    name: 'v4-persona-slash-list-drops-paper',
+    preset: 'vibe-math-v4', file: 'agent.cordis.yml', nth: 'all', expect: 2,
+    guarantee: "a dropped v4 persona entry must be caught even though the list contains `set <k=v>...` (the old ellipsis escape)",
+    from: '|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members',
+    to: '|meeting|members',
+  },
 ]
 
 let ok = 0

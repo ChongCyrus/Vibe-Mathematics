@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -97,6 +97,7 @@
     "docs/release-notes/RELEASE-NOTES-2.3.16.md",
     "docs/release-notes/RELEASE-NOTES-2.4.0.md",
     "docs/release-notes/RELEASE-NOTES-2.4.1.md",
+    "docs/release-notes/RELEASE-NOTES-2.6.0.md",
     "docs/release-notes/RELEASE-NOTES-2.5.0.md",
     "docs/release-notes/RELEASE-NOTES-2.3.2.md",
     "docs/release-notes/RELEASE-NOTES-2.3.3.md",
@@ -150,7 +151,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.5.0 深度审计修复版本（提示词措辞与工具描述有增量修正；四套预设的数据格式、目录结构与参数默认值未变，DSH 支撑窗口不变）。① 修复会造成实际损害的缺陷：v5 状态文件不再被空研究所覆盖（按路径锁存、读取未成功即拒绝写入）、v2 验证日志文件名归一化堵住路径逃逸、v4 邮箱投递失败不再让调度器永久停摆。② 修复目标功能不成立的缺陷：v4 真实 /compact 首次生效、v2 判断命题链补种解法入口后真正收口、v3 空闲不再每 tick 空转派生 planner（实测 41→13 并首次出现正常终止）、v3 项目锁改定时器续租、v3 最少 2 票才裁决。③ 语义与表述对齐：v4 验证契约明确「只有 1/0 是绝对真/假，其间为概率，非全体一致取平均写进布尔估计」；v5 m-vote 表述与计票代码一致并删除「更易收敛」的不实说法；四套同级（v2/v3 经典、v4/v5 实验）贯通到 npm 描述、选择器、人设与设计文档；v5 调用者授权收口（isOffice 不再把空身份当所办，生命周期命令仅接受可证明的会话根，新增错误码 V5_NOT_OFFICE 已登记）。④ 安装器与守卫：形态判定改为能力差（npm 包级证据：0.1.6-alpha.2 无 @deepseek-ai/dsh-agent-preset，0.1.7-rc.2 才有），声明行补宿主 group 标记，preset 文件原子写、删除前备份、读不出的文件不再无备份删除，状态文件幂等；run-tests 现收集全部测试与探针（此前两套红探针被静默漏收），修掉一处测试抖动（v4 会议用例）与一处语料非确定性（v3）。本版实测：门禁 56 项全绿（38 套件 + 18 探针）、audit-persona-surface 196 项、并在真实 DSH 0.2.0-rc.2 上验证四个预设注册（order 20–23）且零激活警告、组合行线上不写旧的 .agent-presets 目录。",
+    "compatNote": "v2.6.0 最终论文版本（四套预设新增「最终论文」功能；既有参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移）。① 新功能（默认开启）：收口时自动撰写最终论文，产出 Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}；参数 finalPaper（默认 true）、paperFormat=both|md|tex（默认 both）、paperLanguage=zh|en（默认 zh）、paperCompilePdf（默认 true）、paperLatexCommand（默认空 = 自动探测），v4/v5 另有 paperEditor；手动 /vN paper [lang=] [format=] [editor=] [force] 只覆盖本次，finalPaper=false 仅关闭自动触发。② 时序：论文阶段发生在 run 被标记完成之前（v4 拦截一致性停止票、v5 拦截 checkSolved 判定；v2/v3 在调度器停止前派发写手），论文定稿或降级结束后才真正完成。③ 团队合写（v4/v5）：各自写 → 合并 → 交叉互审 → 定稿代表定稿 → 全体「可交付」一致认同；v4 paperEditor 默认 office（可选 resident:<id>，指定成员已离职则降级并记明），v5 自动默认 academician，office 仅手动 /v5 paper 且必须先与全所交流（至少 1 条所办消息）并至少召开一次会议，否则 V5_PAPER_CONSULT_REQUIRED。④ 编译与降级：LaTeX 检测顺序 xelatex→latexmk→pdflatex→lualatex→tectonic（中文优先），两遍 nonstopmode，失败先修复（重跑 / 换引擎 / 最小模板）再降级为 tex+md 并告警，绝不覆盖已有 paper.pdf；paperFormat=md 时跳过编译且不告警。⑤ 随本功能修掉：v5 自动触发的 paper 心跳停摆、v2/v3 写手卡死可被心跳回收与 force 重派、v4 可空过的判定断言、v3 随包语料的时间戳非确定性；契约文档 docs/final-paper.md 入库并随包发布，双语 README 补齐参数与用法。本版实测：门禁 57 项全绿（39 套件 + 18 探针），并在真实 DSH 0.2.0-rc.2 上验证四个预设注册（order 20–23）、零激活警告、组合行线上不写旧的 .agent-presets 目录。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",

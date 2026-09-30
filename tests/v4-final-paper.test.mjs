@@ -122,10 +122,26 @@ async function newPlugin(m) {
   ;(mod.default || mod).apply(m.ctx)
 }
 async function waitFor(pred, ms = 3000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pred()) return true; await sleep(5) } return !!pred() }
-/** Drive one resident turn at a time; `reply(text, rid, fu)` returns the JSON object to answer with. */
-async function drive(m, reply, stop, budget = 900) {
+/** Poll `status()` until `pred` holds (or the wall-clock budget expires) and return the last status.
+ *  Every timing-sensitive precondition is WAITED for, then asserted — a fixed iteration budget is not
+ *  a clock, and under a 4-way parallel gate (measured with 4 CPU hogs + 4 copies) a 60-iteration
+ *  budget expired before the plugin had even reached the step under test. */
+async function waitStatus(m, pred, ms = 30000) {
+  const t0 = Date.now()
+  let st = await m.callTool('vibe_v4_status', {})
+  while (!pred(st) && (Date.now() - t0) < ms) { await sleep(10); st = await m.callTool('vibe_v4_status', {}) }
+  return st
+}
+/** Drive one resident turn at a time; `reply(text, rid, fu)` returns the JSON object to answer with.
+ *  Bounded by WALL-CLOCK (`maxMs`) as well as a generous iteration cap, so CPU contention can only
+ *  make the drive take longer, never make it give up early on an outer assertion. */
+async function drive(m, reply, stop, opts) {
+  const o = opts || {}
+  const budget = o.budget || 20000
+  const maxMs = o.maxMs || 60000
+  const t0 = Date.now()
   let fi = 0
-  for (let i = 0; i < budget; i++) {
+  for (let i = 0; i < budget && (Date.now() - t0) < maxMs; i++) {
     if (fi < m.followups.length) {
       const fu = m.followups[fi++]
       const rid = m.ridOf(fu.childId)
@@ -133,32 +149,49 @@ async function drive(m, reply, stop, budget = 900) {
       const r = reply(pt, rid, fu)
       const obj = (r && typeof r === 'object' && r.__raw) ? r.__raw : r
       m.fireEnd({ id: fu.childId, runId: 'p-' + i, provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: JSONX(obj === undefined ? {} : obj) }] })
-      await sleep(4)
+      await sleep(2)
       continue
     }
     const st = await m.callTool('vibe_v4_status', {})
     if (stop && stop(st)) return st
-    await sleep(8)
+    await sleep(5)
   }
   return await m.callTool('vibe_v4_status', {})
+}
+/** Per-case teardown: stop this case's scheduler/heartbeat (a still-armed heartbeat from a finished
+ *  case keeps burning the event loop and makes the NEXT case slower) and delete its scratch tree. */
+async function finish(m) {
+  try { await m.callTool('vibe_v4_abort', {}) } catch (e) { /* best effort */ }
+  rmSync(m.WS, { recursive: true, force: true })
 }
 /** Start a 2-resident run with one recorded proposition + one method (evidence for §4/§6). */
 async function startRun(m, problem, extra) {
   await m.callTool('vibe_v4_start', { problem: problem || 'final-paper-test', residentCount: 2 })
   await waitFor(() => m.spawns.length >= 2)
-  await m.callTool('vibe_v4_set', { activityTimeoutMs: 60, verdictMaxRounds: 1, ...(extra || {}) })
+  // `activityTimeoutMs` doubles as the consensus-watchdog period (`recoverStallMs() = 2×`) and as the
+  // paper step deadline (`max(2000, 4×recoverStallMs)`). 60 ms → a 240 ms paper deadline, which a
+  // loaded host can blow past while merely answering the fixture's own wakes (a successful
+  // contribution would be recorded as "missing"). 1000 ms ⇒ an 8 s step budget: still a fast run,
+  // but no longer a bet on the scheduler.
+  await m.callTool('vibe_v4_set', { activityTimeoutMs: 1000, verdictMaxRounds: 1, ...(extra || {}) })
   for (const sp of m.spawns.slice()) {
     m.fireEnd({ id: sp.childId, runId: 'br-' + sp.label, provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: JSONX({ summary: 'insight ' + sp.label, solved: false }) }] })
     await sleep(30)
   }
   await m.callToolAs('vibe_v4_record_proposition', { id: 'p-ok', title: '已证命题', statement: 's', prob: 0.8, value: 0.7, motivation: 'm' }, m.spawns[0].childId)
   await m.callToolAs('vibe_v4_record_method', { id: 'm-tool', title: '工具法', type: '工具', content: 'c', value: 0.6, motivation: 'm' }, m.spawns[1].childId)
+  // `subagent/end` is delivered to ASYNC listeners: WAIT for the phase transition (the old code
+  // asserted it 30 ms after the last end, which is a clock-dependent precondition).
+  await waitStatus(m, (s) => s.phase === 'active', 30000)
   return m
 }
-/** Drive the closing meeting to a UNANIMOUS stop vote → the paper trigger (v2 §A4). The same driver
- *  then answers the paper's own wakes, so the auto path is exercised end to end. */
-async function closeRun(m, paperOpts) {
-  const st0 = await m.callTool('vibe_v4_status', {})
+/** Drive the closing meeting to a UNANIMOUS stop vote → the paper trigger (docs/final-paper.md §A4).
+ *  The same driver then answers the paper's own wakes, so the auto path is exercised end to end.
+ *  `expectPaper=false` is for the `finalPaper=false` case, where the run concludes immediately and
+ *  no paper state is ever entered — waiting for `paper.status==='done'` there burns the whole wall
+ *  budget for nothing. */
+async function closeRun(m, paperOpts, expectPaper = true) {
+  const st0 = await waitStatus(m, (s) => s.phase === 'active', 30000)
   assert(st0.phase === 'active', 'run reached the active phase (phase=' + st0.phase + ')')
   await m.callTool('vibe_v4_meeting', { agenda: '收口会议' })
   const answerPaper = paperReply(paperOpts || {})
@@ -167,7 +200,7 @@ async function closeRun(m, paperOpts) {
     if (/verifying object/i.test(pt)) return { vote: { verdict: 1, reason: 'ok' } }
     if (/\[PAPER /.test(pt)) return answerPaper(pt, rid, fu)
     return { summary: '继续', solved: false }
-  }, (st) => st.autoDone === true && st.paper && st.paper.status === 'done', 900)
+  }, (st) => st.autoDone === true && (!expectPaper || (st.paper && st.paper.status === 'done')), { maxMs: 90000 })
 }
 const paperReply = (opts) => (pt, rid, fu) => {
   const o = opts || {}
@@ -218,7 +251,7 @@ section('1 parameters: defaults, schema, raw-string coercion, rejection')
   const r3 = await m.callTool('vibe_v4_set', { paperNonsense: 1 })
   assert(r3.ok === false && Array.isArray(r3.ignored) && r3.ignored.indexOf('paperNonsense') !== -1, 'an unknown key is refused with ok:false + ignored[] (never silent)')
   assert(st.paper.closureSignal.indexOf('finalizeMeeting/allSolved') === 0, '★ status cites the REAL closure branch (v2 §A4): ' + st.paper.closureSignal)
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -229,19 +262,19 @@ section('2 negative triggers: not closed, and finalPaper=false')
   const st = await m.callTool('vibe_v4_status', {})
   assert(!existsSync(join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper')), '★ a run that has NOT closed writes no Paper/ directory (negative trigger)')
   assert(st.paper.status === 'idle', 'and status reports idle (got ' + st.paper.status + ')')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'final-paper-off', { finalPaper: false })
-  const st = await closeRun(m)
+  const st = await closeRun(m, {}, false)   // finalPaper=false: the run concludes with NO paper phase
   assert(st.autoDone === true, 'finalPaper=false: the run still closes normally')
   assert(!existsSync(join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper')), '★ finalPaper=false suppresses the automatic paper entirely')
   const cmd = await m.cmd('paper')
   const parsed = JSON.parse(cmd.text)
   assert(cmd.kind === 'success' && parsed.ok === true && /finalPaper=false/.test(JSON.stringify(parsed)),
     '★ ...but the MANUAL /v4 paper command still works and says the automatic trigger is off')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -284,7 +317,7 @@ section('3 automatic trigger on the unanimous stop vote + full team flow + 9-sec
   assert(/facilitator 合并|合并完成/.test(log) && meta.mergeNotes && typeof meta.mergeNotes.dups === 'number',
     '★ the framework merge step ran and recorded its dedup/term-unification bookkeeping')
   assert(m.spawns.length === 2, 'the team was reused (no extra residents were spawned for the paper)')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -295,13 +328,13 @@ section('4 idempotency: re-triggering the same run only fills missing artifacts'
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']
   const st = await closeRun(m)
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta1 = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta1 = readJsonIf(join(dir, 'paper.meta.json')) || {}
   const md1 = readIf(join(dir, 'paper.md'))
   await sleep(20)
   const again = await m.cmd('paper')
   const parsed = JSON.parse(again.text)
   assert(again.kind === 'success' && parsed.ok === true && parsed.idempotent === true, '★ a second trigger is recognised as already finalized (idempotent=true)')
-  const meta2 = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta2 = readJsonIf(join(dir, 'paper.meta.json')) || {}
   assert(meta2.finalizedAt === meta1.finalizedAt && meta2.filled === undefined && readIf(join(dir, 'paper.md')) === md1,
     '★ nothing was rewritten: finalizedAt unchanged, paper.md byte-identical')
   rmSync(join(dir, 'paper.pdf'), { force: true })
@@ -311,7 +344,7 @@ section('4 idempotency: re-triggering the same run only fills missing artifacts'
   const forced = await m.cmd('paper force')
   const p4 = JSON.parse(forced.text)
   assert(forced.kind === 'success' && p4.ok === true && !p4.idempotent, '★ /v4 paper force rewrites instead of short-circuiting')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -323,7 +356,7 @@ section('5 /v4 paper overrides: lang=en, format=tex, editor, and error kind')
   const r = await m.cmd('paper lang=en format=tex')
   const parsed = JSON.parse(r.text)
   assert(r.kind === 'success' && parsed.ok === true, '/v4 paper lang=en format=tex was accepted')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 700)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
   const tex = readIf(join(dir, 'paper.tex'))
   assert(existsSync(join(dir, 'paper.tex')) && !existsSync(join(dir, 'paper.md')), '★ format=tex produces paper.tex and NO paper.md')
@@ -337,7 +370,7 @@ section('5 /v4 paper overrides: lang=en, format=tex, editor, and error kind')
   assert(bad.kind === 'error' && JSON.parse(bad.text).ok === false, '★ a bad /v4 paper option returns kind:\'error\' (never a silent success)')
   const hint = m.cmdRegs.find(c => c.name === 'v4').input.hint
   assert(/paper/.test(hint), 'the /v4 slash hint advertises the paper subcommand')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -352,13 +385,13 @@ section('6 paperEditor=resident:<id> and the dismissed-editor downgrade (v2 §A5
   const st = await drive(m, (pt, rid, fu) => {
     if (/\[PAPER FINAL\]/.test(pt)) { sawFinal = true; finalRid = rid }
     return paperReply({})(pt, rid, fu)
-  }, (s) => s.paper && s.paper.status === 'done', 900)
+  }, (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   assert(sawFinal && finalRid === 'r-2', '★ the NAMED resident (r-2) received the [PAPER FINAL] turn (got ' + finalRid + ')')
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
   assert(/resident 定稿/.test(readIf(join(dir, 'paper.md'))), '★ the resident\'s own final text reached paper.md')
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
   assert(meta.editor === 'resident:r-2' && meta.editorId === 'r-2' && meta.editorDowngraded === false, 'meta records the named editor')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
@@ -367,12 +400,12 @@ section('6 paperEditor=resident:<id> and the dismissed-editor downgrade (v2 §A5
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']
   const start = await m.cmd('paper editor=resident:r-2')
   assert(JSON.parse(start.text).ok === true, 'paper started with an editor who has just been dismissed')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 900)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
   assert(meta.editorDowngraded === true && meta.editorId === 'office' && /降级/.test(readIf(join(dir, 'paper.log.md'))),
     '★ a dismissed editor is DOWNGRADED to office and the downgrade is recorded in meta + log (never silently substituted)')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -387,7 +420,7 @@ section('7 negative team flow: an invalid review cannot finalise (and is warned 
   const st1 = await drive(m, (pt, rid, fu) => {
     if (/\[PAPER REVIEW\]/.test(pt) && rid === 'r-1') { badAnswers++; return { paperReview: { reviewed: 'r-1', points: ['自审'] } } }
     return paperReply({})(pt, rid, fu)
-  }, (s) => s.paper && (s.paper.status === 'final' || s.paper.status === 'vote' || s.paper.status === 'done'), 60)
+  }, (s) => badAnswers >= 1 && s.paper && s.paper.status === 'review', { maxMs: 30000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st1.paper.id)
   assert(badAnswers >= 1, 'the invalid review was actually submitted at least once')
   assert(st1.paper.status === 'review' && !existsSync(join(dir, 'paper.md')),
@@ -396,11 +429,11 @@ section('7 negative team flow: an invalid review cannot finalise (and is warned 
   const st2 = await drive(m, (pt, rid, fu) => {
     if (/\[PAPER REVIEW\]/.test(pt) && rid === 'r-1') return { paperReview: { reviewed: 'r-1', points: ['仍然自审'] } }
     return paperReply({})(pt, rid, fu)
-  }, (s) => s.paper && s.paper.status === 'done', 900)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  }, (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
   assert(st2.paper.status === 'done' && /超时未回应|互审/.test(meta.warning || ''), '★ after the deadline the incomplete review is recorded as a warning, never silently dropped')
   assert(/\[未决\]|互审超时/.test(readIf(join(dir, 'paper.md')) + readIf(join(dir, 'paper.log.md'))), '★ the incomplete review is visible in the artifacts')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -411,13 +444,13 @@ section('8 dissent: bounded iteration, then the appendix records it and a warnin
   COMPILER.mode = 'none'
   const start = await m.cmd('paper lang=en format=md')
   assert(JSON.parse(start.text).ok === true, 'paper started for the dissent case')
-  const st = await drive(m, paperReply({ dissent: ['r-1'] }), (s) => s.paper && s.paper.status === 'done', 1200)
+  const st = await drive(m, paperReply({ dissent: ['r-1'] }), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const md = readIf(join(dir, 'paper.md')), meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(st.paper.status === 'done' && meta.dissent.indexOf('r-1') !== -1, '★ dissent did not block finalisation forever: the run iterated and then recorded the dissent (rounds=' + meta.rounds + '/' + meta.maxRounds + ')')
+  const md = readIf(join(dir, 'paper.md')), meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert(st.paper.status === 'done' && (meta.dissent || []).indexOf('r-1') !== -1, '★ dissent did not block finalisation forever: the run iterated and then recorded the dissent (rounds=' + meta.rounds + '/' + meta.maxRounds + ')')
   assert(/附录：交付分歧|Appendix: deliverability dissent/.test(md), '★ the disagreement is written into the appendix (docs/final-paper.md §4.5)')
   assert(/迭代达到上限/.test(meta.warning || ''), '★ and the cap is warned about in meta.log')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 // =====================================================================================
@@ -428,11 +461,12 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']
   const st = await closeRun(m)
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(existsSync(join(dir, 'paper.pdf')) && meta.compile.result === 'ok' && meta.compile.engine === 'xelatex',
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert(existsSync(join(dir, 'paper.pdf')) && (meta.compile || {}).result === 'ok' && (meta.compile || {}).engine === 'xelatex',
     '★ fake compiler success: paper.pdf exists, meta.compile={result:ok, engine:xelatex}')
-  assert(meta.compile.attempts[0].stage === 'initial' && meta.compile.attempts[0].engine === 'xelatex', 'the initial attempt is recorded')
-  rmSync(m.WS, { recursive: true, force: true })
+  const c0 = (meta.compile || {}).attempts || []
+  assert(!!c0[0] && c0[0].stage === 'initial' && c0[0].engine === 'xelatex', 'the initial attempt is recorded')
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
@@ -440,67 +474,67 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   COMPILER.mode = 'repair'; COMPILER.engines = ['xelatex']
   const start = await m.cmd('paper lang=en format=both')
   assert(JSON.parse(start.text).ok === true, 'paper started for the repair branch')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 900)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(existsSync(join(dir, 'paper.pdf')) && meta.compile.result === 'ok' && meta.compile.repaired === 'minimal-template',
-    '★ a failing tex is REPAIRED by the one minimal-template retry, then compiles (repaired=' + (meta.compile.repaired || '') + ')')
-  assert(meta.compile.attempts.some(a => a.stage === 'minimal-template' && a.ok), 'the repair attempt is recorded in meta')
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert(existsSync(join(dir, 'paper.pdf')) && (meta.compile || {}).result === 'ok' && (meta.compile || {}).repaired === 'minimal-template',
+    '★ a failing tex is REPAIRED by the one minimal-template retry, then compiles (repaired=' + ((meta.compile || {}).repaired || '') + ')')
+  assert(((meta.compile || {}).attempts || []).some(a => a.stage === 'minimal-template' && a.ok), 'the repair attempt is recorded in meta')
   assert(/\\documentclass/.test(readIf(join(dir, 'paper.tex'))) && !/\\usepackage/.test(readIf(join(dir, 'paper.tex'))),
     'the on-disk tex is the minimal template that actually compiled')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'compile-degrade')
   COMPILER.mode = 'fail'; COMPILER.engines = ['xelatex', 'latexmk']
   const start = await m.cmd('paper lang=en format=both')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 900)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
   assert(st.paper.status === 'done' && !existsSync(join(dir, 'paper.pdf')) && existsSync(join(dir, 'paper.tex')) && existsSync(join(dir, 'paper.md')),
     '★ persistent compiler failure DEGRADES: tex+md kept, no pdf, finalisation NOT blocked')
   assert(meta.compile && meta.compile.result === 'failed' && /编译失败/.test(meta.compile.error || '') && /编译失败/.test(meta.warning || readIf(join(dir, 'paper.log.md'))),
     '★ meta records compile:failed and the failure is warned + reported')
   assert(((meta.compile || {}).attempts || []).length >= 2 && meta.compile.attempts.every(a => a.ok === false), 'every capped repair attempt is recorded')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'no-latex')
   COMPILER.mode = 'none'; COMPILER.engines = []
   const start = await m.cmd('paper lang=zh format=both')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 900)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(st.paper.status === 'done' && meta.compile.result === 'not-detected' && /未检测到 LaTeX/.test(meta.compile.reason || ''),
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert(st.paper.status === 'done' && (meta.compile || {}).result === 'not-detected' && /未检测到 LaTeX/.test((meta.compile || {}).reason || ''),
     '★ no LaTeX engine: compile=not-detected, tex+md kept, NO error thrown')
   assert(existsSync(join(dir, 'paper.tex')) && existsSync(join(dir, 'paper.md')), 'tex+md are still produced on the no-LaTeX branch')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'no-compile', { paperCompilePdf: false })
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']   // an engine IS available — the knob must still win
   const start = await m.cmd('paper lang=en format=both')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 700)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(meta.compile.result === 'skipped' && /paperCompilePdf=false/.test(meta.compile.reason || '') && !existsSync(join(dir, 'paper.pdf')),
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert((meta.compile || {}).result === 'skipped' && /paperCompilePdf=false/.test((meta.compile || {}).reason || '') && !existsSync(join(dir, 'paper.pdf')),
     '★ paperCompilePdf=false skips compilation even when a LaTeX engine is available')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'no-compile')
   COMPILER.mode = 'none'
   const start = await m.cmd('paper lang=en format=md')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 700)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
-  const meta = JSON.parse(readIf(join(dir, 'paper.meta.json')))
-  assert(meta.compile.result === 'skipped' && /paperFormat=md/.test(meta.compile.reason || ''),
+  const meta = readJsonIf(join(dir, 'paper.meta.json')) || {}
+  assert((meta.compile || {}).result === 'skipped' && /paperFormat=md/.test((meta.compile || {}).reason || ''),
     '★ format=md skips compilation without a "cannot compile without tex" warning (v2 §E)')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 {
   const m = makeCtx(); await newPlugin(m)
@@ -508,11 +542,15 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']
   const st = await closeRun(m)
   const dir = join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', st.paper.id)
+  // The directory may legitimately not exist (a missing/failed paper phase): create it so the probe's
+  // own write cannot abort the suite with an uncaught ENOENT — the assertion below must be the
+  // failure, not a crash (AUDIT-CHECKLIST §4: a missing artifact is one clean assertion failure).
+  mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'paper.pdf'), 'PRE-EXISTING')
   const again = await m.cmd('paper')
   assert(JSON.parse(again.text).idempotent === true && readIf(join(dir, 'paper.pdf')) === 'PRE-EXISTING',
-    '★ an existing paper.pdf is never clobbered (v2 §D)')
-  rmSync(m.WS, { recursive: true, force: true })
+    '★ an existing paper.pdf is never clobbered (docs/final-paper.md §D)')
+  await finish(m)
 }
 
 // =====================================================================================
@@ -522,7 +560,7 @@ section('10 containment: a hostile problem id stays inside Paper/<id>/')
   await startRun(m, '../../etc/evil:name')
   COMPILER.mode = 'none'
   const start = await m.cmd('paper')
-  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', 700)
+  const st = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
   const id = st.paper.id
   assert(id.indexOf('..') === -1 && id.indexOf('/') === -1 && id.indexOf('\\') === -1 && id.indexOf(':') === -1,
     '★ the paper id is normalised (no separators / no traversal): ' + id)
@@ -530,9 +568,10 @@ section('10 containment: a hostile problem id stays inside Paper/<id>/')
   assert(existsSync(join(paperDir, 'paper.meta.json')), 'everything landed under Paper/<id>/')
   const stray = join(m.WS, 'VibeMath', 'etc')
   assert(!existsSync(stray), '★ no file escaped the Paper/ directory')
-  const before = readdirSync(join(m.WS, 'VibeMath', 'Projects', 'default', 'State')).sort().join(',')
+  const stateDir = join(m.WS, 'VibeMath', 'Projects', 'default', 'State')
+  const before = (existsSync(stateDir) ? readdirSync(stateDir) : []).sort().join(',')
   assert(before.indexOf('paper') === -1, '★ State/ is not polluted by paper artifacts')
-  rmSync(m.WS, { recursive: true, force: true })
+  await finish(m)
 }
 
 console.log('')

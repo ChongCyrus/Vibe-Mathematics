@@ -95,7 +95,7 @@
 - [ ] 人设里写的路径/模式名（`Formal/Lib`、`off|encourage|require`）是否与实现中的字符串**逐字**一致？
 
 `audit-persona-surface.test.mjs` 把上述各条变成断言（"未文档化工具"用**显式快照**表示：
-新增工具必须主动改快照、或在 persona 里写清）；`audit-persona-sensitivity.mjs` 用 13 条探针
+新增工具必须主动改快照、或在 persona 里写清）；`audit-persona-sensitivity.mjs` 用 16 条探针
 证明这套断言真的会变红。**v2.3.0 修的就是这一类缺陷**：三个 `*_lean_*` 工具无条件注册，
 而 v2/v3/v4 的 persona 从未列出它们（只有 v5 列了），v4 的 `vibe_v4_set` 参数表也漏了
 `formalVerify`/`leanCommand`/`leanArgs`/`leanTimeoutMs`——当时**所有既有套件全绿**。

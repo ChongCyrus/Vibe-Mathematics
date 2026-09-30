@@ -65,7 +65,7 @@
         use them too; they work in every mode.
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-      <auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
+      <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
       Data survives restarts via vibe_math_resume.
 
       Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
@@ -150,7 +150,7 @@
         use them too; they work in every mode.
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
-      <auto|manual>|setup|save|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|paper [lang=zh|en] [format=both|md|tex] [force]|...).
+      <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
       Data survives restarts via vibe_math_resume.
 
       Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
