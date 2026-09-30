@@ -1,0 +1,116 @@
+name: 🐛 Bug 报告 / Bug report
+description: 报告一个可复现的问题（提交前请先脱敏：隐去 token / API key / 私人路径）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！填写前请注意：
+        - **请先脱敏**：隐去 `token`、API key、完整本地路径与私人题目内容（DSH 的 Web 启动日志里通常带 `?token=…`）。
+        - **先搜索[已有 Issue](https://github.com/ChongCyrus/Vibe-Mathematics/issues)**，避免重复。
+        - 安全漏洞请**不要**开公开 issue，按 [SECURITY.md](https://github.com/ChongCyrus/Vibe-Mathematics/blob/main/SECURITY.md) 私密报告。
+  - type: dropdown
+    id: preset
+    attributes:
+      label: 使用的预设
+      description: 最关键的信息——出问题的是哪一套？
+      options:
+        - vibe-math-v2（概率驱动 · JSON 数据层）
+        - vibe-math-v3（论文式 Markdown + 规划代理 + 方法库）
+        - vibe-math-v4（常驻自组织合作研究，实验性）
+        - vibe-math-v5（研究所体系，实验性）
+        - 通用 / 安装器 / 不确定
+    validations:
+      required: true
+  - type: input
+    id: dsh_version
+    attributes:
+      label: DSH 版本
+      description: 支持的窗口是 0.1.2-alpha.4 ~ 0.2.0-rc.2；过旧/过新的 DSH 可能装不上（≥0.1.7 走组合行声明，≤0.1.6 走目录机制）
+      placeholder: 例如 0.2.0-rc.2
+    validations:
+      required: true
+  - type: input
+    id: plugin_version
+    attributes:
+      label: dsh-vibe-math 版本
+      description: 当前最新为 2.6.0；可用 `npm view dsh-vibe-math version` 核对
+      placeholder: 例如 2.6.0
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 简要说明发生了什么
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 使用预设 `vibe-math-v3` 启动
+        2. 输入任务：「...」
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么？有报错信息吗？
+    validations:
+      required: true
+  - type: textarea
+    id: minimal
+    attributes:
+      label: 最小复现（建议）
+      description: 能触发问题的最简数学问题或任务描述
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图（已脱敏）
+      description: 只保留相关片段，用代码块包裹
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: state_files
+    attributes:
+      label: 是否能在状态文件里看到问题（建议提供片段）
+      multiple: true
+      options:
+        - v2：`qs.json` / `Propos/`
+        - v3：md 知识库 / `Verified/`
+        - v4：`Propos/` / 各常驻成员库
+        - v5：`State/<研究所>.v5state.json` / 成员库
+        - 不涉及状态文件
+        - 不确定
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统与环境
+      placeholder: 例如 Windows 11 / Node 24 / 桌面版 DSH
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已**脱敏**（隐去 token、API key、完整本地路径与私人题目内容）
+          required: true
+        - label: 我已搜索过已有 Issue，确认这不是重复报告
+          required: true
