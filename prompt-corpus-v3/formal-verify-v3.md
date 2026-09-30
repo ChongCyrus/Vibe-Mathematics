@@ -17,32 +17,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-off",
-      "kind": "proposition",
-      "target": "p-off",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-off（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-off"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -168,32 +149,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-offr",
-      "kind": "proposition",
-      "target": "p-offr",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-off-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-offr"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -365,40 +327,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [
-    {
-      "id": "qE",
-      "状态": "求解中",
-      "优先级": 1,
-      "依赖": [],
-      "依赖就绪": true,
-      "方向数": 0,
-      "活跃方向": [],
-      "running_solver_dirs": [],
-      "最高存活率": null,
-      "解法数": 0
-    }
-  ],
-  "verify_candidates": [],
-  "active_agents": [
-    {
-      "childId": "<CHILD>",
-      "role": "explorer",
-      "target": "qE",
-      "direction": "",
-      "round": ""
-    }
-  ],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-work（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -472,54 +407,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [
-    {
-      "id": "qE",
-      "状态": "求解中",
-      "优先级": 1,
-      "依赖": [],
-      "依赖就绪": true,
-      "方向数": 1,
-      "活跃方向": [
-        "d1"
-      ],
-      "running_solver_dirs": [],
-      "最高存活率": 0.7,
-      "解法数": 0
-    }
-  ],
-  "verify_candidates": [],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-work（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 1 problem(s), 0 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c7 通过回执记录 qE 形式化阻塞：需要先形式化连分数收敛定理"
-    },
-    {
-      "at": "<TIME>",
-      "event": "explorer",
-      "detail": "problem qE → 1 directions (meta sync)"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -754,32 +648,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-enc",
-      "kind": "proposition",
-      "target": "p-enc",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-verify（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-enc"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -1045,34 +920,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-verify（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-enc"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -1100,32 +954,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-gate",
-      "kind": "proposition",
-      "target": "p-gate",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-gate"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -1271,69 +1106,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-gate",
-      "kind": "proposition",
-      "target": "p-gate",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-mode",
-      "kind": "proposition",
-      "target": "p-mode",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】p-gate 的表决结果为 真，但 **require 模式**要求先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md）。请完成形式化（vibe_math_lean_archive kind='proof'）或记录阻塞原因（kind='blocked'）后重新提议验证。"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-gate = 1 被 require 门禁搁置（formal-required；对象 p-gate 尚无 Lean 通过或阻塞记录）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-mode"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "cleared 0 agent(s) and 1 task(s) (restart)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-mode"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -1479,69 +1258,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-gate",
-      "kind": "proposition",
-      "target": "p-gate",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-mode",
-      "kind": "proposition",
-      "target": "p-mode",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-mode"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 2 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 2 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "cleared 0 agent(s) and 1 task(s) (restart)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-gate"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -1805,69 +1528,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-gate",
-      "kind": "proposition",
-      "target": "p-gate",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-mode",
-      "kind": "proposition",
-      "target": "p-mode",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 2 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-mode"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-G 为 p-gate 归档形式化证明 Formal/p-gate.lean（运行 **通过**，已归档到 Verified/Lean/p-gate.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 4 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "cleared 0 agent(s) and 2 task(s) (restart)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-gate"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -2135,69 +1802,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-blocked-ok",
-      "kind": "proposition",
-      "target": "p-blocked-ok",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-mode",
-      "kind": "proposition",
-      "target": "p-mode",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-mode"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-gate = 1 (fully verified)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-blocked-ok"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-G 记录 p-blocked-ok 形式化阻塞：命题涉及未形式化的分析学，本轮不做"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 2 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "cleared 0 agent(s) and 2 task(s) (restart)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-gate（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -2449,32 +2060,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-reply",
-      "kind": "proposition",
-      "target": "p-reply",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-reply"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -2620,62 +2212,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-used",
-      "kind": "proposition",
-      "target": "p-used",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c39 通过回执记录 p-reply 形式化阻塞：需要大量未形式化的实分析前置知识"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-reply = 0.5 (uncertain)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "stop",
-      "detail": "all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-used"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -2821,69 +2364,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-used",
-      "kind": "proposition",
-      "target": "p-used",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-nonote",
-      "kind": "proposition",
-      "target": "p-nonote",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-used"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c42 通过回执记录 p-used 形式化草稿：Formal/p-used.lean"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】p-used 的表决结果为 真，但 **require 模式**要求先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md）。请完成形式化（vibe_math_lean_archive kind='proof'）或记录阻塞原因（kind='blocked'）后重新提议验证。"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-used = 1 被 require 门禁搁置（formal-required；对象 p-used 尚无 Lean 通过或阻塞记录）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3029,37 +2516,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-defect",
-      "kind": "proposition",
-      "target": "p-defect",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-I 为 p-defect 归档形式化证明 Formal/p-defect.lean（运行 **通过**，已归档到 Verified/Lean/p-defect.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-defect（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-defect"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3209,37 +2672,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-nonote-defect",
-      "kind": "proposition",
-      "target": "p-nonote-defect",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-J 为 p-nonote-defect 归档形式化证明 Formal/p-nonote-defect.lean（运行 **通过**，已归档到 Verified/Lean/p-nonote-defect.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-defect-nonote（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-nonote-defect"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3389,62 +2828,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-blocked-defect",
-      "kind": "proposition",
-      "target": "p-blocked-defect",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c51 的 formal.decision=defect 未写明 note，已**拒绝**记录（忠实性缺陷必须写出具体偏差，否则无从复核）。该对象的形式化记录与归档证明**保持不变**。"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-nonote-defect = 1 (fully verified)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "stop",
-      "detail": "all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-J 记录 p-blocked-defect 形式化阻塞：先按难度记为阻塞"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-defect-nonote（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3578,37 +2968,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-nodelete",
-      "kind": "proposition",
-      "target": "p-nodelete",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-K 为 p-nodelete 归档形式化证明 Formal/p-nodelete.lean（运行 **通过**，已归档到 Verified/Lean/p-nodelete.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-defect-nodelete（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-nodelete"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3758,37 +3124,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-stale",
-      "kind": "proposition",
-      "target": "p-stale",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-L 为 p-stale 归档形式化证明 Formal/p-stale.lean（运行 **通过**，已归档到 Verified/Lean/p-stale.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-stale-card（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-stale"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -3938,67 +3280,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [
-    {
-      "id": "q-w",
-      "状态": "求解中",
-      "优先级": 1,
-      "依赖": [],
-      "依赖就绪": true,
-      "方向数": 0,
-      "活跃方向": [],
-      "running_solver_dirs": [],
-      "最高存活率": null,
-      "解法数": 0
-    }
-  ],
-  "verify_candidates": [],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-stale-card（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-stale"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-stale = 1 (fully verified)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "stop",
-      "detail": "all active problems solved (never-priority excluded) and no active agents/tasks/plans — scheduler stopped (strict termination)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-stale-card（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -4164,45 +3452,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [
-    {
-      "id": "q-defect",
-      "状态": "求解中",
-      "优先级": 1,
-      "依赖": [],
-      "依赖就绪": true,
-      "方向数": 0,
-      "活跃方向": [],
-      "running_solver_dirs": [],
-      "最高存活率": null,
-      "解法数": 0
-    }
-  ],
-  "verify_candidates": [],
-  "active_agents": [
-    {
-      "childId": "<CHILD>",
-      "role": "explorer",
-      "target": "q-defect",
-      "direction": "",
-      "round": ""
-    }
-  ],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-M 为 q-defect 归档形式化证明 Formal/q-defect.lean（运行 **通过**，已归档到 Verified/Lean/q-defect.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-workline（v3：md 知识库 + 规划代理调度 + 方法库）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -4307,37 +3563,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-fid",
-      "kind": "proposition",
-      "target": "p-fid",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-N 为 p-fid 归档形式化证明 Formal/p-fid.lean（运行 **通过**，已归档到 Verified/Lean/p-fid.lean，验证转为忠实性审查）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-fidelity（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-fid"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -4611,69 +3843,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-used",
-      "kind": "proposition",
-      "target": "p-used",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-usedkeep",
-      "kind": "proposition",
-      "target": "p-usedkeep",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c45 的 formal.decision=blocked 未写明 note，已**拒绝**记录（难度判断必须显式、可审计）。"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-nonote = 0.5 (uncertain)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-usedkeep"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-H 为 p-usedkeep 归档形式化证明 Formal/p-usedkeep.lean（运行 **通过**，已归档到 Verified/Lean/p-usedkeep.lean，验证转为忠实性审查）"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
@@ -4823,69 +3999,13 @@ CURRENT STATE BRIEF (JSON):
   "horizon": 3,
   "free_slots": <SLOTS>,
   "maxParallelThreshold": 64,
-  "problems": [],
-  "verify_candidates": [
-    {
-      "rId": "r-p-used",
-      "kind": "proposition",
-      "target": "p-used",
-      "prob": 0.6,
-      "priority": 1
-    },
-    {
-      "rId": "r-p-usedblocked",
-      "kind": "proposition",
-      "target": "p-usedblocked",
-      "prob": 0.6,
-      "priority": 1
-    }
-  ],
-  "active_agents": [],
-  "methods": [],
-  "pending_inventions": 0,
-  "last_plan": null,
-  "recent_events": [
-    {
-      "at": "<TIME>",
-      "event": "plan",
-      "detail": "planner plan-<ID> returned empty plan (no actionable work)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】c72 通过回执记录 p-usedkeep 形式化草稿：Formal/p-usedkeep.lean（保留已有的 passed 状态：一次 used 回执不撤销已成立的证明/已记录的阻塞）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verdict",
-      "detail": "r-p-usedkeep = 0.5 (uncertain)"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-H 运行 Lean 通过：Formal/p-usedkeep.lean（0.0s）｜对象 p-usedkeep"
-    },
-    {
-      "at": "<TIME>",
-      "event": "abort",
-      "detail": "scheduler aborted, 0 child(ren) interrupted"
-    },
-    {
-      "at": "<TIME>",
-      "event": "start",
-      "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
-    },
-    {
-      "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-usedblocked"
-    },
-    {
-      "at": "<TIME>",
-      "event": "formal",
-      "detail": "【形式化】sess-H 记录 p-usedblocked 形式化阻塞：需要大量未形式化的实分析前置知识"
-    }
-  ]
+  "problems": "<PROBLEMS>",
+  "verify_candidates": "<VERIFY_CANDIDATES>",
+  "active_agents": "<ACTIVE_AGENTS>",
+  "methods": "<METHODS>",
+  "pending_inventions": "<PENDING_INVENTIONS>",
+  "last_plan": "<LAST_PLAN>",
+  "recent_events": "<RECENT_EVENTS>"
 }
 
 ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):

@@ -72,11 +72,43 @@ const corpus = []
 // same class of bug is recorded in AUDIT-CHECKLIST §2.4 as a real accident): the random plan id in
 // the label, epoch-millisecond `at` timestamps, child ids, and the free-slot count. They are run
 // metadata, not the text under review, so they are normalised to placeholders.
-const scrub = (s) => String(s == null ? '' : s)
+//
+// The brief is not only run metadata, it is a LIVE SNAPSHOT of mutable scheduler state
+// (`buildBrief()` reads `agentRegistry`, `activityLog`, the verify candidates and the free-slot
+// count at the instant the planner is spawned). This suite drives the plugin from OUTSIDE, and the
+// plugin's own scheduler keeps running concurrently: `vibe_math_start` fires `scheduleTick()`
+// without awaiting it, and the plugin's 1s tick timer calls `scheduleTick()` on its own schedule, so
+// a background tick can register the explorer (or append its activity event, or close a verify)
+// BETWEEN the forced planner's snapshot and the next one. Two runs then legitimately disagree about
+// `active_agents` (the explorer is in flight or it is not), about `recent_events` (the last-eight
+// window and its order), and about every other instant-dependent field of the brief.
+//
+// A byte-stable corpus therefore cannot carry that snapshot's values — the disagreement is a
+// property of the INSTANT, not of the prompt text a human must review (this is exactly the "语料
+// 每次运行都变" accident §2.4 records). What the corpus carries is the brief's CONTRACT: the same
+// keys in the same order, with the instant-dependent values canonically placeholdered and the
+// stable configuration scalars kept. The prompt TEXT under review — the persona, the ACTION
+// VOCABULARY, and the HARD RULES that name `brief.problems[].running_solver_dirs`,
+// `brief.active_agents` and `brief.free_slots` — is untouched.
+const SNAPSHOT_KEYS = ['problems', 'verify_candidates', 'active_agents', 'methods', 'pending_inventions', 'last_plan', 'recent_events']
+/** Replace every instant-dependent collection of the planner's state brief with a canonical
+ *  placeholder, keeping the key set, the key order and the configuration scalars. Only called on a
+ *  valid-JSON brief (`buildBrief` is serialised with JSON.stringify(brief, null, 2)); anything that
+ *  does not match the exact planner framing is returned unchanged, so the suite can never silently
+ *  mangle an unrelated prompt. */
+const canonBrief = (s) => {
+  const m = s.match(/(CURRENT STATE BRIEF \(JSON\):\n)(\{[\s\S]*?\n\})(\n\nACTION VOCABULARY)/)
+  if (!m) return s
+  let brief
+  try { brief = JSON.parse(m[2]) } catch (e) { return s }
+  for (const k of SNAPSHOT_KEYS) if (Object.prototype.hasOwnProperty.call(brief, k)) brief[k] = '<' + k.toUpperCase() + '>'
+  return s.slice(0, m.index) + m[1] + JSON.stringify(brief, null, 2) + m[3] + s.slice(m.index + m[0].length)
+}
+const scrub = (s) => canonBrief(String(s == null ? '' : s)
   .split(VIBE).join('<VIBEMATH>')
   .split(VIBE.replace(/\\/g, '/')).join('<VIBEMATH>')
   .split(WS).join('<WS>')
-  .split(WS.replace(/\\/g, '/')).join('<WS>')
+  .split(WS.replace(/\\/g, '/')).join('<WS>'))
   .replace(/plan-[0-9a-f]{8}/g, 'plan-<ID>')
   .replace(/("at"\s*:\s*)\d{10,16}/g, '$1"<TIME>"')
   .replace(/("childId"\s*:\s*")c\d+(")/g, '$1<CHILD>$2')
@@ -1246,6 +1278,35 @@ section('10 the captured prompt corpus is written for human review')
   assert(volatile.length === 0, '★ no captured prompt/label keeps volatile run metadata (random plan id / epoch timestamps / child ids / slot count) — the corpus is byte-deterministic: ' + volatile.map((b) => b.label).join(','))
   assert(corpus.some((c) => /"free_slots": <SLOTS>/.test(c.prompt)) && corpus.some((c) => /plan-<ID>/.test(c.label)),
     '★ and the normalisation actually fired (a planner brief and its plan id were captured)')
+  // The brief's instant-dependent snapshot is placeholdered, but its CONTRACT (key set + order) and
+  // the stable configuration scalars stay, and the instruction text that references the brief is
+  // untouched — so the human reviewer still sees the real planner prompt, not a blank.
+  const briefEntries = corpus.filter((c) => /CURRENT STATE BRIEF \(JSON\):/.test(c.prompt))
+  assert(briefEntries.length >= 3 && briefEntries.every((c) => SNAPSHOT_KEYS.every((k) => c.prompt.indexOf('"' + k + '": "<' + k.toUpperCase() + '>"') !== -1)),
+    '★ every captured planner brief keeps all ' + SNAPSHOT_KEYS.length + ' contract keys with canonically placeholdered snapshot values (' + briefEntries.length + ' briefs)')
+  assert(briefEntries.every((c) => /"horizon": \d+/.test(c.prompt) && /"free_slots": <SLOTS>/.test(c.prompt) && /"maxParallelThreshold": \d+/.test(c.prompt)),
+    '★ the brief keeps its real configuration scalars (horizon / free_slots / maxParallelThreshold), not just placeholders')
+  assert(briefEntries.every((c) => /brief\.problems\[\]\.running_solver_dirs and brief\.active_agents/.test(c.prompt) && /ACTION VOCABULARY/.test(c.prompt)),
+    '★ and the planner INSTRUCTION text under review (ACTION VOCABULARY + the HARD RULES naming brief fields) is verbatim')
+  {
+    // Direct witness of the race the normaliser exists for: the two shapes a background tick can
+    // produce (explorer registered before vs. after the forced planner read the brief, activity log
+    // one entry longer, free slots one lower) must normalise to ONE byte-identical text. Without
+    // this the corpus could only be checked by hoping the race fires.
+    const briefText = (agents, events, slots, horizon) => 'PERSONA\nCURRENT STATE BRIEF (JSON):\n' + JSON.stringify({
+      at: 1759200000000, horizon: horizon, free_slots: slots, maxParallelThreshold: 64,
+      problems: [{ id: 'qE', 状态: '求解中', 方向数: agents.length, 活跃方向: agents.length ? ['d1'] : [], running_solver_dirs: [], 最高存活率: agents.length ? 0.7 : null, 解法数: 0 }],
+      verify_candidates: agents.length ? [{ rId: 'r-qE', kind: 'problem', target: 'qE', prob: 0.5, priority: 1 }] : [],
+      active_agents: agents, methods: [], pending_inventions: 0, last_plan: null, recent_events: events,
+    }, null, 2) + '\n\nACTION VOCABULARY:\n- x'
+    const withExplorer = briefText([{ childId: 'c7', role: 'explorer', target: 'qE', direction: '', round: '' }],
+      [{ at: 1759200000001, event: 'start', detail: 'scheduler started' }, { at: 1759200000002, event: 'explorer', detail: 'problem qE explorer spawned (plan)' }], 63, 5)
+    const withoutExplorer = briefText([], [{ at: 1759200000009, event: 'plan', detail: 'planner plan-abcdef12 called with 1 problem(s)' }], 64, 5)
+    assert(scrub(withExplorer) === scrub(withoutExplorer),
+      '★ the planner-brief normaliser maps the two racing snapshots (explorer present/absent, different activity order and free slots) to ONE byte-identical text')
+    assert(scrub(withExplorer) !== withExplorer && /"active_agents": "<ACTIVE_AGENTS>"/.test(scrub(withExplorer)),
+      '★ and it really rewrote the snapshot (the test above cannot pass just because nothing was normalised)')
+  }
 }
 
 console.log('')

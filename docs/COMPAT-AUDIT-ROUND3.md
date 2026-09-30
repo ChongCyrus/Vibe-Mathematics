@@ -73,9 +73,22 @@ DSH 0.1.7 起 agent preset **只**由组合行声明；`$DSH_HOME/.agent-presets
 
 宿主的 `CommandResult` 联合是 `{kind:'success',text?} | {kind:'error',text}`；四套预设的 `/vibe`、`/v4`、`/v5`
 在**所有失败路径**上都返回 `{kind:'success', text:'{"ok":false,…}'}` → UI 永远显示不出"这条命令被拒绝了"。
-修复：按 dispatch 结果自身的 `ok:false` 返回 `kind:'error'`（该联合在 0.1.5 上同样存在，故旧线安全）。
-**更正（2.4.1 后的复查）**：那次只落到 v2 与 v3（`vibe-math-v2.js` / `vibe-math-v3.js` 的命令 handler）；
-v4 与 v5 当时仍是 `kind:'success'`，已在随后一轮一并修正，本节的"四套"应读作"v2/v3 当时、四套最终"。
+
+**更正（据实收窄）：这条修复不是一次"全仓"修复，而是分两批落地的，本节初稿把"打算做的"写成了"已经做完的"。**
+
+- **2.4.0（`cc0c220`）只改了 v2 与 v3**（`vibe-math-v2.js` / `vibe-math-v3.js` 的命令 handler）。当时 v4 与 v5 的
+  handler 仍然无条件 `return {kind:'success', text:JSON.stringify(r,null,2)}`（各自的"无 session"分支也返回
+  `kind:'success'`）——所以"四套都修了"在 2.4.0 这个提交上是不成立的。
+- **v4 与 v5 在 round-A（`8ec5a9c`）才各自补上同一形状**：v4 的命令 handler 改成
+  `const failed = !r || r.ok === false || (r.ok === undefined && !!r.error)` → `{kind: failed?'error':'success'}`；
+  v5 改成 `const failed = r !== null && typeof r === 'object' && r.ok === false` → 同样三元返回，并把"无 session"
+  分支一并改成 `kind:'error'`。判据：`git log -G "kind:\s*'error'" -- vibe-math-v4/vibe-math-v4.js`（及 v5 同）
+  **只命中 `8ec5a9c`**；round-C（`4eb3175`）与 round-D（`0dc6ee3`）都没有再碰这两个 handler（前者的 v4 hunk 在
+  1354/1854 行，后者的 v5 hunk 止于 4564 行，均在命令 handler 之外）。
+- **仓库内的回归证据是 round-C（`4eb3175`）补进来的**：`tests/host-failure-paths.test.mjs` 在该提交首次入库，
+  它断言 `/v4 set` 未知键、`/v4` 未知子命令与 `/v5` 未知子命令都返回 `kind:'error'`。round-D（`0dc6ee3`）只是
+  把"本节仍把 `/v4` 的修复说成全仓，需据实收窄"记进了待办，没有改代码。
+- 该联合在 0.1.5 上同样存在，故旧线安全。也就是说：**"四套最终一致"成立，"四套一次修完"不成立**。
 
 ### G-9 文档、镜像与工具描述与实现不符
 

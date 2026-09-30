@@ -699,12 +699,31 @@ function makeCtx(){
   console.log('-- e2e-v4-fixes: T25 two different verify proposals in one meeting are BOTH honored (FIFO queue) --')
   await m.callTool('vibe_v4_start', { problem:'会议多提议', residentCount:2 })
   await waitFor(()=>m.spawns.length>=2)
-  await m.callTool('vibe_v4_set', { activityTimeoutMs:40, verdictMaxRounds:1 })
+  // FIXTURE BUDGET, not a weakened assertion. The plugin's consensus watchdogs are derived from
+  // `activityTimeoutMs`: `recoverStallMs()` = 2 × activityTimeoutMs is the "no new input/verdict for
+  // this long ⇒ the consensus is deadlocked, abandon it" guard. `activityTimeoutMs:40` therefore gave
+  // the meeting and the verification an 80 ms budget — SHORTER than the six state-file writes
+  // `startMeeting`/`beginVerify` perform (via saveAll) before the first participant is even woken.
+  // When that budget was blown, the meeting was abandoned before anyone was asked, so no meeting
+  // prompt ever reached this fixture and all three T25 assertions failed (reproduced deterministically
+  // by injecting 25 ms per fs write: "135 passed, 3 failed", FAIL - T25: the meeting was driven).
+  // 400 ms ⇒ an 800 ms watchdog: a real budget for the plugin's own bookkeeping, still a fast run.
+  await m.callTool('vibe_v4_set', { activityTimeoutMs:400, verdictMaxRounds:1 })
   await m.callToolAs('vibe_v4_record_proposition', { id:'p-aa', title:'a', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[0].childId)
   await m.callToolAs('vibe_v4_record_proposition', { id:'p-bb', title:'b', statement:'s', prob:0.5, value:0.5, motivation:'m' }, m.spawns[1].childId)
-  for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
+  // Snapshot the roster: firing ends over the LIVE array could end a child the framework spawns later.
+  for(const sp of m.spawns.slice()){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
-  await m.callTool('vibe_v4_meeting', { agenda:'讨论验证对象' })
+  // `subagent/end` is delivered to ASYNC listeners (this fixture's fireEnd does not await them), so
+  // the phase may still be 'brainstorm' right here. Do NOT ask for the meeting while it is: a meeting
+  // requested during the brainstorm is parked in `pendingMeeting` and only resumed by a later
+  // scheduler pass — driving it from a parked state is a different code path than the one T25 is
+  // about. Wait for the transition instead of guessing with a sleep.
+  let phaseNow=''
+  for(let i=0;i<300;i++){ phaseNow=(await m.callTool('vibe_v4_status',{})).phase; if(phaseNow!=='brainstorm') break; await sleep(15) }
+  assert(phaseNow==='active', 'T25: the two brainstorm ends closed the brainstorm phase before the meeting was requested (phase='+phaseNow+')')
+  const mt=await m.callTool('vibe_v4_meeting', { agenda:'讨论验证对象' })
+  assert(mt && mt.ok===true && mt.deferred!==true, 'T25: with the brainstorm closed and no consensus in flight the meeting STARTS (not parked): '+JSON.stringify(mt))
   let fi=0, meetingDone=false
   let verifyA=0, verifyB=0
   for(let i=0;i<600;i++){
