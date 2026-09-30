@@ -107,121 +107,9 @@ flowchart TB
     M --> RULE
 ```
 
-#### 职位与职权
+**一句话流水线**：所办（会话根/人）`configure → start` 建所 → **院士**（academician，组织与协调中心）拆解原问题并**分派**任务、定优先级、主持会议、督导进度；**常驻研究员**各自研究并持有表决权，**临时工**可按需雇入（无表决权、可被真实解雇）。**框架只做媒介，绝不指派任务**；一切结论都要 **≥ m = min(`quorumCap`, 在册有表决权人数) 张布尔票且全部同向**才写入 `Verified/`（反向票阻塞、弃权不计票但计入平均概率，未达门槛留库附平均概率）；会议与验证**双向互斥**；状态写在研究所目录下的加固 JSON `State/<研究所>.v5state.json`（零 token 成本、串行写、读前必 load）；**仅当全体有表决权者都认为原问题已解决**才结题。
 
-| 职位 | 代号 | 表决权 | 职权 |
-|---|---|---|---|
-| **院士**（领头人） | `acad` | ✅ 一票，**与他人等重** | **组织与协调中心**：建立全所视图（`overview`）、把原问题拆解成任务并**分派**（`assign`）、设定优先级（`prioritize`）、召集并主持会议（`convene`）、督导进度（`nudge`）、调配临时工、对外汇报。**不能单方面定论**，也不能自我扩张编制。 |
-| **常驻研究员** | `r-<n>` | ✅ 一票 | 在自己的方向上深入钻研；**可自主雇佣/解雇自己的临时工**；向院士汇报进展、接受其组织与分派（**有据理反对权**）。 |
-| **临时工** | `t-<n>` | ❌ | 为特定任务临时雇入：可读/可想/可发言/可写自己的成果库/可认领或被分派任务；由**雇主或院士**解雇。代号永不复用。 |
-| **所办**（主助手） | —— | ❌ | **不参与研究、不投票**。只汇报、把人的话翻译成工具调用，并代持平台要求的创建权（建所/增聘常驻研究员）。 |
-
-**分工一句话**：**组织由院士负责，但判断属于每个人自己** —— 院士分派的是**工作**，不是**结论**。
-
-#### 求真规则（V5 的核心）
-
-一个对象进入 `Verified/` 必须**同时**满足：
-
-1. 至少有 **m = min(`quorumCap`, 在册有表决权人数)** 名有表决权者投出**布尔概率值**；
-2. 这些票**全部**是 `1`（绝对为真）或**全部**是 `0`（绝对为假）。
-
-票是 `[0,1]` 的数值：**严格介于 0 与 1 之间 = 弃权/存疑**（不计入 m，但计入全组平均概率）。
-**任何一张反向布尔票都会阻塞定论** —— 少数派无法靠别人弃权把结论推过去。
-未达门槛的对象**留在原库**，并附上全组平均概率与完整辩论录，**不强行裁决**。
-
-表决两段式：先【独立初评】（彼此不可见），未定论再进入【公开辩论】后重投，轮次上限 `verdictMaxRounds`。
-`quorumMode: "all-unanimous"` 可切回 v4 的"全体一致"口径。
-
-#### 运行机制
-
-- **通信**：群聊（扇出给每位其他成员）、私信、只投给有表决权者；消息**逐收件人持久化**，
-  先落盘再投递，群聊按 `chatDigestMs` / `chatDigestMax` 合批摘要（私信/会议/表决不合批）。
-  一切所内通信都经框架中继（DSH 的邻接限制不允许成员之间直接发消息），但**署名始终是真实发送者**。
-- **会议与验证互斥**（双向）：验证进行中会议请求会**暂存**；会议进行中提出的验证会**排队**——
-  两个共识过程永不同时进行，避免互相饿死看门狗时钟。会议按**随机发言序**逐个收集意见，
-  收口时汇总表决并检查是否全体认为已解决。
-- **任务板**：compare-and-set（改前必须读到最新 `expected_revision`）+ 依赖 DAG（认领前必须全部依赖已完成，
-  环检测拒绝坏依赖）+ 写范围重叠告警；owner 被解雇时任务自动收回。
-- **雇佣 / 解雇**：院士与常驻研究员都可雇**自己的**临时工，配额按人（`maxTempPerMember`）与全所
-  （`maxTempTotal`）双限；解雇是**真实的**——取消在途回合、释放常驻子会话、收回任务、丢弃未投递邮件。
-- **活性**：主驱动是**一次性活动等待**（`vibe_v5_wait`，不轮询）；调度器按优先级推进
-  （进行中的会议/验证 → 队列中的验证 → 暂存会议 → 在办任务 → 加急邮件 → 群聊摘要 → 停滞自动开会 → 兜底心跳），
-  并发受 `maxParallel` 闸门限制；任务板的"推一把"按 `activityTimeoutMs` **节流**。
-- **看门狗**：会议/验证超过 2×`activityTimeoutMs` 没有新发言/新票 → 放弃它并回到自组织；
-  心跳**每次唤醒后都重新武装**，所以调度器不会永久冻结。
-- **上下文**：达 `compactThreshold`（%）或累计 `compactAfterRounds` 轮时要求成员把工作状态浓缩进
-  `Progress/`；**规章在 persona 里**，压缩后依然有效，不需要每轮重申。
-- **停止**：**仅当全体有表决权者都认为原问题已解决**才结题（写 `Problems/conclusion.md`）。
-
-#### 状态与持久化
-
-研究所状态只写在**研究所目录下的加固 JSON** `State/<研究所>.v5state.json` 里：框架的副作用只是把 11 类事件
-交给 `applyV5Event` 纯折叠成状态，再把整份快照**串行落盘**（每条序列化链只服务一个文件）。因此
-
-- **零 token 成本**：这些事件**不进模型上下文**，不占成员的对话预算；
-- **恢复走同一条代码路径**：跨进程重启与同进程 abort 后 resume 都靠"读前必 load"，两条路径是同一段代码；
-- v4 的 `State/*.json` 直写带来的"损坏静默覆盖 / 并发丢写 / 跨进程陈旧快照"这一整类问题在构造上被消除。
-
-**v5 不再把研究所事件写进宿主会话日志**：DSH 的会话持久化遇到日志里不认识的事件类型会**拒绝加载整个会话**
-（除非写入方标记 `ignorable: true`，而 `Session.append` 无法设置该字段），那会让**你自己的会话在下次恢复时打不开**。
-除状态文件之外的文件（成员成果库、群聊、会议纪要、辩论录、编制镜像、任务板镜像）都是**人可读产物**，
-手工改坏不会破坏研究所。
-
-#### 提示词是怎么构成的
-
-成员的"人设"（persona）承载**十节公共规章**（编制与同事、通用规章、资料库与 progress 格式、
-组织与协调、表决规则、每轮节奏、雇佣解雇、任务板、上下文纪律、停止条件），在**入职时冻结**并随会话持久化；
-每轮提示词只携带短小的**状态块**（我是谁 / 轮次 / m / 在册名单 / 我的任务 / 新到的消息）、**本轮问句**
-和**回执契约**。回执契约里框架真正处理的每个字段都会出现并按职位裁剪
-（临时工没有 `verdict`/`hire`/`fire`；非院士没有 `assign`/`prioritize`/`nudge`/`convene_meeting`）。
-
-框架把"成员读到的文字"当作产品来保证：身份**显式传递、绝不猜测**；成员**先落盘进编制、再构造**它的入职
-提示词；章程快照冻结在入职时，会话重建会框为 `【会话重建】` 而不是"刚入职"；没有院士时不出现任何院士叙事；
-消息框头按**真实来源**标注（所办分派 ≠ 院士分派；督办 ≠ 分派）；框架反馈有独立发送者，
-且**一次提示词只投递一条消息**。
-
-#### 目录结构（研究所）
-
-```
-<会话工作区>/VibeMath/Projects/<项目>/Institutes/<研究所>/
-├─ Institutes.md                 # 编制镜像（人读快照，勿手改）
-├─ Problems/<id>.md              # 原问题
-├─ Problems/conclusion.md        # 结题记录
-├─ Members/<代号>/
-│   ├─ Progress/progress.md      # 研究日志（压缩后恢复状态的主要依据）
-│   ├─ Propos/<id>.md            # 命题
-│   ├─ Methods/<id>.md           # 方法 / 理论 / 工具
-│   └─ Subproblems/<id>.md       # 子问题
-├─ Shared/
-│   ├─ Chat/<日期>.md            # 群聊记录
-│   ├─ Meetings/<mt-id>.md       # 会议纪要（含表决小节）
-│   ├─ Debates/<对象>.md         # 辩论录（各轮票与理由 + 平均概率）
-│   ├─ TaskBoard.md              # 任务板镜像
-│   └─ State-of-institute.md     # 成员对"是否已解决"的判断快照
-├─ Verified/<类型>/<id>.md       # 定论（只读；只有它能被当作已确立）
-└─ State/README.md               # 说明"这里的文件是镜像，请勿手改"
-```
-
-#### 工具面
-
-| 谁 | 工具 |
-|---|---|
-| **所办 / 人** | `vibe_v5_configure`（先配置）→ `vibe_v5_start`（开工）；`vibe_v5_resume` / `pause` / `stop`；`vibe_v5_set`（调参，立即生效）；`vibe_v5_status` / `report` / `members`；`vibe_v5_message` / `meeting`；`vibe_v5_hire` / `fire` / `add_researcher` / `remove_researcher`；斜杠命令 `/v5` |
-| **全体成员** | `vibe_v5_say`（群聊/私信/致全体表决者）、`vibe_v5_wait`（免轮询等待）、`vibe_v5_record_progress`、`vibe_v5_record_proposition` / `_method` / `_subproblem`、`vibe_v5_read_library`（跨读他人库，只读）、`vibe_v5_propose_verify`、`vibe_v5_verdict`、`vibe_v5_task_create` / `_list` / `_get` / `_update`、`vibe_v5_meeting`（提议） |
-| **院士**（另有 `academicianLeads` 开关） | `vibe_v5_overview`（全所视图）、`vibe_v5_assign`（分派，须写明理由与验收标准）、`vibe_v5_prioritize`、`vibe_v5_nudge` |
-
-#### 与 v4 的关键差异
-
-- **有领头人**：v4 无中央调度、一切靠讨论涌现；v5 在**所内**设有院士负责组织与分派
-  （**框架仍然绝不指派**——指派者是院士，同样受 m 票约束）。
-- **求真门槛从"全体一致"改为"≥ m 一致"**（可切回 v4 口径）。
-- **状态存于研究所目录下的加固 JSON** `State/<研究所>.v5state.json`（串行写、读前必 load）：恢复就是"读之前先 load"（见上）。
-- **三类职位 + 可雇用的临时工**：编制是可变的，雇佣/解雇是真实的可逆操作。
-- **不引入任何 npm 实验包**：v5 是 preset 内的单个 `.js` 文件，零依赖。
-- **会议与验证严格互斥**（双向排队）。
-
-详见 [`vibe-math-v5/实现方案.md`](vibe-math-v5/实现方案.md)（文字规格）与
-[`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)（全部细节图）。
+> 职位与职权、求真规则细节、运行机制、状态与持久化、提示词构成、研究所目录、工具面、与 v4 的差异：见 [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md) §13「从 README 移入的 v5 说明」（原文保留）；参数见[参数速查表](#-参数速查表)，最终论文见 [`docs/final-paper.md`](docs/final-paper.md)。
 
 ---
 
@@ -586,54 +474,69 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 
 ## ⚙️ 参数速查表
 
-### v2（概率驱动 · 经典）默认值
+### 共用参数（被 ≥2 个预设接受）
 
-| 参数 | 默认 | 说明 |
-|---|---|---|
-| `mode` | `auto` | `auto` / `manual` |
-| `maxParallelThreshold` | 4 | 全局最大并发子代理轮数（新派发前须 active < 阈值） |
-| `solverMaxRounds` | 3 | 每个求解方向最大迭代轮数（agent_self_iteration 上限） |
-| `directionsPerSolver` | 1 | 每个 solver 提示词可见的方向总数（1 = 只看自己方向、互不干扰；N>1 = 自己 + 最多 N-1 个其他活跃方向摘要） |
-| `verifierCount` | 3 | 每个验证对象的独立验证器数量 |
-| `debateMaxRounds` | 5 | 验证辩论（交流群）最大轮数 |
-| `verdictMode` | `flat` | `flat` = 取各验证者报告概率的**等权平均**（不一致时不再一律判 0.5）/ `forced` = 强制裁决（按历史准确率+严谨性加权；准确率按模型追踪，且只在对象此后获得布尔裁决时计分） |
-| `reportMode` | `file` | `file` = 写报告文件 / `push` = 推送主代理汇报 / `both` |
-| `promoteValueThreshold` | 0.7 | Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json |
-| `priorityAdjust` | `none` | `none` / `deadend-deprioritize`（全死路降优先级）/ `survival-map`（按存活率重算） |
-| `proposPriorityAdjust` | `none` | 命题优先级动态调整：`none` / `progress-graded`（按定论接近度+证明/证伪材料量重算，越接近定论越优先验证） |
-| `provider` / `model` | 空 | 子代理模型（空 = 继承根代理） |
-| `solverPersona` / `verifierPersona` / `explorerPersona` | 空 | 注入求解器/验证器/explorer 提示词开头的人格/要求 |
-| `knowledgeContext` | 空 | 共享知识/数据模型说明（空 = 内置完整版：对象/属性定义、概率语义、文件夹用途、输出完整性要求；非空 = 覆盖并注入所有子代理提示词） |
-| `solverToolAllow` / `solverToolDeny` | `[]` | 求解器允许/禁止的工具 |
-| `verifierToolAllow` / `verifierToolDeny` | `[]` | 验证器允许/禁止的工具 |
-| `solverAllowNetwork` / `verifierAllowNetwork` | 空 | 网络工具开关（web_search/web/fetch）：空=继承全部；`true`=在已有 allow 列表时补入；`false`=禁止 |
-| `solverAllowScripts` / `verifierAllowScripts` | 空 | 脚本工具开关（bash/pwsh）：同上 |
-| `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | 每轮外部工具调用上限（0=不限） |
-| `reportIntervalMs` | 0 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
-| `tickIntervalMs` | 2000 | 调度器心跳间隔（毫秒） |
-| `activityLogCap` | 100 | 活动日志保留条数（report 最多显示 30 条） |
-| `maxExplorerRetries` | 3 | explorer 拆方向失败的重派生上限 |
-| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
-| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
-| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
-| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
-| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
-| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
-| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
-| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+> 每个预设的**完整参数集 = 本表「适用」列含该预设的每一行 ∪ 该预设的专属参数表**（v2 没有专属参数）。
+> 参数细节与门禁位置另见 [`docs/formal-verification.md`](docs/formal-verification.md) 与 [`docs/final-paper.md`](docs/final-paper.md)。
+
+| 参数 | 默认 | 适用 | 说明（含各预设差异） |
+|---|---|---|---|
+| `mode` | `auto` | v2·v3 | `auto` / `manual`（manual 在关键节点挂起决策等你 approve/reject/override） |
+| `maxParallelThreshold` | 4 | v2·v3 | 全局最大并发子代理轮数（新派发前须 active < 阈值） |
+| `solverMaxRounds` | 3 | v2·v3 | 每个求解方向最大迭代轮数（agent_self_iteration 上限） |
+| `directionsPerSolver` | 1 | v2·v3 | 每个 solver 提示词可见的方向总数（1 = 只看自己方向、互不干扰；N>1 = 自己 + 最多 N-1 个其他活跃方向摘要） |
+| `verifierCount` | 3 | v2·v3 | 每个验证对象的独立验证器数量 |
+| `debateMaxRounds` | 5 | v2·v3 | 验证辩论（交流群）最大轮数 |
+| `verdictMode` | v2 `flat`；v3 `forced` | v2·v3 | **默认按预设不同。** v2 `flat` = 取各验证者报告概率的**等权平均**（不一致时不再一律判 0.5）；v2 `forced` = 强制裁决（按历史准确率+严谨性加权；准确率按模型追踪，且只在对象此后获得布尔裁决时计分）。v3 `forced` = 先做**近共识判定**（全部结果同侧且均值 ≥0.85/≤0.15 取均值——先于模式生效，所以 0.9 vs 1 在两种模式下都得到 ≈0.95），否则取各验证者概率的**等权平均**（不再按准确率加权；严格的 1/0 仍以绝对票生效），`flat` 则判 `0.5`（不一致即不确定） |
+| `reportMode` | `file` | v2·v3 | `file` = 写报告文件 / `push` = 推送主代理汇报 / `both` |
+| `promoteValueThreshold` | 0.7 | v2·v3 | Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json |
+| `priorityAdjust` | `none` | v2·v3 | `none` / `deadend-deprioritize`（全死路降优先级）/ `survival-map`（按存活率重算） |
+| `proposPriorityAdjust` | `none` | v2·v3 | 命题优先级动态调整：`none` / `progress-graded`（按定论接近度+证明/证伪材料量重算，越接近定论越优先验证） |
+| `provider` / `model` | 空 | 四套 | 模型路由（空 = 继承根代理）。**各预设语义**：v2/v3 = 子代理模型（v3 的规划代理另见专属表 `plannerProvider`/`plannerModel`）；v4 = **常驻 LLM 路由**（此前声明未用，v1.4.1 真正接入）；v5 = 成员 LLM 路由（空 = 继承所办/主代理路由） |
+| `solverPersona` / `verifierPersona` / `explorerPersona` | 空 | v2·v3 | 注入求解器/验证器/explorer 提示词开头的人格/要求 |
+| `knowledgeContext` | 空 | v2·v3 | 共享知识/数据模型说明（空 = 内置完整版：对象/属性定义、概率语义、文件夹用途、输出完整性要求；非空 = 覆盖并注入所有子代理提示词） |
+| `solverToolAllow` / `solverToolDeny` | `[]` | v2·v3 | 求解器允许/禁止的工具 |
+| `verifierToolAllow` / `verifierToolDeny` | `[]` | v2·v3 | 验证器允许/禁止的工具 |
+| `solverAllowNetwork` / `verifierAllowNetwork` | 空 | v2·v3 | 网络工具开关（web_search/web/fetch）：空=继承全部；`true`=在已有 allow 列表时补入；`false`=禁止 |
+| `solverAllowScripts` / `verifierAllowScripts` | 空 | v2·v3 | 脚本工具开关（bash/pwsh）：同上 |
+| `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | v2·v3 | 每轮外部工具调用上限（0=不限） |
+| `reportIntervalMs` | 0 | v2·v3 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
+| `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
+| `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
+| `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |
+| `maxParallel` | 3 | v4·v5 | 同时唤醒的常驻（v4）/成员（v5）上限（框架侧并发闸，非指派） |
+| `activityTimeoutMs` | 120000 | v4·v5 | v4：空闲心跳间隔（超时才触发**自驱动** CHECKPOINT 唤醒，推动常驻继续推进；唤醒失败会自动重新武装心跳，保证小组永不永久停死）；v5：空闲兜底心跳间隔（主驱动是一次性活动等待，不轮询；任务板的"推一把"也按它节流） |
+| `stallAutoMeetingMs` | 360000 | v4·v5 | **停滞自动同步会议阈值**（分级保活 B）：团队空闲且无新产物超过该时长时，框架自动召集一次同步会议，让成员自行决定下一步路线/分工（框架只促成，不指派） |
+| `verdictMaxRounds` | 3 | v4·v5 | 验证在独立初评后进入辩论（v4）/公开辩论（v5）的最大轮数 |
+| `compactThreshold` | 66 | v4·v5 | 上下文占比（0–100）达此值触发软压缩：v4 = 常驻上下文占比达此值触发软压缩（自述指令）；v5 = 成员达此值触发压缩（把工作状态浓缩进 `Progress/`） |
+| `compactAfterRounds` | 8 | v4·v5 | 每累计 N 轮（未压缩）触发一次软压缩 |
+| `meetingKeepEvery` | 5 | v4·v5 | 每积累 N 个新产物自动触发一次同步会议 |
+| `toolAllow` / `toolDeny` | `[]` | v4·v5 | **常驻/常驻员工工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具）；v5 的临时工另有专属 `tempToolAllow`/`tempToolDeny` |
+| `formalVerify` | `'off'` | 四套 | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 四套 | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 四套 | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 四套 | 单次 Lean 运行的上限（毫秒） |
+| `finalPaper` | `true` | 四套 | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 四套 | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 四套 | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 四套 | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 四套 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+| `paperEditor` | v4 `office`；v5 `academician` | v4·v5 | 定稿代表。v4：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明）；v5：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
+
+### v2（概率驱动 · 经典）专属参数
+
+v2 **没有专属参数**：它的完整参数集就是上表「适用」列含 v2 的每一行。运行时用 `vibe_math_set_params`（或 `/vibe set`）调整，持久化在项目级 `vibe_math_setting.json`（缺失时回退全局 `<工作区>/VibeMath/vibe_math_setting.json` → 内置默认）。
 
 #### 最终论文（final paper）
 
 四个预设都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
 
-### v3（论文式 md + 规划代理 + 方法库）默认值
+### v3（论文式 md + 规划代理 + 方法库）专属参数
 
-在 v2 全部参数之上新增/调整：
+v3 接受 v2 的**全部**参数（见上表「适用」列含 v3 的行），并新增：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `verdictMode` | `forced` | v3 先做**近共识判定**（全部结果同侧且均值 ≥0.85/≤0.15 取均值）——这一步先于模式生效，所以 0.9 vs 1 在两种模式下都得到 ≈0.95；否则 `forced` 取各验证者概率的**等权平均**（不再按准确率加权；严格的 1/0 仍以绝对票生效），`flat` 则判 `0.5`（不一致即不确定） |
 | `planningHorizon` | 3 | 规划代理一次计划的最多动作数（"接下来 n 次"） |
 | `plannerEnabled` | true | false = 完全走内置启发式调度（规划代理禁用） |
 | `plannerProvider` / `plannerModel` | 空 | 规划代理模型路由（空 = 继承根代理） |
@@ -646,55 +549,27 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `indexAutoRebuild` | true | 每次写盘后自动重建 `State/index.json`（false = 手动 `vibe_math_index`） |
 | `projectLockTimeoutMs` | 60000 | 项目锁等待超时（同项目同一时刻只允许一个会话调度） |
 | `methodKeeperPersona` | 空 | 注入方法整理代理提示词开头的人格/要求 |
-| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
-| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
-| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
-| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
-| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
-| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
-| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
-| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
 
 #### 最终论文（final paper）
 
 v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之前**派遣撰写者）：专职「论文撰写」子代理产出 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。无引擎或编译失败仍交付 tex+md、记警告、不阻塞定稿。完整契约见 `docs/final-paper.md`。
 
-### v4（常驻自组织 · 实验）默认值
+### v4（常驻自组织 · 实验）专属参数
 
-`vibe_v4_set` 可调（持久化到 `State/settings.json`）：
+`vibe_v4_set` 可调（持久化到 `State/settings.json`）；共用参数见上表，v4 另有：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `residentCount` | 4 | 常驻数（可 `vibe_v4_add_member` 增减） |
-| `compactThreshold` | 66 | 常驻上下文占比达此值触发软压缩（自述指令） |
-| `compactAfterRounds` | 8 | 常驻每累计 N 轮（未压缩）触发一次软压缩 |
-| `meetingKeepEvery` | 5 | 每积累 N 个新产物自动触发一次同步会议 |
-| `maxParallel` | 3 | 同时唤醒的常驻上限（框架侧并发闸，非指派） |
-| `activityTimeoutMs` | 120000 | 空闲心跳间隔（超时才触发**自驱动** CHECKPOINT 唤醒，推动常驻继续推进；唤醒失败会自动重新武装心跳，保证小组永不永久停死） |
-| `stallAutoMeetingMs` | 360000 | **停滞自动同步会议阈值**（分级保活 B）：团队空闲且无新产物超过该时长时，框架自动召集一次同步会议，让常驻们自行决定下一步路线/分工（框架只促成，不指派） |
-| `verdictMaxRounds` | 3 | 验证在独立初评后进入辩论的最大轮数 |
-| `provider` / `model` | 空 | **常驻 LLM 路由**（空 = 常驻继承主代理的 provider/model；此前声明未用，v1.4.1 真正接入） |
 | `residentPersona` | 空 | 注入每个常驻提示词开头的人格/要求 |
-| `toolAllow` / `toolDeny` | `[]` | **常驻工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具） |
-| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
-| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
-| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
-| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
-| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
-| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
-| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
-| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
-| `paperEditor` | `office` | 定稿代表：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明） |
 
 #### 最终论文（final paper）
 
 默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（引擎可用时另有 `paper.pdf`）。完整契约见 `docs/final-paper.md`。
 
-### v5（研究所体系 · 实验）默认值
+### v5（研究所体系 · 实验）专属参数
 
-`vibe_v5_set` 可调（持久化在研究所状态文件 `State/<研究所>.v5state.json` 里）：
+`vibe_v5_set` 可调（持久化在研究所状态文件 `State/<研究所>.v5state.json` 里）；共用参数见上表，v5 另有：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -704,30 +579,11 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 | `researcherCount` | 3 | 常驻研究员数（建所时） |
 | `quorumCap` | 3 | m 的上限；实际 **m = min(quorumCap, 在册有表决权人数)** |
 | `quorumMode` | `'m-unanimous'` | v5 口径；切 `'all-unanimous'` 回到 v4 的"全体一致" |
-| `verdictMaxRounds` | 3 | 独立初评后进入公开辩论的最大轮数 |
 | `maxTempPerMember` | 3 | 每位院士/研究员**同时**在册的临时工上限（按在册计，非累计——所以换人不受限） |
 | `maxTempTotal` | 12 | 全所同时在册临时工上限 |
-| `compactThreshold` | 66 | 成员上下文占比（0–100）达此值触发压缩 |
-| `compactAfterRounds` | 8 | 或每累计 N 轮触发一次软压缩 |
-| `maxParallel` | 3 | 同时唤醒的成员上限（框架侧并发闸） |
-| `activityTimeoutMs` | 120000 | 空闲兜底心跳间隔（主驱动是一次性活动等待，不轮询） |
-| `stallAutoMeetingMs` | 360000 | 停滞自动召集同步会议的阈值 |
 | `chatDigestMs` / `chatDigestMax` | 45000 / 12 | 群聊摘要合批的时间窗与条数上限（私信/会议/表决不合批） |
-| `meetingKeepEvery` | 5 | 每积累 N 个新产物自动发起一次同步会议 |
-| `provider` / `model` | 空 | 成员 LLM 路由（空 = 继承所办/主代理路由） |
-| `toolAllow` / `toolDeny` | `[]` | 常驻员工工具权限（⚠️ 空 `allow:[]` 会拒绝一切工具） |
 | `tempToolAllow` / `tempToolDeny` | `[]` | 临时工的工具权限（比常驻更窄） |
 | `staffPersona` | 空 | 追加到每个成员章程前的人格/要求 |
-| `formalVerify` | `'off'` | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
-| `leanCommand` | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
-| `leanArgs` | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 单次 Lean 运行的上限（毫秒） |
-| `finalPaper` | `true` | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
-| `paperFormat` | `both` | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
-| `paperLanguage` | `zh` | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
-| `paperCompilePdf` | `true` | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
-| `paperLatexCommand` | `''` | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
-| `paperEditor` | `academician` | 定稿代表：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
 
 #### 最终论文（final paper）
 

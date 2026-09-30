@@ -107,121 +107,9 @@ flowchart TB
     M --> RULE
 ```
 
-#### Positions and Authority
+**One-sentence pipeline**: the institute office (session root / human) `configure → start`s the institute → the **academician** (center of organization and coordination) decomposes the original problem, **assigns** tasks, sets priorities, chairs meetings and supervises progress; **resident researchers** research on their own and hold the vote, and **temp workers** can be hired as needed (no vote, genuinely dismissible). **The framework is only a medium and never assigns tasks**; every conclusion needs **≥ m = min(`quorumCap`, number of registered voting members) Boolean votes, all on the same side**, before it is written to `Verified/` (an opposing vote blocks; abstentions do not count as votes but count toward the average; below the threshold the object stays in its library with its average probability); meetings and verification are **mutually exclusive in both directions**; state lives in the hardened JSON `State/<institute>.v5state.json` under the institute directory (zero token cost, serial writes, a mandatory load before read); the problem is concluded **only when all voting members consider it solved**.
 
-| Position | Codename | Voting right | Authority |
-|---|---|---|---|
-| **Academician** (leader) | `acad` | ✅ one vote, **of equal weight with others** | **Center of organization and coordination**: build an institute-wide overview (`overview`), decompose the original problem into tasks and **assign** them (`assign`), set priorities (`prioritize`), convene and chair meetings (`convene`), supervise progress (`nudge`), move temp workers around, report outward. **Cannot unilaterally conclude**, and cannot expand the roster on its own. |
-| **Resident researcher** | `r-<n>` | ✅ one vote | Digs deep in its own direction; **may autonomously hire/fire its own temp workers**; reports progress to the academician and accepts its organization and assignments (**has the right of reasoned objection**). |
-| **Temp worker** | `t-<n>` | ❌ | Hired temporarily for a specific task: can read/think/speak/write its own output library/claim or be assigned tasks; fired by its **employer or the academician**. Codenames are never reused. |
-| **Institute office** (main assistant) | —— | ❌ | **Does not take part in research and does not vote.** Only reports, translates the human's words into tool calls, and holds on the human's behalf the creation rights the platform requires (creating an institute / adding resident researchers). |
-
-**Division of labor in one sentence**: **organization is the academician's responsibility, but judgment belongs to each person individually** —— what the academician assigns is **work**, not **conclusions**.
-
-#### Truth Rules (the core of V5)
-
-For an object to enter `Verified/` it must **simultaneously** satisfy:
-
-1. At least **m = min(`quorumCap`, number of registered voting members)** voting members cast a **Boolean probability value**;
-2. These votes are **all** `1` (absolutely true) or **all** `0` (absolutely false).
-
-A vote is a numeric value in `[0,1]`: **strictly between 0 and 1 = abstention/doubt** (not counted toward m, but counted in the group's average probability).
-**Any single opposing Boolean vote blocks a conclusion** —— the minority cannot push a conclusion through by having others abstain.
-An object that falls short of the threshold **stays in its original library**, with the group's average probability and the complete debate record attached, and is **not forcibly ruled on**.
-
-Voting has two stages: first [independent initial assessment] (mutually invisible), and if undecided, then [open debate] followed by a re-vote, with a round cap of `verdictMaxRounds`.
-`quorumMode: "all-unanimous"` switches back to v4's "all-unanimous" standard.
-
-#### Operating Mechanisms
-
-- **Communication**: group chat (fanned out to every other member), direct message, votes cast only to members with voting rights; messages are **persisted per recipient**,
-  written to disk before delivery, and group chat is batched into digests by `chatDigestMs` / `chatDigestMax` (direct messages/meetings/votes are not batched).
-  All in-institute communication goes through the framework relay (DSH's adjacency restriction does not allow members to message each other directly), but **the signature is always the real sender**.
-- **Meetings and verification are mutually exclusive** (in both directions): meeting requests while verification is under way are **held**; verification requested while a meeting is under way is **queued** ——
-  the two consensus processes never run at the same time, avoiding mutual starvation of the watchdog clocks. Meetings collect opinions one by one in a **random speaking order**,
-  and at closing they aggregate the votes and check whether everyone considers the problem solved.
-- **Task board**: compare-and-set (the latest `expected_revision` must be read before a change) + dependency DAG (all dependencies must be complete before claiming;
-  cycle detection rejects bad dependencies) + write-scope overlap warnings; when an owner is fired, its tasks are automatically reclaimed.
-- **Hiring / firing**: both academicians and resident researchers can hire **their own** temp workers, with a dual quota per member (`maxTempPerMember`) and institute-wide
-  (`maxTempTotal`); firing is **real** —— it cancels in-flight turns, releases the resident sub-session, reclaims tasks, and discards undelivered mail.
-- **Liveness**: the main drive is a **one-shot activity wait** (`vibe_v5_wait`, no polling); the scheduler advances by priority
-  (in-progress meetings/verification → queued verification → held meetings → active tasks → urgent mail → group chat digest → auto-meeting on stall → fallback heartbeat),
-  and concurrency is gated by `maxParallel`; the task board's "nudge" is **throttled** by `activityTimeoutMs`.
-- **Watchdog**: if a meeting/verification goes beyond 2×`activityTimeoutMs` with no new speech/new votes → abandon it and return to self-organization;
-  the heartbeat is **re-armed after every wake**, so the scheduler never freezes permanently.
-- **Context**: upon reaching `compactThreshold` (%) or accumulating `compactAfterRounds` rounds, members are asked to condense their working state into
-  `Progress/`; **the charter lives in the persona**, remains in effect after compaction, and does not need to be restated every round.
-- **Stopping**: the problem is concluded (**writing `Problems/conclusion.md`**) **only when all voting members consider the original problem solved**.
-
-#### State and Persistence
-
-Institute state is written **only** to the **hardened JSON file** `State/<institute>.v5state.json` under the institute directory: the framework's only side effect is to hand 11 kinds of events to
-`applyV5Event`, which purely folds them into a state, and then to write that whole snapshot **serially to disk** (one serialization chain per file). Therefore
-
-- **Zero token cost**: these events **do not enter the model context** and do not consume members' conversation budget;
-- **Recovery takes the same code path**: both cross-process restarts and resume after an in-process abort are covered by the "mandatory load before read", which is the same code either way;
-- the whole class of problems caused by v4's direct writes to `State/*.json` — "corrupted silent overwrite / concurrent lost writes / stale cross-process snapshots" — is eliminated by construction.
-
-**v5 no longer writes institute events into the host session log**: DSH's session persistence **refuses to load an entire session** whose log carries an event type it does not know
-(unless the writer marked it `ignorable: true`, and `Session.append` cannot set that field) — which would make **your own session unopenable on the next resume**.
-Everything except the state file (member output libraries, group chat, meeting minutes, debate records, roster mirror, task board mirror) is a **human-readable artifact**,
-and breaking it by hand does not damage the institute.
-
-#### How the Prompt Is Composed
-
-A member's "persona" carries the **ten-section public charter** (roster and colleagues, general rules, knowledge base and progress format,
-organization and coordination, voting rules, per-round rhythm, hiring and firing, task board, context discipline, stopping conditions), which is **frozen at onboarding** and persists with the session;
-each round's prompt carries only a short **state block** (who I am / the round / m / the registered roster / my tasks / newly arrived messages), **this round's question**,
-and the **receipt contract**. Every field in the receipt contract that the framework actually handles appears, trimmed by position
-(temp workers have no `verdict`/`hire`/`fire`; non-academicians have no `assign`/`prioritize`/`nudge`/`convene_meeting`).
-
-The framework treats "the text a member reads" as a product to be guaranteed: identity is **passed explicitly and never guessed**; a member is **written to the roster first, and only then** are its onboarding
-prompts constructed; the charter snapshot is frozen at onboarding, and a session rebuild is framed as the literal marker `【会话重建 —— <role> <id>】` ("session rebuild") rather than "just onboarded"; no academician narrative appears when there is no academician;
-message headers are labeled by **true origin** (institute office assignment ≠ academician assignment; supervision ≠ assignment); framework feedback has its own sender,
-and **only one message is delivered per prompt**.
-
-#### Directory Structure (Institute)
-
-```
-<session workspace>/VibeMath/Projects/<project>/Institutes/<institute>/
-├─ Institutes.md                 # roster mirror (human-readable snapshot, do not edit by hand)
-├─ Problems/<id>.md              # original problem
-├─ Problems/conclusion.md        # conclusion record
-├─ Members/<codename>/
-│   ├─ Progress/progress.md      # research log (the main basis for restoring state after compaction)
-│   ├─ Propos/<id>.md            # proposition
-│   ├─ Methods/<id>.md           # method / theory / tool
-│   └─ Subproblems/<id>.md       # subproblem
-├─ Shared/
-│   ├─ Chat/<date>.md            # group chat log
-│   ├─ Meetings/<mt-id>.md       # meeting minutes (including the voting section)
-│   ├─ Debates/<object>.md       # debate record (each round's votes and reasons + average probability)
-│   ├─ TaskBoard.md              # task board mirror
-│   └─ State-of-institute.md     # snapshot of members' judgment on "whether it is solved"
-├─ Verified/<type>/<id>.md       # conclusion (read-only; only this can be treated as established)
-└─ State/README.md               # explains that "the files here are mirrors — do not hand-edit them"
-```
-
-#### Tool Surface
-
-| Who | Tools |
-|---|---|
-| **Institute office / human** | `vibe_v5_configure` (configure first) → `vibe_v5_start` (start work); `vibe_v5_resume` / `pause` / `stop`; `vibe_v5_set` (adjust parameters, effective immediately); `vibe_v5_status` / `report` / `members`; `vibe_v5_message` / `meeting`; `vibe_v5_hire` / `fire` / `add_researcher` / `remove_researcher`; slash command `/v5` |
-| **All members** | `vibe_v5_say` (group chat/direct message/to all voters), `vibe_v5_wait` (poll-free wait), `vibe_v5_record_progress`, `vibe_v5_record_proposition` / `_method` / `_subproblem`, `vibe_v5_read_library` (cross-read others' libraries, read-only), `vibe_v5_propose_verify`, `vibe_v5_verdict`, `vibe_v5_task_create` / `_list` / `_get` / `_update`, `vibe_v5_meeting` (propose) |
-| **Academician** (also has the `academicianLeads` switch) | `vibe_v5_overview` (institute-wide overview), `vibe_v5_assign` (assignment, must state the reason and acceptance criteria), `vibe_v5_prioritize`, `vibe_v5_nudge` |
-
-#### Key Differences from v4
-
-- **There is a leader**: v4 has no central scheduling and everything emerges from discussion; v5 has an academician responsible for organization and assignment **inside the institute**
-  (**the framework still never assigns** —— the assigner is the academician, who is likewise bound by the m votes).
-- **The truth gate changes from "all-unanimous" to "≥ m unanimous"** (switchable back to the v4 standard).
-- **State is stored in the hardened JSON file** `State/<institute>.v5state.json` under the institute directory (serial writes, a mandatory load before read): recovery is simply that load-before-read (see above).
-- **Three classes of positions + hireable temp workers**: the roster is mutable, and hiring/firing are real reversible operations.
-- **No npm experimental package is introduced**: v5 is a single `.js` file within the preset, with zero dependencies.
-- **Meetings and verification are strictly mutually exclusive** (queued in both directions).
-
-See [the v5 specification](vibe-math-v5/实现方案.md) (written specification) and
-[the v5 detail diagrams](vibe-math-v5/架构图.md) (all detail diagrams).
+> Positions and authority, the detailed truth rules, operating mechanisms, state and persistence, prompt composition, the institute directory, the tool surface, and the differences from v4: see [the v5 detail diagrams](vibe-math-v5/架构图.md) §13 "v5 notes moved from the README" (text preserved); parameters are in the [parameter quick reference](#-parameter-quick-reference), and the final paper in [`docs/final-paper.md`](docs/final-paper.md).
 
 ---
 
@@ -586,54 +474,69 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 
 ## ⚙️ Parameter quick reference
 
-### v2 (probability-driven · classic) defaults
+### Shared parameters (accepted by ≥2 presets)
 
-| Parameter | Default | Description |
-|---|---|---|
-| `mode` | `auto` | `auto` / `manual` |
-| `maxParallelThreshold` | 4 | Global maximum number of concurrent subagent rounds (before a new dispatch, active must be < threshold) |
-| `solverMaxRounds` | 3 | Maximum number of iteration rounds per solving direction (agent_self_iteration cap) |
-| `directionsPerSolver` | 1 | Total number of directions visible to each solver prompt (1 = only its own direction, no mutual interference; N>1 = its own plus summaries of up to N-1 other active directions) |
-| `verifierCount` | 3 | Number of independent verifiers per verification target |
-| `debateMaxRounds` | 5 | Maximum number of rounds of verification debate (chat group) |
-| `verdictMode` | `flat` | `flat` = the **equal-weight mean** of the probabilities the verifiers report (an inconsistency is no longer judged 0.5) / `forced` = forced verdict (weighted by historical accuracy + rigor; accuracy is tracked per model and scored only when the object later receives a boolean verdict) |
-| `reportMode` | `file` | `file` = write a report file / `push` = push a report to the main agent / `both` |
-| `promoteValueThreshold` | 0.7 | A proposition in Propos with "value/criticality" ≥ this value and undecided (0,1) is automatically added to qs.json |
-| `priorityAdjust` | `none` | `none` / `deadend-deprioritize` (deprioritize all dead ends) / `survival-map` (recompute by survival rate) |
-| `proposPriorityAdjust` | `none` | Dynamic adjustment of proposition priority: `none` / `progress-graded` (recompute by proximity to a conclusion + amount of proof/disproof material; the closer to a conclusion, the higher the priority for verification) |
-| `provider` / `model` | empty | Subagent model (empty = inherit the root agent) |
-| `solverPersona` / `verifierPersona` / `explorerPersona` | empty | Persona/requirements injected at the start of the solver/verifier/explorer prompt |
-| `knowledgeContext` | empty | Shared knowledge/data model description (empty = built-in full version: object/attribute definitions, probability semantics, folder purposes, output completeness requirements; non-empty = overrides and is injected into all subagent prompts) |
-| `solverToolAllow` / `solverToolDeny` | `[]` | Tools allowed/denied for the solver |
-| `verifierToolAllow` / `verifierToolDeny` | `[]` | Tools allowed/denied for the verifier |
-| `solverAllowNetwork` / `verifierAllowNetwork` | empty | Network tool switch (web_search/web/fetch): empty = inherit everything; `true` = add to the existing allow list when one is present; `false` = deny |
-| `solverAllowScripts` / `verifierAllowScripts` | empty | Script tool switch (bash/pwsh): same as above |
-| `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | Maximum external tool calls per round (0 = unlimited) |
-| `reportIntervalMs` | 0 | 0 = event-driven only (write/push only when there is a state update); >0 = timed automatic reporting (milliseconds) |
-| `tickIntervalMs` | 2000 | Scheduler heartbeat interval (milliseconds) |
-| `activityLogCap` | 100 | Number of activity log entries retained (the report displays at most 30) |
-| `maxExplorerRetries` | 3 | Upper limit on re-dispatching after an explorer fails to split directions |
-| `formalVerify` | `'off'` | **Lean formal verification switch**: `'off'` no additional requirement (default)｜`'encourage'` encouraged (during verification, decide for yourself whether to formalize based on implementation difficulty)｜`'require'` mandatory (a true/false conclusion must first have a "Lean passed" or an explicit blocking record, otherwise it is recorded as undecided and enters the formalization todo list). Any illegal value falls back to `'off'` |
-| `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
-| `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
-| `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
-| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
-| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
-| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
-| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
-| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+> Each preset's **complete parameter set = every row of this table whose "Applies to" column names that preset ∪ that preset's own preset-specific table** (v2 has no preset-specific parameters).
+> For parameter details and gate locations see [`docs/formal-verification.md`](docs/formal-verification.md) and [`docs/final-paper.md`](docs/final-paper.md).
+
+| Parameter | Default | Applies to | Description (including per-preset differences) |
+|---|---|---|---|
+| `mode` | `auto` | v2·v3 | `auto` / `manual` (manual suspends decisions at key nodes and waits for your approve/reject/override) |
+| `maxParallelThreshold` | 4 | v2·v3 | Global maximum number of concurrent subagent rounds (before a new dispatch, active must be < threshold) |
+| `solverMaxRounds` | 3 | v2·v3 | Maximum number of iteration rounds per solving direction (agent_self_iteration cap) |
+| `directionsPerSolver` | 1 | v2·v3 | Total number of directions visible to each solver prompt (1 = only its own direction, no mutual interference; N>1 = its own plus summaries of up to N-1 other active directions) |
+| `verifierCount` | 3 | v2·v3 | Number of independent verifiers per verification target |
+| `debateMaxRounds` | 5 | v2·v3 | Maximum number of rounds of verification debate (chat group) |
+| `verdictMode` | v2 `flat`; v3 `forced` | v2·v3 | **The default differs per preset.** v2 `flat` = the **equal-weight mean** of the probabilities the verifiers report (an inconsistency is no longer judged 0.5); v2 `forced` = forced verdict (weighted by historical accuracy + rigor; accuracy is tracked per model and scored only when the object later receives a boolean verdict). v3 `forced` = first a **near-consensus determination** (all results on the same side with a mean ≥0.85/≤0.15 takes the mean — this runs BEFORE the mode, so 0.9 vs 1 yields ≈0.95 in either mode), otherwise the **equal-weight mean** of the reported probabilities (no accuracy weighting; strict 1/0 still act as absolute votes), while `flat` rules `0.5` (a disagreement is undecided) |
+| `reportMode` | `file` | v2·v3 | `file` = write a report file / `push` = push a report to the main agent / `both` |
+| `promoteValueThreshold` | 0.7 | v2·v3 | A proposition in Propos with "value/criticality" ≥ this value and undecided (0,1) is automatically added to qs.json |
+| `priorityAdjust` | `none` | v2·v3 | `none` / `deadend-deprioritize` (deprioritize all dead ends) / `survival-map` (recompute by survival rate) |
+| `proposPriorityAdjust` | `none` | v2·v3 | Dynamic adjustment of proposition priority: `none` / `progress-graded` (recompute by proximity to a conclusion + amount of proof/disproof material; the closer to a conclusion, the higher the priority for verification) |
+| `provider` / `model` | empty | all four | Model route (empty = inherit the root agent). **Per preset**: v2/v3 = subagent model (v3's planner agent has its own `plannerProvider`/`plannerModel` in the preset-specific table); v4 = **resident LLM route** (previously declared but unused, actually wired up in v1.4.1); v5 = member LLM route (empty = inherit the institute office/main agent route) |
+| `solverPersona` / `verifierPersona` / `explorerPersona` | empty | v2·v3 | Persona/requirements injected at the start of the solver/verifier/explorer prompt |
+| `knowledgeContext` | empty | v2·v3 | Shared knowledge/data model description (empty = built-in full version: object/attribute definitions, probability semantics, folder purposes, output completeness requirements; non-empty = overrides and is injected into all subagent prompts) |
+| `solverToolAllow` / `solverToolDeny` | `[]` | v2·v3 | Tools allowed/denied for the solver |
+| `verifierToolAllow` / `verifierToolDeny` | `[]` | v2·v3 | Tools allowed/denied for the verifier |
+| `solverAllowNetwork` / `verifierAllowNetwork` | empty | v2·v3 | Network tool switch (web_search/web/fetch): empty = inherit everything; `true` = add to the existing allow list when one is present; `false` = deny |
+| `solverAllowScripts` / `verifierAllowScripts` | empty | v2·v3 | Script tool switch (bash/pwsh): same as above |
+| `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | v2·v3 | Maximum external tool calls per round (0 = unlimited) |
+| `reportIntervalMs` | 0 | v2·v3 | 0 = event-driven only (write/push only when there is a state update); >0 = timed automatic reporting (milliseconds) |
+| `tickIntervalMs` | 2000 | v2·v3 | Scheduler heartbeat interval (milliseconds) |
+| `activityLogCap` | 100 | v2·v3 | Number of activity log entries retained (the report displays at most 30) |
+| `maxExplorerRetries` | 3 | v2·v3 | Upper limit on re-dispatching after an explorer fails to split directions |
+| `maxParallel` | 3 | v4·v5 | Upper limit on simultaneously awakened residents (v4) / members (v5) (framework-side concurrency gate, not an assignment) |
+| `activityTimeoutMs` | 120000 | v4·v5 | v4: idle heartbeat interval (only on timeout is a **self-driven** CHECKPOINT wakeup triggered, pushing residents to keep making progress; a failed wakeup automatically re-arms the heartbeat, ensuring the group never permanently stalls); v5: idle fallback heartbeat interval (the main driver is a one-shot activity wait, not polling; the task board's "nudge" is also throttled by it) |
+| `stallAutoMeetingMs` | 360000 | v4·v5 | **Stall auto sync meeting threshold** (tiered keep-alive B): when the team is idle with no new artifacts for longer than this duration, the framework automatically convenes a sync meeting so the members decide the next route/division of labor themselves (the framework only facilitates, it does not assign) |
+| `verdictMaxRounds` | 3 | v4·v5 | Maximum number of rounds of debate (v4) / public debate (v5) after independent initial assessment in verification |
+| `compactThreshold` | 66 | v4·v5 | Context share (0–100) that triggers soft compaction: v4 = resident context share reaching this value triggers soft compaction (self-report instruction); v5 = a member reaching this value triggers compaction (condensing the working state into `Progress/`) |
+| `compactAfterRounds` | 8 | v4·v5 | Trigger one soft compaction every N accumulated rounds (uncompacted) |
+| `meetingKeepEvery` | 5 | v4·v5 | Automatically trigger one sync meeting every N accumulated new artifacts |
+| `toolAllow` / `toolDeny` | `[]` | v4·v5 | **Resident / resident-staff tool permissions** (scoped `tools.restrict()` via `startContinuable`'s `toolFilter`; empty = inherit all tools; ⚠️ an empty `allow:[]` rejects all tools); v5's temp workers have their own `tempToolAllow`/`tempToolDeny` |
+| `formalVerify` | `'off'` | all four | **Lean formal verification switch**: `'off'` no additional requirement (default)｜`'encourage'` encouraged (during verification, decide for yourself whether to formalize based on implementation difficulty)｜`'require'` mandatory (a true/false conclusion must first have a "Lean passed" or an explicit blocking record, otherwise it is recorded as undecided and enters the formalization todo list). Any illegal value falls back to `'off'` |
+| `leanCommand` | `'lean'` | all four | The Lean executable to run (e.g. `'lake'`) |
+| `leanArgs` | `[]` | all four | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
+| `leanTimeoutMs` | `120000` | all four | Upper limit for a single Lean run (milliseconds) |
+| `finalPaper` | `true` | all four | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
+| `paperFormat` | `both` | all four | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
+| `paperLanguage` | `zh` | all four | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
+| `paperCompilePdf` | `true` | all four | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
+| `paperLatexCommand` | `''` | all four | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
+| `paperEditor` | v4 `office`; v5 `academician` | v4·v5 | Who finalises. v4: `office` (the session root / human side, default) or `resident:<id>` (if that resident has left, it degrades to office and the meta/log say so); v5: `academician` (default, the only editor an unattended run can reach) or `office` (manual `/v5 paper editor=office` only, and only after consulting the whole institute) |
+
+### v2 (probability-driven · classic) preset-specific parameters
+
+v2 has **no preset-specific parameters**: its complete parameter set is every row of the table above whose "Applies to" column names v2. Adjust them at runtime with `vibe_math_set_params` (or `/vibe set`); they persist in the project-level `vibe_math_setting.json` (falling back to the global `<workspace>/VibeMath/vibe_math_setting.json` → built-in defaults when absent).
 
 #### Final paper
 
 All four presets have it **on by default**: after the closure signal fires and **before the run is marked complete**, the run enters the paper phase. In v2 a dedicated "paper writer" subagent assembles the concluded evidence into `Paper/<project>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` only when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); with no engine or a failed compile the tex+md are still delivered with only a logged warning — the finalisation is never blocked and an existing pdf is never overwritten. Full contract: `docs/final-paper.md`.
 
-### v3 (paper-style md + planner agent + method library) defaults
+### v3 (paper-style md + planner agent + method library) preset-specific parameters
 
-Added/adjusted on top of all v2 parameters:
+v3 accepts **all** of v2's parameters (the rows above whose "Applies to" column names v3) and adds:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `verdictMode` | `forced` | v3 first makes a **near-consensus determination** (all results on the same side with a mean ≥0.85/≤0.15 takes the mean) — this runs BEFORE the mode, so 0.9 vs 1 yields ≈0.95 in either mode; otherwise `forced` takes the **equal-weight mean** of the reported probabilities (no accuracy weighting; strict 1/0 still act as absolute votes), while `flat` rules `0.5` (a disagreement is undecided) |
 | `planningHorizon` | 3 | Maximum number of actions in one plan by the planner agent ("the next n times") |
 | `plannerEnabled` | true | false = fully use the built-in heuristic scheduling (planner agent disabled) |
 | `plannerProvider` / `plannerModel` | empty | Planner agent model route (empty = inherit the root agent) |
@@ -646,55 +549,27 @@ Added/adjusted on top of all v2 parameters:
 | `indexAutoRebuild` | true | Automatically rebuild `State/index.json` after each disk write (false = manual `vibe_math_index`) |
 | `projectLockTimeoutMs` | 60000 | Project lock wait timeout (only one session may schedule a given project at any one time) |
 | `methodKeeperPersona` | empty | Persona/requirements injected at the start of the method consolidation agent prompt |
-| `formalVerify` | `'off'` | **Lean formal verification switch**: `'off'` no additional requirement (default)｜`'encourage'` encouraged (during verification, decide for yourself whether to formalize based on implementation difficulty)｜`'require'` mandatory (a true/false conclusion must first have a "Lean passed" or an explicit blocking record, otherwise it is recorded as undecided and enters the formalization todo list). Any illegal value falls back to `'off'` |
-| `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
-| `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
-| `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
-| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
-| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
-| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
-| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
-| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
 
 #### Final paper
 
 v3 uses the same switch and the same ordering as v2 (strict termination; the writer is spawned **before** the scheduler stops): a dedicated "paper writer" subagent produces `Paper/<project>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. No engine or a failed compile still delivers tex+md, logs a warning and never blocks the finalisation. Full contract: `docs/final-paper.md`.
 
-### v4 (resident self-organization · experimental) defaults
+### v4 (resident self-organization · experimental) preset-specific parameters
 
-Adjustable via `vibe_v4_set` (persisted to `State/settings.json`):
+Adjustable via `vibe_v4_set` (persisted to `State/settings.json`); shared parameters are in the table above, and v4 additionally has:
 
 | Parameter | Default | Description |
 |---|---|---|
 | `residentCount` | 4 | Resident count (can be increased/decreased via `vibe_v4_add_member`) |
-| `compactThreshold` | 66 | Reaching this resident context share triggers soft compaction (self-report instruction) |
-| `compactAfterRounds` | 8 | Trigger one soft compaction every N accumulated rounds per resident (uncompacted) |
-| `meetingKeepEvery` | 5 | Automatically trigger one sync meeting every N accumulated new artifacts |
-| `maxParallel` | 3 | Upper limit on simultaneously awakened residents (framework-side concurrency gate, not an assignment) |
-| `activityTimeoutMs` | 120000 | Idle heartbeat interval (only on timeout is a **self-driven** CHECKPOINT wakeup triggered, pushing residents to keep making progress; a failed wakeup automatically re-arms the heartbeat, ensuring the group never permanently stalls) |
-| `stallAutoMeetingMs` | 360000 | **Stall auto sync meeting threshold** (tiered keep-alive B): when the team is idle with no new artifacts for longer than this duration, the framework automatically convenes a sync meeting so the residents decide the next route/division of labor themselves (the framework only facilitates, it does not assign) |
-| `verdictMaxRounds` | 3 | Maximum number of rounds of debate after independent initial assessment in verification |
-| `provider` / `model` | empty | **Resident LLM route** (empty = residents inherit the main agent's provider/model; previously declared but unused, actually wired up in v1.4.1) |
 | `residentPersona` | empty | Persona/requirements injected at the start of each resident prompt |
-| `toolAllow` / `toolDeny` | `[]` | **Resident tool permissions** (scoped `tools.restrict()` via `startContinuable`'s `toolFilter`; empty = inherit all tools; ⚠️ an empty `allow:[]` rejects all tools) |
-| `formalVerify` | `'off'` | **Lean formal verification switch**: `'off'` no additional requirement (default)｜`'encourage'` encouraged (during verification, decide for yourself whether to formalize based on implementation difficulty)｜`'require'` mandatory (a true/false conclusion must first have a "Lean passed" or an explicit blocking record, otherwise it is recorded as undecided and enters the formalization todo list). Any illegal value falls back to `'off'` |
-| `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
-| `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
-| `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
-| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
-| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
-| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
-| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
-| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
-| `paperEditor` | `office` | Who finalises: `office` (the session root / human side, default) or `resident:<id>` (if that resident has left, it degrades to office and the meta/log say so) |
 
 #### Final paper
 
 On by default; v4 enters the paper phase after the closing meeting casts its unanimous stop vote and **before** the run is marked complete. Team flow: each resident writes its own part → merge (deduplicate, unify terms and notation) → at least one **cross-review** round → the editor named by `paperEditor` (default `office`, or `resident:<id>`) turns it into the final draft → the paper is finalised only on **unanimous "deliverable"** (objections keep iterating; past the round cap a warning is recorded and the disagreement goes into the appendix). Manual: `/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`. Output: `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}` (plus `paper.pdf` when an engine is available). Full contract: `docs/final-paper.md`.
 
-### v5 (institute system · experimental) defaults
+### v5 (institute system · experimental) preset-specific parameters
 
-Adjustable via `vibe_v5_set` (persisted in the institute state file `State/<institute>.v5state.json`):
+Adjustable via `vibe_v5_set` (persisted in the institute state file `State/<institute>.v5state.json`); shared parameters are in the table above, and v5 additionally has:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -704,30 +579,11 @@ Adjustable via `vibe_v5_set` (persisted in the institute state file `State/<inst
 | `researcherCount` | 3 | Number of resident researchers (at institute founding) |
 | `quorumCap` | 3 | Upper limit of m; actually **m = min(quorumCap, number of enrolled voting members)** |
 | `quorumMode` | `'m-unanimous'` | v5 calibration; switching to `'all-unanimous'` returns to v4's "all unanimous" |
-| `verdictMaxRounds` | 3 | Maximum number of rounds of public debate after independent initial assessment |
 | `maxTempPerMember` | 3 | Upper limit on temp workers **simultaneously** enrolled per academician/researcher (counted by enrollment, not cumulative — so swapping people is not restricted) |
 | `maxTempTotal` | 12 | Upper limit on temp workers simultaneously enrolled across the whole institute |
-| `compactThreshold` | 66 | Reaching this member context share (0–100) triggers compaction |
-| `compactAfterRounds` | 8 | Or trigger one soft compaction every N accumulated rounds |
-| `maxParallel` | 3 | Upper limit on simultaneously awakened members (framework-side concurrency gate) |
-| `activityTimeoutMs` | 120000 | Idle fallback heartbeat interval (the main driver is a one-shot activity wait, not polling) |
-| `stallAutoMeetingMs` | 360000 | Threshold for automatically convening a sync meeting on stall |
 | `chatDigestMs` / `chatDigestMax` | 45000 / 12 | Time window and entry cap for batching group chat digests (direct messages/meetings/votes are not batched) |
-| `meetingKeepEvery` | 5 | Automatically initiate one sync meeting every N accumulated new artifacts |
-| `provider` / `model` | empty | Member LLM route (empty = inherit the institute office/main agent route) |
-| `toolAllow` / `toolDeny` | `[]` | Resident staff tool permissions (⚠️ an empty `allow:[]` rejects all tools) |
 | `tempToolAllow` / `tempToolDeny` | `[]` | Temp worker tool permissions (narrower than residents) |
 | `staffPersona` | empty | Persona/requirements appended before each member charter |
-| `formalVerify` | `'off'` | **Lean formal verification switch**: `'off'` no additional requirement (default)｜`'encourage'` encouraged (during verification, decide for yourself whether to formalize based on implementation difficulty)｜`'require'` mandatory (a true/false conclusion must first have a "Lean passed" or an explicit blocking record, otherwise it is recorded as undecided and enters the formalization todo list). Any illegal value falls back to `'off'` |
-| `leanCommand` | `'lean'` | The Lean executable to run (e.g. `'lake'`) |
-| `leanArgs` | `[]` | Additional arguments inserted before the file name (e.g. `['env','lean']` together with `leanCommand='lake'`) |
-| `leanTimeoutMs` | `120000` | Upper limit for a single Lean run (milliseconds) |
-| `finalPaper` | `true` | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
-| `paperFormat` | `both` | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
-| `paperLanguage` | `zh` | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |
-| `paperCompilePdf` | `true` | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
-| `paperLatexCommand` | `''` | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
-| `paperEditor` | `academician` | Who finalises: `academician` (default, the only editor an unattended run can reach) or `office` (manual `/v5 paper editor=office` only, and only after consulting the whole institute) |
 
 #### Final paper
 
