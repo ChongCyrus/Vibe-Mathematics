@@ -316,8 +316,21 @@ export function apply(ctx) {
           return Object.assign({}, inst, { formal, todo })
         })
       }
+      // `d.queue` is normally the new ARRAY, but a queue MUTATION (appending a proposal,
+      // taking the head to run) is passed as a FUNCTION instead. Applying it here, inside the
+      // fold, makes its read and its write one atomic step of the serial event chain: the old
+      // shape (read `inst().queue`, mutate the copy, `await putQueue(copy)`) lost one of two
+      // proposals made in the same tick, because both callers read the same array and each
+      // committed its own copy.
       if (t === EV.queue) {
-        return withInstitute(state, key, (inst) => Object.assign({}, inst, { queue: Array.isArray(d.queue) ? d.queue : [] }))
+        return withInstitute(state, key, (inst) => {
+          const next = typeof d.queue === 'function' ? d.queue(inst.queue) : d.queue
+          const list = Array.isArray(next) ? next : []
+          // A mutation that changed nothing (a duplicate proposal) leaves the queue object
+          // identical: return the institute unchanged rather than minting a new revision.
+          if (list === inst.queue) return inst
+          return Object.assign({}, inst, { queue: list })
+        })
       }
       if (t === EV.counters) {
         return withInstitute(state, key, (inst) => Object.assign({}, inst, { counters: Object.assign({}, inst.counters, d.counters || {}) }))
@@ -561,12 +574,18 @@ export function apply(ctx) {
     async function writeTextAbs(p, content) {
       try {
         const t = await fsTargetAbs(p)
-        await fs.writeText(t, content, undefined, undefined, getPolicy())
-        return true
-      } catch (e) { return false }
+        // `fs.writeText` RESOLVES with an FsWriteOutcome ({operation, version, before, after})
+        // and REJECTS on a real failure, so the old `return true` here meant only "the call did
+        // not throw" and discarded the outcome (audit L4). Return the outcome itself: `undefined`
+        // now means "not written", an object means "written, and here is what the fs reported".
+        // A stub/mock fs that resolves with nothing is reported as an unknown-but-successful
+        // write, because the real host never resolves without an outcome.
+        const outcome = await fs.writeText(t, content, undefined, undefined, getPolicy())
+        return (outcome === undefined || outcome === null) ? { operation: 'unknown' } : outcome
+      } catch (e) { return undefined }
     }
     async function readTextRel(rel) { return await readTextAbs(instRoot() + '/' + rel) }
-    async function writeTextRel(rel, content) { return await writeTextAbs(instRoot() + '/' + rel, content) }
+    async function writeTextRel(rel, content) { return (await writeTextAbs(instRoot() + '/' + rel, content)) !== undefined }
 
     function installBackend() {
       backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
@@ -667,7 +686,9 @@ export function apply(ctx) {
     const putMeeting = (index) => commit(EV.meeting, { index })
     const putDebate = (index) => commit(EV.debate, { index })
     const putVerdict = (target, record) => commit(EV.verdict, { target, record })
-    const putQueue = (queue) => commit(EV.queue, { queue })
+    // The verify queue has NO whole-array setter any more: both of its mutations go through
+    // `appendToQueue`/`takeQueueHead` below, which hand a FUNCTION to the event fold so the
+    // read-modify-write is atomic (the lost-proposal race).
     const putCounters = (counters) => commit(EV.counters, { counters })
     const markProgress = async () => {
       lastProgressAt = now()
@@ -1556,14 +1577,29 @@ export function apply(ctx) {
         // 'office' rather than '' so the framing records a real, non-member sender.
         try { if (rootOf(agent) === agent) return 'office' } catch (e) { /* fall through */ }
         // An unrelated child agent: report no member. Member-only writes refuse with
-        // V5_MEMBER_NOT_FOUND (that guard is what makes guessing unnecessary), and the
-        // office-capable tools treat '' as the office.
+        // V5_MEMBER_NOT_FOUND (that guard is what makes guessing unnecessary).
         return ''
       }
       // No session id at all (a synthetic exec context). Only here may we fall back to
       // the last-woken member, and only while it still genuinely exists.
       const c = currentMember
       return (c && memberById(c)) ? c : ''
+    }
+    // Is this caller PROVABLY the office — the session root itself? `memberIdOfAgent` answers
+    // 'office' both for the root AND for any descendant of the root that is not a member child
+    // (a dismissed member's stale child, a nested helper agent), so it cannot tell them apart;
+    // only the direct root test can (audit L6). `isOffice(id)` additionally treats '' as the
+    // office, which is exactly why the office-only handlers must resolve their caller HERE.
+    function isProvablyOffice(agent) {
+      try { return !!agent && sessionIdOf(agent) !== undefined && rootOf(agent) === agent } catch (e) { return false }
+    }
+    // The caller of an OFFICE-ONLY tool: a real member id, or 'office' when the caller is
+    // provably the session root, or '' when nobody can be identified. The tool handler must
+    // refuse on '' (V5_MEMBER_NOT_FOUND) instead of impersonating the office (audit L6).
+    function officeCaller(agent) {
+      const id = memberIdOfAgent(agent)
+      if (id && id !== 'office') return id
+      return isProvablyOffice(agent) ? 'office' : ''
     }
 
     // ---- prompts ----------------------------------------------------------
@@ -2008,7 +2044,7 @@ export function apply(ctx) {
       const withdrawn = '-- 已撤回（' + fmtTime() + '）：该形式化被认定与命题原文不一致。\n'
         + '-- 原代码保留在工作文件 Formal/' + String(rel).split('/').pop() + '；修正并重新跑通后重新归档。\n'
       // 1) the fs service (policy-confined) — an overwritten file is no longer a proof.
-      if ((await writeTextAbs(abs, withdrawn)) === true) {
+      if ((await writeTextAbs(abs, withdrawn)) !== undefined) {
         const nowText = await readTextAbs(abs)
         if (nowText !== undefined && nowText.indexOf('已撤回') !== -1) return true
       }
@@ -2022,7 +2058,7 @@ export function apply(ctx) {
         if (await readTextAbs(abs) === undefined) return true
       }
       // 3) last resort: the overwrite again, in case the delete recreated/left the file.
-      return (await writeTextAbs(abs, withdrawn)) !== false
+      return (await writeTextAbs(abs, withdrawn)) !== undefined
     }
     // A formalization that says something else than the proposition is NOT a refutation:
     // withdraw the proof instead of letting the group conclude 假 (contract §4.1).
@@ -2200,7 +2236,7 @@ export function apply(ctx) {
       }
       if (run.ok) {
         await saveChatLine('【形式化】' + (memberId || 'office') + ' 运行 Lean 通过：' + run.file
-          + '（' + (run.ms / 1000).toFixed(1) + 's）' + (args.target ? '｜对象 ' + args.target + ' 记为已尝试/已通过' : ''))
+          + '（' + (run.ms / 1000).toFixed(1) + 's）' + (args.target ? '｜对象 ' + args.target + ' 记为已尝试（若此前已通过/已阻塞则保留原状态）' : ''))
       }
       return Object.assign({ ok: !!run.ok }, run, {
         hint: run.ok
@@ -2362,7 +2398,7 @@ export function apply(ctx) {
         '- ID: ' + id,
         '- 类型: ' + (kind === 'proposition' ? '命题' : kind === 'method' ? String(args.type || '方法') : '子问题'),
         '- 状态: ' + (kind === 'proposition' ? '未定论' : kind === 'method' ? '经验' : '求解中'),
-        kind === 'proposition' ? '- 概率: ' + clamp01(args.p).toFixed(2) : '- 概率: ' + clamp01(args.p).toFixed(2),
+        '- 概率: ' + clamp01(args.p).toFixed(2),
         '- 价值程度: ' + clamp01(args.value).toFixed(2),
         '- 动机用途计划: ' + String(args.motive),
         '- 记录者: ' + memberId,
@@ -2722,7 +2758,6 @@ export function apply(ctx) {
     }
 
     // ---- consensus verification (m-vote boolean) --------------------------
-    function verifyRecords() { return Object.keys(inst().verdicts) }
     function currentVerify() {
       const vs = inst().verdicts
       for (const k of Object.keys(vs)) { if (vs[k] && !vs[k].closed) return vs[k] }
@@ -2840,6 +2875,35 @@ export function apply(ctx) {
       if (bFalse >= m && bTrue === 0) return Object.assign(base, { outcome: 'false', reason: bFalse + ' >= m=' + m + ', all assert false' })
       return Object.assign(base, { outcome: 'undecided', reason: 'quorum not met' })
     }
+    // ONE atomic append to the durable verify queue. The duplicate check and the append both run
+    // INSIDE the event fold, so two proposals made in the same tick can no longer both read the
+    // same array and overwrite each other's entry (the audit's lost-proposal race: a
+    // `Promise.all` of two `vibe_v5_propose_verify` calls kept only the second, while both calls
+    // reported `ok:true` and the first target existed in neither the queue nor `verdicts`).
+    async function appendToQueue(entry) {
+      let result = { appended: false, length: 0 }
+      await commit(EV.queue, { queue: (cur) => {
+        const list = Array.isArray(cur) ? cur : []
+        if (list.some((p) => p && p.target === entry.target)) { result = { appended: false, length: list.length }; return list }
+        const next = list.concat([entry])
+        result = { appended: true, length: next.length }
+        return next
+      } })
+      return result
+    }
+    // Remove and return the head in ONE atomic commit: an append landing in between can never be
+    // lost by it, and a removed entry can never be resurrected by an append that read the queue
+    // before the removal.
+    async function takeQueueHead() {
+      let head = null
+      await commit(EV.queue, { queue: (cur) => {
+        const list = Array.isArray(cur) ? cur : []
+        if (!list.length) return list
+        head = list[0]
+        return list.slice(1)
+      } })
+      return head
+    }
     // Queue a proposal UNLESS the same object was just closed as 真/假 (a dedup window
     // prevents several members independently proposing the same object in one tick
     // from running it end-to-end twice — v4 §26 test9).
@@ -2850,18 +2914,20 @@ export function apply(ctx) {
       if (recent !== undefined && (now() - recent) < recoverStallMs()) {
         return { ok: true, deduped: true, message: t + ' 刚刚定论，忽略重复提议' }
       }
-      const q = inst().queue.slice()
-      if (q.some((p) => p.target === t)) return { ok: true, deduped: true, message: t + ' 已在验证队列中' }
-      if (currentVerify() && currentVerify().target === t) return { ok: true, deduped: true, message: t + ' 正在验证中' }
-      q.push({ target: t, kind: kind || guessTargetKind(t), proposer: isOffice(proposer) ? 'office' : proposer, reason: String(reason || ''), at: now() })
-      await putQueue(q)
+      const cv = currentVerify()
+      if (cv && cv.target === t) return { ok: true, deduped: true, message: t + ' 正在验证中' }
+      const added = await appendToQueue({
+        target: t, kind: kind || guessTargetKind(t),
+        proposer: isOffice(proposer) ? 'office' : proposer, reason: String(reason || ''), at: now(),
+      })
+      if (!added.appended) return { ok: true, deduped: true, message: t + ' 已在验证队列中' }
       notifyActivity()
       // Start it NOW rather than hoping a scheduling pass reaches it. A pass may already
       // be in flight and PAST its arming point, in which case a bare `scheduleNext()`
       // only sets the trampoline flag and the proposal waits for the next iteration.
       await armNextVerify()
       if (!hasVerifyInFlight()) await scheduleNext()
-      return { ok: true, queued: t, pendingVerifyCount: q.length, started: hasVerifyInFlight() }
+      return { ok: true, queued: t, pendingVerifyCount: added.length, started: hasVerifyInFlight() }
     }
     async function beginVerify(proposal) {
       dbg.begin += 1
@@ -3067,9 +3133,12 @@ export function apply(ctx) {
           const q = inst().queue.slice()
           if (!q.length) return
           if (meeting || currentVerify()) return
-          const p = q[0]
-          q.shift()
-          await putQueue(q)
+          // Take the head in ONE atomic commit (`takeQueueHead` re-reads the queue inside the
+          // fold). The exclusion guards above are deliberately NOT re-checked inside it: a third
+          // copy of them would make the sensitivity probes that remove the two real copies inert
+          // (they would still hold, and the suite would look like a blind spot).
+          const p = await takeQueueHead()
+          if (!p) return
           const recent = verifiedRecently.get(p.target)
           if (recent !== undefined && (now() - recent) < recoverStallMs()) continue
           const vs = await beginVerify(p)
@@ -3957,6 +4026,14 @@ export function apply(ctx) {
       if (out.leanTimeoutMs !== undefined) out.leanTimeoutMs = Math.max(1000, out.leanTimeoutMs)
       if (out.researcherCount !== undefined && out.researcherCount < 0) out.researcherCount = 0
       if (out.quorumCap !== undefined && out.quorumCap < 1) out.quorumCap = 1
+      // NOT every non-positive number is harmless (audit L3). `compactThreshold <= 0` makes
+      // EVERY round look over the threshold (a permanent compaction directive), so it falls back
+      // to the default like a bad duration; `chatDigestMax < 1` would empty the digest bucket and
+      // `verdictMaxRounds < 1` silently collapsed every debate to a single round, so both floor
+      // at the smallest value that still means what the name says.
+      if (out.compactThreshold !== undefined && !(out.compactThreshold > 0)) delete out.compactThreshold
+      if (out.chatDigestMax !== undefined && out.chatDigestMax < 1) out.chatDigestMax = 1
+      if (out.verdictMaxRounds !== undefined && out.verdictMaxRounds < 1) out.verdictMaxRounds = 1
       return out
     }
     async function setParams(input) {
@@ -4436,7 +4513,7 @@ export function apply(ctx) {
       // consensus / meetings
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // authorization helpers (used by tool handlers)
-      memberIdOfAgent, isOffice, isAcademician, memberById, activeMembers,
+      memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
     }
   }
 
@@ -4487,14 +4564,27 @@ export function apply(ctx) {
     const to = String(a.to || 'all')
     return s.say('office', { to, text: String(a.content), kind: to === 'all' || to === 'voters' ? 'office' : 'dm' })
   })
-  registerTool('vibe_v5_meeting', 'Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight.', objParams({ agenda: S, kind: { type: 'string', enum: ['sync', 'division', 'verify-request', 'solve-vote'] }, target: S }, ['agenda']), (s, a, x) => s.startMeeting(s.memberIdOfAgent(x) || 'office', a))
+  registerTool('vibe_v5_meeting', 'Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight. kind picks the meeting type: "sync" = routine coordination (default), "division" = split the work, "verify-request" = ask the group to verify an object, "solve-vote" = put "is the original problem solved?" to a vote; target names the object for verify-request/solve-vote.', objParams({ agenda: S, kind: { type: 'string', enum: ['sync', 'division', 'verify-request', 'solve-vote'] }, target: S }, ['agenda']), (s, a, x) => {
+    const caller = s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may convene/propose a meeting' }
+    return s.startMeeting(caller, a)
+  })
   registerTool('vibe_v5_members', 'List the institute roster (office, employer, phase, direction, rounds).', objParams({}), (s) => ({ ok: true, members: s.status().members, quorum: s.status().quorum }))
-  registerTool('vibe_v5_hire', 'Hire one temp worker (office; the academician and every permanent researcher may also hire their own). Requires purpose and initial_task.', objParams({ purpose: S, initial_task: S, direction: S, term: S, to: S }, ['purpose', 'initial_task']), (s, a, x) => {
-    const caller = a.to ? String(a.to) : (s.isOffice(s.memberIdOfAgent(x)) ? 'office' : s.memberIdOfAgent(x))
+  registerTool('vibe_v5_hire', 'Hire one temp worker (office; the academician and every permanent researcher may also hire their own). Requires purpose and initial_task. term (optional) is the task deadline/period text the worker is told at onboarding; direction (optional) states what it should work on.', objParams({ purpose: S, initial_task: S, direction: S, term: S, to: S }, ['purpose', 'initial_task']), (s, a, x) => {
+    const caller = a.to ? String(a.to) : s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may hire' }
     return s.hire(caller, a)
   })
-  registerTool('vibe_v5_fire', 'Dismiss a temp worker for real: cancel its turn, release its resident child, reclaim its tasks, drop its mail, and mark it dismissed (its id is never reused).', objParams({ id: S, reason: S }, ['id']), (s, a, x) => s.fire(s.memberIdOfAgent(x) || 'office', a))
-  registerTool('vibe_v5_add_researcher', 'Office only: hire another PERMANENT researcher (members may only propose this).', objParams({ direction: S }), (s, a, x) => s.addResearcher(s.memberIdOfAgent(x) || 'office', a && a.direction))
+  registerTool('vibe_v5_fire', 'Dismiss a temp worker for real: cancel its turn, release its resident child, reclaim its tasks, drop its mail, and mark it dismissed (its id is never reused).', objParams({ id: S, reason: S }, ['id']), (s, a, x) => {
+    const caller = s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or the employer may fire' }
+    return s.fire(caller, a)
+  })
+  registerTool('vibe_v5_add_researcher', 'Office only: hire another PERMANENT researcher (members may only propose this).', objParams({ direction: S }), (s, a, x) => {
+    const caller = s.officeCaller(x)
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: adding a permanent researcher is the office\'s decision (the session root)' }
+    return s.addResearcher(caller, a && a.direction)
+  })
   registerTool('vibe_v5_remove_researcher', 'Office only: dismiss a PERMANENT researcher.', objParams({ id: S }, ['id']), (s, a) => s.removeResearcher(a.id))
 
   // ── member-facing controls ────────────────────────────────────────────────

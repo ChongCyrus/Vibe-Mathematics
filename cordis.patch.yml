@@ -86,6 +86,9 @@
                 Key rules to remember when reporting: a problem is "solved" when one of its solutions reaches
                 正确概率 = 1; a proposition reaches 布尔估计 = 1/0 when a proof/refutation in its lists reaches
                 正确概率 = 1; Propos propositions with 价值/关键性 ≥ promoteValueThreshold auto-promote to qs.json.
+                Closure rule (identical across the presets): the 1/0 values above are written ONLY by the scheduler,
+                after ≥2 independent verifier agents settle the object (one lone reviewer can never conclude), and
+                Verified/ is written by that same scheduler path — an agent's own self-reported 1 is never a conclusion.
                 When the user asks about progress, call vibe_math_report and summarize in plain language.
 
                 Configuration highlights (all tunable via vibe_math_set_params / the settings file):
@@ -358,7 +361,11 @@
 
                 Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
                 (the scheduler writes Verified/问题/<id>.md); a proposition reaches 已验证·真/假 when a 证明/证伪
-                entry reaches 概率 = 1 (Verified/命题/<id>.md); Propos propositions whose 价值/关键性 ≥
+                entry reaches 概率 = 1 (Verified/命题/<id>.md).
+                Closure rule (identical across the presets): those 概率 = 1 values are written ONLY by the scheduler,
+                after ≥2 independent verifier agents settle the object (a lone reviewer can never conclude; see
+                minVotes), and Verified/ is written by that same scheduler path — a self-reported 1 is never a
+                conclusion. Propos propositions whose 价值/关键性 ≥
                 promoteValueThreshold (write that anchor on the proposition card, or report it as lemmas[].价值/关键性 in
                 vibe_math_sync_meta — default 0.5 never promotes) and that are still undecided
                 auto-promote into Problems/ as "判断下述命题是否成立：<命题>" (verification
@@ -637,7 +644,9 @@
                 trustworthy; everything else — unverified resident claims, Progress/, Method claims —
                 is experiential reference. A proposition / method / theory only reaches Verified/ when
                 ALL residents unanimously agree true (or all agree false); otherwise it stays in its
-                library with a probability estimate.
+                library with a probability estimate. Closure rule (identical across the presets): the framework
+                writes the Verified/ card — a resident's own claim never does — and what counts as a vote is
+                stated once in the VOTE CONTRACT below.
 
                 VOTE CONTRACT: a verification vote is a probability of truth in [0,1], but only an EXACT
                 1 (absolutely true) and an EXACT 0 (absolutely false) count as a vote. Anything strictly

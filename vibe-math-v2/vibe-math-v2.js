@@ -65,6 +65,28 @@ export function apply(ctx) {
       childOwner.delete(cid); lastChildEndAt.delete(cid)
     }
   }
+  // sessions 的**有界化**（审计 L18）。`sessions` 按 root agent id 记；正常路径下 DSH 的每个根会话
+  // 各一条，但 `getSession` 对**任何** agent 都会建一条，包括 `rootOf` 向上走失败（父代理已不在注册表里）
+  // 的子代理——那种会话永远没人再访问，却会带着 `running=true` 一直被 apply 级的 tick 循环唤醒。
+  // `agents.roots()`（契约：全部 live 顶层 agent）是权威判据：root 不再是顶层 live agent ⇒ 该会话是僵尸。
+  // 三重保守：主机没有 roots() / 它抛错 / 它返回空数组 ⇒ **一律不裁剪**（空 = 没有可用信息，而不是
+  // "一个会话都没有"）；仍在册子代理的会话也保留。因此测试 mock（roots() 恒返回 []）与旧宿主行为不变。
+  function pruneSessions() {
+    if (sessions.size === 0) return
+    if (typeof agents.roots !== 'function') return
+    let roots = []
+    try { roots = agents.roots() || [] } catch (e) { return }
+    if (!Array.isArray(roots) || roots.length === 0) return
+    const live = new Set()
+    for (let i = 0; i < roots.length; i++) { const id = sessionIdOf(roots[i]); if (id !== undefined) live.add(id) }
+    if (live.size === 0) return
+    for (const sid of Array.from(sessions.keys())) {
+      if (live.has(sid)) continue
+      const s = sessions.get(sid)
+      try { if (s && s.referencedChildIds().length > 0) continue } catch (e) { continue }
+      sessions.delete(sid)
+    }
+  }
   // Process epoch: PROCESS-level (one per apply, shared by every session), written to
   // VibeMath_State/process_epoch.json at init; a DIFFERENT persisted epoch means a
   // previous DSH process wrote this state (in-flight children are gone), while an
@@ -750,6 +772,9 @@ export function apply(ctx) {
    * 调用会把 `objectId: 'r-pAlias'` 写进记录，之后（任务表已不在内存时）这个错误的锚点反而会覆盖
    * 正确的后缀解析结果。
    */
+  // 已加载的对象 id 集合（qs.id + propos.id），供 formalObjectIdOf 的后缀歧义消解使用（审计 L19）。
+  // 只增不清：一次读库把对象记进来，即使该对象随后被删/重命名，最坏也只是多保留一个字符串。
+  const knownObjectIds = new Set()
   function formalObjectIdOf(id) {
     const t = safeId(String(id == null ? '' : id))
     const task = tasks['verify:' + t]
@@ -760,7 +785,16 @@ export function apply(ctx) {
     const rec = formalRecords()[t]
     if (rec && rec.objectId && formalObjectIdOfIsOwner(rec.objectId)) return safeId(rec.objectId)
     const m = /^r-(.+?)(?:-(?:s\d+|pf\d+|rf\d+))?$/.exec(t)
-    return m ? m[1] : t
+    if (!m) return t
+    // 后缀剥离是**有损**映射：`r-pAmb-s1` 既可能是"对象 pAmb 的第 1 个解法"，也可能是"对象 pAmb-s1"
+    // 本身（对象 id 允许以 `-sN`/`-pfN`/`-rfN` 结尾）。惰性匹配总是剥掉后缀，于是后一种情形会被
+    // 解析成同前缀的**邻居对象**——一次 defect 就会降级邻居、并撤回它自己的归档证明（审计 L19）。
+    // 这里只在"完整串确实是已加载的对象 id"时才优先完整串；否则保持原有的后缀剥离（legacy 记录没有
+    // objectId 时这是唯一线索）。knownObjectIds 由 getQs/getPropos 在每次读库时刷新，未读过库时为空
+    // ⇒ 行为与从前完全一致。
+    const full = t.slice(2)
+    if (m[1] !== full && knownObjectIds.has(full)) return full
+    return m[1]
   }
   /** 一个 id 能否作为"对象 id"落进记录：它不能再被解析成别的 id（对象 id 不以 `r-` 开头）。 */
   function formalObjectIdOfIsOwner(v) {
@@ -1260,7 +1294,7 @@ export function apply(ctx) {
   }
 
   // ================= data layer: qs.json =================
-  async function getQs() { const a = await readJson('qs/qs.json'); return Array.isArray(a) ? a : [] }
+  async function getQs() { const a = await readJson('qs/qs.json'); const list = Array.isArray(a) ? a : []; for (const q of list) { if (q && q.id) knownObjectIds.add(safeId(String(q.id))) } return list }
   async function writeQs(list) { await writeJson('qs/qs.json', list) }
   async function findQ(qid) { const qs = await getQs(); return qs.find(function (q) { return q.id === qid }) }
 
@@ -1287,7 +1321,7 @@ export function apply(ctx) {
       const fname = files[i]
       const cat = fname.replace(/_Propos\.json$/i, '')
       const list = await readProposCategory(cat)
-      for (let j = 0; j < list.length; j++) { list[j]._category = cat; out.push(list[j]) }
+      for (let j = 0; j < list.length; j++) { list[j]._category = cat; if (list[j] && list[j].id) knownObjectIds.add(safeId(String(list[j].id))); out.push(list[j]) }
     }
     return out
   }
@@ -1362,7 +1396,10 @@ export function apply(ctx) {
         '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
         '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '。' +
         '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
-      rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'plugin', plugin: 'vibe-math-v2' } })
+      // 来源 kind 必须是**已声明**的：`MessageSourceMap` 是 merge-extensible 的联合，但没有共享的
+      // catch-all `plugin` kind（dsh-llm message.d.ts），{kind:'plugin'} 是契约外形状。role 本来就是
+      // 'user'，正文也自带 "[Vibe Math V2] 进度更新" 的真署名，所以用核心声明的 {kind:'user'}。
+      rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'user' } })
       lastPushReport = now()
     } catch (e) {
       console.error('vibe-math-v2: push report failed: ' + String((e && e.message) || e))
@@ -1669,7 +1706,7 @@ export function apply(ctx) {
       } catch (e) { console.error('vibe-math-v2: spawn reject mark failed: ' + String((e && e.message) || e)) }
       return { spawned: false, rejected: true }
     }
-    if (node === 'verdict') { const overridden = resolution.action === 'override' && (resolution.verdict === 1 || resolution.verdict === 0); const v = overridden ? Number(resolution.verdict) : data.verdict; await settleVerdict(data.task, v); delete tasks[data.task.id]; return { verdict: v, overridden: overridden } }
+    if (node === 'verdict') { const overridden = resolution.action === 'override' && (resolution.verdict === 1 || resolution.verdict === 0); const v = overridden ? Number(resolution.verdict) : data.verdict; const applied = await settleVerdict(data.task, v); delete tasks[data.task.id]; return { verdict: v, overridden: overridden, applied: applied } }
     return {}
   }
   async function resolveDecision(id, resolution) { const d = decisionQueue.find(function (x) { return x.id === id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
@@ -2206,7 +2243,9 @@ export function apply(ctx) {
   // 一票不算共识：≥MIN_REVIEWERS 份独立评审才可能达成/否决共识（审计 M11；与 v3 的最小票数同型）。
   function consensus(t) { const cids = Object.keys(t.childResults); if (cids.length < MIN_REVIEWERS) return false; const vs = cids.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
-  function verifierWeight(cid, rigor) { const acc = verifierAccuracy[cid] || { correct: 0, total: 0 }; const base = acc.total > 0 ? (acc.correct / acc.total) : 0.5; const bonus = (typeof rigor === 'number' && Number.isFinite(rigor)) ? Math.max(-0.2, Math.min(0.2, rigor)) : 0; return Math.max(0.05, Math.min(0.95, base + bonus)) }
+  // 说明（审计 L17）：这里曾有一个 `verifierWeight(cid, rigor)`，但全仓只有它的定义、没有任何调用点，
+  // 且其公式（clamped ±0.2 rigor 加成、按 childId 取准确率）与 finalVerdict 里真正在用的
+  // 稳定身份键 + 0.1 自信加成**并不相同**——留着它只会让人以为 forced 模式走的是那条公式。已删除。
   /**
    * 验证者的**稳定身份**（provider/model）：forced 模式的"历史准确率"必须按这种跨子代理稳定的键记，
    * 按一次性的 childId 记等于永远 0.5（审计 H4）。子代理信息里本来没有这个字段，所以在这里算出来，
@@ -2323,7 +2362,11 @@ export function apply(ctx) {
       scheduler.gate = { decisionId: d.id, node: 'verdict' }
       t.status = 'awaiting-verdict'
     } else {
-      await settleVerdict(t, verdict)
+      // 任务本条仍丢弃（见 settleVerdict 的返回契约：v2 的严格终止依赖 tasks 为空，既有用例
+      // formal-verify-v2 7/12 也依赖"搁置后这一轮就此结束"），但"裁定是否真的应用"必须留痕，
+      // 否则任务表与 Verification_logs 对同一次裁定的说法不一致。
+      const applied = await settleVerdict(t, verdict)
+      logActivity('verdict', t.rId + ' 的裁决已' + (applied ? '应用' : '搁置（未应用到对象，任务本条随之关闭；形式化通过后重新验证）'))
       delete tasks[t.id]
     }
   }
@@ -2372,6 +2415,16 @@ export function apply(ctx) {
     }
     return false
   }
+  /**
+   * 应用一次裁定。
+   *
+   * 返回值（审计 L20）：`true` = 裁定**真的落到了对象上**；`false` = 被 require 门禁搁置
+   * （`formalVerdictDeferred`），对象一个字段都没改。调用方必须据此决定任务簿记：以前返回值没人看，
+   * `delete tasks[...]` 无条件执行，任务表就"声称"这次裁定已应用，而唯一的证据只剩 Verification_logs/
+   * 与 Formal/TODO.md。注意 v2 的严格终止（`Object.keys(tasks).length === 0`）与既有用例
+   * （formal-verify-v2 用例 7/12：搁置后调度器停在那里，人形式化后再 resume）都要求**任务本条仍被丢弃**，
+   * 所以这里只把"未应用"这一事实显式报给调用方，不改变调度契约。
+   */
   async function settleVerdict(t, verdict) {
     const v = clamp01(verdict)
     const r = t.r
@@ -2399,7 +2452,7 @@ export function apply(ctx) {
       const p = await findProposition(r.pId)
       if (p) {
         // require 门禁：裸命题的 1/0 裁定不生效（对象留在原库、布尔估计不变、无卡片）
-        if (await formalVerdictDeferred(t, v, v === 1 || v === 0)) return
+        if (await formalVerdictDeferred(t, v, v === 1 || v === 0)) return false
         p.布尔估计 = v
         if (v === 1) { p.证明列表 = p.证明列表 || []; p.证明列表.push({ 完整过程: strongestReason(t, 1), 正确概率: 1, '支持信息/依据': '', 已验: true }); p.优先级 = 'never' }
         else if (v === 0) { p.证伪列表 = p.证伪列表 || []; p.证伪列表.push({ 完整过程: strongestReason(t, 0), 正确概率: 1, '支持信息/依据': '', 已验: true }); p.优先级 = 'never' }
@@ -2418,7 +2471,7 @@ export function apply(ctx) {
       const p = await findProposition(r.pId)
       if (p) {
         // require 门禁：一条证明/证伪被判定为 1（严格成立）时同样受门禁约束
-        if (await formalVerdictDeferred(t, v, v === 1)) return
+        if (await formalVerdictDeferred(t, v, v === 1)) return false
         const list = r.side === '证明' ? (p.证明列表 = p.证明列表 || []) : (p.证伪列表 = p.证伪列表 || [])
         const item = list[r.idx]
         if (item) {
@@ -2451,7 +2504,7 @@ export function apply(ctx) {
         if (sol) {
           // require 门禁：v=1 意味着"这个问题的解法严格成立"（问题收口），必须被门禁拦住，
           // 否则问题会被标成已解决、优先级 never，而 formal 记录仍是 none。
-          if (await formalVerdictDeferred(t, v, v === 1)) return
+          if (await formalVerdictDeferred(t, v, v === 1)) return false
           sol.正确概率 = v
           sol.已验 = true
           sol.验证记录 = sol.验证记录 || []
@@ -2532,6 +2585,7 @@ export function apply(ctx) {
       }
     }
     logActivity('verdict', t.rId + ' = ' + v + (v === 1 ? ' (fully verified)' : v === 0 ? ' (refuted)' : ' (uncertain)'))
+    return true
   }
   function strongestReason(t, wantTrue) {
     const cids = Object.keys(t.childResults)
@@ -2657,7 +2711,7 @@ export function apply(ctx) {
       const d = pending[i]
       try {
         if (d.node === 'spawn') { await spawnChild(d.data.label, d.data.promptText, d.data.meta); d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
-        else if (d.node === 'verdict') { await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true } }
+        else if (d.node === 'verdict') { const applied = await settleVerdict(d.data.task, d.data.verdict); delete tasks[d.data.task.id]; d.status = 'resolved'; d.resolution = { action: 'approve', auto: true, applied: applied } }
       } catch (e) {
         // 副作用失败必须把该决策落到终态，否则它会永远保持 pending：此后每次切 auto 都在同一个
         // 决策上重新抛错，而 gate 又指向它 —— 调度永久卡死。标为 resolved(auto-failed) 并让它过去，
@@ -2745,9 +2799,9 @@ export function apply(ctx) {
   registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
   registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
   // ---- Lean 形式化验证（契约 §5）----
-  registerTool('vibe_math_lean_run', 'Execute the Lean toolchain on one .lean file inside the VibeMath root and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(memberIdOf(agent), args) })
-  registerTool('vibe_math_lean_archive', 'Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(memberIdOf(agent), args) })
-  registerTool('vibe_math_lean_lib', 'List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: { type: 'boolean' } }), async function (args) {
+  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the VibeMath root and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(memberIdOf(agent), args) })
+  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(memberIdOf(agent), args) })
+  registerTool('vibe_math_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: { type: 'boolean' } }), async function (args) {
     const noRefresh = !!(args && args.refresh === false)
     const r = noRefresh ? { lib: null, proved: null, objects: Object.keys(formalRecords()).length } : await rebuildLeanLibIndexes()
     return {
@@ -2861,9 +2915,9 @@ export function apply(ctx) {
   // 三个工具**无条件注册**：工具注册是静态的（动态注册会依赖运行时开关，破坏既有
   // `ctx.effect` 纪律），而档位只决定"框架是否告诉成员它们存在"。off 档下它们照常工作，
   // 人/代理主动调用时一样可用。
-  registerTool('vibe_math_lean_run', 'Execute the Lean toolchain on one .lean file inside the VibeMath root and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
-  registerTool('vibe_math_lean_archive', 'Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
-  registerTool('vibe_math_lean_lib', 'List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
+  registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the VibeMath root and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
+  registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
+  registerTool('vibe_math_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
@@ -2903,8 +2957,11 @@ export function apply(ctx) {
     let beat = 0
     const t = setInterval(function () {
       for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() }
-      // childOwner 裁剪：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
-      if ((++beat % 30) === 0) { try { pruneChildOwner() } catch (e) { console.error('vibe-math-v2: pruneChildOwner failed: ' + String((e && e.message) || e)) } }
+      // childOwner / sessions 裁剪：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
+      if ((++beat % 30) === 0) {
+        try { pruneChildOwner() } catch (e) { console.error('vibe-math-v2: pruneChildOwner failed: ' + String((e && e.message) || e)) }
+        try { pruneSessions() } catch (e) { console.error('vibe-math-v2: pruneSessions failed: ' + String((e && e.message) || e)) }
+      }
     }, 1000)
     return () => clearInterval(t)
   })

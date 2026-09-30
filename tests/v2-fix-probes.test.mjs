@@ -213,5 +213,78 @@ console.log('\n-- H5: a host without subprocess reports the failure instead of d
   h.restore(); rmSync(h.WS, { recursive: true, force: true })
 }
 
+// ---------------------------------------------------------------- L20
+console.log('\n-- L20: a verdict the require gate withheld is reported as NOT applied --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { maxParallelThreshold: 8, verifierCount: 2, formalVerify: 'require', mode: 'manual' })
+  await h.call('vibe_math_add_proposition', { id: 'pDefer', 概述: 'P', 布尔估计: 0.5, 优先级: 1, 细类型: { 数论: {} } })
+  await h.call('vibe_math_start', {})
+  const vs = await h.find(() => { const x = h.spawns.filter((s) => s.label.startsWith('verifier:r-pDefer:')); return x.length >= 2 ? x : undefined })
+  assert(!!vs, 'two reviewers were spawned for the bare proposition')
+  for (let i = 0; i < (vs || []).length; i++) h.fireEnd({ id: vs[i].childId, runId: 'd' + i, stopReason: 'completed', lastAssistantMessage: text({ Result: 1, Reason: 'probe' }) })
+  const dec = await h.findAsync(async () => { const d = await h.call('vibe_math_list_decisions', {}); return d.decisions.length ? d : undefined })
+  assert(!!dec && dec.decisions.length === 1, 'manual mode raised the verdict decision')
+  if (dec && dec.decisions.length) {
+    const res = await h.call('vibe_math_decide', { id: dec.decisions[0].id, action: 'approve' })
+    assert(res.ok === true && res.applied && res.applied.applied === false,
+      '★ the approval reports applied=false: the require gate withheld the verdict (got ' + JSON.stringify(res.applied) + ')')
+    const p = h.readProps().find((x) => x.id === 'pDefer') || {}
+    assert(p.布尔估计 === 0.5, 'and the proposition is untouched (no verdict was applied)')
+    const queue = JSON.parse(readFileSync(join(h.project, 'VibeMath_State', 'decision_queue.json'), 'utf8'))
+    const resolved = queue.find((d) => d.id === dec.decisions[0].id)
+    assert(!!resolved && resolved.status === 'resolved', 'the human decision itself is still resolved (a terminal state)')
+    const todo = existsSync(join(h.project, 'Formal', 'TODO.md')) ? readFileSync(join(h.project, 'Formal', 'TODO.md'), 'utf8') : ''
+    assert(/pDefer/.test(todo) && /formal-required/.test(todo), 'and the deferral is on the formalization TODO')
+  }
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------- L19
+console.log('\n-- L19: the string fallback must not read `r-pAmb-s1` as the same-prefix neighbour pAmb --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8, tickIntervalMs: 200 })
+  await h.call('vibe_math_add_proposition', { id: 'pAmb', 概述: '同前缀邻居', 布尔估计: 0.5, 优先级: 1, 细类型: { 数论: {} } })
+  await h.call('vibe_math_add_proposition', { id: 'pAmb-s1', 概述: '对象 id 本身以 -s1 结尾', 布尔估计: 0.5, 优先级: 1, 细类型: { 数论: {} } })
+  await h.call('vibe_math_add_problem', { id: 'qKeep', description: '保持调度的占位问题', priority: 9 })
+  await h.call('vibe_math_start', {})
+  await h.call('vibe_math_pause', {})
+  // A tick that started before the pause may still be in flight and call saveAll() AFTER our write —
+  // let it drain first, or the hand-written state file would be overwritten before resume reads it.
+  await wait(900)
+  // Simulate a legacy/hand-edited record: the authoritative `objectId` is absent, so ONLY the string
+  // fallback can tell `r-pAmb-s1` (object pAmb-s1) from `r-pAmb` + suffix (object pAmb). The neighbour
+  // carries its own `passed` record, so a wrong parse would visibly downgrade the WRONG object.
+  const f = join(h.project, 'VibeMath_State', 'formal.json')
+  mkdirSync(join(h.project, 'Verified', 'Lean'), { recursive: true })
+  writeFileSync(join(h.project, 'Verified', 'Lean', 'pAmb-s1.lean'), 'theorem p_amb_s1 : 3 + 3 = 6 := by decide\n', 'utf8')
+  const base = { status: 'passed', file: 'Formal/pAmb-s1.lean', proof: 'Verified/Lean/pAmb-s1.lean', decision: 'used', updatedAt: 1 }
+  writeFileSync(f, JSON.stringify({ records: {
+    'r-pAmb-s1': Object.assign({}, base),                       // ← no objectId: the shape under test
+    pAmb: Object.assign({}, base, { file: 'Formal/pAmb.lean', proof: 'Verified/Lean/pAmb.lean' }),
+  }, todo: [] }), 'utf8')
+  assert(!!JSON.parse(readFileSync(f, 'utf8')).records['r-pAmb-s1'], 'the hand-edited record survived until resume (no in-flight tick overwrote it)')
+  await h.call('vibe_math_resume', {})
+  assert(JSON.parse(readFileSync(f, 'utf8')).records['r-pAmb-s1'].objectId === undefined, 'precondition: the alias record really carries no authoritative owner (the fallback is what gets exercised)')
+  const ex = await h.find(() => h.spawns.find((s) => s.label.startsWith('explorer:qKeep')), 60)
+  assert(!!ex, 'the explorer is running (the work-round reply path is live)')
+  if (ex) {
+    h.fireEnd({ id: ex.childId, runId: 'l19', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: text({ directions: [], formal: { target: 'r-pAmb-s1', decision: 'defect', note: 'Lean 只证了 n>0 的情形' } }) })
+    // Read the WHOLE record set once the defect landed on EITHER id, so the neighbour check also fails
+    // when the wrong owner was picked (a `find` that only looks for the right id would hide that).
+    const landed = await h.find(() => {
+      const d = JSON.parse(readFileSync(f, 'utf8')).records || {}
+      return ((d['pAmb-s1'] && d['pAmb-s1'].decision === 'defect') || (d.pAmb && d.pAmb.decision === 'defect')) ? d : undefined
+    }, 40)
+    const after = landed || JSON.parse(readFileSync(f, 'utf8')).records || {}
+    assert(!!after['pAmb-s1'] && after['pAmb-s1'].decision === 'defect', '★★ a defect named by r-pAmb-s1 reached its REAL owner pAmb-s1 through the string fallback (got ' + JSON.stringify(Object.keys(after).map((k) => k + ':' + after[k].decision)) + ')')
+    assert(!after['pAmb'] || after['pAmb'].decision !== 'defect', '★★ and the same-prefix neighbour pAmb was NOT downgraded (its own passed proof survives)')
+  }
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
 console.log('\nFIXES PROBE: ' + passed + ' passed, ' + failed + ' failed')
 process.exit(failed === 0 ? 0 : 1)

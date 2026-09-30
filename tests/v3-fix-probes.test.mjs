@@ -166,6 +166,73 @@ console.log('\n-- H5: a single verifier vote must never conclude --');
   }
 }
 
+console.log('\n-- L3/L6: exponential probabilities and ｜/newline in an entry title survive the md round-trip --');
+{
+  // L3: `概率5e-7` used to miss `([0-9.]+)`, so the WHOLE entry line failed to match and the entry
+  // silently disappeared on reload. L6: a title containing the ｜ delimiter (or a newline) used to cut
+  // the lazy `(.*?)`早 inside the title. Both are pure compose→parse shapes.
+  const body = ['## 陈述', 'x', '', '## 解法候选',
+    '### 解法 1｜' + H.escField('指数概率') + '｜概率' + H.probText(5e-7) + '｜状态未定论', '正文一', '',
+    '### 解法 2｜' + H.escField('标题里有｜概率0.5｜状态乱入') + '｜概率' + H.probText(0.25) + '｜状态已验', '正文二', '',
+    '### 解法 3｜' + H.escField('标题带\n换行') + '｜概率' + H.probText(0.5) + '｜状态未定论', '正文三', ''].join('\n');
+  const parsed = H.parseEntries(body, H.entryRe('解法')).map((e) => ({ title: H.unescField(e.title), prob: H.clamp01(e.prob), status: H.unescField(e.status), text: e.text }));
+  assert(parsed.length === 3, 'all three entries parse back (got ' + parsed.length + ')');
+  assert(parsed[0] && parsed[0].prob === 5e-7, 'an exponential-notation probability parses instead of dropping the entry (got ' + (parsed[0] && parsed[0].prob) + ')');
+  assert(parsed[1] && parsed[1].title === '标题里有｜概率0.5｜状态乱入', 'a title containing ｜概率/｜状态 round-trips (got ' + JSON.stringify(parsed[1] && parsed[1].title) + ')');
+  assert(parsed[1] && parsed[1].status === '已验', 'the status field after the title is still read correctly');
+  assert(parsed[2] && parsed[2].title === '标题带\n换行', 'a title containing a newline round-trips (got ' + JSON.stringify(parsed[2] && parsed[2].title) + ')');
+  assert(H.escField('a｜b') === 'a\\｜b' && H.unescField('a\\｜b') === 'a｜b', 'escField/unescField really escape and restore the delimiter');
+}
+
+console.log('\n-- L4: a fenced `## ` line inside a section body is NOT a section boundary --');
+{
+  const card = ['## 陈述', 'line one', '```', '## not a real section', 'line two', '```', '## 来源与动机', '动机', ''].join('\n');
+  const stmt = H.section(card, '陈述');
+  assert(/## not a real section/.test(stmt) && /line two/.test(stmt), 'the fenced block stays inside 陈述 (section() no longer cuts at it)');
+  assert(!/动机/.test(stmt), 'and the next REAL section is still the boundary');
+  const heads = H.findSectionHeads(card).map((h) => h.name);
+  assert(JSON.stringify(heads) === JSON.stringify(['陈述', '来源与动机']), 'findSectionHeads only reports real (unfenced) headings (got ' + JSON.stringify(heads) + ')');
+  const parts = H.parseBodySections(card);
+  assert(parts.length === 2, 'parseBodySections agrees (2 sections, not 3 → no duplicate extra-section rewrite)');
+}
+
+console.log('\n-- L9: a plan queue left by a PREVIOUS process is discarded on resume --');
+{
+  await call('vibe_math_new_project', { name: 'planstale' });
+  const proj = join(WS, 'VibeMath', 'Projects', 'planstale');
+  await call('vibe_math_pause', {});
+  mkdirSync(join(proj, 'State'), { recursive: true });
+  writeFileSync(join(proj, 'State', 'plans.json'), JSON.stringify({ queued: [{ action: 'dispatch', role: 'solver', target: 'gone-object' }], epoch: 'previous-process' }), 'utf8');
+  await call('vibe_math_resume', {});
+  await sleep(300);
+  await call('vibe_math_pause', {});
+  const st = await call('vibe_math_status', {});
+  assert(st.queuedPlanActions === 0, 'the stale queue is not replayed (queuedPlanActions=' + st.queuedPlanActions + ')');
+  const acts = (st.recentActivity || []).map((a) => a.detail).join('\n');
+  assert(/丢弃上一进程留下的 1 条计划动作/.test(acts), 'and the discard is announced (no silent loss)');
+}
+
+console.log('\n-- L2: a defect on an object that NEVER had an archived proof must not create one --');
+{
+  await call('vibe_math_new_project', { name: 'defectnopr' });
+  const proj = join(WS, 'VibeMath', 'Projects', 'defectnopr');
+  await call('vibe_math_set_params', { maxParallelThreshold: 8, verifierCount: 2, plannerEnabled: false, tickIntervalMs: 200, formalVerify: 'encourage' });
+  await call('vibe_math_add_proposition', { id: 'pNever', 概述: '从未有过归档证明', 概率: 0.5, 分类: '分析' });
+  await call('vibe_math_start', {});
+  const before = spawns.length;
+  await waitFor(() => spawns.slice(before).filter((s) => /^verifier:r-pNever:/.test(s.label)).length >= 2);
+  const vers = spawns.slice(before).filter((s) => /^verifier:r-pNever:/.test(s.label));
+  assert(vers.length >= 2, 'two reviewers spawned for the proposition');
+  fireEnd({ id: vers[0].childId, runId: 'd1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n' + JSON.stringify({ Result: 0.3, Reason: '忠实性有问题', formal: { target: 'pNever', decision: 'defect', note: '定义与命题原文不一致' } }) + '\n```' }] });
+  const rec = await waitFor(() => { const r = JSON.parse(read(join(proj, 'State', 'formal.json')) || '{}').records || {}; return r.pNever && r.pNever.decision === 'defect' });
+  assert(rec, 'the defect is recorded for the object');
+  await sleep(200);
+  await call('vibe_math_pause', {});
+  assert(!existsSync(join(proj, 'Verified', 'Lean', 'pNever.lean')), '★ no Verified/Lean/pNever.lean was fabricated for an object that never had a proof');
+  const ann = read(join(proj, 'Logs', '形式化.md'));
+  assert(/此前没有任何归档证明，无需撤回/.test(ann), 'the announcement says there was nothing to withdraw (got ' + JSON.stringify(ann.slice(-160)) + ')');
+}
+
 console.log(`\n=== V3 FIX PROBE RESULT: ${passed} passed, ${failed} failed ===`);
 rmSync(WS, { recursive: true, force: true });
 process.exit(failed === 0 ? 0 : 1);

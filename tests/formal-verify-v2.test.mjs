@@ -184,7 +184,11 @@ function makeHost(WS, opts = {}) {
 }
 
 function makeRoot(id, WS) {
-  return { id, options: { provider: 'mock', model: 'mock' }, session: { id, header: { cwd: WS, parentSession: undefined } }, followup() {} }
+  // `pushed` records the framework's OWN messages to the main agent (`rootAgent.followup`), i.e. the
+  // reportMode=push progress report. It used to be a no-op, which is why that channel had no corpus
+  // entry at all (AUDIT §2.4 "框架→人 的反馈与推送类提示").
+  const pushed = []
+  return { id, options: { provider: 'mock', model: 'mock' }, session: { id, header: { cwd: WS, parentSession: undefined } }, pushed, followup(m) { const c = (m && m.content) || []; pushed.push(c.map((b) => (b && b.text) || '').join('')) } }
 }
 
 const hosts = []
@@ -1240,6 +1244,44 @@ section("15b a \`used\` reply must NOT downgrade an already-passed object")
   }
 }
 
+// ---------- 15c. the framework's OWN feedback channels (push report + gate notice) ----------
+// Every corpus entry so far was a child prompt (spawn/wake). The framework also speaks to the main
+// agent/human on two other channels — the `reportMode=push` progress report and the activity log's
+// formal-gate notice — and neither had any reviewable artefact (AUDIT §2.4 "框架→人 的反馈与推送类
+// 提示"). Both are captured DETERMINISTICALLY (no wall-clock, no timing-dependent counts):
+//   · push   = the forced push of the strict-termination branch on an EMPTY project (fixed counters);
+//   · feedback = the FIRST formal-gate activity line of one controlled require-mode deferral.
+section('15c the framework push report and the gate notice are captured')
+{
+  const h = await makeCase('push-report')
+  await h.call('vibe_math_set_params', { reportMode: 'push', tickIntervalMs: 200 })
+  await h.call('vibe_math_start', {})
+  const pushed = await waitFor(() => (h.root.pushed && h.root.pushed.length > 0 ? h.root.pushed : undefined), 80, 100)
+  assert(!!pushed, 'push-report: the scheduler pushed a progress report to the main agent')
+  assert(!!pushed && /\[Vibe Math V2\] 进度更新/.test(pushed[0]), '★★ the push text is the real framework→main-agent prompt (reportMode=push)')
+  assert(!!pushed && /vibe_math_report/.test(pushed[0]), 'and it names the FULL tool the main agent must call')
+  await h.call('vibe_math_pause', {})
+
+  const g = await makeCase('gate-feedback')
+  await g.call('vibe_math_set_params', { formalVerify: 'require', maxParallelThreshold: 8 })
+  await g.call('vibe_math_add_proposition', { id: 'pFeed', 概述: '门禁反馈语料', 布尔估计: 0.5, 优先级: 1, '价值/关键性': 0.5, 细类型: { 数论: {} } })
+  await startScheduler(g)
+  const gvs = await waitFor(() => { const x = verifiersOf(g, 'r-pFeed'); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!gvs, 'gate-feedback: verifiers were spawned for the proposition')
+  if (gvs) for (let i = 0; i < gvs.length && i < 2; i++) replyFrom(g, gvs[i].childId, { Result: 1, Reason: '门禁反馈用例' })
+  let gline
+  for (let i = 0; i < 60 && !gline; i++) {
+    const acts = (await g.call('vibe_math_status', {})).recentActivity || []
+    const hit = acts.find((a) => /formal-gate/.test(String(a.event)))
+    if (hit) gline = String(hit.event) + ': ' + String(hit.detail)
+    else await sleep(150)
+  }
+  assert(!!gline && /require 模式搁置/.test(gline), '★★ the require-gate withholding reaches the human-readable channel (captured verbatim)')
+  assert(!!gline && /Formal\/TODO\.md/.test(gline), 'and the notice says where the withholding was recorded')
+  g.feedbackLine = gline || ''
+  await g.call('vibe_math_pause', {})
+}
+
 section('16 the captured prompt corpus is written for human review')
 {
   // Freeze the scheduler in every case FIRST: a still-running tick loop could emit one more
@@ -1261,6 +1303,13 @@ section('16 the captured prompt corpus is written for human review')
       const owner = h.spawns.find((s) => s.childId === f.childId)
       entries.push({ kind: 'wake', case: h.label, label: owner ? owner.label : f.childId, prompt: scrub(h, f.prompt) })
     }
+    // The framework's own messages to the main agent (reportMode=push). Only the FIRST push per case is
+    // kept: whether a second identical push follows depends on tick/reportDirty timing, and the corpus
+    // must stay byte-identical across runs.
+    if (h.root && Array.isArray(h.root.pushed) && h.root.pushed.length > 0) entries.push({ kind: 'push', case: h.label, label: 'main-agent', prompt: scrub(h, h.root.pushed[0]) })
+    // The framework's human-readable feedback channel: the activity-log line that carries the require
+    // gate's withholding notice. It is captured once, in case 15c, for determinism.
+    if (typeof h.feedbackLine === 'string' && h.feedbackLine) entries.push({ kind: 'feedback', case: h.label, label: 'activity-log', prompt: scrub(h, h.feedbackLine) })
   }
   mkdirSync(CORPUS_DIR, { recursive: true })
   writeFileSync(join(CORPUS_DIR, 'formal-verify-v2.json'), JSON.stringify({ entries: entries }, null, 2), 'utf8')
@@ -1268,7 +1317,8 @@ section('16 the captured prompt corpus is written for human review')
     '> 由 `formal-verify-v2.test.mjs` 落盘：框架**真正发出**的每一条提示词原文。',
     '> 工作区路径归一化为 `<WS>`、VibeMath 根归一化为 `<VIBEMATH>`，因此可 diff、不泄露本机路径。',
     '> 覆盖：off 档（无任何 Lean 文字）、encourage 与 require 的表决初评/辩论、passed 后的忠实性分支、',
-    '> 以及平时工作轮的「顺手形式化」段落与 formal 回执契约。', '']
+    '> 平时工作轮的「顺手形式化」段落与 formal 回执契约，以及框架自己的两条反馈通道：',
+    '> `reportMode=push` 的推送汇报（kind=push）与 require 门禁搁置的活动日志公告（kind=feedback）。', '']
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]
     md.push('## [' + i + '] ' + e.kind + ' · ' + e.label + ' · case=' + e.case)
@@ -1288,6 +1338,8 @@ section('16 the captured prompt corpus is written for human review')
   assert(entries.some((e) => /【顺手形式化/.test(e.prompt) && /"formal":\{"target":"<对象id>","decision":"used\|blocked\|defect"/.test(e.prompt)), 'the corpus contains the formal reply contract line')
   assert(entries.some((e) => !/Lean|形式化/.test(e.prompt)), 'the corpus contains off-mode prompts with no Lean text at all')
   assert(entries.some((e) => e.kind === 'wake'), 'the corpus also keeps the continuation prompts (debate rounds)')
+  assert(entries.some((e) => e.kind === 'push' && /\[Vibe Math V2\] 进度更新/.test(e.prompt)), '★ the corpus carries the framework\'s PUSH report (reportMode=push)')
+  assert(entries.some((e) => e.kind === 'feedback' && /require 模式搁置/.test(e.prompt)), '★ and the require-gate withholding notice (the framework→human feedback channel)')
   // Generic sweeps over EVERY captured prompt, not spot checks (AUDIT §2.1).
   const joined = entries.map((e) => e.prompt).join('\n')
   const bare = entries.filter((e) => /(^|[^a-z_])lean_(run|archive|lib)/.test(e.prompt))

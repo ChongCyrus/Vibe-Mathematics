@@ -44,6 +44,9 @@
       Key rules to remember when reporting: a problem is "solved" when one of its solutions reaches
       正确概率 = 1; a proposition reaches 布尔估计 = 1/0 when a proof/refutation in its lists reaches
       正确概率 = 1; Propos propositions with 价值/关键性 ≥ promoteValueThreshold auto-promote to qs.json.
+      Closure rule (identical across the presets): the 1/0 values above are written ONLY by the scheduler,
+      after ≥2 independent verifier agents settle the object (one lone reviewer can never conclude), and
+      Verified/ is written by that same scheduler path — an agent's own self-reported 1 is never a conclusion.
       When the user asks about progress, call vibe_math_report and summarize in plain language.
 
       Configuration highlights (all tunable via vibe_math_set_params / the settings file):
@@ -107,6 +110,9 @@
       Key rules to remember when reporting: a problem is "solved" when one of its solutions reaches
       正确概率 = 1; a proposition reaches 布尔估计 = 1/0 when a proof/refutation in its lists reaches
       正确概率 = 1; Propos propositions with 价值/关键性 ≥ promoteValueThreshold auto-promote to qs.json.
+      Closure rule (identical across the presets): the 1/0 values above are written ONLY by the scheduler,
+      after ≥2 independent verifier agents settle the object (one lone reviewer can never conclude), and
+      Verified/ is written by that same scheduler path — an agent's own self-reported 1 is never a conclusion.
       When the user asks about progress, call vibe_math_report and summarize in plain language.
 
       Configuration highlights (all tunable via vibe_math_set_params / the settings file):

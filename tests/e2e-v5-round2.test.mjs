@@ -744,6 +744,72 @@ console.log('\n[18] a turn ending with stopReason=error is recorded, with or wit
     '★ a non-completed turn WITH output carries that output and its stop reason: ' + JSON.stringify(seg2.slice(0, 140)))
 }
 
+// ---------- 19. two proposals in the SAME tick are never lost -------------------
+console.log('\n[19] concurrent propose_verify: the durable queue must not lose one')
+{
+  // The verify queue was mutated with a whole-array read-modify-write (`inst().queue.slice()`,
+  // push, `await putQueue(q)`). Two members proposing in the same tick both read the same array
+  // and each committed its own copy, so the last writer won and the first proposal vanished from
+  // the durable queue with BOTH calls reporting ok:true. The mutation now happens inside the
+  // event fold (`appendToQueue`), so no same-tick append can overwrite another.
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const who = h.childAgent(h.childOf('r-1'))
+  const [pa, pb] = await Promise.all([
+    h.callTool('vibe_v5_propose_verify', { target: 'p-race-a', kind: 'proposition', reason: 'race A' }, who),
+    h.callTool('vibe_v5_propose_verify', { target: 'p-race-b', kind: 'proposition', reason: 'race B' }, who),
+  ])
+  assert(pa.ok === true && pb.ok === true, 'both concurrent proposals report ok (the buggy code reported ok for the lost one too)')
+  const s = await h.callTool('vibe_v5_status', {})
+  const seen = (s.verify ? [s.verify.target] : []).concat(s.verifyQueue)
+  assert(seen.indexOf('p-race-a') !== -1 && seen.indexOf('p-race-b') !== -1,
+    '★ neither same-tick proposal is lost: each is in-flight or queued (verify=' + JSON.stringify(s.verify && s.verify.target) + ', queue=' + JSON.stringify(s.verifyQueue) + ')')
+  await sleep(30)
+  const st = JSON.parse(readFileSync(statePathOf(h.WS), 'utf8'))
+  const inst = st.institutes[Object.keys(st.institutes)[0]]
+  const durable = (inst.queue || []).map(q => q.target)
+  const open = Object.keys(inst.verdicts || {}).filter(k => !inst.verdicts[k].closed)
+  const bothDurable = (durable.indexOf('p-race-a') !== -1 || open.indexOf('p-race-a') !== -1) &&
+    (durable.indexOf('p-race-b') !== -1 || open.indexOf('p-race-b') !== -1)
+  assert(bothDurable, '★ the durable state file keeps both as well (queue=' + JSON.stringify(durable) + ', open verdicts=' + JSON.stringify(open) + ')')
+}
+
+// ---------- 20. invalid numeric params are clamped, not silently destructive ----------
+console.log('\n[20] invalid numeric params are clamped instead of silently destructive')
+{
+  // `compactThreshold <= 0` made EVERY round look over the threshold (a permanent compaction
+  // directive), `verdictMaxRounds < 1` collapsed every debate to one round, and `chatDigestMax < 1`
+  // emptied the digest bucket. `normalizeParams` now applies the same discipline the durations use.
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const r = await h.callTool('vibe_v5_set', { verdictMaxRounds: 0, chatDigestMax: -3, compactThreshold: 0 })
+  assert(r.ok === true && r.params.verdictMaxRounds === 1, 'verdictMaxRounds=0 floors at 1 (got ' + r.params.verdictMaxRounds + ')')
+  assert(r.params.chatDigestMax === 1, 'chatDigestMax=-3 floors at 1 (got ' + r.params.chatDigestMax + ')')
+  assert(r.params.compactThreshold === 66, 'compactThreshold=0 falls back to the default 66 (got ' + r.params.compactThreshold + ')')
+}
+
+// ---------- 21. an office-only tool never impersonates the office for an unknown caller ----
+console.log('\n[21] office-only tools refuse a caller that is neither a member nor the session root')
+{
+  // `memberIdOfAgent` answers 'office' for the root AND '' for an unrelated descendant, and
+  // `isOffice('')` is true — so the old handlers fell back to the office and let any unresolvable
+  // caller convene meetings / hire / fire as the office (audit L6). `officeCaller` now refuses.
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const ghost = h.childAgent('c-nobody')
+  const mtg = await h.callTool('vibe_v5_meeting', { agenda: '冒充所办', kind: 'sync' }, ghost)
+  assert(mtg.ok === false && mtg.code === 'V5_MEMBER_NOT_FOUND',
+    'meeting is refused for a caller that is not a member or the session root (' + JSON.stringify(mtg).slice(0, 90) + ')')
+  const res = await h.callTool('vibe_v5_add_researcher', { direction: 'x' }, ghost)
+  assert(res.ok === false && res.code === 'V5_MEMBER_NOT_FOUND',
+    'add_researcher is refused for the same caller (' + JSON.stringify(res).slice(0, 90) + ')')
+  const office = await h.callTool('vibe_v5_meeting', { agenda: '所办直接开会', kind: 'sync' })
+  assert(office.ok === true, 'the real office (session root) still convenes a meeting (' + JSON.stringify(office).slice(0, 90) + ')')
+}
+
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

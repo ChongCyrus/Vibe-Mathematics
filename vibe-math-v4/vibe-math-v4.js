@@ -2256,8 +2256,13 @@ export function apply(ctx) {
      */
     function setParams(upd){
       const keys=Object.keys(upd||{})
-      const ignored=keys.filter(k=>!(k in params))
-      for(const k of keys){ if(k in params){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } }
+      // `k in params` 会沿原型链判真：`toString` / `constructor` / `__proto__` 这类键会被当成"已知参数"
+      // 写进 params（`params['__proto__']=…` 还会真的改掉 params 的原型），而 schema 的
+      // additionalProperties:false 在 v4 上**不产生运行期拒绝**（裸 tools.register，宿主不校验实参）。
+      // 已知参数一律以**自有属性**为准（AUDIT-CHECKLIST §1.9 的"声明=接收"只能在自有键上成立）。
+      const has = (o,k)=>Object.prototype.hasOwnProperty.call(o,k)
+      const ignored=keys.filter(k=>!has(params,k))
+      for(const k of keys){ if(has(params,k)){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } }
       saveSettings().catch(()=>{})
       if(ignored.length){
         logActivity('set','忽略未知参数：'+ignored.join(', '))
@@ -2266,7 +2271,8 @@ export function apply(ctx) {
       return {ok:true,applied:keys}
     }
     // ---- create / configure (no auto-start) + settings-file persistence ----
-    async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(k in params){ const nv=normalizeParam(k, s[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } } }
+    // 同一把守护：State/settings.json 是用户可编辑的，原型链上的键名（toString/__proto__）不是参数。
+    async function loadSettings(){ const s=await readJson('State/settings.json'); if(s&&typeof s==='object'){ for(const k of Object.keys(s)){ if(Object.prototype.hasOwnProperty.call(params,k)){ const nv=normalizeParam(k, s[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } } } }
     async function saveSettings(){ await writeJson('State/settings.json', params) }
     // Create/configure a project and set params/problem WITHOUT starting any resident.
     // The intended flow: vibe_v4_configure {project?, problem?, params?}  →  vibe_v4_start {}.
@@ -2368,7 +2374,11 @@ export function apply(ctx) {
         if(which==='meeting') return (arg&&arg.meeting)?meetingPrompt(r,arg.meeting):(meetingState?meetingPrompt(r,meetingState):meetingPrompt(r,{agenda:'（无进行中的会议）',type:'general',inputs:{},order:[]}))
         if(which==='verify'){
           const target=idSafe(String((arg&&arg.target)||''))
-          const tt=guessTargetType(target)||(String(target).charAt(0)==='m'?'method':String(target).charAt(0)==='s'?'subproblem':'proposition')
+          // F14 的同一条尺子：前缀（p-/m-/s-）就是对象归属的契约。此前的兜底把**任何**认不出的 id
+          // 都当成 proposition，于是这个"读真实提示词"的工具会展示一条带着错误对象类型的投票提示词
+          // （而真正入队的入口 maybeQueueVerify 已经拒绝这种 id）。认不出就如实拒绝，不猜。
+          const tt=guessTargetType(target)
+          if(!tt) return 'V4_INVALID_ARGUMENT: target must start with p- (proposition) / m- (method) / s- (subproblem) — cannot render a verification prompt for an unknown object kind'
           return verifyPrompt(r,{targetId:target,targetType:tt,targetOwner:'',stage:String((arg&&arg.stage)||'independent'),history:{},verdicts:{}})
         }
         return normalPrompt(r)

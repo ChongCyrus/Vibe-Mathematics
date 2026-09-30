@@ -64,6 +64,25 @@ export function apply(ctx) {
   // ================= per-session registry =================
   const sessions = new Map() // rootAgentId -> Session
   const childOwner = new Map() // childId -> rootAgentId (route subagent/end back to its session)
+  // childOwner 的**有界化**（审计 L1）。这条映射只在"这个 child 还可能再发 subagent/end"时有价值，
+  // 但（与 v2 同一结论）不能在事件回调里立即回收：辩论/续轮会在同一个 child 上再次 end，丢了映射这次
+  // 事件就没人路由，verdict 收口随之失效。所以改为**引用 + 宽限期**：仍被任务或 agentRegistry 引用的
+  // 一律保留，没有引用且距最近一次 end 已超过宽限期才回收。
+  const CHILD_OWNER_GRACE_MS = 5 * 60 * 1000
+  const lastChildEndAt = new Map() // childId -> 最近一次 subagent/end 的时间
+  function pruneChildOwner() {
+    const keep = new Set()
+    for (const s of sessions.values()) {
+      try { for (const id of s.referencedChildIds()) keep.add(id) } catch (e) { /* 尽力而为 */ }
+    }
+    const cutoff = now() - CHILD_OWNER_GRACE_MS
+    for (const cid of Array.from(childOwner.keys())) {
+      if (keep.has(cid)) continue
+      const ended = lastChildEndAt.get(cid)
+      if (ended === undefined || ended > cutoff) continue
+      childOwner.delete(cid); lastChildEndAt.delete(cid)
+    }
+  }
   const fileOwner = {} // 进程级写锁：fileKey -> { childId, sessionId, at } —— 防任何代理（跨会话）并发写同一 md 文件
   // Process epoch: PROCESS-level (one per apply, shared by every session), written to
   // State/process_epoch.json at init; a DIFFERENT persisted epoch means a previous DSH
@@ -166,6 +185,14 @@ export function apply(ctx) {
   let agentRegistry = {}
   let decisionQueue = []
   let verifierAccuracy = {}
+  // 验证者票数统计的保留上限（审计 L1）：它按**一次性的 childId** 记，每次验证都新增键，
+  // 长跑进程里无界增长并整表落盘。它已经不再参与任何加权（见 finalVerdict 的 M8 说明），
+  // 只是审计轨迹，所以按插入顺序保留最近 N 条即可。
+  const VERIFIER_ACC_KEEP = 200
+  function pruneVerifierAccuracy() {
+    const keys = Object.keys(verifierAccuracy)
+    for (let i = 0; i < keys.length - VERIFIER_ACC_KEEP; i++) delete verifierAccuracy[keys[i]]
+  }
   let tasks = {}                  // verify tasks keyed by 'verify:<rId>'
   let activityLog = []
   let lastReportWrite = 0
@@ -228,7 +255,7 @@ export function apply(ctx) {
     { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
     { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数', suggestion: 3 },
     { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向', suggestion: 1 },
-    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量', suggestion: 3 },
+    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（实际下界为 2：少于 2 份独立评审一律不定论，见 minVotes）', suggestion: 3 },
     { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
     { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: '裁决模式：flat = 均衡机制（分歧时 0.5）；forced = 强制裁决（对每票等权取均值；严格 1/0 是绝对投票，其影响通过数值本身拉向端点。**不按"历史准确率"加权**——该统计量统计的是与本批裁决的一致度，没有后续真值可纠正）；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值，修复 v2 flat 误判）', suggestion: 'forced' },
     { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
@@ -350,7 +377,10 @@ export function apply(ctx) {
    * 与 `Verified/Lean/`（归档证明，与定论卡片同处 Verified/，一眼可见"这条结论的证明在哪"），
    * 以及**项目树之外**的全局可复用库 `<VibeMath 根>/Formal/{Lib,Proved}`（跨项目复用是核心收益）。
    */
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
+  // Progress_Logs/ 必须和别的骨架目录**一起**建出来（审计 L8）：vibe_math_report 会写
+  // `Progress_Logs/report.json`，README 也把它列为布局的一部分，但此前它只靠 writeText 的隐式
+  // mkdir 兜底——在宿主不支持删除/创建的路径上（runShell 失败）报告目录就时有时无。
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Progress_Logs', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
   async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
 
   // ================= settings =================
@@ -429,7 +459,11 @@ export function apply(ctx) {
   // ================= md soft-spec helpers =================
   // 软规范：对象 md 头部锚点行（唯一强制部分）+ 正文自由叙述。调度器只解析
   // 头部锚点与条目标题行（### 解法/证明/证伪 N｜标题｜概率X｜状态Y），从不解析正文散文。
-  function anchorLine(k, v) { return '- ' + k + ': ' + String(v == null ? '' : v) }
+  function anchorLine(k, v) {
+    // 锚点行是**逐行**格式，parseAnchors 的 `.*$` 不跨行（无 `s` 标志）：值里含换行会让这一行被
+    // 劈成两行，第二行既不是锚点也会污染下一个锚点/段落的解析。compose 侧统一折成空格（审计 L6）。
+    return '- ' + k + ': ' + String(v == null ? '' : v).replace(/[\r\n]+/g, ' ')
+  }
   // 解析条目标题行 + 其后正文，直到下一个 ### / ## 标题。返回 [{heading, text}]
   /**
    * 按顺序切出正文里的所有 `## ` 顶层段。用于"无损往返"：compose 只重新生成自己管理的
@@ -482,7 +516,7 @@ export function apply(ctx) {
     if (sols.length === 0) lines.push('（暂无解法候选）')
     else for (let i = 0; i < sols.length; i++) {
       const s = sols[i]
-      lines.push('### 解法 ' + (i + 1) + '｜' + (s.title || '解法' + (i + 1)) + '｜概率' + (s.prob != null ? s.prob : 0.5) + '｜状态' + (s.status || '未定论'))
+      lines.push('### 解法 ' + (i + 1) + '｜' + escField(s.title || '解法' + (i + 1)) + '｜概率' + probText(s.prob != null ? s.prob : 0.5) + '｜状态' + escField(s.status || '未定论'))
       lines.push(s.text || '')
       lines.push('')
     }
@@ -491,7 +525,7 @@ export function apply(ctx) {
   function parseProblemMd(id, text) {
     const { head, body } = splitHeader(text)
     const a = parseAnchors(head)
-    const sols = parseEntries(body, /^###\s*解法\s*\d+｜(.*?)｜概率([0-9.]+)｜状态(.+)$/).map(function (e) { return { title: e.title, prob: clamp01(e.prob), status: e.status, text: e.text } })
+    const sols = parseEntries(body, entryRe('解法')).map(function (e) { return { title: unescField(e.title), prob: clamp01(e.prob), status: unescField(e.status), text: e.text } })
     return {
       id: id, 标题: a['标题'] || id, 状态: a['状态'] || '求解中',
       优先级: (a['优先级'] === 'never' ? 'never' : (Number(a['优先级']) || 1)),
@@ -530,7 +564,7 @@ export function apply(ctx) {
     if (proofs.length === 0) lines.push('（暂无证明尝试）')
     else for (let i = 0; i < proofs.length; i++) {
       const s = proofs[i]
-      lines.push('### 证明 ' + (i + 1) + '｜' + (s.title || '证明' + (i + 1)) + '｜概率' + (s.prob != null ? s.prob : 0.5) + '｜状态' + (s.status || '未定论'))
+      lines.push('### 证明 ' + (i + 1) + '｜' + escField(s.title || '证明' + (i + 1)) + '｜概率' + probText(s.prob != null ? s.prob : 0.5) + '｜状态' + escField(s.status || '未定论'))
       lines.push(s.text || '')
       lines.push('')
     }
@@ -539,7 +573,7 @@ export function apply(ctx) {
     if (refutes.length === 0) lines.push('（暂无证伪尝试）')
     else for (let i = 0; i < refutes.length; i++) {
       const s = refutes[i]
-      lines.push('### 证伪 ' + (i + 1) + '｜' + (s.title || '证伪' + (i + 1)) + '｜概率' + (s.prob != null ? s.prob : 0.5) + '｜状态' + (s.status || '未定论'))
+      lines.push('### 证伪 ' + (i + 1) + '｜' + escField(s.title || '证伪' + (i + 1)) + '｜概率' + probText(s.prob != null ? s.prob : 0.5) + '｜状态' + escField(s.status || '未定论'))
       lines.push(s.text || '')
       lines.push('')
     }
@@ -548,8 +582,8 @@ export function apply(ctx) {
   function parsePropositionMd(id, text) {
     const { head, body } = splitHeader(text)
     const a = parseAnchors(head)
-    const proofs = parseEntries(body, /^###\s*证明\s*\d+｜(.*?)｜概率([0-9.]+)｜状态(.+)$/).map(function (e) { return { title: e.title, prob: clamp01(e.prob), status: e.status, text: e.text } })
-    const refutes = parseEntries(body, /^###\s*证伪\s*\d+｜(.*?)｜概率([0-9.]+)｜状态(.+)$/).map(function (e) { return { title: e.title, prob: clamp01(e.prob), status: e.status, text: e.text } })
+    const proofs = parseEntries(body, entryRe('证明')).map(function (e) { return { title: unescField(e.title), prob: clamp01(e.prob), status: unescField(e.status), text: e.text } })
+    const refutes = parseEntries(body, entryRe('证伪')).map(function (e) { return { title: unescField(e.title), prob: clamp01(e.prob), status: unescField(e.status), text: e.text } })
     return {
       id: id, 标题: a['标题'] || id, 状态: a['状态'] || '未定论',
       概率: clamp01(a['概率'] != null ? Number(a['概率']) : 0.5),
@@ -821,7 +855,14 @@ export function apply(ctx) {
     const va = await readJson('State/verifier_accuracy.json'); if (va) verifierAccuracy = va
     const tk = await readJson('State/tasks.json'); if (tk) tasks = tk
     const er = await readJson('State/explorer_retries.json'); if (er) explorerRetries = er
-    const pq = await readJson('State/plans.json'); if (pq && Array.isArray(pq.queued)) planQueue = pq.queued
+    const pq = await readJson('State/plans.json')
+    // 计划队列的**跨进程**语义（审计 L9）：planQueue 是"本进程内跨 tick"的队列，里面的动作指的是
+    // 当时那个进程/那次运行的对象与状态。上一进程留下的队列在恢复时重放，轻则对已不存在的 target
+    // 空转，重则把过期计划的动作施加到新状态上。进程 epoch 是权威判据：只有本进程写下的队列才恢复。
+    if (pq && Array.isArray(pq.queued)) {
+      if (pq.epoch === processEpoch) planQueue = pq.queued
+      else if (pq.queued.length > 0) { planQueue = []; logActivity('plan', '丢弃上一进程留下的 ' + pq.queued.length + ' 条计划动作（跨进程重放会施加过期计划）') }
+    }
     const ml = await readJson('State/method_log.json'); if (ml) methodLog = Object.assign({ pendingInventions: [], keepCount: 0, lastKeepAt: 0 }, ml)
     const pl = await readJson('State/project_lock.json'); if (pl) projectLock = Object.assign({ sessionId: '', at: 0 }, pl)
     const lp = await readJson('State/last_plan.json'); if (lp) lastPlanSummary = lp
@@ -842,7 +883,7 @@ export function apply(ctx) {
     await writeJson('State/verifier_accuracy.json', verifierAccuracy)
     await writeJson('State/tasks.json', tasks)
     await writeJson('State/explorer_retries.json', explorerRetries)
-    await writeJson('State/plans.json', { queued: planQueue })
+    await writeJson('State/plans.json', { queued: planQueue, epoch: processEpoch })
     await writeJson('State/method_log.json', methodLog)
     await writeJson('State/project_lock.json', projectLock)
     await writeJson('State/archived_journals.json', archivedJ)
@@ -944,7 +985,10 @@ export function apply(ctx) {
         '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
         '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '，待执行计划=' + report.queuedPlanActions + '。' +
         '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
-      rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'plugin', plugin: 'vibe-math-v3' } })
+      // 来源 kind 必须是**已声明**的：`MessageSourceMap` 是 merge-extensible 联合，但没有共享的
+      // catch-all `plugin` kind（审计 L5/dsh-llm message.d.ts），{kind:'plugin'} 是契约外形状。
+      // role 本来就是 'user'，正文自带 "[Vibe Math V3] 进度更新" 的真署名，故用核心声明的 {kind:'user'}。
+      rootAgent.followup({ id: uuid(), role: 'user', content: [textBlock(text)], source: { kind: 'user' } })
       lastPushReport = now()
     } catch (e) {
       console.error('vibe-math-v3: push report failed: ' + String((e && e.message) || e))
@@ -1299,7 +1343,24 @@ export function apply(ctx) {
   }
 
   // ================= decisions (manual/auto) =================
-  function enqueueDecision(node, contextText, data) { const d = { id: uuid(), node: node, context: contextText, data: data, status: 'pending', resolution: null, createdAt: now() }; decisionQueue.push(d); return d }
+  // 已结清决策的保留条数（审计 L1）：decisionQueue 以前只把 status 置 resolved、永不裁剪，
+  // 且整表落盘到 State/decision_queue.json，长跑进程里它是第二处无界增长。保留最近 N 条已结清记录
+  // 作为审计轨迹（list_decisions 只列 pending，所以裁剪不影响任何读取路径），pending 一律不裁。
+  const RESOLVED_DECISION_KEEP = 50
+  function pruneDecisionQueue() {
+    let resolved = 0
+    for (let i = 0; i < decisionQueue.length; i++) if (decisionQueue[i] && decisionQueue[i].status !== 'pending') resolved++
+    let drop = resolved - RESOLVED_DECISION_KEEP
+    if (drop <= 0) return
+    const kept = []
+    for (let i = 0; i < decisionQueue.length; i++) {
+      const d = decisionQueue[i]
+      if (d && d.status !== 'pending' && drop > 0) { drop--; continue }
+      kept.push(d)
+    }
+    decisionQueue = kept
+  }
+  function enqueueDecision(node, contextText, data) { const d = { id: uuid(), node: node, context: contextText, data: data, status: 'pending', resolution: null, createdAt: now() }; decisionQueue.push(d); pruneDecisionQueue(); return d }
   async function maybeGate(node, contextText, data, autoFn) { if (params.mode === 'auto') return await autoFn(data); const d = enqueueDecision(node, contextText, data); setGate(d, node); logActivity('gate', node + ': ' + contextText); await saveAll(); return { gated: true, decisionId: d.id } }
   /**
    * 设置唯一闸门，并把被它取代的旧决策**立即结清**。
@@ -2909,7 +2970,15 @@ export function apply(ctx) {
     const id = formalId(target)
     if (!id) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'defect 记录必须写明 target' }
     const prev = formalOf(id)
-    const archived = String(prev.proof || '').trim() || ('Verified/Lean/' + id + '.lean')
+    // 撤回目标（审计 L2）：只在**确实有过归档证明**时才撤回。此前 prev.proof 为空时也会拿
+    // 'Verified/Lean/<id>.lean' 去撤，而 withdrawArchivedProof 在文件删不掉/不存在时会**就地覆盖写**
+    // ——于是一个从未有过证明的对象会在"所有人都来这里找证明"的目录里凭空多出一份撤回声明文件。
+    let archived = String(prev.proof || '').trim()
+    if (!archived) {
+      const fallback = 'Verified/Lean/' + id + '.lean'
+      const abs = leanAbsPath(fallback)
+      if (abs !== null && (await readTextAbs(abs)) !== undefined) archived = fallback
+    }
     await putFormal(id, Object.assign({}, prev, {
       status: 'attempted',
       decision: 'defect',
@@ -2918,7 +2987,7 @@ export function apply(ctx) {
       updatedAt: now(),
     }))
     // 归档证明必须消失，否则 Verified/Lean/ 里会留下一份"看起来已通过"的不忠实代码。
-    const withdrawn = await withdrawArchivedProof(archived)
+    const withdrawn = archived ? await withdrawArchivedProof(archived) : 'none'
     // 待办条目按 id 去重、就地刷新：note 进入 TODO.md 的 why 列（require 档据此搁置定论）。
     const list = formalTodo()
     const i = list.findIndex(function (x) { return x && x.id === id })
@@ -2930,12 +2999,13 @@ export function apply(ctx) {
     await rebuildLeanLibIndexes()
     await saveAll()
     // 如实说出**哪一种**撤回发生了：删除成功 / 就地覆盖 / 两者都失败（后者必须让人手动处理，
-    // 否则一份不忠实的代码会静静留在"证明"的路径上而无人知晓）。
+    // 否则一份不忠实的代码会静静留在"证明"的路径上而无人知晓）。'none' = 本来就没有归档证明。
     await formalAnnounce('【形式化】' + who + ' 认定 ' + id + ' 的 Lean 形式化存在**忠实性缺陷**：' + note
       + '。这不是"命题为假"，而是**形式化不合格**：已撤回其「已通过」状态（降级为 attempted）、'
-      + (withdrawn === 'deleted' ? '删除归档证明 ' + archived
-        : withdrawn === 'overwritten' ? '归档证明 ' + archived + ' 无法删除（宿主不支持删除），已**就地覆盖为撤回声明**'
-          : '归档证明 ' + archived + ' **未能撤回**（宿主删除与覆盖均失败，请手动删除，不要把它当作该对象的证明）')
+      + (withdrawn === 'none' ? '该对象此前没有任何归档证明，无需撤回'
+        : withdrawn === 'deleted' ? '删除归档证明 ' + archived
+          : withdrawn === 'overwritten' ? '归档证明 ' + archived + ' 无法删除（宿主不支持删除），已**就地覆盖为撤回声明**'
+            : '归档证明 ' + archived + ' **未能撤回**（宿主删除与覆盖均失败，请手动删除，不要把它当作该对象的证明）')
       + '、写入 Formal/TODO.md；'
       + (formalMode() === 'require'
         ? '本次裁定**不定论**，修正形式化并重新跑通（vibe_math_lean_archive kind=\'proof\'）后再投票。'
@@ -3122,6 +3192,7 @@ export function apply(ctx) {
       if (Number(t.childResults[cids[i]].Result) === v) acc.correct += 1
       verifierAccuracy[cids[i]] = acc
     }
+    pruneVerifierAccuracy()
     await writeJson('Logs/Verification/' + t.rId + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
     // ── require 门禁（契约 §8）────────────────────────────────────────────────
     // 判定为真（严格证明）或假（严格反驳）之前必须先有 `passed` 或 `blocked`。门禁放在**改
@@ -3695,6 +3766,17 @@ export function apply(ctx) {
     handlers: handlers,
     refreshProject: async function () { if (rootAgent) currentProject = await readCurrentProject() },
     getRunning: function () { return scheduler.running },
+    // childOwner 裁剪用（审计 L1）：这个会话当前仍"可能再发 subagent/end"的 child
+    // = 在册子代理 + 任何任务正在等的那几个。
+    referencedChildIds: function () {
+      const out = Object.keys(agentRegistry)
+      const ids = Object.keys(tasks)
+      for (let i = 0; i < ids.length; i++) {
+        const t = tasks[ids[i]]
+        if (t && Array.isArray(t.children)) for (let j = 0; j < t.children.length; j++) out.push(t.children[j])
+      }
+      return out
+    },
     tickDue: function () { const iv = Math.max(200, Number(params.tickIntervalMs) || 2000); return (now() - lastTickAt) >= iv },
   }
 }
@@ -3774,12 +3856,14 @@ export function apply(ctx) {
 
   // subagent/end (registered once; routed to the owning session via childOwner)
   ctx.on('subagent/end', function (info) {
+    // 记下最近一次 end 的时间：childOwner 的宽限期从这里算（见 pruneChildOwner）。
+    lastChildEndAt.set(info.id, now())
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v3 onChildEnd reject: ' + String((e && e.stack) || e)) })
-    // 注意：这里**不要**回收 childOwner 条目（与 v2 同一结论）。该映射在子代理 end 之后仍会
+    // 注意：这里**不要**立即回收 childOwner 条目（与 v2 同一结论）。该映射在子代理 end 之后仍会
     // 被后续事件路由用到；在 v2 上实测过"事件回调里回收"与"onChildEnd 末尾回收"两种写法，
-    // 都会让 verdict 收口失效。代价只是每个历史子代理一条小记录（有界、不影响功能）。
+    // 都会让 verdict 收口失效。回收交给引用 + 宽限期的 pruneChildOwner（审计 L1）。
   })
 
   // Project-lock LEASE renewal timer (Round C, HIGH): renewal must NOT live in tick().
@@ -3799,9 +3883,29 @@ export function apply(ctx) {
   // is still the throttled writer and keeps its `scheduler.running` / ownership guards, which preserves
   // the crash-recovery path exactly: a dead process stops renewing, its lease ages out, and only then
   // may a new session take it over.
-  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { s.renewLockIfDue().catch(function (e) { console.error('vibe-math-v3 lock renew error: ' + String((e && e.message) || e)) }) } }, LOCK_POLL_MS); return () => clearInterval(t) })
+  // 心跳定时器（每个宿主一次，随插件 fiber 释放）。
+  //
+  // L7：优先用**宿主的 timer 服务**（`ctx.interval`，随宿主暂停/记账、随 fiber 释放），
+  // 只有在宿主没有该服务时（测试 mock / 旧线）才回落到裸 setInterval——回落是必需的：
+  // `inject` 里没有 'timer'（加进去会让缺该服务的主机整个不激活），而 mock 宿主没有 ctx.interval。
+  // 两种实现都返回 disposer，ctx.effect 的清理语义不变。
+  function everyMs(ms, fn) {
+    try { if (typeof ctx.interval === 'function') return ctx.interval(fn, ms) } catch (e) { /* 回落到 setInterval */ }
+    const t = setInterval(fn, ms)
+    return () => clearInterval(t)
+  }
+  ctx.effect(() => everyMs(LOCK_POLL_MS, function () { for (const s of sessions.values()) { s.renewLockIfDue().catch(function (e) { console.error('vibe-math-v3 lock renew error: ' + String((e && e.message) || e)) }) } }))
   // tick timer (registered once; ticks every running session at its own pace)
-  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
+  ctx.effect(() => {
+    let beat = 0
+    return everyMs(1000, function () {
+      for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() }
+      // childOwner 裁剪（审计 L1）：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
+      if ((++beat % 30) === 0) {
+        try { pruneChildOwner() } catch (e) { console.error('vibe-math-v3: pruneChildOwner failed: ' + String((e && e.message) || e)) }
+      }
+    })
+  })
 }
 
 // ---- test seam: pure, stateless helpers --------------------------------
@@ -3834,6 +3938,11 @@ export const __testHelpers = {
   parseEntries,
   section,
   parseBodySections,
+  findSectionHeads,
+  escField,
+  unescField,
+  entryRe,
+  probText,
   extraBodySections,
   parseAppTitle,
   parseMethodMd,
@@ -3879,9 +3988,9 @@ const TOOL_DESC = {
   vibe_math_method_add: 'Manually add a method card to Methods/ (creates Methods/<id>.md).',
   vibe_math_method_list: 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.',
   vibe_math_lock_status: 'Show the project lock occupancy.',
-  vibe_math_claim_write: 'Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.',
-  vibe_math_release_write: 'Release the write lock for one target file (relative to the project root). Call after you finished writing it.',
-  vibe_math_sync_meta: 'After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,价值/关键性,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}',
+  vibe_math_claim_write: '(member) Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.',
+  vibe_math_release_write: '(member) Release the write lock for one target file (relative to the project root). Call after you finished writing it.',
+  vibe_math_sync_meta: '(member) After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,价值/关键性,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}',
   vibe_math_lean_run: "(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.",
   vibe_math_lean_archive: '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).',
   vibe_math_lean_lib: "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.",
@@ -3958,10 +4067,35 @@ function safeJson(v, fb) { if (v == null || v === '') return fb; try { return JS
 function stripJsonComments(text) { let out = ''; let inStr = false; let inLine = false; let inBlock = false; let esc = false; for (let i = 0; i < text.length; i++) { const c = text[i]; const n = text[i + 1]; if (inLine) { if (c === '\n') { inLine = false; out += c } continue } if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++ } continue } if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue } if (c === '"') { inStr = true; out += c; continue } if (c === '/' && n === '/') { inLine = true; i++; continue } if (c === '/' && n === '*') { inBlock = true; i++; continue } out += c } return out }
 
 function splitHeader(text) {
-  const idx = String(text).search(/\n## /)
-  const head = idx === -1 ? String(text) : String(text).slice(0, idx)
-  const body = idx === -1 ? '' : String(text).slice(idx + 1)
+  const heads = findSectionHeads(text)
+  const first = (heads.length > 0 && heads[0].from > 0) ? heads[0].from : -1
+  const head = first === -1 ? String(text) : String(text).slice(0, first - 1)
+  const body = first === -1 ? '' : String(text).slice(first)
   return { head: head, body: body }
+}
+
+/**
+ * 顶层 `## ` 段落边界，**跳过围栏代码块**（审计 L4）。
+ *
+ * 此前 splitHeader / section / parseBodySections 都把正文里**任意** `## ` 行当段落边界。代理把
+ * 引用或代码粘进「陈述」段时，围栏里的 `## ` 行会被当成新段落：那半段代码变成"额外的段"，
+ * 下一次 compose 还会给它补一个 `## ` 标题（正文被改写、代码块被劈开）。围栏内的 `## ` 不是边界。
+ */
+function findSectionHeads(text) {
+  const out = []
+  const src = String(text == null ? '' : text)
+  const lines = src.split('\n')
+  let pos = 0, fence = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\s*(```|~~~)/.test(line)) { fence = !fence; pos += line.length + 1; continue }
+    if (!fence) {
+      const m = /^##\s+(.+?)\s*$/.exec(line)
+      if (m) out.push({ name: m[1].trim(), from: pos, len: line.length })
+    }
+    pos += line.length + 1
+  }
+  return out
 }
 
 function parseAnchors(head) {
@@ -3971,6 +4105,28 @@ function parseAnchors(head) {
   while ((m = re.exec(head)) !== null) anchors[m[1].trim()] = m[2].trim()
   return anchors
 }
+
+/**
+ * md 卡片是**逐行**格式：字段里出现换行会把标题行劈成两行（`parseAnchors` 的 `.*$` 与
+ * `parseEntries` 的逐行扫描都不跨行），出现全角竖线 `｜` 则会让
+ * `### 解法 N｜标题｜概率X｜状态Y` 的惰性匹配在**标题内部**提前切段（审计 L6）。
+ * 约定：compose 侧转义 `\`、`｜` 与换行（`\n`），parse 侧还原 ⇒ 往返无损，且惰性匹配不可能切进字段。
+ */
+function escField(v) { return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/｜/g, '\\｜').replace(/\r?\n/g, '\\n') }
+function unescField(v) {
+  const s = String(v == null ? '' : v)
+  if (s.indexOf('\\') === -1) return s
+  return s.replace(/\\(.)/g, function (_m, c) { return c === 'n' ? '\n' : c })
+}
+// 字段体：接受 `\\.` 转义对，但不接受裸 `｜`/裸换行 ⇒ 惰性匹配只在真正的分隔符处停。
+const ENTRY_FIELD = '(?:[^｜\\r\\n\\\\]|\\\\.)*?'
+/**
+ * 条目标题行正则。概率段用 `[-+0-9.eE]+` 而非 `[0-9.]+`（审计 L3）：指数记法（如 `概率5e-7`，
+ * 来自 meta.solution_prob / l.prob 这类 ∈(0,1) 的数值）此前整条匹配失败，条目在重载后被静默丢弃。
+ */
+function entryRe(kind) { return new RegExp('^###\\s*' + kind + '\\s*\\d+｜(' + ENTRY_FIELD + ')｜概率([-+0-9.eE]+)｜状态(' + ENTRY_FIELD + ')$') }
+/** 写出条目标题时的概率文本：非有限值（NaN/Infinity）绝不能写出去，否则那一行永远解析不回来。 */
+function probText(v) { const n = Number(v); return Number.isFinite(n) ? String(n) : '0.5' }
 
 function parseEntries(body, kindRe) {
   const out = []
@@ -3997,23 +4153,24 @@ function parseEntries(body, kindRe) {
 }
 
 function section(body, name) {
-  const re = new RegExp('^##\\s+' + name + '\\s*$', 'm')
-  const m = re.exec(String(body))
-  if (!m) return ''
-  const rest = String(body).slice(m.index + m[0].length)
-  const end = rest.search(/\n##\s/)
-  return (end === -1 ? rest : rest.slice(0, end)).trim()
+  const text = String(body)
+  const heads = findSectionHeads(text)
+  let start = -1, end = -1
+  for (let i = 0; i < heads.length; i++) {
+    if (start === -1) { if (heads[i].name === name) start = heads[i].from + heads[i].len }
+    else { end = heads[i].from; break }
+  }
+  if (start === -1) return ''
+  return (end === -1 ? text.slice(start) : text.slice(start, end)).trim()
 }
 
 function parseBodySections(body) {
   const text = String(body || '')
-  const re = /^##\s+(.+?)\s*$/gm
+  const heads = findSectionHeads(text)
   const found = []
-  let m
-  while ((m = re.exec(text)) !== null) found.push({ name: m[1].trim(), from: m.index, bodyFrom: m.index + m[0].length })
-  for (let i = 0; i < found.length; i++) {
-    const to = i + 1 < found.length ? found[i + 1].from : text.length
-    found[i].text = text.slice(found[i].bodyFrom, to).trim()
+  for (let i = 0; i < heads.length; i++) {
+    const to = i + 1 < heads.length ? heads[i + 1].from : text.length
+    found.push({ name: heads[i].name, from: heads[i].from, bodyFrom: heads[i].from + heads[i].len, text: text.slice(heads[i].from + heads[i].len, to).trim() })
   }
   return found
 }

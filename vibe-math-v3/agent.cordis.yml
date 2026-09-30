@@ -67,7 +67,11 @@
 
       Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
       (the scheduler writes Verified/问题/<id>.md); a proposition reaches 已验证·真/假 when a 证明/证伪
-      entry reaches 概率 = 1 (Verified/命题/<id>.md); Propos propositions whose 价值/关键性 ≥
+      entry reaches 概率 = 1 (Verified/命题/<id>.md).
+      Closure rule (identical across the presets): those 概率 = 1 values are written ONLY by the scheduler,
+      after ≥2 independent verifier agents settle the object (a lone reviewer can never conclude; see
+      minVotes), and Verified/ is written by that same scheduler path — a self-reported 1 is never a
+      conclusion. Propos propositions whose 价值/关键性 ≥
       promoteValueThreshold (write that anchor on the proposition card, or report it as lemmas[].价值/关键性 in
       vibe_math_sync_meta — default 0.5 never promotes) and that are still undecided
       auto-promote into Problems/ as "判断下述命题是否成立：<命题>" (verification
@@ -145,7 +149,11 @@
 
       Key rules when reporting: a problem is "solved" when one of its 解法候选 entries reaches 概率 = 1
       (the scheduler writes Verified/问题/<id>.md); a proposition reaches 已验证·真/假 when a 证明/证伪
-      entry reaches 概率 = 1 (Verified/命题/<id>.md); Propos propositions whose 价值/关键性 ≥
+      entry reaches 概率 = 1 (Verified/命题/<id>.md).
+      Closure rule (identical across the presets): those 概率 = 1 values are written ONLY by the scheduler,
+      after ≥2 independent verifier agents settle the object (a lone reviewer can never conclude; see
+      minVotes), and Verified/ is written by that same scheduler path — a self-reported 1 is never a
+      conclusion. Propos propositions whose 价值/关键性 ≥
       promoteValueThreshold (write that anchor on the proposition card, or report it as lemmas[].价值/关键性 in
       vibe_math_sync_meta — default 0.5 never promotes) and that are still undecided
       auto-promote into Problems/ as "判断下述命题是否成立：<命题>" (verification
