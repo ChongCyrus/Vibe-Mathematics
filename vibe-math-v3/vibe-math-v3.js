@@ -71,6 +71,11 @@ export function apply(ctx) {
   // same-process pause→resume (children may still be alive). Kept at apply level so two
   // sessions in one process never treat each other as a stale previous process.
   const processEpoch = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8)
+  // 项目锁 LEASE 的续租轮询间隔（apply 级定时器用，见 apply() 末尾）：它必须**明显快于**续租判据
+  // （projectLockTimeoutMs/4），否则"多久检查一次"会成为租约年龄的下界——实测 2500ms 轮询配 625ms
+  // 判据时最坏年龄仍有 2467ms，几乎顶到 2500ms 的租约上限。250ms 轮询下最坏租约年龄 ≈
+  // max(250ms, projectLockTimeoutMs/4)，即上限的 1/4 再加一次轮询的抖动。
+  const LOCK_POLL_MS = 250
 
   function sessionIdOf(agent) { try { return (agent && agent.id) ? String(agent.id) : undefined } catch (e) { return undefined } }
   // Walk up the durable session lineage to the top-level (root) agent of this session,
@@ -143,7 +148,7 @@ export function apply(ctx) {
     plannerEnabled: true,         // false = 完全走内置启发式（规划代理禁用）
     plannerProvider: '',          // 规划代理模型 provider（空 = 继承）
     plannerModel: '',             // 规划代理模型 id（空 = 继承）
-    planMinIntervalMs: 30000,     // 两次规划调用的最小间隔（系统空闲且有工作时忽略）
+    planMinIntervalMs: 30000,     // 每一次规划调用的最小间隔（含空计划与「空闲但有工作」）
     plannerMaxFails: 3,           // 规划代理连续失败达此值 → 自动降级启发式
     methodKeepIntervalMs: 0,      // Method Keeper 定时整理间隔（0 = 事件驱动）
     methodKeepEvery: 5,           // 每积累 N 个待沉淀发明/新命题触发一次整理
@@ -256,7 +261,7 @@ export function apply(ctx) {
     { name: 'plannerEnabled', type: 'boolean', description: 'false = 完全走内置启发式调度（规划代理禁用）', suggestion: true },
     { name: 'plannerProvider', type: 'string', description: '规划代理模型 provider（空 = 继承根代理）', suggestion: '' },
     { name: 'plannerModel', type: 'string', description: '规划代理模型 id（空 = 继承根代理）', suggestion: '' },
-    { name: 'planMinIntervalMs', type: 'integer', description: '两次规划调用的最小间隔（毫秒）；系统空闲且有工作时忽略', suggestion: 30000 },
+    { name: 'planMinIntervalMs', type: 'integer', description: '每一次规划调用的最小间隔（毫秒）；对**每一次**规划调用都生效（含空计划、含「空闲但仍有工作」，不再有空闲绕过）', suggestion: 30000 },
     { name: 'plannerMaxFails', type: 'integer', description: '规划代理连续失败达此值 → 自动降级启发式', suggestion: 3 },
     { name: 'methodKeepIntervalMs', type: 'integer', description: 'Method Keeper 定时整理间隔（0 = 事件驱动）', suggestion: 0 },
     { name: 'methodKeepEvery', type: 'integer', description: '每积累 N 个待沉淀发明/新命题触发一次整理', suggestion: 5 },
@@ -1377,7 +1382,6 @@ export function apply(ctx) {
     tickInFlight = true
     lastTickAt = now()
     try {
-      await renewProjectLock()
       await syncDependencies()
       await processStatusUpdates()
       await processPriorityAdjust()
@@ -3260,18 +3264,23 @@ export function apply(ctx) {
    * 第二个会话就会把锁判为"过期"并直接夺锁，两个进程于是并发写同一棵 md 树——而写锁 fileOwner
    * 是**进程级**的，跨进程不共享，挡不住这一路。
    *
-   * 现在：(1) tick 内每 LOCK_RENEW_MS 续租一次（本会话仍在运行时锁永不过期）；
+   * 现在：(1) 独立的续租定时器按 LOCK_POLL_MS 轮询、在租约用掉 1/4 时写盘——最坏租约年龄因此远低于
+   * projectLockTimeoutMs，且与 tick 时长完全无关（Round C 修正：此前 renewProjectLock 放在 tick()
+   * 顶部，单个 tick 超过 projectLockTimeoutMs 就会让租约过期）；
    * (2) 夺取**其他会话**持有的锁需要显式 override（`{override:true}` / `/vibe resume override`）。
    * 唯一保留的隐式接管是"锁租约已明确过期"（持有者进程崩溃、不再续租），以免崩溃后项目永久锁死；
    * 正常运行中的会话不会被接管。
    */
-  const LOCK_RENEW_MS = 10000
-  let projectLockRenewedAt = 0
+  // 节流判据取**落盘的那份租约自己的年龄**（`projectLock.at`），不再维护影子时间戳
+  // `projectLockRenewedAt`：实测它连续两次轮询都读到"距上次续租约 5s"（因而每次都判定"不必写"），
+  // 而文件里的 `at` 始终停在会话启动那一刻——影子时间戳与真正的租约可以分叉。
+  // `projectLock.at` 正是 acquireProjectLock() 判过期、也是崩溃恢复所依据的唯一状态。
+  // 因此"多久写一次"由租约年龄自己决定，二者不可能再分叉。
   async function renewProjectLock() {
     if (!scheduler.running) return
     if (projectLock.sessionId !== sessionId) return
-    if ((now() - projectLockRenewedAt) < LOCK_RENEW_MS) return
-    projectLockRenewedAt = now()
+    const timeout = Number(params.projectLockTimeoutMs) || 60000
+    if ((now() - (Number(projectLock.at) || 0)) < Math.max(1000, timeout / 4)) return
     projectLock.at = now()
     await saveAll()
   }
@@ -3287,12 +3296,11 @@ export function apply(ctx) {
       logActivity('lock', 'project lock taken over from session ' + projectLock.sessionId + (override ? ' (explicit override)' : ' (lease expired after ' + age + 'ms)'))
     }
     projectLock = { sessionId: sessionId, at: now() }
-    projectLockRenewedAt = now()
     await saveAll()
     return { ok: true }
   }
   async function releaseProjectLock() {
-    if (projectLock.sessionId === sessionId) { projectLock = { sessionId: '', at: 0 }; projectLockRenewedAt = 0; await saveAll() }
+    if (projectLock.sessionId === sessionId) { projectLock = { sessionId: '', at: 0 }; await saveAll() }
   }
   async function startScheduler(override) { const r = await init(true); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.startedAt = now(); scheduler.gate = null; logActivity('start', 'scheduler started for project ' + currentProject + '（v3：md 知识库 + 规划代理调度 + 方法库）'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler(override) { const r = await init(false); if (!r.ok) return r; const lock = await acquireProjectLock(override === true); if (!lock.ok) return lock; scheduler.running = true; scheduler.gate = null; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
@@ -3679,6 +3687,9 @@ export function apply(ctx) {
     get scheduler() { return scheduler },
     get tickInFlight() { return tickInFlight },
     scheduleTick: scheduleTick,
+    // Lease renewal for the apply-scope interval (see the ctx.effect below). Kept on the session so
+    // the timer needs no per-session context, and so a mock host WITHOUT ctx.timeout still renews.
+    renewLockIfDue: renewProjectLock,
     onChildEnd: onChildEnd,
     dispatchVibeCommand: dispatchVibeCommand,
     handlers: handlers,
@@ -3771,6 +3782,24 @@ export function apply(ctx) {
     // 都会让 verdict 收口失效。代价只是每个历史子代理一条小记录（有界、不影响功能）。
   })
 
+  // Project-lock LEASE renewal timer (Round C, HIGH): renewal must NOT live in tick().
+  //
+  // Round A put `await renewProjectLock()` at the top of tick(), which left the lease starvable: a
+  // single tick whose awaited work outlives projectLockTimeoutMs (one slow shell/Lean call is enough)
+  // keeps the on-disk `at` stale, and the `if (tickInFlight) return` early-return (:1374) renews
+  // nothing either, so a second session's acquireProjectLock() saw `age >= timeout` and took the
+  // project lock WITHOUT `override` while this session was alive and mid-tick. Measured: 5803 ms of
+  // stale lease against a 2500 ms timeout (probe _oneoff/rb-probe-v3-locklease.mjs).
+  //
+  // An independent interval cannot be delayed by tick duration, tick overlap or a held gate. It is
+  // registered once per preset via ctx.effect (disposed with the plugin) — NOT per startScheduler —
+  // so an `await` inside its callback cannot race plugin disposal, and the scheduler stays mockable
+  // (tests/selfdrive-v3.mjs has no ctx.timeout). The poll runs many times inside one lease window,
+  // so the lease can never approach expiry however long a single tick runs; renewProjectLock() itself
+  // is still the throttled writer and keeps its `scheduler.running` / ownership guards, which preserves
+  // the crash-recovery path exactly: a dead process stops renewing, its lease ages out, and only then
+  // may a new session take it over.
+  ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { s.renewLockIfDue().catch(function (e) { console.error('vibe-math-v3 lock renew error: ' + String((e && e.message) || e)) }) } }, LOCK_POLL_MS); return () => clearInterval(t) })
   // tick timer (registered once; ticks every running session at its own pace)
   ctx.effect(() => { const t = setInterval(function () { for (const s of sessions.values()) { if (s.getRunning() && !s.tickInFlight && s.tickDue() && s.scheduler.gate === null) s.scheduleTick() } }, 1000); return () => clearInterval(t) })
 }

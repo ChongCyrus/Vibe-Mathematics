@@ -380,7 +380,15 @@ CURRENT STATE BRIEF (JSON):
     }
   ],
   "verify_candidates": [],
-  "active_agents": [],
+  "active_agents": [
+    {
+      "childId": "<CHILD>",
+      "role": "explorer",
+      "target": "qE",
+      "direction": "",
+      "round": ""
+    }
+  ],
   "methods": [],
   "pending_inventions": 0,
   "last_plan": null,
@@ -2629,11 +2637,6 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": [
     {
       "at": "<TIME>",
-      "event": "verify",
-      "detail": "verification task created for r-p-reply"
-    },
-    {
-      "at": "<TIME>",
       "event": "plan",
       "detail": "planner plan-<ID> called with 0 problem(s), 1 verify candidate(s)"
     },
@@ -2666,6 +2669,11 @@ CURRENT STATE BRIEF (JSON):
       "at": "<TIME>",
       "event": "start",
       "detail": "scheduler started for project lean-reply（v3：md 知识库 + 规划代理调度 + 方法库）"
+    },
+    {
+      "at": "<TIME>",
+      "event": "verify",
+      "detail": "verification task created for r-p-used"
     }
   ]
 }
@@ -4171,7 +4179,15 @@ CURRENT STATE BRIEF (JSON):
     }
   ],
   "verify_candidates": [],
-  "active_agents": [],
+  "active_agents": [
+    {
+      "childId": "<CHILD>",
+      "role": "explorer",
+      "target": "q-defect",
+      "direction": "",
+      "round": ""
+    }
+  ],
   "methods": [],
   "pending_inventions": 0,
   "last_plan": null,

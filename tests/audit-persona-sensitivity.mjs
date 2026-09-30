@@ -148,8 +148,13 @@ const probes = [
     name: 'v4-usage-advertises-phantom-subcommand',
     preset: 'vibe-math-v4', file: 'vibe-math-v4.js', nth: 'first', expect: 1,
     guarantee: 'the unknown-subcommand usage string must not advertise a subcommand that no branch implements',
-    from: "usage:'configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set'",
-    to: "usage:'configure|start|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|scan|set'",
+    // The anchor must be the CURRENT literal: Round A changed both the usage string and the
+    // hint to advertise `start [problem]` / `set <k=v>...` (vibe-math-v4.js:2492). While the
+    // anchor kept the pre-fix literal it matched 0 times, so this probe reported SETUP-FAIL
+    // every run and the F-section agreement between usage and branches had NO sensitivity
+    // proof at all (the hint probe at :155 was updated, this one was not).
+    from: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|set <k=v>...'",
+    to: "usage:'configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|members|add|remove|scan|set <k=v>...'",
   },
   {
     name: 'v4-hint-advertises-unimplemented-subcommand',

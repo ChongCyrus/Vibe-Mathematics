@@ -652,11 +652,11 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 **Step 3 — 问答式调参（可选）**
 
 ```
-我想让它用加权投票，并发数设成 6。
+我想让它用强制裁决模式（forced）跑，并发数设成 6。
 ```
 
-主代理 `vibe_math_set_params {"verdictMode":"weighted-vote","maxParallelThreshold":6}`，
-并问你是否 `vibe_math_save_settings` 保存。
+主代理 `vibe_math_set_params {"verdictMode":"forced","maxParallelThreshold":6}`，
+并问你是否 `vibe_math_save_settings` 保存。（`verdictMode` 只接受 `flat|forced`；写其它值**不报错**，会被静默回退成该架构的默认值——v2 是 `flat`、v3 是 `forced`。）
 
 **Step 4 — 中途干预（可选）**
 
@@ -733,12 +733,12 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `verdictMode` | `forced` | v3 先做**近共识判定**（全部结果同侧且均值 ≥0.85/≤0.15 取均值），否则取各验证者概率的**等权平均**（不再按准确率加权；严格的 1/0 仍以绝对票生效）/ `flat` 同样取等权平均。已修掉 v2 早期 flat 把"0.9 vs 1"误判成 0.5 的问题 |
+| `verdictMode` | `forced` | v3 先做**近共识判定**（全部结果同侧且均值 ≥0.85/≤0.15 取均值）——这一步先于模式生效，所以 0.9 vs 1 在两种模式下都得到 ≈0.95；否则 `forced` 取各验证者概率的**等权平均**（不再按准确率加权；严格的 1/0 仍以绝对票生效），`flat` 则判 `0.5`（不一致即不确定） |
 | `planningHorizon` | 3 | 规划代理一次计划的最多动作数（"接下来 n 次"） |
 | `plannerEnabled` | true | false = 完全走内置启发式调度（规划代理禁用） |
 | `plannerProvider` / `plannerModel` | 空 | 规划代理模型路由（空 = 继承根代理） |
 | `plannerPersona` | 空 | 注入规划代理提示词开头的人格/要求 |
-| `planMinIntervalMs` | 30000 | 两次规划调用的最小间隔（毫秒）；系统空闲且有工作时忽略 |
+| `planMinIntervalMs` | 30000 | 两次规划调用的最小间隔（毫秒）；对**每一次**规划调用都生效（含空计划、含"空闲但仍有工作"，不再有空闲绕过） |
 | `plannerMaxFails` | 3 | 规划代理连续失败达此值 → 自动降级启发式 |
 | `methodKeepIntervalMs` | 0 | Method Keeper 定时整理间隔（0 = 事件驱动） |
 | `methodKeepEvery` | 5 | 每积累 N 个待沉淀发明/新命题触发一次整理 |
@@ -826,8 +826,8 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 - **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑全部套件 ≈1.9 min；探针脚本 ≈2.6 min；每个 runner 都会打印耗时/加速比供下次选策略）
-- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（197 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 56`（38 套件 + 18 探针/变体）≈3.5 min；哪 18 项随包发布、哪些仅仓库见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（196 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（11 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
 - **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
@@ -847,10 +847,10 @@ v5 的完整架构（含成员生命周期、一轮时序、共识状态机、�
 
 **v3**：
 - **软规范而非零规范**：md 知识库只强制对象头部的 4~7 行锚点（`- ID/类型/状态/概率/优先级/依赖/...`）与条目标题行（`### 解法/证明/证伪 N｜标题｜概率X｜状态Y`），供调度器可靠索引；正文完全自由论文式叙述，调度器从不解析正文。手工编辑锚点可能导致索引漂移（调度器会保留上次有效索引并告警）。
-- **规划代理是增强而非必需**：`plannerEnabled=false` 或规划代理连续失败（`plannerMaxFails`）时自动回退 v2 式启发式调度；`planMinIntervalMs` 冷却在有在途子代理时生效（系统空闲时有工作则立即规划）。
+- **规划代理是增强而非必需**：`plannerEnabled=false` 或规划代理连续失败（`plannerMaxFails`）时自动回退 v2 式启发式调度；`planMinIntervalMs` 冷却对**每一次**规划调用生效——包括空计划和"空闲但仍有工作"的情形（空闲不再绕过冷却，那正是规划代理每 tick 空转的放大器）。
 - **方法库可信分层**：方法卡的 `可信断言` 只允许链接已进 `Verified/` 的 ID；方法条目的其余内容（含未验证的策略/直觉/启发式）一律视为**经验参考**，不得当定理引用。
 - **项目锁**：同一项目同一时刻只允许一个会话调度（第二个会话启动会提示"被会话 X 占用"）；锁在暂停/终止/全部解决时自动释放。
-- **近共识裁决**：全部验证器结果同侧且均值 ≥0.85/≤0.15 时取均值（如 0.9 vs 1 → 0.95），否则 `forced` 加权 / `flat` 判 0.5——修复了 v2 中"数学上正确但形式有瑕疵"的结论被误判为不确定的问题。
+- **近共识裁决**：全部验证器结果同侧且均值 ≥0.85/≤0.15 时取均值（如 0.9 vs 1 → 0.95），否则 `forced` 取各票的**等权平均**、`flat` 判 `0.5`——修复了 v2 中"数学上正确但形式有瑕疵"的结论被误判为不确定的问题。
 
 **v5**：
 - **框架绝不指派任务**：这是设计上的硬边界，不是尚未实现的功能。任务的产生与分配属于**所内自治**

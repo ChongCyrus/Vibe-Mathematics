@@ -15,13 +15,16 @@
 //
 // Run: node tests/audit-installer-compat.test.mjs      (part of `node tests/run-tests.mjs`)
 // ============================================================================================
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-import { satisfiesDshRange, dshVersionVerdict } from '../installer.js'
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, cpSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join, resolve } from 'node:path'
+import { satisfiesDshRange, dshVersionVerdict, PRESETS } from '../installer.js'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
 const pkg = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
+// §4 drives the real apply(); INSTALLER_JS lets the sensitivity probe run it against a reverted copy
+const INSTALLER_SRC = process.env.INSTALLER_JS ? resolve(process.env.INSTALLER_JS) : join(HERE, 'installer.js')
 
 let passed = 0, failed = 0
 const failures = []
@@ -134,6 +137,69 @@ eq(satisfiesDshRange('not-a-version', pkg.engines.dsh), null, 'an unparseable ho
     contradicted.join(', '))
   const missedByRange = matrix.filter(([ver]) => dshVersionVerdict(ver, pkg).status === 'unknown').map(([ver]) => ver)
   ok(missedByRange.length === 0, 'the declared range can be evaluated for every release in the matrix', missedByRange.join(', '))
+}
+
+// ---------------------------------------------------------------------------------------------
+// 4. the version probe must not be able to hold the installer ROW's activation
+//
+// `detectDshVersion` asks `pluginManager.listBundles()` for the runtime version, and it runs at the
+// top of apply(). The result is diagnostic only — the preset mechanism is decided by the loader tree
+// / the service's `register`, never by the version — so a slow or stuck plugin manager must fall
+// through to the next source instead of stalling the boot. (Round B, machinery audit.)
+// ---------------------------------------------------------------------------------------------
+console.log('=== 4. a pluginManager that never answers must not hold the row ===')
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'vibe-installer-timeout-'))
+  const pkg = join(tmp, 'pkg')
+  mkdirSync(pkg, { recursive: true })
+  cpSync(INSTALLER_SRC, join(pkg, 'installer.js'))
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', version: '9.9.9', type: 'module' }, null, 2))
+  for (const p of PRESETS) {
+    mkdirSync(join(pkg, p.src), { recursive: true })
+    for (const f of p.files) cpSync(join(HERE, p.src, f), join(pkg, p.src, f))
+  }
+  const home = join(tmp, 'dshhome')
+  mkdirSync(home, { recursive: true })
+  process.env.DSH_HOME = home
+  delete process.env.DSH_VERSION // leave the pluginManager as the only source
+  const presetRoot = join(home, '.agent-presets')
+  // import the COPY, so `here` inside installer.js is the throwaway package (manifest + preset dirs)
+  const mod = await import(pathToFileURL(join(pkg, 'installer.js')).href + '?t=' + Date.now())
+
+  const run = (services) => {
+    const logs = []
+    const ctx = {
+      get: (n) => (n === 'pluginManager' ? services : undefined),
+      logger: { info: (m) => logs.push('info: ' + m), warn: (m) => logs.push('warn: ' + m), error: (m) => logs.push('error: ' + m) },
+    }
+    return { ctx, logs }
+  }
+
+  // a promise that never settles: without a timeout apply() would await it forever
+  const HARD_LIMIT_MS = 8000
+  const { ctx, logs } = run({ listBundles: () => new Promise(() => {}) })
+  let verdict = 'hung'
+  const t0 = Date.now()
+  let hardTimer
+  await Promise.race([
+    mod.apply(ctx).then(() => { verdict = 'returned' }, (e) => { verdict = 'threw: ' + String(e && e.message) }),
+    new Promise((resolve) => { hardTimer = setTimeout(resolve, HARD_LIMIT_MS) }),
+  ])
+  clearTimeout(hardTimer) // the shipped installer wins the race in ~1.5 s; do not hold the suite open
+  const elapsed = Date.now() - t0
+  ok(verdict === 'returned', 'apply() returns instead of waiting on a pluginManager that never answers', verdict)
+  ok(elapsed < 6000, '...within a short timeout, not at the hard test limit', elapsed + 'ms')
+  const copied = PRESETS.every((p) => p.files.every((f) => existsSync(join(presetRoot, p.dst, f))))
+  ok(copied, '...and the preset copy still happens (the version probe gates nothing)')
+  ok(!logs.some((l) => l.includes('preset install/update failed')), 'the timeout is handled as a fallback, not as an error')
+
+  // the timeout must NOT replace a working probe: a prompt service still supplies the version
+  const quick = run({ listBundles: async () => [{ name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }] })
+  await mod.apply(quick.ctx)
+  ok(quick.logs.some((l) => l.includes('0.2.0-rc.2')),
+    'a prompt listBundles() still supplies the version (the timeout is a fallback, not a replacement)',
+    quick.logs.filter((l) => l.includes('source')).join(' | ').slice(0, 160))
+  rmSync(tmp, { recursive: true, force: true })
 }
 
 console.log('')

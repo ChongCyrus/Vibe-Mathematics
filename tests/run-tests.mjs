@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 /**
- * PARALLEL TEST RUNNER — run every shipped suite (or a filtered subset) concurrently and report
- * per-suite timings, so the strategy for the next run is chosen from DATA instead of guesswork.
+ * PARALLEL TEST RUNNER — run every shipped suite AND every probe (or a filtered subset)
+ * concurrently and report per-suite timings, so the strategy for the next run is chosen
+ * from DATA instead of guesswork.
  *
  * Why this exists: the suites are wildly uneven (one suite is ~160 s, most are under 2 s), so a
  * sequential sweep spends almost all of its wall time waiting for the slowest one. Running them
  * with a worker pool makes the sweep bounded by the slowest SUITE rather than by their SUM.
  * On this machine (4 cores) the sweep went from ~5.5 min to ~2 min; see ../docs/test-timing.md.
+ *
+ * WHAT IS COLLECTED (Round B): `tests/` holds two families of `.mjs`:
+ *   · `*.test.mjs` — the suites proper;
+ *   · every other `.mjs` beside this runner — the PROBES that prove those suites are not
+ *     vacuous (sensitivity mutations, the registration surface, the self-driving guards).
+ * Collecting only the first family was a false green: two probe suites sat at exit 1 while
+ * every report said "30/30 green". Both families are therefore collected, and a script can
+ * only stay out through the explicit, documented `NEEDS_ARGS` list below — a stale entry in
+ * that list is a hard error in a development checkout (`.git` present), so no script can be
+ * dropped silently there. Scripts whose bare run under-covers get argument `VARIANTS` (e.g.
+ * `audit-registration.mjs` defaults to v3 alone). A PUBLISHED tarball ships only a subset of
+ * `tests/`; there the missing entries are reported instead of aborting the run.
  *
  * Every suite already isolates itself (each creates its own mkdtemp workspace), so parallelism is
  * safe. Suites that WRITE a corpus take a per-run corpus dir from an env var; this runner points
@@ -14,14 +27,14 @@
  * runner (audit-formal-sensitivity.mjs) does, and it passes its own dirs.
  *
  * Usage:
- *   node tests/run-tests.mjs                      # every *.test.mjs, concurrency = min(4, cpus)
+ *   node tests/run-tests.mjs                      # every suite + probe, concurrency = min(4, cpus)
  *   node tests/run-tests.mjs --concurrency=6
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
  *   node tests/run-tests.mjs --json               # machine-readable summary on stdout
  */
 import { spawn } from 'node:child_process'
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { cpus } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,20 +61,75 @@ const exclude = flag('exclude')
 const asJson = has('json')
 const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(4, cpus().length)))
 
-let suites = readdirSync(HERE).filter((f) => f.endsWith('.test.mjs')).sort()
-if (only.length) suites = suites.filter((f) => only.some((o) => f.includes(o)))
-if (exclude.length) suites = suites.filter((f) => !exclude.some((o) => f.includes(o)))
+const SELF = 'run-tests.mjs'
+// The scripts that genuinely cannot run without arguments. They are named here (with the exact
+// command a human must run) instead of being omitted quietly: an entry that no longer exists
+// aborts the run, so a rename cannot turn into a silent gap.
+const NEEDS_ARGS = {
+  'audit-tool-exec.mjs': 'node tests/audit-tool-exec.mjs <preset-js> <tool-name>   (calls one real tool through the host path)',
+}
+// Argument variants, run IN ADDITION to the bare run unless `replaceBare` says the bare run is a
+// strict subset of them. `expectExit` documents a probe whose SUCCESS is a non-zero exit (it
+// mutates the source and requires the guarded check to fail): anything else is a FAIL here.
+const VARIANTS = [
+  // A bare `audit-registration.mjs` audits ONLY v3 (its `process.argv[2] || v3` default), so the
+  // four presets are run explicitly and the redundant bare run is replaced.
+  { file: 'audit-registration.mjs', args: ['vibe-math-v2/vibe-math-v2.js'], replaceBare: true },
+  { file: 'audit-registration.mjs', args: ['vibe-math-v3/vibe-math-v3.js'] },
+  { file: 'audit-registration.mjs', args: ['vibe-math-v4/vibe-math-v4.js'] },
+  { file: 'audit-registration.mjs', args: ['vibe-math-v5/vibe-math-v5.js'] },
+  // The invariant scanner's own falsifiability check: it exits 0 only when every injected
+  // mutation really made a run go RED (and the unmutated control stayed green).
+  { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'] },
+  // The two-registration-paths probe, inverted: it applies a real description mutation and
+  // REQUIRES the parity check to exit 1 (exit 2 means the mutation no longer applies = drift).
+  {
+    file: 'audit-v3-registration-parity.mjs',
+    args: ['--self-probe', '["TOOL_DESC.vibe_math_start","TOOL_DESC.vibe_math_startX"]'],
+    expectExit: 1,
+  },
+]
+
+const present = readdirSync(HERE).filter((f) => f.endsWith('.mjs')).sort()
+const presentSet = new Set(present)
+// A published tarball ships only a SUBSET of `tests/` (see docs/test-timing.md §1), so the
+// scripts that stay behind are simply ABSENT there. The skip/variant lists are therefore
+// enforced strictly in a development checkout (a `.git` entry marks one) and merely REPORTED —
+// never silently dropped, they still appear in every run's output — in a partial tree.
+const DEV_CHECKOUT = existsSync(join(REPO, '.git'))
+const stale = Object.keys(NEEDS_ARGS).filter((f) => !presentSet.has(f))
+if (stale.length && DEV_CHECKOUT) {
+  console.error('NEEDS_ARGS names a script that no longer exists: ' + stale.join(', ') + ' — fix the skip list, do not delete the entry blindly')
+  process.exit(2)
+}
+function label(j) { return j.file + (j.args.length ? ' ' + j.args.join(' ') : '') }
+const replacedBare = new Set(VARIANTS.filter((v) => v.replaceBare).map((v) => v.file))
+let suites = []
+for (const file of present) {
+  if (file === SELF || NEEDS_ARGS[file] || replacedBare.has(file)) continue
+  suites.push({ file, args: [], expectExit: 0, kind: file.endsWith('.test.mjs') ? 'suite' : 'probe' })
+}
+for (const v of VARIANTS) {
+  if (!presentSet.has(v.file)) {
+    if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
+    continue
+  }
+  suites.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: v.file.endsWith('.test.mjs') ? 'suite' : 'probe' })
+}
+suites.sort((a, b) => (label(a) < label(b) ? -1 : 1))
+if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))
+if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
 if (!suites.length) { console.error('no suites matched'); process.exit(2) }
 
-function runSuite(file) {
+function runSuite(job) {
   return new Promise((resolve) => {
     const t0 = Date.now()
-    const child = spawn(process.execPath, [join(HERE, file)], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(process.execPath, [join(HERE, job.file), ...job.args], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = '', err = ''
     child.stdout.on('data', (d) => { out += d.toString() })
     child.stderr.on('data', (d) => { err += d.toString() })
-    child.on('error', (e) => resolve({ file, code: -1, ms: Date.now() - t0, out, err: err + '\n' + String(e) }))
-    child.on('close', (code) => resolve({ file, code, ms: Date.now() - t0, out, err }))
+    child.on('error', (e) => resolve({ job, code: -1, ms: Date.now() - t0, out, err: err + '\n' + String(e) }))
+    child.on('close', (code) => resolve({ job, code, ms: Date.now() - t0, out, err }))
   })
 }
 
@@ -74,20 +142,22 @@ async function worker(id) {
     if (i >= suites.length) return
     const r = await runSuite(suites[i])
     const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+    r.ok = r.code === r.job.expectExit
     results[i] = r
     if (!asJson) {
-      const mark = r.code === 0 ? 'PASS' : 'FAIL'
+      const mark = r.ok ? 'PASS' : 'FAIL'
       console.log(
-        mark + '  ' + r.file.padEnd(38) +
-        ' exit=' + String(r.code).padStart(3) +
+        mark + '  ' + r.job.file.padEnd(34) +
+        ' exit=' + String(r.code).padStart(3) + (r.job.expectExit ? '(want ' + r.job.expectExit + ')' : '    ') +
         '  ' + (r.ms / 1000).toFixed(1).padStart(6) + 's' +
-        (tail ? '  ' + tail.slice(0, 78) : '')
+        (r.job.args.length ? '  [' + r.job.args.join(' ').slice(0, 40) + ']' : '') +
+        (tail ? '  ' + tail.slice(0, 60) : '')
       )
-      if (r.code !== 0) {
+      if (!r.ok) {
         const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
         for (const l of lines.slice(-15)) console.log('      ' + l)
       }
-    } else if (r.code !== 0) {
+    } else if (!r.ok) {
       // In --json mode keep stdout machine-readable: the failure detail travels in the JSON.
       const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
       r.tailDetail = lines.slice(-15).join('\n')
@@ -98,15 +168,20 @@ await Promise.all(Array.from({ length: Math.min(concurrency, suites.length) }, (
 
 const wall = (Date.now() - started) / 1000
 const sum = results.reduce((a, r) => a + r.ms, 0) / 1000
-const bad = results.filter((r) => r.code !== 0)
+const bad = results.filter((r) => !r.ok)
 const slowest = results.slice().sort((a, b) => b.ms - a.ms).slice(0, 5)
+const suiteCount = results.filter((r) => r.job.kind === 'suite').length
 
 if (asJson) {
   console.log(JSON.stringify({
     concurrency, wallSeconds: Number(wall.toFixed(1)), sumSeconds: Number(sum.toFixed(1)),
     pass: results.length - bad.length, fail: bad.length,
-    suites: results.map((r) => ({
-      file: r.file, exit: r.code, seconds: Number((r.ms / 1000).toFixed(1)),
+    suites: suiteCount, probes: results.length - suiteCount,
+    devCheckout: DEV_CHECKOUT,
+    skippedNeedsArgs: NEEDS_ARGS,
+    runs: results.map((r) => ({
+      file: r.job.file, args: r.job.args, expectExit: r.job.expectExit, exit: r.code,
+      seconds: Number((r.ms / 1000).toFixed(1)),
       ...(r.tailDetail ? { detail: r.tailDetail } : {}),
     })),
   }, null, 2))
@@ -114,8 +189,14 @@ if (asJson) {
   console.log('')
   console.log('concurrency ' + concurrency + '  ·  wall ' + wall.toFixed(1) + 's  ·  sum of suite times ' + sum.toFixed(1) + 's'
     + '  ·  speed-up x' + (sum / Math.max(wall, 0.001)).toFixed(2))
-  console.log('slowest: ' + slowest.map((r) => r.file.replace('.test.mjs', '') + ' ' + (r.ms / 1000).toFixed(1) + 's').join('  ·  '))
-  console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length)
-  for (const b of bad) console.log('  FAILED: ' + b.file + ' (exit ' + b.code + ')')
+  console.log('slowest: ' + slowest.map((r) => r.job.file.replace('.test.mjs', '') + ' ' + (r.ms / 1000).toFixed(1) + 's').join('  ·  '))
+  console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
+    + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')')
+  for (const b of bad) {
+    console.log('  FAILED: ' + label(b.job) + ' (exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '') + ')')
+  }
+  for (const [f, why] of Object.entries(NEEDS_ARGS)) {
+    console.log('  SKIPPED (needs CLI args): ' + f + ' — ' + why + (presentSet.has(f) ? '' : '  [not present in this checkout]'))
+  }
 }
 process.exit(bad.length === 0 ? 0 : 1)

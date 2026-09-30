@@ -167,10 +167,11 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 
 §1.6 查的是"persona 里有没有写"，这一节查**工具的参数 schema 收不收得下**。本仓库所有工具 schema 都由
 `objParams` 收口，并以 `additionalProperties:false` **关闭**。**但"关闭"的强度取决于注册路径**（v3 审计 M5
-的更正）：只有走宿主 `defineTool` 的工具，宿主才会用该 schema 校验实参、把未列出的键**直接拒绝**；
-`tools.register`（裸 `ToolDefinition`）只把 `parameters` 生成给模型的 schema，宿主**从不校验实参**，
-`additionalProperties:false` 在那里只是给模型看的**文档**。所以对 v3 这类裸注册的工具，schema 与参数层
-不一致会**静默成功（fail open）**，而不是被拒——最典型的反例是 `vibe_math_setup` 公布 `mode`、而
+的更正，Round B 复核扩大）：只有走宿主 `defineTool` 的工具，宿主才会用该 schema 校验实参、把未列出的键
+**直接拒绝**；`tools.register`（裸 `ToolDefinition`）只把 `parameters` 生成给模型的 schema，宿主**从不校验实参**，
+`additionalProperties:false` 在那里只是给模型看的**文档**。**四套预设全部走裸注册**
+（`grep defineTool vibe-math-v{2,3,4,5}.js` → 0 命中；`tools.register` 各 1–3 处），所以"schema 与参数层不一致
+就静默成功（fail open）"对**每一套**都成立，不只是 v3。最典型的反例是 `vibe_math_setup` 公布 `mode`、而
 `vibe_math_set_params` 的 schema 里一度没有它：模型看不到这个键，写给它却仍会被 `sanitizeParams` 收下
 （该键已补进 schema，两条注册路径的键集现在一致）。
 
@@ -195,18 +196,30 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 
 测试和脚本"在我机器上是绿的"不等于它们能跑。**真实事故（2.3.13 归档时发现）**：5 个测试/脚本把
 本机绝对路径写死在源码里（`D:/wd/vibemath开发/...`、`C:/Users/admin/...`），其中
-`audit-fuzz-helpers.mjs` **是随包发布的**——对任何用户都跑不了，而仓库里从来没人发现，
-因为作者机器上它恰好是对的。
+`audit-fuzz-helpers.mjs` 当时**是随包发布的**——对任何用户都跑不了，而仓库里从来没人发现，
+因为作者机器上它恰好是对的。（那些路径后来都改成由 `import.meta.url` 推导；Round B 复核：`tests/`
+下已经没有任何真实的写死盘符路径，而且 `audit-fuzz-helpers.mjs` **现在也不再随包发布**——
+它不在 `package.json` 的 `files` 里，也不在 `npm pack --dry-run --json` 的清单里。）
 
 - [ ] 每个文件路径是否都由 `import.meta.url` / `npm root -g` / 环境变量**推导**出来，
       而不是写死盘符或用户名？（推导不出时应当**报出所有试过的候选路径**，而不是静默跳过。）
 - [ ] 文件被移动/改名后，**引用它的每一处**是否都跟着改？（包括：`package.json` 的 `files`、
       `run-tests.mjs` 这类 runner、守卫里按名字读套件的表、文档里的命令行、README 链接。）
+- [ ] 新增/改名 `tests/` 下的脚本后，确认 **`run-tests.mjs` 真的收集了它**：runner 收集 `tests/` 下
+      **所有** `.mjs`（`*.test.mjs` 是套件，其余是探针），只有登记进 `NEEDS_ARGS` 的脚本才会被跳过，
+      而那个登记会在**开发检出**（存在 `.git`）里被逐项校验——条目失效就直接报错退出，所以改名不能
+      悄悄把一条守卫踢出发布门禁。参数变体（同一脚本跑多次，如 `audit-registration.mjs` 四个预设）走
+      `VARIANTS`。
 - [ ] 命令行/相对链接是否需要**从仓库根执行才成立**？写清楚起点（如 `node tests/run-tests.mjs`），
       别留一个照抄就报"找不到文件"的用法行。
 - [ ] **搬动之后必须有不依赖"跑绿了"的证据**：① 每个套件的断言条数与搬动前**逐项相同**；
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
+- [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
+      只发 `tests/` 的 **18 项**（其中 `.test.mjs` **10** 个），完整门禁（`node tests/run-tests.mjs`，
+      Round B 起 **56 项 = 38 套件 + 18 探针/变体**）只在开发检出里成立。两边的清单见
+      `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
+      所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
       "26 个套件直接跑全绿、`run-tests.mjs` 因为按裸文件名 spawn 而全红"）。发布门禁必须包含 runner。
 
@@ -358,8 +371,9 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 ## Upgrade
 ```
 
-- [ ] 两个 H1 都在；**英文那份的 H1 必须含 `English`**（发布门禁阶段 1c 会检查）；
-- [ ] 中文部分 ≥ 150 个汉字（门禁同阶段检查），英文部分不得残留未翻译段落；
+- [ ] 两个 H1 都在；**英文那份的 H1 必须含 `English`**（人工检查：本仓库**没有任何 CI 工作流**，
+      `scripts/` 只有 `build-preset-rows.mjs`，不存在所谓的"发布门禁阶段 1c"）；
+- [ ] 中文部分 ≥ 150 个汉字（同样人工检查），英文部分不得残留未翻译段落；
 - [ ] 每条变更都回答"**对使用者有什么影响**"——不写内部编号、探针名、断言条数；
 - [ ] 「兼容性」明确回答：四套预设的字节/行为是否变化、参数与工具面是否变化；
 - [ ] 「升级」给出可直接复制的命令（`npm i dsh-vibe-math@latest`；若 profile 里把版本钉死了，

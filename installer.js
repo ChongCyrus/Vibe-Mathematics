@@ -27,10 +27,16 @@
 //         provides a real one (copy the preset: the picker's copy action, or a new directory
 //         under <presetRoot>), which leaves the managed set updatable.
 //   - Nothing is destroyed silently: before a file whose bytes are not what the installer last
-//     wrote is replaced, the user's copy is kept under
-//     <presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file> and named in the log.
-//   - same version: no-op (idempotent) — restarting DSH never rewrites a file or churns the
-//     preset's generation stamp. Missing files are ALWAYS restored, at any version.
+//     wrote is REPLACED — or DELETED along with a preset this bundle no longer ships — the user's
+//     copy is kept under <presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file> and named in
+//     the log. A file that still matches the hash recorded for it is a copy of the package, so
+//     removing it destroys nothing and needs no backup.
+//   - Files are written ATOMICALLY: a uniquely named temp file is written and then renamed over the
+//     destination, so an interrupted boot (a kill, a full disk, two sessions writing at once) can
+//     never leave a half-written preset for the next same-version run to mistake for a user edit.
+//   - same version: no-op (idempotent) — restarting DSH never rewrites a preset file, never churns
+//     the preset's generation stamp and never rewrites this state file (it is written only when its
+//     content actually changes). Missing files are ALWAYS restored, at any version.
 //   - force a full refresh at any time: delete the preset dirs and restart DSH.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -76,6 +82,27 @@ const BACKUP_DIR = '.vibe-math-backup'
 
 function sha256(buf) { return createHash('sha256').update(buf).digest('hex') }
 
+let presetTmpSeq = 0
+/**
+ * Write one preset file ATOMICALLY: a uniquely named temp sibling, then a rename over the
+ * destination. An in-place `writeFileSync` can be interrupted (a killed or crashed DSH, a full disk,
+ * two sessions writing the same path) and leave a TRUNCATED preset behind — and the next
+ * same-version boot would take those bytes for the user's own edit and never repair them (a
+ * same-version run only restores MISSING files). The pid plus a per-process sequence make the temp
+ * name unique, so concurrent writers cannot rename each other's half-written file. A leftover temp
+ * (possible only after SIGKILL between the two calls) is inert: DSH reads the named preset files.
+ */
+function writePresetFile(dest, buf) {
+  const tmp = dest + '.' + process.pid + '.' + (presetTmpSeq++) + '.vibe-math-tmp'
+  try {
+    writeFileSync(tmp, buf)
+    renameSync(tmp, dest)
+  } catch (e) {
+    try { unlinkSync(tmp) } catch (e2) { /* nothing of ours to clean up */ }
+    throw e
+  }
+}
+
 /**
  * Preserve one file that is about to be replaced by the shipped version, under
  * `<presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file>`.
@@ -107,13 +134,57 @@ function readState(path) {
   return null
 }
 
-function writeState(path, state) {
+/**
+ * Does the new payload equal the recorded one? Compared field by field (never as JSON text) so key
+ * ORDER cannot fake a change, and the timestamp is ignored on purpose: `updatedAt` records when the
+ * file was written, not that anything happened.
+ */
+function sameStatePayload(previous, next) {
+  if (!previous || !next) return false
+  if (String(previous.version || '') !== String(next.version || '')) return false
+  const a = previous.files || {}
+  const b = next.files || {}
+  const ka = Object.keys(a).sort()
+  const kb = Object.keys(b).sort()
+  if (ka.length !== kb.length) return false
+  for (let i = 0; i < ka.length; i++) {
+    if (ka[i] !== kb[i]) return false
+    const ra = a[ka[i]] || {}
+    const rb = b[kb[i]] || {}
+    if (String(ra.hash || '') !== String(rb.hash || '')) return false
+    if (String(ra.provenance || '') !== String(rb.provenance || '')) return false
+  }
+  return true
+}
+
+let stateTmpSeq = 0
+let stateWriteWarned = false
+/**
+ * Persist the state file, atomically. Three things here are deliberate:
+ *   · an UNCHANGED payload is not written at all — a same-version boot must not churn this file (the
+ *     "restarting DSH writes nothing" promise covers the state file too, not only the presets);
+ *   · the temp name carries the pid and a sequence, so two concurrent boots cannot rename each
+ *     other's half-written file (with a fixed `path + '.tmp'` the loser's rename failed and the
+ *     whole write vanished without a word);
+ *   · a failure is REPORTED once instead of being swallowed. The copy step already did its work; a
+ *     missing state only means the next boot re-compares everything (at worst it backs up one extra
+ *     original, it never overwrites a user edit).
+ */
+function writeState(path, state, previous, logger) {
+  if (sameStatePayload(previous, state)) return 'unchanged'
+  const tmp = path + '.' + process.pid + '.' + (stateTmpSeq++) + '.tmp'
   try {
-    const tmp = path + '.tmp'
     writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', 'utf8')
     renameSync(tmp, path)
+    return 'written'
   } catch (e) {
-    // best-effort: state persistence failure must not break the copy step
+    try { unlinkSync(tmp) } catch (e2) { /* nothing of ours to clean up */ }
+    if (!stateWriteWarned) {
+      stateWriteWarned = true
+      logger?.warn?.('[dsh-vibe-math] 状态文件写入失败（' + path + '）：' + String((e && e.message) || e) +
+        '。preset 文件本身已按上面的日志处理完毕；下一次启动会按「没有记录」重新比对（最坏情况是多备份一份原文，不会覆盖你的改动）。')
+    }
+    return 'failed'
   }
 }
 
@@ -129,12 +200,30 @@ function writeState(path, state) {
 //      that works on a global <= 0.1.6 install.
 // When none resolves, the capability self-check below is still the authoritative gate.
 const __require = createRequire(import.meta.url)
+
+// The detected version is only ever used for diagnostics, and this probe sits on the installer ROW's
+// activation path: a service that never answers must not hold the boot there. On timeout (or on a
+// rejection) the next source is tried instead — no verdict depends on this value.
+const LIST_BUNDLES_TIMEOUT_MS = 1500
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    let settled = false
+    let timer
+    const done = (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value) } }
+    timer = setTimeout(() => { if (!settled) { settled = true; resolve(undefined) } }, ms)
+    if (timer && typeof timer.unref === 'function') timer.unref()
+    Promise.resolve(promise).then(done, () => done(undefined))
+  })
+}
+
 async function detectDshVersion(ctx) {
   try { const v = process.env.DSH_VERSION; if (v && String(v).trim()) return { version: String(v).trim(), source: 'DSH_VERSION' } } catch (e) {}
   try {
     const pm = (ctx && ctx.get) ? ctx.get('pluginManager') : undefined
     if (pm && typeof pm.listBundles === 'function') {
-      const bundles = await pm.listBundles()
+      // withTimeout: a slow or stuck pluginManager falls through to the next source instead of
+      // stalling this row's activation (non-fatal either way — see the constant's comment).
+      const bundles = await withTimeout(pm.listBundles(), LIST_BUNDLES_TIMEOUT_MS)
       const host = (bundles || []).find((b) => b && (b.name === '@deepseek-ai/dsh-base' || b.name === '@deepseek-ai/dsh'))
       if (host && host.version) return { version: String(host.version), source: 'pluginManager:' + host.name }
     }
@@ -161,12 +250,14 @@ async function detectDshVersion(ctx) {
  *   'directory' — DSH <= 0.1.6: <DSH_HOME>/.agent-presets/<id>/agent.cordis.yml, which is what the
  *                 copy in apply() installs.
  *
- * Judged from the LOADER TREE, not from the version and not from the `agentPresets` service: that
- * service exists on BOTH lines with different meaning (a directory scanner below 0.1.7, a row registry
- * from 0.1.7 on), and it may not be up yet when a bundle is activated on its own. Missing the row line
- * would skip the only working install path, so this decision has to be the reliable one.
+ * Judged from the LOADER TREE first, then from the one capability that actually differs between the
+ * two lines: the `agentPresets` service. That service exists on BOTH lines with different meaning (a
+ * directory scanner below 0.1.7, a row registry from 0.1.7 on) and may not be up yet when a bundle is
+ * activated on its own, which is why the tree is asked first — but when only the service can be seen,
+ * `register` (never `list`, which both have) is what tells them apart. Missing the row line would skip
+ * the only working install path, so this decision has to be the reliable one.
  */
-function detectPresetMechanism(ctx) {
+export function detectPresetMechanism(ctx) {
   // 1) the LOADER TREE: only the row-based line mounts the agent-preset package (or its registry).
   //    This is visible before any plugin activates, which matters because a bundle activation can run
   //    this installer before the services are up (then ctx.get('agentPresets') is still undefined).
@@ -180,11 +271,18 @@ function detectPresetMechanism(ctx) {
       }
     }
   } catch (e) { /* no loader service: fall through to the service probe */ }
-  // 2) the service itself (>= 0.1.7), when it is already available.
+  // 2) the service itself, when it is already available. The PRECISE capability difference between
+  //    the two lines is `register`: the >= 0.1.7 row registry has it, while the <= 0.1.6 directory
+  //    scanner has `list()` and NO `register` (recorded from a real 0.1.6-alpha.2 boot — service
+  //    present, `list()` returning the directory roster — in _oneoff/roster-016a2.json). Testing
+  //    `list`, which BOTH lines have, classified a service-ready old host as the row line, and
+  //    apply() then returned before writing a single preset directory: "installed but invisible",
+  //    the 2.4.0 defect mirrored onto the older line. Never test a capability both lines share.
   try {
     const ap = (ctx && ctx.get) ? ctx.get('agentPresets') : undefined
-    return (ap !== undefined && typeof ap.list === 'function') ? 'rows' : 'directory'
-  } catch (e) { return 'directory' }
+    if (ap !== undefined) return typeof ap.register === 'function' ? 'rows' : 'directory'
+  } catch (e) { /* no service to ask: the directory form */ }
+  return 'directory'
 }
 
 /**
@@ -222,7 +320,8 @@ export function satisfiesDshRange(version, range, options = {}) {
       const admitted = parsed.some((p) => p.target !== null && p.target.pre.length > 0 &&
         p.target.major === v.major && p.target.minor === v.minor && p.target.patch === v.patch)
       if (!admitted) continue
-    }    if (parsed.every((p) => matchesComparator(v, p))) return true
+    }
+    if (parsed.every((p) => matchesComparator(v, p))) return true
   }
   return sawUnknown ? null : false
 }
@@ -478,7 +577,9 @@ export async function apply(ctx) {
 
     const nextFiles = {}
     let installed = 0, updated = 0, kept = 0
+    let userEditedKept = 0
     const replacedEdits = []
+    const unknownPrev = []
     const backupFailures = []
 
     for (const p of PRESETS) {
@@ -495,7 +596,7 @@ export async function apply(ctx) {
         const curHash = sha256(cur)
         if (!existsSync(d)) {
           // missing file: always restore, whatever the version
-          writeFileSync(d, cur)
+          writePresetFile(d, cur)
           installed += 1
           nextFiles[key] = { hash: curHash, provenance: 'package' }
           continue
@@ -514,17 +615,32 @@ export async function apply(ctx) {
           // same version: nothing is being updated, so a file that differs from the package is left
           // exactly as it is. The recorded hash stays "what this installer last wrote" (or unknown),
           // so the drift is still recognised — and backed up — at the next version change.
+          //
+          // PROVENANCE, recorded honestly: when the on-disk bytes are NOT what this installer last
+          // wrote, something else edited this managed file, so it is marked user-owned — which is
+          // what makes the stale-preset cleanup below KEEP it instead of unlinking it. A legacy
+          // state with no hash cannot tell, so it stays 'package' (it is still backed up before any
+          // version-change replacement; the cleanup backs it up before deleting too).
           kept += 1
-          nextFiles[key] = typeof prevRec.hash === 'string' ? { hash: prevRec.hash, provenance: 'package' } : { provenance: 'package' }
+          const userEdited = typeof prevRec.hash === 'string' && destHash !== prevRec.hash
+          if (userEdited) userEditedKept += 1
+          nextFiles[key] = userEdited
+            ? { hash: prevRec.hash, provenance: 'user' }
+            : typeof prevRec.hash === 'string' ? { hash: prevRec.hash, provenance: 'package' } : { provenance: 'package' }
           continue
         }
-        // replacing: preserve the user's bytes when they are not what this installer last wrote
-        // (a legacy state without a hash cannot tell, so it backs the file up rather than risk it)
-        if (typeof prevRec.hash !== 'string' || destHash !== prevRec.hash) {
+        // replacing: preserve the user's bytes when they are not what this installer last wrote.
+        // The two cases are NOT the same claim and are counted apart: bytes that differ from the
+        // recorded hash are a provable edit, while a legacy state WITHOUT a hash cannot tell — that
+        // file is backed up all the same, but the log must not call it "被改过" (it cannot know).
+        if (typeof prevRec.hash !== 'string') {
+          if (backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf) === 'failed') backupFailures.push(key)
+          unknownPrev.push(key)
+        } else if (destHash !== prevRec.hash) {
           if (backupReplacedFile(presetRoot, fromVersion, p.dst, f, destBuf) === 'failed') backupFailures.push(key)
           replacedEdits.push(key)
         }
-        writeFileSync(d, cur)
+        writePresetFile(d, cur)
         updated += 1
         nextFiles[key] = { hash: curHash, provenance: 'package' }
       }
@@ -534,10 +650,20 @@ export async function apply(ctx) {
     // removed at v2.0.0). The copy loop only adds/updates PRESETS; it never deletes a preset that
     // was dropped, so an old removed preset would linger in the picker forever. Here we remove the
     // files this installer previously recorded as package-owned under a prefix that is no longer in
-    // PRESETS, then drop the dir if it became empty. User-owned files (provenance 'user') are kept.
+    // PRESETS, then drop the dir if it became empty. Files recorded as user-owned are KEPT.
+    //
+    // DELETION IS THE ONE PATH THAT DOES NOT REPLACE, so it obeys the same rule as the replacement
+    // path: a file whose bytes are not what this installer last wrote is copied to
+    // <presetRoot>/.vibe-math-backup/<fromVersion>/<preset>/<file> FIRST and named in the log. A file
+    // that still matches its recorded hash IS the package's copy, so removing it destroys nothing.
     const currentPrefixes = new Set(PRESETS.map(p => p.src + '/'))
     let removedFiles = 0
-    let removedDirs = []
+    let matchedPackageFiles = 0
+    let keptUserFiles = 0
+    const removedDirs = []
+    const backedUpStale = []
+    const backupFailedStale = []
+    const keptUserDirs = new Set()
     const stale = new Map() // prefix -> [keys]
     for (const key of Object.keys(prevFiles)) {
       const slash = key.indexOf('/')
@@ -551,47 +677,85 @@ export async function apply(ctx) {
       let dirEmpty = true
       for (const key of keys) {
         const rec = (prevFiles[key] && typeof prevFiles[key] === 'object') ? prevFiles[key] : { provenance: 'package' }
-        if (rec.provenance === 'user') { dirEmpty = false; continue }   // 用户文件 → 保留
+        if (rec.provenance === 'user') { dirEmpty = false; keptUserFiles += 1; keptUserDirs.add(prefix.slice(0, -1)); continue }   // 用户文件 → 保留
         const f = join(presetRoot, key)
-        if (existsSync(f)) { try { unlinkSync(f); removedFiles += 1 } catch (e) {} }
+        if (existsSync(f)) {
+          let buf = null
+          try { buf = readFileSync(f) } catch (e) { /* unreadable: treated as "cannot prove it is ours" */ }
+          // A file that still matches its recorded hash IS the copy this installer wrote, so deleting
+          // it destroys nothing. Anything else — edited bytes, or a legacy record with no hash that
+          // cannot tell — is copied to the backup root first. An unreadable file cannot be proven
+          // either way and is not counted as a package copy (the log makes no claim about it).
+          const isPackageCopy = buf !== null && typeof rec.hash === 'string' && sha256(buf) === rec.hash
+          if (isPackageCopy) {
+            matchedPackageFiles += 1
+          } else if (buf !== null) {
+            const cut = key.lastIndexOf('/')
+            const backup = backupReplacedFile(presetRoot, fromVersion, key.slice(0, cut), key.slice(cut + 1), buf)
+            if (backup === 'failed') backupFailedStale.push(key); else backedUpStale.push(key)
+          }
+          try { unlinkSync(f); removedFiles += 1 } catch (e) {}
+        }
         if (existsSync(f)) dirEmpty = false
       }
       const dir = join(presetRoot, prefix.slice(0, -1))
       if (dirEmpty && existsSync(dir)) { try { rmdirSync(dir); removedDirs.push(dir) } catch (e) {} }
     }
 
-    writeState(stateFile, { version: pkgVersion || (state && state.version) || '', files: nextFiles, updatedAt: Date.now() })
+    writeState(stateFile, { version: pkgVersion || (state && state.version) || '', files: nextFiles, updatedAt: Date.now() }, state, logger)
 
-    if (removedFiles > 0 || removedDirs.length > 0) {
-      logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped.')
+    const cleanupNotes = []
+    if (matchedPackageFiles > 0) cleanupNotes.push(matchedPackageFiles + ' 个仍是本安装器写入的字节（删掉的不是你的改动）')
+    if (backedUpStale.length > 0) cleanupNotes.push(backedUpStale.length + ' 个的字节与上一次安装不同（被改过），原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + backedUpStale.join(', '))
+    if (backupFailedStale.length > 0) cleanupNotes.push(backupFailedStale.length + ' 个被改过的文件**备份失败**（原文未保留）：' + backupFailedStale.join(', '))
+    if (keptUserFiles > 0) cleanupNotes.push(keptUserFiles + ' 个记为用户所有的文件被保留（' + [...keptUserDirs].join(', ') + '），要清理请手动删除')
+    if (removedFiles > 0 || removedDirs.length > 0 || cleanupNotes.length > 0) {
+      logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped' +
+        (cleanupNotes.length > 0 ? '；' + cleanupNotes.join('；') : '') + '。')
     }
+
+    const backupsDir = join(presetRoot, BACKUP_DIR, String(fromVersion))
+    // Two kinds of preserved bytes, reported apart because they are not the same claim:
+    //   · replacedEdits — the bytes on disk are NOT what this installer last wrote: a provable edit.
+    //   · unknownPrev   — a legacy state with no hash cannot tell; backed up all the same, and never
+    //                     called "被改过" (the old wording claimed an edit it could not see).
+    const editClause = replacedEdits.length > 0
+      ? '其中 ' + replacedEdits.length + ' 个文件与上一次安装的字节不同（被改过），已按版本一致化覆盖' +
+        (backupFailures.length === 0
+          ? '，原文备份在 ' + backupsDir + '：' + replacedEdits.join(', ')
+          : '；这 ' + backupFailures.length + ' 个文件**备份失败**（原文未保留）：' + backupFailures.join(', ')) +
+        '。要自定义 preset，请复制一份而不是改这几个文件——被管理的文件在下一次版本变更时一定会被替换。'
+      : ''
+    const unknownClause = unknownPrev.length > 0
+      ? '另有 ' + unknownPrev.length + ' 个文件在旧版状态里没有哈希（无法判断你是否改过），已先备份原文到 ' + backupsDir + ' 再替换' +
+        (backupFailures.length > 0 ? '（其中备份失败：' + backupFailures.join(', ') + '）' : '') + '。'
+      : ''
 
     if (isUpgrade) {
       logger?.info?.('[dsh-vibe-math] preset auto-update: version ' + fromVersion + ' → ' + pkgVersion +
         ' — 新增 ' + installed + ' 个文件，更新 ' + updated + ' 个文件。' +
-        (replacedEdits.length > 0
-          ? '其中 ' + replacedEdits.length + ' 个文件与上一次安装的字节不同（被改过），已按版本一致化覆盖' +
-            (backupFailures.length === 0
-              ? '，原文备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion)) + '：' + replacedEdits.join(', ')
-              : '；这 ' + backupFailures.length + ' 个文件**备份失败**（原文未保留）：' + backupFailures.join(', ')) +
-            '。要自定义 preset，请复制一份而不是改这几个文件——被管理的文件在下一次版本变更时一定会被替换。'
-          : '') +
+        editClause + unknownClause +
         '新版本 preset 将在新会话生效。')
     } else if (isBaseline) {
       logger?.info?.('[dsh-vibe-math] preset baseline: refreshed ' + (installed + updated) + ' file(s) to v' + pkgVersion +
         (replacedEdits.length > 0
           ? '，其中 ' + replacedEdits.length + ' 个原有文件与随包版本不同' +
-            (backupFailures.length === 0 ? '，原文已备份在 ' + join(presetRoot, BACKUP_DIR, String(fromVersion))
+            (backupFailures.length === 0 ? '，原文已备份在 ' + backupsDir
               : '，但有 ' + backupFailures.length + ' 个备份失败（原文未保留）：' + backupFailures.join(', '))
           : '') +
+        unknownClause +
         ' — 已启用版本化自动更新（后续版本变更会直接替换被管理的 preset 文件）。')
-    } else if (installed > 0) {
-      logger?.info?.('[dsh-vibe-math] restored ' + installed + ' missing preset file(s)')
-    } else if (kept > 0) {
-      // same version, and some managed file on disk differs from the package: reported, never
-      // rewritten mid-version (it is replaced, with a backup, at the next version change)
-      logger?.info?.('[dsh-vibe-math] preset files untouched (v' + pkgVersion + ' unchanged): ' + kept +
-        ' file(s) differ from the shipped copy; they will be replaced on the next version change (原件会先备份)')
+    } else if (installed > 0 || kept > 0) {
+      // SAME VERSION, and BOTH facts are reported: a missing file being restored must not hide the
+      // drift notice (the audit's repro: the log said "restored 1" and never mentioned the drift).
+      const parts = []
+      if (installed > 0) parts.push('restored ' + installed + ' missing preset file(s)')
+      if (kept > 0) {
+        parts.push(kept + ' file(s) differ from the shipped copy and were left untouched (v' + pkgVersion + ' 未变)' +
+          (userEditedKept > 0 ? '，其中 ' + userEditedKept + ' 个是安装之后的改动（记为用户所有：弃用 preset 的清理不会删除它们）' : '') +
+          '；下一次版本变更会先备份原文再替换')
+      }
+      logger?.info?.('[dsh-vibe-math] preset files: ' + parts.join('；') + '。')
     }
     /* the host self-check ran at the top of apply() — it also decides the preset mechanism */
   } catch (err) {

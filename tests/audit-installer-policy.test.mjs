@@ -23,7 +23,7 @@
 //                        (_oneoff/probe-installer-policy.mjs) uses this to prove these assertions
 //                        really do detect the previous, edit-preserving policy.
 // ============================================================================================
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -43,10 +43,15 @@ function ok(cond, label, detail) {
   return false
 }
 
-/** A throwaway copy of the package at a chosen version; every managed file is version-marked. */
-function buildPackage(version, dir) {
+/**
+ * A throwaway copy of the package at a chosen version; every managed file is version-marked.
+ * `transform` (optional) rewrites the copied installer source — used by §14 to build the package
+ * that DROPS a preset, which no shipped package can express.
+ */
+function buildPackage(version, dir, transform) {
   mkdirSync(dir, { recursive: true })
-  cpSync(INSTALLER_SRC, join(dir, 'installer.js'))
+  if (typeof transform === 'function') writeFileSync(join(dir, 'installer.js'), transform(readFileSync(INSTALLER_SRC, 'utf8')))
+  else cpSync(INSTALLER_SRC, join(dir, 'installer.js'))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
     name: 'dsh-vibe-math', version, type: 'module', dsh: { bundle: { patch: './cordis.patch.yml' } },
   }, null, 2))
@@ -251,6 +256,173 @@ console.log('=== 9. a recorded version NEWER than this package (a downgrade) say
   ok(existsSync(backup) && readFileSync(backup).equals(newerBytes), 'the replaced newer bytes are backed up under the version they came from')
   ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '2.0.0', 'the state records the version that is actually installed now')
   ok(!logs.some((l) => l.includes('preset install/update failed')), 'apply() swallowed no failure')
+}
+
+// ============================================================================================
+// The Round-B machinery findings. Each of these sections was RED before its fix; see
+// _oneoff/probe-installer-policy.mjs and _oneoff/rC-probe-mechanism-sensitivity.mjs for the
+// sensitivity runs (the shipped suite must be green while the previous logic is red ON THE NAMED
+// ASSERTION).
+// ============================================================================================
+
+// fresh home + helpers for the sections below, so the edits accumulated above cannot leak in
+// (the readers never throw: a mutant that deletes or half-writes a file must show up as a FAIL on
+// the assertion that names it, not as a crashed suite)
+const readText = (p) => { try { return readFileSync(p, 'utf8') } catch (e) { return null } }
+const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')) } catch (e) { return null } }
+const tmpHome = (n) => {
+  const home = join(tmp, 'dshhome' + n)
+  mkdirSync(home, { recursive: true })
+  const root = join(home, '.agent-presets')
+  return {
+    home, root,
+    state: join(root, '.vibe-math-installed.json'),
+    backup: join(root, '.vibe-math-backup'),
+    at: (p, f) => join(root, p.dst, f),
+    isCopyOf: (p, f, from) => {
+      try { return readFileSync(join(root, p.dst, f)).equals(readFileSync(join(from, p.src, f))) } catch (e) { return false }
+    },
+  }
+}
+
+console.log('=== 10. preset writes are ATOMIC: a failed write cannot touch the destination ===')
+{
+  const H = tmpHome('10')
+  await applyFrom(pkgA, H.home, [])
+  const target = { p: PRESETS[1], f: 'preset.yml' }
+  const userBytes = Buffer.from('# USER EDIT (must survive a failed write)\n')
+  writeFileSync(H.at(target.p, target.f), userBytes)
+  // `writePresetFile` writes `<dest>.<pid>.<seq>.vibe-math-tmp` and renames it over the destination,
+  // so a DIRECTORY squatting on that temp path makes the temp write fail while the destination stays
+  // untouched. An in-place `writeFileSync(dest)` would not care: it would overwrite the user's bytes
+  // and log nothing. The squat covers every sequence number a full run can use.
+  const MANY = 32
+  const squat = (n) => H.at(target.p, target.f) + '.' + process.pid + '.' + n + '.vibe-math-tmp'
+  for (let n = 0; n < MANY; n++) mkdirSync(squat(n), { recursive: true })
+  const logs = await applyFrom(pkgB, H.home, [])
+  ok(readText(H.at(target.p, target.f)) === userBytes.toString(),
+    'a failed preset write leaves the destination byte-for-byte intact (tmp+rename, never in place)')
+  ok(logs.some((l) => l.includes('preset install/update failed')),
+    '...and the failure is reported instead of being swallowed', logs.filter((l) => l.includes('failed')).join(' | ').slice(0, 200))
+  ok((readJson(H.state) || {}).version === '1.0.0',
+    'the state still describes the bytes that are actually on disk, so the next boot self-heals')
+  for (let n = 0; n < MANY; n++) rmSync(squat(n), { recursive: true, force: true })
+  await applyFrom(pkgB, H.home, [])
+  ok(H.isCopyOf(target.p, target.f, pkgB), 'with the obstruction gone the next boot replaces the file normally')
+  ok((readJson(H.state) || {}).version === '2.0.0', '...and records the new version')
+  const leftovers = []
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith('.vibe-math-tmp')) leftovers.push(p)
+    }
+  }
+  walk(H.root)
+  ok(leftovers.length === 0, 'no `.vibe-math-tmp` file is left behind by a clean run', leftovers.join(', '))
+}
+
+console.log('=== 11. the state file is not rewritten (or even touched) when nothing changed ===')
+{
+  const H = tmpHome('11')
+  await applyFrom(pkgA, H.home, [])
+  const before = readText(H.state)
+  const mtime = statSync(H.state).mtimeMs
+  await new Promise((r) => setTimeout(r, 30))
+  await applyFrom(pkgA, H.home, [])
+  ok(readText(H.state) === before, 'a same-version boot leaves the state file byte-identical (no churn)')
+  ok(statSync(H.state).mtimeMs === mtime, '...and does not move its mtime either')
+  // ...but a same-version boot that LEARNS something (a file was edited) must record it
+  appendFileSync(H.at(PRESETS[0], 'preset.yml'), '\n# USER EDIT\n')
+  await applyFrom(pkgA, H.home, [])
+  const after = readJson(H.state) || {}
+  ok(readText(H.state) !== before, 'a same-version boot that learns something DOES rewrite the state')
+  ok(after.files && after.files[PRESETS[0].src + '/preset.yml'] && after.files[PRESETS[0].src + '/preset.yml'].provenance === 'user',
+    'the drift is recorded as user-owned — by the real code path (the audit found this value was never written)')
+}
+
+console.log('=== 12. a legacy hash-less record is reported as UNKNOWN, never as a proven edit ===')
+{
+  const H = tmpHome('12')
+  await applyFrom(pkgA, H.home, [])
+  const state = readJson(H.state) || { files: {} }
+  delete state.files[PRESETS[2].src + '/preset.yml'].hash // the shape a pre-hash installer wrote
+  writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
+  appendFileSync(H.at(PRESETS[2], 'preset.yml'), '\n# edit while the recorded hash is unknown\n')
+  const editBytes = readText(H.at(PRESETS[2], 'preset.yml'))
+  const logs = await applyFrom(pkgB, H.home, [])
+  ok(logs.some((l) => l.includes('没有哈希')),
+    'the file whose previous hash is unknown is reported as "cannot tell whether you changed it"')
+  ok(!logs.some((l) => l.includes('被改过')),
+    '...and is NOT called an edit the installer can prove', logs.filter((l) => l.includes('被改过')).join(' | '))
+  const backup = join(H.backup, '1.0.0', PRESETS[2].dst, 'preset.yml')
+  ok(existsSync(backup) && readText(backup) === editBytes,
+    '...while its bytes are still copied to the backup root before the replacement')
+}
+
+console.log('=== 13. deleting a file with a dropped preset backs it up FIRST and names it ===')
+{
+  const H = tmpHome('13')
+  await applyFrom(pkgA, H.home, [])
+  mkdirSync(join(H.root, 'vibe-math-v1'), { recursive: true })
+  writeFileSync(join(H.root, 'vibe-math-v1', 'legacy.js'), 'MY VALUABLE EDIT\n')
+  writeFileSync(join(H.root, 'vibe-math-v1', 'stock.yml'), 'package bytes\n')
+  const state = readJson(H.state) || { files: {} }
+  state.files['vibe-math-v1/legacy.js'] = { hash: sha('the bytes the installer wrote long ago\n'), provenance: 'package' }
+  state.files['vibe-math-v1/stock.yml'] = { hash: sha('package bytes\n'), provenance: 'package' }
+  writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
+  const logs = await applyFrom(pkgA, H.home, [])
+  ok(!existsSync(join(H.root, 'vibe-math-v1', 'legacy.js')), 'the changed file of a dropped preset is removed (the preset is gone)')
+  const backup = join(H.backup, '1.0.0', 'vibe-math-v1', 'legacy.js')
+  ok(existsSync(backup) && readText(backup) === 'MY VALUABLE EDIT\n',
+    '...AFTER its bytes were copied to .vibe-math-backup/<fromVersion>/<preset>/<file>')
+  ok(logs.some((l) => l.includes('vibe-math-v1/legacy.js') && l.includes('.vibe-math-backup')),
+    '...and the log names both the file it deleted and where the copy is')
+  ok(!existsSync(join(H.backup, '1.0.0', 'vibe-math-v1', 'stock.yml')),
+    'a file that still matches its recorded hash is deleted WITHOUT a backup (it was the package copy)')
+  ok(logs.some((l) => l.includes('仍是本安装器写入的字节')), '...and that is stated in the log')
+}
+
+console.log('=== 14. a user edit inside a preset a NEWER package drops is KEPT ===')
+{
+  const H = tmpHome('14')
+  const edited = { p: PRESETS[1], f: 'agent.cordis.yml' }
+  await applyFrom(pkgA, H.home, [])
+  appendFileSync(H.at(edited.p, edited.f), '\n# MY EDIT\n')
+  await applyFrom(pkgA, H.home, [])
+  const recorded = (readJson(H.state) || {}).files || {}
+  ok(recorded[edited.p.src + '/' + edited.f] && recorded[edited.p.src + '/' + edited.f].provenance === 'user',
+    'the same-version edit is recorded as user-owned before the preset is dropped')
+  // "a newer package no longer ships this preset": rename its src in the copied installer, so the copy
+  // loop cannot rebuild it and the old keys become stale — exactly what the cleanup must handle.
+  const dropper = buildPackage('2.0.0', join(tmp, 'pkg-dropper'),
+    (src) => src.replace("src: 'vibe-math-v3',", "src: 'vibe-math-v3-dropped',"))
+  const logs = await applyFrom(dropper, H.home, [])
+  ok(existsSync(H.at(edited.p, edited.f)), 'the edited file of the dropped preset SURVIVES')
+  ok((readText(H.at(edited.p, edited.f)) || '').includes('MY EDIT'), '...with the user\'s bytes intact')
+  ok(!existsSync(H.at(edited.p, 'preset.yml')), 'the unedited files of the dropped preset are still removed')
+  ok(logs.some((l) => l.includes('记为用户所有的文件被保留')), '...and the log says the user-owned file was kept')
+}
+
+console.log('=== 15. a failed state write is reported (not swallowed), and does not abort the run ===')
+{
+  const H = tmpHome('15')
+  await applyFrom(pkgA, H.home, [])
+  appendFileSync(H.at(PRESETS[0], 'preset.yml'), '\n# USER EDIT (the state must be updated)\n')
+  // the first state write of a fresh module instance uses sequence 0: squat that exact temp path
+  mkdirSync(H.state + '.' + process.pid + '.0.tmp', { recursive: true })
+  const logs = await applyFrom(pkgA, H.home, [])
+  ok(logs.some((l) => l.includes('状态文件写入失败')),
+    'a failed state write is REPORTED (it used to fail silently)', logs.filter((l) => l.includes('写入失败')).join(' | ').slice(0, 160))
+  ok(!logs.some((l) => l.includes('preset install/update failed')), '...without aborting the preset step')
+  ok((readJson(H.state) || {}).version === '1.0.0',
+    'the previous state file is still parseable (tmp+rename left no half-written file)')
+  rmSync(H.state + '.' + process.pid + '.0.tmp', { recursive: true, force: true })
+  await applyFrom(pkgA, H.home, [])
+  const healed = ((readJson(H.state) || {}).files || {})[PRESETS[0].src + '/preset.yml'] || {}
+  ok(healed.provenance === 'user',
+    'the next boot records what the failed write lost (self-healing)')
+  ok(!existsSync(H.state + '.' + process.pid + '.0.tmp'), 'the temp path is free again after the successful write')
 }
 
 rmSync(tmp, { recursive: true, force: true })

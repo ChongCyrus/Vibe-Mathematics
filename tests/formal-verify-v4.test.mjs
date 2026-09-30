@@ -965,6 +965,11 @@ const K = await establish()
   const scrub = (s) => String(s == null ? '' : s)
     .split(vibe).join('<VIBEMATH>').split(vibe.replace(/\\/g, '/')).join('<VIBEMATH>')
     .split(K.WS).join('<WS>').split(K.WS.replace(/\\/g, '/')).join('<WS>')
+    // `propose_task` mints `t-<8 hex>` from Math.random (vibe-math-v4.js:1317 + shortId :2582).
+    // The task-frame entry embeds that id, so without this the SHIPPED corpus changed on every
+    // run (AUDIT-CHECKLIST §2.4: two consecutive runs must hash identically) and `git status`
+    // always showed prompt-corpus-v4/* as modified. Normalise it like the machine paths.
+    .replace(/\bt-[0-9a-f]{8}\b/g, '<TASKID>')
   const corpus = []
   const add = (kind, label, prompt) => corpus.push({ kind, label, prompt: scrub(prompt) })
   // (a) off: a TRUE no-op must be visible in the corpus, not merely asserted
@@ -1106,7 +1111,8 @@ const K = await establish()
     const md = ['# V4 交互语料（prompt corpus）', '',
       '> 由 `formal-verify-v4.test.mjs` 落盘：常驻**真正会读到**的提示词原文',
       '> （`vibe_v4_prompts` 的只读回显 + 一条真实投递的工作轮 + 工具 `hint`）。',
-      '> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`：确定、可 diff、不含任何本机路径。', '',
+      '> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`，随机任务号归一化为',
+      '> `<TASKID>`（`propose_task` 的 `t-<8 位 hex>` 来自 `Math.random`）：确定、可 diff、不含任何本机路径或随机数。', '',
       '> 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**',
       '> （`encourage` / `require` 两种措辞各一份：只有 `require` 会声称"不定论"）、',
       '> `blocked` 分支、平时工作轮的「顺手形式化」，以及回执契约里的 `formal` 字段；',
@@ -1156,6 +1162,11 @@ const K = await establish()
   }
   const joined = corpus.map((c) => c.prompt).join('\n')
   assert(joined.indexOf(K.WS) === -1 && joined.indexOf(K.WS.replace(/\\/g, '/')) === -1 && joined.indexOf(vibe) === -1 && joined.indexOf(vibe.replace(/\\/g, '/')) === -1, '★ every captured prompt normalises <WS> and <VIBEMATH> (diffable, no machine paths)')
+  // The random `t-<hex8>` must be normalised too, and NON-vacuously: the task-frame entry has to
+  // CARRY the normalised token (a scrub that quietly blanked the whole frame would also pass the
+  // absence check below).
+  assert(/\[YOU CLAIMED TASK <TASKID>\]/.test(byLabel('task frame ([YOU CLAIMED TASK ...])').prompt), '★ the task-frame corpus entry really carries the normalised `<TASKID>` token')
+  assert(!/\bt-[0-9a-f]{8}\b/.test(joined), '★ no captured prompt leaks a random `t-<hex8>` id (the corpus is byte-stable across runs)')
   assert(!/\[object Object\]|\bNaN\b|:\s*undefined|["']undefined["']|undefined\s*[,}\]]/.test(joined), 'no captured prompt contains placeholder garbage')
   assert(corpus.every((c) => c.prompt && c.prompt.length > 20), 'every corpus entry carries real prompt text')
 }

@@ -17,6 +17,21 @@
 //
 // The `agentPresets` service is read through `ctx.inject`, so ordering does not matter and a host
 // without the service simply never invokes the callback.
+//
+// THE GROUP MARKER (why the marker assignment at the end of this file is not optional):
+// a row's config is interpolated — every YAML `!!js` node evaluated — unless the row's plugin
+// callback carries the loader's "tree carrier" marker, `EntryGroup.key`, which is
+// `Symbol.for('cordis.group')` (`cordis-plugin-loader/src/config/group.ts:7`). The loader's
+// `internal/config` handler is exactly:
+//     const plugin = this.runtime?.callback
+//     if (plugin?.[EntryGroup.key]) return config
+//     return interpolate(this.ctx, config)          — cordis-plugin-loader/src/index.ts:104-113
+// The host's own preset row module (`@deepseek-ai/dsh-agent-preset`) is a class carrying
+// `static [EntryGroup.key] = true`, so the nested expressions in a preset composition are preserved
+// and evaluated in the PRESET's own mount scope. Without the marker they are evaluated HERE, in the
+// declaring row's realm, at boot: silently wrong for anything that depends on the preset's scope,
+// and — for an expression that throws there, which is most service lookups — a row that never
+// activates, i.e. all four presets missing from the picker with no error the user can see.
 
 export const name = 'vibe-math-preset-declaration'
 
@@ -37,19 +52,22 @@ function registerDeclaration(ctx, config) {
     Promise.resolve()
       .then(() => presets.register(definition))
       .then((unregister) => {
-        if (retired) { void unregister(); return }
+        // Unregistering runs the preset's whole scope disposer, so it can reject. An unhandled
+        // rejection terminates the process on Node >= 15: a teardown must never kill the host.
+        if (retired) { Promise.resolve().then(() => unregister()).catch(() => {}); return }
         dispose = unregister
       })
       .catch((error) => {
         const message = String((error && error.message) || error)
-        // A duplicate id means the profile declares the same preset itself (a saved edit from the
-        // preset editor, or the user's own copy): theirs wins and this registration stays quiet
-        // beyond one line, instead of failing the boot.
+        // A duplicate id means the host rejected THIS registration: registration is first-wins, and
+        // profile layers are applied AFTER every bundle layer (dsh-app-boot/lib/types/profile.d.ts:
+        // "then the profile's own patches"), so the winner is an earlier or peer layer — never
+        // "theirs wins by being applied later". One line instead of a failed boot.
         ctx.logger?.warn?.('[dsh-vibe-math] agent preset "' + definition.id + '" 未由本包注册：' + message)
       })
     return () => {
       retired = true
-      if (dispose !== undefined) void dispose()
+      if (dispose !== undefined) Promise.resolve().then(() => dispose()).catch(() => {})
     }
   })
 }
@@ -60,3 +78,9 @@ export function apply(ctx, config) {
   if (typeof ctx.inject === 'function') ctx.inject(['agentPresets'], (child) => registerDeclaration(child, config))
   else registerDeclaration(ctx, config)
 }
+
+// The loader must NOT interpolate this row's config: `config.plugins` holds the preset's own rows,
+// whose `!!js` expressions belong to the preset's mount scope, not to the declaring row's. The loader
+// reads this marker off the plugin callback (`runtime.callback`), which is the exported `apply`
+// function. See the header for the host source this mirrors.
+apply[Symbol.for('cordis.group')] = true

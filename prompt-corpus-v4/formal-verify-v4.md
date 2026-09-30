@@ -2,7 +2,8 @@
 
 > 由 `formal-verify-v4.test.mjs` 落盘：常驻**真正会读到**的提示词原文
 > （`vibe_v4_prompts` 的只读回显 + 一条真实投递的工作轮 + 工具 `hint`）。
-> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`：确定、可 diff、不含任何本机路径。
+> 工作区路径归一化为 `<WS>`，VibeMath 根归一化为 `<VIBEMATH>`，随机任务号归一化为
+> `<TASKID>`（`propose_task` 的 `t-<8 位 hex>` 来自 `Math.random`）：确定、可 diff、不含任何本机路径或随机数。
 
 > 覆盖：`off`（无 Lean 文本）、`encourage`、**`require`**、对象 `passed` 后的**忠实性分支**
 > （`encourage` / `require` 两种措辞各一份：只有 `require` 会声称"不定论"）、
@@ -410,5 +411,5 @@ New items:
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 
-[YOU CLAIMED TASK t-cba4ec0d] 核对引理 B 的假设 — 确认 n≥1 是否必要
+[YOU CLAIMED TASK <TASKID>] 核对引理 B 的假设 — 确认 n≥1 是否必要
 ```

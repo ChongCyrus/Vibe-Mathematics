@@ -99,7 +99,7 @@ console.log('\n-- H4: promotion anchors are written to disk --');
   await call('vibe_math_add_problem', { id: 'qMain', description: '证明 π² 是无理数', priority: 0 });
   // `来源问题` is exactly what a solver-reported lemma carries (syncMeta sets it), and it is
   // what the Verified card's `- 来源:` is built from — so drive that field through the tool too.
-  await call('vibe_math_add_proposition', { id: 'pX', 概述: '欧拉常数 γ 为有理数', 概率: 0.6, 分类: '分析', '价值/关键性': 0.9, 来源问题: 'qMain' });
+  await call('vibe_math_add_proposition', { id: 'pX', 概述: '欧拉常数 γ 为有理数', 概率: 0.6, 分类: '分析', '价值/关键性': 0.9, 来源问题: 'qMain', 来源方向: 'd1' });
   // processPromote runs on the first tick of a started scheduler
   await call('vibe_math_set_params', { plannerEnabled: false, tickIntervalMs: 200 });
   await call('vibe_math_start', {});
@@ -109,7 +109,12 @@ console.log('\n-- H4: promotion anchors are written to disk --');
   const pMd = read(promotedPath);
   assert(/- 判断命题: pX/.test(pMd), 'promoted problem card carries `- 判断命题: pX`');
   assert(/- 来源命题: pX/.test(pMd), 'promoted problem card carries `- 来源命题: pX`');
-  assert(/- 来源方向: d1/.test(read(join(PROJECT, 'Propos', '分析', 'pX.md'))) || true, 'proposition 来源方向 anchor is written when known');
+  const pXmd = read(join(PROJECT, 'Propos', '分析', 'pX.md'));
+  // The direction is KNOWN here (it was passed to add_proposition), so the anchor must be on
+  // disk: `assert(/- 来源方向: d1/.test(...) || true)` was always true and proved nothing.
+  assert(pXmd.length > 0, 'the proposition card pX.md exists on disk');
+  assert(/- 来源方向: d1/.test(pXmd), 'proposition card carries the `- 来源方向: d1` anchor it was created with (H4)');
+  assert(!/- 来源方向:\s*$/m.test(pXmd), 'and it is not written as an empty shell');
   // reload from disk — the whole point of H4
   await call('vibe_math_pause', {});
   await call('vibe_math_index', {});
@@ -142,9 +147,13 @@ console.log('\n-- H5: a single verifier vote must never conclude --');
   await call('vibe_math_pause', {});
   const pMd = read(join(proj, 'Propos', '分析', 'p1.md'));
   const vcard = read(join(proj, 'Verified', '命题', 'p1.md'));
+  // `read()` is deliberately tolerant, so every NEGATIVE assertion below would also hold for a
+  // file that does not exist at all. Prove the subject exists first, otherwise "one vote did
+  // not conclude" is indistinguishable from "the card was never written".
+  assert(pMd.length > 0, 'the proposition card p1.md exists on disk (the negatives below are not vacuous)');
   assert(!/- 状态: 已验证·真/.test(pMd), 'a single 1-vote did NOT flip the proposition to 已验证·真');
   assert(!/- 概率: 1$|- 概率: 1\r?$/m.test(pMd), 'a single 1-vote did NOT set 概率=1');
-  assert(vcard === '', 'no Verified/命题/p1.md card was written from one vote');
+  assert(!existsSync(join(proj, 'Verified', '命题', 'p1.md')) && vcard === '', 'no Verified/命题/p1.md card was written from one vote');
   // and the task must still be alive, waiting for the rest of the quorum
   const tasks = JSON.parse(read(join(proj, 'State', 'tasks.json')) || '{}');
   const t = tasks['verify:r-p1'];

@@ -347,6 +347,47 @@ console.log('\n[6] quorum recomputed when a voter is dismissed')
   assert(h.drains.length === 2, 'both dismissed researchers had their resident child released')
 }
 
+// ---------- 6b. a dismissed voter's old ballot votes in NEITHER direction ----------
+console.log('\n[6b] a dismissed voter\'s old ballot is dropped from the ledger AND the tally')
+{
+  // Round A H2 fixed "a dismissed member's old ballot still counts". The suite used to prove only
+  // that m/voterCount were recomputed and that the resident was released — never that the BALLOT
+  // stopped counting. This case votes, dismisses, then re-votes, which is the sequence the audit
+  // asked for: r-1 asserts TRUE, is dismissed, and the remaining voter's FALSE must now CONCLUDE
+  // (with r-1's ballot ignored). If a former member's vote still counted, 1 vs 0 would conflict
+  // and the object could never reach Verified/ — so the verdict itself is the discriminator.
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const stateFile = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'State', 'institute.v5state.json')
+  const ballots = () => {
+    try {
+      const s = JSON.parse(readFileSync(stateFile, 'utf8'))
+      const v = s.institutes[Object.keys(s.institutes)[0]].verdicts['p-dismiss']
+      return v ? Object.keys(v.votes || {}) : null
+    } catch (e) { return null }
+  }
+  const s0 = await h.callTool('vibe_v5_status', {})
+  assert(s0.quorum.voterCount === 2 && s0.quorum.m === 2, 'baseline: acad + r-1 = 2 voters, m=2 (got P=' + s0.quorum.voterCount + ', m=' + s0.quorum.m + ')')
+  await h.callTool('vibe_v5_record_proposition', { id: 'p-dismiss', statement: '被解雇者的旧票不得计入', value: 0.5, motive: 'm', p: 0.5 })
+  await h.callTool('vibe_v5_propose_verify', { target: 'p-dismiss', kind: 'proposition', reason: 'r' }, h.childAgent(h.childOf('r-1')))
+  const s1 = await h.callTool('vibe_v5_status', {})
+  assert(!!s1.verify && s1.verify.target === 'p-dismiss', 'the ballot on p-dismiss is live')
+  const voted = await h.callTool('vibe_v5_verdict', { target: 'p-dismiss', verdict: 1, reason: 'r-1 断言为真' }, h.childAgent(h.childOf('r-1')))
+  assert(voted.ok === true && voted.allVoted === false, 'r-1 cast the ONLY boolean vote so far (the other voter has not answered)')
+  assert((ballots() || []).indexOf('r-1') !== -1, 'the durable open-verdict record carries r-1\'s ballot before the dismissal (' + JSON.stringify(ballots()) + ')')
+  const removed = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' })
+  assert(removed.ok === true, 'r-1 was dismissed with the ballot still open (' + JSON.stringify(removed).slice(0, 80) + ')')
+  const s2 = await h.callTool('vibe_v5_status', {})
+  assert(s2.quorum.voterCount === 1 && s2.quorum.m === 1, 'the live roster recomputes immediately: P=1, m=1 (got P=' + s2.quorum.voterCount + ', m=' + s2.quorum.m + ')')
+  assert((ballots() || []).indexOf('r-1') === -1, '★ the dismissed member\'s ballot is DELETED from the durable open verdict (votes=' + JSON.stringify(ballots()) + ')')
+  const finalVote = await h.callTool('vibe_v5_verdict', { target: 'p-dismiss', verdict: 0, reason: 'acad 断言为假' }, h.childAgent(h.childOf('acad')))
+  assert(finalVote.ok === true && finalVote.allVoted === true, 'the remaining voter completed the ballot (allVoted=true)')
+  const s3 = await h.callTool('vibe_v5_status', {})
+  assert(s3.verified.indexOf('p-dismiss') !== -1,
+    '★ the ballot CONCLUDED false — a former member\'s TRUE vote cannot block it (got verified=' + JSON.stringify(s3.verified) + ', undecided=' + JSON.stringify(s3.undecided) + ')')
+}
+
 // ---------- 7. vibe_v5_wait ----------
 console.log('\n[7] vibe_v5_wait')
 {
@@ -582,6 +623,125 @@ console.log('\n[15] the host live-child cap (ACTIVATION_LIMIT_REACHED) is named,
   assert(resumed.ok === true && resumed.respawned >= 1, 'a slot freed by firing a member lets resume rebuild a capped member (respawned=' + (resumed && resumed.respawned) + ')')
   const st2 = await h.callTool('vibe_v5_status', {})
   assert(st2.members.filter(m => m.phase === 'active' && m.childId).length === CAP, 'the institute is back at the host ceiling (active=' + st2.members.filter(m => m.phase === 'active').map(m => m.id).join(',') + ')')
+}
+
+// ---------- 16. a state file that was never loaded must never be overwritten (audit H1) --------
+console.log('\n[16] a pre-seeded snapshot is ADOPTED, never overwritten with an empty institute')
+{
+  // Round A H1. Ported from the reproduction that lived outside the repository
+  // (`_oneoff/audit241-v5-overwrite.mjs`): a host with no `sandboxPolicy` service (the supported
+  // case the e2e harness itself models) used to latch the DEFAULT path on its first read, after
+  // which `configure {institute:'alpha'}` wrote an EMPTY institute over alpha's real file.
+  const ws = mkdtempSync(join(tmpdir(), 'vibe-v5-seed-'))
+  const seedFile = join(ws, 'VibeMath', 'Projects', 'default', 'Institutes', 'alpha', 'State', 'alpha.v5state.json')
+  mkdirSync(dirname(seedFile), { recursive: true })
+  const seeded = {
+    v: 1,
+    institutes: {
+      'default::alpha': {
+        key: 'default::alpha', project: 'default', institute: 'alpha', createdAt: 1, phase: 'active',
+        problem: { id: 'p', statement: 'a real problem' }, params: {}, runId: 'run-x',
+        members: ['acad', 'r-1', 'r-2', 'r-3', 't-1'].map((id) => ({
+          id, kind: id === 'acad' ? 'academician' : id[0] === 'r' ? 'researcher' : 'temp',
+          childId: '', phase: 'active', direction: 'd', hiredBy: '', term: '', provider: 'spawn',
+          persona: 'CHARTER', error: '', createdAt: 1, dismissedAt: 0, dismissReason: '',
+        })),
+        tasks: [], messages: [], delivered: [], meetings: [], debates: [], verdicts: {}, formal: {},
+        todo: [], queue: [], counters: { academician: 1, researcher: 3, temp: 1, task: 0, meeting: 0, message: 0, verify: 0 },
+        lastProgressAt: 1, artifactCount: 7, diagnostics: [],
+      },
+    },
+    order: ['default::alpha'],
+  }
+  writeFileSync(seedFile, JSON.stringify(seeded, null, 2), 'utf8')
+  const h = makeHost({ pluginModule, ws })
+  const c = await h.callTool('vibe_v5_configure', { institute: 'alpha', problem: 'a real problem' })
+  assert(c.ok === true && c.institute === 'alpha', 'configure accepted the existing named institute (' + JSON.stringify(c).slice(0, 90) + ')')
+  const after = JSON.parse(readFileSync(seedFile, 'utf8')).institutes['default::alpha']
+  assert(after && after.members.length === 5, '★ the 5-member snapshot on disk survived configure (got ' + (after && after.members.length) + ')')
+  assert(after.artifactCount === 7 && after.runId === 'run-x', 'the rest of the snapshot survived too (artifactCount=' + after.artifactCount + ', runId=' + after.runId + ')')
+  const st = await h.callTool('vibe_v5_status', {})
+  assert(st.key === 'default::alpha' && st.members.length === 5, 'status reads the ADOPTED institute, not an empty one (key=' + st.key + ', members=' + st.members.length + ')')
+}
+
+// ---------- 17. the NAMED institute's own file is really read (audit H1, second half) ----------
+console.log('\n[17] a second host reads the NAMED institute from its own file')
+{
+  // Ported from `_oneoff/audit241-v5-key.mjs`. `configure` must read `Institutes/<name>/State/
+  // <name>.v5state.json` — the audit's bug was that it silently created a NEW empty institute
+  // under the requested name while the real file stayed untouched.
+  const h1 = makeHost({ pluginModule })
+  const c1 = await h1.callTool('vibe_v5_configure', { institute: 'alpha', problem: 'named institute' })
+  assert(c1.ok === true && c1.institute === 'alpha', 'host A configured the named institute')
+  const s1 = await h1.callTool('vibe_v5_status', {})
+  assert(s1.key === 'default::alpha', 'host A reports key=default::alpha (got ' + s1.key + ')')
+  await h1.callTool('vibe_v5_start', { researcherCount: 1 })
+  await h1.settleSpawns()
+  const namedFile = join(h1.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'alpha', 'State', 'alpha.v5state.json')
+  const onDisk = () => { try { return JSON.parse(readFileSync(namedFile, 'utf8')).institutes['default::alpha'] } catch (e) { return null } }
+  let snapshot = null
+  for (let i = 0; i < 80 && !(snapshot && snapshot.members.length >= 2); i++) { snapshot = onDisk(); if (!(snapshot && snapshot.members.length >= 2)) await sleep(25) }
+  assert(!!snapshot && snapshot.members.length >= 2, 'host A persisted the institute into the file NAMED AFTER IT (' + JSON.stringify(snapshot && snapshot.members.map(m => m.id)) + ')')
+  const ids = (snapshot || { members: [] }).members.map(m => m.id)
+  // A fresh host (fresh module instance) over the SAME workspace: this is what a user restarting
+  // DSH sees. It must adopt the institute, not found a second empty one.
+  const h2 = makeHost({ pluginModule, ws: h1.WS })
+  const c2 = await h2.callTool('vibe_v5_configure', { institute: 'alpha', problem: 'named institute' })
+  assert(c2.ok === true, 'host B configured the same named institute (' + JSON.stringify(c2).slice(0, 90) + ')')
+  const s2 = await h2.callTool('vibe_v5_status', {})
+  assert(s2.key === 'default::alpha' && s2.backend === 'file', 'host B reports the named institute over the file backend (key=' + s2.key + ', backend=' + s2.backend + ')')
+  assert(ids.length > 0 && ids.every(id => s2.members.some(m => m.id === id)),
+    '★ host B READ the existing members instead of starting empty (got ' + JSON.stringify(s2.members.map(m => m.id)) + ', expected to include ' + JSON.stringify(ids) + ')')
+  const resumed = await h2.callTool('vibe_v5_resume', {})
+  assert(resumed.ok === true, 'resume on the adopted institute succeeded (' + JSON.stringify(resumed).slice(0, 120) + ')')
+}
+
+// ---------- 18. a FAILED turn: stopReason=error, lastAssistantMessage OMITTED -------------------
+console.log('\n[18] a turn ending with stopReason=error is recorded, with or without output')
+{
+  // The real host emits `stopReason:'error'` for a failed turn and OMITS `lastAssistantMessage`
+  // when there is nothing to report (dsh-subagent index.js:268-278/317-324). Every other mock in
+  // the suite fires 'completed' WITH a message, so this branch — and the omission it must survive —
+  // was never executed in CI (audit A-7).
+  const h = makeHost({ pluginModule })
+  const chatText = () => {
+    const dir = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Chat')
+    return existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md')).map(f => readFileSync(join(dir, f), 'utf8')).join('\n') : ''
+  }
+  // The exact host event, with the field ABSENT (not an empty array).
+  const fireBare = (childId, stopReason) => { for (const fn of h.listeners['subagent/end'] || []) fn({ id: childId, runId: 'r', provider: 'spawn', local: true, stopReason }) }
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  // Wake r-1 first: an end for a member with no in-flight token is ignored BY DESIGN (the
+  // idempotence guard), so without this the error branch would be unreachable.
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: '请回报进展。' }, h.childAgent(h.childOf('acad')))
+  await sleep(40)
+  const st0 = await h.callTool('vibe_v5_status', {})
+  assert((st0.members.find(m => m.id === 'r-1') || {}).busy === true, 'precondition: r-1 has a turn in flight')
+  const before = chatText().length
+  fireBare(h.childOf('r-1'), 'error')
+  await sleep(80)
+  const written = chatText().slice(before)
+  const seg = written.indexOf('【异常】') === -1 ? '' : written.slice(written.indexOf('【异常】'), written.indexOf('【异常】') + 400)
+  const line = (seg.match(/【异常】[^\n]*/) || [''])[0]
+  assert(/【异常】r-1/.test(line) && /error/.test(line), '★ a failed turn is recorded in the group chat as 【异常】 for its OWNER: ' + JSON.stringify(line.slice(0, 120)))
+  assert(seg.indexOf('最后输出') === -1, 'an OMITTED lastAssistantMessage adds no phantom output text')
+  const st1 = await h.callTool('vibe_v5_status', {})
+  assert((st1.members.find(m => m.id === 'r-1') || {}).busy !== true, 'the failed member is not left marked busy')
+  assert(st1.running === true, 'the institute keeps running after a failed turn')
+  // And the SAME branch WITH output must carry it — otherwise the two assertions above could hold
+  // for a handler that only ever writes the member id.
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: '再来一次。' }, h.childAgent(h.childOf('acad')))
+  await sleep(40)
+  const mark = chatText().length
+  h.fireEnd(h.childOf('r-1'), { progress: 'partial text before the failure' }, 'max-tokens')
+  await sleep(80)
+  const after = chatText().slice(mark)
+  const idx2 = after.indexOf('【异常】')
+  const seg2 = idx2 === -1 ? '' : after.slice(idx2, idx2 + 400)
+  const line2 = (seg2.match(/【异常】[^\n]*/) || [''])[0]
+  assert(/max-tokens/.test(line2) && /最后输出/.test(line2) && /partial text before the failure/.test(seg2),
+    '★ a non-completed turn WITH output carries that output and its stop reason: ' + JSON.stringify(seg2.slice(0, 140)))
 }
 
 console.log('')

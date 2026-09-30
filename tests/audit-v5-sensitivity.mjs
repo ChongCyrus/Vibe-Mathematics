@@ -31,6 +31,31 @@ const original = readFileSync(SRC, 'utf8')
 const REPO = fileURLToPath(new URL('..', import.meta.url))
 const dir = mkdtempSync(join(tmpdir(), 'v5-sens-'))
 
+// `armNextVerify`'s two exclusion gates (a live MEETING and a live VERIFICATION), each written
+// at the function head AND as a re-check inside the `while` loop with no `await` in between.
+// `armGuards(true, true)` is the pristine source text; the probes switch ONE gate off in BOTH
+// copies, which is the minimal edit that actually breaks the guarantee. Keeping the block in
+// one place means the two mutations cannot drift apart from the source they mutate.
+const armGuards = (meetingOn, verifyOn) => [
+  ...(meetingOn ? ['      if (meeting) return'] : []),
+  '      // Only one begin may be in flight. Without this, two callers (a scheduling pass',
+  '      // and a fresh proposal) could both pass the `currentVerify()` check before either',
+  '      // has published its verdict record and would start the SAME object twice.',
+  '      if (beginLock) return',
+  ...(verifyOn ? ['      if (currentVerify()) return'] : []),
+  '      beginLock = true',
+  '      try {',
+  '        while (true) {',
+  '          // NEVER remove a proposal we are not about to run: the entry leaves the durable',
+  '          // queue only in the same step that starts it. The old code shifted it out and then',
+  '          // returned because a meeting was live, so the proposal existed in neither the queue',
+  '          // nor `verdicts` until some later pass happened to re-arm it (audit M2). Re-check',
+  '          // the exclusion guards here too: `await putQueue` can let a meeting open.',
+  '          const q = inst().queue.slice()',
+  '          if (!q.length) return',
+  '          if (' + (meetingOn && verifyOn ? 'meeting || currentVerify()' : meetingOn ? 'meeting' : 'currentVerify()') + ') return',
+].join('\n')
+
 // Each probe: { name, ref, guarantee, from, to }
 // `from` must occur exactly once, so a mutation can never quietly hit the wrong site.
 const probes = [
@@ -141,9 +166,19 @@ const probes = [
     name: 'begin-not-exclusive',
     ref: 'prompt-v5-integrity.test.mjs',
     guarantee: '⑱ a second proposal must QUEUE, never start a concurrent ballot',
-    from: "      if (beginLock) return\n      if (currentVerify()) return\n      beginLock = true",
-    to: "      beginLock = true",
+    from: armGuards(true, true),
+    to: armGuards(true, false),
   },
+  // NOTE — the mutual-exclusion gates of `armNextVerify` are written TWICE: once at the
+  // function head and once as a re-check inside the `while (true)` loop, and there is NO
+  // `await` between them. The head copies are therefore redundant mirrors of the in-loop
+  // ones, and a probe that deletes only a head copy is SEMANTICALLY INERT — it can never go
+  // red, which would masquerade as a "blind spot" forever (this was the state of both of the
+  // ⑱/㉝ probes: the in-loop re-check kept the invariant alive and
+  // `prompt-v5-integrity.test.mjs` stayed green). The probes for ⑱ and ㉝ therefore remove
+  // BOTH copies of the ONE gate they test, which is the minimal edit that actually lets a
+  // second ballot start — and the suite's case 9b ("a second proposal QUEUES") and case 10b
+  // ("a verification proposed DURING a meeting must queue") do detect exactly that.
   // NOTE — a probe for `continueMeetingRound`'s `if (finalizeLock) { armHeartbeat(); return }`
   // re-arm was REMOVED, not because the re-arm is unnecessary but because the state it
   // guards is UNREACHABLE, so no black-box probe can detect its removal:
@@ -269,8 +304,10 @@ const probes = [
     name: 'verify-preempts-a-live-meeting',
     ref: 'prompt-v5-integrity.test.mjs',
     guarantee: '㉝ a verification proposed during a meeting must QUEUE, never start concurrently (the two are mutually exclusive)',
-    from: "      if (meeting) return\n      // Only one begin may be in flight.",
-    to: "      // Only one begin may be in flight.",
+    // Removes BOTH `meeting` gates (see the note above `meeting-never-finalized`): deleting
+    // only the head copy is inert because the in-loop re-check runs before any `await`.
+    from: armGuards(true, true),
+    to: armGuards(false, true),
   },
 
   // ── LEAN FORMAL VERIFICATION PROBES (docs/formal-verification.md) ─────────
@@ -362,7 +399,11 @@ for (const p of probes) {
     continue
   }
   const r = spawnSync(process.execPath, [testPath], {
-    env: Object.assign({}, process.env, { V5_PLUGIN: file }),
+    // V5_CORPUS_DIR: a MUTATED run must never rewrite the shipped `prompt-corpus-v5/`. The
+    // corpus is the mandatory human-review artifact (AUDIT-CHECKLIST §0.3/§2.4); letting a
+    // deliberately broken copy dump its prompts there would leave the working tree holding
+    // mutant text until someone re-ran the healthy suite.
+    env: Object.assign({}, process.env, { V5_PLUGIN: file, V5_CORPUS_DIR: join(dir, 'corpus') }),
     encoding: 'utf8',
     cwd: REPO,
   })

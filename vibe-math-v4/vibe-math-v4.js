@@ -1354,14 +1354,22 @@ export function apply(ctx) {
       const r=residents.get(to); if(!r) return {ok:false,message:'no such resident'}
       if(!busy.has(to)){
         currentResident=r.rId
-        // An IMMEDIATE delivery. `wakeResident` clears the heartbeat as its first act and clears the
-        // `busy` mark again if the send is rejected, so a failure here would leave NO wake, NO
-        // in-flight turn and NO timer — nothing could ever re-drive the pump and the whole group would
-        // stop with mail still queued (F1; the sibling path is `deliverNextMailbox`, which falls
-        // through to the re-arming tail of `scheduleNext`). Re-arm; the message itself is delivered by
-        // the recipient's own inbox on its next wake.
         const ok=await wakeResident(r, (await normalPrompt(r))+'\n\n[NEW MESSAGE from '+from+']\n'+content,'normal')
-        await saveAll(); markProgress(); logActivity('message',from+'→'+to+(ok?'':' (wake failed; heartbeat re-armed)')); if(!ok) armHeartbeat(); return {ok:true}
+        await saveAll(); markProgress()
+        if(ok){ logActivity('message',from+'→'+to); return {ok:true} }
+        // The immediate wake FAILED (and `wakeResident` already cleared the `busy` mark, so no turn
+        // actually started). Round C: the message must fall back to the MAILBOX instead of being
+        // discarded — the old code logged "(wake failed; heartbeat re-armed)" and then dropped the
+        // text, so the re-armed heartbeat had nothing left to do and the message was lost forever
+        // while the recipient stayed cold (this is what the audit's F1 probe measured: it reported
+        // "queued mail already consumed: false" but the mailbox was in fact already empty, so no
+        // later pass could ever deliver anything). The mailbox is the one place a pass is guaranteed
+        // to look again — including during `brainstorm`, see the delivery call at the top of
+        // scheduleNext — and a successful retry marks the recipient busy and clears the queue.
+        const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb)
+        await saveAll(); armHeartbeat()
+        logActivity('message',from+'→'+to+' (immediate wake failed; queued for retry)')
+        return {ok:true}
       }
       const mb=mailboxes.get(to)||[]; mb.push({from,at:now(),content}); mailboxes.set(to,mb); await saveAll(); logActivity('message',from+'→'+to+' (queued)'); return {ok:true}
     }
@@ -1846,6 +1854,18 @@ export function apply(ctx) {
       // scheduling pass goes through — so a refused spawn is deferred by a whole round (and paced by
       // the heartbeat) instead of being retried inside the loop that discovered the refusal.
       if(pendingSpawns.length) await retryPendingSpawns()
+      // Queued mail MUST also be delivered while the group is still brainstorming (Round C, F1).
+      // A human/team message is not "work": the brainstorm phase used to return at the next line
+      // before ever reaching the delivery point below, so a wake that FAILED left the message
+      // re-queued and every subsequent heartbeat firing a no-op (`maybeFinishBrainstorm` only flips
+      // the phase once every resident has an insight). The scheduler then stayed cold with mail
+      // still queued — the exact permanent stall F1 exists to remove, narrowed to this phase
+      // (_oneoff/probe-v4-mailbox-stall.mjs used to print REPRODUCED here).
+      // Deliberately conditioned on "no consensus in progress": continueMeetingRound /
+      // continueVerifyRound refuse to flush mailboxes on purpose (a backlog must not starve a
+      // consensus past its watchdog, see their comments), so a parked meeting/verify keeps that
+      // guarantee and the mail goes out on the first pass after the consensus closes.
+      if(!meetingState && !verifyState){ const delivered=await deliverNextMailbox(); if(delivered) return }
       if(phase==='brainstorm'){ await maybeFinishBrainstorm(); return }
       if(meetingState){ await continueMeetingRound(); return }
       if(verifyState){ await continueVerifyRound(); return }
