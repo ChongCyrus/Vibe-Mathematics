@@ -20,6 +20,20 @@ After installing this plugin package (or manually copying the presets), **four**
 
 ---
 
+## 🧭 Navigation: I want to … → start here
+
+- **Get started (first run)** → [Start in five minutes](#-start-in-five-minutes)
+- **Which of the four presets to pick** → [How to choose among the four presets](#-how-to-choose-among-the-four-presets)
+- **Positioning, flow and division of labour of the four** → [Architecture Diagrams](#-architecture-diagrams-v2--v3--v4--v5) · [Architecture and division of labour](#-architecture-and-division-of-labour-all-four-in-parallel)
+- **New: the final paper (produced at closure)** → [Features](#-features) · [full contract](docs/final-paper.md)
+- **Lean formal verification** → [Lean formal verification](#-lean-formal-verification-shared-by-the-four-architectures-adjustable-switch) · [full contract](docs/formal-verification.md)
+- **What is in the directories** → [Directory structure](#-directory-structure)
+- **Tuning parameters** → [Parameter quick reference](#-parameter-quick-reference)
+- **Checkpoint resume / mid-run intervention** → [Checkpoint resume & manual intervention](#-checkpoint-resume--manual-intervention-two-hard-requirements)
+- **Known limitations** → [Known limitations](#-known-limitations-deliberate-simplifications)
+
+---
+
 ## 🧩 Architecture Diagrams (v2 + v3 + v4 + v5)
 
 > Static architecture diagrams; for the complete process description see [the v1-era architecture notes](docs/架构图.md) (historical: the layout changed from v2 on) and
@@ -213,6 +227,7 @@ See [the v5 specification](vibe-math-v5/实现方案.md) (written specification)
 
 ## ✨ Features
 
+- **Final paper (on by default in all four presets)**: at closure the run writes a complete paper that **only organises evidence it already has**, and the paper phase runs **before** the run is marked complete; the artifacts are `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`. Parameters: `finalPaper` (default `true`) / `paperFormat` (default `both`) / `paperLanguage` (default `zh`) / `paperCompilePdf` (default `true`) (plus `paperEditor` on v4/v5); the manual trigger is `/vN paper [lang=] [format=] [editor=] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); without one the tex+md are still delivered. Full contract and usage: [`docs/final-paper.md`](docs/final-paper.md).
 - **Multi-agent automatic solving**: the main agent hands the problem to the scheduler, which dispatches explorer / solver / verifier (v2/v3) plus subagents such as **planner (planning agent, v3)** and **method-keeper (method organizing agent, v3)** to solve collaboratively; **you do not need to operate node by node by hand**.
 - **Multi-agent cross-validation**: every conclusion goes to ≥3 "strict reviewers" for **independent review → debate (exchange group) → adjudication** (v3 defaults to **near-consensus adjudication**: if on the same side and the mean is ≥0.85/≤0.15, take the mean, so that "0.9 vs 1" is not misjudged as 0.5).
 - **Paper-style Markdown knowledge base (v3)**: the problem list (including dependencies between problems, and the causes and plans of descendant problems), research log, propositions, and method library are all written and continued in md paper/research-report style (when a direction is re-derived, the logs of the old direction are automatically archived and kept); **only `Verified/` and the objects that a verifier judged true/false are absolutely trustworthy**, and all other md (including unverified assertions in the method library) serve only as empirical reference.
@@ -242,96 +257,19 @@ See [the v5 specification](vibe-math-v5/实现方案.md) (written specification)
 
 **What it changes is not "being a bit stricter" but the object of review itself.** m agents agreeing that "this is right" is still **consensus** —
 it cannot rule out shared misunderstanding; passing Lean is **machine checking**. The only remaining uncertainty is thus reduced to a question a single person can review effectively:
+**are the definitions / objects / conditions / assumptions / conclusions in the Lean code fully consistent with the original text of the proposition (fidelity)?**
 
-> **Are the definitions / objects / conditions / assumptions / conclusions in the Lean code fully consistent with the original text of the proposition?**
+- **Switch `formalVerify` (same name in all four architectures, default `'off'`)**: `'off'` is a **true no-op** (no Lean content appears in the prompts, no formalization state is written, and the verification flow and gates are completely unchanged; the three tools stay registered and usable and the persona always lists them, otherwise the switch would be undiscoverable and could not be turned on); `'encourage'` is **encouraged but not mandatory** (decide by implementation difficulty whether to formalize; once Lean passes, the focus of review shifts to fidelity; **no gate**); `'require'` is **mandatory** — a true/false conclusion must satisfy "**Lean has passed**" or "**the blocking reason was explicitly recorded**", otherwise the adjudication does not take effect (recorded as undecided, reason `formal-required`, written into the "formalization TODO"). Related parameters: `leanCommand` (default `lean`), `leanArgs` (used with `lake env lean`), `leanTimeoutMs` (default 120s).
 
-| | Original verification work | Verification work after formalization passes |
-|---|---|---|
-| Object of review | The proposition itself (whether the derivation is correct) | **Fidelity**: whether the Lean code ↔ the original text of the proposition are consistent |
-| Strength of the conclusion | Consensus (may be jointly wrong) | Strict (already checked by the kernel), provided that fidelity holds |
-| By-product | None | A reusable Lean definition / lemma library |
+- **⚠️ A fidelity defect ≠ the proposition is false (important)**: passing Lean only guarantees that "this piece of code passed the kernel"; it **does not guarantee that it says what the proposition means to say**. When a voter finds the Lean code and the original proposition inconsistent (too narrow / too broad / a different object / a missing condition): **do not vote 0** (0 means "the proposition is false" — that would record "the formalization does not qualify" as "the proposition was disproved", and under v5's all-0 consistency rule it would even write the proposition into `Verified/` marked **false**, so a mechanism meant for truth-seeking would fabricate a wrong negative conclusion); instead vote a value strictly between 0 and 1 (an abstention) and record the deviation with the receipt `formal:{decision:'defect', note:'<specific deviation>'}`. The framework then **revokes the "passed" state of this proof** (downgraded to `attempted`, `Verified/Lean/<id>.lean` deleted or rewritten as a "withdrawn" note if the host cannot delete it, and written into the "formalization TODO"), and under `require` this adjudication is not concluded (the `encourage` setting has no gate, so you must not claim the framework will force a shelving). Vote 0 only when the voter, **independently of this Lean code**, can also determine that the proposition is false (and can give independent reasons).
+- **The receipt channel and three further hard requirements** (members who do not call the Lean tools can also leave a judgment; mandatory under `require`): the receipt field is `"formal": {"target":"<object id>", "decision":"used|blocked|defect", "file":"Formal/<object id>.lean", "note":"difficulty judgment/blocking reason/specific deviation"}`; when `decision='blocked'`/`'defect'`, **`note` is required** (if missing the whole entry is rejected), `used` only records the object as `attempted`, and under `off` this channel **is disabled** (otherwise `off` would not be a true no-op). Three more: tool names in the injected text are always given in **full** (`<prefix>_lean_archive`, not `lean_archive` — an abbreviation is not a registered name); before archiving a reusable definition/lemma **run it through first**, and if it does not run through it must not enter the library; when the **toolchain is missing** (`LEAN_NOT_FOUND` cannot resolve the executable / the host has no `subprocess` service), write the code down, archive it, and state "the host has no Lean toolchain" in `note` — this counts as an explicit blocking reason and the gate lets it through.
 
-### Switch: `formalVerify` (same name in all four architectures, default `'off'`)
+- **Where the artifacts go**: `<VibeMath root>/Formal/Lib|Proved/` are the **cross-project** reusable definitions and already-proved lemmas (each with an `Index.md`, to be checked before writing a new definition); inside a project, `Formal/<object id>.lean` is the object's working file (next to an `Index.md` and, under `require`, a `TODO.md`), and `Verified/Lean/<object id>.lean` is the **archived proof** (in v5 these live under `Projects/<project>/Institutes/<institute>/`).
 
-| Value | Meaning |
-|---|---|
-| **`'off'` (default)** | **No additional requirement whatsoever.** No Lean content appears in member prompts, no formalization state is written, and the verification flow and gates are completely unchanged (it is a **true no-op**, guarded by assertions and probes). The three tools are still registered and usable (calling them proactively works as usual); the main agent's persona **always** lists these three tools and four parameters — otherwise the switch would not be discoverable, and "off" could not be turned on |
-| `'encourage'` | **Encouraged but not mandatory**: at verification time, first judge the **implementation difficulty** of the object, and if it can be formalized within an acceptable amount of work, do that first; once Lean passes, the focus of review shifts to **fidelity**. In ordinary work, it is also encouraged to formalize and archive commonly used / potentially reusable objects, assumptions, and new definitions along the way. **No gate** |
-| `'require'` | **Mandatory**: a true/false conclusion must satisfy "**Lean has passed**" or "**the blocking reason has been explicitly recorded**", otherwise this adjudication **does not take effect** — it is recorded as undecided (reason `formal-required`), written into the "formalization TODO", announced in the group chat, and the object is kept in the library to be re-proposed after formalization |
+- **The three tools (one set per architecture, prefix following each one's naming)**: `<prefix>_lean_run` executes Lean on the host `subprocess` service and returns `{ok, exitCode, ms, stdout, stderr}`, and **never throws** (missing toolchain → `LEAN_NOT_FOUND`, timeout → `LEAN_TIMEOUT`, path escape → rejected); `<prefix>_lean_archive`: `kind='def'/'lemma'` archives into the **cross-project** `Formal/Lib|Proved`, `kind='proof'` writes `Formal/<target>.lean` and, when the run passes, also writes `Verified/Lean/<target>.lean` and marks the object Lean-passed, `kind='blocked'` records an explicit difficulty judgment/blocking reason (**reason required**); `<prefix>_lean_lib` rebuilds and returns the three indexes and the per-object status — **check for duplicates and reuse before writing a new definition**. For example, v5 is `vibe_v5_lean_run` / `vibe_v5_lean_archive` / `vibe_v5_lean_lib`, v2/v3 are `vibe_math_lean_*`, and v4 is `vibe_v4_lean_*`.
+- **Boundaries (intentional)**: the framework **does not bundle Lean** (no toolchain installation, no dependency downloads; when the toolchain is missing it degrades gracefully and records this faithfully); it **does not judge fidelity** (that is what agents/humans review and vote on; the framework is only responsible for **switching** the focus of review to fidelity); **Lean passing ≠ the proposition is true** — it only means "this piece of formalized code passed the kernel check".
 
-> "Explicitly record the blocking reason" in `require` is exactly where **"decide not to do it based on implementation difficulty"** lands: **the decision is the agent's,
-> but the decision must be spoken and auditable**, and silently skipping is not allowed. Related parameters also include `leanCommand` (default `lean`),
-> `leanArgs` (used with `lake env lean`), and `leanTimeoutMs` (default 120s).
-
-### ⚠️ A fidelity defect ≠ the proposition is false (important)
-
-Passing Lean only guarantees that "this piece of code passed the kernel"; it **does not guarantee that it says what the proposition means to say**. So when a voter, checking item by item,
-finds that the Lean code and the original text of the proposition are inconsistent (written too narrowly / too broadly / a different object / a missing condition):
-
-- **Do not vote 0.** Voting 0 means "**the proposition is false**"; an incorrectly written formalization would make the framework record "the formalization does not qualify"
-  as "the proposition was disproved", and under v5's all-0 consistency rule it would even write the proposition into `Verified/` marked **false** —
-  a mechanism meant for truth-seeking would instead **fabricate a wrong negative conclusion**.
-- The correct approach: give a value strictly between 0 and 1 (recorded as an abstention) + use the receipt
-  `formal:{decision:'defect', note:'<specific deviation>'}` to record the deviation. The framework then **revokes the "passed" state of this proof**
-  (downgraded to `attempted`; `Verified/Lean/<id>.lean` is **deleted**, and if the host cannot delete it, it is rewritten as a "withdrawn" note,
-  never leaving a withdrawn proof in the place where everyone looks for proofs; and it is written into the "formalization TODO"), and under the `require` setting
-  **this adjudication is not concluded** (the `encourage` setting has no gate, so you must not claim that the framework will force a shelving — there it relies on voters abstaining to prevent a conclusion);
-  vote again only after fixing the formalization and getting it to run through.
-- Vote 0 only when the voter, **independently of this Lean code**, can also determine that the proposition is false (and can give independent reasons).
-
-> **Receipt channel** (members who do not call the Lean tools can also leave a judgment; it is mandatory under the `require` setting):
-> `"formal": {"target":"<object id>", "decision":"used|blocked|defect", "file":"Formal/<object id>.lean", "note":"difficulty judgment/blocking reason/specific deviation"}`.
-> When `decision='blocked'`/`'defect'`, **`note` is required** (if missing, the whole entry is rejected); `used` only records the object as `attempted`;
-> under the `off` setting this channel **is disabled** (otherwise `off` would not be a true no-op).
-
-> Three further hard requirements injected into the prompt (contract §6): tool names are always given in **full** (`<prefix>lean_archive`, not
-> `lean_archive` — an abbreviation is not a registered name, and an agent copying it would call a nonexistent tool); before archiving a reusable definition/lemma, **run it through first** —
-> if it does not run through, it must not enter the library; when the **toolchain is missing** (`LEAN_NOT_FOUND` cannot resolve the executable / `NO_SUBPROCESS` the host has no
-> subprocess service), write the code down, archive it, and state "the host has no Lean toolchain" in `note` — this counts as an explicit blocking reason,
-> and the gate lets it through on that basis, so it will not stall just because Lean cannot be installed.
-
-### Archive: where formalized code goes
-
-```
-<VibeMath root>/
-├─ Formal/                              # ★ cross-project reusable library (shared by the four architectures)
-│   ├─ Lib/<name>.lean                  # reusable definitions / objects / assumptions (def / structure / notation)
-│   ├─ Lib/Index.md                     # name → file → category → summary (check here before writing a new definition)
-│   ├─ Proved/<name>.lean               # established Lean propositions / lemmas (already machine-checked)
-│   └─ Proved/Index.md
-└─ Projects/<project>/                  # (in v5, Projects/<project>/Institutes/<institute>/)
-    ├─ Formal/
-    │   ├─ <object id>.lean              # formalization working file for this object
-    │   ├─ Index.md                      # object → status → file → archived proof → run result → difficulty judgment
-    │   └─ TODO.md                       # the "formalization TODO" under require mode
-    └─ Verified/
-        ├─ <original conclusion card>
-        └─ Lean/<object id>.lean            # ★ archived proof: the formalized code corresponding to this conclusion object
-```
-
-### Tools (three per architecture, prefix following each one's naming)
-
-| Tool | Purpose |
-|---|---|
-| `<prefix>_lean_run` | Execute Lean on the host `subprocess` service, returning `{ok, exitCode, ms, stdout, stderr}`. **Never throws**: missing toolchain → `LEAN_NOT_FOUND`, timeout → `LEAN_TIMEOUT`, path escape → rejected |
-| `<prefix>_lean_archive` | `kind='def'/'lemma'` → archive to the **cross-project** `Formal/Lib` or `Formal/Proved`; `kind='proof'` → write `Formal/<target>.lean`, and if it runs through, also write **`Verified/Lean/<target>.lean`** and mark the object as Lean-passed; `kind='blocked'` → record an explicit difficulty judgment/blocking reason (**reason required**) |
-| `<prefix>_lean_lib` | Rebuild and return the three indexes and the per-object formalization status — **check for duplicates and reuse directly before writing a new definition** |
-
-For example, v5 is `vibe_v5_lean_run` / `vibe_v5_lean_archive` / `vibe_v5_lean_lib`, v2/v3 are `vibe_math_lean_*`, and v4 is `vibe_v4_lean_*`.
-
-**Boundaries (intentional)**: the framework **does not bundle Lean** (it does not install a toolchain or download dependencies; when the toolchain is missing it degrades gracefully and records this faithfully);
-the framework **does not judge fidelity** (that is what agents/humans review and vote on; the framework is only responsible for **switching** the focus of review to fidelity);
-**Lean passing ≠ the proposition is true** — it only means "this piece of formalized code passed the kernel check".
-
-For the complete contract (parameters, paths, state transitions, prompt semantics, gate locations, index format, test requirements), see
-[`docs/formal-verification.md`](docs/formal-verification.md).
-
-> **The personas of all four presets (the prompt the main agent receives) fully list the three tools and four parameters above**,
-> and the two blocks `prefix` and `text` are identical line by line (only line 0 may differ). This layer is guarded by
-> [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) and
-> [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) — when this feature was added, it was precisely
-> in the four presets that the defect "the tools were registered but the persona never listed them" was found (the same batch also found that the persona listed two
-> tools for adding/removing resident researchers too few, and that the `/v4`/`/v5` subcommand lists were inconsistent with the implementation; see the release notes shipped with the package).
+For the complete contract (parameters, paths, state transitions, prompt semantics, gate locations, index format, test requirements), see [`docs/formal-verification.md`](docs/formal-verification.md). The personas (the prompt the main agent receives) of all four presets fully list these three tools and four parameters, and the `prefix` and `text` blocks are identical line by line (only line 0 may differ); this layer is guarded by [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) and [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) — when this feature was added, it was precisely in the four presets that the defect "the tools were registered but the persona never listed them" was found (see the release notes shipped with the package).
 
 ---
 
@@ -425,124 +363,80 @@ choose v3 if you prefer paper-style md, the planner agent and the theory inventi
 
 ---
 
-## 🧠 Architecture and Division of Labor (v3 · third generation) · classic
+## 🧠 Architecture and division of labour (all four in parallel)
 
-The framework = **one main agent (assistant) + one code scheduler + one planner agent + six kinds of subagents**.
+### V2 (probability-driven · classic)
 
-| Role | Type | Responsibility |
-|---|---|---|
-| **Main agent** | LLM (the assistant in the session) | **Natural-language interface + reporter + assistant**. It **does not solve or schedule on its own**; it is only responsible for: translating your words into `vibe_math_*` tool calls, reporting progress, configuring parameters in Q&A form, and executing control commands. |
-| **Scheduler** | Plugin code (not a model) | The sole master control: maintains the md knowledge base index, builds the state brief, **validates and executes the planner agent's plan**, writes files, and advances the state machine. **Hard constraints (concurrency / idempotency / already-verified is never scheduled again / write ownership) are enforced by code**. |
-| **Planner (planner agent)** 🆕 | Subagent | Each time a dispatch is being prepared, it reads the state brief (problem + dependencies + survival rate, verifiable objects, active agents, concurrency budget, available methods, result of the last plan) and **autonomously chooses the optimal scheduling scheme, arranging the next N steps in one go** (spawn/continue/interrupt/promote/verify/method-keep/wait). It outputs a JSON plan, which the scheduler validates before executing; on failure it automatically falls back to heuristics. |
-| **Explorer subagent** | Subagent | Metacognitive brainstorming: constraint decomposition, boundary testing, similar-problem mapping, splitting the problem into multiple "widely divergent" solution directions (if all are dead ends, re-derive). Before starting work it first checks the `Methods/` method library. |
-| **Solver subagent** | Subagent | One dedicated solver per direction, **multiple iteration rounds within the same session**, producing lemmas (with proofs), sub-routes, survival probability, and a complete solution, and **reporting `methods_used` and `new_inventions`** (methods/tools/ideas newly invented in this round). |
-| **Verifier subagent** | Subagent | Each verification object gets ≥3 independent "harsh reviewers": independent review → debate (chat group) → **near-consensus verdict** (if on the same side with mean ≥0.85/≤0.15, take the mean; otherwise flat/forced). |
-| **Method Keeper (method-organizing agent)** 🆕 | Subagent | Periodically digests recent work and new-invention reports, **distills new method cards, merges fragments, improves the system structure (parent system/sub-methods), maintains trusted assertions**, and deposits the theories/frameworks/tools/methods/ideas invented during solving into the `Methods/` general theory invention library. |
+The framework = **main agent + code scheduler + explorer / solver / verifier subagents**. The scheduler is the sole master control and the sole file writer (subagents only return structured JSON and never write files); it decides the next step by **code heuristics** over "correctness probability + value/criticality + priority"; each verification object goes to ≥3 independent "harsh reviewers" for review → debate → adjudication (a solution/proof reaching probability `1` closes it; `never` is never scheduled). **Pick it** if you prefer structured JSON (`qs.json` / `Propos/`) and predictable, deterministic scheduling that does not depend on a planner agent.
 
-> Division of labor in one sentence: **the main agent handles "talking to people", the planner agent handles "setting the plan", the scheduler handles "execution and boundary-keeping", subagents handle "thinking", and the Method Keeper handles "depositing inventions into theory".**
+> Division of labour in one sentence: **the main agent handles "talking to people", the scheduler handles "execution and boundary-keeping", and the subagents handle "thinking".**
 
-### Architecture and Division of Labor (v4 / v5)
+### V3 (paper-style md + planner agent + method library) · classic
 
-| | **v4 (resident self-organization)** | **v5 (institute system)** |
-|---|---|---|
-| Principal | N resident subagents (continuable) | academicians + resident researchers + temp workers (all continuable subagents) |
-| Who assigns tasks | **No one**: emerges on its own through mutual messages and meetings | **academicians** (institute members, equally bound by the voting rules); the framework still does not assign |
-| Who judges | Each on its own; a conclusion is reached only when all agree | Each on its own; a conclusion is reached only on **≥ m voting members in boolean agreement** |
-| Coordination mechanism | messages + meetings | messages + meetings (strictly mutually exclusive with verification) + **compare-and-set task board** |
-| Roster | resident, can be spawned/closed | **can grow and shrink**: resident researchers are hired with the institute office's approval; temp workers are hired and fired autonomously by academicians/researchers |
-| State | `State/*.json` written directly | **`State/<institute>.v5state.json` hardened JSON** (zero token cost, serial writes, a mandatory load before read) |
+The framework = **main agent + code scheduler + planner agent + explorer / solver / verifier / method-keeper subagents**. Each time a dispatch is prepared, the **planner agent** reads the state brief (problem dependencies, survival rate, verifiable objects, concurrency budget, result of the last plan) and **autonomously draws up an N-step plan**, which the scheduler validates before executing (falling back to heuristics on failure); theories/frameworks/tools/methods/ideas invented during solving are reported via `methods_used`/`new_inventions` and distilled by the **Method Keeper** into new method cards in the `Methods/` general theory invention library. **Pick it** if you prefer a paper-style md knowledge base, want more flexible scheduling, and want a systematizable, cross-project method library.
 
-For the complete v5 architecture (including member lifecycle, one-round timeline, consensus state machine, meeting flow, scheduling priority, state folding, prompt composition, task board, authority matrix), see [the v5 detail diagrams](vibe-math-v5/架构图.md); for the textual specification see
-[the v5 specification](vibe-math-v5/实现方案.md).
+> Division of labour in one sentence: **the main agent handles "talking to people", the planner agent handles "setting the plan", the scheduler handles "execution and boundary-keeping", the subagents handle "thinking", and the Method Keeper handles "depositing inventions into theory".**
+
+### V4 (resident self-organization · experimental)
+
+The principal is **N persistent resident subagents** (continuable): **there is no central scheduling and no leader** — task arrangements emerge from residents **messaging each other + holding meetings** (the framework only provides the message bus/meetings/task board and never assigns); each accumulates its own `Progress/Propos/Methods/Subproblems` library **owned by resident id** and may read the others'; verification is written to `Verified/` **only when all residents agree (true or false)**, otherwise it stays in the library with a probability; when the context reaches a threshold it automatically `/compact`s; it stops **only when all agree that the original problem is solved** (`vibe_v4_resume` resumes from a checkpoint). **Pick it** if you want fully self-organizing research and can accept the strict "unanimity before a conclusion" threshold.
+
+### V5 (institute system · experimental · latest)
+
+It upgrades v4's residents into an **institute**: **academician** (leader / organizing and coordinating centre: decomposition, **assignment**, prioritization, chairing meetings, supervising progress) + **resident researchers** (voting rights, may autonomously hire/fire their own temp workers) + **temp workers** (no voting rights); **the framework still only relays, keeps the task board, holds meetings and counts — it never assigns tasks**. The conclusion threshold is **≥ m = min(`quorumCap`, number of enrolled voting members) boolean-consistent votes** (opposing votes block; abstentions do not count as votes but count toward the average; below the threshold the object stays in the library with its average probability); state lives in `State/<institute>.v5state.json` (zero token cost); meetings and verification are strictly mutually exclusive. **Pick it** if you want "organized self-organization", a roster that can grow or shrink, and an adjustable threshold.
+
+For the complete v5 architecture (member lifecycle, one-round timeline, consensus state machine, meeting flow, scheduling priority, state folding, prompt composition, task board, authority matrix), see [the v5 detail diagrams](vibe-math-v5/架构图.md); for the textual specification see [the v5 specification](vibe-math-v5/实现方案.md).
 
 ---
 
 
 ## 📁 Directory Structure
 
+> Only the **top-level and high-value paths** are listed; for the full meaning of every file see each preset's `实现方案.md` ([v2](vibe-math-v2/实现方案.md) · [v3](vibe-math-v3/实现方案.md) · [v4](vibe-math-v4/实现方案.md) · [v5](vibe-math-v5/实现方案.md)) and [the v5 detail diagrams](vibe-math-v5/架构图.md).
+
 ### v2 (probability-driven · classic)
 
 ```
-<session workspace>/VibeMath/
-├─ current.json                        # current project
-├─ vibe_math_setting.json             # (optional, global fallback) default parameters JSONC, with comments
-└─ Projects/<project>/
-   ├─ vibe_math_setting.json          # default parameters for this project
-   ├─ qs/qs.json                       # problem list: overview/solved/solution list (complete solution · correctness probability)/priority/progress
-   ├─ Propos/<category>_Propos.json        # proposition library: overview/boolean estimate/fine type/proof·disproof list/priority/value·criticality/progress
-   ├─ Reliable/                        # trusted references (read-only, placed by the user)
-   ├─ Verified/                        # concluded-fact index (propositions with boolean estimate = 0/1)
-   ├─ Verification_logs/               # debate record of each verification round (for auditing)
-   ├─ Progress_Logs/                   # periodic progress reports report.json
-   └─ VibeMath_State/                  # scheduler-private persistent state (for checkpoint resume)
+<VibeMath>/Projects/<project>/
+├─ qs/qs.json                   # problem list (overview/solved/solutions + correctness probability/priority)
+├─ Propos/<category>_Propos.json # proposition library (boolean estimate/proof·disproof/value·criticality)
+├─ Verified/                    # concluded-fact index
+├─ Reliable/                    # trusted references (read-only, placed by the user)
+└─ VibeMath_State/              # scheduler-private persistent state (for checkpoint resume)
 ```
 
 ### v3 (paper-style md + planner agent + method library) · classic
 
 ```
-<session workspace>/VibeMath/
-├─ Methods/                            # [global] cross-project general theory invention library (v3, promoted from project level)
-├─ Formal/                             # object formalization workspace: Lib/ (reusable definitions) and Proved/ (proved lemmas)
-├─ current.<session id>.json               # current project per session (parallel sessions do not overwrite each other)
-├─ vibe_math_setting.json             # (optional, global fallback) default parameters JSONC, with comments
+<VibeMath>/
+├─ Methods/                     # [global] cross-project general theory invention library (promoted from project level)
+├─ Formal/{Lib,Proved}/         # cross-project reusable definitions / proved lemmas (Lean)
 └─ Projects/<project>/
-   ├─ vibe_math_setting.json          # default parameters for this project
-   ├─ Problems/<id>.md                 # problem list: one md per problem (soft-spec anchor: ID/type/status/priority/dependencies/dependents/source/plan
-   │                                   #   + ## statement / ## source and motivation (later-born problems: generation flow/motivation/backfill plan) / ## solution candidates)
-   ├─ Progress/<id>.md                 # aggregated research log index (per-direction summaries + lemma index + per-round records)
-   ├─ Progress/<id>/<direction id>.md         # one independent file per direction (written directly by self-organizing agents, no cross-direction concurrency conflict)
-   ├─ Propos/<category>/<id>.md            # proposition library: one md per proposition (statement/proof attempts/disproof attempts, soft-spec anchor + free narrative)
-   ├─ Methods/<id>.md                  # [general theory invention library] method card: theoretical system/framework/tool/method/idea (with application records/improvement history/system hierarchy)
-   ├─ Verified/命题/<id>.md            # absolutely trusted: scheduler-generated verified proposition cards (read-only)
-   ├─ Verified/问题/<id>.md            # absolutely trusted: complete trusted solution cards for solved problems (read-only)
-   ├─ Reliable/                        # trusted references (read-only, placed by the user)
-   ├─ Notes/                           # free notes (not involved in scheduling)
-   ├─ Logs/Verification/               # debate record of each verification round (for auditing)
-   ├─ Logs/Plans/                      # each scheduling plan + execution result (planner learning loop)
-   ├─ Logs/报告.md                     # paper-style human-readable progress report
-   └─ State/                           # scheduler-private persistent state (agents/tasks/plans/verifier_accuracy/index/project lock/process epoch)
+   ├─ Problems/ Progress/ Propos/ Methods/     # paper-style md knowledge base (soft-spec anchors + free narration)
+   ├─ Verified/{命题,问题}/                      # absolutely trusted (read-only)
+   ├─ Logs/{Verification,Plans}/  Logs/报告.md   # debate records / scheduling plans / paper-style progress report
+   └─ State/                                     # index, project lock, process epoch
 ```
 
-**Iron rule (v2 general)**: the scheduler is the **sole file writer** (subagents only return structured JSON and never write files).
-**v3 iron rule**: only `Verified/` and objects judged true/false by the verifier are **absolutely trusted**; all other md (unconcluded propositions, research logs, unverified assertions in the method library) serve only as experiential reference; the scheduler parses only soft-spec anchor lines and entry title lines, and never parses body prose. **v3 allows agents to write md directly** (self-organizing agents locate their own files, e.g. a solver writes `Progress/<id>/<direction id>.md`, a new lemma is written to `Propos/<category>/<id>.md`, and the method-organizing agent writes `Methods/<id>.md`); concurrency safety relies on **write locks** — before writing any file call `vibe_math_claim_write`, after writing call `vibe_math_release_write` (only one agent may write a given file at a time); the content stays in the md, and lightweight metadata is reported to the scheduler via `vibe_math_sync_meta`.
-
-### v5 (institute system · experimental)
+### v4 / v5 (resident self-organization / institute system · experimental)
 
 ```
-<session workspace>/VibeMath/Projects/<project>/Institutes/<institute>/
-├─ Institutes.md                 # roster mirror (human-readable snapshot: codename/position/status/employer/direction/round/context%)
-├─ Problems/<id>.md              # original problem
-├─ Problems/conclusion.md        # conclusion record (generated when all those with voting rights agree it is solved)
-├─ Members/<codename>/
-│   ├─ Progress/progress.md      # research log (narrative, appendable; the main basis for restoring state after compaction)
-│   ├─ Propos/<id>.md            # proposition (with proof attempts/disproof attempts)
-│   ├─ Methods/<id>.md           # method / theory / tool (with definition notation/application records/improvement history)
-│   └─ Subproblems/<id>.md       # subproblem
-├─ Shared/
-│   ├─ Chat/<date>.md            # group chat record (including institute founding/hiring/firing/meetings/votes/conclusion announcements)
-│   ├─ Meetings/<mt-id>.md       # meeting minutes (each member's speech + vote subsection)
-│   ├─ Debates/<object>.md         # debate record (each round's votes and reasons + whole-group mean probability)
-│   ├─ TaskBoard.md              # task board mirror
-│   └─ State-of-institute.md     # snapshot of members' judgment on "whether it is solved"
-├─ Verified/<type>/<id>.md       # conclusions (read-only; only these may be treated as established)
-└─ State/
-    ├─ README.md                 # explains that "the files here are mirrors — do not hand-edit them"
-    └─ <institute>.v5state.json      # the authoritative state (hardened JSON, serial writes, a mandatory load before read)
+<VibeMath>/Projects/<project>/
+├─ Progress|Propos|Methods|Subproblems/<resident id>/   # v4: owned by resident id
+└─ Institutes/<institute>/                               # v5
+   ├─ Members/<codename>/{Progress,Propos,Methods,Subproblems}/
+   ├─ Shared/{Chat,Meetings,Debates}/  Shared/TaskBoard.md  Institutes.md
+   ├─ Verified/<type>/<id>.md                      # conclusions (read-only)
+   └─ State/<institute>.v5state.json               # ★ authoritative state (hardened JSON, serial writes, mandatory load before read)
 ```
 
-> Enabling Lean formal verification adds two more directories: this institute's `Formal/` (working files + index + formalization todos) and `Verified/Lean/`
-> (**archived proofs**), plus the **cross-project** `<VibeMath root>/Formal/{Lib,Proved}/` (reusable definitions and already-proved lemmas) — see
-> the "Lean formal verification" section above.
-
-**v5 iron rules**: ① the authoritative state is written only to `State/<institute>.v5state.json` (hardened JSON, serial writes, a mandatory load before read);
-in the table above, every other file is merely a **mirror/workspace**, and breaking it by hand-editing will not destroy the institute;
-② members **write only their own library** (`Members/<own codename>/`), but may read anyone's library;
-③ only `Verified/` and cards marked "verified·true/false" are **absolutely trusted**; everything else (including unverified assertions in `Methods/`) is merely experiential reference,
-and citations must be marked "unverified"; ④ entry into the library must state all three of **degree of value / motivation-purpose plan / own probability estimate**, none may be omitted.
+**Iron rules (all four)**: the v2/v3 scheduler is the **sole file writer** (v3 also lets agents write md directly, with `vibe_math_claim_write`/`vibe_math_release_write` guaranteeing that only one writer touches a file at a time); only `Verified/` and cards marked "verified·true/false" are **absolutely trusted**, and all other md (including unverified assertions in `Methods/`) is merely experiential reference; in v5 the authoritative state is written only to `State/<institute>.v5state.json`, every other file above is only a **mirror/workspace** (hand-editing it will not break the institute), members **write only their own library**, and an entry must state **degree of value / motivation-purpose plan / own probability estimate**. With Lean enabled there are additionally the institute's `Formal/` (working files + index + formalization TODO) and `Verified/Lean/` (archived proofs), plus the **cross-project** `<VibeMath root>/Formal/{Lib,Proved}/` — see the "Lean formal verification" section above.
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Start in five minutes
+
+> One main line: **start in plain language → ask about progress at any time → (optionally) tune parameters / intervene → wrap up**. At closure all four presets **produce a final paper by default** (`Paper/<id>/`, see "Features" above and [`docs/final-paper.md`](docs/final-paper.md)). Pick whichever of the three usages below you like; you do not need to read them all.
 
 ### Method A: Direct conversation (recommended, the least effort)
 
@@ -588,11 +482,9 @@ Call the tools directly in the conversation (arguments are JSON):
 
 Slash commands (equivalent to the tools): `/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents` (v3 additionally has `methods|index|plan|lock`)
 
----
+### 🎓 Let the main agent do the work for you (no need to memorize commands)
 
-## 🎓 Tutorial: Let the Main Agent Do the Work for You
-
-### 1. Natural-language driven (no need to memorize commands)
+#### 1. Natural-language driven (no need to memorize commands)
 
 The main agent's role is to be your "translator". You only need to describe the **goal**, and it will choose and call the tools itself:
 
@@ -605,7 +497,7 @@ The main agent's role is to be your "translator". You only need to describe the 
 | “Give one of q1's directions a new angle (e.g. turn it into a constructive proof)” | `list_agents` to find the childId → `message_agent` to inject new instructions |
 | “Interrupt a stuck subagent” | `interrupt_agent` |
 
-### 2. Q&A-style parameter configuration (/vibe setup)
+#### 2. Q&A-style parameter configuration (/vibe setup)
 
 You do not even need to remember parameter names. Say:
 
@@ -619,7 +511,7 @@ and finally ask whether to save them as defaults with `vibe_math_save_settings`.
 
 You can also just run the command: `/vibe setup` (view the schema) → tell the main agent which ones you want to change → `/vibe save` (save as defaults).
 
-### 3. Configuration file (vibe_math_setting.json)
+#### 3. Configuration file (vibe_math_setting.json)
 
 - **Generate a template**: `/vibe template` (generated into the workspace) or `/vibe template project` (generated into the current project) —
   it produces a JSON template **with `//` comments and an item-by-item Chinese description**; after you edit it by hand, restart/resume to take effect.
@@ -627,9 +519,7 @@ You can also just run the command: `/vibe setup` (view the schema) → tell the 
 - **The only persistent source**: that file is the **only persistence layer** for parameters (project level takes precedence → when missing, fall back to the global `<workspace>/VibeMath/vibe_math_setting.json` → built-in defaults).
   `vibe_math_set_params` / `set_mode` **write back immediately** to the project-level file and persist, so no manual save is needed.
 
----
-
-## 🌱 Beginner example walkthrough (using “prove √2 is irrational” as the example)
+### 🌱 Complete example: prove √2 is irrational
 
 **Step 1 — Start with one sentence**
 
@@ -677,9 +567,11 @@ The main agent `vibe_math_status`: in `qs/qs.json`, `q1` has been written back w
 
 > v2 writes no CSV at all: solved problems live in `qs/qs.json`, and `Verified/<category>_Verified.json` is the resolved-fact index (a solution with `正确概率 = 1` closes its problem; a proof or disproof with `正确概率 = 1` sets the proposition estimate to `1`/`0`).
 
----
+**Step 6 — the final paper is produced automatically at closure (on by default)**
 
-## 🖼️ Real usage example (long screenshot)
+All four presets default to `finalPaper=true`: once the respective closure signal fires, the paper phase starts **before the run is marked complete** (in v2/v3 a dedicated "paper writer" subagent organises the existing evidence; in v4/v5 the team co-authors, cross-reviews, and the editor finalises on unanimous agreement). The artifacts are `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`: `paper.tex` / `paper.pdf` are produced only when `paperFormat` includes tex and the host detects a LaTeX engine (`xelatex` preferred for Chinese; with no engine only md/tex are delivered, and the wrap-up is never blocked). Trigger it manually with `/vibe paper` (v2/v3), `/v4 paper` or `/v5 paper`, optionally with `lang=` / `format=` / `editor=` / `force`; the full contract is in [`docs/final-paper.md`](docs/final-paper.md).
+
+### 🖼️ Real usage example (long screenshot)
 
 > The screenshot is very long, so it is **collapsed** by default here: the full long image is loaded only after you click “Expand” below, so that it does not fill the page and block the surrounding text.
 
