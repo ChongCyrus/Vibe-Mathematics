@@ -31,9 +31,11 @@
 // ============================================================================================
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 
-const HERE = fileURLToPath(new URL('../', import.meta.url))
+// MC_MARKET_ROOT points this guard at a MUTATED copy of the tree (used by the release-notes mutant,
+// which must try an unpublished version without touching the repository).
+const HERE = process.env.MC_MARKET_ROOT ? resolve(String(process.env.MC_MARKET_ROOT)) : fileURLToPath(new URL('../', import.meta.url))
 let passed = 0, failed = 0
 const failures = []
 const ok = (cond, label, detail) => {
@@ -52,6 +54,24 @@ const pkg = JSON.parse(read('package.json'))
 ok(!!(pkg.dsh && pkg.dsh.bundle && pkg.dsh.bundle.patch), 'dsh.bundle.patch is declared (what makes the repo listable and installable)',
   'contributing.md: declaring only dsh.client is the most common rejection')
 ok(existsSync(join(HERE, String((pkg.dsh.bundle || {}).patch || 'cordis.patch.yml'))), 'the bundle patch file exists next to package.json')
+
+// ---------------------------------------------------------------------------------------------
+// 0b. the shipped release notes must COVER the current version (existence + packaging only)
+// ---------------------------------------------------------------------------------------------
+// Root cause of this release's only HOLD: 2.7.0 shipped with notes that were not in `files`, and
+// nothing connected a version bump to a release note. The contract asserted here is deliberately
+// structural (no note *contents*, which would be brittle): for `package.json.version` there must be
+// a bilingual pair on disk AND both must be listed in `package.json#files`.
+{
+  const ver = String(pkg.version || '').trim()
+  const notes = ['docs/release-notes/RELEASE-NOTES-' + ver + '.md', 'docs/release-notes/RELEASE-NOTES-' + ver + '.en.md']
+  const missingFiles = notes.filter((rel) => !existsSync(join(HERE, rel)))
+  ok(missingFiles.length === 0, 'the shipped release notes cover the current version ' + ver + ' (both languages)',
+    'missing on disk: ' + missingFiles.join(', '))
+  const unshipped = notes.filter((rel) => !(pkg.files || []).includes(rel))
+  ok(unshipped.length === 0, 'both current-version release notes are listed in package.json#files',
+    'not in files[]: ' + unshipped.join(', '))
+}
 
 // ---------------------------------------------------------------------------------------------
 // 1. the DSH requirement declaration
