@@ -692,8 +692,19 @@ section('17 a foreign-shaped state file is normalised on restore')
   const diag = (st2.diagnostics || []).filter((d) => d && d.kind === 'state-dropped-keys')
   assert(diag.length >= 1 && diag.some((d) => (d.keys || []).indexOf('bogusParam') !== -1 && (d.keys || []).indexOf('anotherUnknown') !== -1),
     '★ dropped keys are REPORTED in status().diagnostics (no silent loss) — ' + JSON.stringify(diag.slice(-1)))
-  assert((src.match(/reportDroppedStateKeys\(/g) || []).length >= 3,
-    '★ every drop site reports (restore-load + restore-sync + set)')
+  // round-4 item 2: count CALL SITES only - the definition reports nothing, so counting it would
+  // tolerate one missing call site.
+  const srcNoDefs = src.split(/\r?\n/).filter((l) => !/function\s+reportDroppedStateKeys\s*\(/.test(l)).join('\n')
+  const reportCalls = srcNoDefs.match(/reportDroppedStateKeys\(/g) || []
+  assert(reportCalls.length >= 3,
+    '★ every drop site CALLS the reporter (restore-load + restore-sync + set) — found ' + reportCalls.length + ' call(s)')
+  // round-4 item 4: a duplicate drop must not add another entry, and diagnostics stay capped at 50.
+  const countDiag = async () => ((await h.callTool('vibe_v5_status', {})).diagnostics || []).filter((d) => d && d.kind === 'state-dropped-keys').length
+  await h.callTool('vibe_v5_set', { bogusParam: 1 })
+  const firstBogus = await countDiag()
+  await h.callTool('vibe_v5_set', { bogusParam: 1 })
+  assert(await countDiag() === firstBogus, 'a repeated identical drop is deduplicated (no new diagnostic entry)')
+  assert(((await h.callTool('vibe_v5_status', {})).diagnostics || []).length <= 50, 'diagnostics stay capped at 50 (same retention as every other writer)')
 }
 
 // ---------- 18. optional host seams: hasSubprocess + listDir wiring -------------

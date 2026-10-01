@@ -35,8 +35,8 @@ body:
     id: plugin_version
     attributes:
       label: dsh-vibe-math 版本
-      description: 当前最新为 2.6.0；可用 `npm view dsh-vibe-math version` 核对
-      placeholder: 例如 2.6.0
+      description: 当前最新为 2.7.0；可用 `npm view dsh-vibe-math version` 核对
+      placeholder: 例如 2.7.0
     validations:
       required: true
   - type: textarea

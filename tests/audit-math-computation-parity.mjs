@@ -136,14 +136,16 @@ for (const f of MODULES) {
   //   - every `next(...)` first argument must be a string literal;
   //   - every `reason:` field must be a string literal.
   // A non-literal form makes this red (and then the vocabulary lists must be updated to match).
-  // Exclude the two helper DEFINITIONS (`function next(kind, extra)`, and `bad(reason, …)`'s
-  // `reason: reason` pass-through): those are plumbing, not emitted vocabulary.
-  const callSites = src.split(/\r?\n/).filter((l) => !/^\s*(async\s+)?function\s+(next|bad)\s*\(/.test(l)).join('\n')
+  // Exclude helper DEFINITION lines (`function next(kind, extra)`, `bad(reason, …)`, and any
+  // parameterised helper such as `function reasonNext(r) { return next('reason', {reason: r}) }`):
+  // those are plumbing whose call sites still pass literals. The literal pattern accepts ANY quoted
+  // text (digits/underscores included) - it only asks "can the value be extracted statically?".
+  const callSites = src.split(/\r?\n/).filter((l) => !/^\s*(async\s+)?function\s+\w+\s*\(/.test(l)).join('\n')
   const nextFirst = [...callSites.matchAll(/\bnext\(\s*([^,)]*)/g)].map((m) => m[1].trim())
-  const nonLiteralKinds = nextFirst.filter((a) => !/^'[a-z-]+'$/.test(a))
+  const nonLiteralKinds = nextFirst.filter((a) => !/^'[^']*'$/.test(a))
   ok(nonLiteralKinds.length === 0, 'every next(kind, …) kind is a STRING LITERAL (machine-extractable vocabulary)', 'non-literal: ' + JSON.stringify(nonLiteralKinds.slice(0, 3)))
   const reasonFields = [...callSites.matchAll(/\breason:\s*([^,}\n]*)/g)].map((m) => m[1].trim())
-  const nonLiteralReasons = reasonFields.filter((v) => !/^'[a-z-]+'$/.test(v))
+  const nonLiteralReasons = reasonFields.filter((v) => !/^'[^']*'$/.test(v))
   ok(nonLiteralReasons.length === 0, 'every reason: value is a STRING LITERAL (the exhaustive list cannot be evaded)', 'non-literal: ' + JSON.stringify(nonLiteralReasons.slice(0, 3)))
   const schemaPath = [join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json'), resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')].find((p) => existsSync(p))
   const schema = schemaPath ? JSON.parse(rf(schemaPath, 'utf8')) : null

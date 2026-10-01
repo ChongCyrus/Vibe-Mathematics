@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
+// MC_CONTRACT_ROOT points the guard at a MUTATED copy of the tree (used by the round-4 item-3
+// mutant, which must delete 'Formal/Jobs' from one preset without touching the repo).
+const ROOT = process.env.MC_CONTRACT_ROOT ? resolve(String(process.env.MC_CONTRACT_ROOT)) : REPO
 // The shared defaults are the reference for AUDIT-B #6 (no preset may hold a drifting literal).
 const M = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
 const PRESETS = [
@@ -39,7 +42,7 @@ function ok(cond, label, detail) {
   failed++; failures.push(label + (detail ? ' — ' + detail : ''))
   return false
 }
-const read = (rel) => readFileSync(join(REPO, rel), 'utf8')
+const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 
 function block(src, startMarker, endMarker) {
   const i = src.indexOf(startMarker)
@@ -133,6 +136,20 @@ for (const P of PRESETS) {
     }
   }
 
+  // round-4 item 3: `Formal/Jobs` (the async Lean job mirror) must be in EVERY preset's ensureDirs.
+  // The host creates missing parents, so this is a consistency/discoverability pin, not a
+  // correctness one - but deleting it from v4 also leaves the Lean suites green, so nothing else
+  // would notice the four presets drifting apart.
+  {
+    // Match the ensureDirs/dirs-creation FUNCTION body (not a comment, and not the unrelated
+    // verification-only dirs list that legitimately carries 'Formal' without 'Formal/Jobs').
+    const lines = js.split(/\r?\n/)
+    const start = lines.findIndex((l) => /function\s+(ensureDirs|mkdirs)\s*\(/.test(l))
+    const window = start === -1 ? '' : lines.slice(start, start + 15).join('\n')
+    ok(start !== -1, tag + 'has an ensureDirs()/mkdirs() function')
+    ok(window.indexOf("'Formal/Jobs'") !== -1, tag + "ensureDirs creates 'Formal/Jobs' (async Lean job mirror)")
+  }
+
   // 3. frozen prompt text constants are actually used
   ok(js.indexOf('MATH_TOOL_DESCRIPTION') !== -1, tag + 'uses MATH_TOOL_DESCRIPTION')
   ok(js.indexOf('MATH_PERSONA_TOOL_LINE') !== -1, tag + 'uses MATH_PERSONA_TOOL_LINE')
@@ -155,14 +172,14 @@ for (const P of PRESETS) {
 
 // 5. README (both languages) document the six parameters
 for (const f of ['README.md', 'README.en.md']) {
-  const md = existsSync(join(REPO, f)) ? read(f) : ''
+  const md = existsSync(join(ROOT, f)) ? read(f) : ''
   for (const k of SIX) ok(md.indexOf(k) !== -1, f + ' documents ' + k)
   ok(/math-computation\.md|math_computation/.test(md), f + ' links the math_computation feature')
 }
 
 // 6. AUDIT-A/C honesty disclosures must not silently disappear from the contract doc.
 {
-  const doc = existsSync(join(REPO, 'docs/math-computation.md')) ? read('docs/math-computation.md') : ''
+  const doc = existsSync(join(ROOT, 'docs/math-computation.md')) ? read('docs/math-computation.md') : ''
   ok(doc.indexOf('字符串级') !== -1 && doc.indexOf('不解析符号链接') !== -1, 'docs §6 states the path guard is string-level and does not resolve links/junctions')
   ok(doc.indexOf('只通过假 subprocess seam 验证') !== -1, 'docs §6 states engine execution is verified only through the fake subprocess seam')
   ok(doc.indexOf('串行') !== -1 && doc.indexOf('跨进程') !== -1, 'docs §6 states the in-process serialisation and the cross-process limitation')

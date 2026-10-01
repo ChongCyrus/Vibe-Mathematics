@@ -6059,9 +6059,12 @@ export function apply(ctx) {
       const target = (stateObj && Array.isArray(stateObj.diagnostics)) ? stateObj : (inst() || null)
       if (target && Array.isArray(target.diagnostics)) {
         const last = target.diagnostics[target.diagnostics.length - 1]
-        if (!last || last.kind !== 'state-dropped-keys' || JSON.stringify(last.keys) !== JSON.stringify(keys)) {
-          target.diagnostics.push({ kind: 'state-dropped-keys', where: where, keys: keys })
-        }
+        const duplicate = !!(last && last.kind === 'state-dropped-keys' && JSON.stringify(last.keys) === JSON.stringify(keys))
+        // round-4 item 4: only a NEWLY recorded entry warns, and the record goes through the same
+        // retention as every other diagnostics writer in this preset (slice(-50)).
+        if (duplicate) return keys
+        target.diagnostics.push({ kind: 'state-dropped-keys', where: where, keys: keys })
+        while (target.diagnostics.length > 50) target.diagnostics.shift()
       }
       console.warn('vibe-math-v5: 忽略未知参数键（不静默丢失，已记入 diagnostics）：' + keys.join(', ') + '（来源：' + where + '）')
       return keys
