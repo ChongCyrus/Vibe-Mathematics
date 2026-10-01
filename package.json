@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -137,7 +137,9 @@
     "scripts/build-preset-rows.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
-    "docs/COMPAT-AUDIT-ROUND3.md"
+    "docs/COMPAT-AUDIT-ROUND3.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.1.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.1.en.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -167,7 +169,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.7.0 增量形式化 + 数学计算版本（四套预设新增 Lean 异步编译/import 复用与 math_computation 工具；既有参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移）。① 新参数：leanAsync（默认 true，编译走每会话后台队列、入队即返回）、leanJobsMaxParallel（默认 1）、leanInitiative=off|normal|eager（默认 normal；与 formalVerify 是两条独立轴：off+normal 完全不提 Lean，off+eager 只出主动性日线、验证段仍关）、leanSearchPaths（默认 []，先于自动根注入）；编译命令自动注入 --search-path <VibeMath 根>，import Formal.Lib.<name> / Formal.Proved.<name> 可直接复用；新增只读工具 lean_read / lean_job，作业镜像 Formal/Jobs/<jobId>.json；队列状态机下只有 settled(ok) 才算 passed。② 新工具 math_computation：op=probe|run|receipt|install，六个冻结参数 mathComputation（auto|on|off，默认 auto）、mathMode（typed+shell|typed，默认 typed+shell）、mathEngines（默认 python,r,octave,julia,matlab,maple,wolfram,cli）、mathTimeoutMs（默认 60000，最小 1000）、mathPackages（默认 []）、mathInstallScope（默认 user；system 必须每次显式且不被记住）；python/r/octave/julia 自由，matlab/maple/wolfram 商业只探测与查许可、永不代装，cli 默认开启（关闭路径：mathMode=typed 或从 mathEngines 移除 cli）；11 个失败码带机读 next；回执确定（runId 无墙钟、argv 双回显、stdout/stderr 全量落盘、返回体截 64KB）；安装走 plan→planToken→confirm，审计 Computation/installs/<planToken>.json 含卸载模板（无通用自动回滚）；归档→编辑→重跑：scriptPath/scriptHash + scriptChanged/scriptChangedDuringRun 显式告警，attempt 追加式永不覆盖，保留上限 20/200 只告警不删除，手改状态文件里的未知键会被报告。③ 诚实边界：引擎执行只用假 subprocess seam 验证（未在本机跑真实引擎）；宿主 subprocess.spawn 无 policy 槽，插件不能强制禁网/限权（需宿主 sandbox）；Maple/MATLAB/Wolfram 模板标 VERIFY 并提供 mathEngineOverride 覆盖；SageMath 属 P2。④ 本版经四轮独立审查 + 冻结提交上的真机打包/启动认证；门禁 65 项全绿（44 套件 + 21 探针）+ 22 个模块级变异探针。",
+    "compatNote": "v2.7.1 补丁版：① 诚实性与安装口径（替代方案改变精确性/结论强度必须声明；python 安装按检测到的环境分派 conda/mamba/uv/pip；R/Octave/Julia 的 system 作用域给出每引擎理由；版本求解交给包管理器，只按 base name 查存在，规格原样透传）＋ ② 七个真机缺陷修复（probe 回显请求的引擎、发现 DSH 自带运行时、cli 包预检用 cli.command 的解释器、mode:code 真的传脚本且调用方 argv 优先、版本报真值、探针 argv 无 shell 元字符、探测 cwd 不再依赖项目目录已存在）＋ 两条永久守卫（响应必须可 JSON 序列化；fresh-root 仿真）。既有参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",
