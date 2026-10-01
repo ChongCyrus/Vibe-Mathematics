@@ -120,6 +120,18 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **接受的写法**：`名称`、`名称[extras]`、`名称<op>版本`，其中 `<op>` ∈ `==` `>=` `<=` `~=` `!=` `>` `<` `=`（例如 pip 的 `numpy==1.2`、conda 的 `numpy=1.2`）。
 - **拒绝的写法**：空格、`;`、`|`、`&`、`$`、反引号、`@`、括号等 shell 危险或管理器不认识的语法 ⇒ `MATH_INVALID_ARGUMENT` + `next.reason='unsupported-version-syntax'`（**不会**把可疑字符串丢给 shell）。
 
+### 5.4 引擎发现顺序、`op:'probe'` 的语义与 `mathEngineOverride` 的边界
+
+- **发现顺序（PATH 永远优先）**：① PATH 上的描述符候选名（`python3`→`python`→`py`、`Rscript`→`R`、`octave`→`octave-cli`、`julia`）；② 以上都失败、且宿主声明了可选字段 `runtimeRoots` + `listDirAbs` 时，**最后**扫描 **DSH 自带运行时** `<root>/dsh-runtimes/*/dependencies/<engine>/<候选名>{,.exe,.cmd}`——**树名通配**（不写死 `dsh-primary-runtime`），且只接受描述符自己的候选名（不会塞进无关二进制）。`<root>` 由宿主给出（当前四套预设：**若 `DSH_HOME` 已设置则以它为唯一根**，否则用用户主目录下的 `.dsh`——显式设置即隔离发现，测试与定制部署都靠这个）。
+- **找到可用引擎就报它的真实版本**（`engineInfo.path` + `version`），**不再**给安装指引；**只有**一个可用引擎都找不到时，才按 OS 给安装指引——而且是对**请求的那个引擎**（不是"第一个允许的引擎"）。`op:'probe'` 的 `engine`/`engineInfo` 就是**请求的**引擎；请求的引擎缺失时，`code`/`message`/`next` 全部指向它（历史上这里会回显 `python`）。
+- **`mathEngineOverride` **不是**发现手段**：它只按引擎名覆盖 **argv 模板**（如 `{python:{versionArgv,scriptArgv,evalArgv,packageProbe}}`），**不能指定一个可执行文件**。所以 `MATH_ENGINE_NOT_FOUND` 的正解是：装上引擎、把解释器放进 PATH、让上面的 DSH 运行时被扫到，或用 `engine:'cli'` + `cli.command` 显式给命令。
+- **`engine:'cli'` 的三条行为**：① **包预检按 `cli.command` 的族**执行（`python*`/`Rscript`/`octave`/`julia` 用对应描述符的探测）；命令族**不可识别** ⇒ **跳过**预检并给出 `PACKAGE_PRECHECK_SKIPPED` 警告（**不误报缺包、不阻塞**逃生口）。② `mode:'code'`/`'file'` 时归档脚本的**绝对路径会自动追加到 argv 末尾**（回执里 `cli.scriptAppended: true`；`cli.argv` 仍是调用方给的 argv）——否则会掉进 REPL、`exit=0` 而 stdout 为空，读起来像成功。**但若调用方 argv 自带程序槽（`-c`/`-m`/`-e`/`--eval`/`--command`），则调用方 argv 优先、不追加**（否则脚本会被当作多余参数，例如 `python -c 'print(1)' script.txt` 会把脚本喂给 `sys.argv[1]`）；此时回执给 `cli.scriptAppended:false` + `cli.scriptSkipped` 说明原因。③ `engineInfo.version` 取自**真实的版本探测**（族可识别时），不再是 `"unknown"`。
+- **真实宿主上的"空 spawn"与失败可见性（round-7 实测）**：真实会话里宿主的 `subprocess` 通路**在会话早期可能对一次 spawn 返回空**（`exit=null`）。因此：版本探测**最多尝试 3 次**（20s / 45s / 45s + 退避），且只在**看起来像冷启动/空返回**（`timedOut`、`exit===null`、`spawned=false`）时重试——确定性失败（非零退出、输出无法解析）**不重试**。仍然失败时返回 `MATH_ENGINE_UNUSABLE` 并携带**机读诊断** `probe: {argv, exit, timedOut, ms, spawned, stderrTail, attempts, retried, retryDiag}`；**引擎已找到就绝不再给"去装引擎"的指引**（那会误导），改为 `next.kind:'note'`。包预检同样重试；若预检**始终跑不起来**，**不判缺包、不阻塞**，给出 `PACKAGE_PRECHECK_UNKNOWN` 警告（附 attempts/argv）——"探测失败"永远不会被读成"包没装"。
+- **包存在性探测的 argv 形态**：python 的探针代码遍历 `sys.argv[1:]`，所以包名按**每个一个 argv 项**传入（`<pkgs...>`）；R/Julia/Octave 的模板把逗号串插进代码（`<pkgs>`/`__PKGS__`）。真机上曾经把 `numpy,pandas` 当成**一个**包名，导致"已装的包也报缺"。
+- **探针 argv 里不得出现 shell 元字符（round-7 实测）**：真实宿主的 subprocess 通路会**拒绝**含 `|`（以及 `%`）的 argv——表现为一次**空 spawn**（`exit=null`），而不是报错。因此所有探测/许可证代码都改成**不含 `|`/`%`** 的形式（每包一行 `名称 ok|missing`），解析器两种形态都接受（`名称:状态` 与 `名称 状态`）。**新增/修改任何探针模板时都要保持这条**。
+- **响应必须永远可 JSON 序列化（round-7 回归）**：诊断对象曾被写成自引用（`retryDiag` 指向父对象），导致 `JSON.stringify(response)` 抛 `Converting circular structure to JSON`，调用方**看不到任何结果**。现在诊断经 `jsonSafeDiag()` 投影为纯字段（`argv/exit/timedOut/ms/spawned/stderrTail/attempts/retried/retryDiag`），共享套件有一条**横切不变量**：`probe`/`run`/`receipt`/`install` 的 13 种响应（成功与失败）都必须能 `JSON.stringify`。**新增任何响应字段都要过这条。**
+- **探测的 cwd 必须"一定存在"（round-7 真实根因）**：版本探测/包预检/许可探测曾用 `projectRoot()` 作 cwd；**全新会话里该目录还不存在**，而宿主对"cwd 不存在"的 spawn 返回 `spawned:true` + `exit:null`（**重试无用**——同 cwd 同结果），于是新会话第一次 `probe` 会得到"引擎存在但不可用"。现在这三类探测统一走 `probeCwd(H)`：优先宿主可选字段 `probeCwd`，否则 **OS 临时目录**（`TEMP`/`TMPDIR`/`TMP`），最后才回退到项目根；**真正的 `run` 仍用项目根**（run 会先写回执，写盘本身会创建目录树，所以它一直是好的）。
+
 ## 6. 插件**能**与**不能**强制的东西
 
 **能强制**：入参 schema（闭合；未知键拒绝）、**词法级**项目内路径守卫（见下）、cwd、超时并终止进程、输出上限、回执落盘、插件自身的写域（只写 `Computation/`）、安装两步与作用域默认、同一 archive id 的**串行分配**（并发运行不会共用 attempt 目录）。

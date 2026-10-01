@@ -38,6 +38,18 @@ export function makeFakeHost(opts = {}) {
     exit: opts.exit === undefined ? 0 : opts.exit,
     hang: !!opts.hang,
     hangProbe: !!opts.hangProbe,
+    versionProbeFails: !!opts.versionProbeFails,
+    // round-7: the real host intermittently answers a spawn with NULL early in a session. The first
+    // `nullSpawnTimes` spawns return null so a test can prove the retry recovers from it.
+    nullSpawnTimes: Number(opts.nullSpawnTimes) || 0,
+    // round-7 (live root cause): the real host answers a spawn whose cwd does NOT exist with
+    // `spawned:true, exit:null` (retries cannot help). `projectRoot` can be pointed at a
+    // non-existent path to emulate a FRESH workspace.
+    projectRoot: opts.projectRoot || '/fake/project',
+    freshRoot: opts.projectRoot || null,
+    // round-7: null answers ONLY for package probes (classify === 'packages'), so a test can isolate
+    // "the precheck could not run" from "the engine could not be probed".
+    packageProbeNullTimes: Number(opts.packageProbeNullTimes) || 0,
     stdoutBytes: opts.stdoutBytes || 0,
     argError: opts.argError || null,
     probeCalls: 0,
@@ -56,9 +68,9 @@ export function makeFakeHost(opts = {}) {
       state.registrations.push({ name, description, parameters, handler })
     },
     params: () => (typeof opts.params === 'function' ? opts.params() : (opts.params || {})),
-    projectRoot: () => opts.root || FAKE_ROOT,
+    projectRoot: () => state.freshRoot || opts.root || FAKE_ROOT,
     designator: opts.designator || 'vibe-math-v2',
-    writeText: async (rel, text) => { files.set(String(rel).replace(/\\/g, '/'), String(text)); return true },
+    writeText: async (rel, text) => { files.set(String(rel).replace(/\\/g, '/'), String(text)); state.rootCreated = true; return true },
     // Optional capability flag (INTERFACE-FREEZE §4): a host that knows it has no subprocess service
     // says so, and the module reports MATH_NO_SUBPROCESS instead of a misleading ENGINE_NOT_FOUND.
     hasSubprocess: ('hasSubprocess' in opts) ? (() => opts.hasSubprocess) : undefined,
@@ -72,6 +84,11 @@ export function makeFakeHost(opts = {}) {
       if (typeof opts.listDir === 'function') return opts.listDir(rel)
       return (opts.listDir || []).slice()
     }) : undefined,
+    // round-7 (fix 2): OPTIONAL bundled-runtime discovery. `runtimeRoots` are absolute roots and
+    // `absTree` maps an absolute directory to its entries, so a test can fake DSH's layout
+    // (`<root>/dsh-runtimes/<tree>/dependencies/python/python.exe`).
+    runtimeRoots: ('runtimeRoots' in opts) ? (async () => (opts.runtimeRoots || [])) : undefined,
+    listDirAbs: opts.absTree ? (async (abs) => (opts.absTree[String(abs).replace(/\\/g, '/')] || [])) : undefined,
     resolveExecutable: async (cmd) => {
       if (opts.resolveThrows) throw new Error('resolve failed: ' + cmd)
       const raw = String(cmd)
@@ -88,10 +105,18 @@ export function makeFakeHost(opts = {}) {
       return '/fake/bin/' + base
     },
     spawn: async ({ argv, cwd, timeoutMs, stdoutCap, stderrCap }) => {
+      if (state.nullSpawnTimes > 0) { state.nullSpawnTimes--; state.spawns.push({ argv: argv.slice(), cwd, timeoutMs, stdoutCap, stderrCap, nullSpawn: true }); return null }
       state.spawns.push({ argv: argv.slice(), cwd, timeoutMs, stdoutCap, stderrCap })
+      // Emulate the real host: a spawn whose cwd does not exist answers with exit:null. Note the
+      // host's writeText creates parent directories (writeFileAtomic), so a RUN (which writes the
+      // receipt first) legitimately makes the project root exist before it spawns.
+      if (state.freshRoot && !state.rootCreated && String(cwd) === String(state.freshRoot)) return { exit: null, timedOut: false, killed: false, ms: 130, stdout: '', stderr: '' }
       const kind = classify(argv)
+      if (kind === 'packages' && state.packageProbeNullTimes > 0) { state.packageProbeNullTimes--; state.spawns[state.spawns.length - 1].nullSpawn = true; return null }
       if (kind === 'version') {
         if (state.hangProbe) return { exit: null, timedOut: true, killed: true, ms: timeoutMs, stdout: '', stderr: '' }
+        // round-7: a DETERMINISTIC probe failure (engine resolved, probe exits non-zero, no version).
+        if (state.versionProbeFails) return { exit: 1, timedOut: false, killed: false, ms: 5, stdout: '', stderr: 'probe boom' }
         const exeName = String(argv[0] || 'engine').split(/[\\/]/).pop()
         return { exit: 0, timedOut: false, killed: false, ms: 5, stdout: exeName + ' ' + state.version + '\n', stderr: '' }
       }

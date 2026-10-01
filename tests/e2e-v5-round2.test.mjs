@@ -21,6 +21,13 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 
+// round-7 (fix 2) test isolation: engine discovery now also scans DSH's own runtime trees, and this
+// machine HAS a bundled python. This suite injects ONE fake subprocess for everything (LaTeX + math),
+// so an unexpected engine probe would be recorded as a compiler call and would even write a fake
+// paper.pdf. Pinning DSH_HOME at an empty dir keeps the fixture's premise ("no math engine here")
+// true and the suite deterministic; production behaviour is unaffected.
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'vibe-v5-e2e-nodsh-'))
+
 // V5_PLUGIN lets a sensitivity probe point this suite at a deliberately broken copy.
 // Without it every probe against this suite silently tested the UNMUTATED plugin and was
 // reported as a "detection" only because the probe's own spawn failed — i.e. the whole

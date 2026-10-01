@@ -175,10 +175,15 @@ console.log('-- math_computation shared contract --')
   await withHost({}, async (state) => {
     const r = await state.call({ op: 'run', engine: 'cli', mode: 'code', code: 'echo hi', cli: { command: '/fake/bin/mytool', argv: ['--flag', 'x'] } })
     ok(r.ok === true, 'cli runs with DEFAULT params (default-on)')
-    eq(r.argv, ['/fake/bin/mytool', '--flag', 'x'], 'cli argv is command + user argv verbatim')
+    // round-7 (finding 4): mode:'code' append the archived script so the code actually RUNS (the
+    // caller cannot know the runId up front). The user argv stays verbatim in receipt.cli.argv.
+    eq(r.argv.slice(0, 3), ['/fake/bin/mytool', '--flag', 'x'], 'cli argv starts with command + user argv')
+    ok(/Computation\/.*script\.txt$/.test(String(r.argv[3] || '')), 'mode:code appends the archived script path to the effective argv')
+    ok(r.cliScriptAppended === true, 'the return shell flags cliScriptAppended')
     ok(r.engine === 'cli:/fake/bin/mytool' && r.engineInfo.name === 'cli:/fake/bin/mytool', 'cli is labelled cli:<command> in the shell and engineInfo')
     const rj = JSON.parse(state.file(r.receipt.json))
-    ok(rj.engine.name === 'cli:/fake/bin/mytool' && rj.engine.source === 'cli' && rj.cli && rj.cli.argv.length === 2, 'cli receipt records cli:<command>, source=cli and argv')
+    ok(rj.engine.name === 'cli:/fake/bin/mytool' && rj.engine.source === 'cli' && rj.cli && rj.cli.argv.length === 2, 'cli receipt records cli:<command>, source=cli and the USER argv')
+    ok(rj.cli.scriptAppended === true && rj.argv[rj.argv.length - 1] === r.argv[3], 'the receipt records scriptAppended and the executed argv')
   })
   await withHost({ params: { mathMode: 'typed' } }, async (state) => {
     const r = await state.call({ op: 'run', engine: 'cli', mode: 'code', code: 'x', cli: { command: '/fake/bin/mytool' } })
@@ -567,6 +572,232 @@ console.log('-- math_computation shared contract --')
     ok(plan.ok === true && plan.plan.commands[0].argv[plan.plan.commands[0].argv.length - 1] === 'sympy==1.12', 'the install plan passes the spec through verbatim')
     ok(!!plan.plan.versionPolicy, 'the plan states the version policy (solving belongs to the manager)')
   }
+}
+
+// ── 19. round-7: probe reports the REQUESTED engine (fix 1) + DSH bundled-runtime discovery (fix 2)
+{
+  // 19a (fix 1): `probe {engine:'r'}` must describe r - not the first allowed engine (python).
+  {
+    const hr = makeFakeHost({ installed: ['python3', 'python', 'Rscript'] })
+    M.registerMathComputation(hr.host)
+    const p = await hr.call({ op: 'probe', engine: 'r' })
+    ok(p.ok === true && p.engine === 'r', 'probe with engine:r reports engine:r (not python)')
+    ok(!!p.engineInfo && p.engineInfo.name === 'r' && !!p.engineInfo.version, "probe reports the requested engine's version/path")
+    ok(!p.next, 'a usable requested engine yields no install guidance')
+    const pp = await hr.call({ op: 'probe', engine: 'python' })
+    ok(pp.ok === true && pp.engine === 'python' && pp.engineInfo.name === 'python', 'probe with engine:python reports python (each request is honoured)')
+  }
+  // 19b (fix 1): a MISSING requested engine must not blame python in the guidance.
+  {
+    const hm = makeFakeHost({ installed: ['python3', 'python'] })
+    M.registerMathComputation(hm.host)
+    const p = await hm.call({ op: 'probe', engine: 'r' })
+    ok(p.ok === false && p.code === 'MATH_ENGINE_NOT_FOUND' && p.engine === 'r', 'a missing requested engine is reported as THAT engine (r, not python)')
+    ok(p.next && p.next.kind === 'user-install' && p.next.engine === 'r' && !!p.next.perOs, 'the install guidance is for the REQUESTED engine (r), with per-OS commands')
+    const msg = String(p.message)
+    ok(/试过：r|请求：r/.test(msg) && !/python/i.test(msg), 'the message names the requested engine (r), never a python fallback')
+  }
+  // 19c (fix 2): a DSH-bundled runtime is discovered as a LAST resort and used like any engine.
+  {
+    const absTree = {
+      'X:/home/.dsh/dsh-runtimes': [{ name: 'dsh-primary-runtime', type: 'directory' }, { name: 'dsh-other-runtime', type: 'directory' }],
+      'X:/home/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python': [{ name: 'python.exe', type: 'file' }, { name: 'python3.exe', type: 'file' }],
+      'X:/home/.dsh/dsh-runtimes/dsh-other-runtime/dependencies/python': [],
+    }
+    const hb = makeFakeHost({ installed: [], runtimeRoots: ['X:/home/.dsh'], absTree: absTree })
+    M.registerMathComputation(hb.host)
+    const p = await hb.call({ op: 'probe', engine: 'python' })
+    ok(p.ok === true && p.engine === 'python' && p.engineInfo.name === 'python', 'a bundled DSH runtime is found when PATH has nothing')
+    ok(/dsh-runtimes\/dsh-primary-runtime\/dependencies\/python\/python/.test(p.engineInfo.path), 'the discovered path comes from the generically globbed runtime tree')
+    const r = await hb.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+    ok(r.ok === true && !!r.engineInfo.version, 'a run on the bundled runtime succeeds and reports its version')
+    ok(!r.next, 'a found bundled runtime emits NO install guidance')
+    // The bundled runtime must not be invented when the tree is absent.
+    const hn = makeFakeHost({ installed: [] })
+    M.registerMathComputation(hn.host)
+    const n = await hn.call({ op: 'probe', engine: 'python' })
+    ok(n.ok === false && n.code === 'MATH_ENGINE_NOT_FOUND' && n.next && n.next.kind === 'user-install', 'with no PATH engine and no runtime tree the per-OS guidance still fires')
+  }
+  // 19d (finding 3): the cli package precheck runs against the FAMILY of `cli.command`, not the
+  // generic cli descriptor (which has no packageProbe and therefore reported a false "missing").
+  {
+    const hc = makeFakeHost({ installed: [], packages: { numpy: 'present' } })
+    M.registerMathComputation(hc.host)
+    const r = await hc.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: '/fake/bin/python3' }, packages: ['numpy'] })
+    ok(r.ok === true, 'cli + packages: a python-family command prechecks with the python probe (numpy present => the run proceeds)')
+    const probes = hc.spawns.filter((s) => s.argv.join(' ').indexOf('numpy') !== -1)
+    ok(probes.length > 0 && probes.every((s) => String(s.argv[0]).indexOf('python3') !== -1), 'the package precheck ran against cli.command itself')
+    // An unrecognisable command must SKIP the precheck (never a false missing) and say so.
+    const hu = makeFakeHost({ installed: [] })
+    M.registerMathComputation(hu.host)
+    const ru = await hu.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: '/fake/bin/mytool' }, packages: ['numpy'] })
+    ok(ru.ok === true && (ru.warnings || []).some((w) => w.code === 'PACKAGE_PRECHECK_SKIPPED'), 'an unknown cli family skips the precheck with an explicit warning (no false missing-packages)')
+  }
+  // 19e (finding 5): cli reports the REAL version of the resolved command when its family is known.
+  {
+    const hv = makeFakeHost({ installed: [] })
+    M.registerMathComputation(hv.host)
+    const p = await hv.call({ op: 'probe', engine: 'cli', cli: { command: '/fake/bin/python3' } })
+    ok(p.ok === true && p.engineInfo && p.engineInfo.version === '1.2.3', 'probe(engine:cli) reports the real version of the resolved command')
+    const r = await hv.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: '/fake/bin/python3' } })
+    ok(r.engineInfo.version === '1.2.3', 'run(engine:cli) reports the real command version (not "unknown")')
+  }
+  // 19f (finding 6, found on the real bundled python): the probe code iterates `sys.argv[1:]`, so the
+  // names must arrive as SEPARATE argv items - a comma-joined single item makes python look up one
+  // package literally named "numpy,pandas" and report everything missing.
+  {
+    const hp = makeFakeHost({ installed: ['python3'], packages: { numpy: 'present', pandas: 'present' } })
+    M.registerMathComputation(hp.host)
+    await hp.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['numpy', 'pandas'] })
+    const probe = hp.spawns.find((s) => s.argv.join(' ').indexOf('numpy') !== -1)
+    ok(!!probe && probe.argv.indexOf('numpy') !== -1 && probe.argv.indexOf('pandas') !== -1, 'the python package probe passes ONE argv item per package (sys.argv-based probe)')
+    ok(!!probe && probe.argv.join(' ').indexOf('numpy,pandas') === -1, 'the probe never passes the comma-joined list as a single argv item')
+    // round-7 (live): a real host rejected probe argv containing shell metacharacters (| %), so no
+    // probe argv may carry them - the parsers accept both `name:state` and `name state` shapes.
+    ok(!!probe && !/[|%]/.test(probe.argv.join(' ')), 'no probe argv contains a shell metacharacter (| or %)')
+    for (const name of ['python', 'r', 'octave', 'julia']) {
+      const d = (await import('../vibe-math-v2/math-engines.js')).MATH_ENGINES[name]
+      for (const a of (d.packageProbe.argv || [])) ok(!/[|%]/.test(String(a)), name + ' probe template has no | or %: ' + String(a).slice(0, 40))
+      ok(!/[|%]/.test(String(d.probeCode || 'numpy ok line')), name + ' probeCode has no | or %')
+    }
+  }
+  // 19f-bis: cli + mode:'code' actually PASSES the script (finding 4) - verified through argv shape.
+  {
+    const hs = makeFakeHost({ installed: [] })
+    M.registerMathComputation(hs.host)
+    const r = await hs.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: '/fake/bin/python3' } })
+    const last = String(r.argv[r.argv.length - 1] || '')
+    ok(r.ok === true && /script\.txt$/.test(last), 'cli + code: the archived script is last in argv (it is really executed, not a REPL)')
+    const runSpawn = hs.spawns.filter((s) => String(s.argv[s.argv.length - 1] || '').indexOf('script.txt') !== -1)
+    ok(runSpawn.length === 1, 'the executed argv carried the script path to the process')
+    // …but when the CALLER's argv already runs code (-c/-m/-e/--eval), the caller's argv wins: the
+    // archived script must NOT be appended after it (python would read it as sys.argv[1]).
+    const rc = await hs.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: '/fake/bin/python3', argv: ['-c', 'print(1)'] } })
+    ok(rc.ok === true && rc.cliScriptAppended === false, 'cli + code with a caller program slot (-c) does NOT append the archived script')
+    ok(rc.argv.join(' ').indexOf('script.txt') === -1, 'the executed argv is exactly the caller argv (no script path)')
+    ok(!!rc.receipt && !!rc.receipt.json, 'the skipped-append run still writes a receipt')
+  }
+  // 19g (live-session fix): an engine that RESOLVED but whose version probe failed must NOT come with
+  // install guidance (the user does not need to install anything) and must carry the diagnostic.
+  {
+    const hh = makeFakeHost({ installed: ['python3', 'python'], versionProbeFails: true })
+    M.registerMathComputation(hh.host)
+    const p = await hh.call({ op: 'probe', engine: 'python' })
+    ok(p.ok === false && p.code === 'MATH_ENGINE_UNUSABLE', 'a resolved engine whose probe fails => MATH_ENGINE_UNUSABLE')
+    ok(!p.next || p.next.kind !== 'user-install', 'unusable (but FOUND) engine carries NO install guidance')
+    ok(!!p.probe && Array.isArray(p.probe.argv) && p.probe.argv[0].indexOf('python3') !== -1, 'the failure carries the probe diagnostic (argv)')
+    ok(!!p.probe && p.probe.exit === 1 && p.probe.stderrTail === 'probe boom', 'the diagnostic carries exit + stderr tail')
+    ok(/MATH_ENGINE_UNUSABLE/.test(p.code) && /exit=1/.test(String(p.message)), 'the message states the probe exit code (never an opaque "unusable")')
+    // A deterministic failure is NOT retried (no retryDiag, no retry storm), only a cold/null/timeout
+    // signature is - see 19h.
+    ok(!(p.probe && p.probe.retried), 'a deterministic probe failure is NOT retried (no retryDiag)')
+  }
+  // 19h (live-session fix): the real host intermittently returns a NULL spawn early in a session.
+  // The retry must cover spawned:false / exit:null (not just timeouts) so the probe still succeeds.
+  {
+    const hN = makeFakeHost({ installed: ['python3', 'python'], nullSpawnTimes: 2 })
+    M.registerMathComputation(hN.host)
+    const p = await hN.call({ op: 'probe', engine: 'python' })
+    ok(p.ok === true && p.engine === 'python' && p.engineInfo.version === '1.2.3', 'a transient NULL spawn is retried and the probe still succeeds')
+    ok(hN.spawns.filter((s) => s.nullSpawn).length === 2, 'the null spawns are visible in the seam (2 consumed)')
+  }
+  // 19i (live-session fix): a package precheck that could not RUN must never be reported as
+  // "missing package", and the skip must be explicit (fail-open + named warning).
+  {
+    const hP = makeFakeHost({ installed: ['python3'], packageProbeNullTimes: 9 })
+    M.registerMathComputation(hP.host)
+    const r = await hP.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['numpy'] })
+    ok(r.ok !== false || r.code !== 'MATH_MISSING_PACKAGES', 'a precheck that could not run is NEVER reported as a missing package')
+    ok((r.warnings || []).some((w) => w.code === 'PACKAGE_PRECHECK_UNKNOWN'), 'the un-runnable precheck is reported explicitly (PACKAGE_PRECHECK_UNKNOWN)')
+  }
+}
+
+// ── 20. round-7 cross-cutting invariant: EVERY response must be JSON-serialisable
+// (a real session got `Converting circular structure to JSON ... property 'retryDiag' closes the
+// circle` from a probe/run response, which meant the caller saw no result at all). This applies to
+// all four presets because they all ship this module.
+{
+  const cases = []
+  const push = (label, r) => cases.push({ label, r })
+  {
+    const h = makeFakeHost({ installed: ['python3', 'python', 'Rscript'], packages: { numpy: 'present' } })
+    M.registerMathComputation(h.host)
+    push('probe ok', await h.call({ op: 'probe', engine: 'python' }))
+    push('probe missing engine', await h.call({ op: 'probe', engine: 'octave' }))
+    push('run ok', await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' }))
+    push('run bad mode', await h.call({ op: 'run', engine: 'python', mode: 'nope' }))
+    push('run missing pkg', await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', packages: ['pandas'] }))
+    push('receipt missing', await h.call({ op: 'receipt', id: 'nope' }))
+    push('install plan', await h.call({ op: 'install', engine: 'python', packages: ['numpy'] }))
+    push('install commercial', await h.call({ op: 'install', engine: 'matlab', packages: ['MATLAB'] }))
+    push('install system scope r', await h.call({ op: 'install', engine: 'r', packages: ['x'], scope: 'system' }))
+    push('unsupported spec', await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', packages: ['numpy; rm -rf /'] }))
+    push('unknown engine', await h.call({ op: 'run', engine: 'nope', mode: 'code', code: 'x\n' }))
+  }
+  {
+    const h = makeFakeHost({ installed: ['python3'], versionProbeFails: true })
+    M.registerMathComputation(h.host)
+    push('probe unusable (probe diagnostics)', await h.call({ op: 'probe', engine: 'python' }))
+  }
+  {
+    // A RETRIED probe carries retryDiag: that is exactly where the circular payload came from.
+    const h = makeFakeHost({ installed: ['python3'], nullSpawnTimes: 40 })
+    M.registerMathComputation(h.host)
+    push('probe unusable after retries (retryDiag present)', await h.call({ op: 'probe', engine: 'python' }))
+  }
+  {
+    const h = makeFakeHost({ installed: ['python3'], packageProbeNullTimes: 9 })
+    M.registerMathComputation(h.host)
+    push('run with un-runnable precheck', await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', packages: ['numpy'] }))
+  }
+  {
+    const h = makeFakeHost({ installed: [] })
+    M.registerMathComputation(h.host)
+    push('probe nothing', await h.call({ op: 'probe', engine: 'python' }))
+  }
+  {
+    const h = makeFakeHost({ resolveThrows: true })
+    M.registerMathComputation(h.host)
+    push('probe resolve throws', await h.call({ op: 'probe', engine: 'python' }))
+  }
+  for (const c of cases) {
+    let json = null
+    let err = null
+    try { json = JSON.stringify(c.r) } catch (e) { err = String((e && e.message) || e) }
+    ok(json !== null, '★ response is JSON-serialisable: ' + c.label + (err ? ' (' + err + ')' : ''))
+  }
+  // The diagnostics themselves must never carry a back-reference.
+  {
+    const h = makeFakeHost({ installed: ['python3'], nullSpawnTimes: 2 })
+    M.registerMathComputation(h.host)
+    const r = await h.call({ op: 'probe', engine: 'python' })
+    ok(r.ok === true, 'the null-spawn retry recovers (JSON invariant context)')
+    const h2 = makeFakeHost({ installed: ['python3'], versionProbeFails: true })
+    M.registerMathComputation(h2.host)
+    const u = await h2.call({ op: 'probe', engine: 'python' })
+    ok(!!u.probe && JSON.stringify(u.probe).indexOf('retryDiag') === -1 ? true : !!u.probe, 'a deterministic failure still exposes its probe diagnostics')
+  }
+}
+
+// ── 21. round-7 (live root cause): probes must not depend on the project root EXISTING
+// The real host answers a spawn whose cwd does not exist with `spawned:true, exit:null` (retries
+// cannot help). On a brand-new session the project root does not exist yet, so the version probe and
+// the package precheck must run from a cwd that is guaranteed to exist.
+{
+  const FRESH = '/fresh/nonexistent/workspace'
+  const h = makeFakeHost({ installed: ['python3', 'python'], projectRoot: FRESH, packages: { numpy: 'present' } })
+  M.registerMathComputation(h.host)
+  const p = await h.call({ op: 'probe', engine: 'python' })
+  ok(p.ok === true && p.engine === 'python' && p.engineInfo.version === '1.2.3', '★ a probe on a FRESH (non-existent) project root still succeeds with a real version')
+  const versionSpawns = h.spawns.filter((s) => /--version/.test(s.argv.join(' ')))
+  ok(versionSpawns.length > 0, 'the version probe actually spawned')
+  ok(versionSpawns.every((s) => String(s.cwd) !== FRESH), '★ no version probe spawn uses the non-existent project root as cwd')
+  ok(versionSpawns.every((s) => !s.nullSpawn), 'no version probe spawn reported exit:null (fresh-root signature)')
+  const r = await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['numpy'] })
+  const pkgSpawns = h.spawns.filter((s) => s.argv.join(' ').indexOf('numpy') !== -1)
+  ok(r.ok === true, 'a run with packages on a FRESH root passes the precheck')
+  ok(pkgSpawns.length > 0 && pkgSpawns.every((s) => String(s.cwd) !== FRESH), '★ the package precheck also avoids the non-existent project root')
+  ok(!(r.warnings || []).some((w) => w.code === 'PACKAGE_PRECHECK_UNKNOWN'), 'the precheck RAN (no PACKAGE_PRECHECK_UNKNOWN on a fresh root)')
 }
 
 console.log('')

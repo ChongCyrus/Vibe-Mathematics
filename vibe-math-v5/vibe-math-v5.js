@@ -2904,6 +2904,11 @@ export function apply(ctx) {
       // reports MATH_NO_SUBPROCESS before engine detection), and let it check the retention cap.
       hasSubprocess: () => { const sub = subprocessOf(); return !!(sub && typeof sub.spawn === 'function') },
       listDir: (rel) => mathListDirRel(rel),
+      // round-7 (fix 2): DSH's own bundled runtimes (`<home>/.dsh/dsh-runtimes/*/dependencies/<engine>/`)
+      // as a LAST resort after PATH. Generic roots only; the module globs the tree name and accepts
+      // only the descriptor's own candidate names.
+      runtimeRoots: () => { const env = process.env.DSH_HOME; if (env) return [String(env)]; const home = String(process.env.HOME || process.env.USERPROFILE || ''); return home ? [home.replace(/[\\/]+$/, '') + '/.dsh'] : [] },
+      listDirAbs: async (abs) => { try { const t = await fs.resolve(String(abs)); const st = await fs.stat(t); if (!st) return []; return (await fs.listDir(t)) || [] } catch (e) { return [] } },
       log: (kind, msg) => mathLog(kind, msg),
     }
     // The DYNAMIC per-round availability line: computed from a (cached) probe when the prompt is

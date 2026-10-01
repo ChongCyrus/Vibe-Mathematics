@@ -285,6 +285,9 @@ function fail(code, engine, message, extra) {
   if (extra && extra.engines) out.engines = extra.engines
   if (extra && extra.available !== undefined) out.available = extra.available
   if (extra && extra.packages) out.packages = extra.packages
+  // round-7 (live-session fix): the probe diagnostic must survive into the response, otherwise
+  // "存在但不可用" is opaque (a real session showed exactly that).
+  if (extra && extra.probe) out.probe = jsonSafeDiag(extra.probe)
   return out
 }
 
@@ -313,6 +316,9 @@ function adaptHost(host) {
     spawn: h.spawn,
     hasSubprocess: typeof h.hasSubprocess === 'function' ? h.hasSubprocess : null,
     listDir: typeof h.listDir === 'function' ? h.listDir : null,
+    // round-7 (fix 2): optional bundled-runtime discovery (absolute roots + absolute listing).
+    runtimeRoots: typeof h.runtimeRoots === 'function' ? h.runtimeRoots : null,
+    listDirAbs: typeof h.listDirAbs === 'function' ? h.listDirAbs : null,
     log: typeof h.log === 'function' ? h.log : function () {},
   }
   adapted.__mathHost = true
@@ -356,20 +362,138 @@ async function resolveCandidate(H, d) {
       if (typeof p === 'string' && p) return p
     } catch (e) { /* not this one */ }
   }
+  // round-7 (fix 2): DSH ships its own runtimes; PATH always wins, so this is the LAST resort. The
+  // tree name is globbed (never hard-coded) and executable names come from the descriptor candidates.
+  for (const p of await dshRuntimeCandidates(H, d.name)) {
+    if (typeof p === 'string' && p) return p
+  }
   return null
 }
 
-async function probeVersion(H, d, exe) {
-  const r = await H.spawn({ argv: [exe].concat(d.versionArgv || []), cwd: await H.projectRoot(), timeoutMs: 5000, stdoutCap: 8192, stderrCap: 8192 })
-  if (!r || r.timedOut) return { ok: false }
+// Generic discovery of a DSH-bundled runtime for one engine:
+//   <root>/dsh-runtimes/<tree>/dependencies/<engine>/<candidate><ext>
+// `runtimeRoots` and `listDirAbs` are OPTIONAL host fields (each preset knows its own home and fs);
+// when the host does not provide them this returns [] and behaviour is exactly as before.
+async function dshRuntimeCandidates(H, engineName) {
+  if (typeof H.listDirAbs !== 'function' || typeof H.runtimeRoots !== 'function') return []
+  const cands = mathEngineCandidates(engineName)
+  if (!cands) return []
+  let roots = []
+  try { roots = (await H.runtimeRoots()) || [] } catch (e) { return [] }
+  if (!Array.isArray(roots) || !roots.length) return []
+  const win = !!(typeof process !== 'undefined' && process.platform === 'win32')
+  const exts = win ? ['.exe', '.cmd', ''] : ['']
+  const dirAliases = engineName === 'r' ? ['r', 'R'] : [engineName]
+  const out = []
+  for (const root of roots) {
+    if (!root) continue
+    const base = String(root).replace(/[\\/]+$/, '') + '/dsh-runtimes'
+    let trees = []
+    try { trees = (await H.listDirAbs(base)) || [] } catch (e) { continue }
+    for (const tree of trees) {
+      if (!tree || tree.type !== 'directory' || !tree.name) continue
+      for (const dirName of dirAliases) {
+        const depDir = base + '/' + tree.name + '/dependencies/' + dirName
+        let entries = []
+        try { entries = (await H.listDirAbs(depDir)) || [] } catch (e) { continue }
+        // Only names the descriptor itself would look for (python3/python/py, …), so a bundled
+        // runtime cannot smuggle in an unrelated binary.
+        for (const c of cands) {
+          for (const ext of exts) {
+            const hit = entries.find((e) => e && e.type === 'file' && String(e.name) === c + ext)
+            if (hit) out.push(depDir + '/' + hit.name)
+          }
+        }
+      }
+    }
+  }
+  return Array.from(new Set(out))
+}
+
+// round-7 (live root cause): probe-ish spawns used `projectRoot()` as cwd, but on a BRAND-NEW session
+// that directory does not exist yet, and the host answers such a spawn with `spawned:true, exit:null`
+// (retries cannot help - same cwd, same result). Runs are unaffected because they write the receipt
+// (creating the tree) before spawning. So probes use a cwd that is guaranteed to exist: an explicit
+// host `probeCwd`, else the OS temp dir, else the project root.
+async function probeCwd(H) {
+  if (typeof H.probeCwd === 'function') {
+    try { const p = await H.probeCwd(); if (typeof p === 'string' && p) return p } catch (e) { /* fall through */ }
+  }
+  const env = (typeof process !== 'undefined' && process.env) || {}
+  const tmp = env.TEMP || env.TMPDIR || env.TMP
+  if (typeof tmp === 'string' && tmp) return tmp
+  return await H.projectRoot()
+}
+
+async function probeVersion(H, d, exe, opts) {
+  const o = opts || {}
+  const argv = [exe].concat(d.versionArgv || [])
+  const timeoutMs = Number(o.timeoutMs) || 20000 // a COLD host runner can take seconds; 5s was too tight
+  const r = await H.spawn({ argv: argv, cwd: await probeCwd(H), timeoutMs: timeoutMs, stdoutCap: 8192, stderrCap: 8192 })
+  const diag = {
+    argv: argv.slice(0, 3),
+    exit: r ? (r.exit === undefined ? null : r.exit) : null,
+    timedOut: !!(r && r.timedOut),
+    ms: r ? r.ms : null,
+    spawned: !!r,
+    stderrTail: String((r && r.stderr) || '').slice(-300),
+  }
+  if (!r) return { ok: false, version: 'unknown', diag: diag }
+  if (r.timedOut) return { ok: false, version: 'unknown', diag: diag }
   const m = new RegExp(d.versionRe).exec(String(r.stdout || '') + '\n' + String(r.stderr || ''))
-  return { ok: r.exit === 0 && !!m, version: m ? m[1] : 'unknown' }
+  return { ok: r.exit === 0 && !!m, version: m ? m[1] : 'unknown', diag: diag }
+}
+
+// round-7 (live-session fix): an engine that RESOLVED but whose version probe failed is retried once
+// with a longer budget WHEN the failure looks like a cold-start/timeout (timedOut, or a spawn that
+// produced no exit code). A deterministic failure (non-zero exit, unparsable output) is NOT retried -
+// retrying every failure would double every probe spawn. The diagnostic travels with the result
+// either way, so "存在但不可用" is never opaque.
+// round-7 (live regression): diagnostics must be JSON-SAFE. An earlier version stored a retry diag
+// that was the SAME object as its parent, so `JSON.stringify(response)` threw ("circular structure")
+// and the caller saw no probe result at all. Project plain fields only, never keep back-references.
+function jsonSafeDiag(d) {
+  if (!d || typeof d !== 'object') return null
+  const out = { argv: Array.isArray(d.argv) ? d.argv.map(String).slice(0, 4) : [] }
+  for (const k of ['exit', 'timedOut', 'ms', 'spawned', 'stderrTail', 'attempts', 'retried']) {
+    const v = d[k]
+    if (v === undefined) continue
+    out[k] = (v === null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') ? v : (Array.isArray(v) ? v.map((x) => (x && typeof x === 'object') ? jsonSafeDiag(x) : x) : null)
+  }
+  if (d.retryDiag) out.retryDiag = jsonSafeDiag(d.retryDiag)
+  return out
+}
+
+async function probeVersionWithRetry(H, d, exe) {
+  const attempts = []
+  let last = null
+  for (let i = 0; i < 3; i++) {
+    last = await probeVersion(H, d, exe, { timeoutMs: i === 0 ? 20000 : 45000 })
+    attempts.push(jsonSafeDiag(last.diag))
+    if (last.ok) break
+    // A NULL spawn (host returned nothing usable) and a timeout both look like the session-early
+    // flakiness the live test hit; a deterministic failure (non-zero exit, unparsable output) is not
+    // retried, so a genuinely broken engine is reported immediately instead of three times slower.
+    const looksCold = !!(last.diag && (last.diag.timedOut || last.diag.exit === null || !last.diag.spawned))
+    if (!looksCold) break
+    await new Promise((resolve) => setTimeout(resolve, 250 + i * 400))
+  }
+  if (last && last.diag) {
+    last.diag = jsonSafeDiag(last.diag)
+    last.diag.attempts = attempts.length
+    if (attempts.length > 1) {
+      last.diag.retried = true
+      // COPIES, never a reference to this same object (that produced the circular payload).
+      last.diag.retryDiag = attempts[attempts.length - 1]
+    }
+  }
+  return last
 }
 
 async function checkLicence(H, d, exe) {
   if (d.license !== 'commercial') return { ok: true }
   if (!d.licenseProbe) return { ok: false }
-  const r = await H.spawn({ argv: [exe].concat(d.licenseProbe.argv), cwd: await H.projectRoot(), timeoutMs: 10000, stdoutCap: 8192, stderrCap: 8192 })
+  const r = await H.spawn({ argv: [exe].concat(d.licenseProbe.argv), cwd: await probeCwd(H), timeoutMs: 10000, stdoutCap: 8192, stderrCap: 8192 })
   if (!r || r.timedOut || r.exit !== 0) return { ok: false }
   if (d.licenseProbe.okWhen === 'trim-1') return { ok: String(r.stdout || '').trim() === '1' }
   if (d.licenseProbe.okWhen === 'not-unlicensed') return { ok: !/Unlicensed/i.test(String(r.stdout || '')) }
@@ -390,18 +514,34 @@ async function resolveEngine(H, requested, params, args) {
       let exe = null
       try { exe = await H.resolveExecutable(args.cli.command) } catch (e) { exe = null }
       if (!exe) return fail('MATH_ENGINE_NOT_FOUND', name, 'cli 命令无法解析：' + args.cli.command, { next: userInstallNext('cli') })
-      return { ok: true, name: name, desc: d, exe: exe, version: 'unknown' }
+      // round-7 (finding 5): report the REAL version when the command's family is recognisable (the
+      // descriptor for that family carries the version probe); unknown commands stay 'unknown'.
+      let cliVersion = 'unknown'
+      let cliProbe = null
+      const fam = engineFamilyForExe(exe)
+      if (fam && MATH_ENGINES[fam]) {
+        const fv = await probeVersionWithRetry(H, MATH_ENGINES[fam], exe)
+        cliProbe = fv.diag || null
+        if (fv.ok) cliVersion = fv.version
+      }
+      return { ok: true, name: name, desc: d, exe: exe, version: cliVersion, family: fam || null, probe: cliProbe }
     }
     const hit = await resolveCandidate(H, d)
     if (!hit) continue
-    const v = await probeVersion(H, d, hit)
+    const v = await probeVersionWithRetry(H, d, hit)
     if (!v.ok) {
       if (d.license === 'commercial' || d.versionOptional) {
         const lic = await checkLicence(H, d, hit)
         if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', { engine: name, url: d.vendor || '' }) })
         return { ok: true, name: name, desc: d, exe: hit, version: 'unknown' }
       }
-      return fail('MATH_ENGINE_UNUSABLE', name, name + ' 存在但不可用（版本探针失败）', { next: userInstallNext(name) })
+      // round-7 (live-session fix): the engine WAS found - so an install guide would be misleading
+      // (the user does not need to install anything; the host path is what failed). Report the probe
+      // diagnostic instead and keep the escape hatch advisory.
+      return fail('MATH_ENGINE_UNUSABLE', name, name + ' 存在但不可用（版本探针失败：exit=' + String(v.diag.exit) + (v.diag.timedOut ? '，超时' : '') + '，argv=' + JSON.stringify(v.diag.argv) + '）', {
+        probe: v.diag,
+        next: next('note', { guidance: '引擎已找到但探测失败：请检查宿主 subprocess 通路（冷启动/超时/权限），或用 mathEngineOverride 调整 versionArgv 模板；已装的引擎不需要重装。' }),
+      })
     }
     const lic = await checkLicence(H, d, hit)
     if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', { engine: name, url: d.vendor || '' }) })
@@ -416,7 +556,16 @@ function buildProbeArgv(d, pkgs) {
   const quoted = pkgs.map((p) => '"' + String(p).replace(/"/g, '') + '"').join(',')
   const plain = pkgs.join(',')
   const code = String(d.probeCode || '').replace(/__QPKGS__/g, quoted).replace(/__PKGS__/g, plain)
-  return (d.packageProbe.argv || []).map((a) => a === '<probeCode>' ? code : a === '<pkgs>' ? plain : a)
+  const out = []
+  for (const a of (d.packageProbe.argv || [])) {
+    // `<pkgs...>` expands to ONE argv item per package (probes that read `sys.argv`); `<pkgs>` stays
+    // the comma-joined string for templates that interpolate it into code (R/Julia/Octave).
+    if (a === '<probeCode>') out.push(code)
+    else if (a === '<pkgs>') out.push(plain)
+    else if (a === '<pkgs...>') for (const p of pkgs) out.push(String(p))
+    else out.push(a)
+  }
+  return out
 }
 
 async function probePackages(H, det, pkgs) {
@@ -427,19 +576,43 @@ async function probePackages(H, det, pkgs) {
   const found = {}
   for (const p of names) found[p] = null
   if (!names.length || !det.desc.packageProbe) return { requested: names, found: found }
-  const r = await H.spawn({ argv: [det.exe].concat(buildProbeArgv(det.desc, names)), cwd: await H.projectRoot(), timeoutMs: 15000, stdoutCap: 16384, stderrCap: 16384 })
-  if (r && !r.timedOut) {
-    if (det.desc.packageProbe.parse === 'lines') {
-      const text = String(r.stdout || '')
-      for (const p of pkgs) if (new RegExp('(^|\\s)' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'm').test(text)) found[p] = 'present'
-    } else {
-      for (const tok of String(r.stdout || '').split('|')) {
-        const idx = tok.indexOf(':')
-        if (idx <= 0) continue
-        const name = tok.slice(0, idx).trim()
-        const state = tok.slice(idx + 1).trim()
-        if (Object.prototype.hasOwnProperty.call(found, name)) found[name] = (state === 'ok' || state === '1' || state === 'TRUE' || state === 'True') ? 'present' : null
+  const argv = [det.exe].concat(buildProbeArgv(det.desc, names))
+  // round-7 (live-session fix): a NULL spawn (the host's subprocess seam returned nothing - seen in
+  // real sessions right after session start) or a timeout must NOT be reported as "package missing".
+  // Retry a couple of times, and if the precheck still cannot run, say so explicitly (fail-open).
+  let r = null
+  const attempts = []
+  for (let i = 0; i < 3; i++) {
+    r = await H.spawn({ argv: argv, cwd: await probeCwd(H), timeoutMs: 15000 + i * 15000, stdoutCap: 16384, stderrCap: 16384 })
+    attempts.push(r ? { exit: r.exit === undefined ? null : r.exit, timedOut: !!r.timedOut } : null)
+    const usable = !!(r && !r.timedOut && r.exit !== null && r.exit !== undefined)
+    if (usable) break
+    await new Promise((resolve) => setTimeout(resolve, 250 + i * 400))
+  }
+  const ran = !!(r && !r.timedOut && r.exit !== null && r.exit !== undefined)
+  if (!ran) return { requested: names, found: found, probeFailed: true, attempts: attempts, argv: argv.slice(0, 3) }
+  if (det.desc.packageProbe.parse === 'lines') {
+    const text = String(r.stdout || '')
+    for (const p of pkgs) if (new RegExp('(^|\\s)' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'm').test(text)) found[p] = 'present'
+  } else {
+    // Accept BOTH shapes: `name:ok|name:missing` (historical) and one-per-line `name ok` (round-7:
+    // the probe codes avoid shell metacharacters such as `|`, which a real host's spawn rejected).
+    for (const rawTok of String(r.stdout || '').split(/[|\n]/)) {
+      const tok = rawTok.trim()
+      if (!tok) continue
+      let name = ''
+      let state = ''
+      const idx = tok.indexOf(':')
+      if (idx > 0) {
+        name = tok.slice(0, idx).trim()
+        state = tok.slice(idx + 1).trim()
+      } else {
+        const m = /^(\S+)\s+(\S+)$/.exec(tok)
+        if (!m) continue
+        name = m[1]
+        state = m[2]
       }
+      if (Object.prototype.hasOwnProperty.call(found, name)) found[name] = (state === 'ok' || state === '1' || state === 'TRUE' || state === 'True') ? 'present' : null
     }
   }
   return { requested: pkgs.slice(), found: found }
@@ -450,7 +623,24 @@ function assembleArgv(det, mode, payload) {
   const d = det.desc
   if (det.name === 'cli') {
     const cliArgv = (payload.cli && Array.isArray(payload.cli.argv)) ? payload.cli.argv : []
-    return { argv: [det.exe].concat(cliArgv), cli: { command: payload.cli.command, argv: cliArgv } }
+    const argv = [det.exe].concat(cliArgv)
+    // round-7 (finding 4): with mode:'code' the script is archived as `script.txt`, but the caller
+    // cannot know the runId in advance - so the archived script path is appended automatically and
+    // the documented "run this code" flow actually RUNS it (instead of dropping into a REPL, exit 0,
+    // empty stdout).
+    // round-7 (live nuance): ONLY when the caller's argv does not already provide a program slot.
+    // `python -c 'print(1)'` runs the caller's code, and appending the archived file would silently
+    // feed it as `sys.argv[1]` - the caller's argv must win there.
+    const runsOwnCode = cliArgv.some((a) => a === '-c' || a === '-m' || a === '-e' || a === '--eval' || a === '--command')
+    const appendScript = !!payload.scriptAbs && (mode === 'code' || mode === 'file') && !runsOwnCode
+    if (appendScript) argv.push(payload.scriptAbs)
+    return {
+      argv: argv,
+      cli: {
+        command: payload.cli.command, argv: cliArgv, scriptAppended: appendScript,
+        scriptSkipped: (!!payload.scriptAbs && (mode === 'code' || mode === 'file') && runsOwnCode) ? 'caller argv already provides a program slot (-c/-m/-e/--eval)' : null,
+      },
+    }
   }
   if (mode === 'code' || mode === 'file') {
     return { argv: [det.exe].concat((d.scriptArgv || []).map((a) => a === '<script>' ? payload.scriptAbs : a)) }
@@ -460,6 +650,19 @@ function assembleArgv(det, mode, payload) {
     return { argv: [det.exe].concat(d.evalArgv.map((a) => a === '<expr>' ? payload.expr : a)) }
   }
   return { refused: 'unknown mode' }
+}
+
+// round-7 (findings 3/5): for `engine:'cli'` the descriptor is generic, so the FAMILY of the resolved
+// command has to be inferred from its basename to (a) run the right package precheck and (b) report a
+// real version. Unknown commands are reported as unknown and their package precheck is SKIPPED (a
+// false "missing" must never block the escape hatch).
+function engineFamilyForExe(exe) {
+  const base = String(exe || '').replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.(exe|cmd|bat|sh)$/, '')
+  if (/^python[0-9.]*$/.test(base) || base === 'py') return 'python'
+  if (base === 'rscript' || base === 'r') return 'r'
+  if (base === 'octave' || base === 'octave-cli') return 'octave'
+  if (base === 'julia') return 'julia'
+  return null
 }
 
 // AUDIT-B FIX (HIGH): `applyOverride` used to read only `params.mathEngineOverride`, which no preset
@@ -584,18 +787,55 @@ async function opProbe(H, args, params) {
   const probe = await probeMathEngines(H, { refresh: !!(args.packages && args.packages.indexOf('refresh') !== -1) })
   const pkgs = (args.packages || []).filter((p) => p !== 'refresh')
   const want = pkgs.length ? pkgs : params.mathPackages
+  // round-7 (fix 1): a probe that NAMES an engine must describe THAT engine. Previously the response
+  // carried `engine: null` (or the first ALLOWED engine) and the failure path always blamed
+  // `params.mathEngines[0]` (python) - so `probe {engine:'r'}` echoed python and told the user to
+  // install python. Resolve the requested engine up front instead.
+  const requested = (args.engine && args.engine !== 'auto') ? String(args.engine) : null
+  const chosen = requested
+    ? await resolveEngine(H, requested, params, args)
+    : (probe.engines.length ? await resolveEngine(H, probe.engines[0].name, params, args) : null)
   let packages = { requested: want.slice(), found: {} }
-  if (want.length && probe.engines.length) {
-    const det = await resolveEngine(H, args.engine && args.engine !== 'auto' ? args.engine : probe.engines[0].name, params, args)
-    if (det.ok) packages = await probePackages(H, det, want)
+  const probeDet = familyProbeDet(chosen)
+  if (want.length && probeDet) packages = await probePackages(H, probeDet, want)
+  else if (want.length && chosen && chosen.ok && chosen.name === 'cli') packages = { requested: want.map((s) => parsePackageSpec(s).name || s), found: {}, precheckSkipped: 'engine=cli：无法从命令名判断引擎族（不阻塞）' }
+  if (requested && chosen && !chosen.ok) {
+    // Policy/absence refusal for the REQUESTED engine, with its own guidance.
+    const out = Object.assign({}, chosen)
+    out.op = 'probe'
+    out.engines = probe.engines
+    out.available = !!probe.available
+    out.packages = packages
+    return out
   }
-  if (!probe.available) {
-    const first = params.mathEngines[0] || 'python'
-    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎', { next: userInstallNext(first), engines: [], available: false, packages: packages })
+  if (!probe.available && !(chosen && chosen.ok)) {
+    const first = requested || params.mathEngines[0] || 'python'
+    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（请求：' + first + '）', { next: userInstallNext(first), engines: [], available: false, packages: packages })
     out.op = 'probe'
     return out
   }
-  return { ok: true, op: 'probe', engine: null, engines: probe.engines, available: true, packages: packages, message: '可用引擎：' + probe.engines.map((e) => e.name + ' ' + e.version).join('、') }
+  // A REQUESTED engine that resolved (e.g. `cli`, or a runtime-discovered interpreter) counts as
+  // available even when auto-detection found nothing - otherwise probe denied what run would do.
+  const engines = probe.engines.slice()
+  if (chosen && chosen.ok && !engines.some((e) => e.name === chosen.name)) {
+    engines.push({ name: chosen.name, path: chosen.exe, version: chosen.version, license: (MATH_ENGINES[chosen.name] || {}).license })
+  }
+  const engineInfo = (chosen && chosen.ok) ? { name: chosen.name, path: chosen.exe, version: chosen.version } : null
+  return {
+    ok: true, op: 'probe', engine: engineInfo ? engineInfo.name : null, engineInfo: engineInfo,
+    engines: engines, available: true, packages: packages,
+    message: '可用引擎：' + engines.map((e) => e.name + ' ' + e.version).join('、') + (engineInfo ? '（请求 ' + engineInfo.name + '：' + engineInfo.version + '）' : ''),
+  }
+}
+
+// round-7 (finding 3): a cli command has no package probe of its own, so the FAMILY descriptor of
+// the resolved executable must provide one. Returns null when the family is unknown - the caller then
+// SKIPS the precheck (never a false "missing", which blocked the escape hatch).
+function familyProbeDet(det) {
+  if (!det || det.name !== 'cli') return det
+  const fam = det.family || engineFamilyForExe(det.exe)
+  const fd = fam ? MATH_ENGINES[fam] : null
+  return (fd && fd.packageProbe) ? { ok: true, name: fam, desc: fd, exe: det.exe, version: det.version } : null
 }
 
 // ── op: run ─────────────────────────────────────────────────────────────────────────────────────
@@ -611,10 +851,15 @@ async function opRun(H, args, params) {
   const engineLabel = det.name === 'cli' ? ('cli:' + cliCommand) : det.name
 
   const want = (args.packages && args.packages.length) ? args.packages : params.mathPackages
-  const pk = await probePackages(H, det2, want)
+  // round-7 (finding 3): for cli the precheck runs against the FAMILY of `cli.command` (same
+  // discovery-shaped logic); an unrecognisable command SKIPS the precheck instead of reporting a
+  // false "missing" that would block the escape hatch.
+  const probeDet = familyProbeDet(det2)
+  const pk = probeDet ? await probePackages(H, probeDet, want) : { requested: want.map((s) => parsePackageSpec(s).name || s), found: {} }
   // Presence is keyed by BASE NAME (round-6 D); the plan keeps the original specs so the manager
-  // receives the version constraint verbatim.
-  const missing = want.map((s) => parsePackageSpec(s).name || s).filter((p) => Object.prototype.hasOwnProperty.call(pk.found, p) && !pk.found[p])
+  // receives the version constraint verbatim. round-7: a precheck that could not RUN (null spawn /
+  // timeout) must not be read as "missing" - that misled a real session.
+  const missing = (probeDet && !pk.probeFailed) ? want.map((s) => parsePackageSpec(s).name || s).filter((p) => Object.prototype.hasOwnProperty.call(pk.found, p) && !pk.found[p]) : []
   if (missing.length) {
     return fail('MATH_MISSING_PACKAGES', det.name, '需要的包未安装：' + missing.join(', ') + '（只检查是否存在；版本求解交给包管理器）', {
       missing: missing,
@@ -694,6 +939,8 @@ async function opRun(H, args, params) {
   }
 
   const warnings = []
+  if (!probeDet && want.length) warnings.push(warning('PACKAGE_PRECHECK_SKIPPED', 'engine=cli：无法从命令名判断引擎族，已跳过包预检（不阻塞执行，也不会误报缺包）；如需预检请直接用 python/r/octave/julia 或改用可识别的解释器路径。'))
+  if (pk && pk.probeFailed && want.length) warnings.push(warning('PACKAGE_PRECHECK_UNKNOWN', '包预检未能执行（宿主 subprocess 在这几次尝试里返回空/超时，会话早期常见）：本次不判定缺包、不阻塞执行；如需确定性结论请重试或直接用对应引擎。probe=' + JSON.stringify(pk.argv) + ' attempts=' + JSON.stringify(pk.attempts)))
   if (fullOut.length > MATH_CAPS.stdout) warnings.push(warning('OUTPUT_TRUNCATED', 'stdout 超过 64KB，完整版见 ' + dir + '/stdout.txt'))
   if (scriptChanged) warnings.push(warning(MATH_SCRIPT_CHANGED_WARNING, 'scriptChanged：文件 ' + fileRel + ' 自上一次回执以来已改变（旧回执不再代表当前代码），本次已写出新 attempt ' + attempt + '。'))
   if (scriptChangedDuringRun) warnings.push(warning(MATH_SCRIPT_CHANGED_DURING_RUN_WARNING, 'scriptChangedDuringRun：文件 ' + fileRel + ' 在本次运行期间被改动（可能有另一个成员在编辑）；本次回执的 scriptHash 是运行前版本 ' + String(sourceHashBefore).slice(0, 12) + '…，请重跑后再引用。'))
@@ -723,7 +970,7 @@ async function opRun(H, args, params) {
     warnings: warnings,
     determinism: { inputSha256: input, packagesSorted: true, noWallClockInId: true },
   }
-  if (assembled.cli) receipt.cli = { command: assembled.cli.command, argv: assembled.cli.argv, stdinUsed: false }
+  if (assembled.cli) receipt.cli = { command: assembled.cli.command, argv: assembled.cli.argv, stdinUsed: false, scriptAppended: !!assembled.cli.scriptAppended, scriptSkipped: assembled.cli.scriptSkipped || null }
   const receiptJson = JSON.stringify(receipt, null, 2)
   await H.writeText(dir + '/receipt.json', receiptJson)
   await H.writeText(dir + '/receipt.md', renderReceiptMd(receipt, fullOut, fullErr))
@@ -739,6 +986,7 @@ async function opRun(H, args, params) {
     scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
     sourceFile: fileRel || null,
     previousReceipt: receipt.previousReceipt,
+    cliScriptAppended: !!(receipt.cli && receipt.cli.scriptAppended),
     packages: pk.found,
     exit: receipt.exit, timedOut: receipt.timedOut, ms: receipt.ms,
     stdout: fullOut.slice(0, MATH_CAPS.stdout), stderr: fullErr.slice(0, MATH_CAPS.stderr),

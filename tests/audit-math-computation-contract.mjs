@@ -177,6 +177,10 @@ for (const P of PRESETS) {
   }
   ok(js.indexOf('MATH_SUBSTITUTION_RULE_LINE') !== -1, tag + 'references MATH_SUBSTITUTION_RULE_LINE (zh persona text source)')
   if (P.dir === 'vibe-math-v4' || P.dir === 'vibe-math-v5') ok(js.indexOf('MATH_ARCHIVE_WORKFLOW_LINE_EN') !== -1, tag + 'references MATH_ARCHIVE_WORKFLOW_LINE_EN (en persona text source)')
+
+  // 4d. round-7 (fix 2): every preset must wire the bundled-runtime discovery seam, otherwise a
+  // machine whose only interpreter is DSH's own runtime still reports MATH_ENGINE_NOT_FOUND.
+  ok(js.indexOf('runtimeRoots') !== -1 && js.indexOf('listDirAbs') !== -1, tag + 'wires runtimeRoots + listDirAbs (DSH bundled-runtime discovery)')
 }
 
 // 5. README (both languages) document the six parameters

@@ -412,7 +412,15 @@ section('8 cli engine: ON by default, and the two ways to disable it')
   const r = await h.math({ op: 'run', engine: 'cli', mode: 'code', code: '1+1\n', cli: { command: 'node', argv: ['-e', 'console.log(1+1)'] } })
   assert(r.ok === true, '★ engine=cli runs with the DEFAULT parameters')
   const argv = h.state.runs[h.state.runs.length - 1].argv
-  assert(argv.length === 3 && argv[1] === '-e' && argv[2] === 'console.log(1+1)', '★ cli argv is [<resolved command>, ...cli.argv] (nothing shell-wrapped)')
+  // round-7 (finding 4 + live nuance): mode:'code' appends the archived script ONLY when the caller's
+  // argv has no program slot. This fixture passes `-e console.log(1+1)`, i.e. the caller's argv RUNS
+  // the code, so the script must NOT be appended (python/node would read it as an extra argument).
+  assert(argv.length === 3 && argv[1] === '-e' && argv[2] === 'console.log(1+1)', '★ cli argv is [<resolved command>, ...cli.argv] when the caller argv already runs code (nothing shell-wrapped)')
+  assert(r.cliScriptAppended === false, '★ the return shell reports cliScriptAppended=false for a caller-supplied program slot')
+  // …and with NO program slot the archived script IS appended (the "run this code" flow).
+  const r2 = await h.math({ op: 'run', engine: 'cli', mode: 'code', code: '1+1\n', cli: { command: 'node', argv: [] } })
+  const argv2 = h.state.runs[h.state.runs.length - 1].argv
+  assert(r2.ok === true && r2.cliScriptAppended === true && /script\.txt$/.test(String(argv2[argv2.length - 1])), '★ …while an empty caller argv gets the archived script appended (' + JSON.stringify(argv2) + ')')
   assert(String((r.engineInfo && r.engineInfo.name) || r.engine || '').indexOf('cli') === 0, '★ the engine is reported as cli:<command> (' + JSON.stringify(r.engineInfo && r.engineInfo.name) + ')')
   assert(r.receipt && r.receipt.dir, '★ a cli run still leaves a receipt (the difference from the host shell)')
   // (a) mathMode=typed refuses cli, with zero spawns
@@ -617,7 +625,12 @@ section('16 audit C #2: per-session module instances — two sessions are fully 
   assert(JSON.stringify(recA.argv).indexOf('python') !== -1 && JSON.stringify(recB.argv).indexOf('octave') !== -1, '★ each receipt echoes its own argv')
   const engineSpawns = h.state.spawns.filter(s => /python|octave/.test(String(s.argv[0])))
   const norm = p => String(p).replace(/\\/g, '/').replace(/\/$/, '')
-  assert(engineSpawns.length >= 2 && engineSpawns.every(s => norm(s.cwd) === norm(h.projectRoot)), '★ every engine spawn went through its own session\'s project-root accessor (' + engineSpawns.length + ' spawns, cwd=' + norm(engineSpawns[0] && engineSpawns[0].cwd) + ')')
+  // round-7: EXECUTION spawns use the session's project root; DISCOVERY probes (version/licence) use
+  // a guaranteed-to-exist cwd instead, because on a brand-new session that root does not exist yet.
+  const versionSpawns = engineSpawns.filter(s => s.argv.indexOf('--version') !== -1)
+  const execSpawns = engineSpawns.filter(s => s.argv.indexOf('--version') === -1)
+  assert(execSpawns.length >= 2 && execSpawns.every(s => norm(s.cwd) === norm(h.projectRoot)), '★ every engine EXECUTION spawn went through its own session\'s project-root accessor (' + execSpawns.length + ' spawns, cwd=' + norm(execSpawns[0] && execSpawns[0].cwd) + ')')
+  assert(versionSpawns.length > 0 && versionSpawns.every(s => norm(s.cwd) !== norm(h.projectRoot)), '★ discovery/version probes use a guaranteed cwd, never the (possibly missing) project root (' + versionSpawns.length + ' probes)')
   // Session B is in `typed` mode; session A must not inherit that policy either.
   const cliA = await h.callTool('math_computation', { op: 'run', engine: 'cli', mode: 'code', code: '1\n', cli: { command: 'node', argv: [] } }, h.ROOT)
   assert(cliA.code !== 'MATH_REFUSED' || !/typed/.test(String(cliA.message || '')), '★ session A is NOT in B\'s typed mode (cli refusal is not inherited)')

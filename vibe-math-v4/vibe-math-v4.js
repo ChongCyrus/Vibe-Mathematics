@@ -196,6 +196,11 @@ export function apply(ctx) {
       // Same capability flag as the registered host: the prompt-side probe should not advertise
       // engines on a host that cannot execute at all.
       hasSubprocess: ()=>!!subprocessOf(),
+      // round-7 (fix 2): DSH's own bundled runtimes (`<home>/.dsh/dsh-runtimes/*/dependencies/<engine>/`)
+      // as a LAST resort after PATH. Generic roots only; the module globs the tree name (never
+      // `dsh-primary-runtime`) and accepts only the descriptor's own candidate names.
+      runtimeRoots: () => { const env = process.env.DSH_HOME; if (env) return [String(env)]; const home = String(process.env.HOME || process.env.USERPROFILE || ''); return home ? [home.replace(/[\\/]+$/, '') + '/.dsh'] : [] },
+      listDirAbs: async (abs)=>{ try { const t=await fsTarget(abs); const st=await fs.stat(t); if(!st) return []; return (await fs.listDir(t))||[] } catch(e){ return [] } },
       log: (kind,msg)=>logActivity(String(kind||'math'),String(msg||'')),
       refreshAvailability: ()=>refreshMathAvailability(),
     }
@@ -3988,6 +3993,9 @@ export function apply(ctx) {
       // audit-R2 lens-2: attached ONLY when the session surface really has it, so a surface without
       // listDir reaches the module as an ABSENT field (the module's optional-callback contract).
       ...(typeof hostObj.listDir === 'function' ? { listDir: (rel)=>hostObj.listDir(rel) } : {}),
+      // round-7 (fix 2): pass the bundled-runtime seam through to the per-session module instance.
+      ...(typeof hostObj.runtimeRoots === 'function' ? { runtimeRoots: ()=>hostObj.runtimeRoots() } : {}),
+      ...(typeof hostObj.listDirAbs === 'function' ? { listDirAbs: (abs)=>hostObj.listDirAbs(abs) } : {}),
       resolveExecutable: (cmd)=>hostObj.resolveExecutable(cmd),
       spawn: (o)=>hostObj.spawn(o),
       // Optional capability flag: a host that KNOWS it has no subprocess service reports

@@ -513,6 +513,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 > **替代必须声明**：当替代方案改变**精确性或结论强度**（精确解→数值近似、闭式解→采样/求积、改精度/容差/假设、换算法类）时，结论**必须写明**，不得像得到了原本的结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`，已注入四套 persona 与提示词）。
 
 > **安装与版本**：`op:'install'` 按**检测到的 python 环境**分派 conda/mamba（`-c conda-forge`）、uv（`uv pip …`）或 pip 回退（歧义时标 `managerAssumed`）；R/Octave/Julia **只做用户级**（`system` ⇒ `MATH_REFUSED` + 每引擎理由）。**版本求解交给包管理器**：本工具只按 base name 查存在、把 `pkg==1.2`（conda `pkg=1.2`）原样透传，危险或不认识的写法 ⇒ `unsupported-version-syntax`。详见 [`docs/math-computation.md`](docs/math-computation.md) §5.1–5.3。
+> **引擎发现**：先看 PATH，最后才扫 **DSH 自带运行时**（`<DSH_HOME 或用户主目录>/.dsh/dsh-runtimes/*/dependencies/<engine>/`，树名**通配**）；找到就报**真实版本**，**找不到才**给按 OS 的安装指引，且指引针对**你请求的那个引擎**。`op:'probe'` 报的就是请求的引擎；`mathEngineOverride` **只能覆盖 argv 模板、不能指定可执行文件**，所以它不是发现手段（正解是 PATH / DSH 运行时 / `engine:'cli'` + `cli.command`）。`engine:'cli'` 下：包预检按 `cli.command` 的族进行（不可识别则跳过并给 `PACKAGE_PRECHECK_SKIPPED` 警告）、`mode:'code'` 会**自动把归档脚本追加到 argv**（所以真的会跑代码，而不是掉进 REPL）、版本报真实值。详见 [`docs/math-computation.md`](docs/math-computation.md) §5.4。
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |

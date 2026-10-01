@@ -365,7 +365,10 @@ section('§10 cli 默认开启（mathMode / mathEngines 两条禁用路径）')
   assert(ok.ok === true && /^cli/.test(String(ok.engine)), '★ 默认档 cli 能跑通（engine=cli 或 cli:<command>）（got ' + JSON.stringify(ok).slice(0, 400) + '）')
   assert(!!ok.receipt && existsSync(join(projRoot(), ok.receipt.json)), '★ cli 也走同一套回执管线（receipt.json 落盘）')
   const cliSpawn = fake.spawns.filter((s) => s.argv[0] === '/fake/cli/echo').slice(-1)[0]
-  assert(!!cliSpawn && JSON.stringify(cliSpawn.argv) === JSON.stringify(['/fake/cli/echo', 'MATHCLI']), '★★ cli 的 argv === [<command>, ...<cli.argv>]（不是 shell 拼接）')
+  // round-7 (finding 4): mode:'code' appends the ARCHIVED script path (the caller cannot know the
+  // runId), so the executed argv is [command, ...cli.argv, <script>]; the receipt keeps the user argv.
+  assert(!!cliSpawn && cliSpawn.argv[0] === '/fake/cli/echo' && cliSpawn.argv[1] === 'MATHCLI' && /script\.txt$/.test(String(cliSpawn.argv[2] || '')), '★★ cli 的 argv === [<command>, ...<cli.argv>, <归档脚本>]（不是 shell 拼接）')
+  assert(ok.cliScriptAppended === true, '★★ cli 回执标注 scriptAppended（mode:code 真的把脚本传给了命令）')
   await call('vibe_math_set_params', { mathMode: 'typed' })
   fake.spawns.length = 0
   const pol = await call('math_computation', { op: 'run', engine: 'cli', mode: 'code', code: 'MATHCLI', cli: { command: 'echo', argv: ['MATHCLI'] } })

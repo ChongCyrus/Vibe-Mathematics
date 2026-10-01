@@ -525,6 +525,11 @@ export function apply(ctx) {
     // **可选能力，按宿主实际情况声明**：宿主 fs 没有 listDir 就不给这个回调（模块据此跳过
     // "每项目 run 目录数 >200" 的保留检查，而不是每次运行都白问一次）。
     listDir: (typeof fs.listDir === 'function') ? mathListDir : undefined,
+    // round-7 (fix 2): DSH's own bundled runtimes (`<home>/.dsh/dsh-runtimes/*/dependencies/<engine>/`)
+    // as a LAST resort after PATH. Only generic roots are supplied here; the module globs the tree
+    // name (never `dsh-primary-runtime`) and only accepts the descriptor's own candidate names.
+    runtimeRoots: () => { const env = process.env.DSH_HOME; if (env) return [String(env)]; const home = String(process.env.HOME || process.env.USERPROFILE || ''); return home ? [home.replace(/[\\/]+$/, '') + '/.dsh'] : [] },
+    listDirAbs: async function (abs) { try { const t = await fsTarget(abs); const st = await fs.stat(t); if (!st) return []; return (await fs.listDir(t)) || [] } catch (e) { return [] } },
     writeText: async function (rel, text) { return await writeText(rel, text) },
     readText: async function (rel) { return await readText(rel) },
     exists: mathExists,

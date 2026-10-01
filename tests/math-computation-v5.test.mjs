@@ -295,12 +295,17 @@ section('1 the six frozen params reach every v5 surface')
 // ---------- 2. probe: hit / miss with the per-OS user-install guide ----------
 section('2 op=probe reports availability, and a missing engine comes with the guide')
 {
+  // round-7: with bundled-runtime discovery a "no engine anywhere" fixture must also isolate the
+  // runtime trees, so DSH_HOME is pinned to an empty dir for this miss case (and restored after).
+  const prevDshHome = process.env.DSH_HOME
+  process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'vibe-v5-nodsh-'))
   const miss = makeHost(makeSeam({ installed: {} }))
   const r0 = await miss.callMath({ op: 'probe' })
   assert(r0.ok === false && r0.code === 'MATH_ENGINE_NOT_FOUND' && r0.next && r0.next.kind === 'user-install',
     '★ no engine ⇒ MATH_ENGINE_NOT_FOUND + next.kind=user-install (' + JSON.stringify({ c: r0.code, n: r0.next && r0.next.kind }) + ')')
   assert(!!(r0.next && r0.next.perOs && r0.next.perOs.windows && r0.next.perOs.linux),
     'the guide carries per-OS install commands')
+  if (prevDshHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevDshHome
   const hit = makeHost(makeSeam({ installed: { python: true } }))
   const r1 = await hit.callMath({ op: 'probe' })
   assert(r1.ok === true && r1.engines.some((e) => e.name === 'python' && /3\.11/.test(e.version)),
@@ -423,8 +428,11 @@ section('9 cli is a tool path: default on, disabled by mathMode or by the engine
   assert(r.ok === true && r.engineInfo && r.engineInfo.name === 'cli:my-tool' && r.engineInfo.source === 'cli',
     '★ engine=cli runs by default and is recorded as cli:<command> (' + JSON.stringify(r.engineInfo) + ')')
   const cliCall = seam.runCalls[seam.runCalls.length - 1]
-  assert(JSON.stringify(cliCall.argv) === JSON.stringify(['C:/fake/my-tool', '--json', 'q']),
-    'cli argv is exactly [command, ...cli.argv] (' + JSON.stringify(cliCall.argv) + ')')
+  // round-7 (finding 4): mode:'code' appends the archived script path, so the executed argv is the
+  // user argv plus that path; the receipt keeps the user argv verbatim.
+  assert(cliCall.argv.length === 4 && cliCall.argv[0] === 'C:/fake/my-tool' && cliCall.argv[1] === '--json' && cliCall.argv[2] === 'q' && /script\.txt$/.test(String(cliCall.argv[3])),
+    'cli argv is [command, ...cli.argv, <archived script>] (' + JSON.stringify(cliCall.argv) + ')')
+  assert(r.cliScriptAppended === true, 'the return shell flags cliScriptAppended (' + JSON.stringify(r.cliScriptAppended) + ')')
   assert(r.receipt && existsSync(join(INST(h), r.receipt.json)), 'a cli run still leaves a receipt (that is the difference from a bare shell)')
   const beforeTyped = seam.calls.length
   await h.callTool('vibe_v5_set', { mathMode: 'typed' })

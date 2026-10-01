@@ -22,8 +22,13 @@ export const MATH_ENGINES = {
     candidates: ['python3', 'python', 'py'], winPrefix: ['-3'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], stdinArgv: ['-'], ext: '.py',
-    probeCode: "import importlib.util,sys;print('|'.join('%s:%s'%(p,'ok' if importlib.util.find_spec(p) else 'missing') for p in sys.argv[1:]))",
-    packageProbe: { argv: ['-c', '<probeCode>', '<pkgs>'], parse: 'pairs' },
+    // round-7 (live): NO shell metacharacters (`|`, `%`) in any probe argv - a real host rejected
+    // them with a null spawn. One line per package: "name ok|missing".
+    probeCode: "import importlib.util,sys\nfor p in sys.argv[1:]: print(p, 'ok' if importlib.util.find_spec(p) is not None else 'missing')",
+    // round-7 (finding 6, found on the real bundled python): the probe code iterates `sys.argv[1:]`,
+    // so the names must be SEPARATE argv items - the old comma-joined `<pkgs>` made it look up one
+    // package literally named "numpy,pandas" and reported everything missing.
+    packageProbe: { argv: ['-c', '<probeCode>', '<pkgs...>'], parse: 'pairs' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS,
     install: {
       manager: 'pip',
@@ -66,7 +71,8 @@ export const MATH_ENGINES = {
     candidates: ['Rscript', 'R'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], stdinArgv: ['--no-save', '--slave'], ext: '.R',
-    probeCode: "cat(paste(sapply(strsplit('__PKGS__',',')[[1]],function(p) paste0(p,':',requireNamespace(p,quietly=TRUE))),collapse='|'))",
+    // round-7 (live): line-per-package, no `|` in the argv.
+    probeCode: "for (p in strsplit('__PKGS__',',')[[1]]) cat(p, if (requireNamespace(p, quietly=TRUE)) 'ok' else 'missing', '\\n')",
     packageProbe: { argv: ['-e', '<probeCode>'], parse: 'pairs' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS,
     install: {
@@ -84,7 +90,8 @@ export const MATH_ENGINES = {
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['--no-gui', '--quiet', '<script>'], evalArgv: ['--no-gui', '--quiet', '--eval', '<expr>'],
     stdinArgv: ['--no-gui', '--quiet'], ext: '.m',
-    probeCode: "s=pkg('list'); n={'__QPKGS__'}; for i=1:numel(n); printf('%s:%s|',n{i},merge(any(cellfun(@(x) strcmp(x.name,n{i}),s)),'ok','missing')); end",
+    // round-7 (live): line-per-package via disp, no `|` and no `%` in the argv.
+    probeCode: "s=pkg('list'); n={'__QPKGS__'}; for i=1:numel(n); if any(cellfun(@(x) strcmp(x.name,n{i}),s)); disp([n{i} ' ok']); else; disp([n{i} ' missing']); end; end",
     packageProbe: { argv: ['--no-gui', '--quiet', '--eval', '<probeCode>'], parse: 'pairs' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS,
     install: {
@@ -116,7 +123,8 @@ export const MATH_ENGINES = {
     candidates: ['matlab'],
     versionArgv: ['-batch', 'disp(version)'], versionRe: '(\\d+\\.\\d+)',
     scriptArgv: ['-batch', "run('<script>')"], evalArgv: ['-batch', '<expr>'], stdinArgv: null, ext: '.m',
-    probeCode: "t={'__QPKGS__'}; for i=1:numel(t); printf('%s:%d|',t{i},license('test',t{i})); end",
+    // round-7 (live): no `|`/`%` in any probe argv (a real host rejected such argv with a null spawn).
+    probeCode: "t={'__QPKGS__'}; for i=1:numel(t); if license('test',t{i}); disp([t{i} ' ok']); else; disp([t{i} ' missing']); end; end",
     packageProbe: { argv: ['-batch', '<probeCode>'], parse: 'pairs' },
     license: 'commercial', argErrorHints: ARG_ERROR_HINTS,
     licenseProbe: { argv: ['-batch', "disp(license('test','MATLAB'))"], okWhen: 'trim-1' },
@@ -128,7 +136,8 @@ export const MATH_ENGINES = {
     candidates: ['maple'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+)',
     scriptArgv: ['-q', '<script>'], evalArgv: ['-q', '-c', '<expr>'], stdinArgv: null, ext: '.mpl',
-    probeCode: 'for p in ["__PKGS__"] do try with(p) catch: printf("%s:missing|", p); next end try; printf("%s:ok|", p) end do',
+    // round-7 (live): `print` instead of printf so the argv carries no `|`/`%`.
+    probeCode: 'for p in ["__PKGS__"] do try with(p) catch: print(p, " missing"); next end try; print(p, " ok") end do',
     packageProbe: { argv: ['-q', '-c', '<probeCode>'], parse: 'pairs' },
     license: 'commercial', argErrorHints: ARG_ERROR_HINTS,
     licenseProbe: { argv: ['-q', '-c', 'printf("1")'], okWhen: 'exit-0' },
