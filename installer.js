@@ -54,24 +54,27 @@ export const PRESETS = [
   {
     src: 'vibe-math-v2',
     dst: 'vibe-math-v2',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v2.js', '实现方案.md'],
+    // math-computation.js + math-engines.js are PER-PRESET copies of the shared module (they must be
+    // listed here: on the <=0.1.6 line only these files are copied into .agent-presets/<id>/, and the
+    // preset JS imports them relatively). guard: tests/audit-math-computation-parity.mjs
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v2.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
   },
   {
     src: 'vibe-math-v3',
     dst: 'vibe-math-v3',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v3.js', '实现方案.md'],
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v3.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
   },
   {
     src: 'vibe-math-v4',
     dst: 'vibe-math-v4',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v4.js', '实现方案.md'],
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v4.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
   },
   {
     src: 'vibe-math-v5',
     dst: 'vibe-math-v5',
     // 架构图.md belongs here for the same reason 实现方案.md does: the installer's policy is to put
     // the preset's documentation next to the preset, and the shipped v5 directory carries both.
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5.js', '实现方案.md', '架构图.md'],
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5.js', '实现方案.md', '架构图.md', 'math-computation.js', 'math-engines.js'],
   },
 ]
 

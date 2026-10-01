@@ -90,6 +90,20 @@ for (const m of src.matchAll(/(?:const|let|var)\s+\{([^}]+)\}\s*=/g)) {
   for (const part of m[1].split(',')) { const n = part.split(':').pop().trim(); if (n) defined.add(n) }
 }
 for (const m of src.matchAll(/catch\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/g)) defined.add(m[1])
+// ESM imports are DEFINITIONS too: the preset imports the shared `math_computation` module
+// (INTERFACE-FREEZE §5.1), so calling an imported function is not a ReferenceError. Without
+// this every imported symbol was reported as "called but never defined"; a call to a name that
+// is neither declared nor imported is still flagged.
+for (const m of src.matchAll(/import\s*(?:\*\s*as\s+([A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\{([^}]*)\}\s*)?from\s*['"][^'"]*['"]/g)) {
+  if (m[1]) defined.add(m[1])
+  if (m[2]) defined.add(m[2])
+  if (m[3]) {
+    for (const part of m[3].split(',')) {
+      const name = part.split(/\s+as\s+/).pop().trim()
+      if (name) defined.add(name)
+    }
+  }
+}
 // Function/method PARAMETERS are locally bound identifiers too, not free calls.
 for (const m of src.matchAll(/function\s*[A-Za-z_$]*\s*\(([^)]*)\)/g)) {
   for (const raw of m[1].split(',')) {

@@ -82,6 +82,8 @@
                   is not the same as "已验证"). The scheduler's child agents use them too; they work in every
                   mode.
 
+                - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+
                 Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
                 automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
                 automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
@@ -369,6 +371,8 @@
                   is not the same as "已验证"). The scheduler's child agents use them too; they work in every
                   mode.
 
+                - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+
                 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
                 <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
                 Data survives restarts via vibe_math_resume.
@@ -652,6 +656,7 @@
                     read one archived library file verbatim / check or wait for a background job). Residents use them
                     too; they work in every mode.
                   - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
+                  - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
                     objects, recorded blockers, formalization TODO, library paths).
                   - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
                 A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...).
@@ -982,6 +987,7 @@
                   - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_job — Lean formal
                     verification (execute / archive / list the reuse library / read an archived file
                     verbatim / watch the background compile queue). Members use them too; they work in every mode.
+                  - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
                 A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
                 LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):

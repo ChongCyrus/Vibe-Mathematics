@@ -263,11 +263,12 @@ function fakeLean(opts) {
     spawn(spec) {
       const argv = (spec.argv || []).map(String)
       // Only the LEAN engine is a compile: the plugin also uses the subprocess service for
-      // platform shell helpers (directory setup), and those must never pollute the call log
-      // nor be deferred by the gate.
+      // platform shell helpers (directory setup) AND for the math_computation engine probe
+      // (which resolves its own candidates through the same seam) — neither may pollute the
+      // Lean call log, nor be deferred by the gate.
       const head = String(argv[0] || '')
-      if (!/(^|[\\/])fake[\\/]/i.test(head) && !/(^|[\\/])lean$/i.test(head)) {
-        return { done: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }), terminate() { /* shell helper */ } }
+      if (!/(^|[\\/])lean$/i.test(head)) {
+        return { done: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }), terminate() { /* not a Lean compile */ } }
       }
       const file = argv[argv.length - 1]
       calls.push({ argv, file, cwd: spec.cwd })

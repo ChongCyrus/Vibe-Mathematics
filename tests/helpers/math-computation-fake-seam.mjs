@@ -1,0 +1,122 @@
+// Fake host seam for the math_computation shared module (integration owner).
+//
+// Purpose: drive `registerMathComputation(host)` with NO real engine and NO real subprocess, so
+// every branch (probe / run / receipt / install, all 11 failure codes, timeout, truncation, argv
+// echo, bad-argv) is testable on a machine with nothing installed. Owner suites that test a
+// PRESET's wiring use the preset's own injected subprocess service instead; this seam tests the
+// shared module itself.
+//
+// Lives under tests/helpers/ so the flat `*.mjs` scan in tests/run-tests.mjs does not treat it as
+// a suite (it only reads files directly inside tests/).
+import { createHash } from 'node:crypto'
+
+export const FAKE_ROOT = 'X:/fake/project'
+
+const VERSION_MARKERS = ['--version', 'disp(version)', '$Version']
+const LICENCE_MARKERS = ["disp(license('test','MATLAB'))", 'printf("1")', 'Print[$LicenseType]']
+const PACKAGE_MARKERS = ['importlib.util', 'requireNamespace', "pkg('list')", 'find_package', "license('test'", 'with(', 'Needs[']
+
+export function makeFakeHost(opts = {}) {
+  const installed = (opts.installed || ['python3', 'python', 'Rscript', 'octave', 'julia', 'matlab', 'maple', 'wolframscript']).slice()
+  const engineFor = (cmd) => {
+    const base = String(cmd).split(/[\\/]/).pop()
+    const map = { python3: 'python', python: 'python', py: 'python', Rscript: 'r', R: 'r', octave: 'octave', 'octave-cli': 'octave', julia: 'julia', matlab: 'matlab', maple: 'maple', wolframscript: 'wolfram', WolframKernel: 'wolfram', math: 'wolfram' }
+    if (map[base]) return map[base]
+    for (const name of Object.keys(map)) if (base.indexOf(name) === 0) return map[name]
+    return null
+  }
+  const files = new Map(Object.entries(opts.files || {}))
+  const state = {
+    files,
+    registrations: [],
+    spawns: [],
+    logs: [],
+    version: opts.version || '1.2.3',
+    packages: Object.assign({}, opts.packages || {}), // { name: 'present' | 'missing' | null }
+    licence: opts.licence !== false,
+    exit: opts.exit === undefined ? 0 : opts.exit,
+    hang: !!opts.hang,
+    hangProbe: !!opts.hangProbe,
+    stdoutBytes: opts.stdoutBytes || 0,
+    argError: opts.argError || null,
+    probeCalls: 0,
+  }
+
+  const classify = (argv) => {
+    const joined = argv.join(' ')
+    if (LICENCE_MARKERS.some((m) => joined.indexOf(m) !== -1)) return 'licence'
+    if (PACKAGE_MARKERS.some((m) => joined.indexOf(m) !== -1)) return 'packages'
+    if (VERSION_MARKERS.some((m) => joined.indexOf(m) !== -1)) return 'version'
+    return 'run'
+  }
+
+  const host = {
+    register(name, description, parameters, handler) {
+      state.registrations.push({ name, description, parameters, handler })
+    },
+    params: () => (typeof opts.params === 'function' ? opts.params() : (opts.params || {})),
+    projectRoot: () => opts.root || FAKE_ROOT,
+    designator: opts.designator || 'vibe-math-v2',
+    writeText: async (rel, text) => { files.set(String(rel).replace(/\\/g, '/'), String(text)); return true },
+    // Optional capability flag (INTERFACE-FREEZE §4): a host that knows it has no subprocess service
+    // says so, and the module reports MATH_NO_SUBPROCESS instead of a misleading ENGINE_NOT_FOUND.
+    hasSubprocess: ('hasSubprocess' in opts) ? (() => opts.hasSubprocess) : undefined,
+    readText: async (rel) => { const v = files.get(String(rel).replace(/\\/g, '/')); return v === undefined ? undefined : v },
+    exists: async (rel) => files.has(String(rel).replace(/\\/g, '/')),
+    resolveExecutable: async (cmd) => {
+      if (opts.resolveThrows) throw new Error('resolve failed: ' + cmd)
+      const raw = String(cmd)
+      const base = raw.split(/[\\/]/).pop()
+      // A caller-supplied path (engine='cli') is accepted as-is: that is the whole point of the
+      // escape hatch - the tool only has to resolve the command, not know the engine.
+      if (raw.indexOf('/') !== -1 || raw.indexOf('\\') !== -1) return raw
+      let ok = installed.indexOf(base) !== -1
+      if (!ok && opts.cliCommands && opts.cliCommands.indexOf(base) !== -1) ok = true
+      if (!ok) throw new Error('not found: ' + cmd)
+      return '/fake/bin/' + base
+    },
+    spawn: async ({ argv, cwd, timeoutMs, stdoutCap, stderrCap }) => {
+      state.spawns.push({ argv: argv.slice(), cwd, timeoutMs, stdoutCap, stderrCap })
+      const kind = classify(argv)
+      if (kind === 'version') {
+        if (state.hangProbe) return { exit: null, timedOut: true, killed: true, ms: timeoutMs, stdout: '', stderr: '' }
+        const exeName = String(argv[0] || 'engine').split(/[\\/]/).pop()
+        return { exit: 0, timedOut: false, killed: false, ms: 5, stdout: exeName + ' ' + state.version + '\n', stderr: '' }
+      }
+      if (kind === 'licence') {
+        if (!state.licence) return { exit: 1, timedOut: false, killed: false, ms: 5, stdout: '0\n', stderr: '' }
+        return { exit: 0, timedOut: false, killed: false, ms: 5, stdout: '1\n', stderr: '' }
+      }
+      if (kind === 'packages') {
+        const pairs = []
+        const joined = argv.join(' ')
+        for (const name of Object.keys(state.packages)) {
+          if (joined.indexOf(name) === -1) continue
+          const v = state.packages[name]
+          const present = (v === true || v === 'present' || v === 'ok')
+          pairs.push(name + ':' + (present ? 'ok' : 'missing'))
+        }
+        return { exit: 0, timedOut: false, killed: false, ms: 5, stdout: pairs.join('|') + '\n', stderr: '' }
+      }
+      // run
+      if (state.hang) return { exit: null, timedOut: true, killed: true, ms: timeoutMs, stdout: 'partial', stderr: '' }
+      if (state.argError) return { exit: 2, timedOut: false, killed: false, ms: 9, stdout: '', stderr: state.argError }
+      const out = state.stdoutBytes > 0 ? 'x'.repeat(state.stdoutBytes) : 'ran-ok\n'
+      if (state.exit !== 0) return { exit: state.exit, timedOut: false, killed: false, ms: 9, stdout: '', stderr: 'boom' }
+      return { exit: 0, timedOut: false, killed: false, ms: 9, stdout: out, stderr: '' }
+    },
+    log: (kind, msg) => { state.logs.push({ kind, msg }) },
+  }
+
+  state.handler = () => state.registrations[0] && state.registrations[0].handler
+  state.call = async (args) => {
+    const reg = state.registrations[0]
+    if (!reg) throw new Error('makeFakeHost: nothing registered yet - call registerMathComputation(host) first')
+    return await reg.handler(args)
+  }
+  state.file = (rel) => files.get(String(rel).replace(/\\/g, '/'))
+  state.engineFor = engineFor
+  return state.__host ? state : Object.assign(state, { host })
+}
+
+export function sha256(s) { return createHash('sha256').update(String(s)).digest('hex') }

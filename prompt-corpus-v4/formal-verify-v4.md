@@ -39,6 +39,22 @@ Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动�
 New items:
   (no new messages)
 
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}
 ```
@@ -95,6 +111,22 @@ New items:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -111,6 +143,21 @@ Resident researcher r-1 — CHECKPOINT（团队空闲，请由你们继续自主
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -128,6 +175,21 @@ Reply with ONLY a JSON object:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 ```
 
 ## [6] verify · require/verify
@@ -214,6 +276,22 @@ New items:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -336,6 +414,22 @@ New items:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 
@@ -403,6 +497,22 @@ New items:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -418,6 +528,22 @@ Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动�
 New items:
   (no new messages)
 
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}
 
@@ -436,6 +562,22 @@ Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动�
 New items:
   (no new messages)
 
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40}
 
@@ -463,6 +605,22 @@ New items:
     或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
     【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+
+- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+- math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
+- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
+- To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
+- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
+- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.
+- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset's existing verification/consensus path.
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 

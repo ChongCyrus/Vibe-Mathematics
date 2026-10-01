@@ -18,6 +18,23 @@
 // builtins (`process.platform`) — see the header note about the vm sandbox applying only to a
 // DYNAMIC package's host half.
 import { createHash } from 'node:crypto'
+// math_computation (docs/math-computation.md, `_oneoff/mc-P1-ready/INTERFACE-FREEZE.md` §5): the tool
+// CORE lives in the shared module — installed byte-identically into all four presets by the
+// integration owner and checked by `tests/audit-math-computation-parity.mjs`. This preset only WIRES
+// it: params, one registration, and the prompt text. Names/shapes come from the module, never
+// re-spelled here (the six parameter names are a frozen cross-preset contract).
+import {
+  registerMathComputation,
+  probeMathEngines,
+  MATH_TOOL_DESCRIPTION,
+  MATH_PERSONA_TOOL_LINE,
+  MATH_RULE_LINES,
+  MATH_RULE_LINES_EN,
+  MATH_PARAM_DEFAULTS,
+  MATH_PARAM_NAMES,
+  normalizeMathParams,
+  mathAvailabilityLine,
+} from './math-computation.js'
 
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
@@ -50,6 +67,11 @@ function hostChildLimitHint(limit){
 }
 
 export function apply(ctx) {
+  // The math_computation tool is registered ONCE, at apply level (FREEZE §4), but all the state it
+  // needs (live `params`, project root, fs, log) is per-session — so the registration wrapper below
+  // pins the calling session into `mathCallSession` for the duration of each call.
+  let mathReg = null
+  let mathCallSession = null
   const subagents = ctx.subagents
   const agents = ctx.agents
   const fs = ctx.fs
@@ -126,8 +148,92 @@ export function apply(ctx) {
       // `facilitator` roster member with an LLM — or one named resident (`resident:<id>`).
       paperEditor: 'office',
       paperLatexCommand: '',   // preferred LaTeX executable ('' = the standard detection order)
+      // ---- math_computation (docs/math-computation.md) ---------------------------
+      // The six MATH_* parameter names are a FROZEN cross-preset contract; the VALUES come from the
+      // shared module so a drift in one preset cannot diverge from the others (the integration
+      // owner's parity guard compares the four presets). `mathEngines`/`mathPackages` are copied,
+      // never aliased: `MATH_PARAM_DEFAULTS` is frozen and shared.
+      mathComputation: MATH_PARAM_DEFAULTS.mathComputation,   // 'auto' | 'on' | 'off' (off = true no-op)
+      mathMode: MATH_PARAM_DEFAULTS.mathMode,                 // 'typed+shell' | 'typed'
+      mathEngines: MATH_PARAM_DEFAULTS.mathEngines.slice(),
+      mathTimeoutMs: MATH_PARAM_DEFAULTS.mathTimeoutMs,
+      mathPackages: [],
+      mathInstallScope: MATH_PARAM_DEFAULTS.mathInstallScope,
     }
     let params = Object.assign({}, DEFAULT_PARAMS)
+    // ── math_computation availability line (P1) ────────────────────────────────────────────────
+    // The tool itself is registered ONCE at apply level (the host adapter there resolves the calling
+    // session dynamically). The PROMPT line is per-session state, so it is derived here from a
+    // session-local probe host: `probeMathEngines` caches per host object, so the expensive probe
+    // runs once per session and every later prompt re-uses it. `mathComputation:'off'` is a true
+    // no-op (no probe, no line).
+    const mathProbeHost = {
+      register: ()=>{},                       // probeMathEngines never registers; adaptHost requires it
+      params: ()=>params,
+      projectRoot: ()=>frameworkRoot(),
+      writeText: (rel,text)=>writeText(rel,text),
+      readText: (rel)=>readText(rel),
+      exists: async (rel)=>{ try { const t=await fsTarget(rel); return (await fs.stat(t))!==undefined } catch(e){ return false } },
+      resolveExecutable: async (cmd)=>{
+        const sub=subprocessOf()
+        if(sub===undefined||typeof sub.resolveExecutable!=='function') throw new Error('NO_SUBPROCESS')
+        return await sub.resolveExecutable(String(cmd))
+      },
+      spawn: async (o)=>{ const r=await mathSpawnAdapter(o); return r },
+      // Same capability flag as the registered host: the prompt-side probe should not advertise
+      // engines on a host that cannot execute at all.
+      hasSubprocess: ()=>!!subprocessOf(),
+      log: ()=>{},
+    }
+    /**
+     * The shared module's spawn contract is flat — `{argv,cwd,timeoutMs,stdoutCap,stderrCap}` →
+     * `{exit,timedOut,killed,ms,stdout,stderr}` — while the host service hands back a live handle.
+     * A TIMEOUT MUST ACTIVELY KILL: the same race-and-terminate discipline `leanRunFile` uses, so the
+     * module is never told "timed out" while the process is still running. Output is collected up to
+     * the caller's cap; `run` passes 4MB on purpose (the module archives the COMPLETE output itself
+     * and only truncates its REPLY to 64KB).
+     */
+    async function mathSpawnAdapter(o){
+      const sub=subprocessOf()
+      // `null` is the module's documented "this host cannot execute" signal (it maps it to
+      // MATH_NO_SUBPROCESS), so it must NOT be papered over with an empty success-looking result.
+      if(sub===undefined||typeof sub.spawn!=='function') return null
+      const spec=o||{}
+      const cap=Math.max(1000,Math.floor(Number(spec.timeoutMs))||MATH_PARAM_DEFAULTS.mathTimeoutMs)
+      const outCap=Math.max(1024,Math.floor(Number(spec.stdoutCap))||64*1024)
+      const errCap=Math.max(1024,Math.floor(Number(spec.stderrCap))||64*1024)
+      const started=now()
+      let handle
+      try { handle=sub.spawn({ argv:Array.isArray(spec.argv)?spec.argv:[], cwd:spec.cwd||frameworkRoot(), stdio:{stdin:'ignore',stdout:{maxBytes:outCap},stderr:{maxBytes:errCap}}, graceMs:cap }) }
+      catch(e){ return {exit:null,timedOut:false,killed:false,ms:now()-started,stdout:'',stderr:String((e&&e.message)||e)} }
+      let killedByUs=false, timerDispose=null, outcome
+      try {
+        outcome=await Promise.race([
+          handle.done,
+          new Promise(function(resolve){
+            if(typeof ctx.timeout!=='function') return   // no timer service: the host grace window is all we have
+            timerDispose=ctx.timeout(function(){
+              killedByUs=true
+              try { if(typeof handle.terminate==='function') handle.terminate() } catch(e){ /* best effort */ }
+              resolve({exitCode:null,signal:'SIGTERM'})
+            }, cap)
+          }),
+        ])
+      } catch(e){
+        if(timerDispose){ try { timerDispose() } catch(_e){} }
+        return {exit:null,timedOut:false,killed:killedByUs,ms:now()-started,stdout:'',stderr:String((e&&e.message)||e)}
+      }
+      if(timerDispose){ try { timerDispose() } catch(e){ /* already fired */ } }
+      let out='', err=''
+      try { if(handle.collected&&handle.collected.stdout) out=handle.collected.stdout.readFrom(0).text } catch(e){ /* best effort */ }
+      try { if(handle.collected&&handle.collected.stderr) err=handle.collected.stderr.readFrom(0).text } catch(e){ /* best effort */ }
+      const ms=now()-started
+      const exit=(outcome&&outcome.exitCode!==undefined)?outcome.exitCode:null
+      // Two ways a timeout is observed (identical to `leanRunFile`): OUR timer won and killed the
+      // handle, or the host's own grace window killed it first and its `done` beat our timer.
+      const timedOut=killedByUs||(exit!==0&&ms>=cap)
+      return {exit, timedOut, killed:killedByUs, ms, stdout:out, stderr:err}
+    }
     let running = false, autoDone = false, phase = 'idle'
     let residents = new Map(), mailboxes = new Map(), taskboard = [], decisions = []
     let meetings = [], reports = [], activityLog = []
@@ -305,7 +411,7 @@ export function apply(ctx) {
     }
     async function ensureDirs(){
       const base=frameworkRoot()
-      const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Verified/Lean','Formal','Formal/Jobs','Reliable','Notes','State']
+      const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Verified/Lean','Formal','Formal/Jobs','Computation','Reliable','Notes','State']
       // The GLOBAL reuse library (Formal/Lib + Formal/Proved) deliberately lives beside the
       // project tree, NOT inside it: cross-project reuse is the whole point (spec §3). It is
       // created here so the first `lean_archive kind='def'` never has to invent its parent.
@@ -940,6 +1046,40 @@ export function apply(ctx) {
           : '')
         +'归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
     }
+    // ================= math_computation availability line (P1) =================
+    // The line is DYNAMIC (it comes from the module's probe cache) while the resident prompts are
+    // built by BOTH sync and async builders, so the two language variants are cached here and
+    // refreshed from the async paths (start / resume / set / heartbeat) — a sync builder re-uses the
+    // last known line and kicks off a refresh when the cache is still cold. `mathComputation:'off'`
+    // is a true no-op: no probe, no line, nothing injected.
+    let mathAvailZh='', mathAvailEn='', mathAvailBusy=false
+    async function refreshMathAvailability(){
+      if(params.mathComputation==='off'){ mathAvailZh=''; mathAvailEn=''; return }
+      if(mathAvailBusy) return
+      mathAvailBusy=true
+      try {
+        const probe=await probeMathEngines(mathProbeHost)
+        // The third argument is the MODE: the module drops the shell-fallback sentence in 'typed'
+        // (prompts.md §4 consistency check 5) — the preset must not re-add it.
+        mathAvailZh=mathAvailabilityLine(probe,'zh',params.mathMode)
+        mathAvailEn=mathAvailabilityLine(probe,'en',params.mathMode)
+        // The availability line is REQUIRED to carry the rule lines (prompts.md §2/§4). Referencing
+        // both rule constants here is the drift check: if the module ever stops appending them, this
+        // preset notices instead of shipping an availability line without the rules.
+        if(mathAvailZh.indexOf(MATH_RULE_LINES[0])===-1||mathAvailEn.indexOf(MATH_RULE_LINES_EN[0])===-1){
+          logActivity('math','警告：mathAvailabilityLine 未附带规则段（MATH_RULE_LINES/_EN），提示词可能缺少用法规则')
+        }
+      } catch(e){ /* a probe failure must never break a prompt; keep the last known line */ }
+      finally { mathAvailBusy=false }
+    }
+    /** The availability + rules block: the frozen persona tool line (tools/params shape) followed by
+     *  the dynamic zh + en availability lines. v4's prompts are bilingual (English frame, Chinese
+     *  rules), so both variants are injected; `mathComputation:'off'` yields '' (a true no-op). */
+    function mathAvailabilityBlock(){
+      if(params.mathComputation==='off') return ''
+      if(!mathAvailZh&&!mathAvailEn){ refreshMathAvailability().catch(()=>{}); return '' }
+      return [MATH_PERSONA_TOOL_LINE, mathAvailZh, mathAvailEn].filter(Boolean).join('\n')
+    }
     /** The `formal` object every non-off prompt documents in its JSON reply contract. */
     function formalReplyField(target){
       return '{"formal":{"target":"'+String(target||'p-x')+'","decision":"used|blocked|defect","file":"Formal/'+String(target||'p-x')+'.lean","note":"难度判断/阻塞原因/具体偏差"}}'
@@ -1440,6 +1580,8 @@ export function apply(ctx) {
       return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
         +'\n`facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。'
         +(formalOn()?('\n'+formalWorkLine()):'')
+        // math_computation is INDEPENDENT of formalVerify (its own `mathComputation` switch).
+        +(mathAvailabilityBlock()?('\n'+mathAvailabilityBlock()):'')
     }
     function brainstormPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
@@ -1454,6 +1596,10 @@ export function apply(ctx) {
     async function normalPrompt(r){
       // Consume-and-clear ONCE: calling the accessor twice would return '' the second time (bug).
       const leanNotice=pendingLeanNoticeText()
+      // The math availability line is built from the probe cache; awaiting the refresh HERE means a
+      // cold cache still yields a complete line on the first wake (later wakes hit the cache).
+      await refreshMathAvailability()
+      const mathAvail=mathAvailabilityBlock()
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。\n'
         +'\n团队成员：\n'+banner()+'\n'
@@ -1463,6 +1609,8 @@ export function apply(ctx) {
         +(leanNotice?('\n'+leanNotice+'\n'):'')
         // 顺手形式化: computed from the CURRENT mode on every wake (docs §1: the mode is dynamic).
         +(formalOn()?('\n'+formalWorkLine()+'\n'):'')
+        // math_computation availability (dynamic probe cache; independent of formalVerify).
+        +(mathAvail?('\n'+mathAvail+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40'
         +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}'):'')
@@ -2236,6 +2384,9 @@ export function apply(ctx) {
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**\n'
         +(formalOn()?(formalWorkLine()+'\n'):'')
+        // math_computation availability (cached; `normalPrompt` awaits the refresh, so a heartbeat
+        // that follows a wake is never cold).
+        +(mathAvailabilityBlock()?(mathAvailabilityBlock()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \\"\\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40'
         +(formalOn()?(',"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}'):'')
@@ -2249,6 +2400,9 @@ export function apply(ctx) {
       // §2.2: the EXISTING heartbeat is the queue driver (same place, same discipline as the paper
       // retry: independent of `scheduler.running`). `runLeanQueue()` is one boolean when idle.
       heartbeatDisposer=ctx.timeout(()=>{ heartbeatDisposer=null; runLeanQueue().catch(()=>{}).then(()=>scheduleNext().catch(()=>{})) }, ms)
+      // Keep the math availability line current (engines can be installed while a run is live). The
+      // module's probe cache makes this a no-op after the first probe.
+      refreshMathAvailability().catch(()=>{})
     }
     // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
     // falling back silently to the resident self-summary directive when the service is absent.
@@ -3290,6 +3444,9 @@ export function apply(ctx) {
       // above exists to prevent), so only the safe half of the table runs: `queued` jobs are
       // re-driven and `running` jobs are marked/re-queued — never a `passed` from a stale record.
       await recoverLeanJobs({mode:'start',applySettled:false})
+      // Warm the math_computation availability cache so the FIRST resident prompt already carries
+      // the line (the probe is cached per registered instance, so later refreshes cost nothing).
+      await refreshMathAvailability()
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       paperState=null   // a fresh run gets a fresh paper flow (its durable record lives in Paper/<run id>/)
       // Re-base the artifact counter on the cards already on disk, so the auto-sync meeting counts
@@ -3325,6 +3482,7 @@ export function apply(ctx) {
       // §2.6 recovery runs AFTER loadAll (the formal records it may complete/annotate are restored
       // there — recovering earlier would write onto an unloaded `formal` and clobber them).
       await recoverLeanJobs({mode:'resume',applySettled:true})
+      await refreshMathAvailability()   // same reason as start(): the next wake must carry the line
       // A run the group CONCLUDED (unanimous voteSolved → autoDone) must not be silently revived into
       // a zombie that keeps waking residents with no consensus that it should still run. The group
       // decided it is done; continuing means a NEW run (vibe_v4_start / vibe_v4_configure).
@@ -3389,7 +3547,7 @@ export function apply(ctx) {
       // The parameter NAMES (not just the rendered string) so a caller — the `/v4 set` handler in
       // particular — can reject an unknown key instead of silently dropping it.
       paramsKeys: Object.keys(params),
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs','finalPaper','paperFormat','paperLanguage','paperCompilePdf','paperEditor','paperLatexCommand','leanAsync','leanInitiative','leanSearchPaths','leanJobsMaxParallel'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs','finalPaper','paperFormat','paperLanguage','paperCompilePdf','paperEditor','paperLatexCommand','leanAsync','leanInitiative','leanSearchPaths','leanJobsMaxParallel'].concat(MATH_PARAM_NAMES).map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function formalReportText(){
       if(!formalOn()) return '- 未启用（`formalVerify` = off；可用 vibe_v4_set 切到 encourage / require）'
       const v=formalView()
@@ -3469,6 +3627,19 @@ export function apply(ctx) {
       // v2 §A5: `office` (the session root / human side) by default, or `resident:<id>`.
       if(k==='paperEditor'){ const s=String(v==null?'':v).trim(); return paperEditorOk(s)?s:DEFAULT_PARAMS.paperEditor }
       if(k==='paperLatexCommand'){ const s=String(v==null?'':v).trim(); return s }
+      // math_computation P1: the six keys go through the SHARED normalizer (explicit
+      // enum/array/integer coercion there), so `'false'`-style strings and unknown enum values can
+      // never leak into `params` — v4's function returns unknown keys AS-IS, which is why an
+      // explicit branch is mandatory. The two array keys additionally accept the comma-string form
+      // that `/v4 set` produces (v4's own style for `leanArgs`), then the module is authoritative.
+      if(MATH_PARAM_NAMES.indexOf(k)!==-1){
+        let val=v
+        if((k==='mathEngines'||k==='mathPackages')&&typeof val==='string') val=val.split(',').map(x=>x.trim()).filter(Boolean)
+        const one=normalizeMathParams({[k]:val})
+        if(Object.prototype.hasOwnProperty.call(one,k)) return one[k]
+        const def=DEFAULT_PARAMS[k]
+        return Array.isArray(def)?def.slice():def
+      }
       // lean-incremental-async §1.1: an EXPLICIT branch — the string 'false' (what `/v4 set` hands us)
       // must normalise to boolean false, never survive as a truthy string.
       if(k==='leanAsync'){
@@ -3518,6 +3689,9 @@ export function apply(ctx) {
       const has = (o,k)=>Object.prototype.hasOwnProperty.call(o,k)
       const ignored=keys.filter(k=>!has(params,k))
       for(const k of keys){ if(has(params,k)){ const nv=normalizeParam(k, upd[k]); params[k]= (typeof nv==='number') ? clampInt(k, nv) : nv } }
+      // A math parameter changes what the NEXT prompt must say (the availability line encodes the
+      // enabled engines and the mode), so refresh it here — the probe is cached, so this is cheap.
+      if(keys.some(k=>MATH_PARAM_NAMES.indexOf(k)!==-1)) refreshMathAvailability().catch(()=>{})
       saveSettings().catch(()=>{})
       if(ignored.length){
         logActivity('set','忽略未知参数：'+ignored.join(', '))
@@ -3605,6 +3779,24 @@ export function apply(ctx) {
       // `leanRunToolApi`, so the async paths can be driven deterministically (no timer races).
       leanQueueApi:{ enqueue:enqueueLeanJob, runQueue:runLeanQueue, state:()=>({running:leanInflight.map(leanJobView),queued:leanQueue.slice(),jobs:listLeanJobs(),notices:leanNotices.slice(),cap:Math.max(1,Math.floor(Number(params.leanJobsMaxParallel))||1)}), dispose:disposeLean, recover:recoverLeanJobs, job:leanJobTool },
       leanRead, listLeanJobs, leanJobs:()=>Object.assign({},leanJobs), leanJobTool,
+      /** math_computation host surface. The tool is registered ONCE at apply level, so the wrapper
+       *  there pins the calling session; these accessors always read that session's LIVE state
+       *  (never a snapshot — `/v4 set mathMode=typed` must change the very next call). */
+      mathHost:{
+        params:()=>params,
+        projectRoot:()=>frameworkRoot(),
+        writeText:(rel,text)=>writeText(rel,text),
+        readText:(rel)=>readText(rel),
+        exists:async(rel)=>{ try { const t=await fsTarget(rel); return (await fs.stat(t))!==undefined } catch(e){ return false } },
+        resolveExecutable:async(cmd)=>{
+          const sub=subprocessOf()
+          if(sub===undefined||typeof sub.resolveExecutable!=='function') throw new Error('NO_SUBPROCESS: the host exposes no subprocess service')
+          return await sub.resolveExecutable(String(cmd))
+        },
+        spawn:(o)=>mathSpawnAdapter(o),
+        log:(kind,msg)=>logActivity(String(kind||'math'),String(msg||'')),
+        refreshAvailability:()=>refreshMathAvailability(),
+      },
       /** Absolute paths the Lean layer uses (read-only display; `searchPaths` are injected per spawn). */
       leanPaths:()=>({searchPath:vibeRoot().replace(/\\/g,'/'),searchPaths:leanSearchPathList(),lib:formalLibRoot().replace(/\\/g,'/'),proved:formalProvedRoot().replace(/\\/g,'/'),jobs:leanJobsRel()}),
       /**
@@ -3697,7 +3889,7 @@ export function apply(ctx) {
   // MODE is dynamic — switching it changes the very next prompt), leanCommand/leanArgs select the
   // executable, leanTimeoutMs bounds one run. Invalid values fall back to the defaults and an
   // unknown mode degrades to 'off' (never to a STRONGER mode).
-  registerTool('vibe_v4_set','Set V4 parameters: residentCount (how many residents a start spawns), compactThreshold (resident context % that triggers a compaction) and compactAfterRounds (rounds between soft compactions), meetingKeepEvery (every N newly accumulated artifacts an automatic sync meeting is convened), maxParallel (how many residents may be woken concurrently), activityTimeoutMs (idle window before a resident is nudged; also the heartbeat/watchdog period), stallAutoMeetingMs (how long the group may make NO progress before an auto sync meeting is convened), verdictMaxRounds (how many verification rounds one object gets: 1 independent round + re-vote debate rounds), model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain; leanAsync (default true) ENQUEUES each compile to a per-session background queue (concurrency 1, budget = leanTimeoutMs) and returns immediately with async:{jobId,state:\'queued\'} — results are announced in the next prompt and visible in vibe_v4_lean_lib.jobs; set leanAsync=false for the historical synchronous await; leanInitiative: "off" | "normal" (default) | "eager" is how PROACTIVE the group should be while working (it never changes what formalVerify requires at voting time); leanSearchPaths (array, default empty) adds extra compiler search roots — they are injected BEFORE the automatic VibeMath root, de-duplicated, and an explicit --search-path/-R/--root in leanArgs still wins; leanJobsMaxParallel (default 1) caps how many background compiles run at once; finalPaper (default true) writes the run\'s final PAPER automatically once the closing meeting votes unanimously to stop, paperFormat: "both" (default) | "md" | "tex" decides which text versions are produced, paperLanguage: "zh" (default) | "en", paperCompilePdf (default true) compiles a PDF when a LaTeX engine is actually detected (xelatex|latexmk|pdflatex|lualatex|tectonic, overridable via paperLatexCommand), paperEditor: "office" (default — the session root/human side) | "resident:<id>" names who finalises the merged draft after the cross-review round. A key outside this list is refused (ok:false, ignored:[...]) instead of being silently dropped.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'},finalPaper:{type:'boolean'},paperFormat:{type:'string',enum:['both','md','tex']},paperLanguage:{type:'string',enum:['zh','en']},paperCompilePdf:{type:'boolean'},paperEditor:{type:'string'},paperLatexCommand:{type:'string'},leanAsync:{type:'boolean'},leanInitiative:{type:'string',enum:['off','normal','eager']},leanSearchPaths:{type:'array',items:{type:'string'}},leanJobsMaxParallel:{type:'integer'}}),(s,a)=>{ const r=s.setParams(a); const st=s.status(); if(r&&r.ok===false) return Object.assign({},st,{ok:false,warning:r.message,ignored:r.ignored}); return st })
+  registerTool('vibe_v4_set','Set V4 parameters: residentCount (how many residents a start spawns), compactThreshold (resident context % that triggers a compaction) and compactAfterRounds (rounds between soft compactions), meetingKeepEvery (every N newly accumulated artifacts an automatic sync meeting is convened), maxParallel (how many residents may be woken concurrently), activityTimeoutMs (idle window before a resident is nudged; also the heartbeat/watchdog period), stallAutoMeetingMs (how long the group may make NO progress before an auto sync meeting is convened), verdictMaxRounds (how many verification rounds one object gets: 1 independent round + re-vote debate rounds), model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain; leanAsync (default true) ENQUEUES each compile to a per-session background queue (concurrency 1, budget = leanTimeoutMs) and returns immediately with async:{jobId,state:\'queued\'} — results are announced in the next prompt and visible in vibe_v4_lean_lib.jobs; set leanAsync=false for the historical synchronous await; leanInitiative: "off" | "normal" (default) | "eager" is how PROACTIVE the group should be while working (it never changes what formalVerify requires at voting time); leanSearchPaths (array, default empty) adds extra compiler search roots — they are injected BEFORE the automatic VibeMath root, de-duplicated, and an explicit --search-path/-R/--root in leanArgs still wins; leanJobsMaxParallel (default 1) caps how many background compiles run at once; mathComputation: "auto" (default) | "on" | "off" enables the math_computation tool (off = a true no-op: no probe and no prompt line), mathMode: "typed+shell" (default) | "typed" drops the host-shell fallback and refuses the cli engine, mathEngines limits which engines may run (default python|r|octave|julia|matlab|maple|wolfram|cli), mathTimeoutMs bounds one computation, mathPackages is the pre-checked package list, mathInstallScope: "user" (default) | "system" is the scope an approved install plan may use (system applies to that request only and is never remembered); finalPaper (default true) writes the run\'s final PAPER automatically once the closing meeting votes unanimously to stop, paperFormat: "both" (default) | "md" | "tex" decides which text versions are produced, paperLanguage: "zh" (default) | "en", paperCompilePdf (default true) compiles a PDF when a LaTeX engine is actually detected (xelatex|latexmk|pdflatex|lualatex|tectonic, overridable via paperLatexCommand), paperEditor: "office" (default — the session root/human side) | "resident:<id>" names who finalises the merged draft after the cross-review round. A key outside this list is refused (ok:false, ignored:[...]) instead of being silently dropped.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'},finalPaper:{type:'boolean'},paperFormat:{type:'string',enum:['both','md','tex']},paperLanguage:{type:'string',enum:['zh','en']},paperCompilePdf:{type:'boolean'},paperEditor:{type:'string'},paperLatexCommand:{type:'string'},leanAsync:{type:'boolean'},leanInitiative:{type:'string',enum:['off','normal','eager']},leanSearchPaths:{type:'array',items:{type:'string'}},leanJobsMaxParallel:{type:'integer'},mathComputation:{type:'string',enum:['auto','on','off']},mathMode:{type:'string',enum:['typed+shell','typed']},mathEngines:{type:'array',items:{type:'string'}},mathTimeoutMs:{type:'integer'},mathPackages:{type:'array',items:{type:'string'}},mathInstallScope:{type:'string',enum:['user','system']}}),(s,a)=>{ const r=s.setParams(a); const st=s.status(); if(r&&r.ok===false) return Object.assign({},st,{ok:false,warning:r.message,ignored:r.ignored}); return st })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident (to=all broadcasts to the whole team).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>{ const from=s.residentIdOf(x); if(!from) return {ok:false,message:'no such resident'}; if(String(a.to)==='all') return s.broadcast(a.content, from); return s.postMessage(from,a.to,a.content) })
@@ -3753,6 +3945,42 @@ export function apply(ctx) {
   // Lean job is terminated (and marked `interrupted`, never `passed`) when this preset subtree
   // unloads — the same lifecycle the tool/command registrations above already follow.
   ctx.effect(() => () => { for(const s of sessions.values()){ try { s.disposeLean() } catch(e){ /* best effort */ } } })
+
+  // ================= math_computation registration (P1) =================
+  // The tool CORE is the shared module (installed byte-identically in all four presets); this is the
+  // ONLY call site (FREEZE §4: the module calls `host.register` exactly once). The per-session state
+  // the module needs (live params, project root, fs, log) lives in `makeSession`, so the `register`
+  // wrapper records the CALLING session for the duration of the call and every accessor below reads
+  // through it: a `vibe_v4_set mathMode=typed` issued by session B is enforced for session B's next
+  // math_computation call. (The prompt-side availability line uses its own session-local probe host,
+  // see `mathProbeHost`, so prompting never depends on this holder.)
+  // `spawn`/`resolveExecutable` go through the injected subprocess service via the session's adapter
+  // (`mathSpawnAdapter`) — a timeout actively kills the process.
+  mathReg = registerMathComputation({
+    register: (name, description, parameters, handler)=>registerTool(name, description, parameters, async (s,a)=>{
+      // The description/schema must be the module's frozen text (a local re-spelling would silently
+      // diverge from the other three presets); referencing MATH_TOOL_DESCRIPTION here is that check.
+      if(description!==MATH_TOOL_DESCRIPTION) logActivity('math','警告：math_computation 工具描述与共享模块的 MATH_TOOL_DESCRIPTION 不一致')
+      const prev=mathCallSession
+      mathCallSession=s
+      // `await` matters: without it the `finally` would run as soon as the async handler returns its
+      // PROMISE, restoring the holder before the module's body ever touches the host accessors.
+      try { return await handler(a||{}) } finally { mathCallSession=prev }
+    }),
+    params: ()=>mathCallSession?mathCallSession.mathHost.params():DEFAULT_PARAMS,
+    projectRoot: ()=>mathCallSession?mathCallSession.mathHost.projectRoot():'',
+    // Optional host capability flag (module hash 43593d66…): a host that KNOWS it has no subprocess
+    // service reports MATH_NO_SUBPROCESS up front instead of a misleading ENGINE_NOT_FOUND +
+    // "install python" guide. `spawn` returning null stays the second, resolve-capable path.
+    hasSubprocess: ()=>!!subprocessOf(),
+    designator: 'vibe-math-v4',
+    writeText: (rel, text)=>mathCallSession?mathCallSession.mathHost.writeText(rel, text):false,
+    readText: (rel)=>mathCallSession?mathCallSession.mathHost.readText(rel):undefined,
+    exists: (rel)=>mathCallSession?mathCallSession.mathHost.exists(rel):false,
+    resolveExecutable: async (cmd)=>await mathCallSession.mathHost.resolveExecutable(cmd),
+    spawn: async (o)=>await mathCallSession.mathHost.spawn(o),
+    log: (kind, msg)=>{ if(mathCallSession) mathCallSession.mathHost.log(kind, msg) },
+  })
 
   // Same lifecycle rule as registerTool: commands.register() returns a disposer, so the
   // registration belongs to this fiber and must be unwound with it.

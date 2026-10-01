@@ -121,8 +121,10 @@ console.log('tool registrations:', toolRegs.length)
 // (registration is static; the formalVerify mode only decides whether members are told about
 // them). 25 → 27: the incremental/async slice (docs/formal-verification.md §1) added the read-only
 // vibe_math_lean_read + vibe_math_lean_job, also unconditional and registered on both paths.
+// 27 → 28: the math-computation slice (docs/math-computation.md) added math_computation, likewise
+// registered unconditionally on both paths.
 // The invariant this asserts is "registered ONCE per preset, not per session".
-assert(toolRegs.length === 27, '27 tools registered once (not per session)')
+assert(toolRegs.length === 28, '28 tools registered once (not per session)')
 assert(['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'].every(n => toolRegs.some(t => t.name === n)),
   'all five Lean tools are registered unconditionally (registration is static, not mode-dependent)')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')

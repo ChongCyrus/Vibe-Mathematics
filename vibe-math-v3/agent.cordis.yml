@@ -67,6 +67,8 @@
         is not the same as "已验证"). The scheduler's child agents use them too; they work in every
         mode.
 
+      - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
       Data survives restarts via vibe_math_resume.
@@ -154,6 +156,8 @@
         compile and returns a jobId; nothing counts as proved until that job settles ok (so "有把握"
         is not the same as "已验证"). The scheduler's child agents use them too; they work in every
         mode.
+
+      - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).

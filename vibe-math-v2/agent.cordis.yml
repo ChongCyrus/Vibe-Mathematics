@@ -40,6 +40,8 @@
         is not the same as "已验证"). The scheduler's child agents use them too; they work in every
         mode.
 
+      - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+
       Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
       automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
       automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
@@ -113,6 +115,8 @@
         compile and returns a jobId; nothing counts as proved until that job settles ok (so "有把握"
         is not the same as "已验证"). The scheduler's child agents use them too; they work in every
         mode.
+
+      - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 
       Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
       automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that

@@ -501,6 +501,12 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `solverAllowScripts` / `verifierAllowScripts` | 空 | v2·v3 | 脚本工具开关（bash/pwsh）：同上 |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | v2·v3 | 每轮外部工具调用上限（0=不限） |
 | `reportIntervalMs` | 0 | v2·v3 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
+| `mathComputation` | `auto` | 四套 | 数学计算工具档位：`off`（真 no-op，不探测/不执行/不进提示词）/ `auto`（探测到引擎才工作）/ `on`。详见 [`docs/math-computation.md`](docs/math-computation.md) |
+| `mathMode` | `typed+shell` | 四套 | **提示词策略**（插件无法强制）：`typed+shell` 允许工具不可用时用宿主 shell 兜底，但结论必须标注"未经工具归档"、只有工具路径算可复核支撑材料；`typed` 不提 shell 且禁用 `engine:'cli'` |
+| `mathEngines` | `[python, r, octave, julia, matlab, maple, wolfram, cli]` | 四套 | 允许的引擎及探测顺序。商业三家（matlab/maple/wolfram）只探测与许可检查、**永不安装**；去掉 `cli` 即关闭通用逃生口 |
+| `mathTimeoutMs` | `60000` | 四套 | 单次计算上限（毫秒，最小 1000）；超时后主动终止进程 |
+| `mathPackages` | `[]` | 四套 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
+| `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |

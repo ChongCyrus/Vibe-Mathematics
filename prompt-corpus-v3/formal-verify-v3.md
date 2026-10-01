@@ -364,6 +364,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -449,6 +457,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -565,6 +581,14 @@ CHANNEL A (recommended, you can write files): write the full round narrative int
 CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:
 {"__writes":[{"path":"Progress/qE/d1.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"qE","dirId":"d1",...同上 meta 字段...}}
 区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -650,6 +674,14 @@ CHANNEL A (recommended, you can write files): write the full round narrative int
 CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:
 {"__writes":[{"path":"Progress/qE/d1.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"qE","dirId":"d1",...同上 meta 字段...}}
 区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -700,6 +732,14 @@ RECENT WORK DIGEST:
   * [工具] 连分数估值工具（问题 qE 方向 d1）：控制收敛速度…
 
 For each pending invention decide: create a NEW method card, or fold it into an EXISTING method (as an improvement). Only list 可信断言 for claims already verified (ids from Verified/) — everything else stays 经验 (experiential). You may propose 上级体系/子方法 links to organize methods into systems.
+
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -806,6 +846,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-enc","decision":"used|blocked|defect","file":"Formal/p-enc.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -869,6 +917,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-enc","decision":"used|blocked|defect","file":"Formal/p-enc.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -933,6 +989,14 @@ Reason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Reply with ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null","formal":{"target":"p-enc","decision":"used|blocked|defect","file":"Formal/p-enc.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -997,6 +1061,14 @@ Reason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Reply with ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null","formal":{"target":"p-enc","decision":"used|blocked|defect","file":"Formal/p-enc.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1181,6 +1253,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1244,6 +1324,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1341,6 +1429,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1404,6 +1500,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1501,6 +1605,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1564,6 +1676,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1627,6 +1747,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1690,6 +1818,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1785,6 +1921,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1846,6 +1990,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-gate","decision":"used|blocked|defect","file":"Formal/p-gate.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1909,6 +2061,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -1972,6 +2132,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2059,6 +2227,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：命题涉及未形式化的分析学，本轮不做。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-blocked-ok","decision":"used|blocked|defect","file":"Formal/p-blocked-ok.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2112,6 +2288,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：命题涉及未形式化的分析学，本轮不做。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-blocked-ok","decision":"used|blocked|defect","file":"Formal/p-blocked-ok.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2175,6 +2359,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2238,6 +2430,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-mode","decision":"used|blocked|defect","file":"Formal/p-mode.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2335,6 +2535,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-reply","decision":"used|blocked|defect","file":"Formal/p-reply.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2398,6 +2606,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-reply","decision":"used|blocked|defect","file":"Formal/p-reply.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2548,6 +2764,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-used","decision":"used|blocked|defect","file":"Formal/p-used.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2611,6 +2835,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-used","decision":"used|blocked|defect","file":"Formal/p-used.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2708,6 +2940,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nonote","decision":"used|blocked|defect","file":"Formal/p-nonote.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2771,6 +3011,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
   · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。
   · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nonote","decision":"used|blocked|defect","file":"Formal/p-nonote.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2866,6 +3114,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-defect","decision":"used|blocked|defect","file":"Formal/p-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -2927,6 +3183,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-defect","decision":"used|blocked|defect","file":"Formal/p-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3022,6 +3286,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nonote-defect","decision":"used|blocked|defect","file":"Formal/p-nonote-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3083,6 +3355,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nonote-defect","decision":"used|blocked|defect","file":"Formal/p-nonote-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3227,6 +3507,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：先按难度记为阻塞。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-blocked-defect","decision":"used|blocked|defect","file":"Formal/p-blocked-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3280,6 +3568,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：先按难度记为阻塞。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-blocked-defect","decision":"used|blocked|defect","file":"Formal/p-blocked-defect.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3375,6 +3671,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nodelete","decision":"used|blocked|defect","file":"Formal/p-nodelete.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3436,6 +3740,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-nodelete","decision":"used|blocked|defect","file":"Formal/p-nodelete.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3586,6 +3898,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-stale","decision":"used|blocked|defect","file":"Formal/p-stale.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3647,6 +3967,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-stale","decision":"used|blocked|defect","file":"Formal/p-stale.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -3785,6 +4113,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -3836,6 +4172,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -3887,6 +4231,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -4003,6 +4355,14 @@ CHANNEL A (recommended, you can write files): write the full round narrative int
 CHANNEL B (your file tools are unavailable): put the content you would have written into __writes and carry the same meta:
 {"__writes":[{"path":"Progress/q-defect/d1.md","content":"<完整本轮叙述>"}],"meta":{"kind":"solver","qid":"q-defect","dirId":"d1",...同上 meta 字段...}}
 区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -4102,6 +4462,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-fid","decision":"used|blocked|defect","file":"Formal/p-fid.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4163,6 +4531,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-fid","decision":"used|blocked|defect","file":"Formal/p-fid.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4225,6 +4601,14 @@ Reason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Reply with ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null","formal":{"target":"p-fid","decision":"used|blocked|defect","file":"Formal/p-fid.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4287,6 +4671,14 @@ Reason is MANDATORY and MUST be non-empty; an empty-Reason result (esp. a bare 0
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办）。**本档没有门禁**：请务必给弃权值，以保证本轮无法得出一致结论；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Reply with ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: updated logic chain / counterexample / proof / refutation>","changed":"brief reason if you changed your Result, else null","formal":{"target":"p-fid","decision":"used|blocked|defect","file":"Formal/p-fid.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4382,6 +4774,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-usedkeep","decision":"used|blocked|defect","file":"Formal/p-usedkeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4443,6 +4843,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
          「已通过」状态（降级为 attempted、删除或就地覆盖归档证明、写入形式化待办），本次裁定**不定论**；
          修正形式化并重新跑通后再投票。
   ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 Reason 里写清独立理由。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-usedkeep","decision":"used|blocked|defect","file":"Formal/p-usedkeep.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4530,6 +4938,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：需要大量未形式化的实分析前置知识。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-usedblocked","decision":"used|blocked|defect","file":"Formal/p-usedblocked.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4583,6 +4999,14 @@ Citations: facts may only be cited from Verified/ (or Propos/ 状态: 已验证�
 【Lean 形式化验证（强制模式）】
   · 该对象已被记录为**形式化阻塞**：需要大量未形式化的实分析前置知识。
     请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 
 Independently output your initial review — ONLY a single JSON object in a ```json code fence, no prose outside it:
 {"Result":0.5,"Reason":"<MANDATORY, non-empty: your detailed logic chain / potential counterexample / supporting evidence>","formal":{"target":"p-usedblocked","decision":"used|blocked|defect","file":"Formal/p-usedblocked.lean","note":"难度判断/阻塞原因/具体偏差"}}
@@ -4630,6 +5054,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -4715,6 +5147,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind='def'），已成立的引理归到 <VIBEMATH>/Formal/Proved/（kind='lemma'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。
   · **主动档（leanInitiative=eager）**：日常就主动把有价值的小引理/命题/定义形式化——每轮工作结束时审视一次"这轮有什么值得进库"，值得就顺手归档。
   · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。
@@ -4800,6 +5240,14 @@ Do a first-stage METACOGNITIVE BRAINSTORM: decompose constraints, test boundary/
 
 feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:
 {"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}
+- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
+- 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
+- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
+- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。
+- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
+
 【顺手形式化（不主动：leanInitiative=off）】日常流程**不主动**做形式化；只在验证提示词按 formalVerify 的要求做（要求里已给出判据、工具与归档方式）。
 形式化回执（本模式）：若你本轮对某个对象做了形式化难度判断，请在回执里加上 "formal":{"target":"<对象id>","decision":"used|blocked|defect","file":"Formal/<对象id>.lean","note":"难度判断/阻塞原因/具体偏差"}（decision='blocked' 与 decision='defect' 时必须写明 note，否则拒绝记录；decision='defect' 表示你认定这条已通过的 Lean 形式化**不忠实于命题原文**——那不是"命题为假"，框架会撤回其已通过状态并把对象放回形式化待办）。
 ```

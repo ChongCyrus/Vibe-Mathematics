@@ -1,0 +1,135 @@
+// ============================================================================================
+// math_computation — SENSITIVITY probes (integration owner).
+//
+// Proves the shared contract suite is FALSIFIABLE: for each mutation of the module, the suite must
+// go RED for the RIGHT assertion (the probe checks both the exit code and the failing label, so a
+// suite that merely crashes does not count as evidence).
+//
+// Mechanism: copy the canonical module pair into a temp dir, apply ONE textual mutation, then run
+// `tests/math-computation-shared.test.mjs` with MATH_COMPUTATION_MODULE pointed at the mutated copy.
+// The shipped copies are never touched.
+//
+// Usage: node tests/audit-math-computation-sensitivity.mjs
+// A probe PASSES when the mutated run fails AND the expected label is among the failures.
+// ============================================================================================
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const HERE = fileURLToPath(new URL('./', import.meta.url))
+const REPO = resolve(HERE, '..')
+const SRC = join(REPO, 'vibe-math-v2')
+const SUITE = join(HERE, 'math-computation-shared.test.mjs')
+
+const PROBES = [
+  {
+    name: 'cli-default-off',
+    file: 'math-computation.js',
+    from: 'mathEngines: MATH_ENGINE_ORDER.slice(),',
+    to: "mathEngines: MATH_ENGINE_ORDER.filter(function (n) { return n !== 'cli' }),",
+    expect: 'cli runs with DEFAULT params (default-on)',
+  },
+  {
+    name: 'cli-policy-ignored',
+    file: 'math-computation.js',
+    from: "if (p.mathMode !== 'typed+shell') return bad('engine=cli is disabled while mathMode=' + p.mathMode, 'MATH_REFUSED', next('reason', { reason: 'policy' }))",
+    to: 'if (false) return bad(\'noop\')',
+    expect: 'cli refused while mathMode=typed',
+  },
+  {
+    name: 'argv-echo-removed',
+    file: 'math-computation.js',
+    from: '    argv: assembled.argv.slice(),\n    packages: pk.found,',
+    to: '    packages: pk.found,',
+    expect: 'receipt argv === returned argv',
+  },
+  {
+    name: 'bad-argv-collapsed',
+    file: 'math-computation.js',
+    from: "      const out = fail('MATH_ENGINE_BAD_ARGV', engineLabel,",
+    to: "      const out = fail('MATH_NONZERO_EXIT', engineLabel,",
+    expect: 'usage/option error -> MATH_ENGINE_BAD_ARGV (not collapsed into NONZERO_EXIT)',
+  },
+  {
+    name: 'timeout-not-reported',
+    file: 'math-computation.js',
+    from: '  if (receipt.timedOut) {',
+    to: '  if (false) {',
+    expect: 'hang -> MATH_TIMEOUT',
+  },
+  {
+    name: 'param-renamed',
+    file: 'math-computation.js',
+    from: "  'mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPackages', 'mathInstallScope',",
+    to: "  'mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPkgs', 'mathInstallScope',",
+    expect: 'six frozen param names in order',
+  },
+  {
+    name: 'no-subprocess-flag-ignored',
+    file: 'math-computation.js',
+    from: "  if (typeof H.hasSubprocess === 'function' && H.hasSubprocess() === false) {",
+    to: '  if (false) {',
+    expect: 'host that declares no subprocess -> MATH_NO_SUBPROCESS (not ENGINE_NOT_FOUND)',
+  },
+  {
+    name: 'shell-line-in-all-tiers',
+    file: 'math-computation.js',
+    from: "  const shell = mode === 'typed+shell' ? '\\n' + MATH_SHELL_RULE_LINE : ''",
+    to: "  const shell = '\\n' + MATH_SHELL_RULE_LINE",
+    expect: 'typed tier drops the shell-fallback sentence',
+  },
+]
+
+let ok = 0, bad = 0
+console.log('-- math_computation sensitivity probes --')
+console.log('(a probe passes when the mutation makes the shared contract suite RED for the named assertion)')
+console.log('')
+
+function runSuite(modulePath) {
+  const r = spawnSync(process.execPath, [SUITE], {
+    cwd: REPO, encoding: 'utf8',
+    env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: modulePath }),
+  })
+  const out = String(r.stdout || '') + String(r.stderr || '')
+  const fails = out.split('\n').filter((l) => /FAIL /.test(l)).map((l) => l.trim())
+  return { code: r.status, fails, out }
+}
+
+// control: the unmutated canonical pair must be GREEN, otherwise every probe below is meaningless
+{
+  const dir = mkdtempSync(join(tmpdir(), 'mc-sens-control-'))
+  copyFileSync(join(SRC, 'math-engines.js'), join(dir, 'math-engines.js'))
+  copyFileSync(join(SRC, 'math-computation.js'), join(dir, 'math-computation.js'))
+  const r = runSuite(join(dir, 'math-computation.js'))
+  const tail = r.out.trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+  if (r.code === 0) { ok++; console.log('  ok   control (unmutated copy) -> suite GREEN  ' + tail) }
+  else { bad++; console.log('  FAIL control (unmutated copy) went RED: ' + r.fails.slice(0, 3).join(' | ')) }
+  rmSync(dir, { recursive: true, force: true })
+}
+
+for (const p of PROBES) {
+  const dir = mkdtempSync(join(tmpdir(), 'mc-sens-' + p.name + '-'))
+  copyFileSync(join(SRC, 'math-engines.js'), join(dir, 'math-engines.js'))
+  const src = readFileSync(join(SRC, p.file), 'utf8')
+  if (src.indexOf(p.from) === -1) {
+    bad++
+    console.log('  FAIL ' + p.name + ' — mutation anchor no longer applies (drift): ' + JSON.stringify(p.from.slice(0, 60)))
+    rmSync(dir, { recursive: true, force: true })
+    continue
+  }
+  writeFileSync(join(dir, p.file), src.split(p.from).join(p.to))
+  const r = runSuite(join(dir, p.file))
+  const hit = r.fails.some((f) => f.indexOf(p.expect) !== -1)
+  if (r.code !== 0 && hit) { ok++; console.log('  ok   ' + p.name + ' -> RED on "' + p.expect + '"') }
+  else {
+    bad++
+    console.log('  FAIL ' + p.name + ' -> exit=' + r.code + ' expectedLabelFound=' + hit + ' fails=' + r.fails.slice(0, 3).join(' | '))
+  }
+  rmSync(dir, { recursive: true, force: true })
+}
+
+console.log('')
+console.log('math_computation sensitivity: ' + ok + ' probe(s) detected the break, ' + bad + ' problem(s)')
+process.exit(bad === 0 ? 0 : 1)

@@ -101,6 +101,7 @@
         - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_job — Lean formal
           verification (execute / archive / list the reuse library / read an archived file
           verbatim / watch the background compile queue). Members use them too; they work in every mode.
+        - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
       A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
@@ -212,6 +213,7 @@
         - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_job — Lean formal
           verification (execute / archive / list the reuse library / read an archived file
           verbatim / watch the background compile queue). Members use them too; they work in every mode.
+        - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
       A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):

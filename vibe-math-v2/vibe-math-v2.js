@@ -21,6 +21,20 @@ export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
 // Lean 增量/异步（规格：docs/formal-verification.md §1）：内容哈希用于归档去重与作业幂等。
 // `node:crypto` 与 v4/v5 同一写法（只读的内置模块，不执行任何动态代码）。
 import { createHash } from 'node:crypto'
+// 数学计算工具（共享模块，四套字节一致；由 integration owner 维护，本文件只做接线）。
+// 模块内部自己 import './math-engines.js'，接线方不直接引用引擎表。
+import {
+  registerMathComputation,
+  MATH_PARAM_NAMES,
+  MATH_PARAM_DEFAULTS,
+  MATH_TOOL_DESCRIPTION,
+  MATH_TOOL_SCHEMA,
+  MATH_PERSONA_TOOL_LINE,
+  MATH_RULE_LINES,
+  normalizeMathParams,
+  mathAvailabilityLine,
+  probeMathEngines,
+} from './math-computation.js'
 
 // Standing mount: DSH mounts each agent preset ONCE per preset and joins every
 // session that names it to that SAME plugin instance (see @deepseek-ai/dsh-agent-presets).
@@ -177,6 +191,14 @@ export function apply(ctx) {
     paperLanguage: 'zh',          // zh = 中文（ctexart/xelatex 优先）| en = 英文（article/pdflatex 优先）
     paperCompilePdf: true,        // 检测到 LaTeX 时是否编译 paper.pdf
     paperLatexCommand: '',        // 指定 LaTeX 引擎（空 = 按语言探测 xelatex/latexmk/pdflatex/lualatex/tectonic）
+    // ---- 数学计算 math_computation（规格：docs/math-computation.md；六参数已冻结，拼写不得改）----
+    // 值取共享模块的 MATH_PARAM_DEFAULTS（四套逐字一致）；数组必须**拷贝**，否则四套会共享同一个默认数组。
+    mathComputation: MATH_PARAM_DEFAULTS.mathComputation,   // off | auto | on（auto = 探测到任一允许引擎才工作）
+    mathMode: MATH_PARAM_DEFAULTS.mathMode,                 // typed | typed+shell（后者才允许提示词里的 shell 兜底段）
+    mathEngines: MATH_PARAM_DEFAULTS.mathEngines.slice(),   // 允许的引擎（含 cli；cli 默认开启，受 mathMode/mathEngines 双闸）
+    mathTimeoutMs: MATH_PARAM_DEFAULTS.mathTimeoutMs,       // 单次计算超时上限（毫秒，下界 1000）
+    mathPackages: MATH_PARAM_DEFAULTS.mathPackages.slice(), // 需要预检的包（缺包只报告 + 给安装计划）
+    mathInstallScope: MATH_PARAM_DEFAULTS.mathInstallScope, // user | system（system 只对当次显式调用生效，永不记忆）
   }
   let params = Object.assign({}, DEFAULT_PARAMS)
   let scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null } // activeCount 由 activeCount() 从 agentRegistry 推导，不再作为字段
@@ -306,6 +328,13 @@ export function apply(ctx) {
     { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
     { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志', suggestion: true },
     { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。该命令解析不到时按"未检测到"降级（只留 tex+md）', suggestion: '' },
+    // ---- 数学计算 math_computation（六参数冻结；描述与 prompts.md §1/§6 口径一致）----
+    { name: 'mathComputation', type: 'enum', options: ['off', 'auto', 'on'], description: '数学计算总开关：off = 真无操作（提示词零提及）；auto = 探测到 mathEngines 里任一允许引擎才工作；on = 同上（探测失败时工具仍返回可执行的安装指引，而不是假装可用）', suggestion: 'auto' },
+    { name: 'mathMode', type: 'enum', options: ['typed', 'typed+shell'], description: '计算策略：typed+shell（默认）= 工具不可用时允许宿主 shell 兜底，但结论必须标注"未经工具归档（shell 路径）"；typed = 只用工具路径（提示词里不出现 shell 兜底段，engine:"cli" 返回 REFUSED{reason:policy}）', suggestion: 'typed+shell' },
+    { name: 'mathEngines', type: 'string[]', description: '允许的引擎列表（默认 python|r|octave|julia|matlab|maple|wolfram|cli）。cli 默认开启且走同一套超时/输出上限/回执；从列表里移除某引擎即禁用（商业引擎只探测+许可，永不安装）', suggestion: MATH_PARAM_DEFAULTS.mathEngines.slice() },
+    { name: 'mathTimeoutMs', type: 'integer', description: '单次数学计算的超时上限（毫秒，默认 60000，最小 1000）；到时主动 terminate 并把回执标为 MATH_TIMEOUT', suggestion: 60000 },
+    { name: 'mathPackages', type: 'string[]', description: '需要预检的包（默认空）。缺包只报告 + 给"用户自装指引"或"代理代装计划"，不会执行脚本，也永不自动安装', suggestion: [] },
+    { name: 'mathInstallScope', type: 'string', enum: ['user', 'system'], description: '安装作用域：user（默认，用户级目录）；system 只对当次显式调用生效、永不记忆（不会写进状态文件）', suggestion: 'user' },
   ]
 
   // ================= fs =================
@@ -409,12 +438,13 @@ export function apply(ctx) {
     shellWarned[key] = true
     console.error('vibe-math-v2: ' + where + ' failed (' + why + ')')
   }
-  // 目录布局（docs/formal-verification.md §3）：
-  //   项目内：Formal/（对象形式化工作文件 + Index.md + TODO.md）、Verified/Lean/（归档证明）
+  // 目录布局（docs/formal-verification.md §3 / docs/math-computation.md §路径）：
+  //   项目内：Formal/（对象形式化工作文件 + Index.md + TODO.md）、Verified/Lean/（归档证明）、
+  //           Computation/（math_computation 的可复核回执：Computation/<runId>/ 与 Computation/installs/）
   //   全局（**不在项目内**，跨项目复用）：<VibeMath 根>/Formal/Lib/（可复用定义）、Formal/Proved/（已证引理）
   async function ensureDirs() {
     const base = frameworkRoot()
-    const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verified/Lean', 'Verification_logs', 'Progress_Logs', 'VibeMath_State', 'Formal']
+    const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verified/Lean', 'Verification_logs', 'Progress_Logs', 'VibeMath_State', 'Formal', 'Computation']
     const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d }))
     const r = await runShell(mkdirCmd(paths))
     if (!r || !r.ok) warnShellOnce('ensureDirs (mkdir ' + base + ')', r)
@@ -425,6 +455,109 @@ export function apply(ctx) {
     const r = await runShell(rmCmd(base + '/' + rel))
     if (!r || !r.ok) warnShellOnce('removeFile(' + rel + ')', r)
     return r
+  }
+
+  // ================= 数学计算 math_computation：会话侧接线（共享模块，FREEZE §4/§5） =================
+  // 探测量（是否装了 python/r/…）是异步的，而提示词是同步构造的 ⇒ 这里维护一个会话级缓存，
+  // 在 init / 参数变化 / TTL 到期时刷新，提示词侧只读缓存现算（与 formalVerify 的动态纪律一致）。
+  const MATH_PROBE_TTL_MS = 15 * 60 * 1000
+  let mathProbe = null
+  let mathProbeAt = 0
+  /**
+   * `host.spawn` 适配：模块只给 `{argv, cwd, timeoutMs, stdoutCap, stderrCap}`，超时/终止由**接线方**负责
+   * （契约：超时必须 handle.terminate()）。返回**完整** stdout/stderr——模块自己落盘完整版，只在返回体裁 64KB，
+   * 所以 stdio 上限要宽（默认 4MB），否则"超大输出"永远测不出完整落盘。
+   */
+  async function mathSpawn(spec) {
+    const sub = subprocessOf()
+    if (sub === undefined || typeof sub.spawn !== 'function') return null // 模块映射为 MATH_NO_SUBPROCESS
+    const s = spec || {}
+    const cap = Math.max(1000, Number(s.timeoutMs) || Number(params.mathTimeoutMs) || 60000)
+    const outCap = Math.max(4096, Number(s.stdoutCap) || 4 * 1024 * 1024)
+    const errCap = Math.max(4096, Number(s.stderrCap) || 4 * 1024 * 1024)
+    const started = now()
+    let handle
+    try {
+      handle = await spawnHandle(sub, {
+        argv: s.argv,
+        cwd: s.cwd || frameworkRoot(),
+        stdio: { stdin: 'ignore', stdout: { maxBytes: outCap }, stderr: { maxBytes: errCap } },
+        graceMs: cap,
+      })
+    } catch (e) { return null }
+    let timedOut = false, killed = false, timer = null, outcome
+    try {
+      outcome = await Promise.race([
+        handle.done,
+        new Promise(function (resolve) {
+          timer = setTimeout(function () {
+            timedOut = true
+            killed = true
+            try { if (handle && typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* best effort */ }
+            resolve({ exitCode: null })
+          }, cap)
+        }),
+      ])
+    } catch (e) { if (timer !== null) clearTimeout(timer); return null }
+    if (timer !== null) clearTimeout(timer)
+    let out = '', err = ''
+    try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
+    try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
+    return {
+      exit: (outcome && outcome.exitCode !== undefined) ? outcome.exitCode : null,
+      timedOut: timedOut, killed: killed, ms: now() - started,
+      stdout: String(out == null ? '' : out), stderr: String(err == null ? '' : err),
+    }
+  }
+  /** host.exists：项目根相对路径是否存在。 */
+  async function mathExists(rel) {
+    try { const t = await fsTarget(rel); const s = await fs.stat(t); return s !== undefined } catch (e) { return false }
+  }
+  /** 会话级 host：参数是**活引用**（函数），回执里写 designator='vibe-math-v2'。 */
+  const mathHost = {
+    // 模块注册时只**交回** handler/description/parameters；真正的挂载是 mathTool 之后的**字面量**两行。
+    // （会话层写 handlers 表、apply 层挂宿主工具面；两条路径名字/描述/schema 完全一致。）
+    register: function (name, description, parameters, handler) { /* 挂载见 mathTool 之后的字面量两行 */ },
+    params: function () { return params },
+    projectRoot: function () { return frameworkRoot() },
+    designator: 'vibe-math-v2',
+    // 宿主明知没有 subprocess 服务时直接说 false ⇒ 模块立即返回 MATH_NO_SUBPROCESS（不再逐个探引擎）。
+    hasSubprocess: function () { const sub = subprocessOf(); return !!(sub && typeof sub.spawn === 'function') },
+    writeText: async function (rel, text) { return await writeText(rel, text) },
+    readText: async function (rel) { return await readText(rel) },
+    exists: mathExists,
+    resolveExecutable: async function (cmd) {
+      const sub = subprocessOf()
+      if (sub === undefined || typeof sub.resolveExecutable !== 'function') throw new Error('no subprocess service')
+      const p = await sub.resolveExecutable(String(cmd))
+      if (typeof p !== 'string' || !p) throw new Error('not found: ' + String(cmd))
+      return p
+    },
+    spawn: mathSpawn,
+    log: function (kind, msg) { logActivity('math', String(kind) + ': ' + String(msg)) },
+  }
+  // 模块只调用一次 host.register(...)（FREEZE §4）⇒ 上面那个回调就是会话层注册。
+  // 注意：真实注册必须等到 `const handlers = {}` 与 `function registerTool(...)` 就绪之后
+  // （`handlers` 是 const，提前调用会撞 TDZ）⇒ 这里只留槽位，注册放在会话工具表旁。
+  let mathTool = null
+  /** 刷新探测缓存。`mathComputation:'off'` ⇒ 不探测、不缓存、不注入（真 no-op）。 */
+  async function refreshMathProbe(force) {
+    if (params.mathComputation === 'off') { mathProbe = null; mathProbeAt = 0; return null }
+    if (!mathTool) return null
+    try { mathProbe = await mathTool.probe(force ? { refresh: true } : undefined); mathProbeAt = now() } catch (e) { mathProbe = null }
+    return mathProbe
+  }
+  /** 心跳里的 TTL 刷新（每拍一次布尔判断，成本可忽略）。 */
+  function mathProbeDue() { return params.mathComputation !== 'off' && (!mathProbe || (now() - mathProbeAt) >= MATH_PROBE_TTL_MS) }
+  /**
+   * 每轮可用性行（中文）。由模块的 `mathAvailabilityLine(probe,'zh',mathMode)` 按档位拼装：
+   * 只有 `typed+shell` 才含 shell 兜底句（`mathMode:'typed'` 天然不含，守卫据此断言）。
+   * `off` 档返回空串——提示词零提及（对齐 formalVerify:'off' 的真 no-op 纪律）。
+   */
+  function mathWorkLine() {
+    if (params.mathComputation === 'off') return ''
+    if (!mathProbe) return '' // 还没探测过 ⇒ 不注入（不撒谎；init 会先探一次）
+    return '\n' + mathAvailabilityLine(mathProbe, 'zh', params.mathMode) + '\n'
   }
 
   // ================= settings =================
@@ -441,9 +574,14 @@ export function apply(ctx) {
       maxParallelThreshold: 1, solverMaxRounds: 1, verifierCount: 2, debateMaxRounds: 1,
       directionsPerSolver: 1, tickIntervalMs: 200, reportIntervalMs: 1000, maxExplorerRetries: 1,
     }
+    // 数学计算六参数的显式强制（FREEZE §5.3）：交给共享模块的 normalizeMathParams，它按
+    // enum/array/integer 逐键判型——`'false'`/字符串/错误枚举一律回退默认值，**绝不**落到
+    // 下面 `else { out[k] = v }` 的尾巴（那会把任意字符串当合法值放行）。
+    const mathNorm = normalizeMathParams(obj)
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
       const v = obj[k]
+      if (MATH_PARAM_NAMES.indexOf(k) !== -1) { out[k] = Object.prototype.hasOwnProperty.call(mathNorm, k) ? mathNorm[k] : DEFAULT_PARAMS[k]; continue }
       if (intFields.indexOf(k) !== -1) {
         const n = Number(v)
         if (!Number.isFinite(n)) { out[k] = DEFAULT_PARAMS[k]; continue }
@@ -978,7 +1116,8 @@ export function apply(ctx) {
         + '"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
     }
     // 后台作业的一次性公告（spec §2.4）：注入到本轮提示里，取走即清空。
-    return L.join('\n') + leanNoticeSection()
+    // 数学计算可用性行（prompts.md §2）：验证轮同样告知"先 probe 再 run / 回执即引用"。
+    return L.join('\n') + leanNoticeSection() + mathWorkLine()
   }
   function formalWorkLine() {
     if (!formalOn()) return ''
@@ -2041,10 +2180,12 @@ export function apply(ctx) {
   function formalWorkSection() {
     const t = formalWorkLine()
     const notice = leanNoticeSection()
-    if (!t && !notice) return ''
+    const math = mathWorkLine()
+    if (!t && !notice && !math) return ''
     // 回执契约（契约 §6.3）：工作轮也必须被告知 formal 字段，否则"顺手形式化"里做出的难度判断
     // 无处可写，代理只能沉默——那正是 v2 首版死通道的成因。
-    return '\n' + t + formalReplyNote() + notice + '\n'
+    // 数学计算可用性行（prompts.md §2+§4）：与"顺手形式化"并列注入；off 档为空串。
+    return '\n' + t + formalReplyNote() + notice + math + '\n'
   }
   function capabilitiesText(role) {
     const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
@@ -3731,6 +3872,8 @@ export function apply(ctx) {
     // 只有"新进程/新会话接手这棵树"（fresh 或 stale epoch）才按 Formal/Jobs/*.json 恢复；
     // 恢复绝不置 passed（settle 的唯一判据仍然要重新校验内容哈希与 exit code）。
     if (fresh || stale) { try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v2: lean job recovery failed: ' + String((e && e.message) || e)) } }
+    // 数学计算的引擎探测（异步）在 init 时先跑一次：提示词侧只读缓存现算（mathWorkLine）。
+    try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响 init：mathWorkLine 会因此为空 */ }
     await saveAll()
     return { ok: true }
   }
@@ -3797,6 +3940,8 @@ export function apply(ctx) {
     // 切到/新建一个项目 = "接手这棵树的遗留作业"：Formal/Jobs/*.json 里本进程不认识的记录按 §2.6 恢复
     // （queued 重入队 / running 标记 interrupted / settled 只在哈希与构建上下文都一致时补写）。
     try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v2: lean job recovery on project switch failed: ' + String((e && e.message) || e)) }
+    // 切项目后引擎探测缓存过期（mathEngines/路径可能不同）：重探一次再让提示词读它。
+    try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响切换 */ }
     await saveAll()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
   }
@@ -3810,6 +3955,13 @@ export function apply(ctx) {
   function objParams(props, required) { return { type: 'object', properties: props, additionalProperties: false, required: required || [] } }
   const handlers = {}
   function registerTool(name, description, parameters, executeFn) { handlers[name] = executeFn }
+  // math_computation 的**会话层**注册（共享模块的 host 在上面构造，绑定本会话的 params/Paths/fs）。
+  // 模块调用一次 host.register(...) ⇒ handlers['math_computation'] = 该会话的 handler；
+  // apply 层（工具面）在 apply 作用域单独注册一次，按名路由回这里（FREEZE §4 要求两层都在）。
+  mathTool = registerMathComputation(mathHost)
+  // 会话层挂载（**字面量形态**）：handler 是模块为**本会话**构造的那一个（闭包住本会话的 params/Paths/fs）；
+  // apply 层的同名词由宿主按 handlerName 路由回这里。两条路径的名字/描述/schema 三处逐字一致。
+  registerTool('math_computation', MATH_TOOL_DESCRIPTION, MATH_TOOL_SCHEMA, async function (args, agent) { return await mathTool.handler(args || {}, agent) })
   // Lean 工具需要知道调用者是谁（记进活动日志与索引署名）。调用者身份**显式传递**，
   // 不从任何全局可变状态推断（审计清单 §1.1）。无法识别时退回 'office'。
   function memberIdOf(agent) { try { const id = agent && agent.id ? String(agent.id) : ''; return id || 'office' } catch (e) { return 'office' } }
@@ -3820,7 +3972,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); if (args && MATH_PARAM_NAMES.some(function (k) { return k in args })) { try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响参数保存 */ } } return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -3905,6 +4057,10 @@ export function apply(ctx) {
     // Lean 异步队列（spec §2）：心跳推进队列；dispose 时由 apply 级 disposer 终止在跑的编译。
     runLeanQueue: runLeanQueue,
     disposeLeanJobs: disposeLeanJobs,
+    // 数学计算（FREEZE §4）：心跳用 TTL 刷新探测缓存；off 档不探测（真 no-op）。
+    mathProbeDue: mathProbeDue,
+    refreshMathProbe: refreshMathProbe,
+    mathProbe: function () { return mathProbe },
     leanQueueSize: function () { return leanQueue.length },
     leanJobsPublic: function () { const out = []; for (const j of leanJobs.values()) out.push(leanJobPublic(j)); return out },
     // childOwner 裁剪用：这个会话当前仍"可能再发 subagent/end"的 child（在册的 + 任务正在等的）。
@@ -3952,7 +4108,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
@@ -3977,6 +4133,14 @@ export function apply(ctx) {
   registerTool('vibe_math_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining. Also reports the background compile jobs (jobs[]) when leanAsync=true.', objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
   registerTool('vibe_math_lean_read', '(member) Read back the original text of one archived Lean file (verbatim reuse). Only files under Formal/Lib and Formal/Proved are readable; name is id-sanitised and path escapes are rejected. Returns {ok,name,file,kind,sha256,bytes,text,truncated} (text capped at 64KB).', objParams({ name: { type: 'string' }, kind: { type: 'string', enum: ['auto', 'lib', 'proved'] } }, ['name']), 'vibe_math_lean_read')
   registerTool('vibe_math_lean_job', '(member) Read-only view of the background Lean compile jobs. Without jobId: the session job list (state/rel/target/attempts/paths). With jobId: that job state/exitCode/receipt + archive paths. waitMs>0 waits up to that many ms for a queued/running job to settle (polling; it does not block the heartbeat) and returns the current state on timeout. Only state=settled with exitCode=0 (same content hash AND same build context) counts as passed.', objParams({ jobId: { type: 'string' }, waitMs: { type: 'integer' } }), 'vibe_math_lean_job')
+
+  // ── math_computation：apply 层（工具面）────────────────────────────────────────────────────
+  // 共享模块的 handler 在**会话层**构造（它闭包住该会话的 params/Paths/fs）；这一层只把
+  // 工具名/描述/schema 挂到宿主工具面，执行时由 apply 级包装按 handlerName 路由回
+  // s.handlers['math_computation']（即上面那个会话级实例）。两层都注册是 v2/v3 的硬要求。
+  // **字面量形态**（名字字面量 + 描述/schema 常量）：与 v3 的两层声明保持同一形状，
+  // 静态扫描器/注册面审计（audit-registration、audit-v3-registration-parity）都能看见。
+  registerTool('math_computation', MATH_TOOL_DESCRIPTION, MATH_TOOL_SCHEMA, 'math_computation')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
@@ -4024,6 +4188,8 @@ export function apply(ctx) {
         // Lean 异步队列（spec §2.2）：同样独立于 scheduler.running —— 作业在收口后仍要落地。
         // runLeanQueue() 内部**不 await 编译**，所以这条心跳不会被一个编译占住。
         if (typeof s.runLeanQueue === 'function') s.runLeanQueue().catch(function (e) { console.error('vibe-math-v2: lean queue failed: ' + String((e && e.message) || e)) })
+        // 数学计算的探测缓存 TTL 刷新（15 分钟或从未探测过）：mathWorkLine 只读缓存，不能自己 await。
+        if (typeof s.mathProbeDue === 'function' && s.mathProbeDue()) s.refreshMathProbe(false).catch(function (e) { console.error('vibe-math-v2: math probe failed: ' + String((e && e.message) || e)) })
       }
       // childOwner / sessions 裁剪：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
       if ((++beat % 30) === 0) {

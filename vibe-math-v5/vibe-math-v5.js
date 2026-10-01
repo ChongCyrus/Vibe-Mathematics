@@ -52,6 +52,25 @@
 // field — so the old projection-based primary made the user's own session unresumable.
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
+// ── math_computation (docs/math-computation.md) ──────────────────────────────
+// The tool CORE lives in a shared module installed byte-identically into all four presets
+// (`_oneoff/mc-P1-ready/INTERFACE-FREEZE.md` §3/§4): this preset only wires it (import +
+// params + one registration + prompt text). The module imports `./math-engines.js` itself.
+import {
+  MATH_PARAM_NAMES,
+  MATH_PARAM_DEFAULTS,
+  MATH_CAPS,
+  MATH_SHELL_FALLBACK_MARK,
+  MATH_TOOL_DESCRIPTION,
+  MATH_PERSONA_TOOL_LINE,
+  MATH_RULE_LINES,
+  MATH_RULE_LINES_EN,
+  normalizeMathParams,
+  probeMathEngines,
+  registerMathComputation,
+  mathAvailabilityLine,
+} from './math-computation.js'
+
 const PROJECTION_VERSION = 1
 const EV = {
   institute: 'vibe5/institute',
@@ -662,6 +681,22 @@ export function apply(ctx) {
       leanSearchPaths: [],
       // leanJobsMaxParallel: how many background compiles may run at once (default 1 = serial).
       leanJobsMaxParallel: 1,
+      // ── math_computation (docs/math-computation.md; the shared module owns the semantics) ──
+      // mathComputation    — 'off' | 'auto' (default) | 'on': whether the tool is available
+      // mathMode           — 'typed+shell' (default: the host shell may be used as an unarchived
+      //                      fallback) | 'typed' (never mention the shell; engine='cli' refused)
+      // mathEngines        — allowed engine names (cli is ON by default; drop it to disable)
+      // mathTimeoutMs      — per-run budget (>=1000)
+      // mathPackages       — packages/toolboxes a computation may require
+      // mathInstallScope   — 'user' (default) | 'system' (per call only, never remembered)
+      // NOTE: the DEFAULTS come from the shared module so all four presets are byte-comparable;
+      // the arrays are COPIED (the module's defaults are frozen and must never be mutated).
+      mathComputation: MATH_PARAM_DEFAULTS.mathComputation,
+      mathMode: MATH_PARAM_DEFAULTS.mathMode,
+      mathEngines: MATH_PARAM_DEFAULTS.mathEngines.slice(),
+      mathTimeoutMs: MATH_PARAM_DEFAULTS.mathTimeoutMs,
+      mathPackages: MATH_PARAM_DEFAULTS.mathPackages.slice(),
+      mathInstallScope: MATH_PARAM_DEFAULTS.mathInstallScope,
       // ── final paper (docs/final-paper.md; the phase runs BEFORE the completion flags) ──
       // finalPaper        — write the final paper when the run concludes (manual /v5 paper
       //                     still works when this is false, and says so).
@@ -779,6 +814,9 @@ export function apply(ctx) {
       if (!leanRecoveryDone) {
         try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v5: lean recovery: ' + String((e && e.message) || e)) }
       }
+      // The math availability line is derived at session start (and on every tuning that
+      // touches the six math_* keys); `probeMathEngines` caches per host, so this is cheap.
+      try { await refreshMathLine() } catch (e) { console.error('vibe-math-v5: math probe: ' + String((e && e.message) || e)) }
       return true
     }
     // Load the CURRENT state path before its first read. `state()` is synchronous by design
@@ -1363,7 +1401,7 @@ export function apply(ctx) {
     // directory is what actually creates the tree — inside the policy.
     async function mkdirs() {
       const base = instRoot()
-      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Verified/Lean']
+      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Verified/Lean', 'Computation']
       // The REUSABLE Lean library is global (cross-project), so it hangs off the VibeMath
       // root rather than the institute root — creating it under instRoot would scatter a
       // second, invisible copy per institute.
@@ -1861,6 +1899,7 @@ export function apply(ctx) {
       L.push('')
       if (initialTask) { L.push(resume ? '恢复说明：' : '你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
+      mathPushLine(L)
       L.push('------------')
       L.push(stateBlock(member))
       L.push('------------')
@@ -1879,6 +1918,7 @@ export function apply(ctx) {
         L.push('哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。')
       }
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
+      mathPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1895,6 +1935,7 @@ export function apply(ctx) {
       L.push('或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。')
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
+      mathPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1921,6 +1962,7 @@ export function apply(ctx) {
       L.push('（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）')
       L.push('如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都')
       L.push('一致认为是真时，本所才会停下来。')
+      mathPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1965,6 +2007,7 @@ export function apply(ctx) {
       }
       L.push('**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**')
       L.push('本所宁可留下未定论，也不要一个骗人的结论。')
+      mathPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2705,6 +2748,172 @@ export function apply(ctx) {
       return { terminated: jobs.length }
     }
     try { leanDisposers.add(disposeLeanJobs) } catch (e) { /* host without the disposer set */ }
+
+    // ============ math_computation seam (docs/math-computation.md) ============
+    // The shared module (`./math-computation.js`) owns detection/argv/receipts/install; this
+    // preset owns the HOST side. Every path the module hands over is institute-relative, and it
+    // is re-guarded here (defence in depth): a '../' path can never escape the institute even if
+    // the module's own guard regresses.
+    function mathRelPath(rel) {
+      const raw = String(rel == null ? '' : rel).trim().replace(/\\/g, '/')
+      if (!raw || raw.charAt(0) === '/' || /^[a-z]:/i.test(raw)) return null
+      const parts = []
+      for (const seg of raw.split('/')) {
+        if (!seg || seg === '.') continue
+        if (seg === '..') { if (!parts.length) return null; parts.pop(); continue }
+        parts.push(seg)
+      }
+      return parts.length ? parts.join('/') : null
+    }
+    async function mathWriteRel(rel, text) {
+      const r = mathRelPath(rel)
+      if (r === null) return false
+      return await writeTextRel(r, String(text == null ? '' : text))
+    }
+    async function mathReadRel(rel) {
+      const r = mathRelPath(rel)
+      if (r === null) return undefined
+      return await readTextRel(r)
+    }
+    async function mathExistsRel(rel) {
+      const r = mathRelPath(rel)
+      if (r === null) return false
+      try {
+        const t = await fs.resolve(instRoot() + '/' + r)
+        return (await fs.stat(t)) !== undefined
+      } catch (e) { return false }
+    }
+    async function mathResolveExecutable(cmd) {
+      const sub = subprocessOf()
+      if (sub === undefined || typeof sub.resolveExecutable !== 'function') throw new Error('NO_SUBPROCESS: the host exposes no subprocess service')
+      const p = await sub.resolveExecutable(String(cmd))
+      if (typeof p === 'string' && p) return p
+      throw new Error('cannot resolve executable: ' + String(cmd))
+    }
+    // The module calls this with {argv, cwd, timeoutMs, stdoutCap, stderrCap} and expects the
+    // FULL captured output (it writes the complete text to disk and only truncates the RETURN
+    // shell itself, MATH_CAPS.stdout = 64KB) — so the stdio caps must be generous, never the
+    // return-shell size. A host without a subprocess service returns null instead of throwing:
+    // the module maps that to MATH_NO_SUBPROCESS (its `if (!r)` branch).
+    async function mathSpawn(opts) {
+      const o = opts || {}
+      const sub = subprocessOf()
+      if (sub === undefined || typeof sub.spawn !== 'function') return null
+      const argv = (o.argv || []).map(String)
+      if (!argv.length) return null
+      const started = now()
+      const cap = Math.max(1000, Math.floor(Number(o.timeoutMs) || Number(params.mathTimeoutMs) || 60000))
+      const outCap = Math.max(MATH_CAPS.stdout, Math.floor(Number(o.stdoutCap) || MATH_CAPS.file))
+      const errCap = Math.max(MATH_CAPS.stderr, Math.floor(Number(o.stderrCap) || MATH_CAPS.file))
+      let handle = null
+      try {
+        handle = sub.spawn({
+          argv,
+          cwd: String(o.cwd || instRoot()),
+          stdio: {
+            stdin: o.stdin === undefined ? 'ignore' : 'pipe',
+            stdout: { maxBytes: outCap },
+            stderr: { maxBytes: errCap },
+          },
+          graceMs: cap,
+        })
+      } catch (e) {
+        return { exit: null, timedOut: false, killed: false, ms: now() - started, stdout: '', stderr: String((e && e.message) || e) }
+      }
+      // A host whose spawn answers nothing usable (no service, refused, null handle) must reach
+      // the module's `if (!r)` branch as MATH_NO_SUBPROCESS instead of throwing here.
+      if (!handle) return null
+      if (o.stdin !== undefined && handle && handle.stdin && typeof handle.stdin.write === 'function') {
+        try { handle.stdin.write(String(o.stdin)); if (typeof handle.stdin.end === 'function') handle.stdin.end() } catch (e) { /* best effort */ }
+      }
+      // A TIMEOUT must actually KILL the process: `graceMs` is only a request to the host.
+      let timerDisposer = null
+      let timedOut = false
+      const ran = Promise.resolve(handle.done).then(
+        (v) => ({ settled: true, value: v }),
+        (e) => ({ settled: false, error: e }))
+      let outcome = null
+      try {
+        const r = await Promise.race([
+          ran,
+          new Promise((resolve) => {
+            timerDisposer = ctx.timeout(() => {
+              timedOut = true
+              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
+              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
+            }, cap)
+          }),
+        ])
+        if (r.settled) outcome = r.value
+      } catch (e) {
+        return { exit: null, timedOut, killed: timedOut, ms: now() - started, stdout: '', stderr: String((e && e.message) || e) }
+      } finally {
+        if (timerDisposer) { try { timerDisposer() } catch (e) { /* already settled */ } }
+      }
+      let out = '', err = ''
+      try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
+      try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
+      const signal = (outcome && outcome.signal) || null
+      return {
+        exit: outcome && outcome.exitCode !== undefined ? outcome.exitCode : null,
+        timedOut,
+        killed: timedOut || !!signal,
+        ms: now() - started,
+        stdout: out,
+        stderr: err,
+      }
+    }
+    function mathLog(kind, msg) {
+      try { saveChatLine('【计算】' + String(msg == null ? '' : msg)) } catch (e) { /* a log line must never break a run */ }
+    }
+    // The per-session host the module talks to (also used by the availability-line probe, which
+    // runs OUTSIDE a tool call and therefore cannot rely on an ambient "current session").
+    const mathSessionHost = {
+      register: () => {},
+      params: () => Object.assign({}, params),
+      projectRoot: () => instRoot(),
+      designator: 'vibe-math-v5',
+      writeText: (rel, text) => mathWriteRel(rel, text),
+      readText: (rel) => mathReadRel(rel),
+      exists: (rel) => mathExistsRel(rel),
+      resolveExecutable: (cmd) => mathResolveExecutable(cmd),
+      spawn: (opts) => mathSpawn(opts),
+      log: (kind, msg) => mathLog(kind, msg),
+    }
+    // The DYNAMIC per-round availability line: computed from a (cached) probe when the prompt is
+    // built, never frozen into the persona. `mathComputation:'off'` produces NO line at all
+    // (the zero-mention discipline); the mode decides whether the shell-fallback sentence is in.
+    let mathLineZh = ''
+    let mathLineEn = ''
+    async function refreshMathLine() {
+      if (String(params.mathComputation) === 'off') { mathLineZh = ''; mathLineEn = ''; return '' }
+      try {
+        const probe = await probeMathEngines(mathSessionHost)
+        mathLineZh = mathAvailabilityLine(probe, 'zh', String(params.mathMode))
+        mathLineEn = mathAvailabilityLine(probe, 'en', String(params.mathMode))
+        // Drift guard: the shared line must still carry the frozen rule text (a future module
+        // edit that drops the rules would silently remove a rule from every round prompt).
+        if (mathLineZh.indexOf(MATH_RULE_LINES[0]) === -1) console.error('vibe-math-v5: the math availability line lost the frozen rules')
+        if (mathLineEn.indexOf(MATH_RULE_LINES_EN[0]) === -1) console.error('vibe-math-v5: the EN math availability line lost the frozen rules')
+        return mathLineZh
+      } catch (e) {
+        // A probe failure must never break prompt construction: keep whatever we had.
+        return mathLineZh
+      }
+    }
+    // The tool section of a member prompt: the availability line + the rules (both come from
+    // the module, so all four presets stay byte-comparable).
+    function mathPromptBlock(lang) {
+      const line = lang === 'en' ? mathLineEn : mathLineZh
+      if (line) return '\n' + line
+      // Fallback: when the dynamic line could not be built, the member still needs to know the
+      // tool exists and how to cite it — use the SAME frozen line the persona carries.
+      if (String(params.mathComputation) === 'off') return ''
+      return '\n' + MATH_PERSONA_TOOL_LINE
+    }
+    // Push the tool section into a prompt under construction (a no-op in the 'off' mode, which
+    // is the "off means zero mention" discipline).
+    function mathPushLine(L) { const b = mathPromptBlock('zh'); if (b) L.push(b) }
 
     function formalPromptBlock(target) {
       if (!formalOn()) return ''
@@ -5715,13 +5924,15 @@ export function apply(ctx) {
       // prompt-invariants self-probe mutates the exact TAIL of this array (dropping
       // leanTimeoutMs from the accept-set), so appending a key after it would silently
       // disarm that guard.
-      const ints = ['leanJobsMaxParallel', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
+      const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
       const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
-        'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative']
-      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs', 'leanSearchPaths']
+        'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative',
+        'mathComputation', 'mathMode', 'mathInstallScope']
+      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs', 'leanSearchPaths',
+        'mathEngines', 'mathPackages']
       for (const k of ints) if (input[k] !== undefined) { const n = Math.floor(Number(input[k])); if (Number.isFinite(n)) out[k] = n }
       // Explicit boolean coercion (docs/final-paper.md §2): the old `=== true || === 'true'` turned a
       // legitimate `1` / `'yes'` into FALSE and left junk values truthy-looking. An
@@ -5755,6 +5966,23 @@ export function apply(ctx) {
       }
       // Concurrency floor, same discipline as quorumCap/verdictMaxRounds.
       if (out.leanJobsMaxParallel !== undefined && out.leanJobsMaxParallel < 1) out.leanJobsMaxParallel = 1
+      // The six math_computation keys are normalised by the SHARED module (one implementation
+      // for all four presets — docs/math-computation.md): explicit enum/array/integer coercion,
+      // so a string 'false', an unknown engine name or a sub-1000 timeout can never leak
+      // through. ONLY the keys the caller actually passed are copied, so a partial update can
+      // never reset the others back to their defaults.
+      if (MATH_PARAM_NAMES.some((k) => input[k] !== undefined)) {
+        for (const k of MATH_PARAM_NAMES) {
+          if (input[k] === undefined) continue
+          // The typed loops above already coerced the SHAPE (a comma string became an array, an
+          // integer was floored); the module then applies the semantic rules (closed enums, known
+          // engines, >=1000 timeout). A value the module rejects falls back to its own default.
+          const src = out[k] !== undefined ? out[k] : input[k]
+          const norm = normalizeMathParams({ [k]: src })
+          const v = norm[k] !== undefined ? norm[k] : MATH_PARAM_DEFAULTS[k]
+          out[k] = Array.isArray(v) ? v.slice() : v
+        }
+      }
       // ── final-paper enums (closed sets; an unknown value degrades to the documented
       // default instead of silently becoming an unreachable fourth mode) ────────────────
       if (out.paperFormat !== undefined) out.paperFormat = coercePaperEnum('paperFormat', out.paperFormat, ['both', 'md', 'tex'], 'both')
@@ -5784,6 +6012,9 @@ export function apply(ctx) {
       const merged = Object.assign({}, params, patch)
       await patchInstitute({ params: merged })
       params = Object.assign({}, DEFAULT_PARAMS, merged)
+      // The math availability line is MODE-DEPENDENT (mathComputation/mathMode/mathEngines), so
+      // a tuning call must re-derive it immediately instead of leaving a stale line in prompts.
+      if (MATH_PARAM_NAMES.some((k) => patch[k] !== undefined)) await refreshMathLine()
       // An already-armed heartbeat keeps the delay it was armed with, so a lowered
       // activityTimeoutMs (or a raised maxParallel) would not take effect until some
       // unrelated event drove a pass. Tuning must apply immediately.
@@ -5807,6 +6038,11 @@ export function apply(ctx) {
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         leanAsync: params.leanAsync, leanInitiative: params.leanInitiative,
         leanSearchPaths: params.leanSearchPaths, leanJobsMaxParallel: params.leanJobsMaxParallel,
+        // `visibleParams` is an EXPLICIT object (landing.md §3): a new key is invisible to
+        // `/v5 status` until it is added here.
+        mathComputation: params.mathComputation, mathMode: params.mathMode,
+        mathEngines: (params.mathEngines || []).slice(), mathTimeoutMs: params.mathTimeoutMs,
+        mathPackages: (params.mathPackages || []).slice(), mathInstallScope: params.mathInstallScope,
         // ── final paper ──────────────────────────────────────────────────────
         finalPaper: params.finalPaper, paperFormat: params.paperFormat,
         paperLanguage: params.paperLanguage, paperCompilePdf: params.paperCompilePdf,
@@ -6283,6 +6519,8 @@ export function apply(ctx) {
       formalMode, formalOn, formalRecords, formalTodo, formalOf, rebuildLeanLibIndexes,
       leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo, recordFidelityDefect,
       leanRead, leanJobTool, leanJobView, leanJobsView, leanSearchRootView, leanInitiative, leanDailyOn,
+      // math_computation (docs/math-computation.md)
+      refreshMathLine, mathLine: () => mathLineZh, mathSessionHost: () => mathSessionHost,
       runLeanQueue, disposeLeanJobs, leanRecover: recoverLeanJobs,
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
@@ -6332,6 +6570,49 @@ export function apply(ctx) {
     if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: ' + what + ' needs a resolved member id or the office (the session root)' }
     return fn(caller)
   }
+
+  // ================= math_computation registration (docs/math-computation.md) =================
+  // The SHARED module registers its tool exactly once (its own contract) while every host
+  // callback resolves the CALLING session. Two sessions could otherwise interleave inside the
+  // module (it awaits spawns), so calls are serialized per plugin instance — the engine is the
+  // bottleneck anyway, and every callback still reads that session's LIVE params and root.
+  // The module's tool NAME has no `vibe_` prefix on purpose (it is the same primitive in all
+  // four presets), and `projectRoot()` is the INSTITUTE root, so receipts land in
+  // <institute>/Computation/<runId>/.
+  let mathActiveSession = null
+  let mathCallChain = Promise.resolve()
+  function withMathSession(s, fn) {
+    const run = mathCallChain.then(async () => {
+      const prev = mathActiveSession
+      mathActiveSession = s
+      try { return await fn() } finally { mathActiveSession = prev }
+    })
+    mathCallChain = run.then(() => {}, () => {})
+    return run
+  }
+  function mathSeam() {
+    if (!mathActiveSession) throw new Error('math_computation: no active session')
+    return mathActiveSession.mathSessionHost()
+  }
+  const mathRegistered = registerMathComputation({
+    register: (name, description, parameters, handler) => {
+      registerTool(name, description, parameters, (s, args) => withMathSession(s, () => handler(args)))
+    },
+    params: () => (mathActiveSession ? mathActiveSession.params() : params),
+    projectRoot: () => mathSeam().projectRoot(),
+    designator: 'vibe-math-v5',
+    writeText: (rel, text) => mathSeam().writeText(rel, text),
+    readText: (rel) => mathSeam().readText(rel),
+    exists: (rel) => mathSeam().exists(rel),
+    resolveExecutable: (cmd) => mathSeam().resolveExecutable(cmd),
+    spawn: (opts) => mathSeam().spawn(opts),
+    log: (kind, msg) => { try { mathSeam().log(kind, msg) } catch (e) { /* a log line is never fatal */ } },
+  })
+  // Drift guard: the registered tool must BE the shared frozen text (all four presets must ship
+  // the same description — a re-typed copy here would diverge silently).
+  if (mathRegistered.description !== MATH_TOOL_DESCRIPTION) {
+    console.error('vibe-math-v5: math_computation was registered with a description that is not MATH_TOOL_DESCRIPTION')
+  }
   /**
    * Resolve the caller of an OFFICE-ONLY control and refuse anything that is not the PROVABLE
    * session root. `officeCaller` answers 'office' for that root, a member id for a member child, and
@@ -6363,7 +6644,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra --search-path roots before the automatic VibeMath root (deduped; an explicit --search-path/-R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. Unknown spellings of these enums fall back to the documented default.', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra --search-path roots before the automatic VibeMath root (deduped; an explicit --search-path/-R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
@@ -6373,6 +6654,10 @@ export function apply(ctx) {
     leanCommand: S, leanArgs: SA, leanTimeoutMs: I, leanAsync: B,
     leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] },
     leanSearchPaths: SA, leanJobsMaxParallel: I,
+    mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] },
+    mathMode: { type: 'string', enum: ['typed', 'typed+shell'] },
+    mathEngines: SA, mathTimeoutMs: I, mathPackages: SA,
+    mathInstallScope: { type: 'string', enum: ['user', 'system'] },
     finalPaper: B, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] },
     paperLanguage: { type: 'string', enum: ['zh', 'en'] },
     paperCompilePdf: B, paperEditor: { type: 'string', enum: ['office', 'academician'] }, paperLatexCommand: S,

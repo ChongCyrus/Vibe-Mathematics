@@ -132,29 +132,35 @@ const PRESETS = [
     dir: 'vibe-math-v2',
     js: 'vibe-math-v2.js',
     prefix: 'vibe_math_',
-    tools: 27,
+    tools: 28,
     // member-facing write-lock / scheduler-metadata tools; the v2 coordinator never
     // writes Markdown itself, so they stay out of its persona.
     undocumented: [],
     lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
+    // the shared math-computation tool (docs/math-computation.md) is prefix-less by
+    // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
+    math: { tools: ['math_computation'] },
   },
   {
     dir: 'vibe-math-v3',
     js: 'vibe-math-v3.js',
     prefix: 'vibe_math_',
-    tools: 35,
+    tools: 36,
     // `vibe_math_sync_meta` is no longer undocumented: the promotion-contract line of the
     // persona now names it as the place to report `lemmas[].价值/关键性` (v3 audit M1 —
     // without a prompt-side source for that field the promotion main line is unreachable).
     // The write-lock pair stays out: solver/method-keeper prompts carry it via kcWriteRules().
     undocumented: ['vibe_math_claim_write', 'vibe_math_release_write'],
     lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
+    // the shared math-computation tool (docs/math-computation.md) is prefix-less by
+    // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
+    math: { tools: ['math_computation'] },
   },
   {
     dir: 'vibe-math-v4',
     js: 'vibe-math-v4.js',
     prefix: 'vibe_v4_',
-    tools: 34,
+    tools: 35,
     // resident-facing tools (mail, library cards, task board, write lock). The
     // coordinator drives residents through vibe_v4_message / _meeting / _add_member.
     undocumented: [
@@ -165,12 +171,15 @@ const PRESETS = [
       'vibe_v4_claim_write', 'vibe_v4_release_write',
     ],
     lean: { tools: ['vibe_v4_lean_run', 'vibe_v4_lean_archive', 'vibe_v4_lean_lib', 'vibe_v4_lean_read', 'vibe_v4_lean_job'], extra: ['vibe_v4_formal_report'] },
+    // the shared math-computation tool (docs/math-computation.md) is prefix-less by
+    // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
+    math: { tools: ['math_computation'] },
   },
   {
     dir: 'vibe-math-v5',
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
-    tools: 39,
+    tools: 40,
     // member- and academician-facing tools; the office (main agent) holds only the
     // institute-level controls plus the hiring authority. The final-paper pair is an
     // OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper),
@@ -183,6 +192,9 @@ const PRESETS = [
       'vibe_v5_overview', 'vibe_v5_assign', 'vibe_v5_prioritize', 'vibe_v5_nudge',
     ],
     lean: { tools: ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job'], extra: [] },
+    // the shared math-computation tool (docs/math-computation.md) is prefix-less by
+    // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
+    math: { tools: ['math_computation'] },
   },
 ]
 
@@ -195,9 +207,19 @@ for (const P of PRESETS) {
   const src = readFileSync(jsPath, 'utf8')
 
   // ---- registered tools -------------------------------------------------
+  // Two registration shapes exist now:
+  //   1. a literal `registerTool('<name>', …)` (most tools, including the shared math tool in
+  //      v2/v3, which register it by its frozen prefix-less name);
+  //   2. the shared math tool in v4/v5, where the plugin only wires a host callback and the module
+  //      calls `host.register(MATH_TOOL_NAME, …)`. The module's name is FROZEN
+  //      (MATH_TOOL_NAME = 'math_computation', INTERFACE-FREEZE.md §3), so a source that wires
+  //      `registerMathComputation(` contributes exactly that one tool. Without this the shared tool
+  //      would be invisible to this guard on v4/v5 - a silent coverage hole.
   const registered = new Set()
   for (const m of src.matchAll(/registerTool\(\s*'([A-Za-z0-9_]+)'/g)) registered.add(m[1])
+  if (/registerMathComputation\s*\(/.test(src)) registered.add('math_computation')
   eq(registered.size, P.tools, `${P.dir}: registered tool count changed (update this snapshot deliberately)`)
+  for (const tool of (P.math ? P.math.tools : [])) ok(registered.has(tool), `${P.dir}: the shared math tool ${tool} is not registered`)
 
   // ---- A. both literal blocks exist and are non-empty -------------------
   const blocks = literalBlocks(yml)
@@ -226,7 +248,13 @@ for (const P of PRESETS) {
     // Uppercase is part of the token class on purpose: a drifted name such as
     // `vibe_v4_formal_reportX` must be captured whole and judged unregistered, instead of
     // being read as a mention of the registered `vibe_v4_formal_report`.
-    const re = new RegExp('\\b' + P.prefix.replace(/_$/, '') + '_[A-Za-z0-9_]+', 'g')
+    // Names that do NOT carry this preset's prefix (the shared `math_computation`) are added to the
+    // alternation from the registry, so "every registered tool must be mentioned" stays true for
+    // them too instead of forcing them into the `undocumented` snapshot.
+    const prefixRoot = P.prefix.replace(/_$/, '')
+    const prefixless = [...registered].filter((n) => !new RegExp('^' + prefixRoot + '_').test(n))
+    const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp('\\b' + prefixRoot + '_[A-Za-z0-9_]+' + (prefixless.length ? '|\\b' + prefixless.map(escapeRe).join('\\b|\\b') + '\\b' : ''), 'g')
     for (const m of body.matchAll(re)) {
       if (body[m.index + m[0].length] === '*') { wildcards.add(m[0]); continue }
       mentioned.add(m[0])

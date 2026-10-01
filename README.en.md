@@ -501,6 +501,12 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `solverAllowScripts` / `verifierAllowScripts` | empty | v2·v3 | Script tool switch (bash/pwsh): same as above |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | v2·v3 | Maximum external tool calls per round (0 = unlimited) |
 | `reportIntervalMs` | 0 | v2·v3 | 0 = event-driven only (write/push only when there is a state update); >0 = timed automatic reporting (milliseconds) |
+| `mathComputation` | `auto` | all four | Math-computation tier: `off` (a true no-op: no probing, no execution, nothing injected into prompts) / `auto` (works once an engine is detected) / `on`. See [`docs/math-computation.md`](docs/math-computation.md) |
+| `mathMode` | `typed+shell` | all four | **Prompt policy only** (the plugin cannot enforce it): `typed+shell` lets the prompt fall back to the host shell when the tool cannot run, but such conclusions must be marked "not tool-archived" and only tool-routed runs count as reproducible supporting material; `typed` never mentions the shell and also disables `engine:'cli'` |
+| `mathEngines` | `[python, r, octave, julia, matlab, maple, wolfram, cli]` | all four | Allowed engines and detection order. The three commercial ones (matlab/maple/wolfram) are detected and licence-checked only and are **never installed**; removing `cli` closes the generic escape hatch |
+| `mathTimeoutMs` | `60000` | all four | Per-run budget in milliseconds (minimum 1000); on timeout the process is terminated |
+| `mathPackages` | `[]` | all four | Packages/toolboxes required by default; a missing one is reported with an install plan - it is **never installed automatically** |
+| `mathInstallScope` | `user` | all four | Install scope; `system` must be given **explicitly on every call and is never remembered** (most managers have no system template, in which case the request is refused) |
 | `tickIntervalMs` | 2000 | v2·v3 | Scheduler heartbeat interval (milliseconds) |
 | `activityLogCap` | 100 | v2·v3 | Number of activity log entries retained (the report displays at most 30) |
 | `maxExplorerRetries` | 3 | v2·v3 | Upper limit on re-dispatching after an explorer fails to split directions |
