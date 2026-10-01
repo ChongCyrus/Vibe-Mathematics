@@ -195,16 +195,10 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ### DSH 版本适配与依赖
 
-- **形态依赖（两条线，本包一份 bundle 全兼容）**：**bundle patch 机制**（`cordis.patch.yml`，`dsh.bundle.patch` 必须是**字符串**——0.1.5/0.1.6 会把该值直接送进 `path.join`，数组会让 profile 起不来）；**DSH ≥ 0.1.7** 走 **组合行声明**（`agentPresets` 服务），**DSH ≤ 0.1.6** 走 `~/.dsh/.agent-presets/<id>/` 目录 + preset picker。
-- **宿主插件行**：`agent.cordis.yml` 引用宿主提供的 `@deepseek-ai/dsh-*` 插件行（persona、agent-instructions、tool-bash/pwsh、tool-fs/fs-search、tool-jobs、skill-filesystem、tool-skill、tool-goal、plan-mode、compaction、subagent/workflow、ask-user、todo、web 等，约 21 个唯一包名）。宿主缺行会导致 preset 挂载失败（会话启动时报错）。
-- **宿主服务 API**：预设插件消费 `subagents`（startContinuable / **sendMessage**（续做/唤醒；`followup` 仅为 `Agent` 对象方法、**不是** `subagents` 服务方法）/ interrupt / drainContinuableChildren（v5 用于**真实解雇**））、`agents`（get/roots）、`tools`（register/restrict）、`commands`（register）、`fs`（resolve/stat/readText/writeText/listDir），以及**可选** `subprocess` / `sandboxPolicy` / `compaction`。这些 API 形状随 DSH 版本演进；本项目**已在 `dsh-v0.2.0-rc.2` 上逐项核对并适配**（`package.json` 的 `dsh.testedVersion`），并同时对齐 `0.1.5-rc.2`。**注意：DSH 0.1.2 起 `subagents.startContinuable` 的 `agentOptions` / `toolFilter` 需要宿主 provider 声明对应 capability**（spawn / fork 进程内 provider 均支持，v4/v5 指定成员模型/路由与工具权限依赖于此）。
-  - **v5 的研究所状态只写在 `State/<研究所>.v5state.json`**（加固 JSON、串行写、读前必 load）。v5 **不再**把研究所事件写进宿主会话日志：DSH 的会话持久化遇到日志里不认识的事件类型会**拒绝加载整个会话**（除非写入方标记 `ignorable: true`，而 `Session.append` 无法设置该字段），那会让**你自己的会话在下次恢复时打不开**。
-  - **常驻数量有宿主上限**：DSH ≥ 0.1.7 对每个根代理的**存活 continuable 子代理**设了上限（`subagent` 行的 `maxActiveSubagents`，默认 8）。v4/v5 会在撞到上限时给出明确提示、把该次派生推迟到下一轮，而不是让启动循环崩在半途。
-  > **2026 兼容性修复要点**（详见 `docs/COMPAT-AUDIT-ROUND2.md`）：① `tools.restrict()` 对**未注册的工具名抛错**，而 filter 在建立子代理时应用，故权限名表必须只含本部署真正注册的名字——v2/v3 原先硬编码 `web`/`fetch`/`bash`（其中 `bash` 在 Windows 被 `disabled`）会导致"想收紧权限时子代理永远起不来"；② v4 的真实 `/compact` 原先在 `subagent/end` 里查 `agents.get()`，但该事件在子代理**已被移出注册表之后**才触发，属死代码，已改为在 `subagent/start` 捕获引用；③ 可选服务改为**惰性读取**，不再在 `apply()` 快照（否则挂载顺序会让 `subprocess` 永久为 undefined 而静默不建目录）。
-- **DSH STORE 兼容声明**：`package.json` 的 `dsh.compatibility.dshReleases` 对每个完整 DSH 版本逐项声明 `compatible` / `incompatible` / `unknown`（当前声明 `0.1.2-alpha.4` … `0.2.0-rc.2` 共 11 个版本为 `compatible`，实测目标为 `0.2.0-rc.2`）；`engines.dsh` 为 `>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0`；`engines.node` 为 `^22.19.0 || >=24.0.0`。
-  另外声明了 `peerDependencies`（`@deepseek-ai/dsh-base`，并标为 optional）：DSH ≥ 0.1.7 会用**宿主自己的版本**去比对插件声明的 peer 范围，不满足时**跳过整个 bundle 并给出明确提示**，而不是挂上一个跑不通的预设。
-- **运行时自检（版本 + 形态 + 能力）**：安装器（bundle 插件）每次启动时：**① 按优先级探测 DSH 版本**——`DSH_VERSION` 环境变量 → `pluginManager` 服务的 bundle 列表（`@deepseek-ai/dsh-base` 的版本即宿主版本，0.1.7+）→ `@deepseek-ai/dsh-app-boot` 导出的 `getDshRuntimeVersion()`（0.2.0+ 的公开 API）→ `@deepseek-ai/dsh/package.json`（全局 0.1.x 安装），日志会写明**来源**；探测到且未被 `dshReleases` 声明为 `compatible` 时给出明确提示。**② 判断 preset 形态**：从 loader 入口树里是否挂了 `@deepseek-ai/dsh-agent-preset`（或其 registry）判断本宿主是"组合行"还是"目录"，据此决定是否同步 `~/.dsh/.agent-presets/`——新宿主上会跳过并在日志里说明旧目录可安全删除。**③ 能力自检**（真正的挂载门槛）：`subagents`/`agents`/`tools`/`commands`/`fs` 为**必需**（缺失即 warning），`subprocess`/`sandboxPolicy`/`compaction` 为**可选**（缺失只提示"功能会静默降级"），另含 `fs.resolve` 返回形状检测与 subagent `agentOptions`/`toolFilter` capability 检测。preset 挂载失败时先看 DSH 日志里的自检 warning。
-- **升级路径**：DSH 升级后无需重装本包；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（`dsh plugin` 的 `--profile` 是必填项；用 `add` 而不是 `update`，因为 profile 里可能把版本钉成精确值，那时 `update` 不会跨过去），重启 DSH 后（DSH ≤ 0.1.6 的目录形式下）安装器会把四个 preset 的受管文件整体更新到新版本（改过的文件同样被替换，原文先进 `<presetRoot>/.vibe-math-backup/`；DSH ≥ 0.1.7 的 preset 来自组合行，安装器不写任何文件）——见上文「安装」说明。
+- **支持范围**：`0.1.2-alpha.4` … `0.2.0-rc.2`（11 个版本声明为 `compatible`，实测目标 `0.2.0-rc.2`；`engines.node` 为 `^22.19.0 || >=24.0.0`）——逐版本声明、`engines.dsh` 区间与 `peerDependencies` 见 `package.json`（`dsh.compatibility.dshReleases`）。
+- **交付形态**：DSH ≥ 0.1.7 走**组合行声明**（`agentPresets` 服务），DSH ≤ 0.1.6 走 `~/.dsh/.agent-presets/<id>/` 目录 + preset picker——一份 bundle 同时兼容两条线。
+- **硬约束**：v5 研究所状态**只**写 `State/<研究所>.v5state.json`，**绝不**写宿主会话日志——DSH 遇到日志里不认识的事件类型会**拒绝加载整个会话**，会话下次恢复将打不开。
+- **其余细节**（宿主插件行与必需服务、启动自检与能力门槛、常驻数量上限、2026 的三处修复、`dsh.bundle.patch` 约束、升级路径与 `peerDependencies`）：见 `docs/COMPAT-AUDIT-ROUND2.md`；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（用 `add` 而非 `update`）。
 
 ---
 
@@ -508,12 +502,9 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `mathPackages` | `[]` | 四套 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
 | `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
 
-> **归档即证据**：每次计算都写出 `Computation/<id>/`，回执含 `scriptPath` 与 `scriptHash`；脚本原件可以打开/编辑，编辑后必须用 `mode:'file'` **重跑**得到新回执——**旧回执不代表修改后的代码**（`scriptChanged` / `scriptChangedDuringRun` 会显式告警）。归档只追加不覆盖，超上限只告警不删除。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
+> **归档即证据**：每次计算写 `Computation/<id>/`（回执含 `scriptPath`+`scriptHash`）；脚本改后必须用 `mode:'file'` 重跑取新回执（`scriptChanged`/`scriptChangedDuringRun` 会告警，旧回执不代表改后代码）；归档只追加不覆盖。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
 
-> **替代必须声明**：当替代方案改变**精确性或结论强度**（精确解→数值近似、闭式解→采样/求积、改精度/容差/假设、换算法类）时，结论**必须写明**，不得像得到了原本的结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`，已注入四套 persona 与提示词）。
-
-> **安装与版本**：`op:'install'` 按**检测到的 python 环境**分派 conda/mamba（`-c conda-forge`）、uv（`uv pip …`）或 pip 回退（歧义时标 `managerAssumed`）；R/Octave/Julia **只做用户级**（`system` ⇒ `MATH_REFUSED` + 每引擎理由）。**版本求解交给包管理器**：本工具只按 base name 查存在、把 `pkg==1.2`（conda `pkg=1.2`）原样透传，危险或不认识的写法 ⇒ `unsupported-version-syntax`。详见 [`docs/math-computation.md`](docs/math-computation.md) §5.1–5.3。
-> **引擎发现**：先看 PATH，最后才扫 **DSH 自带运行时**（`<DSH_HOME 或用户主目录>/.dsh/dsh-runtimes/*/dependencies/<engine>/`，树名**通配**）；找到就报**真实版本**，**找不到才**给按 OS 的安装指引，且指引针对**你请求的那个引擎**。`op:'probe'` 报的就是请求的引擎；`mathEngineOverride` **只能覆盖 argv 模板、不能指定可执行文件**，所以它不是发现手段（正解是 PATH / DSH 运行时 / `engine:'cli'` + `cli.command`）。`engine:'cli'` 下：包预检按 `cli.command` 的族进行（不可识别则跳过并给 `PACKAGE_PRECHECK_SKIPPED` 警告）、`mode:'code'` 会**自动把归档脚本追加到 argv**（所以真的会跑代码，而不是掉进 REPL）、版本报真实值。详见 [`docs/math-computation.md`](docs/math-computation.md) §5.4。
+> **替代必须声明**：替代改变精确性或结论强度时必须写明，不得读作原结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`）。
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |
@@ -540,8 +531,8 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `paperLatexCommand` | `''` | 四套 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
 | `paperEditor` | v4 `office`；v5 `academician` | v4·v5 | 定稿代表。v4：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明）；v5：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
 
-- **异步是默认**：`leanAsync=true` 时编译在后台队列里跑，`lean_run` / `lean_archive{run:true}` 立即返回；`leanAsync=false` 才回到同步等待。
-- **只有"落地为通过"才算通过**：作业必须 `settled` 且 exit 0，**并且**编译期间文件内容哈希与构建上下文都没变，才置 `passed` / 写 `Verified/Lean/<id>.lean`；其余（排队 / 失败 / 超时 / 中断 / 内容或上下文已变）一律停在 `attempted`。
+- **安装与版本**：`op:'install'` 分派 conda/mamba、uv 或 pip 回退；R/Octave/Julia 默认只做用户级（`system` ⇒ `MATH_REFUSED`）；版本求解交给包管理器——只按 base name 查存在，`pkg==1.2` 原样透传，危险/未知写法 ⇒ `unsupported-version-syntax`；引擎发现与 `engine:'cli'` 细节见 [`docs/math-computation.md`](docs/math-computation.md) §5.1–5.4。
+- **Lean 异步**：`leanAsync=true`（默认）编译走后台队列，`lean_run`/`lean_archive{run:true}` 立即返回；**只有** `settled` 且 exit 0、编译期间内容哈希与构建上下文未变的作业才置 `passed` 并写 `Verified/Lean/<id>.lean`，其余停在 `attempted`。
 
 ### v2（概率驱动 · 经典）专属参数
 
