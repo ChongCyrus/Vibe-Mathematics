@@ -41,8 +41,9 @@
   `leanTimeoutMs` 非正 → 默认；`leanJobsMaxParallel` < 1 → 1；`leanSearchPaths` 非数组 → `[]` 并去空串/去重）。
 - **`leanAsync` 必须显式布尔归一化**：字符串 `'false'` 不得被当作真值放行（它是"关掉后台队列"的开关，
   错误归一化会让用户以为已同步执行、实际仍在排队）。
-- 参数必须出现在该架构既有的参数体系里：`set_params` / `vibe_v4_set` / `vibe_v5_set`、
-  参数 schema（`*_setup` / `*_template`）、`status`/`report` 的可读参数表。
+- 参数必须出现在该架构既有的参数体系里：v2/v3 的 `vibe_math_set_params`、v4 的 `vibe_v4_set`、v5 的 `vibe_v5_set`，
+  以及各自的控制面（v2/v3：`vibe_math_setup` / `vibe_math_template` / `vibe_math_status`；v4：`vibe_v4_configure` / `vibe_v4_status`；
+  v5：`vibe_v5_configure` / `vibe_v5_status` —— **v4/v5 没有 `*_setup`/`*_template`**），外加 `status`/`report` 的可读参数表。
 - **模式是动态的**，可以在运行中切换：所有与模式相关的提示词文本都必须在**构造提示词的那一刻**
   由 `params.formalVerify` 现算，**不得**写进"入职时冻结"的人格/章程快照
   （否则切换模式后成员读到的仍是旧指令）。
@@ -371,6 +372,7 @@
 
 ### 7.1 调用与超时
 
+- **父目录不必预建（round-3 记录）**：宿主的文本写会自动创建缺失的父目录（`dsh-fs-local/lib/index.js` 的 `writeFileAtomic` 先做 `mkdir(dirname(absolutePath), { recursive: true })`），因此 `Formal/Jobs/`、`Computation/<runId>/` 及其 `attempts/<n>/` 都可以"直接写"；`ensureDirs()` 里的列举只为空项目可发现性。把"严格 fs 拒绝创建父目录"当作真实宿主行为来构造失败用例是**错误前提**。
 - 用 `subprocess` 服务：`resolveExecutable(leanCommand)` → `spawn({argv, cwd, stdio:{stdin:'ignore',stdout:{maxBytes},stderr:{maxBytes}}, graceMs})`
   → `await handle.done` → `handle.collected.stdout?.readFrom(0).text`。
 - **必须**给 `cwd`（项目根或 `<VibeMath 根>`），并在超时时调用 `handle.terminate()`——

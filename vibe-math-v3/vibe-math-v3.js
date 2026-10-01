@@ -442,7 +442,7 @@ export function apply(ctx) {
   // Progress_Logs/ 必须和别的骨架目录**一起**建出来（审计 L8）：vibe_math_report 会写
   // `Progress_Logs/report.json`，README 也把它列为布局的一部分，但此前它只靠 writeText 的隐式
   // mkdir 兜底——在宿主不支持删除/创建的路径上（runShell 失败）报告目录就时有时无。
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Progress_Logs', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State', 'Computation']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
+  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Progress_Logs', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Formal/Jobs', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State', 'Computation']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
   async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
 
   // ================= 数学计算 math_computation：会话侧接线（共享模块，FREEZE §4/§5） =================

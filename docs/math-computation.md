@@ -44,7 +44,11 @@ math_computation {
 **"没有 subprocess 服务"与"没有引擎"是两件事**（避免误导用户去装 python）：
 - 宿主若能声明自己没有 subprocess 服务（预设可选提供 `hasSubprocess:()=>false`），`run` 与 `probe` 一律返回 `MATH_NO_SUBPROCESS` + `next.kind:'note'`；
 - 宿主不提供该声明时：命令**解析不到** ⇒ `MATH_ENGINE_NOT_FOUND`（附逐 OS 安装指引）；能解析但 `spawn` 拿不到句柄（返回 `null`）⇒ `MATH_NO_SUBPROCESS`。
-- 策略类拒绝（`mathMode:'typed'` 下的 `cli`、`cli` 不在 `mathEngines`、`cli` 缺 `command`、`mode:'expr'` 配 `cli`、路径越界）都是 `MATH_REFUSED` **且带 `next:{kind:'reason', reason:…}`**（`policy` / `engine-not-allowed` / `missing-cli-command` / `expr-not-supported` / `path-outside-project`），调用方不必解析文案。
+- **机读词汇表（穷举；权威副本在 `_oneoff/mc-P1-ready/tool-schema.json#refusalVocabulary`，由 parity 守卫盯着，改名即红）**：
+  - `code`（11 个）：`MATH_NOT_AVAILABLE` `MATH_ENGINE_NOT_FOUND` `MATH_ENGINE_LICENSE_REQUIRED` `MATH_ENGINE_UNUSABLE` `MATH_MISSING_PACKAGES` `MATH_TIMEOUT` `MATH_NONZERO_EXIT` `MATH_ENGINE_BAD_ARGV` `MATH_REFUSED` `MATH_INVALID_ARGUMENT` `MATH_NO_SUBPROCESS`；
+  - `next.kind`（7 个）：`user-install`（用户自装指引）、`agent-install`（代装计划/计划就绪）、`vendor`（商业引擎厂商指引）、`enable`（`mathComputation:'off'` 的启用建议）、`engine-override`（bad-argv ⇒ 用 `mathEngineOverride` 覆盖模板）、`reason`（机读拒绝原因）、`note`（补充说明，如无 subprocess）；
+  - `next.reason`（12 个，仅当 `next.kind==='reason'`）：`policy`、`engine-not-allowed`、`missing-cli-command`、`expr-not-supported`、`mode-not-supported`、`path-outside-project`、`file-not-found`、`system-scope-unsupported`、`plan-token-mismatch`、`archive-missing`、`receipt-unparsable`、`no-subprocess`。
+  调用方**不必解析文案**：按 `code` + `next.kind`（必要时 `next.reason`）分支即可；新增或改名必须同时更新这里与 `tool-schema.json`，否则守卫变红。
 
 ## 4. 回执：可复核的支撑材料
 
@@ -101,6 +105,8 @@ math_computation {
 
 **并发下的完整性**：同一 archive id 的分配与"占用"（receipt.json 落盘）在**一个插件实例内**是串行的，因此两个并发同 id 运行会分别拿到 attempt 1 / attempt 2，绝不会共用目录。**跨进程**并发仍依赖宿主的独占创建原语（当前 fs 接口没有暴露，列为已知限制）。
 
+**父目录由宿主创建（round-3 记录，勿再当缺陷）**：宿主的文本写会**自动创建缺失的父目录**——`dsh-fs-local/lib/index.js` 的 `writeFileAtomic` 在落盘前执行 `mkdir(dirname(absolutePath), { recursive: true })`。因此 `Computation/<runId>/`、`Computation/<runId>/attempts/<n>/` 以及异步作业镜像 `Formal/Jobs/` **不需要预先存在**；`ensureDirs()` 仍然列出它们只是为了空项目里的可发现性（v2/v3/v4/v5 现已都含 `Formal/Jobs` 与 `Computation`）。真机上"严格 fs 拒绝创建父目录"的实验与真实宿主行为矛盾，不能作为失败证据。
+
 ## 7. `cli` 逃生口为什么默认开启
 
 模型本来就有宿主 shell 可用（默认 `mathMode='typed+shell'` 就允许把它当兜底），所以 `cli` **不扩大爆炸半径**；区别在于 `cli` 仍在工具内：照样有 cwd、超时、输出上限、路径守卫与回执（`engine` 记为 `cli:<command>`）。要收紧：把 `mathMode` 设为 `typed`，或从 `mathEngines` 去掉 `'cli'`——两种情况下 `engine:'cli'` 都返回 `MATH_REFUSED`。
@@ -111,4 +117,4 @@ math_computation {
 
 ## 9. 参数配置在哪改
 
-`vibe_math_set_params`（v2/v3）、`vibe_v4_set`（v4）、`vibe_v5_set`（v5）以及各自的 `*_setup`/`status`；六个参数名在四套、README 双语参数表与本文中拼写一致（由 `tests/audit-math-computation-parity.mjs` 与 `audit-math-computation-contract.mjs` 盯着）。
+`vibe_math_set_params`（v2/v3）、`vibe_v4_set`（v4）、`vibe_v5_set`（v5）以及各自的控制面：v2/v3 是 `vibe_math_setup`（交互式 schema）/`vibe_math_status`/`vibe_math_template`/`vibe_math_save_settings`，v4 是 `vibe_v4_configure`/`vibe_v4_status`（**没有** `template`/`setup`），v5 是 `vibe_v5_configure`/`vibe_v5_status`（同样没有 `template`/`setup`）；六个参数名在四套、README 双语参数表与本文中拼写一致（由 `tests/audit-math-computation-parity.mjs` 与 `audit-math-computation-contract.mjs` 盯着）。

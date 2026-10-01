@@ -25,7 +25,7 @@
 //   M5 `params-not-normalized` — normalizeParam returns the raw value for the six keys: §11 sees
 //      `mathMode=bogus` / `mathTimeoutMs=5` / `mathEngines='python,cli'` survive verbatim → red.
 // ============================================================
-import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, basename } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -640,6 +640,24 @@ section('19 audit R2 lens-2: listDir wiring (per-project retention) + no-listDir
   assert(h2.state.listDirCalls.length === 0, '★ with NO listDir the module never queries the host at all (0 listDir calls)')
   assert(h.state.listDirCalls.length >= 1, 'with listDir wired the retention check does query the host (>=1 call)')
   h2.cleanup()
+}
+
+// ===============================================================
+section('20 round-3: the archive DIRECTORIES really exist on disk (host creates missing parents)')
+{
+  // The real host's text write creates missing parents (dsh-fs-local `writeFileAtomic` runs
+  // `mkdir(dirname, {recursive:true})`), so the module never has to mkdir. What this pins is the
+  // OBSERVABLE result: after a run the archive directory and its attempt chain exist as directories.
+  const h = await live({ installed: ['python3', 'python'] })
+  const r = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  assert(r.ok === true, 'the run succeeds')
+  const abs = (rel) => join(h.projectRoot, ...String(rel).split('/'))
+  assert(existsSync(abs(r.attemptDir)) && statSync(abs(r.attemptDir)).isDirectory(), '★ Computation/<runId>/ exists as a DIRECTORY after the run')
+  assert(existsSync(abs(r.scriptPath)) && statSync(abs(r.scriptPath)).isFile(), '★ the archived script exists on disk')
+  const r2 = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  assert(r2.attempt === 2 && existsSync(abs(r2.attemptDir)) && statSync(abs(r2.attemptDir)).isDirectory(), '★ the second attempt creates Computation/<runId>/attempts/2/ as a DIRECTORY (parents included)')
+  assert(existsSync(abs(r.attemptDir)), 'the first attempt directory is untouched')
+  h.cleanup()
 }
 
 // ===============================================================

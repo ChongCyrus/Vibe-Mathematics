@@ -116,6 +116,36 @@ for (const f of MODULES) {
   ok(E.mathEngineCandidates('cli') === null, 'cli has no detection candidates')
 }
 
+// ── 6. round-3 item 3: the machine-readable refusal vocabulary cannot drift ──────────────────────
+// The docs used to list 5 reasons while the code emitted 12, and nothing pinned the names. This
+// section derives the literals FROM the shipped module and requires the documented lists (docs +
+// tool-schema.json) to be exactly that set - adding/renaming one in the module without updating the
+// docs turns this red.
+{
+  const modHref = process.env.MATH_COMPUTATION_MODULE
+    ? new URL('file:///' + String(process.env.MATH_COMPUTATION_MODULE).replace(/\\/g, '/'))
+    : new URL('../vibe-math-v2/math-computation.js', import.meta.url)
+  const { readFileSync: rf } = await import('node:fs')
+  const src = rf(fileURLToPath(modHref), 'utf8')
+  const kinds = new Set(); for (const m of src.matchAll(/next\('([a-z-]+)'/g)) kinds.add(m[1])
+  const reasons = new Set(); for (const m of src.matchAll(/reason:\s*'([a-z-]+)'/g)) reasons.add(m[1])
+  const codes = new Set(); for (const m of src.matchAll(/fail\('(MATH_[A-Z_]+)'/g)) codes.add(m[1])
+  const schemaPath = [join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json'), resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')].find((p) => existsSync(p))
+  const schema = schemaPath ? JSON.parse(rf(schemaPath, 'utf8')) : null
+  const RV = schema && schema.refusalVocabulary
+  const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+  if (!RV) {
+    console.log('  note refusalVocabulary source absent (published tree) - deriving from the module only')
+  } else {
+    ok(same(kinds, RV.nextKinds), 'documented next.kind list is EXHAUSTIVE', 'code=' + [...kinds].sort().join(',') + ' doc=' + RV.nextKinds.join(','))
+    ok(same(reasons, RV.reasons), 'documented next.reason list is EXHAUSTIVE', 'code=' + [...reasons].sort().join(',') + ' doc=' + RV.reasons.join(','))
+    ok(codes.size === 11 && schema.failureCodes.length === 11, 'the emitted failure-code set is the frozen 11')
+  }
+  const doc = rf(join(REPO, 'docs', 'math-computation.md'), 'utf8')
+  for (const k of kinds) ok(doc.indexOf('`' + k + '`') !== -1, 'docs/math-computation.md names next.kind ' + k)
+  for (const r of reasons) ok(doc.indexOf('`' + r + '`') !== -1, 'docs/math-computation.md names next.reason ' + r)
+}
+
 console.log('')
 console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

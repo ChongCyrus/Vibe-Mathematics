@@ -580,7 +580,11 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 
 #### 最终论文（final paper）
 
-默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（引擎可用时另有 `paper.pdf`）。完整契约见 `docs/final-paper.md`。
+默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（引擎可用时另有 `paper.pdf`；`paper.lock.json` 是该目录的写锁，用于并发的复写/重编译串行化）。完整契约见 `docs/final-paper.md`。
+
+**v4 专属工具 `vibe_v4_formal_report`（文档补记，round-3）**：把"哪些命题/方法已经得到形式化支撑、支撑强度如何"汇报给常驻团队，是 v4 **团队自治**流程的一部分——居民之间要靠这条汇报对齐"谁能引用哪条已定论结论"，因此它**只存在于 v4**（v2/v3 是专职求解/验证子代理架构，其形式化状态由 `vibe_math_lean_*` 与验证日志承载；v5 由院士评审路径 `vibe_v5_propose_verify`/`vibe_v5_verdict` 与 `vibe_v5_status` 承载）。v4 的两处 persona 文本块都要求成员使用它；v4 的 `status`/`report` 也会汇总其输出。
+
+> **状态面不对称（文档补记，round-3）**：v2/v3 的 `vibe_math_status` 返回**参数块**（含 `math*`/`lean*` 现值），而 v4 的 `vibe_v4_status` 与 v5 的 `vibe_v5_status` 返回**各自的状态/成员/研究所视图但不含参数块**（参数请用 `vibe_v4_set`/`vibe_v5_set` 的 schema 或对应 `status` 里的既有字段）。这是既定设计（v4/v5 的参数面在 `*_set` 的闭合 schema 上），本轮选择**在文档里声明**而不是给 v4/v5 加参数块。
 
 ### v5（研究所体系 · 实验）专属参数
 

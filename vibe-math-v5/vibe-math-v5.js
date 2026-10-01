@@ -1408,7 +1408,7 @@ export function apply(ctx) {
     // directory is what actually creates the tree — inside the policy.
     async function mkdirs() {
       const base = instRoot()
-      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Verified/Lean', 'Computation']
+      const dirs = ['Shared/Chat', 'Shared/Meetings', 'Shared/Debates', 'State', 'Problems', 'Formal', 'Formal/Jobs', 'Verified/Lean', 'Computation']
       // The REUSABLE Lean library is global (cross-project), so it hangs off the VibeMath
       // root rather than the institute root — creating it under instRoot would scatter a
       // second, invisible copy per institute.

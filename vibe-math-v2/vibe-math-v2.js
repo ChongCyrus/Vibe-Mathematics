@@ -445,7 +445,7 @@ export function apply(ctx) {
   //   全局（**不在项目内**，跨项目复用）：<VibeMath 根>/Formal/Lib/（可复用定义）、Formal/Proved/（已证引理）
   async function ensureDirs() {
     const base = frameworkRoot()
-    const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verified/Lean', 'Verification_logs', 'Progress_Logs', 'VibeMath_State', 'Formal', 'Computation']
+    const dirs = ['qs', 'Propos', 'Reliable', 'Verified', 'Verified/Lean', 'Verification_logs', 'Progress_Logs', 'VibeMath_State', 'Formal', 'Formal/Jobs', 'Computation']
     const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d }))
     const r = await runShell(mkdirCmd(paths))
     if (!r || !r.ok) warnShellOnce('ensureDirs (mkdir ' + base + ')', r)
