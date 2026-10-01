@@ -1907,6 +1907,68 @@ console.log('\n[43] pre-start tools explain themselves; the quorum is coherent b
     '★ after start the SAME tool succeeds for a member (normal path reachable) (' + JSON.stringify(okProg).slice(0, 120) + ')')
 }
 
+// ---------- 44. workspace containment + single-sourced quorum (3rd self-test defects A/B) --------
+// Defect A: member-facing text said the library root was `Members/<id>/` while a member's OWN
+// file tools resolve relative paths against the SESSION CWD ⇒ a stray `<cwd>/Members/acad/Propos/
+// p-*.md` appeared outside `VibeMath/Projects/…`. Every member-facing path is now CWD-relative,
+// and this section proves that a member card write cannot land outside the project tree.
+// Defect B: the office digest said m=2 while status/acad said m=3 in the same window (two roster
+// snapshots). Every view now reads ONE snapshot and carries `rosterVersion`, so all views at one
+// point in time must agree — including after a roster change.
+console.log('\n[44] paths stay inside the project root; every quorum view agrees')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  // (A1) the member brief must name the CWD-relative library root (the member's real baseline).
+  const brief = h.spawns.map((sp) => JSON.stringify(sp.request || {})).join('\n')
+  assert(brief.indexOf('VibeMath/Projects/default/Institutes/institute/Members/') !== -1,
+    '★ the member brief carries the CWD-relative library root (' + (brief.match(/Members\/[^"\\]{0,40}/) || [''])[0] + ')')
+  // A bare `Members/…` NOT preceded by a path separator is an institute-relative path: a member
+  // copying it into its own file tool would write it against the session cwd (defect A).
+  const bareLib = (brief.match(/(^|[^A-Za-z0-9/_.-])Members\//g) || [])
+  assert(bareLib.length === 0,
+    'no member-facing path is left institute-relative (bare ' + JSON.stringify(bareLib) + ')')
+  await h.settleSpawns()
+  // (A2) a member card write must not add anything at the workspace TOP level.
+  const topBefore = readdirSync(h.WS).sort().join(',')
+  const card = await h.callTool('vibe_v5_record_proposition', { id: 'p-stray-check', statement: '包层测试', value: 1, motive: 'm', p: 0.5 }, h.childAgent(h.childOf('r-1')))
+  const topAfter = readdirSync(h.WS).sort().join(',')
+  assert(card.ok === true && /Members\/r-1\/Propos\/p-stray-check\.md/.test(String(card.file || '')),
+    'the member card is written through the v5 tool (' + JSON.stringify(card).slice(0, 120) + ')')
+  assert(existsSync(join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Members', 'r-1', 'Propos', 'p-stray-check.md')),
+    '…and it exists under VibeMath/Projects/<project>/…')
+  assert(topAfter === topBefore && !existsSync(join(h.WS, 'Members')),
+    '★ NO path outside VibeMath/Projects/… gained files (top level unchanged: ' + topBefore + ' → ' + topAfter + ')')
+  // (B) every quorum view agrees at one point in time, and they move TOGETHER after a hire.
+  const views = async () => {
+    const st = await h.callTool('vibe_v5_status', {})
+    const rp = await h.callTool('vibe_v5_report', {})
+    await h.callTool('vibe_v5_say', { to: 'r-1', text: '请继续推进。' }, h.childAgent(h.childOf('acad')))
+    const w = await h.peekWakeOf('r-1', 3000)
+    const pm = w ? /法定票数 m=(\d+)/.exec(w.text) : null
+    if (w) h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+    await sleep(20)
+    return { st, rp, promptM: pm ? Number(pm[1]) : null }
+  }
+  const v1 = await views()
+  assert(v1.st.quorum && v1.rp.quorum && v1.st.quorum.m === v1.rp.quorum.m,
+    '★ status and report agree on m at one point in time (' + JSON.stringify({ status: v1.st.quorum && v1.st.quorum.m, report: v1.rp.quorum && v1.rp.quorum.m }) + ')')
+  assert(v1.st.quorum.rosterVersion === v1.rp.quorum.rosterVersion,
+    'both views carry the SAME rosterVersion (' + JSON.stringify({ s: v1.st.quorum.rosterVersion, r: v1.rp.quorum.rosterVersion }) + ')')
+  assert(v1.promptM === v1.st.quorum.m,
+    'the member-facing state block shows the same m (' + JSON.stringify({ prompt: v1.promptM, status: v1.st.quorum.m }) + ')')
+  // A roster change must reach EVERY view (the stale-snapshot bug). Dismissing a permanent
+  // researcher shrinks the voter set synchronously, so m MUST move in every view at once.
+  const rm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' })
+  assert(rm.ok === true, 'precondition: the roster change succeeded (' + JSON.stringify(rm).slice(0, 140) + ')')
+  await sleep(30)
+  const v2 = await views()
+  assert(v2.st.quorum.m === v2.rp.quorum.m,
+    '★ after the roster changes, status and report STILL agree (status=' + v2.st.quorum.m + ', report=' + v2.rp.quorum.m + ')')
+  assert(v2.st.quorum.rosterVersion !== v1.st.quorum.rosterVersion && v2.st.quorum.m !== v1.st.quorum.m,
+    'the roster change moved both m and rosterVersion (' + JSON.stringify({ before: v1.st.quorum.m, after: v2.st.quorum.m, v: [v1.st.quorum.rosterVersion, v2.st.quorum.rosterVersion] }) + ')')
+}
+
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

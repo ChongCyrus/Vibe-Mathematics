@@ -68,7 +68,9 @@ const probes = [
     name: 'quorum-forced-to-one',
     ref: 'selfdrive-v5.mjs',
     guarantee: '④ only >= m boolean votes may verify (m must be min(quorumCap, |voters|))',
-    from: "      return Math.max(1, Math.min(cap, voterCount()))",
+    // The floor moved into `quorumMFrom(vc)` when the quorum became single-sourced (defect B of
+    // the 3rd self-test); the anchor follows the implementation, it is not relaxed.
+    from: "      return Math.max(1, Math.min(cap, vc))",
     to: "      return 1",
   },
   {

@@ -51,7 +51,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -113,7 +113,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -175,7 +175,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -236,7 +236,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -297,7 +297,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -317,7 +317,7 @@
 
 ## [6] kind=`founding` owner=`acad`
 
-- charter: 5618 字符
+- charter: 5917 字符
 
 ### 人设 / 规章（acad，仅首次完整打印）
 
@@ -354,7 +354,7 @@
   2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。
      其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——
      都只是经验性参考，引用时必须注明"未验证"。
-  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。
+  3. 任何人可以读任何人的成果库；你只能写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/）。
   4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：
      价值程度、动机用途计划、你自己对"该对象为真"的概率估计。
   5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。
@@ -363,8 +363,10 @@
      说出来，把细节留在你自己的 Progress/ 里。
 
 【三、你的资料库、progress 与卡片格式】
-  你的资料库根目录：Members/acad/
+  你的资料库根目录（**相对会话工作目录**）：VibeMath/Projects/default/Institutes/institute/Members/acad/
   （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）
+  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；
+    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。
 
   · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。
     主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；
@@ -529,7 +531,7 @@
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -549,7 +551,7 @@
 
 ## [7] kind=`founding` owner=`r-1`
 
-- charter: 5524 字符
+- charter: 5823 字符
 
 ### 人设 / 规章（r-1，仅首次完整打印）
 
@@ -586,7 +588,7 @@
   2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。
      其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——
      都只是经验性参考，引用时必须注明"未验证"。
-  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。
+  3. 任何人可以读任何人的成果库；你只能写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/）。
   4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：
      价值程度、动机用途计划、你自己对"该对象为真"的概率估计。
   5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。
@@ -595,8 +597,10 @@
      说出来，把细节留在你自己的 Progress/ 里。
 
 【三、你的资料库、progress 与卡片格式】
-  你的资料库根目录：Members/r-1/
+  你的资料库根目录（**相对会话工作目录**）：VibeMath/Projects/default/Institutes/institute/Members/r-1/
   （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）
+  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；
+    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。
 
   · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。
     主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；
@@ -752,7 +756,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -772,7 +776,7 @@
 
 ## [8] kind=`founding` owner=`r-2`
 
-- charter: 5528 字符
+- charter: 5827 字符
 
 ### 人设 / 规章（r-2，仅首次完整打印）
 
@@ -809,7 +813,7 @@
   2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。
      其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——
      都只是经验性参考，引用时必须注明"未验证"。
-  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。
+  3. 任何人可以读任何人的成果库；你只能写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/）。
   4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：
      价值程度、动机用途计划、你自己对"该对象为真"的概率估计。
   5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。
@@ -818,8 +822,10 @@
      说出来，把细节留在你自己的 Progress/ 里。
 
 【三、你的资料库、progress 与卡片格式】
-  你的资料库根目录：Members/r-2/
+  你的资料库根目录（**相对会话工作目录**）：VibeMath/Projects/default/Institutes/institute/Members/r-2/
   （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）
+  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；
+    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。
 
   · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。
     主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；
@@ -975,7 +981,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -995,7 +1001,7 @@
 
 ## [9] kind=`founding` owner=`r-3`
 
-- charter: 5532 字符
+- charter: 5831 字符
 
 ### 人设 / 规章（r-3，仅首次完整打印）
 
@@ -1032,7 +1038,7 @@
   2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。
      其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——
      都只是经验性参考，引用时必须注明"未验证"。
-  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。
+  3. 任何人可以读任何人的成果库；你只能写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/）。
   4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：
      价值程度、动机用途计划、你自己对"该对象为真"的概率估计。
   5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。
@@ -1041,8 +1047,10 @@
      说出来，把细节留在你自己的 Progress/ 里。
 
 【三、你的资料库、progress 与卡片格式】
-  你的资料库根目录：Members/r-3/
+  你的资料库根目录（**相对会话工作目录**）：VibeMath/Projects/default/Institutes/institute/Members/r-3/
   （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）
+  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；
+    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。
 
   · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。
     主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；
@@ -1198,7 +1206,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1218,7 +1226,7 @@
 
 ## [10] kind=`founding-temp` owner=`t-1`
 
-- charter: 4462 字符
+- charter: 4761 字符
 
 ### 人设 / 规章（t-1，仅首次完整打印）
 
@@ -1252,7 +1260,7 @@
   2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。
      其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——
      都只是经验性参考，引用时必须注明"未验证"。
-  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。
+  3. 任何人可以读任何人的成果库；你只能写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/）。
   4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：
      价值程度、动机用途计划、你自己对"该对象为真"的概率估计。
   5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。
@@ -1261,8 +1269,10 @@
      说出来，把细节留在你自己的 Progress/ 里。
 
 【三、你的资料库、progress 与卡片格式】
-  你的资料库根目录：Members/t-1/
+  你的资料库根目录（**相对会话工作目录**）：VibeMath/Projects/default/Institutes/institute/Members/t-1/
   （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）
+  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；
+    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。
 
   · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。
     主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；
@@ -1400,7 +1410,7 @@
   "propose_verify": {"target":"p-x","kind":"proposition","reason":"为何值得验证"}   ← 你可以提议，但没有表决权，
              "verdict" 字段对你不适用（填了也会被记为无表决权）。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1418,7 +1428,7 @@
 
 ## [11] kind=`founding-leaderless` owner=`r-1`
 
-- charter: 4744 字符
+- charter: 5043 字符
 
 ### 提示词原文
 
@@ -1454,7 +1464,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1474,7 +1484,7 @@
 
 ## [12] kind=`founding-leaderless` owner=`r-2`
 
-- charter: 4748 字符
+- charter: 5047 字符
 
 ### 提示词原文
 
@@ -1510,7 +1520,7 @@
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1530,7 +1540,7 @@
 
 ## [13] kind=`resume` owner=`acad`
 
-- charter: 5591 字符
+- charter: 5890 字符
 
 ### 提示词原文
 
@@ -1575,7 +1585,7 @@ acad：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1595,7 +1605,7 @@ acad：初始见解。
 
 ## [14] kind=`resume` owner=`r-1`
 
-- charter: 5497 字符
+- charter: 5796 字符
 
 ### 提示词原文
 
@@ -1636,7 +1646,7 @@ r-1：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1656,7 +1666,7 @@ r-1：初始见解。
 
 ## [15] kind=`resume` owner=`r-2`
 
-- charter: 5501 字符
+- charter: 5800 字符
 
 ### 提示词原文
 
@@ -1697,7 +1707,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1757,7 +1767,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1817,7 +1827,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1877,7 +1887,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1937,7 +1947,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -1993,7 +2003,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2049,7 +2059,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2105,7 +2115,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2162,7 +2172,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2218,7 +2228,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2274,7 +2284,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2330,7 +2340,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2664,7 +2674,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2724,7 +2734,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2788,7 +2798,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2845,7 +2855,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2909,7 +2919,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -2966,7 +2976,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3030,7 +3040,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3087,7 +3097,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3151,7 +3161,7 @@ r-2：初始见解。
   "assign": {"subject":"…","description":"…","to":"r-2","why":"为何派给他","acceptance":"验收标准","priority":1}   ← 院士分派任务，
   "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，
   "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3208,7 +3218,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3265,7 +3275,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3325,7 +3335,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3384,7 +3394,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3444,7 +3454,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3469,7 +3479,7 @@ r-2：初始见解。
 ### 提示词原文
 
 ```text
-[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/，必须至少有 m 名有表决权者投出布尔值（恰好 1 或恰好 0）**且没有任何一张反向票**，否则留库附平均概率；你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
+[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；任何对象要进 Verified/，必须至少有 m 名有表决权者投出布尔值（恰好 1 或恰好 0）**且没有任何一张反向票**，否则留库附平均概率；你只写自己的库（VibeMath/Projects/default/Institutes/institute/Members/<你>/——相对**会话工作目录**），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；退出时只输出一个 JSON 对象。
 [CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。
 请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]
 
@@ -3507,7 +3517,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3564,7 +3574,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3621,7 +3631,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3679,7 +3689,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -3742,7 +3752,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},
@@ -4350,7 +4360,7 @@ r-2：初始见解。
   "verdict": {"target":"p-x","verdict":1,"reason":"你的理由"}   ← verdict ∈ [0,1]；**只有 1 或 0 算表决**，
              介于两者之间=弃权/存疑；只在被要求表决时填。
   "propose_meeting": {"agenda":"…","kind":"sync|division|verify-request|solve-vote","target":"…"}，
-  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},
+  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["VibeMath/Projects/default/Institutes/institute/Members/r-1/Propos"]},
   "task_claim": "t-3",
   "task_done": "t-3",
   "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},

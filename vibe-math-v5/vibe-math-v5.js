@@ -769,6 +769,14 @@ export function apply(ctx) {
     const vibeRoot = () => (workspaceRoot() + '/VibeMath').replace(/\\/g, '/')
     const projectRoot = () => vibeRoot() + '/Projects/' + project
     const instRoot = () => projectRoot() + '/Institutes/' + instituteName
+    // DEFECT A (3rd self-test): member-facing text used INSTITUTE-relative paths
+    // (`Members/<id>/…`), but a member's OWN file tools resolve a relative path against the
+    // SESSION CWD — so a member following that text verbatim created `<cwd>/Members/…`, a stray
+    // tree outside `VibeMath/Projects/…` (the self-test's `Members/acad/Propos/p-*.md`). Every
+    // member-facing path now uses the CWD-relative form (their real baseline); the framework's own
+    // writes keep going through `instRoot()`. `instRel()` is the one place that composes it.
+    const instRootRel = () => 'VibeMath/Projects/' + project + '/Institutes/' + instituteName
+    const instRel = (rel) => instRootRel() + '/' + String(rel == null ? '' : rel).replace(/^\/+/, '')
 
     function getPolicy() {
       const sp = sandboxPolicyOf()
@@ -924,9 +932,31 @@ export function apply(ctx) {
     const memberById = (id) => inst().members.find((m) => m.id === id)
     const voters = () => activeMembers().filter((m) => m.kind === 'academician' || m.kind === 'researcher')
     const voterCount = () => voters().length
-    function quorumM() {
+    function quorumMFrom(vc) {
       const cap = Math.max(1, Math.floor(Number(params.quorumCap) || 3))
-      return Math.max(1, Math.min(cap, voterCount()))
+      return Math.max(1, Math.min(cap, vc))
+    }
+    function quorumM() { return quorumMFrom(voterCount()) }
+    // DEFECT B (3rd self-test): the office's digest showed `m=2` while `status`/`acad` showed
+    // `m=3` in the SAME window — two views had computed the voter set at different moments
+    // (roster-snapshot timing). Every quorum-bearing view now reads ONE live snapshot and carries
+    // its `rosterVersion`, so all views at one point in time are provably identical and a stale
+    // reader can be DETECTED instead of silently disagreeing.
+    function rosterVersion() {
+      const ids = voters().map((m) => String(m.id) + ':' + String(m.phase)).sort()
+      return 'r' + String((inst().members || []).length) + ':' + ids.join(',')
+    }
+    function rosterSnapshot() {
+      const vs = voters()
+      const vc = vs.length
+      const started = vc > 0
+      return {
+        version: rosterVersion(),
+        m: started ? quorumMFrom(vc) : 0,
+        voters: vs.map((m) => m.id),
+        voterCount: vc,
+        started: started,
+      }
     }
     // DEFECT 2 (v5 self-test §18): before `start` there are no voters, yet the reported quorum
     // was `m=1` with `voters=0` — it read like "a quorum of 1 is already there". The REPORTED
@@ -934,15 +964,16 @@ export function apply(ctx) {
     // next step. `quorumM()` itself stays >=1 so the consensus arithmetic is unchanged, and
     // `judgeVerdict` refuses to conclude at all when there are no voters.
     function quorumView() {
-      const vc = voterCount()
-      const started = vc > 0
+      const snap = rosterSnapshot()
+      const started = snap.started
       const view = {
-        m: started ? quorumM() : 0,
+        m: snap.m,
         mode: params.quorumMode,
-        voters: voters().map((m) => m.id),
-        voterCount: vc,
+        voters: snap.voters,
+        voterCount: snap.voterCount,
         started: started,
         phase: started ? 'voting' : 'not-started',
+        rosterVersion: snap.version,
       }
       if (!started) {
         view.next = {
@@ -1212,7 +1243,7 @@ export function apply(ctx) {
       L.push('  2. 只有 Verified/ 目录下的结论（以及成果卡中标注"已验证·真/假"的条目）绝对可信。')
       L.push('     其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——')
       L.push('     都只是经验性参考，引用时必须注明"未验证"。')
-      L.push('  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/<你>/）。')
+      L.push('  3. 任何人可以读任何人的成果库；你只能写自己的库（' + instRel('Members/<你>/') + '）。')
       L.push('  4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：')
       L.push('     价值程度、动机用途计划、你自己对"该对象为真"的概率估计。')
       L.push('  5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。')
@@ -1227,8 +1258,10 @@ export function apply(ctx) {
       L.push('')
       // ── 三、libraries ───────────────────────────────────────────────────
       L.push('【三、你的资料库、progress 与卡片格式】')
-      L.push('  你的资料库根目录：Members/' + member.id + '/')
+      L.push('  你的资料库根目录（**相对会话工作目录**）：' + instRel('Members/' + member.id + '/'))
       L.push('  （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）')
+      L.push('  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；')
+      L.push('    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。')
       L.push('')
       L.push(LIB_SPEC)
       L.push('')
@@ -1833,7 +1866,7 @@ export function apply(ctx) {
         const soft = (contextPct.get(member.id) || 0) >= Number(params.compactThreshold) ||
           (roundsSinceCompact.get(member.id) || 0) >= Number(params.compactAfterRounds)
         if (soft) {
-          prompt = CORE_RULES + '\n[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。\n' +
+          prompt = coreRules() + '\n[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。\n' +
             '请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），' +
             '然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]\n\n' + prompt
           // Reset the counter WITH the injection so the directive cannot repeat on the
@@ -1842,7 +1875,7 @@ export function apply(ctx) {
         }
       }
       if (needReanchor.has(member.id)) {
-        prompt = CORE_RULES + '\n' + prompt
+        prompt = coreRules() + '\n' + prompt
         needReanchor.delete(member.id)
       }
       try {
@@ -1924,7 +1957,7 @@ export function apply(ctx) {
         L.push('  "prioritize": {"order":[{"task_id":"t-1","priority":2}],"why":"…"}   ← 设定全所优先级，')
         L.push('  "nudge": {"to":"r-2","why":"为何督办","next_step":"建议的具体下一步"}，')
       }
-      L.push('  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["Members/r-1/Propos"]},')
+      L.push('  "task_create": {"subject":"…","description":"…","blocked_by":["t-1"],"write_scopes":["' + instRel('Members/r-1/Propos') + '"]},')
       L.push('  "task_claim": "t-3",')
       L.push('  "task_done": "t-3",')
       L.push('  "task_update": {"task_id":"t-3","expected_revision":2,"action":"complete|release|reopen|edit|set_dependencies|delete"},')
@@ -3391,9 +3424,12 @@ export function apply(ctx) {
     // A SHORT core-rules recap, injected ONLY (a) right after a REAL compaction, or
     // (b) in the same wake as a soft-compact directive — never on every round. The
     // charter itself lives in `persona` and needs no reinforcement otherwise.
-    const CORE_RULES = '[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；' +
+    // A function, not a frozen string: the member-facing library path must reflect the LIVE
+    // project/institute (DEFECT A) — a path captured at session creation could point at the
+    // default project after a `configure`.
+    const coreRules = () => '[核心规则] 只有 Verified/（及标记"已验证·真/假"的卡片）算已确立；' +
       '任何对象要进 Verified/，必须至少有 m 名有表决权者投出布尔值（恰好 1 或恰好 0）**且没有任何一张反向票**，否则留库附平均概率；' +
-      '你只写自己的库（Members/<你>/），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；' +
+      '你只写自己的库（' + instRel('Members/<你>/') + '——相对**会话工作目录**），可只读任何人的库；组织与分派由院士负责，但判断属于你自己；' +
       '退出时只输出一个 JSON 对象。'
 
     // ONE place accounts for context usage on EVERY reply (normal, meeting, verify,
@@ -4644,7 +4680,7 @@ export function apply(ctx) {
       L.push('【最终论文·撰写 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('本所对原问题的一致结论已经达成，现在撰写**最终论文**（第 ' + p.round + '/' + PAPER_MAX_ROUNDS + ' 轮）。')
       L.push('请你**只写你自己库里已有证据支撑**的内容：')
-      L.push('- 直接引用你的卡片（Members/' + member.id + '/Propos|Methods|Subproblems/）、Members/' + member.id + '/Progress/progress.md、你参与的表决记录；')
+      L.push('- 直接引用你的卡片（' + instRel('Members/' + member.id + '/Propos|Methods|Subproblems/') + '）、' + instRel('Members/' + member.id + '/Progress/progress.md') + '、你参与的表决记录；')
       L.push('- **不得编造**：没有证据的推测不要写成结论；未决 / 被否证的条目必须显式标注“未定论 / 已被否证”；')
       L.push('- 在 evidence 里写清证据路径，附录会逐条索引。')
       if (p.round > 1) {
@@ -4664,7 +4700,7 @@ export function apply(ctx) {
       L.push('    "methods": "你创造/发现的方法、理论、思想、有价值经验、数学理解",')
       L.push('    "rules": "你从这些工作中归纳出的可复用规律",')
       L.push('    "limits": "局限、未决、被否证之处（必须诚实、显式）",')
-      L.push('    "evidence": ["Members/' + member.id + '/Propos/p-x.md"] } }')
+      L.push('    "evidence": ["' + instRel('Members/' + member.id + '/Propos/p-x.md') + '"] } }')
       return L.join('\n')
     }
     function paperReviewPrompt(member, p, ofId) {
@@ -5090,8 +5126,10 @@ export function apply(ctx) {
       }
       if (ev.formalKeys.length) out.push('Formal/Index.md', 'Formal/TODO.md')
       for (const m of ev.members) {
-        out.push('Members/' + m.id + '/Progress/progress.md（' + m.id + ' 的研究日志）')
-        out.push('Members/' + m.id + '/{Propos,Methods,Subproblems}/（' + m.id + ' 的卡片）')
+        // Member-facing evidence paths are CWD-relative (DEFECT A): a member copying one of these
+        // into its own file tool must not create a stray `<cwd>/Members/…` tree.
+        out.push(instRel('Members/' + m.id + '/Progress/progress.md') + '（' + m.id + ' 的研究日志）')
+        out.push(instRel('Members/' + m.id + '/{Propos,Methods,Subproblems}/') + '（' + m.id + ' 的卡片）')
       }
       out.push('Institutes.md（编制镜像）', 'Shared/TaskBoard.md（任务板镜像）')
       out.push('Paper/' + p.id + '/paper.log.md（本论文流程往来）')
@@ -6522,12 +6560,15 @@ export function apply(ctx) {
     function report() {
       syncParamsFromState()
       const s = inst()
+      // ONE snapshot for the whole report: the text line and the returned `quorum` object can
+      // never disagree (DEFECT B), and `rosterVersion` lets a reader detect a stale copy.
+      const qv = quorumView()
       const L = []
       L.push('# 「' + instituteName + '」研究所汇报')
       L.push('')
       L.push('- 项目：' + project + '｜阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
       L.push('- 研究对象：' + (s.problem.statement ? s.problem.statement.slice(0, 200) : '（未设定）'))
-      L.push('- 求真门槛：' + (voterCount() > 0 ? 'm = ' + quorumM() : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
+      L.push('- 求真门槛：' + (qv.started ? 'm = ' + qv.m : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + qv.voterCount + ' 人｜rosterVersion ' + qv.rosterVersion)
       L.push('')
       L.push('## 编制')
       if (!s.members.length) L.push('（暂无成员）')
@@ -6599,8 +6640,8 @@ export function apply(ctx) {
       L.push('')
       L.push('## 文件位置')
       L.push('- 根目录：' + instRoot())
-      L.push('- 已确立：Verified/｜成员库：Members/<id>/｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
-      return { ok: true, report: L.join('\n') }
+      L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
+      return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
     // structure, so members may only propose it; the office decides and executes.
