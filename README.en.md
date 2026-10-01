@@ -507,6 +507,8 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `mathTimeoutMs` | `60000` | all four | Per-run budget in milliseconds (minimum 1000); on timeout the process is terminated |
 | `mathPackages` | `[]` | all four | Packages/toolboxes required by default; a missing one is reported with an install plan - it is **never installed automatically** |
 | `mathInstallScope` | `user` | all four | Install scope; `system` must be given **explicitly on every call and is never remembered** (most managers have no system template, in which case the request is refused) |
+
+> **Archive = evidence**: every run writes `Computation/<id>/` and the receipt carries `scriptPath` + `scriptHash`; the script original may be opened/edited, but after editing you MUST re-run it with `mode:'file'` to get a NEW receipt - **an old receipt does not represent edited code** (`scriptChanged` / `scriptChangedDuringRun` warn explicitly). Archives are append-only and over-cap behaviour is warn-only, never delete. See [`docs/math-computation.md`](docs/math-computation.md) §4.1.
 | `tickIntervalMs` | 2000 | v2·v3 | Scheduler heartbeat interval (milliseconds) |
 | `activityLogCap` | 100 | v2·v3 | Number of activity log entries retained (the report displays at most 30) |
 | `maxExplorerRetries` | 3 | v2·v3 | Upper limit on re-dispatching after an explorer fails to split directions |

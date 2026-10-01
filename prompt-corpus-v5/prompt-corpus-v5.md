@@ -28,6 +28,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -84,6 +85,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -144,6 +146,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -201,6 +204,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -260,6 +264,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -494,6 +499,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -719,6 +725,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -940,6 +947,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1161,6 +1169,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1362,6 +1371,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1413,6 +1423,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1467,6 +1478,7 @@
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1526,6 +1538,7 @@ acad：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1589,6 +1602,7 @@ r-1：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1648,6 +1662,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1701,6 +1716,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1759,6 +1775,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1817,6 +1834,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1875,6 +1893,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1933,6 +1952,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1987,6 +2007,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2041,6 +2062,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2096,6 +2118,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2150,6 +2173,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2204,6 +2228,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2258,6 +2283,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2320,6 +2346,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2360,6 +2387,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2400,6 +2428,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2446,6 +2475,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2492,6 +2522,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2538,6 +2569,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2574,6 +2606,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2636,6 +2669,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2694,6 +2728,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2753,6 +2788,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2811,6 +2847,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2870,6 +2907,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2928,6 +2966,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2987,6 +3026,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3045,6 +3085,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3104,6 +3145,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3159,6 +3201,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3214,6 +3257,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3269,6 +3313,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3329,6 +3374,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3388,6 +3434,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3448,6 +3495,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3503,6 +3551,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3558,6 +3607,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3619,6 +3669,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3699,6 +3750,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3757,6 +3809,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3815,6 +3868,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3870,6 +3924,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3925,6 +3980,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3980,6 +4036,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4042,6 +4099,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4104,6 +4162,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4166,6 +4225,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4207,6 +4267,7 @@ r-2：初始见解。
 
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。

@@ -138,10 +138,15 @@ console.log('-- math_computation shared contract --')
     ok(r1.argv[r1.argv.length - 1].indexOf('script.py') !== -1, 'argv ends with the script path (copy-to-rerun)')
     eq(rj.cwd, 'X:/fake/project', 'cwd is the project root')
     ok(rj.determinism && rj.determinism.noWallClockInId === true, 'receipt declares no wall clock in the id')
+    // P2a item 1: the script is discoverable from BOTH the return value and the receipt.
+    ok(r1.scriptPath === rj.scriptPath && r1.scriptHash === rj.scriptHash, 'scriptPath + scriptHash are in the return value AND the receipt')
+    ok(r1.scriptHash === rj.script.sha256 && r1.scriptPath.indexOf('/script.py') !== -1, 'scriptHash matches the receipt script object')
     const r2 = await state.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)' })
-    ok(r2.receipt.dir === r1.receipt.dir, 'same input -> same runId (idempotent directory)')
+    ok(r2.baseRunDir === r1.baseRunDir, 'same input -> same archive id (baseRunDir)')
+    ok(r2.attempt === 2 && r2.attemptDir !== r1.attemptDir, 'a repeat is appended as attempt 2 (never overwriting attempt 1)')
+    ok(state.file(r2.attemptDir + '/receipt.json') !== undefined && state.file(r1.attemptDir + '/stdout.txt') === 'ran-ok\n', 'attempt 1 files are left untouched by attempt 2')
     const r3 = await state.call({ op: 'run', engine: 'octave', mode: 'code', code: 'print(1)' })
-    ok(r3.receipt.dir !== r1.receipt.dir, 'different engine -> different runId')
+    ok(r3.baseRunDir !== r1.baseRunDir, 'different engine -> different archive id')
   })
 }
 
@@ -305,6 +310,64 @@ console.log('-- math_computation shared contract --')
     const r = await state.call({ op: 'run', engine: 'python', mode: 'code', code: 'x' })
     ok(r.ok === false && r.code === 'MATH_ENGINE_NOT_FOUND', 'without the flag, an unresolvable host still reports ENGINE_NOT_FOUND + install guide')
   })
+}
+
+// ── 15. P2a: archive -> edit -> re-run integrity ───────────────────────────────────────────────
+{
+  // 15a. mode:'file' is KEYED BY PATH, so an edit + re-run lands in the same archive id and the
+  // hash reconciliation reports the change (never a silent pass).
+  const st = makeFakeHost({ files: { 'Problems/calc.py': 'print(2)\n' } })
+  M.registerMathComputation(st.host)
+  const first = await st.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/calc.py' })
+  ok(first.ok === true && first.scriptChanged === false && first.scriptChangedDuringRun === false, 'first file run: no change flags')
+  st.files.set('Problems/calc.py', 'print(3)\n')
+  const second = await st.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/calc.py' })
+  ok(second.baseRunDir === first.baseRunDir, 'file mode is path-keyed: the edited file reuses the archive id')
+  ok(second.scriptChanged === true, 'edited file -> scriptChanged:true (no silent pass)')
+  ok(!!second.previousReceipt && second.previousReceipt.scriptHash === first.scriptHash, 'the RETURN SHELL also exposes previousReceipt (the stale hash)')
+  ok(second.warnings.some((w) => w.code === M.MATH_SCRIPT_CHANGED_WARNING), 'scriptChanged is warned visibly')
+  ok(second.attempt === 2 && second.scriptHash !== first.scriptHash, 'the new attempt carries the new scriptHash')
+  const secondReceipt = JSON.parse(st.file(second.receipt.json))
+  ok(secondReceipt.scriptChanged === true && !!secondReceipt.previousReceipt && secondReceipt.previousReceipt.scriptHash === first.scriptHash, 'receipt records scriptChanged + the previous receipt hash')
+
+  // 15b. a mid-run edit (one member edits while another runs) is flagged after the run.
+  const st2 = makeFakeHost({ files: { 'Problems/race.py': 'print(1)\n' }, mutateOnRun: { rel: 'Problems/race.py', text: 'print(9)\n' } })
+  M.registerMathComputation(st2.host)
+  const raced = await st2.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/race.py' })
+  ok(raced.ok === true && raced.scriptChangedDuringRun === true, 'mid-run edit -> scriptChangedDuringRun:true')
+  ok(raced.warnings.some((w) => w.code === M.MATH_SCRIPT_CHANGED_DURING_RUN_WARNING), 'mid-run edit is warned visibly')
+  ok(JSON.parse(st2.file(raced.receipt.json)).scriptChangedDuringRun === true, 'receipt records scriptChangedDuringRun')
+
+  // 15c. op:'receipt' reconciles the archived script hash, and never rewrites existing files.
+  const st3 = makeFakeHost({})
+  M.registerMathComputation(st3.host)
+  const run = await st3.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  const jsonBefore = st3.file(run.receipt.json)
+  const mdBefore = st3.file(run.receipt.md)
+  const clean = await st3.call({ op: 'receipt', file: run.baseRunDir })
+  ok(clean.ok === true && clean.scriptChanged === false, 'op=receipt on an untouched archive: no change')
+  ok(st3.file(run.receipt.json) === jsonBefore && st3.file(run.receipt.md) === mdBefore, 'op=receipt never rewrites existing receipt files')
+  st3.files.set(run.scriptPath, 'print(42)\n')
+  const dirty = await st3.call({ op: 'receipt', file: run.baseRunDir })
+  ok(dirty.ok === true && dirty.scriptChanged === true && dirty.currentScriptHash !== dirty.scriptHash, 'op=receipt reports scriptChanged for an edited archive script')
+  ok(dirty.warnings.some((w) => w.code === M.MATH_SCRIPT_CHANGED_WARNING), 'op=receipt warns visibly')
+  ok(st3.file(run.receipt.json) === jsonBefore, 'reconciliation still does not rewrite receipt.json')
+
+  // 15d. retention: over the documented cap the tool WARNS and never deletes.
+  const st4 = makeFakeHost({})
+  M.registerMathComputation(st4.host)
+  const cap = M.MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN
+  let last = null
+  for (let i = 0; i < cap + 1; i++) last = await st4.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  ok(last.attempt === cap + 1, 'attempts keep being appended past the cap (no deletion, no refusal)')
+  ok(last.warnings.some((w) => w.code === M.MATH_ARCHIVE_WARNING), 'over the retention cap the tool warns (ARCHIVE_RETENTION_EXCEEDED)')
+  ok(st4.file(last.baseRunDir + '/receipt.json') !== undefined, 'the FIRST attempt is still present after exceeding the cap')
+
+  // 15e. the failure return also carries the archive coordinates.
+  const st5 = makeFakeHost({ exit: 3 })
+  M.registerMathComputation(st5.host)
+  const bad = await st5.call({ op: 'run', engine: 'python', mode: 'code', code: 'boom\n' })
+  ok(bad.ok === false && bad.code === 'MATH_NONZERO_EXIT' && !!bad.scriptPath && !!bad.scriptHash, 'failure return carries scriptPath + scriptHash')
 }
 
 console.log('')

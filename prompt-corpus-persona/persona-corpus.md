@@ -41,6 +41,7 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
   mode.
 
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
 Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
 automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
@@ -120,6 +121,7 @@ programmatically runs explorer (direction setting) → per-direction solvers (ag
   mode.
 
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
 Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
 automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
@@ -229,6 +231,7 @@ is experiential reference.
   mode.
 
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
 <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
@@ -322,6 +325,7 @@ is experiential reference.
   mode.
 
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
 A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
 <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
@@ -423,6 +427,8 @@ Main controls (recommended flow: configure FIRST, then start):
     too; they work in every mode.
   - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
   - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+  - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+  - Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
     objects, recorded blockers, formalization TODO, library paths).
   - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
 A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...).
@@ -534,6 +540,8 @@ Main controls (recommended flow: configure FIRST, then start):
     too; they work in every mode.
   - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
   - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+  - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+  - Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
     objects, recorded blockers, formalization TODO, library paths).
   - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
 A /v4 slash command mirrors the main controls (configure|start [problem]|resume|pause|abort|status|report|message <to|all> <content>|meeting|paper [lang=zh|en] [format=md|tex|both] [editor=office|resident:<id>] [force]|members|add|remove|set <k=v>...).
@@ -668,6 +676,8 @@ Main controls (recommended flow: configure FIRST, then start):
     verification (execute / archive / list the reuse library / read an archived file
     verbatim / watch the background compile queue). Members use them too; they work in every mode.
   - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+  - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+  - Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
 LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
@@ -783,6 +793,8 @@ Main controls (recommended flow: configure FIRST, then start):
     verification (execute / archive / list the reuse library / read an archived file
     verbatim / watch the background compile queue). Members use them too; they work in every mode.
   - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+  - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+  - Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
 LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):

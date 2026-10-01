@@ -41,8 +41,8 @@ const PROBES = [
   {
     name: 'argv-echo-removed',
     file: 'math-computation.js',
-    from: '    argv: assembled.argv.slice(),\n    packages: pk.found,',
-    to: '    packages: pk.found,',
+    from: '    argv: assembled.argv.slice(),\n    scriptPath: scriptRel, scriptHash: scriptHash,',
+    to: '    scriptPath: scriptRel, scriptHash: scriptHash,',
     expect: 'receipt argv === returned argv',
   },
   {
@@ -72,6 +72,49 @@ const PROBES = [
     from: "  if (typeof H.hasSubprocess === 'function' && H.hasSubprocess() === false) {",
     to: '  if (false) {',
     expect: 'host that declares no subprocess -> MATH_NO_SUBPROCESS (not ENGINE_NOT_FOUND)',
+  },
+  // ── P2a: archive -> edit -> re-run integrity ─────────────────────────────────────────────────
+  {
+    name: 'script-fields-dropped-from-return',
+    file: 'math-computation.js',
+    from: '    scriptPath: scriptRel, scriptHash: scriptHash,\n    attempt: attempt, attemptDir: dir, baseRunDir: baseDir,\n    scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,\n    sourceFile: fileRel || null,\n    previousReceipt: receipt.previousReceipt,\n    packages: pk.found,',
+    to: '    packages: pk.found,',
+    expect: 'scriptPath + scriptHash are in the return value AND the receipt',
+  },
+  {
+    name: 'script-changed-never-flagged',
+    file: 'math-computation.js',
+    from: "  const scriptChanged = !!(mode === 'file' && prevReceipt && prevReceipt.scriptHash && prevReceipt.scriptHash !== scriptHash)",
+    to: '  const scriptChanged = false',
+    expect: 'edited file -> scriptChanged:true (no silent pass)',
+  },
+  {
+    name: 'mid-run-change-unflagged',
+    file: 'math-computation.js',
+    from: '    scriptChangedDuringRun = sourceHashAfter !== null && sourceHashAfter !== sourceHashBefore',
+    to: '    scriptChangedDuringRun = false',
+    expect: 'mid-run edit -> scriptChangedDuringRun:true',
+  },
+  {
+    name: 'archive-overwrite-instead-of-append',
+    file: 'math-computation.js',
+    from: "  const hasFirst = await H.exists(baseDir + '/receipt.json')\n  if (!hasFirst) return { attempt: 1, dir: baseDir }\n  let n = 2",
+    to: "  const hasFirst = await H.exists(baseDir + '/receipt.json')\n  return { attempt: 1, dir: baseDir }\n  let n = 2",
+    expect: 'a repeat is appended as attempt 2 (never overwriting attempt 1)',
+  },
+  {
+    name: 'retention-warning-silenced',
+    file: 'math-computation.js',
+    from: '  if (attempt > MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN) {',
+    to: '  if (false) {',
+    expect: 'over the retention cap the tool warns (ARCHIVE_RETENTION_EXCEEDED)',
+  },
+  {
+    name: 'receipt-reconciliation-skipped',
+    file: 'math-computation.js',
+    from: '  const scriptChanged = currentHash !== null && recordedHash !== null && currentHash !== recordedHash',
+    to: '  const scriptChanged = false',
+    expect: 'op=receipt reports scriptChanged for an edited archive script',
   },
   {
     name: 'shell-line-in-all-tiers',

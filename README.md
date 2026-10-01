@@ -507,6 +507,8 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `mathTimeoutMs` | `60000` | 四套 | 单次计算上限（毫秒，最小 1000）；超时后主动终止进程 |
 | `mathPackages` | `[]` | 四套 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
 | `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
+
+> **归档即证据**：每次计算都写出 `Computation/<id>/`，回执含 `scriptPath` 与 `scriptHash`；脚本原件可以打开/编辑，编辑后必须用 `mode:'file'` **重跑**得到新回执——**旧回执不代表修改后的代码**（`scriptChanged` / `scriptChangedDuringRun` 会显式告警）。归档只追加不覆盖，超上限只告警不删除。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |

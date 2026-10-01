@@ -61,6 +61,22 @@ math_computation {
 - **复跑**：`math_computation { op:'run', engine:'<e>', mode:'file', file:'Computation/<id>/script.<ext>' }`，或直接照 `receipt.json` 的 `argv` + `cwd` 重放。
 - 报告里"我算过"要给 `Computation/<id>/receipt.json`；**回执是经验证据，不是证明**——对象是否已验证仍由各预设既有的验证/共识路径决定。
 
+### 4.1 归档 → 编辑 → 重跑（可发现性与完整性）
+
+回执与返回体都带 **`scriptPath`**（归档脚本周相对路径）与 **`scriptHash`**（脚本字节的 sha256），所以"这次跑的到底是哪份代码"是可查的：
+
+1. `mode:'code'` 把源码落成 `Computation/<id>/script.<ext>`；agent **可以用普通文件工具打开并编辑它**。
+2. 编辑后用 `mode:'file'` 指向该脚本重跑，会写出**一份新回执**（新 attempt、新 `scriptHash`）。
+3. **旧回执对修改后的代码无效**。`mode:'file'` 的回执按**路径**归属同一个 archive id（不是按内容），所以"同一文件编辑后重跑"落在同一 id 的**新 attempt**，并显式给出：
+   - `scriptChanged:true`：该文件当前哈希与**上一份回执**记录的 `scriptHash` 不一致（旧回执不再代表当前代码）；
+   - `scriptChangedDuringRun:true`：文件在**本次运行期间**被改动（典型是另一个成员同时在编辑）——运行前后各取一次哈希才可能发现；
+   - 两者都同时进入 `warnings[]`（`SCRIPT_CHANGED_SINCE_LAST_RECEIPT` / `SCRIPT_CHANGED_DURING_RUN`）与 `receipt.md`，**绝不静默**。
+4. `op:'receipt'` 会重新核对归档脚本的当前哈希与回执记录，返回 `scriptChanged` / `currentScriptHash`；它**只读**返回既有数据，仅补写**缺失**的 `receipt.md`，从不改写已有回执文件。
+5. **归档是追加式的**：同一 id 的**首次**运行落在 `Computation/<id>/`，之后每次运行落在 `Computation/<id>/attempts/<n>/`（n 从 2 开始，取第一个空位）；已有文件**永不覆盖**。
+6. **保留上限**：每个 id 最多 `MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN`=20 个 attempt、每个项目最多 `MATH_ARCHIVE_MAX_RUNS`=200 个 run 目录（后者仅在宿主提供可选 `listDir` 时检查）。**超过只告警**（`ARCHIVE_RETENTION_EXCEEDED`），**永不自动删除**。
+
+**验证者（或复核代理）要查的六件事**：① 打开 `receipt.json` 确认 `scriptPath`；② 重新计算该脚本 sha256，与 `scriptHash` **逐字相等**；③ 确认 `scriptChanged` 与 `scriptChangedDuringRun` 均为 `false`（否则该回执不足以支撑结论）；④ 确认 `sourceFile`（若有）正是被验证的源码，且 `attempt`/`attemptDir` 是当前代码对应的最新 attempt；⑤ 按 `argv` + `cwd` 重放，结果一致；⑥ 一旦改代码，**必须重跑并引用新回执**，报告里的旧回执撤下。
+
 ## 5. 安装：两条路径
 
 1. **用户自己装**：工具在缺引擎时返回逐 OS 命令（Windows/macOS/Linux）与官方链接；商业引擎只给厂商安装包与激活说明。

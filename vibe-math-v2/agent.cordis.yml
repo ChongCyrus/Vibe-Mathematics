@@ -41,6 +41,7 @@
         mode.
 
       - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
       Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
       automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that
@@ -117,6 +118,7 @@
         mode.
 
       - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
+      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
       Final paper: strict termination writes Paper/<project>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}
       automatically — a dedicated paper-writing child assembles the solved material (finalPaper=false disables only that

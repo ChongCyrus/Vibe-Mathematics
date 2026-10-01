@@ -23,6 +23,7 @@ import {
   MATH_PARAM_DEFAULTS,
   MATH_TOOL_DESCRIPTION,
   MATH_PERSONA_TOOL_LINE,
+  MATH_ARCHIVE_WORKFLOW_LINE,
 } from '../vibe-math-v2/math-computation.js'
 // 引擎表在姊妹模块里（模块自己 import 它；测试为了拼 argv 模板也直接读一次，只读不写）。
 import { MATH_ENGINES } from '../vibe-math-v2/math-engines.js'
@@ -416,10 +417,42 @@ section('§14 回执幂等（同输入 ⇒ 同 runId）')
   fake.installed = { python: '3.11.4' }
   const a = await call('math_computation', { op: 'run', mode: 'code', code: 'print("same")' })
   const b = await call('math_computation', { op: 'run', mode: 'code', code: 'print("same")' })
-  assert(a.receipt.dir === b.receipt.dir, '★★ 同输入两次运行命中同一回执目录（runId 无墙钟）')
-  assert(/^vibe-math-v2-/.test(String(a.receipt.dir).replace('Computation/', '')), '★ runId 前缀是 designator（vibe-math-v2）')
-  const rec = receiptOf(a.receipt.dir.split('/').pop())
+  // P2a：归档是**追加式**的——同 runId 的第 2 次运行落 attempts/2/，所以 dir 不再相等；
+  // 语义不变：同输入 ⇒ 同一 archive id（baseRunDir），无墙钟；已有归档永不覆盖。
+  assert(a.baseRunDir === b.baseRunDir && b.attempt === 2 && b.attemptDir !== a.attemptDir,
+    '★★ 同输入两次运行命中同一 archive id（baseRunDir 相同、第 2 次进 attempts/2，无墙钟）（' + JSON.stringify({ base: a.baseRunDir, a1: a.attempt, a2: b.attempt, d1: a.attemptDir, d2: b.attemptDir }) + '）')
+  // 注意：返回体外壳里的 receipt 是**引用**（dir/json/md/sha256），scriptHash 要从回执文件里读。
+  const recA = JSON.parse(readIf(join(projRoot(), a.attemptDir, 'receipt.json')) || '{}')
+  assert(a.scriptHash === b.scriptHash && recA.scriptHash === a.scriptHash, '★★ 同代码 ⇒ scriptHash 相同（返回体与回执文件都给，' + String(a.scriptHash).slice(0, 12) + '…）')
+  const firstOut = join(projRoot(), a.attemptDir, 'stdout.txt')
+  assert(a.attemptDir !== b.attemptDir && existsSync(firstOut) && readFileSync(firstOut, 'utf8') === 'ok\n',
+    '★★ 追加式归档：第 1 次 attempt 的文件**未被改写**（stdout.txt 仍是首次内容）')
+  assert(/^vibe-math-v2-/.test(String(a.baseRunDir).replace('Computation/', '')), '★ runId 前缀是 designator（vibe-math-v2）')
+  const rec = receiptOf(a.baseRunDir.split('/').pop())
   assert(rec.preset === 'vibe-math-v2' && rec.determinism && rec.determinism.noWallClockInId === true, '★★ 回执 preset=vibe-math-v2，且声明 runId 无墙钟')
+}
+
+// ── §14b P2a：scriptPath/scriptHash（code）、编辑→重跑（file）⇒ scriptChanged + 新 attempt ─────
+section('§14b P2a：scriptPath/scriptHash、mode:file 的编辑→重跑（追加 attempt + scriptChanged 告警）')
+{
+  fake = freshFake()
+  fake.installed = { python: '3.11.4' }
+  const code = await call('math_computation', { op: 'run', mode: 'code', code: 'print("p2a")' })
+  const rec = JSON.parse(readIf(join(projRoot(), code.attemptDir, 'receipt.json')) || '{}')
+  assert(typeof code.scriptPath === 'string' && /script\.py$/.test(code.scriptPath), '★ P2a：mode=code 返回体含 scriptPath（' + code.scriptPath + '）')
+  assert(typeof code.scriptHash === 'string' && code.scriptHash.length === 64 && code.scriptHash === rec.scriptHash, '★★ P2a：返回体与回执的 scriptHash 一致（64 hex）')
+  assert(existsSync(join(projRoot(), code.scriptPath)), '★ P2a：scriptPath 指向的回执原件真的在盘上（可用普通文件工具编辑）')
+  // mode:file：改内容后重跑 ⇒ 同一 archive id 的新 attempt + scriptChanged 告警
+  writeFileSync(join(projRoot(), 'flow.py'), 'print("v1")\n', 'utf8')
+  const first = await call('math_computation', { op: 'run', mode: 'file', file: 'flow.py' })
+  writeFileSync(join(projRoot(), 'flow.py'), 'print("v2-edited")\n', 'utf8')
+  const second = await call('math_computation', { op: 'run', mode: 'file', file: 'flow.py' })
+  assert(second.ok === true && second.baseRunDir === first.baseRunDir && second.attemptDir !== first.attemptDir,
+    '★★ P2a：mode=file 按**路径**归属 archive id，编辑后重跑落同一 id 的新 attempt（' + JSON.stringify({ base: second.baseRunDir, first: first.attemptDir, second: second.attemptDir }) + '）')
+  assert(second.scriptChanged === true, '★★★ P2a：内容变了 ⇒ scriptChanged:true')
+  assert(Array.isArray(second.warnings) && second.warnings.some((w) => w.code === 'SCRIPT_CHANGED_SINCE_LAST_RECEIPT'),
+    '★★★ P2a：warnings 含 SCRIPT_CHANGED_SINCE_LAST_RECEIPT（旧回执不代表新代码）')
+  assert(second.scriptHash !== first.scriptHash, '★ 两次的 scriptHash 不同（分别对应编辑前后）')
 }
 
 // ── §15 提示词面：可用性行（typed+shell / typed / off）+ persona 两块 ──────────────────────────
@@ -466,6 +499,10 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   const hits = blocks.filter((b) => b.indexOf('math_computation') !== -1).length
   assert(hits >= 2, '★★★ persona 的 prefix 与 text **两个**块都含 math_computation 工具行（命中 ' + hits + ' 块）')
   assert(yml.indexOf(MATH_PERSONA_TOOL_LINE) !== -1, '★★★ persona 工具行与共享模块的 MATH_PERSONA_TOOL_LINE 逐字一致（四套同一行）')
+  // P2a：两个块都要含「归档→编辑→重跑」规则，且文本与模块常量逐字一致（不手抄）
+  const wfBlocks = yml.split(/\n\s*(?:prefix|text):\s*\|/).filter((b) => b.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) !== -1).length
+  assert(wfBlocks >= 2, '★★★ P2a：persona 两个文本块都含 MATH_ARCHIVE_WORKFLOW_LINE（命中 ' + wfBlocks + ' 块）')
+  assert((yml.match(/scriptChanged/g) || []).length >= 2 && (yml.match(/mode:'file'|mode: 'file'/g) || []).length >= 2, '★★ P2a：yml 里 scriptChanged 与 mode:file 各出现两次（两个块各一次）')
 }
 
 // ── §16 ensureDirs 含 Computation ────────────────────────────────────────────────────────────

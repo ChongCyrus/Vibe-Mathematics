@@ -30,6 +30,8 @@ import {
   MATH_PERSONA_TOOL_LINE,
   MATH_RULE_LINES,
   MATH_RULE_LINES_EN,
+  MATH_ARCHIVE_WORKFLOW_LINE,
+  MATH_ARCHIVE_WORKFLOW_LINE_EN,
   MATH_PARAM_DEFAULTS,
   MATH_PARAM_NAMES,
   normalizeMathParams,
@@ -1068,6 +1070,12 @@ export function apply(ctx) {
         // preset notices instead of shipping an availability line without the rules.
         if(mathAvailZh.indexOf(MATH_RULE_LINES[0])===-1||mathAvailEn.indexOf(MATH_RULE_LINES_EN[0])===-1){
           logActivity('math','警告：mathAvailabilityLine 未附带规则段（MATH_RULE_LINES/_EN），提示词可能缺少用法规则')
+        }
+        // P2a: the archive→edit→re-run workflow rule is part of the same contract (an old receipt is
+        // NOT evidence for edited code). It is appended to the availability line by the module and to
+        // both persona blocks by this preset — this is the drift check for the former.
+        if(mathAvailZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE.trim())===-1||mathAvailEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN.trim())===-1){
+          logActivity('math','警告：mathAvailabilityLine 未附带归档工作流规则（MATH_ARCHIVE_WORKFLOW_LINE/_EN）')
         }
       } catch(e){ /* a probe failure must never break a prompt; keep the last known line */ }
       finally { mathAvailBusy=false }

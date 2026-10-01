@@ -517,6 +517,47 @@ section('14 persona: both text blocks carry the frozen tool line (byte-identical
 }
 
 // ===============================================================
+section('15 P2a: scriptPath/scriptHash, the archive→edit→re-run workflow, and the persona rule')
+{
+  const h = await live({ installed: ['python3', 'python'] })
+  // ① mode=code: the archived script original + its hash are in the return AND the receipt
+  const r1 = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(41+1)\n' })
+  assert(r1.ok === true && typeof r1.scriptPath === 'string' && r1.scriptPath.length > 0, '★ mode=code returns scriptPath (the archived script original)')
+  assert(/^[0-9a-f]{64}$/.test(String(r1.scriptHash || '')), '★ …and scriptHash (sha256 of the archived code)')
+  const rec1rel = join(h.projectRoot, r1.receipt.dir, 'receipt.json')
+  const rec1 = JSON.parse(readIf(rec1rel))
+  assert(rec1.scriptPath === r1.scriptPath && rec1.scriptHash === r1.scriptHash, '★ the receipt carries the same scriptPath/scriptHash (re-runnable evidence)')
+  assert(rec1.attempt === 1 && rec1.attemptDir === r1.receipt.dir, '★ attempt 1 archives into Computation/<id>/ (attemptDir = the run dir)')
+  // ② mode=file: edit the SAME source file and re-run ⇒ a NEW attempt + an explicit warning
+  mkdirSync(join(h.projectRoot, 'tmp'), { recursive: true })
+  const src = join(h.projectRoot, 'tmp', 'workflow.py')
+  writeFileSync(src, 'print(1)\n')
+  const f1 = await h.math({ op: 'run', engine: 'python', mode: 'file', file: 'tmp/workflow.py' })
+  assert(f1.ok === true && f1.attempt === 1, 'precondition: the first mode=file run is attempt 1')
+  const firstDir = f1.receipt.dir, firstHash = f1.scriptHash
+  writeFileSync(src, 'print(2)\n')   // the agent edits the archived/original code
+  const f2 = await h.math({ op: 'run', engine: 'python', mode: 'file', file: 'tmp/workflow.py' })
+  assert(f2.ok === true, 'the edited script re-runs')
+  assert(f2.receipt.dir !== firstDir && f2.attempt >= 2 && /attempts\//.test(String(f2.receipt.dir)), '★ the re-run is a NEW attempt directory (append-only: attempts/<n>), never an overwrite (' + f2.receipt.dir + ')')
+  assert(f2.scriptChanged === true, '★ scriptChanged:true — the receipt for the current code differs from the previous one')
+  assert(Array.isArray(f2.warnings) && f2.warnings.some(w => w.code === 'SCRIPT_CHANGED_SINCE_LAST_RECEIPT'), '★ warnings carry SCRIPT_CHANGED_SINCE_LAST_RECEIPT')
+  assert(String(f2.scriptHash) !== String(firstHash), '★ the new attempt records the NEW scriptHash')
+  const rec2 = JSON.parse(readIf(join(h.projectRoot, f2.receipt.dir, 'receipt.json')))
+  assert(rec2.previousReceipt && String(rec2.previousReceipt.scriptHash) === String(firstHash) && rec2.previousReceipt.attempt === 1 && !!rec2.previousReceipt.runId, '★ the attempt-2 receipt records previousReceipt{runId,attempt,scriptHash} pointing at attempt 1 (the old evidence is explicitly superseded)')
+  assert(existsSync(join(h.projectRoot, firstDir, 'receipt.json')) && existsSync(join(h.projectRoot, f2.receipt.dir, 'receipt.json')), '★ BOTH receipts stay on disk (the old one is not deleted or rewritten)')
+  // ③ the persona rule is in BOTH blocks, in both languages
+  const yml = readIf(join(HERE, '..', 'vibe-math-v4', 'agent.cordis.yml'))
+  for (const [name, line] of [['zh', MODULE.MATH_ARCHIVE_WORKFLOW_LINE], ['en', MODULE.MATH_ARCHIVE_WORKFLOW_LINE_EN]]) {
+    const hits = yml.split(line).length - 1
+    assert(hits === 2, '★ the ' + name + ' archive-workflow rule appears verbatim in BOTH persona blocks (found ' + hits + ')')
+  }
+  // …and the dynamic availability line carries it too (the module appends it)
+  const prompt = await h.prompts('normal', 'r-1')
+  assert(prompt.indexOf(MODULE.MATH_ARCHIVE_WORKFLOW_LINE.trim()) !== -1, '★ the injected availability line carries the archive-workflow rule as well')
+  h.cleanup()
+}
+
+// ===============================================================
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

@@ -41,6 +41,16 @@ export const MATH_FAILURE_CODES = Object.freeze([
 
 export const MATH_CAPS = Object.freeze({ stdout: 64 * 1024, stderr: 64 * 1024, file: 4 * 1024 * 1024 })
 
+// Archive retention (P2a item 5): a documented CAP that only ever WARNS - the tool never deletes.
+// Per-run: the attempt number that may be created for one archive id (attempt 1 lives in
+// Computation/<id>/, later attempts in Computation/<id>/attempts/<n>/). Per-project: only checked
+// when the host exposes the optional listDir(); absent that, the per-run cap still applies.
+export const MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN = 20
+export const MATH_ARCHIVE_MAX_RUNS = 200
+export const MATH_ARCHIVE_WARNING = 'ARCHIVE_RETENTION_EXCEEDED'
+export const MATH_SCRIPT_CHANGED_WARNING = 'SCRIPT_CHANGED_SINCE_LAST_RECEIPT'
+export const MATH_SCRIPT_CHANGED_DURING_RUN_WARNING = 'SCRIPT_CHANGED_DURING_RUN'
+
 export const MATH_SHELL_FALLBACK_MARK = '未经工具归档'
 export const MATH_SHELL_FALLBACK_MARK_EN = 'not tool-archived'
 export const MATH_BAD_ARGV_HINT = 'mathEngineOverride'
@@ -49,12 +59,22 @@ export const MATH_BAD_ARGV_HINT = 'mathEngineOverride'
 export const MATH_TOOL_DESCRIPTION = '数学计算：先用 op:\'probe\' 预检本机可用引擎与许可，再用 op:\'run\' 计算（mode=code|file|expr；'
   + 'P1 引擎=python|r|octave|julia + matlab|maple|wolfram（仅探测/许可，永不安装）+ cli（默认开启：用你指定的命令执行，'
   + '仍受本工具的超时/输出上限/cwd 约束并留回执；它与宿主 shell 的区别就是有回执与上限——要用宿主 shell 兜底由 mathMode 控制，'
-  + '且结论必须标注未经工具归档））。每次执行都会归档成可复核回执（Computation/<id>/），回执里含实际 argv；'
-  + '缺引擎/缺包只报告并给"用户自装指引"或"代理代装计划"（先计划、再确认）；商业引擎只给厂商指引；'
-  + '引擎选项报错时会回显 argv 并提示用 mathEngineOverride。计算结果是经验证据，不是证明。'
+  + '且结论必须标注未经工具归档））。每次执行都会归档成可复核回执（Computation/<id>/），回执里含 scriptPath/scriptHash 与**实际 argv**；'
+  + '脚本原件就在那个归档目录里，你可以用普通文件工具打开/编辑它，编辑后用 mode:\'file\' 重跑会得到一份**新回执**——'
+  + '**不得**拿旧回执当作修改后代码的证据。缺引擎/缺包只报告并给"用户自装指引"或"代理代装计划"（先计划、再确认）；'
+  + '商业引擎只给厂商指引；引擎选项报错时会回显 argv 并提示用 mathEngineOverride。计算结果是经验证据，不是证明。'
 
 export const MATH_PERSONA_TOOL_LINE = '- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — '
   + '先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。'
+
+// P2a: the archive -> edit -> re-run workflow. Injected into every preset's rule block (and appended
+// to both persona blocks) so an agent cannot miss that (a) the script is archived, (b) it may edit
+// it, and (c) re-running is what produces evidence for the edited code.
+export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；'
+  + '编辑后用 mode:\'file\' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——'
+  + '报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。'
+
+export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:\'file\' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
 
 export const MATH_RULE_LINES = Object.freeze([
   '- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。',
@@ -250,6 +270,7 @@ function adaptHost(host) {
     resolveExecutable: h.resolveExecutable,
     spawn: h.spawn,
     hasSubprocess: typeof h.hasSubprocess === 'function' ? h.hasSubprocess : null,
+    listDir: typeof h.listDir === 'function' ? h.listDir : null,
     log: typeof h.log === 'function' ? h.log : function () {},
   }
   adapted.__mathHost = true
@@ -406,24 +427,77 @@ function applyOverride(det, params) {
 }
 
 // ── receipt ────────────────────────────────────────────────────────────────────────────────────
-function runIdOf(designator, projectSlug, engine, mode, scriptText, packages) {
-  const input = sha256([engine, mode, canonical(scriptText), packages.slice().sort().join(',')].join('\n'))
+function runIdOf(designator, projectSlug, engine, mode, scriptText, packages, fileRel) {
+  // P2a: mode:'file' is keyed by the SOURCE PATH, not by its content, so that editing the file and
+  // re-running lands in the same archive id - which is what makes the hash reconciliation below
+  // meaningful. mode:'code'/'expr' have no path, so their content stays the key.
+  const key = (mode === 'file' && fileRel) ? ('file:' + fileRel) : canonical(scriptText)
+  const input = sha256([engine, mode, key, packages.slice().sort().join(',')].join('\n'))
   return { runId: designator + '-' + projectSlug + '-' + input.slice(0, 12), input: input }
+}
+
+// P2a item 3: append-only archives. Attempt 1 lives in Computation/<id>/ and is never rewritten;
+// later runs of the same id go to Computation/<id>/attempts/<n>/ (first free n >= 2).
+async function nextAttempt(H, baseDir) {
+  const hasFirst = await H.exists(baseDir + '/receipt.json')
+  if (!hasFirst) return { attempt: 1, dir: baseDir }
+  let n = 2
+  while (n < 10000) {
+    const d = baseDir + '/attempts/' + n
+    if (!(await H.exists(d + '/receipt.json'))) return { attempt: n, dir: d }
+    n++
+  }
+  return { attempt: n, dir: baseDir + '/attempts/' + n }
+}
+
+async function previousReceiptOf(H, baseDir, attempt) {
+  if (attempt > 2) {
+    const prev = await H.readText(baseDir + '/attempts/' + (attempt - 1) + '/receipt.json')
+    if (prev !== undefined) { try { return JSON.parse(prev) } catch (e) { /* fall through */ } }
+  }
+  const first = await H.readText(baseDir + '/receipt.json')
+  if (first !== undefined) { try { return JSON.parse(first) } catch (e) { /* ignore */ } }
+  return null
+}
+
+function warning(code, message) { return { code: code, message: message } }
+
+async function retentionWarnings(H, baseDir, attempt) {
+  const out = []
+  if (attempt > MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN) {
+    out.push(warning(MATH_ARCHIVE_WARNING, 'Computation/ 归档的 attempt 数已超过上限 ' + MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN + '（本次为第 ' + attempt + ' 次）；工具只告警、绝不自动删除，请人工整理旧 attempt。'))
+  }
+  if (typeof H.listDir === 'function' && H.listDir) {
+    try {
+      const entries = await H.listDir('Computation')
+      const runs = (entries || []).filter((e) => e && e.type === 'directory').length
+      if (runs > MATH_ARCHIVE_MAX_RUNS) out.push(warning(MATH_ARCHIVE_WARNING, 'Computation/ 下的 run 目录数（' + runs + '）已超过上限 ' + MATH_ARCHIVE_MAX_RUNS + '；工具只告警、绝不自动删除。'))
+    } catch (e) { /* best effort */ }
+  }
+  return out
 }
 
 function renderReceiptMd(r, fullOut, fullErr) {
   const lines = []
-  lines.push('# 计算回执｜' + r.preset + ' · ' + r.project + '｜' + r.runId)
+  lines.push('# 计算回执｜' + r.preset + ' · ' + r.project + '｜' + r.runId + (r.attempt && r.attempt > 1 ? '（attempt ' + r.attempt + '）' : ''))
   lines.push('')
   lines.push('- 引擎：' + r.engine.name + ' ' + r.engine.version + '（source=' + r.engine.source + '，path=' + r.engine.path + '）')
-  lines.push('- 模式：' + r.mode + '｜cwd：' + r.cwd)
+  lines.push('- 模式：' + r.mode + '｜cwd：' + r.cwd + '｜attempt：' + (r.attempt || 1) + '（归档目录 ' + (r.attemptDir || '') + '，同 id 的首次归档 ' + (r.baseRunDir || '') + '）')
   lines.push('- 命令（照抄可复跑）：' + r.argv.join(' '))
   lines.push('- 结果：exit=' + r.exit + '｜耗时 ' + r.ms + 'ms｜超时=' + r.timedOut + '｜输出截断 ' + r.truncated.stdout + '/' + r.truncated.stderr)
-  lines.push('- 脚本：' + r.script.path + '（sha256=' + String(r.script.sha256).slice(0, 16) + '…，' + r.script.bytes + ' bytes）')
+  lines.push('- 脚本：' + (r.scriptPath || r.script.path) + '｜scriptHash=sha256:' + String(r.scriptHash || r.script.sha256) + '（' + r.script.bytes + ' bytes）')
+  if (r.sourceFile) {
+    lines.push('- 源文件：' + r.sourceFile + '（运行前 sha256:' + String(r.sourceHashBefore || '').slice(0, 16) + '…，运行后 sha256:' + String(r.sourceHashAfter || '').slice(0, 16) + '…）')
+    lines.push('- 哈希核对：scriptChanged=' + !!r.scriptChanged + '｜scriptChangedDuringRun=' + !!r.scriptChangedDuringRun
+      + (r.previousReceipt ? '（上一份回执 attempt ' + (r.previousReceipt.attempt || 1) + ' 记的 scriptHash 为 ' + String(r.previousReceipt.scriptHash || '').slice(0, 16) + '…）' : '（没有更早的回执）'))
+    if (r.scriptChanged) lines.push('  ▸ **旧回执不代表当前代码**：引用证据时必须用 scriptHash 与当前文件一致的那份回执。')
+    if (r.scriptChangedDuringRun) lines.push('  ▸ **本次运行期间文件被改动**：请重跑并引用重跑后的回执。')
+  }
   const missing = Object.keys(r.packages.found).filter((k) => !r.packages.found[k])
   lines.push('- 包：' + (Object.keys(r.packages.found).length ? Object.keys(r.packages.found).map((k) => k + '=' + (r.packages.found[k] || '未找到')).join('、') : '（未请求）') + (missing.length ? '｜缺失：' + missing.join(',') : ''))
   lines.push('- 网络：**未由插件强制**（subprocess.spawn 无 policy 槽）')
-  lines.push('- 复现：math_computation { op:\'run\', engine:\'' + r.engine.name + '\', mode:\'file\', file:\'' + r.script.path + '\' }')
+  lines.push('- 复现：math_computation { op:\'run\', engine:\'' + r.engine.name + '\', mode:\'file\', file:\'' + (r.scriptPath || r.script.path) + '\' }')
+  for (const w of (r.warnings || [])) lines.push('- ⚠ [' + w.code + '] ' + w.message)
   lines.push('')
   lines.push('## 输出摘要（stdout，共 ' + String(fullOut || '').split('\n').length + ' 行）')
   lines.push(String(fullOut || '').split('\n').slice(0, 20).join('\n'))
@@ -478,6 +552,7 @@ async function opRun(H, args, params) {
   const root = await H.projectRoot()
   let scriptText = ''
   let fileRel = null
+  let sourceHashBefore = null
   if (mode === 'code') scriptText = args.code
   else if (mode === 'file') {
     fileRel = projectRel('', args.file)
@@ -485,12 +560,22 @@ async function opRun(H, args, params) {
     const txt = await H.readText(fileRel)
     if (txt === undefined) return fail('MATH_REFUSED', det.name, '找不到文件：' + args.file, { next: next('reason', { reason: 'file-not-found' }) })
     scriptText = txt
+    sourceHashBefore = sha256(txt)
   } else scriptText = (args.expr || '') + '\n'
 
-  const { runId, input } = runIdOf(H.designator, slug(await H.projectRoot()), det.name, mode, scriptText, want)
-  const dir = 'Computation/' + runId
+  const { runId, input } = runIdOf(H.designator, slug(root), det.name, mode, scriptText, want, fileRel)
+  const baseDir = 'Computation/' + runId
+  // P2a item 3: append-only. Never rewrite an existing archive; a same-id repeat becomes a new attempt.
+  const slot = await nextAttempt(H, baseDir)
+  const dir = slot.dir
+  const attempt = slot.attempt
+  const prevReceipt = await previousReceiptOf(H, baseDir, attempt)
   const scriptRel = dir + '/script' + (det.name === 'cli' ? '.txt' : desc.ext)
   const scriptAbs = absJoin(root, scriptRel)
+  const scriptHash = sha256(scriptText)
+  // P2a item 2: reconciliation against the previous receipt for the same archive id (mode:'file' is
+  // path-keyed, so this is exactly "the file changed since that receipt").
+  const scriptChanged = !!(mode === 'file' && prevReceipt && prevReceipt.scriptHash && prevReceipt.scriptHash !== scriptHash)
   const wrote = await H.writeText(scriptRel, scriptText)
   if (wrote === false) return fail('MATH_INVALID_ARGUMENT', det.name, '无法写入 ' + scriptRel)
 
@@ -503,6 +588,15 @@ async function opRun(H, args, params) {
 
   const timeoutMs = args.timeoutMs || params.mathTimeoutMs
   const r = await H.spawn({ argv: assembled.argv, cwd: root, timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
+  // P2a item 2/4: hash the SOURCE again after the run. A member editing the file while this run was
+  // in flight shows up here (and never silently).
+  let sourceHashAfter = null
+  let scriptChangedDuringRun = false
+  if (mode === 'file' && fileRel) {
+    const after = await H.readText(fileRel)
+    sourceHashAfter = after === undefined ? null : sha256(after)
+    scriptChangedDuringRun = sourceHashAfter !== null && sourceHashAfter !== sourceHashBefore
+  }
   if (!r) return fail('MATH_NO_SUBPROCESS', det.name, '宿主不提供 subprocess 服务，无法执行计算', { next: next('note', { reason: 'no-subprocess' }) })
 
   const fullOut = String(r.stdout || '')
@@ -520,11 +614,23 @@ async function opRun(H, args, params) {
     if (await H.writeText(dest, txt) !== false) captured.push(rel)
   }
 
+  const warnings = []
+  if (fullOut.length > MATH_CAPS.stdout) warnings.push(warning('OUTPUT_TRUNCATED', 'stdout 超过 64KB，完整版见 ' + dir + '/stdout.txt'))
+  if (scriptChanged) warnings.push(warning(MATH_SCRIPT_CHANGED_WARNING, 'scriptChanged：文件 ' + fileRel + ' 自上一次回执以来已改变（旧回执不再代表当前代码），本次已写出新 attempt ' + attempt + '。'))
+  if (scriptChangedDuringRun) warnings.push(warning(MATH_SCRIPT_CHANGED_DURING_RUN_WARNING, 'scriptChangedDuringRun：文件 ' + fileRel + ' 在本次运行期间被改动（可能有另一个成员在编辑）；本次回执的 scriptHash 是运行前版本 ' + String(sourceHashBefore).slice(0, 12) + '…，请重跑后再引用。'))
+  for (const w of await retentionWarnings(H, baseDir, attempt)) warnings.push(w)
+
   const receipt = {
     schema: 'vibe-math/math-computation-receipt@1',
     runId: runId, preset: H.designator, project: slug(root), op: 'run', mode: mode,
+    attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
     engine: { name: engineLabel, path: det.exe, version: det.version, source: det.name === 'cli' ? 'cli' : 'path' },
-    script: { path: scriptRel, sha256: sha256(scriptText), bytes: Buffer.byteLength(scriptText, 'utf8') },
+    script: { path: scriptRel, sha256: scriptHash, bytes: Buffer.byteLength(scriptText, 'utf8') },
+    scriptPath: scriptRel, scriptHash: scriptHash,
+    sourceFile: fileRel || null,
+    sourceHashBefore: sourceHashBefore, sourceHashAfter: sourceHashAfter,
+    scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
+    previousReceipt: prevReceipt ? { runId: prevReceipt.runId, attempt: prevReceipt.attempt || 1, scriptHash: prevReceipt.scriptHash || (prevReceipt.script && prevReceipt.script.sha256) || null } : null,
     argv: assembled.argv.slice(),
     cwd: root,
     packages: { requested: want.slice(), found: pk.found },
@@ -535,6 +641,7 @@ async function opRun(H, args, params) {
     artifacts: [{ path: 'stdout.txt', sha256: sha256(fullOut), bytes: Buffer.byteLength(fullOut, 'utf8') }],
     captured: captured,
     network: 'not-enforced-by-plugin',
+    warnings: warnings,
     determinism: { inputSha256: input, packagesSorted: true, noWallClockInId: true },
   }
   if (assembled.cli) receipt.cli = { command: assembled.cli.command, argv: assembled.cli.argv, stdinUsed: false }
@@ -542,20 +649,26 @@ async function opRun(H, args, params) {
   await H.writeText(dir + '/receipt.json', receiptJson)
   await H.writeText(dir + '/receipt.md', renderReceiptMd(receipt, fullOut, fullErr))
   const receiptRef = { dir: dir, json: dir + '/receipt.json', md: dir + '/receipt.md', sha256: sha256(receiptJson) }
-  H.log('math_computation', det.name + ' ' + (det.name === 'cli' ? 'cli' : mode) + ' exit=' + receipt.exit + ' argv=' + assembled.argv.join(' '))
+  H.log('math_computation', det.name + ' ' + (det.name === 'cli' ? 'cli' : mode) + ' attempt=' + attempt + ' exit=' + receipt.exit + ' argv=' + assembled.argv.join(' '))
 
   const shell = {
     ok: true, op: 'run', engine: engineLabel, mode: mode,
     engineInfo: receipt.engine,
     argv: assembled.argv.slice(),
+    scriptPath: scriptRel, scriptHash: scriptHash,
+    attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
+    scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
+    sourceFile: fileRel || null,
+    previousReceipt: receipt.previousReceipt,
     packages: pk.found,
     exit: receipt.exit, timedOut: receipt.timedOut, ms: receipt.ms,
     stdout: fullOut.slice(0, MATH_CAPS.stdout), stderr: fullErr.slice(0, MATH_CAPS.stderr),
     truncated: receipt.truncated, artifacts: receipt.artifacts, receipt: receiptRef,
-    warnings: receipt.truncated.stdout ? [{ code: 'OUTPUT_TRUNCATED', message: 'stdout 超过 64KB，完整版见 ' + receiptRef.dir + '/stdout.txt' }] : [],
+    warnings: warnings,
   }
   if (receipt.timedOut) {
-    return Object.assign(fail('MATH_TIMEOUT', engineLabel, '执行超时（' + timeoutMs + 'ms）已被终止', { argv: assembled.argv.slice(), receipt: receiptRef }), { ms: receipt.ms, timedOut: true })
+    return Object.assign(fail('MATH_TIMEOUT', engineLabel, '执行超时（' + timeoutMs + 'ms）已被终止', { argv: assembled.argv.slice(), receipt: receiptRef }),
+      archiveFields(), { ms: receipt.ms, timedOut: true })
   }
   if (r.exit !== 0) {
     const blob = fullErr + '\n' + fullOut
@@ -569,31 +682,76 @@ async function opRun(H, args, params) {
       })
       out.exit = r.exit
       out.stderr = fullErr.slice(0, MATH_CAPS.stderr)
-      return out
+      return Object.assign(out, archiveFields())
     }
     const out = fail('MATH_NONZERO_EXIT', engineLabel, '引擎以非零退出码结束：' + r.exit, { argv: assembled.argv.slice(), receipt: receiptRef })
     out.exit = r.exit
     out.stderr = fullErr.slice(0, MATH_CAPS.stderr)
-    return out
+    return Object.assign(out, archiveFields())
   }
   return shell
+
+  function archiveFields() {
+    return {
+      scriptPath: scriptRel, scriptHash: scriptHash,
+      attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
+      scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
+      sourceFile: fileRel || null, previousReceipt: receipt.previousReceipt, warnings: warnings,
+    }
+  }
 }
 
 // ── op: receipt ────────────────────────────────────────────────────────────────────────────────
+// P2a item 2: reconciliation. Read the receipt, re-hash the script it points at, and report
+// scriptChanged. P2a item 3: receipt files are NEVER rewritten - only a MISSING receipt.md is
+// filled in (that is the one documented exception, and it is not a rewrite of existing data).
 async function opReceipt(H, args) {
   const raw = String(args.file || '').replace(/\\/g, '/').replace(/^\.\//, '')
   const segs = raw.split('/').filter(Boolean)
-  const runId = (segs[0] === 'Computation' ? segs[1] : segs[0]) || ''
+  let runId = ''
+  let attemptDir = null
+  if (segs[0] === 'Computation') {
+    runId = segs[1] || ''
+    if (segs[2] === 'attempts' && segs[3]) attemptDir = 'Computation/' + runId + '/attempts/' + segs[3]
+  } else {
+    runId = segs[0] || ''
+  }
   if (!runId) return fail('MATH_INVALID_ARGUMENT', null, 'op=receipt requires a receipt id or path')
-  const dir = 'Computation/' + runId
-  const json = await H.readText(dir + '/receipt.json')
-  if (json === undefined) return fail('MATH_INVALID_ARGUMENT', null, '没有找到回执：' + dir, { next: next('reason', { reason: 'no-such-receipt' }) })
+  const tried = attemptDir ? [attemptDir, 'Computation/' + runId] : ['Computation/' + runId]
+  let dir = null
+  let json
+  for (const d of tried) {
+    json = await H.readText(d + '/receipt.json')
+    if (json !== undefined) { dir = d; break }
+  }
+  if (json === undefined) return fail('MATH_INVALID_ARGUMENT', null, '没有找到回执：Computation/' + runId, { next: next('reason', { reason: 'no-such-receipt' }) })
   let parsed
   try { parsed = JSON.parse(json) } catch (e) { return fail('MATH_INVALID_ARGUMENT', null, '回执无法解析：' + dir) }
-  const out = await H.readText(dir + '/stdout.txt')
-  const err = await H.readText(dir + '/stderr.txt')
-  await H.writeText(dir + '/receipt.md', renderReceiptMd(parsed, out || '', err || ''))
-  return { ok: true, op: 'receipt', engine: parsed.engine ? parsed.engine.name : null, receipt: { dir: dir, json: dir + '/receipt.json', md: dir + '/receipt.md' }, message: '回执已重渲染（幂等，未重跑）' }
+  const recordedHash = parsed.scriptHash || (parsed.script && parsed.script.sha256) || null
+  const scriptRel = parsed.scriptPath || (parsed.script && parsed.script.path) || (dir + '/script')
+  const currentText = await H.readText(scriptRel)
+  const currentHash = currentText === undefined ? null : sha256(currentText)
+  const scriptChanged = currentHash !== null && recordedHash !== null && currentHash !== recordedHash
+  const warnings = []
+  if (scriptChanged) {
+    warnings.push(warning(MATH_SCRIPT_CHANGED_WARNING, 'scriptChanged：归档脚本 ' + scriptRel + ' 的当前哈希与回执记录不一致——**这份回执不再代表当前代码**，请用 mode:\'file\' 重跑并引用新回执。'))
+  }
+  const mdRel = dir + '/receipt.md'
+  let rendered = false
+  if (!(await H.exists(mdRel))) {
+    const out = await H.readText(dir + '/stdout.txt')
+    const err = await H.readText(dir + '/stderr.txt')
+    await H.writeText(mdRel, renderReceiptMd(parsed, out || '', err || ''))
+    rendered = true
+  }
+  return {
+    ok: true, op: 'receipt', engine: parsed.engine ? parsed.engine.name : null,
+    scriptPath: scriptRel, scriptHash: recordedHash, currentScriptHash: currentHash,
+    scriptChanged: scriptChanged, attempt: parsed.attempt || 1, attemptDir: dir,
+    receipt: { dir: dir, json: dir + '/receipt.json', md: mdRel },
+    warnings: warnings,
+    message: (scriptChanged ? '⚠ 归档脚本已改变：旧回执不再代表当前代码；' : '') + (rendered ? '缺失的 receipt.md 已补写（未改写既有数据）' : '回执只读返回（既有文件未改写）'),
+  }
 }
 
 // ── op: install ────────────────────────────────────────────────────────────────────────────────
@@ -706,10 +864,10 @@ export function mathAvailabilityLine(probe, lang, mathMode) {
       + ' (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan;'
       + ' installing requires a plan plus confirmation.'
     const shell = mode === 'typed+shell' ? '\n' + MATH_SHELL_RULE_LINE_EN : ''
-    return head + shell + '\n' + MATH_RULE_LINES_EN.join('\n')
+    return head + shell + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN + '\n' + MATH_RULE_LINES_EN.join('\n')
   }
   const head = '- math_computation：本机可用 ' + (list || '（无）') + '。需要数值/符号/统计计算时先 probe 再 run'
     + '（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。'
   const shell = mode === 'typed+shell' ? '\n' + MATH_SHELL_RULE_LINE : ''
-  return head + shell + '\n' + MATH_RULE_LINES.join('\n')
+  return head + shell + '\n' + MATH_ARCHIVE_WORKFLOW_LINE + '\n' + MATH_RULE_LINES.join('\n')
 }

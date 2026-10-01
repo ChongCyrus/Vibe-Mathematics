@@ -65,6 +65,8 @@ import {
   MATH_PERSONA_TOOL_LINE,
   MATH_RULE_LINES,
   MATH_RULE_LINES_EN,
+  MATH_ARCHIVE_WORKFLOW_LINE,
+  MATH_ARCHIVE_WORKFLOW_LINE_EN,
   normalizeMathParams,
   probeMathEngines,
   registerMathComputation,
@@ -2783,6 +2785,17 @@ export function apply(ctx) {
         return (await fs.stat(t)) !== undefined
       } catch (e) { return false }
     }
+    // Optional host seam (P2a): the module uses it for the per-project retention cap. `''`/'.'
+    // means the project root itself.
+    async function mathListDirRel(rel) {
+      const raw = String(rel == null ? '' : rel).trim()
+      const r = raw === '' || raw === '.' ? '' : mathRelPath(raw)
+      if (r === null) return []
+      try {
+        const t = await fs.resolve(instRoot() + (r ? '/' + r : ''))
+        return (await fs.listDir(t)) || []
+      } catch (e) { return [] }
+    }
     async function mathResolveExecutable(cmd) {
       const sub = subprocessOf()
       if (sub === undefined || typeof sub.resolveExecutable !== 'function') throw new Error('NO_SUBPROCESS: the host exposes no subprocess service')
@@ -2878,6 +2891,10 @@ export function apply(ctx) {
       exists: (rel) => mathExistsRel(rel),
       resolveExecutable: (cmd) => mathResolveExecutable(cmd),
       spawn: (opts) => mathSpawn(opts),
+      // P2a optional fields: tell the module up front whether a compiler can run at all (so it
+      // reports MATH_NO_SUBPROCESS before engine detection), and let it check the retention cap.
+      hasSubprocess: () => { const sub = subprocessOf(); return !!(sub && typeof sub.spawn === 'function') },
+      listDir: (rel) => mathListDirRel(rel),
       log: (kind, msg) => mathLog(kind, msg),
     }
     // The DYNAMIC per-round availability line: computed from a (cached) probe when the prompt is
@@ -2895,6 +2912,10 @@ export function apply(ctx) {
         // edit that drops the rules would silently remove a rule from every round prompt).
         if (mathLineZh.indexOf(MATH_RULE_LINES[0]) === -1) console.error('vibe-math-v5: the math availability line lost the frozen rules')
         if (mathLineEn.indexOf(MATH_RULE_LINES_EN[0]) === -1) console.error('vibe-math-v5: the EN math availability line lost the frozen rules')
+        // P2a: the archive→edit→re-run workflow rule must reach the prompt too (it is what makes
+        // `scriptChanged` actionable for a member).
+        if (mathLineZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) === -1) console.error('vibe-math-v5: the math availability line lost the archive workflow rule')
+        if (mathLineEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN) === -1) console.error('vibe-math-v5: the EN math availability line lost the archive workflow rule')
         return mathLineZh
       } catch (e) {
         // A probe failure must never break prompt construction: keep whatever we had.
@@ -2907,9 +2928,11 @@ export function apply(ctx) {
       const line = lang === 'en' ? mathLineEn : mathLineZh
       if (line) return '\n' + line
       // Fallback: when the dynamic line could not be built, the member still needs to know the
-      // tool exists and how to cite it — use the SAME frozen line the persona carries.
+      // tool exists, how to cite it, and (P2a) that an edited script needs a NEW receipt.
       if (String(params.mathComputation) === 'off') return ''
-      return '\n' + MATH_PERSONA_TOOL_LINE
+      return lang === 'en'
+        ? '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN
+        : '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE
     }
     // Push the tool section into a prompt under construction (a no-op in the 'off' mode, which
     // is the "off means zero mention" discipline).

@@ -101,6 +101,8 @@ export function makeFakeHost(opts = {}) {
       // run
       if (state.hang) return { exit: null, timedOut: true, killed: true, ms: timeoutMs, stdout: 'partial', stderr: '' }
       if (state.argError) return { exit: 2, timedOut: false, killed: false, ms: 9, stdout: '', stderr: state.argError }
+      // P2a: simulate "another member edits the source while this run is in flight".
+      if (opts.mutateOnRun && opts.mutateOnRun.rel) files.set(String(opts.mutateOnRun.rel).replace(/\\/g, '/'), String(opts.mutateOnRun.text == null ? '' : opts.mutateOnRun.text))
       const out = state.stdoutBytes > 0 ? 'x'.repeat(state.stdoutBytes) : 'ran-ok\n'
       if (state.exit !== 0) return { exit: state.exit, timedOut: false, killed: false, ms: 9, stdout: '', stderr: 'boom' }
       return { exit: 0, timedOut: false, killed: false, ms: 9, stdout: out, stderr: '' }

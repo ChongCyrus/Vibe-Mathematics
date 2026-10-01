@@ -20,6 +20,7 @@
 //   M4 seam `writeText` writes under the WORKSPACE root   ⇒ receipt-under-institute red
 //   M5 drop the availability line from the prompts        ⇒ prompt assertions red
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, statSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -530,6 +531,46 @@ section('14 prompt + persona surfaces')
   // P1 decision: no new /v5 subcommand ⇒ hint/usage stay untouched.
   const cmd = h.commandRegs.find((c) => c.name === 'v5')
   assert(cmd && !/math/i.test(String((cmd.input && cmd.input.hint) || '')), 'the /v5 hint was NOT touched by P1 (' + (cmd && cmd.input && cmd.input.hint) + ')')
+}
+
+// ---------- 15. P2a: scriptPath/scriptHash, append-only attempts, scriptChanged -----------------
+section('15 P2a archive workflow: scriptPath/scriptHash, new attempt per re-run, persona rule')
+{
+  const seam = makeSeam({ installed: { python: true } })
+  const h = makeHost(seam)
+  const code = 'print(6*7)\n'
+  const r0 = await h.callMath({ op: 'run', engine: 'python', mode: 'code', code })
+  assert(!!r0.scriptPath && /^[0-9a-f]{64}$/.test(String(r0.scriptHash)) && r0.scriptPath === r0.receipt.dir + '/script.py',
+    '★ mode=code exposes scriptPath + scriptHash (' + JSON.stringify({ p: r0.scriptPath, n: String(r0.scriptHash).slice(0, 8) }) + ')')
+  const rec0 = JSON.parse(readFileSync(join(INST(h), r0.receipt.json), 'utf8'))
+  assert(rec0.scriptPath === r0.scriptPath && rec0.scriptHash === r0.scriptHash,
+    '★ the receipt carries the same scriptPath/scriptHash (evidence is re-checkable)')
+  const disk = readFileSync(join(INST(h), r0.scriptPath), 'utf8')
+  assert(createHash('sha256').update(disk).digest('hex') === r0.scriptHash,
+    '★ scriptHash is literally the sha256 of the archived script bytes')
+  // mode=file is keyed by PATH: editing the file and re-running stays on the same archive id but
+  // lands in a NEW attempt (P2a append-only).
+  mkdirSync(join(INST(h), 'Problems'), { recursive: true })
+  const srcPath = join(INST(h), 'Problems', 'calc2.py')
+  writeFileSync(srcPath, 'print(1)\n', 'utf8')
+  const f1 = await h.callMath({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/calc2.py' })
+  writeFileSync(srcPath, 'print(2)\n', 'utf8')
+  const f2 = await h.callMath({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/calc2.py' })
+  assert(f1.baseRunDir === f2.baseRunDir && f1.attemptDir !== f2.attemptDir && f2.attempt === 2,
+    '★ an edited file re-run stays on the same archive id as a NEW attempt (' + JSON.stringify({ a1: f1.attemptDir, a2: f2.attemptDir, n: f2.attempt }) + ')')
+  assert(f1.scriptChanged === false && f2.scriptChanged === true &&
+    (f2.warnings || []).some((w) => w.code === 'SCRIPT_CHANGED_SINCE_LAST_RECEIPT'),
+    '★ scriptChanged:true + SCRIPT_CHANGED_SINCE_LAST_RECEIPT (an old receipt never silently stands for new code)')
+  assert(existsSync(join(INST(h), f1.attemptDir, 'receipt.json')) && existsSync(join(INST(h), f2.attemptDir, 'receipt.json')),
+    'append-only: the first attempt is still on disk (never overwritten)')
+  const f1rec = JSON.parse(readFileSync(join(INST(h), f1.attemptDir, 'receipt.json'), 'utf8'))
+  assert(f1rec.scriptHash === f1.scriptHash && f1.scriptHash !== f2.scriptHash,
+    'the two attempts record different script hashes')
+  // persona: the workflow rule reaches BOTH blocks, in both languages.
+  const yml = readFileSync(join(PRESET_DIR, 'agent.cordis.yml'), 'utf8')
+  const zh = yml.split(math.MATH_ARCHIVE_WORKFLOW_LINE).length - 1
+  const en = yml.split(math.MATH_ARCHIVE_WORKFLOW_LINE_EN).length - 1
+  assert(zh === 2 && en === 2, '★ the persona carries the archive workflow rule in BOTH blocks (zh×' + zh + ', en×' + en + ')')
 }
 
 console.log('')

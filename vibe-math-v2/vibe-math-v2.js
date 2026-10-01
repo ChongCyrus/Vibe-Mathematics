@@ -29,6 +29,7 @@ import {
   MATH_PARAM_DEFAULTS,
   MATH_TOOL_DESCRIPTION,
   MATH_TOOL_SCHEMA,
+  MATH_ARCHIVE_WORKFLOW_LINE,
   MATH_PERSONA_TOOL_LINE,
   MATH_RULE_LINES,
   normalizeMathParams,
@@ -4061,6 +4062,8 @@ export function apply(ctx) {
     mathProbeDue: mathProbeDue,
     refreshMathProbe: refreshMathProbe,
     mathProbe: function () { return mathProbe },
+    // P2a：persona 两个文本块必须含的「归档→编辑→重跑」规则（文本取自共享模块常量，persona 不手抄）。
+    mathArchiveWorkflowLine: MATH_ARCHIVE_WORKFLOW_LINE,
     leanQueueSize: function () { return leanQueue.length },
     leanJobsPublic: function () { const out = []; for (const j of leanJobs.values()) out.push(leanJobPublic(j)); return out },
     // childOwner 裁剪用：这个会话当前仍"可能再发 subagent/end"的 child（在册的 + 任务正在等的）。

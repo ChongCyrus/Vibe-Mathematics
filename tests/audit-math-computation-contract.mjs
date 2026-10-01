@@ -118,6 +118,12 @@ for (const P of PRESETS) {
   const blocks = yml.split(/\n\s*(?:prefix|text):\s*\|/)
   const hits = blocks.filter((b) => b.indexOf('math_computation') !== -1).length
   ok(hits >= 2, tag + 'both persona blocks (prefix + text) list math_computation', 'blocks with the tool: ' + hits)
+
+  // 4b. P2a: both blocks must carry the archive -> edit -> re-run rule (scriptChanged + mode:'file').
+  const wf = blocks.filter((b) => b.indexOf('scriptChanged') !== -1 && b.indexOf("mode:'file'") !== -1).length
+  ok(wf >= 2, tag + 'both persona blocks carry the archive->edit->re-run rule (scriptChanged + mode:file)', 'blocks with the rule: ' + wf)
+  ok(js.indexOf('MATH_ARCHIVE_WORKFLOW_LINE') !== -1, tag + 'references MATH_ARCHIVE_WORKFLOW_LINE (zh persona text source)')
+  if (P.dir === 'vibe-math-v4' || P.dir === 'vibe-math-v5') ok(js.indexOf('MATH_ARCHIVE_WORKFLOW_LINE_EN') !== -1, tag + 'references MATH_ARCHIVE_WORKFLOW_LINE_EN (en persona text source)')
 }
 
 // 5. README (both languages) document the six parameters

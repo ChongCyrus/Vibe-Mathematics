@@ -43,6 +43,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -50,6 +51,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -115,6 +117,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -122,6 +125,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -146,6 +150,7 @@ Resident researcher r-1 — CHECKPOINT（团队空闲，请由你们继续自主
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -153,6 +158,7 @@ Resident researcher r-1 — CHECKPOINT（团队空闲，请由你们继续自主
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -178,6 +184,7 @@ Reply with ONLY a JSON object:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -185,6 +192,7 @@ Reply with ONLY a JSON object:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -280,6 +288,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -287,6 +296,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -418,6 +428,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -425,6 +436,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -501,6 +513,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -508,6 +521,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -532,6 +546,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -539,6 +554,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -566,6 +582,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -573,6 +590,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
@@ -609,6 +627,7 @@ New items:
 - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
 - math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
+- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -616,6 +635,7 @@ New items:
 - 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。
 - math_computation: available (none). Probe first, then run (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan; installing requires a plan plus confirmation.
 - Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.
+- Archive -> edit -> re-run: for mode:'code' the script original is at the receipt's scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:'file' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.
 - Call math_computation for exact numerics, symbolic simplification, counter-example search, statistics or linear algebra: probe first, then run.
 - To re-check someone else's numeric conclusion, re-run the same script (op:'receipt' or op:'run', mode:'file') and cite the receipt path.
 - Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.
