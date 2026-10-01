@@ -8609,3 +8609,115 @@ feasibility ∈ [0,1] as above. Every returned direction (kept or new) must be s
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose and no braces { } outside the JSON:
 {"directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5,"motivation":"..."}]}
 ```
+
+## [113] spawn · verifier:r-p-d4v2:0 · case=d4-v2-midvote
+
+```text
+You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
+
+TARGET (r: proposition):
+PROPOSITION (id: p-d4v2): D4 v2 参与集
+
+KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
+
+1) PROBABILITY SEMANTICS — the single most important rule:
+- 正确概率 / 布尔估计 ∈ [0,1]。
+- 1 = 绝对正确（已被证明且验证通过）：你可以把它当作已知事实/可信结论直接用于推理。
+- 0 = 绝对错误（已被证伪且验证通过）。
+- 0 与 1 之间的任何值 = 未定论/待验证：只能作为参考证据，绝不能当作已成立的事实引用。
+- Verified/ 中的卡片概率恒为 1 或 0，内容可信、可直接引用。
+
+2) OBJECT MODELS (按实现方案)：
+- 问题 PROBLEM（qs/qs.json）：{ id, 概述（完整问题陈述，所提到的每个对象/记号都要给出完整定义）, 已解决(bool), 解法列表:[{ 完整解法（详细步骤）, 正确概率, 已验 }], 优先级（整数，越小越优先调度；"never"=永不调度）, progress（历史：已试方向、各方向路线、阻碍及原因、教训、可行性评估）}。
+- 命题 PROPOSITION（Propos/<分类>_Propos.json）：{ id, 概述（完整陈述）, 布尔估计（该命题为真的概率）, 细类型（分类 JSON）, 证明列表:[{ 完整过程（完整证明）, 正确概率, 支持信息/依据 }], 证伪列表:[{ 完整过程（完整证伪）, 正确概率, 支持信息/依据 }], 优先级, 价值/关键性（0-1，重要性）, progress（过往尝试与教训）}。
+- 收口规则：问题的某个解法 正确概率=1 → 问题已解决；命题的证明/证伪条目 正确概率=1 → 命题布尔估计=1/0（已定论）。
+
+3) FOLDERS (per project, VibeMath/Projects/<project>/)：
+- qs/qs.json：问题清单——求解与验证的唯一问题来源。
+- Propos/<分类>_Propos.json：命题知识库（已有认知）。
+- Reliable/：可信参考文献（只读）。
+- Verified/<分类>_Verified.json：定论事实索引——布尔估计=0/1 的命题卡片与已解决问题卡片；内容可信、可直接使用。
+- Verification_logs/：辩论记录。Progress_Logs/：进度与报告。VibeMath_State/：调度器私有状态——不要读也不要改。
+
+4) OUTPUT REQUIREMENTS (你输出的每个对象必须满足)：
+- 完整性、不断章取义：任何你写出的问题/命题/结论都要给出完整陈述，并把它所依赖的对象、环境、背景、定义全部补全（例如提到某个序列/函数/定理时给出其完整定义与假设）。
+- 引用溯源：若你引用了 qs/qs.json、Propos/、Verified/、Reliable/ 中已有的命题/引理/结论/解法，必须给出出处——具体文件路径（相对项目根，如 Propos/数论_Propos.json 或 Verified/未分类_Verified.json）+ 对象 id 或 JSON 路径（如 .证明列表[0] 或 .directions[1]）；没有出处的引用一律不允许。你自己新提出的结论则必须自带完整定义，不得引用未定义的内容。
+- 若结论依赖某个临时假设 p，必须显式写成「若 <p 的完整陈述> 成立，则：...」（同样要定义完整）。
+- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。
+- 示例（完整问题 概述）："设 {a_n} 为非负实数序列（n≥1），满足：对任意正整数 n 都存在 i,j 使 |a_i − a_j| = 1/n^p（p>0 为实参数）。判断：p 在什么范围内保证级数 ∑_{n=1}^∞ a_n 发散？" —— 每个记号（序列、参数、级数）都在句内定义完整，读它的人无需再查背景。
+- 示例（完整命题 概述）："设函数 f:[0,1]→R 连续，则 f 在 [0,1] 上有界（连续性按 ε-δ 定义，有界性按标准实数分析定义）。" —— 概念与对象定义完整，不引用未定义的记号。
+
+
+YOUR PERMISSIONS / CAPABILITIES:
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
+- You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
+- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
+- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
+- You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
+- These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
+- COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
+- FINE READ after: once you identify a valuable object, read that file again and extract its full JSON (完整过程 / 证明 / 证伪 / progress) via the index you found.
+
+Result ∈ [0,1] = your probability that the TARGET is CORRECT: 1 ONLY when you are fully certain (for a bare proposition: Reason must be a complete proof; for a proof/refutation/solution: you verified every step and Reason confirms the whole chain); 0 ONLY when you are certain it is wrong (Reason must be a rigorous complete refutation / pinpoint the fatal flaw); otherwise a value strictly between 0 and 1.
+
+Independently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
+{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence"}
+```
+
+## [114] spawn · verifier:r-p-d4v2:1 · case=d4-v2-midvote
+
+```text
+You are a STRICT peer reviewer verifying one mathematical object. Check it multiple times.
+
+TARGET (r: proposition):
+PROPOSITION (id: p-d4v2): D4 v2 参与集
+
+KNOWLEDGE BASE & DATA MODEL (definition contract you MUST follow):
+
+1) PROBABILITY SEMANTICS — the single most important rule:
+- 正确概率 / 布尔估计 ∈ [0,1]。
+- 1 = 绝对正确（已被证明且验证通过）：你可以把它当作已知事实/可信结论直接用于推理。
+- 0 = 绝对错误（已被证伪且验证通过）。
+- 0 与 1 之间的任何值 = 未定论/待验证：只能作为参考证据，绝不能当作已成立的事实引用。
+- Verified/ 中的卡片概率恒为 1 或 0，内容可信、可直接引用。
+
+2) OBJECT MODELS (按实现方案)：
+- 问题 PROBLEM（qs/qs.json）：{ id, 概述（完整问题陈述，所提到的每个对象/记号都要给出完整定义）, 已解决(bool), 解法列表:[{ 完整解法（详细步骤）, 正确概率, 已验 }], 优先级（整数，越小越优先调度；"never"=永不调度）, progress（历史：已试方向、各方向路线、阻碍及原因、教训、可行性评估）}。
+- 命题 PROPOSITION（Propos/<分类>_Propos.json）：{ id, 概述（完整陈述）, 布尔估计（该命题为真的概率）, 细类型（分类 JSON）, 证明列表:[{ 完整过程（完整证明）, 正确概率, 支持信息/依据 }], 证伪列表:[{ 完整过程（完整证伪）, 正确概率, 支持信息/依据 }], 优先级, 价值/关键性（0-1，重要性）, progress（过往尝试与教训）}。
+- 收口规则：问题的某个解法 正确概率=1 → 问题已解决；命题的证明/证伪条目 正确概率=1 → 命题布尔估计=1/0（已定论）。
+
+3) FOLDERS (per project, VibeMath/Projects/<project>/)：
+- qs/qs.json：问题清单——求解与验证的唯一问题来源。
+- Propos/<分类>_Propos.json：命题知识库（已有认知）。
+- Reliable/：可信参考文献（只读）。
+- Verified/<分类>_Verified.json：定论事实索引——布尔估计=0/1 的命题卡片与已解决问题卡片；内容可信、可直接使用。
+- Verification_logs/：辩论记录。Progress_Logs/：进度与报告。VibeMath_State/：调度器私有状态——不要读也不要改。
+
+4) OUTPUT REQUIREMENTS (你输出的每个对象必须满足)：
+- 完整性、不断章取义：任何你写出的问题/命题/结论都要给出完整陈述，并把它所依赖的对象、环境、背景、定义全部补全（例如提到某个序列/函数/定理时给出其完整定义与假设）。
+- 引用溯源：若你引用了 qs/qs.json、Propos/、Verified/、Reliable/ 中已有的命题/引理/结论/解法，必须给出出处——具体文件路径（相对项目根，如 Propos/数论_Propos.json 或 Verified/未分类_Verified.json）+ 对象 id 或 JSON 路径（如 .证明列表[0] 或 .directions[1]）；没有出处的引用一律不允许。你自己新提出的结论则必须自带完整定义，不得引用未定义的内容。
+- 若结论依赖某个临时假设 p，必须显式写成「若 <p 的完整陈述> 成立，则：...」（同样要定义完整）。
+- 只输出规定的 JSON（放在 ```json 代码围栏内），JSON 之外不写任何内容。
+- 示例（完整问题 概述）："设 {a_n} 为非负实数序列（n≥1），满足：对任意正整数 n 都存在 i,j 使 |a_i − a_j| = 1/n^p（p>0 为实参数）。判断：p 在什么范围内保证级数 ∑_{n=1}^∞ a_n 发散？" —— 每个记号（序列、参数、级数）都在句内定义完整，读它的人无需再查背景。
+- 示例（完整命题 概述）："设函数 f:[0,1]→R 连续，则 f 在 [0,1] 上有界（连续性按 ε-δ 定义，有界性按标准实数分析定义）。" —— 概念与对象定义完整，不引用未定义的记号。
+
+
+YOUR PERMISSIONS / CAPABILITIES:
+- Network tools (web search / fetch): available; Script/shell tools (pwsh): available (your actual tool list is enforced by the framework).
+- You may use external tools (web search / literature lookup, symbolic/numeric computation (running scripts)) to assist; no per-round limit by default.
+- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
+- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
+- You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
+- These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
+- COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
+- FINE READ after: once you identify a valuable object, read that file again and extract its full JSON (完整过程 / 证明 / 证伪 / progress) via the index you found.
+
+Result ∈ [0,1] = your probability that the TARGET is CORRECT: 1 ONLY when you are fully certain (for a bare proposition: Reason must be a complete proof; for a proof/refutation/solution: you verified every step and Reason confirms the whole chain); 0 ONLY when you are certain it is wrong (Reason must be a rigorous complete refutation / pinpoint the fatal flaw); otherwise a value strictly between 0 and 1.
+
+Independently output your initial review. Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
+{"Result":0.5,"Reason":"detailed logic chain, potential counterexample, or supporting evidence"}
+```

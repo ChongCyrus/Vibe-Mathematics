@@ -121,6 +121,15 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **拒绝的写法**：空格、`;`、`|`、`&`、`$`、反引号、`@`、括号等 shell 危险或管理器不认识的语法 ⇒ `MATH_INVALID_ARGUMENT` + `next.reason='unsupported-version-syntax'`（**不会**把可疑字符串丢给 shell）。
 
 - **冻结参与集（freeze/prune）规则（v4，round-9 P2/D4 的设计决定）**：验证/会议开始时把当时的名册**快照**下来（`rosterSnapshot`）并记录 `rosterVersion`，所有视图（`status()` 的 `consensus`/`meeting`/`verify`、以及内部的 `allSpoke`/`allVoted` 判据）**一律读快照**，不再从活的 `residents` 重新推导。三条配套语义：① **移除成员时同时从冻结集里剔除它**（`removeMember`），否则在飞投票永远凑不齐、验证/会议会卡死——v4 既有契约是"移除即释放等待"（`e2e-v4-fixes` T26/T31 钉住这一点）；② **新增成员不进入已冻结的集合**（冻结的意义）；③ **成员集真的变化时 `rosterVersion` 递增**，让任何视图都能看出自己读到的是否已过期。**约定**：没有进行中的验证/会议时，`status().frozenParticipants` 为**显式 `null`**（不是空数组、也不是旧的活名册），`rosterVersion` 仍然给出当前值。
+- **N1：编辑脚本后的"变更检测"到底对什么生效**。归档 id **以源路径为键**（`mode:'file'` 用 `file:<项目内相对路径>`，`mode:'code'/'expr'` 用脚本文本）：
+  - 编辑**同一个源文件**再跑 ⇒ **同一个归档 id**、`attempt ≥ 2`（落在 `Computation/<id>/attempts/<n>/`）、`scriptChanged:true`、`previousReceipt{runId,attempt,scriptHash}` 指向上一 attempt，且**上一 attempt 的脚本与回执绝不改写**。这是 P2a 承诺的核对流程，已在真机与共享套件里双向验证。
+  - 指向**另一个源路径**（例如上一 attempt 的**副本**、或新写的文件）⇒ 按设计就是**新归档**：新 id、`attempt:1`、`scriptChanged:false`、`previousReceipt:null`，且 `sourceHashBefore == sourceHashAfter`（文件在跑之前就已经是编辑后的内容）。**这不是变更检测失效**，而是"该 id 从来没有历史回执"。
+  - 运行响应现在**显式带 `runId` 与 `attempt`**（此前只有 `receipt.runId`，调用方根本无法核对"是不是同一个归档"）。
+  - `mode:'file'` 指向 `Computation/…` 的**归档脚本本身**目前会被路径守卫拒绝（源必须位于受允许的项目目录）；响应里的 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告是**防御性**的，用于将来放开该路径时如实解释"为何这里没有历史"。
+  - **关于 nonce**：归档 id **不含任何随机数**，给定 (engine, mode, 键, packages) 完全确定；若你在某个路径里看到 nonce 样的后缀，那是**调用方自己的工作目录命名**，不是模块产生的。
+- **N4：`project` 字段与 receipt 路径里的项目名是两个东西**。`project` 是**配置层的项目标识**（未配置项目时由工作区路径派生，所以会出现 `C-Users-…-vmself6` 这种 slug，它是**显示/配置值**）；而 receipt/归档路径一律用 `Projects/<当前项目名>`（默认 `default`）。两者不一致是**层次不同**，不是命名错误；改名会破坏既有状态与归档路径，故只在此说明。
+- **冻结视图的版本语义（v4 P2）**：冻结视图（`status().consensus`、`report().verify`）报的是**快照当时的 `rosterVersion`**，而 `status().rosterVersion` 是**当前活计数器**；成员集变化后两者**应当不同**——这个差值正是"你读到的是过期参与集"的信号。断言方式：两个冻结视图彼此相等，活计数器 ≥ 快照版本（`tests/formal-verify-v4.test.mjs` 的 D4 跨视图用例）。
+- **跨引擎位级一致（真机）**：python 与 R 的计算结果在 **16 位有效数字**上一致；第 17 位是 `digits=22` 打印出的 **double 精度噪声**，不是错误答案。别把它当成缺陷。
 ### 4.3 已知差异（不打算改，记录以便不再重复提问）
 
 - **`projects:[]` 与 `project:"default"` + `frameworkRoot` 并存**：它们描述的是**两个不同层次**——`project` 是**当前工作项目名**（默认 `default`），`frameworkRoot` 是该预设的**框架根目录**（语料/状态/论文都相对它解析），而 `projects` 是**可切换的项目清单**（尚未配置过项目时为空数组是诚实的）。**结论：不改行为**，只在此说明字段含义（改名会破坏既有状态文件与文档）。

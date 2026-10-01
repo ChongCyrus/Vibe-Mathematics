@@ -954,10 +954,17 @@ async function opRun(H, args, params) {
   let scriptText = ''
   let fileRel = null
   let sourceHashBefore = null
+  // round-9 (N1): `mode:'file'` is keyed by the SOURCE PATH, so re-running an ORIGINAL source lands on
+  // the same archive id (attempt>=2, scriptChanged). Pointing it at an ARCHIVED script instead targets
+  // a different path and therefore a NEW archive id by design - the prior attempt is never touched, but
+  // there is no previous receipt FOR THAT ID, so scriptChanged/previousReceipt are necessarily empty.
+  // That is not a bug, but it must be SAID rather than looking like broken change detection.
+  let archivedScriptSource = false
   if (mode === 'code') scriptText = args.code
   else if (mode === 'file') {
     fileRel = projectRel('', args.file)
     if (fileRel === null) return fail('MATH_REFUSED', det.name, 'file 必须位于项目内：' + args.file, { next: next('reason', { reason: 'path-outside-project' }) })
+    archivedScriptSource = /^Computation\//.test(String(fileRel))
     const txt = await H.readText(fileRel)
     if (txt === undefined) return fail('MATH_REFUSED', det.name, '找不到文件：' + args.file, { next: next('reason', { reason: 'file-not-found' }) })
     scriptText = txt
@@ -1021,6 +1028,7 @@ async function opRun(H, args, params) {
   }
 
   const warnings = []
+  if (archivedScriptSource) warnings.push(warning('ARCHIVED_SCRIPT_RERUN', 'mode:\'file\' 指向的是**归档脚本**（Computation/…）：按设计归档 id 以**源路径**为键，所以这是一次**新归档**（新目录、attempt 1），没有该 id 的历史回执 ⇒ scriptChanged/previousReceipt 为空是**预期**，且**旧 attempt 绝不会被覆盖**。要做"编辑→重跑→attempt≥2 + scriptChanged"的核对，请把 mode:\'file\' 指向**原始源文件**并编辑它，而不是指向归档副本。'))
   if (!probeDet && want.length) warnings.push(warning('PACKAGE_PRECHECK_SKIPPED', 'engine=cli：无法从命令名判断引擎族，已跳过包预检（不阻塞执行，也不会误报缺包）；如需预检请直接用 python/r/octave/julia 或改用可识别的解释器路径。'))
   if (pk && pk.probeFailed && want.length) warnings.push(warning('PACKAGE_PRECHECK_UNKNOWN', '包预检未能执行（宿主 subprocess 在这几次尝试里返回空/超时，会话早期常见）：本次不判定缺包、不阻塞执行；如需确定性结论请重试或直接用对应引擎。probe=' + JSON.stringify(pk.argv) + ' attempts=' + JSON.stringify(pk.attempts)))
   if (fullOut.length > MATH_CAPS.stdout) warnings.push(warning('OUTPUT_TRUNCATED', 'stdout 超过 64KB，完整版见 ' + dir + '/stdout.txt'))
@@ -1039,6 +1047,11 @@ async function opRun(H, args, params) {
     // in the receipt: `scriptAbs` is directly openable, `cwd` is the project root to join with.
     scriptAbs: scriptAbs, cwd: root,
     sourceFile: fileRel || null,
+    fileIsArchivedScript: archivedScriptSource,
+    // round-9 (N2): a TIMEOUT must still carry the evidence it produced - the capped partial output
+    // lives in the receipt as well as in stdout.txt/stderr.txt on disk.
+    partialStdout: String(fullOut).slice(-2000),
+    partialStderr: String(fullErr).slice(-2000),
     sourceHashBefore: sourceHashBefore, sourceHashAfter: sourceHashAfter,
     scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
     previousReceipt: prevReceipt ? { runId: prevReceipt.runId, attempt: prevReceipt.attempt || 1, scriptHash: prevReceipt.scriptHash || (prevReceipt.script && prevReceipt.script.sha256) || null } : null,
@@ -1064,6 +1077,7 @@ async function opRun(H, args, params) {
 
   const shell = {
     ok: true, op: 'run', engine: engineLabel, mode: mode,
+    runId: runId, attempt: attempt,
     versionPolicy: versionPolicy, constraintsNotEnforced: pinnedSpecs.slice(),
     engineInfo: receipt.engine,
     argv: assembled.argv.slice(),
@@ -1072,6 +1086,11 @@ async function opRun(H, args, params) {
     attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
     scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
     sourceFile: fileRel || null,
+    fileIsArchivedScript: archivedScriptSource,
+    // round-9 (N2): a TIMEOUT must still carry the evidence it produced - the capped partial output
+    // lives in the receipt as well as in stdout.txt/stderr.txt on disk.
+    partialStdout: String(fullOut).slice(-2000),
+    partialStderr: String(fullErr).slice(-2000),
     previousReceipt: receipt.previousReceipt,
     cliScriptAppended: !!(receipt.cli && receipt.cli.scriptAppended),
     packages: pk.found,
@@ -1085,6 +1104,7 @@ async function opRun(H, args, params) {
     // exit does (exit + stderr), plus timedOut:true.
     const out = fail('MATH_TIMEOUT', engineLabel, '执行超时（' + timeoutMs + 'ms）已被终止', { argv: assembled.argv.slice(), receipt: receiptRef })
     out.exit = null
+    out.stdout = String(fullOut).slice(0, MATH_CAPS.stdout)
     out.stderr = String(fullErr).slice(0, MATH_CAPS.stderr)
     return Object.assign(out, archiveFields(), { ms: receipt.ms, timedOut: true })
   }

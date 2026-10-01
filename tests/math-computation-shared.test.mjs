@@ -882,6 +882,49 @@ console.log('-- math_computation shared contract --')
   ok(m.ok === false && /existence-only/.test(String(m.versionPolicy)), 'the missing-package failure also states the constraint policy')
 }
 
+// ── 26. round-9 (N1): edited-archived-script evidence integrity
+// The documented P2a flow: edit the ORIGINAL source, re-run mode:'file' ⇒ SAME archive id, attempt>=2,
+// scriptChanged:true, previousReceipt at the prior attempt, prior attempt untouched. Pointing mode:'file'
+// at an ARCHIVED script is a NEW archive id by design (the id is keyed by the SOURCE PATH) - which must
+// be SAID (fileIsArchivedScript + a warning), not look like broken change detection.
+{
+  const h = makeFakeHost({ installed: ['python3'], files: { 'Problems/x.py': 'print(1)\n' } })
+  M.registerMathComputation(h.host)
+  const r1 = await h.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/x.py' })
+  ok(r1.ok === true && r1.attempt === 1 && r1.scriptChanged === false, 'first run of a source file: attempt 1, no change')
+  const rj1 = JSON.parse(h.files.get(String(r1.receipt.json).replace(/\\/g, '/')))
+  ok(typeof r1.runId === 'string' && rj1.runId === r1.runId, '★ the run response exposes its archive id (matches the durable receipt.runId) - needed to check "same archive id"')
+  h.files.set('Problems/x.py', 'print(2)\n')
+  const r2 = await h.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/x.py' })
+  ok(r2.ok === true && r2.runId === r1.runId, '★ editing the ORIGINAL source and re-running lands on the SAME archive id')
+  ok(r2.attempt >= 2 && /\/attempts\/\d+/.test(String(r2.attemptDir || '')), '★ the re-run is attempt>=2 under attempts/<n>/')
+  ok(r2.scriptChanged === true, '★ the re-run reports scriptChanged:true')
+  ok(!!r2.previousReceipt && r2.previousReceipt.attempt === r1.attempt && r2.previousReceipt.scriptHash === r1.scriptHash, '★ previousReceipt points at the prior attempt (attempt + scriptHash)')
+  ok(h.files.get(String(r1.scriptPath).replace(/\\/g, '/')) === 'print(1)\n', '★ the prior attempt\'s script is NOT overwritten (append-only)')
+  // A DIFFERENT source path (e.g. a copy of the old script, or a brand-new file) is a NEW archive id BY
+  // DESIGN: the id is keyed by the source path, so there is no history for that id and
+  // scriptChanged/previousReceipt are - correctly - empty. This is the case a finder can mistake for
+  // "broken change detection"; it is not, and the docs now say so.
+  h.files.set('Problems/copy_of_old.py', 'print(1)\n')
+  const r3 = await h.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/copy_of_old.py' })
+  ok(r3.ok === true, 'a run of a different source path succeeds (' + JSON.stringify({ ok: r3.ok, code: r3.code }) + ')')
+  ok(r3.runId !== r1.runId, '★ a DIFFERENT source path gets a DIFFERENT archive id')
+  ok(r3.attempt === 1, '★ …and therefore starts at attempt 1 (fresh archive, by design)')
+  ok(r3.scriptChanged === false, '★ …and reports scriptChanged:false (no history FOR THIS id)')
+  ok(r3.previousReceipt === null || r3.previousReceipt === undefined, '★ …and has no previousReceipt (expected, not broken change detection)')
+  ok(h.files.get(String(r1.scriptPath).replace(/\\/g, '/')) === 'print(1)\n', 'the earlier attempt is still untouched after that run')
+}
+// ── 27. round-9 (N2): a TIMEOUT carries its partial output in BOTH the response and the receipt
+{
+  const h = makeFakeHost({ installed: ['python3'], hang: true, stdoutBytes: 16 })
+  M.registerMathComputation(h.host)
+  const t = await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'print("before-timeout")\n', timeoutMs: 1000 })
+  ok(t.ok === false && t.code === 'MATH_TIMEOUT', 'the hanging run reports MATH_TIMEOUT')
+  ok('stdout' in t && 'stderr' in t, '★ the TIMEOUT response carries stdout AND stderr (not just the archived file)')
+  const rj = JSON.parse(h.files.get(String(t.receipt.json).replace(/\\/g, '/')))
+  ok(typeof rj.partialStdout === 'string' && typeof rj.partialStderr === 'string', '★ the TIMEOUT receipt JSON carries the capped partial output (as strings)')
+}
+
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

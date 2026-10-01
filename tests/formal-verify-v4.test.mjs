@@ -270,6 +270,24 @@ async function proposeAndVote(h, target, opts = {}) {
   // The verification may only have been QUEUED by the proposal round; finish it.
   return await settleVerify(h, opts.plan || (() => (opts.verdict === undefined ? 1 : opts.verdict)))
 }
+/**
+ * Start a verification and KEEP IT IN FLIGHT (the first half of `proposeAndVote`): record a card, have
+ * r-1 propose verifying it, and stop driving as soon as the verify view is ACTIVE. Note the trap:
+ * `verifyInProgress` is already true while the verification is merely QUEUED, so `consensus.kind`
+ * is the only reliable "it is really running" signal.
+ */
+async function startVerifyOnly(h, target) {
+  const card = { id: target, title: target, statement: '待验证对象 ' + target, prob: 0.8, value: 0.6, motivation: 'm' }
+  await h.callTool('vibe_v4_record_proposition', card, h.resAgent(h.childOf('r-1')))
+  const before = h.followups.length
+  await h.callTool('vibe_v4_message', { to: 'r-1', content: '请处理本轮工作。' })
+  for (let i = 0; i < 300 && h.followups.length === before; i++) await sleep(10)
+  await drive(h, () => ({ summary: '提议验证 ' + target + '。', solved: false, propose_verify: target, contextPct: 20 }), async () => {
+    const s = await h.callTool('vibe_v4_status', {})
+    return !!(s.consensus && s.consensus.kind === 'verify')
+  })
+  return await h.callTool('vibe_v4_status', {})
+}
 /** Wake exactly the given resident with an ordinary work round and return that wake. */
 async function workWake(h, rId) {
   const before = h.followups.length
@@ -1511,12 +1529,42 @@ section('23 audit P1: member-facing not-found carries code + status + next')
   assert(notStarted.ok === false && notStarted.code === 'V4_NO_SUCH_RESIDENT' && !!notStarted.next && !!notStarted.status && notStarted.status.running === false, '★ run not started ⇒ code + next + status.running=false')
 }
 
-// D4 cross-view assertion: NOT LANDED YET (see notes). `establish()` + a proposal-only drive does not
-// bring the verification to an ACTIVE state in this harness (the existing `proposeAndVote` helper
-// deliberately drives proposal + vote + settle together), so the cross-view check needs the helper
-// split into "start the verify, keep it in flight" and "finish it". The version-increment assertions
-// live in math-computation-v4.test.mjs; this one is queued for the next round rather than left as a
-// permanently-red assertion.
+// ---------- D4 cross-view: mid-verify hire/fire must not split the views ----------
+section('D4 cross-view: one frozen participant set, seen identically by every view')
+{
+  const h = await establish()
+  const st = await startVerifyOnly(h, 'p-d4')
+  assert(st.consensus && st.consensus.kind === 'verify', 'precondition: an ACTIVE verification for the cross-view check (' + JSON.stringify({ c: st.consensus && st.consensus.kind, ip: st.verifyInProgress }) + ')')
+  const c0 = st.consensus
+  const rp0 = await h.callTool('vibe_v4_report', {})
+  const rv0 = rp0.verify
+  assert(Array.isArray(st.frozenParticipants) && rv0, 'the frozen participant set and the report() verify view are both exposed')
+  assert(c0.expected === st.frozenParticipants.length, '★ consensus.expected === the frozen participant set size')
+  assert(Number(String(rv0.voted).split('/')[1]) === c0.expected, '★ the two views agree on the DENOMINATOR (status().consensus.expected vs report().verify k/N)')
+  assert(rv0.rosterVersion === c0.rosterVersion && c0.rosterVersion === st.rosterVersion, '★ both views (and status) report the SAME rosterVersion')
+  // HIRE mid-verify: the newcomer must NOT join the frozen set (that is what freezing means).
+  const hire = await h.callTool('vibe_v4_add_member', { direction: 'D4 cross-view assertion' })
+  const st2 = await h.callTool('vibe_v4_status', {})
+  const rv2 = (await h.callTool('vibe_v4_report', {})).verify
+  assert(st2.rosterVersion > c0.rosterVersion, 'hiring mid-verify bumps rosterVersion (' + c0.rosterVersion + ' -> ' + st2.rosterVersion + ')')
+  assert(st2.consensus.expected === st2.frozenParticipants.length && st2.consensus.expected === c0.expected,
+    '★ after a mid-verify HIRE the frozen set is UNCHANGED and both views still agree (newcomer did not join)')
+  assert(rv2.rosterVersion === st2.consensus.rosterVersion,
+    '★ after the HIRE the two FROZEN views (status().consensus + report().verify) still report the SAME rosterVersion')
+  assert(st2.rosterVersion > rv2.rosterVersion,
+    '★ …while status().rosterVersion is the LIVE counter and has moved past the snapshot (staleness is visible)')
+  // FIRE mid-verify: the frozen set is pruned so the in-flight verification can still conclude.
+  if (hire && hire.ok && hire.id) await h.callTool('vibe_v4_remove_member', { id: hire.id })
+  const st3 = await h.callTool('vibe_v4_status', {})
+  const rv3 = (await h.callTool('vibe_v4_report', {})).verify
+  assert(st3.consensus.expected === st3.frozenParticipants.length && Number(String(rv3.voted).split('/')[1]) === st3.consensus.expected && rv3.rosterVersion === st3.consensus.rosterVersion,
+    '★ after a mid-verify FIRE the two views STILL agree (the frozen set was pruned together)')
+  assert(st3.frozenParticipants.indexOf(hire && hire.id) === -1, '★ the removed member is not in the frozen set any more (pruned on removal)')
+  // …and the verification really does conclude after that churn (T26/T31 contract).
+  await settleVerify(h, () => 1)
+  const st4 = await h.callTool('vibe_v4_status', {})
+  assert(st4.verifyInProgress === false, '★ the mid-verify hire/fire did NOT prevent the verification from concluding')
+}
 
 // ===============================================================
 console.log('')

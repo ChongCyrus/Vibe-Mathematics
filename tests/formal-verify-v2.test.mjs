@@ -1636,6 +1636,44 @@ async function driveSites(h, opts, qid) {
   await hv.call('vibe_math_abort', {})
 }
 
+// ---------- 15f. P2-v2 D4: ONE participant set / ONE count across the two views ----------
+// Pinned definition (must stay in sync with the plugin's voteCount() doc comment):
+//   * participant set of a verify task = `t.children` of the CURRENT round (their `childResults`
+//     entries are that round's votes);
+//   * "how many votes are required" = the task's **creation-time snapshot** `t.expectedCount`
+//     (written when processVerify creates the task) — NEVER live `params.verifierCount` /
+//     `params.maxParallelThreshold`.
+// Before the convergence the answer lived in three places (`consensus()` over reported votes with
+// the MIN_REVIEWERS constant, `finalizeVerification()` counting again, and two inline `allReported`
+// checks over `t.children`), so a mid-round hire/fire could make the debate view and the verdict
+// view disagree about whether the round is complete.
+section('15f P2-v2 D4: both views read ONE participant set (snapshot + round)')
+{
+  const h = await makeCase('d4-v2-midvote')
+  await h.call('vibe_math_set_params', { verifierCount: 2, debateMaxRounds: 2, verdictMode: 'flat' })
+  await h.call('vibe_math_add_proposition', { id: 'p-d4v2', 概述: 'D4 v2 参与集', 概率: 0.6, 分类: '数论' })
+  await startScheduler(h)
+  const staffed = await waitFor(() => { const x = h.spawns.filter((s) => s.label.startsWith('verifier:r-p-d4v2')); return x.length >= 2 ? x : undefined }, 60, 250)
+  assert(!!staffed, 'two reviewers were staffed for the round (the creation-time snapshot)')
+  const pick = (o) => ((o && o.verifyTasks) || []).filter((t) => String(t.rId).indexOf('p-d4v2') !== -1)[0]
+  const st1 = pick(await h.call('vibe_math_status', {}))
+  const rp1 = pick(await h.call('vibe_math_report', {}))
+  assert(!!st1 && !!rp1 && st1.expected === 2 && st1.dispatched === 2 && st1.round === 1,
+    '★★ [D4-v2] the projection reports the round snapshot: expected=2 dispatched=2 round=1（实测 ' + JSON.stringify({ status: st1, report: rp1 }) + '）')
+  assert(JSON.stringify(st1) === JSON.stringify(rp1),
+    '★★★ [D4-v2] status 与 report 两个视图对同一任务的参与集/票数**逐字段相同**（一个来源；实测 ' + JSON.stringify({ status: st1, report: rp1 }) + '）')
+  // mid-vote "hire more": the office raises verifierCount. The in-flight round keeps its snapshot —
+  // a view that re-read the live roster/params would now claim 4.
+  await h.call('vibe_math_set_params', { verifierCount: 4 })
+  const after = pick(await h.call('vibe_math_status', {}))
+  const afterR = pick(await h.call('vibe_math_report', {}))
+  assert(!!after && after.expected === 2 && after.dispatched === 2,
+    '★★★ [D4-v2] 中途调高 verifierCount **不改变**在飞轮次的参与集/需求票数（快照仍是 2；实测 ' + JSON.stringify(after) + '）')
+  assert(JSON.stringify(after) === JSON.stringify(afterR),
+    '★★ [D4-v2] 调参后两个视图仍然逐字段相同（实测 ' + JSON.stringify({ status: after, report: afterR }) + '）')
+  await h.call('vibe_math_abort', {})
+}
+
 section('16 the captured prompt corpus is written for human review')
 {
   // Freeze the scheduler in every case FIRST: a still-running tick loop could emit one more

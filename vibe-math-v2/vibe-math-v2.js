@@ -2049,6 +2049,8 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
+      // D4 审计面：每个在飞验证任务的参与集/票数都由 voteCount 投影出来（两个视图可对照）。
+      verifyTasks: Object.keys(tasks).filter(function (k) { return tasks[k] && tasks[k].type === 'verify' }).map(function (k) { const t = tasks[k]; const v = voteCount(t); return { rId: t.rId, status: t.status, round: v.round, expected: v.expected, dispatched: v.dispatched, reported: v.reportedThisRound, quorum: v.quorum } }),
       recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)),
       // Lean 形式化：可调档位与开关同处可读参数表（契约 §1），并附当前形式化记录概况。
       formal: {
@@ -2712,13 +2714,14 @@ export function apply(ctx) {
   }
   async function backfillVerifiers(t) {
     const cap = reviewerCap()
-    while (t.children.length < t.expectedCount && t.children.length < cap) {
+    const want = voteCount(t).expected // 快照目标（不再直接读 t.expectedCount，保持单一来源）
+    while (t.children.length < want && t.children.length < cap) {
       if (activeCount() >= params.maxParallelThreshold) break
       const index = t.children.length
       const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
       t.children.push(childId)
     }
-    if (t.children.length >= t.expectedCount) t.status = 'debating'
+    if (t.children.length >= want) t.status = 'debating'
   }
   async function reconcileVerify() {
     const ids = Object.keys(tasks)
@@ -2734,7 +2737,7 @@ export function apply(ctx) {
         } else continue
       }
       if (t.status === 'paused') {
-        const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === t.round })
+        const allReported = voteCount(t, t.round).allParticipantsReported
         if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
       }
       if (t.status !== 'spawning') continue
@@ -2958,8 +2961,40 @@ export function apply(ctx) {
   }
 
   // ================= verification (验证器) =================
+  /**
+   * 验证任务的**票数/参与集单一来源**（跨预设审计 D4，与 v3 的 voteCount 同型）。
+   *
+   * 定义（本文件里"参与集"只有一个含义）：一个 verify 任务的参与集 = **本轮被派出的评审**，
+   * 也就是 `t.children`（当前 round 的 `childResults` 条目是它们的票）；"需要几票"= **任务创建时的
+   * 快照** `t.expectedCount`（processVerify 建任务时写入），**绝不**读实时 `params.verifierCount`
+   * 或 `params.maxParallelThreshold`。旧实现把这个答案分散在三处——`consensus()` 只看
+   * `Object.keys(t.childResults)`（已报票）且用常量 MIN_REVIEWERS 当下限、`finalizeVerification()`
+   * 又自己数一遍、两处内联 `allReported` 用 `t.children` + round——同一个计数在不同视图里可以不同
+   * （中途增/减评审、某个评审掉线后，辩论视图与裁决视图可能对"这一轮算不算完"给出不同答案）。
+   * 现在所有视图都读这一个函数。
+   */
+  // 契约（P2-v2 修复轮，必须保持）：一致/票数下限仍按 **MIN_REVIEWERS** 判定，一致性的对象是
+  // **所有已报结果**（reportedIds）。`voteCount` 只是把这些读法收拢到一个来源 + 提供审计投影；
+  // 它**不**改变"一票不算共识"的既有语义（v2-fix-probes 的 M11 探针钉着这条）。
+  function voteCount(t, round) {
+    const tt = t || {}
+    const expected = Math.max(MIN_REVIEWERS, Number(tt.expectedCount) || 0)
+    const r = Number((round === undefined || round === null) ? (tt.round || 1) : round) || 1
+    const participants = Array.isArray(tt.children) ? tt.children.slice() : []
+    const results = tt.childResults || {}
+    const reportedIds = Object.keys(results)
+    const thisRoundIds = participants.filter(function (cid) { const x = results[cid]; return x && Number(x.round) === r })
+    return {
+      round: r, expected: expected, participants: participants,
+      dispatched: participants.length, reported: reportedIds.length, reportedIds: reportedIds,
+      reportedThisRound: thisRoundIds.length,
+      // 旧语义的「本轮都报了吗」：只看**已派出的评审**，不额外要求达到快照票数（那一条属于裁决下限）。
+      allParticipantsReported: participants.length > 0 && thisRoundIds.length === participants.length,
+      quorum: participants.length > 0 && participants.length >= expected && thisRoundIds.length === participants.length,
+    }
+  }
   // 一票不算共识：≥MIN_REVIEWERS 份独立评审才可能达成/否决共识（审计 M11；与 v3 的最小票数同型）。
-  function consensus(t) { const cids = Object.keys(t.childResults); if (cids.length < MIN_REVIEWERS) return false; const vs = cids.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
+  function consensus(t) { const v = voteCount(t); if (v.reportedIds.length < MIN_REVIEWERS) return false; const vs = v.reportedIds.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (x) { return x === 1 }) || vs.every(function (x) { return x === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
   // 说明（审计 L17）：这里曾有一个 `verifierWeight(cid, rigor)`，但全仓只有它的定义、没有任何调用点，
   // 且其公式（clamped ±0.2 rigor 加成、按 childId 取准确率）与 finalVerdict 里真正在用的
@@ -3018,7 +3053,7 @@ export function apply(ctx) {
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
     t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round, key: meta.verificationKey || verifierIdentityKey() }
     delete agentRegistry[childId]
-    const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === meta.round })
+    const allReported = voteCount(t, meta.round).allParticipantsReported
     if (!allReported) { await saveAll(); return }
     await advanceVerification(t, meta.round)
     await saveAll()
@@ -3058,7 +3093,7 @@ export function apply(ctx) {
    * `stalled`，冷却期后重试（任务保留 ⇒ processVerify 不会为同一个 rId 另造任务，也不会每 tick 重试）。
    */
   async function finalizeVerification(t) {
-    const reviews = Object.keys(t.childResults || {}).length
+    const reviews = voteCount(t).reportedIds.length
     if (reviews < MIN_REVIEWERS) {
       const tried = Number(t.reviewerRespawn || 0)
       if (scheduler.running && tried < 2 && reviewerCap() >= MIN_REVIEWERS) {
@@ -3089,7 +3124,8 @@ export function apply(ctx) {
     }
   }
   function finalVerdict(t) {
-    const rs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid] })
+    const v = voteCount(t)
+    const rs = v.reportedIds.map(function (cid) { return t.childResults[cid] })
     if (rs.length === 0) return 0.5
     if (rs.every(function (r) { return r.Result === 1 })) return 1
     if (rs.every(function (r) { return r.Result === 0 })) return 0
@@ -3963,6 +3999,8 @@ export function apply(ctx) {
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       registeredAgents: Object.keys(agentRegistry).length,
+      // D4 审计面：每个在飞验证任务的参与集/票数都由 voteCount 投影出来（两个视图可对照）。
+      verifyTasks: Object.keys(tasks).filter(function (k) { return tasks[k] && tasks[k].type === 'verify' }).map(function (k) { const t = tasks[k]; const v = voteCount(t); return { rId: t.rId, status: t.status, round: v.round, expected: v.expected, dispatched: v.dispatched, reported: v.reportedThisRound, quorum: v.quorum } }),
       recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)), params: params,
       formal: {
         mode: formalMode(), required: formalRequired(),
