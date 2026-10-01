@@ -689,6 +689,25 @@ section('§19 成员作用域失败诊断：interruptChild 显式失败 + decisi
   assert(badDecide.ok === false && badDecide.code === 'VIBE_MATH_DECISION_NOT_FOUND', '★ [D1] 未知 decision id ⇒ code=VIBE_MATH_DECISION_NOT_FOUND，不是裸 message（实测 ' + JSON.stringify(badDecide).slice(0, 170) + '）')
   assert(!!badDecide.next && badDecide.next.tool === 'vibe_math_list_decisions', '★ [D1] 决策诊断的 next 指向真实存在的 vibe_math_list_decisions（实测 ' + JSON.stringify(badDecide.next || null) + '）')
 }
+// ── §20 审计 P0（**文本层断言**）：成员可见材料必须写明"文件工具按会话 cwd 解析相对路径 ⇒ 下面列出的
+// 相对路径要先拼项目根的绝对前缀；计算产物用回执的绝对字段 receipt.scriptAbs"。断言直接读**产出文本**
+// （paper-writer 子代理的提示词，即 buildPaperDigest/paperEvidenceIndex 的输出），不是读源码字符串。
+section('§20 审计 P0：成员可见路径说明（文本层断言，断言的是产出文本）')
+{
+  const cmd = H.cmdRegs[0]
+  const paperPrompts = async () => {
+    await cmd.handler({ agent: ROOT, rawInput: 'paper' })
+    for (let i = 0; i < 60; i++) { if (H.spawns.some((s) => String(s.label).indexOf('paper-writer:') === 0)) break; await sleep(100) }
+    return H.spawns.filter((s) => String(s.label).indexOf('paper-writer:') === 0)
+      .map((s) => (s.request && s.request.prompt && s.request.prompt[0] && s.request.prompt[0].text) || '').join('\n')
+  }
+  const produced = await paperPrompts()
+  assert(produced.length > 0, '对照：paper-writer 子代理确实被派出（产出文本非空，' + produced.length + ' 字符）')
+  assert(produced.indexOf('会话 cwd') !== -1 && produced.indexOf('绝对前缀') !== -1, '★★ [P0] 产出材料写着：文件工具按**会话 cwd** 解析相对路径 ⇒ 列出的相对路径需先拼**项目根的绝对前缀**（文本层断言）')
+  assert(produced.indexOf('receipt.scriptAbs') !== -1 || produced.indexOf('receipt.cwd') !== -1, '★★ [P0] 计算产物指向回执里的**绝对**字段（receipt.scriptAbs / receipt.cwd+receipt.scriptPath）')
+  await call('vibe_math_abort', {})
+}
+
 console.log('\n=== MATH COMPUTATION V3: ' + passed + ' passed, ' + failed + ' failed ===')
 rmSync(WS, { recursive: true, force: true })
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

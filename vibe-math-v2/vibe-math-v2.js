@@ -3469,6 +3469,12 @@ export function apply(ctx) {
   /** 证据索引（spec §3.9）：只列**确实存在**的文件；绝不含 Paper/ 自己（否则输入哈希会自我污染）。
    *  off 档必须真的是无操作（formal-verify-v2 的语料守卫会断言"off 的提示词里零 Lean 文本"）：
    *  formal 未启用时，形式化相关的路径与字段一概不写进材料。 */
+  /**
+   * 成员可见路径说明（跨预设审计 P0）。成员/子代理的**文件工具按会话 cwd 解析**相对路径，而下面列出的
+   * 路径都是**项目根相对**的 ⇒ 必须显式说明"先拼绝对前缀"；计算产物用回执里的绝对字段。一处常量、
+   * 五处材料文本各自 append（绝不替换既有行）。
+   */
+  const PAPER_PATH_NOTE = '（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）'
   async function paperEvidenceIndex() {
     const formalNow = formalOn()
     const out = ['qs/qs.json']
@@ -3478,6 +3484,7 @@ export function apply(ctx) {
     if (formalNow) for (const f of await listFiles('Verified/Lean')) out.push('Verified/Lean/' + f)
     const dirs = ['Verification_logs', 'Progress_Logs'].concat(formalNow ? ['Formal'] : [])
     for (let i = 0; i < dirs.length; i++) { const files = await listFiles(dirs[i]); for (let j = 0; j < files.length; j++) out.push(dirs[i] + '/' + files[j]) }
+    out.push(PAPER_PATH_NOTE)
     return out.filter(function (x) { return x.indexOf('Paper/') !== 0 }).sort()
   }
   /** 汇总材料（spec §4）：只含既有证据 + 未决/被否证的显式标注。不含时间戳 ⇒ 哈希稳定。 */
@@ -3502,6 +3509,7 @@ export function apply(ctx) {
     const props = await getPropos()
     L.push('')
     L.push('[PROPOSITIONS] (Propos/*.json)')
+    L.push(PAPER_PATH_NOTE)
     if (props.length === 0) L.push('- (none)')
     for (let i = 0; i < props.length; i++) {
       const p = props[i]

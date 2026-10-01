@@ -918,6 +918,7 @@ export function apply(ctx) {
       // 引理只在摘要给"索引"（id+标题），完整叙述在各方向文件 Progress/<qid>/<dirId>.md（由代理或调度器写入）
       if (d.lemmas && d.lemmas.length) { lines.push('**引理索引**：' + d.lemmas.map(function (l) { return '「' + l.title + '」(' + l.id + ')' }).join('；')) }
       lines.push('**完整叙述**：见 `Progress/' + qid + '/' + d.id + '.md`')
+    lines.push(PAPER_PATH_NOTE)
       for (const j of (d.journal || [])) {
         lines.push('')
         lines.push('### 第 ' + j.round + ' 轮｜' + (j.agent || '') + '｜' + (j.at || ''))
@@ -4091,6 +4092,12 @@ export function apply(ctx) {
   /** 证据索引（spec §3.9）：只列**确实存在**的文件；排除 Paper/ 自己（避免自我污染）。
    *  formalVerify=off 必须真的是无操作（formal-verify-v3 的语料守卫断言"off 的提示词里零 Lean 文本"），
    *  所以 off 档不把形式化路径写进材料。 */
+  /**
+   * 成员可见路径说明（跨预设审计 P0）。成员/子代理的**文件工具按会话 cwd 解析**相对路径，而下面列出的
+   * 路径都是**项目根相对**的 ⇒ 必须显式说明"先拼绝对前缀"；计算产物用回执里的绝对字段。一处常量、
+   * 五处材料文本各自 append（绝不替换既有行）。
+   */
+  const PAPER_PATH_NOTE = '（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）'
   async function paperEvidenceIndex() {
     const formalNow = formalOn()
     const out = []
@@ -4126,6 +4133,7 @@ export function apply(ctx) {
     const ps = allPropos()
     L.push('')
     L.push('[PROPOSITIONS] (Propos/<分类>/<id>.md)')
+    L.push(PAPER_PATH_NOTE)
     if (ps.length === 0) L.push('- (none)')
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i]
@@ -4136,6 +4144,7 @@ export function apply(ctx) {
     }
     L.push('')
     L.push('[METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)')
+    L.push(PAPER_PATH_NOTE)
     const ms = Array.from(methods.values()).concat(Array.from(globalMethods.values()))
     if (ms.length === 0) L.push('- (none)')
     for (let i = 0; i < ms.length; i++) {

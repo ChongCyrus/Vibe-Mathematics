@@ -171,10 +171,12 @@ PROJECT: lean-off
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-off | 概率=1 | 状态=已验证·真 | 优先级=never | 价值/关键性=0.5 | 来源问题= | 陈述=关模式下的普通命题
     · 已检验通过：证明#0 | mock 裁决 1
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -1159,10 +1161,12 @@ PROJECT: lean-verify
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-enc | 概率=1 | 状态=已验证·真 | 优先级=never | 价值/关键性=0.5 | 来源问题= | 形式化=none | 陈述=鼓励模式下的忠实性审查
     · 已检验通过：证明#0 | mock 第二轮一致
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -2706,9 +2710,11 @@ PROJECT: lean-reply
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-reply | 概率=0.5 | 状态=未定论 | 优先级=1 | 价值/关键性=0.5 | 来源问题= | 形式化=blocked | 陈述=用回执记录阻塞
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -3471,10 +3477,12 @@ PROJECT: lean-defect-nonote
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-nonote-defect | 概率=1 | 状态=已验证·真 | 优先级=never | 价值/关键性=0.5 | 来源问题= | 形式化=passed（Verified/Lean/p-nonote-defect.lean） | 陈述=没有偏差说明的缺陷回执
     · 已检验通过：证明#0 | 觉得不忠实但没写清楚
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -3864,9 +3872,11 @@ PROJECT: lean-defect-nodelete
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-nodelete | 概率=0.5 | 状态=未定论 | 优先级=1 | 价值/关键性=0.5 | 来源问题= | 形式化=attempted | 陈述=宿主无法删除文件时的撤回
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -4095,10 +4105,12 @@ PROJECT: lean-stale-card
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-stale | 概率=1 | 状态=已验证·真 | 优先级=never | 价值/关键性=0.5 | 来源问题= | 形式化=passed（Verified/Lean/p-stale.lean） | 陈述=定论后才被认定形式化不忠实
     · 已检验通过：证明#0 | mock 裁决 1
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
@@ -6745,10 +6757,12 @@ PROJECT: d4-votecount
 - (none)
 
 [PROPOSITIONS] (Propos/<分类>/<id>.md)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - id=p-d4 | 概率=1 | 状态=已验证·真 | 优先级=never | 价值/关键性=0.5 | 来源问题= | 陈述=D4 票数单一来源
     · 已检验通过：证明#0 | mock 裁决 1
 
 [METHODS / ARTEFACTS] (Methods/ + 全局 VibeMath/Methods/)
+（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 - (none)
 
 [STILL UNVERIFIED — v3 的完整性判据 leftoverVerify（buildVerifyCandidates）；必须标注为未决]
