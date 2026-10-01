@@ -1543,14 +1543,29 @@ section('15d Lean 增量 + 异步（spec §1–§4 + 修订 §1–§5）：参�
   assert(!!exE && /主动档（leanInitiative=eager）/.test(exE.prompt || ''), '★★ leanInitiative=eager adds the eager line (the prompt reads the initiative parameter)')
   await wEager.call('vibe_math_pause', {})
 
+  // v5 统一口径：主动性（leanInitiative）与验证要求强度（formalVerify）是两根独立的轴。
+  // （a）leanInitiative:'off' ⇒ 连日线都不注入（真无操作）。
   const wOff = await makeCase('lean-init-off')
   await wOff.call('vibe_math_set_params', { formalVerify: 'encourage', leanInitiative: 'off' })
   await wOff.call('vibe_math_add_problem', { id: 'qInitO', description: '主动性提示词 off' })
   await startScheduler(wOff)
   const exO = await waitFor(() => wOff.spawns.find((s) => s.label.indexOf('explorer') === 0), 60, 60)
-  assert(!!exO && /不主动：leanInitiative=off/.test(exO.prompt || ''), '★★ leanInitiative=off drops the proactive block (initiative is separate from formalVerify, which is still encourage here)')
-  assert(!!exO && !/三条筛选判据/.test(exO.prompt || ''), 'and the off档 work prompt no longer carries the proactive criteria (验证要求仍由 formalVerify 表达)')
+  assert(!!exO && !/顺手形式化/.test(exO.prompt || ''), '★★ leanInitiative=off drops the daily line entirely (initiative is a separate axis from formalVerify, which is still encourage here)')
   await wOff.call('vibe_math_pause', {})
+
+  // （b）formalVerify:'off' + leanInitiative:'eager' ⇒ 日线仍必须注入（eager 是独立轴，不许被 off 静默吞掉），
+  //     而**验证阶段**的 Lean 文本仍然关闭。
+  const wOffEager = await makeCase('lean-init-off-eager')
+  await wOffEager.call('vibe_math_set_params', { formalVerify: 'off', leanInitiative: 'eager' })
+  await wOffEager.call('vibe_math_add_problem', { id: 'qInitOE', description: 'off+eager 主动性' })
+  await startScheduler(wOffEager)
+  const exOE = await waitFor(() => wOffEager.spawns.find((s) => s.label.indexOf('explorer') === 0), 60, 60)
+  const pOE = (exOE && exOE.prompt) || ''
+  assert(/主动档（leanInitiative=eager）/.test(pOE) && /三条筛选判据/.test(pOE), '★★★ formalVerify:off + leanInitiative:eager STILL injects the full daily line (v5 rule: the initiative axis is independent)')
+  assert(!/【Lean 形式化验证（/.test(pOE) && !wOffEager.spawns.some((s) => /【Lean 形式化验证（/.test(s.prompt || '')), '★★★ …while the verification-phase Lean block stays closed (formalVerify:off) in every captured prompt of that root')
+  const stOE = await wOffEager.call('vibe_math_status', {})
+  assert(stOE.params.formalVerify === 'off' && stOE.params.leanInitiative === 'eager', 'the off+eager case really ran with formalVerify:off + leanInitiative:eager')
+  await wOffEager.call('vibe_math_pause', {})
 }
 
 section('16 the captured prompt corpus is written for human review')

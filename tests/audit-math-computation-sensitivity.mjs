@@ -91,8 +91,8 @@ const PROBES = [
   {
     name: 'mid-run-change-unflagged',
     file: 'math-computation.js',
-    from: '    scriptChangedDuringRun = sourceHashAfter !== null && sourceHashAfter !== sourceHashBefore',
-    to: '    scriptChangedDuringRun = false',
+    from: '    scriptChangedDuringRun = sourceHashAfter !== sourceHashBefore\n  }\n  if (!r) return fail(\'MATH_NO_SUBPROCESS\'',
+    to: '    scriptChangedDuringRun = false\n  }\n  if (!r) return fail(\'MATH_NO_SUBPROCESS\'',
     expect: 'mid-run edit -> scriptChangedDuringRun:true',
   },
   {
@@ -112,9 +112,55 @@ const PROBES = [
   {
     name: 'receipt-reconciliation-skipped',
     file: 'math-computation.js',
-    from: '  const scriptChanged = currentHash !== null && recordedHash !== null && currentHash !== recordedHash',
+    from: '  const scriptChanged = scriptMissing || (currentHash !== null && recordedHash !== null && currentHash !== recordedHash)',
     to: '  const scriptChanged = false',
     expect: 'op=receipt reports scriptChanged for an edited archive script',
+  },
+  // ── audit-C fixes ───────────────────────────────────────────────────────────────────────────
+  {
+    name: 'archive-allocation-unlocked',
+    file: 'math-computation.js',
+    // Each call gets its own lock chain, i.e. the per-archive-id serialisation is gone while the
+    // call itself is still awaited.
+    from: '  return await withArchiveLock(baseDir, async () => {',
+    to: "  return await withArchiveLock(baseDir + ':' + Math.random(), async () => {",
+    expect: '★ 同一 id 的并发运行绝不共用一个 attempt 目录（并发下的 append-only）',
+  },
+  {
+    name: 'deleted-source-unflagged',
+    file: 'math-computation.js',
+    from: '    scriptChangedDuringRun = sourceHashAfter !== sourceHashBefore',
+    to: '    scriptChangedDuringRun = false',
+    expect: 'the source file disappearing mid-run is a change: scriptChangedDuringRun:true',
+  },
+  {
+    name: 'missing-archive-script-unflagged',
+    file: 'math-computation.js',
+    from: '  const scriptChanged = scriptMissing || (currentHash !== null && recordedHash !== null && currentHash !== recordedHash)',
+    to: '  const scriptChanged = false',
+    expect: 'a deleted archive script makes op=receipt report scriptChanged (fail-closed)',
+  },
+  {
+    name: 'listdir-retention-skipped',
+    file: 'math-computation.js',
+    from: "  if (typeof H.listDir === 'function' && H.listDir) {",
+    to: '  if (false) {',
+    expect: 'listDir shows more than MATH_ARCHIVE_MAX_RUNS -> ARCHIVE_RETENTION_EXCEEDED (warn only)',
+  },
+  // ── audit-B fixes ───────────────────────────────────────────────────────────────────────────
+  {
+    name: 'override-ignored',
+    file: 'math-computation.js',
+    from: '  const o = ov && isObj(ov) ? ov[det.name] : null\n  if (!o) return d',
+    to: '  const o = ov && isObj(ov) ? ov[det.name] : null\n  if (!o || o) return d',
+    expect: 'the overridden scriptArgv really changes the assembled argv',
+  },
+  {
+    name: 'override-not-accepted',
+    file: 'math-computation.js',
+    from: "'dryRun', 'confirm', 'mathEngineOverride']",
+    to: "'dryRun', 'confirm']",
+    expect: 'mathEngineOverride is ACCEPTED (previously rejected as an unknown argument)',
   },
   {
     name: 'shell-line-in-all-tiers',

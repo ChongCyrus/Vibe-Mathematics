@@ -1452,21 +1452,26 @@ section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性
   const libIdx = readIf(join(VIBE, 'Formal', 'Lib', 'Index.md'))
   assert(/Formal\.Lib\.bigOne/.test(libIdx) || /bigOne/.test(libIdx), '★★ the Lib index carries the dependency scanned from import lines (idx=' + String(libIdx).slice(0, 500).replace(/\n/g, ' | ') + ')')
 
-  // ── 主动性档位（修订 §1）：提示词读 leanInitiative，不是 formalVerify ──────────────
-  for (const [mode, rootName, projName, want, notWant] of [
-    ['normal', 'lean-init-normal', 'lean-init-normal-proj', /主动性 normal/, null],
-    ['eager', 'lean-init-eager', 'lean-init-eager-proj', /主动档（leanInitiative=eager）/, null],
-    ['off', 'lean-init-off', 'lean-init-off-proj', /不主动：leanInitiative=off/, /三条筛选判据/],
+  // ── 主动性档位（修订 §1 + v5 统一）：提示词读 leanInitiative，不是 formalVerify ─────────
+  // 第 4 项为 null = "日线完全不出现"；第 6 项是该行的 formalVerify 档（默认 encourage）。
+  for (const [mode, rootName, projName, want, notWant, fv] of [
+    ['normal', 'lean-init-normal', 'lean-init-normal-proj', /主动性 normal/, null, 'encourage'],
+    ['eager', 'lean-init-eager', 'lean-init-eager-proj', /主动档（leanInitiative=eager）/, null, 'encourage'],
+    ['off', 'lean-init-off', 'lean-init-off-proj', null, /顺手形式化/, 'encourage'],
+    // formalVerify:'off' + eager：日线仍要注入（主动性是独立轴），验证阶段文本仍关闭。
+    ['eager', 'lean-init-off-eager', 'lean-init-off-eager-proj', /主动档（leanInitiative=eager）/, /【Lean 形式化验证（/, 'off'],
   ]) {
     const rw = makeRoot()
     await callTool('vibe_math_new_project', { name: projName }, rw)
-    await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'encourage', leanInitiative: mode }), rw)
-    await callTool('vibe_math_add_problem', { id: 'qInit' + mode, 陈述: '主动性提示词 ' + mode }, rw)
+    await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: fv || 'encourage', leanInitiative: mode }), rw)
+    await callTool('vibe_math_add_problem', { id: 'qInit' + mode + '-' + (fv || 'e'), 陈述: '主动性提示词 ' + mode }, rw)
     await callTool('vibe_math_start', {}, rw)
     const got = await drive(rw, () => spawnOf(rw, 'explorer:').length >= 1 || spawnOf(rw, 'solver:').length >= 1, 'work prompt for ' + mode, 12000)
     const text = promptText(rw)
-    assert(got && want.test(text), '★★ leanInitiative=' + mode + ' is reflected in the work prompt')
-    if (notWant) assert(!notWant.test(text), 'and the ' + mode + ' work prompt does not carry the proactive criteria (验证要求仍由 formalVerify 表达)')
+    const ok4 = want ? want.test(text) : !/顺手形式化/.test(text)
+    assert(got && ok4, '★★ leanInitiative=' + mode + (fv === 'off' ? ' (formalVerify:off)' : '') + ' is reflected in the work prompt' + (want ? '' : '：off ⇒ 连"顺手形式化"日线都不出现'))
+    if (notWant) assert(!notWant.test(text), 'and the ' + mode + (fv === 'off' ? '/off' : '') + ' work prompt does not carry the verification-phase Lean block (验证要求仍由 formalVerify 表达)')
+    if (fv === 'off') assert(text.indexOf('三条筛选判据') !== -1, '★★★ formalVerify:off + eager 仍带完整日线（三条筛选判据在），不是被 off 静默吞掉')
     await callTool('vibe_math_pause', {}, rw)
   }
 

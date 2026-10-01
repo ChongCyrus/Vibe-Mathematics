@@ -72,8 +72,9 @@ math_computation {
    - `scriptChangedDuringRun:true`：文件在**本次运行期间**被改动（典型是另一个成员同时在编辑）——运行前后各取一次哈希才可能发现；
    - 两者都同时进入 `warnings[]`（`SCRIPT_CHANGED_SINCE_LAST_RECEIPT` / `SCRIPT_CHANGED_DURING_RUN`）与 `receipt.md`，**绝不静默**。
 4. `op:'receipt'` 会重新核对归档脚本的当前哈希与回执记录，返回 `scriptChanged` / `currentScriptHash`；它**只读**返回既有数据，仅补写**缺失**的 `receipt.md`，从不改写已有回执文件。
-5. **归档是追加式的**：同一 id 的**首次**运行落在 `Computation/<id>/`，之后每次运行落在 `Computation/<id>/attempts/<n>/`（n 从 2 开始，取第一个空位）；已有文件**永不覆盖**。
-6. **保留上限**：每个 id 最多 `MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN`=20 个 attempt、每个项目最多 `MATH_ARCHIVE_MAX_RUNS`=200 个 run 目录（后者仅在宿主提供可选 `listDir` 时检查）。**超过只告警**（`ARCHIVE_RETENTION_EXCEEDED`），**永不自动删除**。
+5. **归档是追加式的**：同一 id 的**首次**运行落在 `Computation/<id>/`，之后每次运行落在 `Computation/<id>/attempts/<n>/`（n 从 2 开始，取第一个空位）；已有文件**永不覆盖**。**并发**下同一 id 的两个运行由模块按 id 串行分配，因此一定分别拿到 attempt 1 / attempt 2，不会共用目录（跨进程并发见 §6 的限制说明）。
+6. **失败关闭（fail-closed）**：源文件在运行**期间消失** ⇒ `scriptChangedDuringRun:true`；`op:'receipt'` 读不到归档脚本（被删/移走）⇒ `scriptChanged:true` + `currentScriptHash:null`。任何"读不到/对不上"都按"旧回执不可用"处理，绝不静默当真。
+7. **保留上限**：每个 id 最多 `MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN`=20 个 attempt、每个项目最多 `MATH_ARCHIVE_MAX_RUNS`=200 个 run 目录（后者仅在宿主提供可选 `listDir` 时检查）。**超过只告警**（`ARCHIVE_RETENTION_EXCEEDED`），**永不自动删除**。
 
 **验证者（或复核代理）要查的六件事**：① 打开 `receipt.json` 确认 `scriptPath`；② 重新计算该脚本 sha256，与 `scriptHash` **逐字相等**；③ 确认 `scriptChanged` 与 `scriptChangedDuringRun` 均为 `false`（否则该回执不足以支撑结论）；④ 确认 `sourceFile`（若有）正是被验证的源码，且 `attempt`/`attemptDir` 是当前代码对应的最新 attempt；⑤ 按 `argv` + `cwd` 重放，结果一致；⑥ 一旦改代码，**必须重跑并引用新回执**，报告里的旧回执撤下。
 
@@ -86,13 +87,18 @@ math_computation {
 
 ## 6. 插件**能**与**不能**强制的东西
 
-**能强制**：入参 schema（闭合；未知键拒绝）、项目内路径守卫、cwd、超时并终止进程、输出上限、回执落盘、插件自身的写域（只写 `Computation/`）、安装两步与作用域默认。
+**能强制**：入参 schema（闭合；未知键拒绝）、**词法级**项目内路径守卫（见下）、cwd、超时并终止进程、输出上限、回执落盘、插件自身的写域（只写 `Computation/`）、安装两步与作用域默认、同一 archive id 的**串行分配**（并发运行不会共用 attempt 目录）。
 
 **不能强制**（如实声明，勿当成承诺）：
-- 脚本内部的网络访问与文件访问——宿主 `subprocess.spawn` **没有 policy/env 槽**（参见 `vibe-math-v5.js` 中 `removeArchivedProof` 的 audit M8 注释），任何被执行的计算进程都在宿主 fs 策略之外；
+- **路径守卫是字符串级的**：`projectRel` 只做词法规范化（拒绝绝对路径、盘符、`..` 越界），**不做 realpath、不解析符号链接/junction/硬链接**。项目内一个指向外部的链接可以绕过该守卫拿到 `mode:'file'` 的读取与执行；真正的容器化由宿主 `ctx.fs` 后端负责（`resolve`/`contains`），插件不重复实现。审计 A 的用例把这一**限制**钉成了断言（`tests/math-computation-shared.test.mjs` §16c）。
+- 脚本内部的网络访问与文件访问——宿主 `subprocess.spawn` **没有 policy 槽**（`env` 层只做凭据/`DSH_*` 清洗与显式合并，不能限制网络或写盘；参见 `dsh-subprocess-local` 的 `runner-launch-*.js` 与 `vibe-math-v5.js` 中 audit M8 注释），任何被执行的计算进程都在宿主 fs 策略之外；
 - `mathMode` 只是提示词策略：**模型仍可能直接调用宿主 shell**，插件无法阻止，也无法为 shell 路径生成回执。因此默认策略要求：走 shell 得出的结论必须标注"**未经工具归档（shell 路径）**"，**只有工具路径的计算才算可复核支撑材料**；
 - 商业引擎的 CLI 模板随版本变化（Maple 尤甚）：描述符带 `VERIFY` 标记，**每次运行都回显实际 argv**；若引擎以用法/选项错退出，返回 `MATH_ENGINE_BAD_ARGV` + `next.kind='engine-override'`（指向 `mathEngineOverride` 覆盖模板），而不是裸 `MATH_NONZERO_EXIT`。有许可的机器应验证这三个模板。
 - 真强制（禁网/限权）需要宿主 sandbox/policy 支持——**列为待上游需求**，不在本轮范围。
+
+**验证边界（诚实声明）**：引擎执行本身、各引擎的真实 argv/版本/许可路径与安装器命令**只通过假 subprocess seam 验证**（`tests/helpers/math-computation-fake-seam.mjs`），**没有**在真实 python/R/octave/julia/matlab/maple/wolfram 上跑过；真机验证需要一台装有这些引擎的机器（安装计划、模板与许可探测的**静态**面已在 `guards.md` 与 parity 守卫里冻结）。
+
+**并发下的完整性**：同一 archive id 的分配与"占用"（receipt.json 落盘）在**一个插件实例内**是串行的，因此两个并发同 id 运行会分别拿到 attempt 1 / attempt 2，绝不会共用目录。**跨进程**并发仍依赖宿主的独占创建原语（当前 fs 接口没有暴露，列为已知限制）。
 
 ## 7. `cli` 逃生口为什么默认开启
 

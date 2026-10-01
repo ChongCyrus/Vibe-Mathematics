@@ -1396,7 +1396,7 @@ export function apply(ctx) {
       'feasibility ∈ [0,1] = your estimate of the probability this direction leads to a full solution. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
       '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"<为何该方向借鉴它>","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}' +
       // 顺手形式化（契约 §6.2）+ 回执字段（契约 §6.3）
-      mathWorkLine() + (formalOn() ? '\n' + formalWorkLine() + formalReplyNote() : '')
+      mathWorkLine() + formalDailySection()
   }
   function rederivePrompt(q, prog) {
     const prior = prog.map(function (d) {
@@ -1411,7 +1411,7 @@ export function apply(ctx) {
       'Then deeply DERIVE 1-3 BRAND-NEW directions never tried before, each with a one-line motivation. Return the UNION of high-potential leftover directions and the brand-new directions (drop dead ends).\n\n' +
       'feasibility ∈ [0,1]. Respond with ONLY a single JSON object in a ```json code fence (no prose outside it). Register the directions as metadata; the scheduler writes them into the research log:\n' +
       '{"meta":{"kind":"directions","qid":"<qid>","directions":[{"id":"d1","title":"...","method":"...","core_assumption":"...","feasibility":0.5}],"methods_used":[{"id":"m-...","效果":"...","建议":"..."}],"new_inventions":[{"类型":"方法|工具|...","标题":"...","内容描述":"...","是否已入库":false}]}}' +
-      mathWorkLine() + (formalOn() ? '\n' + formalWorkLine() + formalReplyNote() : '')
+      mathWorkLine() + formalDailySection()
   }
   function directionSummary(d) {
     return 'id ' + d.id + '「' + d.title + '」method=' + d.method + ' | round=' + d.round + ' status=' + d.status +
@@ -1459,7 +1459,7 @@ export function apply(ctx) {
       '区分规则：methods_used 只能填**已存在的方法卡 ID**（m-…，来自 AVAILABLE METHODS 列表）——引用你自己刚想出的新方法/新技巧不属于 methods_used，请如实填入 new_inventions（它会由 Method Keeper 蒸馏建卡）；不要把方法名/标题当 id 填进 methods_used。'
     // 顺手形式化（契约 §6.2）：把常用/可复用的对象、假设、新定义沉淀到全局 Lean 库；
     // 回执里同样要带上 formal 难度判断字段（契约 §6.3）。
-    head += mathWorkLine(); if (formalOn()) head += '\n' + formalWorkLine() + formalReplyNote()
+    head += mathWorkLine() + formalDailySection()
     return head
   }
   function verifierTargetText(r) {
@@ -1519,7 +1519,7 @@ export function apply(ctx) {
       // Method Keeper 的职责正是「沉淀可复用方法」，所以形式化的沉淀也归它：可复用的定义/假设
       // 进全局 Lib/，已成立的引理进 Proved/，让后续项目的证明直接 import 复用（契约 §6.2）。
       mathWorkLine() +
-      (formalOn() ? formalWorkLine() + '\n【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind=\'def\'），已成立的引理归档到 Proved/（kind=\'lemma\'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。\n' : '') +
+      (formalWorkLine() + (formalOn() ? '\n【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind=\'def\'），已成立的引理归档到 Proved/（kind=\'lemma\'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。\n' : '')) +
       'OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.\n' +
       'CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:\n' +
       '{"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}\n' +
@@ -2809,15 +2809,15 @@ export function apply(ctx) {
   }
   /** 日常提示词里的"顺手形式化"一行（off 模式返回空串 = 一个字都不多）。 */
   function formalWorkLine() {
-    if (!formalOn()) return ''
-    // 修订 §1：「日常主动性」（leanInitiative）与「验证时的要求强度」（formalVerify）是两件事。
+    // v5 统一口径：**日常主动性（leanInitiative）与验证要求强度（formalVerify）是两根独立的轴**。
+    // 不能用 `!formalOn()` 一票否决——那会让 `leanInitiative:'eager'` 在 `formalVerify:'off'` 下静默
+    // 失效。`formalVerify:'off'` 只关掉**验证阶段**的 Lean 文本（formalPromptBlock 仍 `!formalOn() ⇒ ''`）；
+    // `leanInitiative:'off'` 连日线都不注入（真无操作）。
     const initiative = LEAN_INITIATIVE_MODES.indexOf(params.leanInitiative) !== -1 ? params.leanInitiative : 'normal'
     // 后台作业的一次性公告（spec §2.4）：注入到本轮提示里，取走即清空。
     const notice = leanNoticeSection()
-    if (initiative === 'off') {
-      return '【顺手形式化（不主动：leanInitiative=off）】日常流程**不主动**做形式化；只在验证提示词按 formalVerify 的要求做（要求里已给出判据、工具与归档方式）。' + notice
-    }
-    return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
+    if (initiative === 'off' || !(formalOn() || initiative === 'eager')) return ''
+    return '【顺手形式化（' + (formalOn() ? (formalMode() === 'require' ? '强制' : '鼓励') : '仅主动性') + '）】把你工作中常用或可能复用的对象、假设、'
       + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind=\'def\'），已成立的引理归到 '
       + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '（kind=\'lemma\'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。'
       + (formalMode() === 'require'
@@ -2836,6 +2836,18 @@ export function apply(ctx) {
       + '\n  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_math_lean_job（可 waitMs 等结果）或下一轮提示里的'
       + '【形式化结果】行看结果。**在作业落地为通过之前，不得把该对象当成已通过。**'
       + notice
+  }
+  /**
+   * 平时工作提示词里的「顺手形式化」日线段 + 回执 note。**两根轴独立**（v5 统一口径）：
+   * 日线由 `leanInitiative` 决定（`eager` 在 `formalVerify:'off'` 下也要注入），
+   * `formalReplyNote()` 只属于**验证阶段**（`formalOn()` 门控）。
+   * 用一个 `formalOn()` 把两者一起关掉，正是 audit-B #2 的成因。
+   */
+  function formalDailySection() {
+    const line = formalWorkLine()
+    const note = formalOn() ? formalReplyNote() : ''
+    if (!line && !note) return ''
+    return (line ? '\n' + line : '') + note
   }
   /** 回执契约里的 formal 字段（契约 §6.3）：非 off 模式必须出现在回执契约里，否则这条通道不可发现。 */
   function formalJsonField(target) {

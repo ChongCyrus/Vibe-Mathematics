@@ -122,6 +122,9 @@ export const MATH_TOOL_SCHEMA = Object.freeze({
     scope: { type: 'string', enum: ['user', 'system'] },
     dryRun: { type: 'boolean' },
     confirm: { type: 'string' },
+    // AUDIT-B FIX (HIGH): the escape hatch the BAD_ARGV message advertises must be a real, accepted
+    // argument. Shape: { <engine>: { versionArgv?, scriptArgv?, evalArgv?, packageProbe? } }.
+    mathEngineOverride: { type: 'object' },
   },
   required: ['op'],
   additionalProperties: false,
@@ -178,7 +181,23 @@ export function effectiveMathParams(raw) {
 }
 
 // ── closed-schema validation ────────────────────────────────────────────────────────────────────
-const ALLOWED_ARGS = ['op', 'engine', 'mode', 'code', 'file', 'expr', 'packages', 'timeoutMs', 'captureFiles', 'record', 'cli', 'scope', 'dryRun', 'confirm']
+const ALLOWED_ARGS = ['op', 'engine', 'mode', 'code', 'file', 'expr', 'packages', 'timeoutMs', 'captureFiles', 'record', 'cli', 'scope', 'dryRun', 'confirm', 'mathEngineOverride']
+// AUDIT-B FIX (HIGH): validate the override shape in the same closed-argument spirit as everything
+// else, so the escape hatch is usable but cannot smuggle arbitrary junk into argv assembly.
+const OVERRIDE_ARGV_KEYS = ['versionArgv', 'scriptArgv', 'evalArgv']
+function validateEngineOverride(ov) {
+  if (!isObj(ov)) return bad('mathEngineOverride must be an object keyed by engine name')
+  for (const name of Object.keys(ov)) {
+    if (!MATH_ENGINES[name]) return bad('mathEngineOverride: unknown engine ' + name + '（可用：' + MATH_ENGINE_ORDER.join(', ') + '）')
+    const o = ov[name]
+    if (!isObj(o)) return bad('mathEngineOverride.' + name + ' must be an object')
+    for (const k of Object.keys(o)) {
+      if (OVERRIDE_ARGV_KEYS.indexOf(k) === -1 && k !== 'packageProbe') return bad('mathEngineOverride.' + name + ': unknown key ' + k)
+      if (OVERRIDE_ARGV_KEYS.indexOf(k) !== -1 && (!Array.isArray(o[k]) || o[k].some((a) => typeof a !== 'string'))) return bad('mathEngineOverride.' + name + '.' + k + ' must be a string[]')
+    }
+  }
+  return null
+}
 function bad(reason, code, nextHint) { const out = { ok: false, code: code || 'MATH_INVALID_ARGUMENT', reason: reason }; if (nextHint) out.next = nextHint; return out }
 
 export function validateMathArgs(args, params) {
@@ -200,6 +219,10 @@ export function validateMathArgs(args, params) {
   if (args.record !== undefined && typeof args.record !== 'boolean') return bad('record must be a boolean')
   if (args.dryRun !== undefined && typeof args.dryRun !== 'boolean') return bad('dryRun must be a boolean')
   if (args.confirm !== undefined && typeof args.confirm !== 'string') return bad('confirm must be a string')
+  if (args.mathEngineOverride !== undefined) {
+    const badOv = validateEngineOverride(args.mathEngineOverride)
+    if (badOv) return badOv
+  }
   if (args.scope !== undefined && args.scope !== 'user' && args.scope !== 'system') return bad('scope must be user|system')
   if (args.cli !== undefined) {
     if (!isObj(args.cli)) return bad('cli must be an object')
@@ -337,8 +360,11 @@ async function checkLicence(H, d, exe) {
 async function resolveEngine(H, requested, params, args) {
   const names = requested === 'auto' ? params.mathEngines.slice() : [requested]
   for (const name of names) {
-    const d = MATH_ENGINES[name]
-    if (!d) continue
+    const d0 = MATH_ENGINES[name]
+    if (!d0) continue
+    // AUDIT-B FIX (HIGH): the override must also reach the VERSION probe and the licence probe, not
+    // just the script/eval argv - the BAD_ARGV hint advertises versionArgv explicitly.
+    const d = applyOverride({ name: name, desc: d0 }, params, args)
     if (params.mathEngines.indexOf(name) === -1) return fail('MATH_REFUSED', name, '引擎 ' + name + ' 不在 mathEngines 允许列表内', { next: next('reason', { reason: 'engine-not-allowed' }) })
     if (name === 'cli') {
       if (params.mathMode !== 'typed+shell') return fail('MATH_REFUSED', name, 'cli 被策略禁用（mathMode=' + params.mathMode + '）', { next: next('reason', { reason: 'policy' }) })
@@ -413,9 +439,14 @@ function assembleArgv(det, mode, payload) {
   return { refused: 'unknown mode' }
 }
 
-function applyOverride(det, params) {
+// AUDIT-B FIX (HIGH): `applyOverride` used to read only `params.mathEngineOverride`, which no preset
+// can ever set (the six frozen params are copied verbatim by effectiveMathParams), while the tool
+// description, MATH_BAD_ARGV_HINT and the BAD_ARGV message all advertised it. The per-call ARGUMENT
+// now wins and is the documented route; the param route stays as a fallback for hosts that inject it.
+function applyOverride(det, params, args) {
   const d = det.desc
-  const ov = params && params.mathEngineOverride
+  const fromArgs = args && isObj(args.mathEngineOverride) ? args.mathEngineOverride : null
+  const ov = fromArgs || (params && params.mathEngineOverride)
   const o = ov && isObj(ov) ? ov[det.name] : null
   if (!o) return d
   return Object.assign({}, d, {
@@ -438,6 +469,24 @@ function runIdOf(designator, projectSlug, engine, mode, scriptText, packages, fi
 
 // P2a item 3: append-only archives. Attempt 1 lives in Computation/<id>/ and is never rewritten;
 // later runs of the same id go to Computation/<id>/attempts/<n>/ (first free n >= 2).
+//
+// AUDIT-C FIX (HIGH): `exists`-then-write is a read-modify-write race. Two concurrent runs of the
+// SAME archive id both observed "no receipt.json yet", both took attempt 1, and the second silently
+// overwrote the first receipt/script - so the append-only guarantee did not hold exactly when two
+// members ran the same computation at once. Allocation (and the receipt write that claims the slot)
+// now runs under a per-archive-id in-process mutex, so two calls through one plugin instance can
+// never share an attempt dir. Cross-process concurrency still needs an exclusive-create primitive
+// from the host (documented in docs/math-computation.md §6).
+const mathArchiveChains = new Map()
+function withArchiveLock(key, fn) {
+  const prev = mathArchiveChains.get(key) || Promise.resolve()
+  const run = prev.then(fn, fn)
+  const tail = run.then(() => {}, () => {})
+  mathArchiveChains.set(key, tail)
+  tail.then(() => { if (mathArchiveChains.get(key) === tail) mathArchiveChains.delete(key) })
+  return run
+}
+
 async function nextAttempt(H, baseDir) {
   const hasFirst = await H.exists(baseDir + '/receipt.json')
   if (!hasFirst) return { attempt: 1, dir: baseDir }
@@ -531,7 +580,7 @@ async function opRun(H, args, params) {
   const mode = args.mode
   const det = await resolveEngine(H, args.engine || 'auto', params, args)
   if (!det.ok) return det
-  const desc = applyOverride(det, params)
+  const desc = applyOverride(det, params, args)
   const det2 = { ok: true, name: det.name, desc: desc, exe: det.exe, version: det.version }
   // The generic escape hatch is recorded as `cli:<command>` (spec §4.3 / guards §18): the model and
   // the receipt must be able to tell WHICH command was run, not just that it was "cli".
@@ -565,7 +614,10 @@ async function opRun(H, args, params) {
 
   const { runId, input } = runIdOf(H.designator, slug(root), det.name, mode, scriptText, want, fileRel)
   const baseDir = 'Computation/' + runId
-  // P2a item 3: append-only. Never rewrite an existing archive; a same-id repeat becomes a new attempt.
+  // P2a item 3 + AUDIT-C FIX (HIGH): the whole claim-and-archive section for one archive id is
+  // serialised. Allocation, the script/stdout/stderr writes and receipt.json (which claims the slot)
+  // must not interleave with another run of the same id, or both take attempt 1 and one is lost.
+  return await withArchiveLock(baseDir, async () => {
   const slot = await nextAttempt(H, baseDir)
   const dir = slot.dir
   const attempt = slot.attempt
@@ -595,7 +647,9 @@ async function opRun(H, args, params) {
   if (mode === 'file' && fileRel) {
     const after = await H.readText(fileRel)
     sourceHashAfter = after === undefined ? null : sha256(after)
-    scriptChangedDuringRun = sourceHashAfter !== null && sourceHashAfter !== sourceHashBefore
+    // AUDIT-A FIX: a null post-run hash means the source DISAPPEARED during the run - that is a
+    // change, not "no change". Comparing null-safe (null !== beforeHash) keeps it fail-closed.
+    scriptChangedDuringRun = sourceHashAfter !== sourceHashBefore
   }
   if (!r) return fail('MATH_NO_SUBPROCESS', det.name, '宿主不提供 subprocess 服务，无法执行计算', { next: next('note', { reason: 'no-subprocess' }) })
 
@@ -699,6 +753,7 @@ async function opRun(H, args, params) {
       sourceFile: fileRel || null, previousReceipt: receipt.previousReceipt, warnings: warnings,
     }
   }
+  }) // end withArchiveLock(baseDir) — see the AUDIT-C HIGH fix above
 }
 
 // ── op: receipt ────────────────────────────────────────────────────────────────────────────────
@@ -731,9 +786,14 @@ async function opReceipt(H, args) {
   const scriptRel = parsed.scriptPath || (parsed.script && parsed.script.path) || (dir + '/script')
   const currentText = await H.readText(scriptRel)
   const currentHash = currentText === undefined ? null : sha256(currentText)
-  const scriptChanged = currentHash !== null && recordedHash !== null && currentHash !== recordedHash
+  // AUDIT-A FIX: a missing archive script is not "unchanged". Reconciliation is fail-closed: if the
+  // script cannot be read, the receipt cannot be trusted for any code, so report scriptChanged.
+  const scriptMissing = currentText === undefined
+  const scriptChanged = scriptMissing || (currentHash !== null && recordedHash !== null && currentHash !== recordedHash)
   const warnings = []
-  if (scriptChanged) {
+  if (scriptMissing) {
+    warnings.push(warning(MATH_SCRIPT_CHANGED_WARNING, 'scriptChanged：归档脚本 ' + scriptRel + ' 已不存在（被删除或移动）——**该回执不能作为任何代码的证据**，请重跑。'))
+  } else if (scriptChanged) {
     warnings.push(warning(MATH_SCRIPT_CHANGED_WARNING, 'scriptChanged：归档脚本 ' + scriptRel + ' 的当前哈希与回执记录不一致——**这份回执不再代表当前代码**，请用 mode:\'file\' 重跑并引用新回执。'))
   }
   const mdRel = dir + '/receipt.md'

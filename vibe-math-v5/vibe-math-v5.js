@@ -6595,46 +6595,51 @@ export function apply(ctx) {
   }
 
   // ================= math_computation registration (docs/math-computation.md) =================
-  // The SHARED module registers its tool exactly once (its own contract) while every host
-  // callback resolves the CALLING session. Two sessions could otherwise interleave inside the
-  // module (it awaits spawns), so calls are serialized per plugin instance — the engine is the
-  // bottleneck anyway, and every callback still reads that session's LIVE params and root.
+  // The SHARED module is instantiated PER CALLING SESSION, so every host callback closes over
+  // exactly one session's LIVE params/root/fs — there is NO ambient "current session" slot that
+  // a concurrent call from another session could overwrite (audit C: a single slot meant that
+  // while session A awaited a spawn, session B could take it over, and A's later
+  // params/writeText/projectRoot would silently be B's). The tool FACE is installed exactly once
+  // (the module's own contract: one `host.register` call per preset); the per-session instances
+  // are created lazily and their `register` callback is deliberately ignored.
   // The module's tool NAME has no `vibe_` prefix on purpose (it is the same primitive in all
   // four presets), and `projectRoot()` is the INSTITUTE root, so receipts land in
   // <institute>/Computation/<runId>/.
-  let mathActiveSession = null
-  let mathCallChain = Promise.resolve()
-  function withMathSession(s, fn) {
-    const run = mathCallChain.then(async () => {
-      const prev = mathActiveSession
-      mathActiveSession = s
-      try { return await fn() } finally { mathActiveSession = prev }
-    })
-    mathCallChain = run.then(() => {}, () => {})
-    return run
-  }
-  function mathSeam() {
-    if (!mathActiveSession) throw new Error('math_computation: no active session')
-    return mathActiveSession.mathSessionHost()
-  }
-  const mathRegistered = registerMathComputation({
-    register: (name, description, parameters, handler) => {
-      registerTool(name, description, parameters, (s, args) => withMathSession(s, () => handler(args)))
-    },
-    params: () => (mathActiveSession ? mathActiveSession.params() : params),
-    projectRoot: () => mathSeam().projectRoot(),
+  let mathToolMeta = null              // { name, description, parameters } — the frozen face
+  const mathSessionHandlers = new Map() // session API object -> that session's module handler
+  // The metadata instance: its callbacks are never invoked (its handler is never called), it
+  // exists only so the module can hand us the frozen tool face exactly once.
+  const mathMetaHost = {
+    register: (name, description, parameters) => { if (!mathToolMeta) mathToolMeta = { name, description, parameters } },
+    params: () => DEFAULT_PARAMS,
+    projectRoot: () => '.',
     designator: 'vibe-math-v5',
-    writeText: (rel, text) => mathSeam().writeText(rel, text),
-    readText: (rel) => mathSeam().readText(rel),
-    exists: (rel) => mathSeam().exists(rel),
-    resolveExecutable: (cmd) => mathSeam().resolveExecutable(cmd),
-    spawn: (opts) => mathSeam().spawn(opts),
-    log: (kind, msg) => { try { mathSeam().log(kind, msg) } catch (e) { /* a log line is never fatal */ } },
-  })
-  // Drift guard: the registered tool must BE the shared frozen text (all four presets must ship
+    writeText: async () => false,
+    readText: async () => undefined,
+    exists: async () => false,
+    resolveExecutable: async () => { throw new Error('metadata host') },
+    spawn: async () => null,
+    log: () => {},
+  }
+  registerMathComputation(mathMetaHost)
+  // Drift guard: the installed face must BE the shared frozen text (all four presets must ship
   // the same description — a re-typed copy here would diverge silently).
-  if (mathRegistered.description !== MATH_TOOL_DESCRIPTION) {
+  if (!mathToolMeta || mathToolMeta.description !== MATH_TOOL_DESCRIPTION) {
     console.error('vibe-math-v5: math_computation was registered with a description that is not MATH_TOOL_DESCRIPTION')
+  }
+  function mathHandlerFor(s) {
+    let handler = mathSessionHandlers.get(s)
+    if (!handler) {
+      // One instance per session: its host callbacks are the session's own seam.
+      const inst = registerMathComputation(s.mathSessionHost())
+      handler = inst && typeof inst.handler === 'function' ? inst.handler : async () => ({ ok: false, code: 'MATH_INVALID_ARGUMENT', message: 'math_computation: no session handler' })
+      mathSessionHandlers.set(s, handler)
+    }
+    return handler
+  }
+  if (mathToolMeta) {
+    registerTool(mathToolMeta.name, mathToolMeta.description, mathToolMeta.parameters,
+      (s, args) => mathHandlerFor(s)(args))
   }
   /**
    * Resolve the caller of an OFFICE-ONLY control and refuse anything that is not the PROVABLE
@@ -6667,7 +6672,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra --search-path roots before the automatic VibeMath root (deduped; an explicit --search-path/-R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default.', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends --search-path <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra --search-path roots before the automatic VibeMath root (deduped; an explicit --search-path/-R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,

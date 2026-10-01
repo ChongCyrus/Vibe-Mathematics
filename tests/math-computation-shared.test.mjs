@@ -370,6 +370,124 @@ console.log('-- math_computation shared contract --')
   ok(bad.ok === false && bad.code === 'MATH_NONZERO_EXIT' && !!bad.scriptPath && !!bad.scriptHash, 'failure return carries scriptPath + scriptHash')
 }
 
+// ── 16. AUDIT-C fixes: concurrency, listDir retention, string-level path guard ──────────────────
+{
+  // 16a (HIGH). Two same-id runs fired concurrently must never share an attempt dir: allocation +
+  // the claiming receipt write are serialised per archive id. Before the fix both took attempt 1 and
+  // the second silently overwrote the first receipt.
+  {
+    const stc = makeFakeHost({})
+    M.registerMathComputation(stc.host)
+    const [a, b] = await Promise.all([
+      stc.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' }),
+      stc.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' }),
+    ])
+    ok(a.receipt.dir !== b.receipt.dir, '★ 同一 id 的并发运行绝不共用一个 attempt 目录（并发下的 append-only）')
+    ok([a.attempt, b.attempt].sort().join(',') === '1,2', 'concurrent same-id runs take attempts 1 and 2 (neither archive is lost)')
+    ok(stc.file(a.attemptDir + '/receipt.json') !== undefined && stc.file(b.attemptDir + '/receipt.json') !== undefined, 'both concurrent attempts have their own receipt on disk')
+  }
+
+  // 16b (MEDIUM). Project-level retention via the optional listDir, and the no-listDir path.
+  {
+    const many = []
+    for (let i = 0; i < M.MATH_ARCHIVE_MAX_RUNS + 1; i++) many.push({ name: 'run-' + i, type: 'directory' })
+    const stl = makeFakeHost({ listDir: many })
+    M.registerMathComputation(stl.host)
+    const over = await stl.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+    ok(over.warnings.some((w) => w.code === M.MATH_ARCHIVE_WARNING), 'listDir shows more than MATH_ARCHIVE_MAX_RUNS -> ARCHIVE_RETENTION_EXCEEDED (warn only)')
+    ok(stl.listDirCalls.length > 0 && stl.listDirCalls[0].indexOf('Computation') !== -1, 'the retention check asks the host to list Computation/')
+    ok(stl.file(over.attemptDir + '/receipt.json') !== undefined, 'nothing is deleted when the cap is exceeded')
+    const stn = makeFakeHost({})
+    M.registerMathComputation(stn.host)
+    const under = await stn.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+    ok(stn.listDirCalls.length === 0, 'a host without listDir is never asked for a listing')
+    ok(!under.warnings.some((w) => w.code === M.MATH_ARCHIVE_WARNING), 'no listDir -> no project-level retention check and no false alarm')
+  }
+
+  // 16c (MEDIUM). The path guard is STRING-LEVEL: pin what it really does, including the limitation.
+  {
+    const sp = makeFakeHost({ files: { 'Problems/calc.py': 'print(1)\n', 'Problems/link.py': 'print(2)\n' } })
+    M.registerMathComputation(sp.host)
+    const up = await sp.call({ op: 'run', engine: 'python', mode: 'file', file: '../outside.py' })
+    ok(up.ok === false && up.code === 'MATH_REFUSED' && up.next.reason === 'path-outside-project', 'lexical escape ../ is refused')
+    const deep = await sp.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/../../outside.py' })
+    ok(deep.ok === false && deep.code === 'MATH_REFUSED', 'a lexical escape buried mid-path is refused')
+    const abs = await sp.call({ op: 'run', engine: 'python', mode: 'file', file: 'C:/Windows/system32/calc.py' })
+    ok(abs.ok === false && abs.code === 'MATH_REFUSED', 'an absolute path is refused')
+    // A symlink/junction is invisible to a string guard. This pins the LIMITATION (docs §6): a path
+    // that LOOKS in-project is accepted, because the guard never resolves it. The host fs owns real
+    // containment, so this assertion exists to stop the docs from claiming otherwise.
+    const linked = await sp.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/link.py' })
+    ok(linked.ok === true, 'an in-project path is accepted without resolving it (string-level guard: links/junctions are NOT followed)')
+  }
+
+  // 16d (AUDIT-A). Two more reconciliation false negatives, both fail-closed now:
+  //   - the source file disappearing WHILE the run is in flight must count as a change;
+  //   - a deleted archive script must make op:'receipt' report scriptChanged (the receipt cannot be
+  //     evidence for any code once its script is gone).
+  {
+    const sd = makeFakeHost({ files: { 'Problems/gone.py': 'print(1)\n' }, deleteOnRun: { rel: 'Problems/gone.py' } })
+    M.registerMathComputation(sd.host)
+    const g = await sd.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/gone.py' })
+    ok(g.ok === true && g.scriptChangedDuringRun === true, 'the source file disappearing mid-run is a change: scriptChangedDuringRun:true')
+    ok(g.warnings.some((w) => w.code === M.MATH_SCRIPT_CHANGED_DURING_RUN_WARNING), 'a disappeared source is warned visibly')
+    ok(JSON.parse(sd.file(g.attemptDir + '/receipt.json')).scriptChangedDuringRun === true, 'the receipt records it too')
+
+    const sm = makeFakeHost({})
+    M.registerMathComputation(sm.host)
+    const run2 = await sm.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+    sm.files.delete(run2.scriptPath)
+    const rec2 = await sm.call({ op: 'receipt', file: run2.baseRunDir })
+    ok(rec2.ok === true && rec2.scriptChanged === true && rec2.currentScriptHash === null, 'a deleted archive script makes op=receipt report scriptChanged (fail-closed)')
+    ok(rec2.warnings.some((w) => w.code === M.MATH_SCRIPT_CHANGED_WARNING), 'the deletion is warned visibly')
+  }
+}
+
+// ── 17. AUDIT-B #1: mathEngineOverride is a REAL, accepted argument ─────────────────────────────
+{
+  // 17a. It is accepted (not "unknown argument") and it really changes the assembled argv.
+  {
+    const so = makeFakeHost({})
+    M.registerMathComputation(so.host)
+    const r = await so.call({
+      op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n',
+      mathEngineOverride: { python: { scriptArgv: ['-u', '<script>'], versionArgv: ['--version', '--override-proof'] } },
+    })
+    ok(r.ok === true, 'mathEngineOverride is ACCEPTED (previously rejected as an unknown argument)')
+    eq(r.argv[1], '-u', 'the overridden scriptArgv really changes the assembled argv')
+    ok(r.argv[r.argv.length - 1].indexOf('script.py') !== -1, 'the <script> placeholder is still substituted with the archived script path')
+    const versionSpawn = so.spawns.filter((s) => s.argv.indexOf('--override-proof') !== -1)
+    ok(versionSpawn.length > 0, 'the overridden versionArgv reaches the VERSION probe (not just the run argv)')
+    ok(!so.spawns.some((s) => s.argv.length === 2 && s.argv[1] === '--version'), 'the default versionArgv is not used once overridden')
+  }
+
+  // 17b. mode:'expr' override.
+  {
+    const se = makeFakeHost({})
+    M.registerMathComputation(se.host)
+    const r = await se.call({ op: 'run', engine: 'python', mode: 'expr', expr: '1+1', mathEngineOverride: { python: { evalArgv: ['-X', 'utf8', '-c', '<expr>'] } } })
+    eq(r.argv.slice(1, 4), ['-X', 'utf8', '-c'], 'the overridden evalArgv is used for mode=expr')
+  }
+
+  // 17c. The override stays CLOSED: bad shapes are refused with MATH_INVALID_ARGUMENT.
+  {
+    const sv = makeFakeHost({})
+    M.registerMathComputation(sv.host)
+    const unknownEngine = await sv.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', mathEngineOverride: { fortran: { scriptArgv: ['<script>'] } } })
+    ok(unknownEngine.ok === false && unknownEngine.code === 'MATH_INVALID_ARGUMENT' && /unknown engine/.test(unknownEngine.message), 'an override for an unknown engine is refused')
+    const badShape = await sv.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', mathEngineOverride: { python: { scriptArgv: 'not-an-array' } } })
+    ok(badShape.ok === false && badShape.code === 'MATH_INVALID_ARGUMENT' && /string\[\]/.test(badShape.message), 'a non-array template is refused')
+    const badKey = await sv.call({ op: 'run', engine: 'python', mode: 'code', code: 'x\n', mathEngineOverride: { python: { shellArgv: ['x'] } } })
+    ok(badKey.ok === false && badKey.code === 'MATH_INVALID_ARGUMENT' && /unknown key/.test(badKey.message), 'an unknown key inside the override is refused')
+  }
+
+  // 17d. The advertised hint and the schema agree with the implementation.
+  {
+    ok(!!M.MATH_TOOL_SCHEMA.properties.mathEngineOverride, 'MATH_TOOL_SCHEMA advertises mathEngineOverride')
+    ok(M.MATH_BAD_ARGV_HINT === 'mathEngineOverride', 'MATH_BAD_ARGV_HINT still names the escape hatch')
+  }
+}
+
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

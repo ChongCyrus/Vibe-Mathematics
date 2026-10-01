@@ -69,11 +69,15 @@ function hostChildLimitHint(limit){
 }
 
 export function apply(ctx) {
-  // The math_computation tool is registered ONCE, at apply level (FREEZE §4), but all the state it
-  // needs (live `params`, project root, fs, log) is per-session — so the registration wrapper below
-  // pins the calling session into `mathCallSession` for the duration of each call.
-  let mathReg = null
-  let mathCallSession = null
+  // math_computation (v5-style structure, per-session module instances):
+  //   1. a THROWAWAY capture-only host yields the frozen tool face (name/description/schema) once;
+  //   2. the tool is registered ONCE with a router that resolves the CALLING session;
+  //   3. each session lazily gets its OWN `registerMathComputation(...)` instance, cached by that
+  //      session's host object, so there is NO "current session" slot at all and two sessions can run
+  //      math calls CONCURRENTLY without ever seeing each other's params/root/fs/probe cache.
+  // (An earlier revision used a single holder plus a plugin-level serialisation chain; a shared slot
+  // was only safe while calls could not overlap, and serialising cost cross-session parallelism.)
+  let mathToolFace = null
   const subagents = ctx.subagents
   const agents = ctx.agents
   const fs = ctx.fs
@@ -159,7 +163,7 @@ export function apply(ctx) {
       mathMode: MATH_PARAM_DEFAULTS.mathMode,                 // 'typed+shell' | 'typed'
       mathEngines: MATH_PARAM_DEFAULTS.mathEngines.slice(),
       mathTimeoutMs: MATH_PARAM_DEFAULTS.mathTimeoutMs,
-      mathPackages: [],
+      mathPackages: MATH_PARAM_DEFAULTS.mathPackages.slice(),
       mathInstallScope: MATH_PARAM_DEFAULTS.mathInstallScope,
     }
     let params = Object.assign({}, DEFAULT_PARAMS)
@@ -185,7 +189,8 @@ export function apply(ctx) {
       // Same capability flag as the registered host: the prompt-side probe should not advertise
       // engines on a host that cannot execute at all.
       hasSubprocess: ()=>!!subprocessOf(),
-      log: ()=>{},
+      log: (kind,msg)=>logActivity(String(kind||'math'),String(msg||'')),
+      refreshAvailability: ()=>refreshMathAvailability(),
     }
     /**
      * The shared module's spawn contract is flat — `{argv,cwd,timeoutMs,stdoutCap,stderrCap}` →
@@ -1018,16 +1023,22 @@ export function apply(ctx) {
       }
       return L.join('\n')
     }
+    /** `leanInitiative` (v5-aligned): how EAGER the group is about formalizing while working. It is a
+     *  SEPARATE axis from `formalVerify` — see `leanDailyOn` below. */
+    const leanInitiative=()=>(['off','normal','eager'].indexOf(String(params.leanInitiative))!==-1?String(params.leanInitiative):'normal')
+    /** The DAILY line is injected when the group should formalize while working: any non-'off'
+     *  initiative with `formalVerify` on, OR explicitly `eager` — which asks for it even when
+     *  `formalVerify:'off'`, because the two knobs are independent (v5 uses the exact same rule).
+     *  'off' never injects the daily line; the VERIFICATION prompt still follows `formalVerify`. */
+    const leanDailyOn=()=>leanInitiative()!=='off'&&(formalOn()||leanInitiative()==='eager')
     /** The ordinary-work-round line (spec §6.2): formalize reusable objects as you go. Carries the
      *  three selection criteria, the blocked-instead-of-guessing rule, the look-up-first reuse path
      *  and the background-compile rule (lean-incremental-async spec §5 A, verbatim). */
     function formalWorkLine(){
-      if(!formalOn()) return ''
-      // AMENDMENT §1: proactivity is its own knob. 'off' = no proactive nagging at all (the
-      // verification prompt still states the `formalVerify` requirement); the criteria below stay
-      // attached to whichever proactive text is shown.
-      if(String(params.leanInitiative)==='off') return ''
-      return '【顺手形式化（'+formalModeWord()+'）】把你工作中常用或可能复用的对象、假设、新定义，'
+      if(!leanDailyOn()) return ''
+      // v5-aligned header: with `formalVerify:'off'` the mode word would be misleading, so the eager
+      // 档 names itself instead.
+      return '【顺手形式化（'+(formalOn()?formalModeWord():'主动（leanInitiative=eager）')+'）】把你工作中常用或可能复用的对象、假设、新定义，'
         +"用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/"
         +"（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。"
         +'\n  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——'
@@ -1043,7 +1054,7 @@ export function apply(ctx) {
         // AMENDMENT §1: only `leanInitiative='eager'` asks for MORE proactivity than the normal line.
         // `formalVerify` is deliberately NOT consulted here: it expresses the verification-time
         // requirement, not how eagerly the group should formalize while working.
-        +(String(params.leanInitiative)==='eager'
+        +(leanInitiative()==='eager'
           ? '\n  · 本档（leanInitiative=eager）：工作中出现**有价值且你有把握**的小引理 / 小命题 / 小定义时，**主动**顺手形式化并归档，不必等到验证轮；把握不足就照上面的判据记 blocked。'
           : '')
         +'归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
@@ -1060,7 +1071,10 @@ export function apply(ctx) {
       if(mathAvailBusy) return
       mathAvailBusy=true
       try {
-        const probe=await probeMathEngines(mathProbeHost)
+        // Use THIS session's cached module instance (keyed by `mathProbeHost`): the probe cache lives
+        // in the instance, so repeated refreshes cost nothing, and two sessions never share it.
+        const inst=mathInstanceFor(mathProbeHost)
+        const probe=inst?await inst.probe():await probeMathEngines(mathProbeHost)
         // The third argument is the MODE: the module drops the shell-fallback sentence in 'typed'
         // (prompts.md §4 consistency check 5) — the preset must not re-add it.
         mathAvailZh=mathAvailabilityLine(probe,'zh',params.mathMode)
@@ -1587,7 +1601,7 @@ export function apply(ctx) {
       // living under right now.
       return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
         +'\n`facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。'
-        +(formalOn()?('\n'+formalWorkLine()):'')
+        +(leanDailyOn()?('\n'+formalWorkLine()):'')
         // math_computation is INDEPENDENT of formalVerify (its own `mathComputation` switch).
         +(mathAvailabilityBlock()?('\n'+mathAvailabilityBlock()):'')
     }
@@ -1616,7 +1630,7 @@ export function apply(ctx) {
         // the same dynamic discipline as the mode — an announcement is never frozen into a brief.
         +(leanNotice?('\n'+leanNotice+'\n'):'')
         // 顺手形式化: computed from the CURRENT mode on every wake (docs §1: the mode is dynamic).
-        +(formalOn()?('\n'+formalWorkLine()+'\n'):'')
+        +(leanDailyOn()?('\n'+formalWorkLine()+'\n'):'')
         // math_computation availability (dynamic probe cache; independent of formalVerify).
         +(mathAvail?('\n'+mathAvail+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
@@ -2391,7 +2405,7 @@ export function apply(ctx) {
     function heartbeatPrompt(r){
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**\n'
-        +(formalOn()?(formalWorkLine()+'\n'):'')
+        +(leanDailyOn()?(formalWorkLine()+'\n'):'')
         // math_computation availability (cached; `normalPrompt` awaits the refresh, so a heartbeat
         // that follows a wake is never cold).
         +(mathAvailabilityBlock()?(mathAvailabilityBlock()+'\n'):'')
@@ -3787,24 +3801,11 @@ export function apply(ctx) {
       // `leanRunToolApi`, so the async paths can be driven deterministically (no timer races).
       leanQueueApi:{ enqueue:enqueueLeanJob, runQueue:runLeanQueue, state:()=>({running:leanInflight.map(leanJobView),queued:leanQueue.slice(),jobs:listLeanJobs(),notices:leanNotices.slice(),cap:Math.max(1,Math.floor(Number(params.leanJobsMaxParallel))||1)}), dispose:disposeLean, recover:recoverLeanJobs, job:leanJobTool },
       leanRead, listLeanJobs, leanJobs:()=>Object.assign({},leanJobs), leanJobTool,
-      /** math_computation host surface. The tool is registered ONCE at apply level, so the wrapper
-       *  there pins the calling session; these accessors always read that session's LIVE state
-       *  (never a snapshot — `/v4 set mathMode=typed` must change the very next call). */
-      mathHost:{
-        params:()=>params,
-        projectRoot:()=>frameworkRoot(),
-        writeText:(rel,text)=>writeText(rel,text),
-        readText:(rel)=>readText(rel),
-        exists:async(rel)=>{ try { const t=await fsTarget(rel); return (await fs.stat(t))!==undefined } catch(e){ return false } },
-        resolveExecutable:async(cmd)=>{
-          const sub=subprocessOf()
-          if(sub===undefined||typeof sub.resolveExecutable!=='function') throw new Error('NO_SUBPROCESS: the host exposes no subprocess service')
-          return await sub.resolveExecutable(String(cmd))
-        },
-        spawn:(o)=>mathSpawnAdapter(o),
-        log:(kind,msg)=>logActivity(String(kind||'math'),String(msg||'')),
-        refreshAvailability:()=>refreshMathAvailability(),
-      },
+      /** math_computation host surface — the SAME object the per-session module instance is keyed
+       *  by (`mathInstanceFor`), so the tool path and the prompt-side probe share one instance per
+       *  session (and one probe cache), and no state is shared across sessions. These accessors read
+       *  LIVE state (never a snapshot — `/v4 set mathMode=typed` must change the very next call). */
+      mathHost: mathProbeHost,
       /** Absolute paths the Lean layer uses (read-only display; `searchPaths` are injected per spawn). */
       leanPaths:()=>({searchPath:vibeRoot().replace(/\\/g,'/'),searchPaths:leanSearchPathList(),lib:formalLibRoot().replace(/\\/g,'/'),proved:formalProvedRoot().replace(/\\/g,'/'),jobs:leanJobsRel()}),
       /**
@@ -3954,41 +3955,63 @@ export function apply(ctx) {
   // unloads — the same lifecycle the tool/command registrations above already follow.
   ctx.effect(() => () => { for(const s of sessions.values()){ try { s.disposeLean() } catch(e){ /* best effort */ } } })
 
+  //  (3) Per-session module instances: LAZY, cached by the session's host object. Each instance has
+  //      its own adapted host (and therefore its own probe cache), so no state is shared between
+  //      sessions — there is no "current session" slot to clobber, and concurrent calls from two
+  //      sessions are fully independent (v5 uses the same structure).
+  const mathInstances = new WeakMap()   // session host object -> module instance
+  function mathInstanceFor(hostObj){
+    if(!hostObj) return null
+    const cached=mathInstances.get(hostObj)
+    if(cached) return cached
+    const inst=registerMathComputation({
+      // Capture-only: the tool face was registered ONCE for the plugin instance (step 1/2 above).
+      register: ()=>{},
+      params: ()=>hostObj.params(),
+      projectRoot: ()=>hostObj.projectRoot(),
+      designator: 'vibe-math-v4',
+      writeText: (rel, text)=>hostObj.writeText(rel, text),
+      readText: (rel)=>hostObj.readText(rel),
+      exists: (rel)=>hostObj.exists(rel),
+      resolveExecutable: (cmd)=>hostObj.resolveExecutable(cmd),
+      spawn: (o)=>hostObj.spawn(o),
+      // Optional capability flag: a host that KNOWS it has no subprocess service reports
+      // MATH_NO_SUBPROCESS up front instead of a misleading ENGINE_NOT_FOUND + install guide.
+      hasSubprocess: ()=>!!subprocessOf(),
+      log: (kind, msg)=>hostObj.log(kind, msg),
+    })
+    mathInstances.set(hostObj, inst)
+    return inst
+  }
+  function mathHandlerFor(session){
+    const inst=mathInstanceFor(session&&session.mathHost)
+    return inst?inst.handler:async()=>({ok:false,code:'MATH_INVALID_ARGUMENT',message:'math_computation: no session'})
+  }
+
   // ================= math_computation registration (P1) =================
-  // The tool CORE is the shared module (installed byte-identically in all four presets); this is the
-  // ONLY call site (FREEZE §4: the module calls `host.register` exactly once). The per-session state
-  // the module needs (live params, project root, fs, log) lives in `makeSession`, so the `register`
-  // wrapper records the CALLING session for the duration of the call and every accessor below reads
-  // through it: a `vibe_v4_set mathMode=typed` issued by session B is enforced for session B's next
-  // math_computation call. (The prompt-side availability line uses its own session-local probe host,
-  // see `mathProbeHost`, so prompting never depends on this holder.)
-  // `spawn`/`resolveExecutable` go through the injected subprocess service via the session's adapter
-  // (`mathSpawnAdapter`) — a timeout actively kills the process.
-  mathReg = registerMathComputation({
-    register: (name, description, parameters, handler)=>registerTool(name, description, parameters, async (s,a)=>{
+  // The tool CORE is the shared module (installed byte-identically in all four presets).
+  //  (1) A throwaway CAPTURE-ONLY host yields the frozen tool face once: the module owns the name,
+  //      description and closed schema, and this preset must advertise exactly those.
+  registerMathComputation({
+    register: (name, description, parameters, handler)=>{
       // The description/schema must be the module's frozen text (a local re-spelling would silently
-      // diverge from the other three presets); referencing MATH_TOOL_DESCRIPTION here is that check.
-      if(description!==MATH_TOOL_DESCRIPTION) logActivity('math','警告：math_computation 工具描述与共享模块的 MATH_TOOL_DESCRIPTION 不一致')
-      const prev=mathCallSession
-      mathCallSession=s
-      // `await` matters: without it the `finally` would run as soon as the async handler returns its
-      // PROMISE, restoring the holder before the module's body ever touches the host accessors.
-      try { return await handler(a||{}) } finally { mathCallSession=prev }
-    }),
-    params: ()=>mathCallSession?mathCallSession.mathHost.params():DEFAULT_PARAMS,
-    projectRoot: ()=>mathCallSession?mathCallSession.mathHost.projectRoot():'',
-    // Optional host capability flag (module hash 43593d66…): a host that KNOWS it has no subprocess
-    // service reports MATH_NO_SUBPROCESS up front instead of a misleading ENGINE_NOT_FOUND +
-    // "install python" guide. `spawn` returning null stays the second, resolve-capable path.
-    hasSubprocess: ()=>!!subprocessOf(),
+      // diverge from the other three presets); referencing MATH_TOOL_DESCRIPTION is that check.
+      if(description!==MATH_TOOL_DESCRIPTION) ctx.logger.warn('math_computation: 工具描述与共享模块的 MATH_TOOL_DESCRIPTION 不一致')
+      mathToolFace={name, description, parameters, handler}
+    },
+    params: ()=>DEFAULT_PARAMS,
+    projectRoot: ()=>'',
+    writeText: async()=>false,
+    readText: async()=>undefined,
+    exists: async()=>false,
+    resolveExecutable: async()=>{ throw new Error('NO_SUBPROCESS: capture-only host') },
+    spawn: async()=>null,
     designator: 'vibe-math-v4',
-    writeText: (rel, text)=>mathCallSession?mathCallSession.mathHost.writeText(rel, text):false,
-    readText: (rel)=>mathCallSession?mathCallSession.mathHost.readText(rel):undefined,
-    exists: (rel)=>mathCallSession?mathCallSession.mathHost.exists(rel):false,
-    resolveExecutable: async (cmd)=>await mathCallSession.mathHost.resolveExecutable(cmd),
-    spawn: async (o)=>await mathCallSession.mathHost.spawn(o),
-    log: (kind, msg)=>{ if(mathCallSession) mathCallSession.mathHost.log(kind, msg) },
+    log: ()=>{},
   })
+  //  (2) ONE tool registration for the whole plugin instance; the handler resolves the CALLING
+  //      session's own module instance.
+  registerTool(mathToolFace.name, mathToolFace.description, mathToolFace.parameters, (s,a)=>mathHandlerFor(s)(a||{}))
 
   // Same lifecycle rule as registerTool: commands.register() returns a disposer, so the
   // registration belongs to this fiber and must be unwound with it.

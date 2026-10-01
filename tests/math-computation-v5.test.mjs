@@ -111,6 +111,19 @@ function makeSeam(opts) {
       }
       const box = { stdout, stderr }
       const ring = (which) => ({ readFrom: () => ({ text: box[which] }) })
+      // `deferFirstRun`: park the FIRST run-mode spawn so a second session's call starts while
+      // this one is mid-await — the window in which a shared "current session" slot would leak.
+      if (o.deferFirstRun && kind === 'run' && !state.deferredRun) {
+        state.deferredRun = true
+        let release = null
+        const done = new Promise((resolve) => { release = resolve })
+        state.releaseFirst = () => release({ exitCode: 0, signal: null })
+        return {
+          done,
+          collected: { stdout: ring('stdout'), stderr: ring('stderr') },
+          terminate() { state.terminated += 1; release({ exitCode: null, signal: 'SIGTERM' }) },
+        }
+      }
       if (o.hang && kind === 'run') {
         let release = null
         const done = new Promise((resolve) => { release = resolve })
@@ -141,6 +154,7 @@ function makeHost(seam) {
   const liveAgents = new Map()
   const ROOT_SESSION = { header: { cwd: WS }, id: 'sess-mc' }
   const ROOT = { id: 'sess-mc', options: {}, session: ROOT_SESSION }
+  const roots = [ROOT]
   const ctx = {
     get(name) {
       if (name === 'subprocess') return seam
@@ -164,7 +178,7 @@ function makeHost(seam) {
       interrupt() {},
       async drainContinuableChildren(parent, ids) { for (const i of ids) liveAgents.delete(i) },
     },
-    agents: { roots() { return [ROOT] }, get(id) { return id === ROOT.id ? ROOT : liveAgents.get(id) }, list() { return [ROOT, ...liveAgents.values()] } },
+    agents: { roots() { return roots }, get(id) { const r = roots.find((x) => x.id === id); return r || liveAgents.get(id) }, list() { return roots.concat([...liveAgents.values()]) } },
     fs: {
       async resolve(rel, o2) {
         const b = (o2 && o2.cwd) || WS
@@ -179,6 +193,15 @@ function makeHost(seam) {
   }
   pluginModule.apply(ctx)
   const inst = () => join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  const instOf = (agent) => join(agent.session.header.cwd, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  // A SECOND root over its OWN workspace = a second institute/session on the SAME plugin
+  // instance (the cross-session isolation case).
+  function addRoot() {
+    const ws = mkdtempSync(join(tmpdir(), 'vibe-v5mc2-'))
+    const agent = { id: 'sess-mc-' + (roots.length + 1), options: {}, session: { header: { cwd: ws }, id: 'sess-' + (roots.length + 1) } }
+    roots.push(agent)
+    return agent
+  }
   async function callTool(name, args, agent) {
     const spec = toolRegs.find((x) => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
@@ -209,7 +232,7 @@ function makeHost(seam) {
     }
     return null
   }
-  return { WS, ctx, ROOT, toolRegs, commandRegs, spawns, wakes, callTool, callMath, inst, childOf, fireEnd, settleSpawns, nextWakeFor }
+  return { WS, ctx, ROOT, toolRegs, commandRegs, spawns, wakes, callTool, callMath, inst, instOf, addRoot, childOf, fireEnd, settleSpawns, nextWakeFor }
 }
 
 const INST = (h) => h.inst()
@@ -571,6 +594,38 @@ section('15 P2a archive workflow: scriptPath/scriptHash, new attempt per re-run,
   const zh = yml.split(math.MATH_ARCHIVE_WORKFLOW_LINE).length - 1
   const en = yml.split(math.MATH_ARCHIVE_WORKFLOW_LINE_EN).length - 1
   assert(zh === 2 && en === 2, '★ the persona carries the archive workflow rule in BOTH blocks (zh×' + zh + ', en×' + en + ')')
+}
+
+// ---------- 16. cross-session isolation on ONE plugin instance (audit C) ------------------------
+section('16 two sessions on one plugin instance never share params/root (audit C)')
+{
+  // The first run parks mid-await so the second session starts INSIDE it — exactly the window
+  // in which an ambient "current session" slot would have been taken over.
+  const seam = makeSeam({ installed: { python: true, octave: true }, deferFirstRun: true })
+  const h = makeHost(seam)
+  const rootB = h.addRoot()
+  await h.callTool('vibe_v5_set', { mathEngines: ['python'], mathMode: 'typed+shell' }, h.ROOT)
+  await h.callTool('vibe_v5_set', { mathEngines: ['octave'], mathMode: 'typed+shell' }, rootB)
+  const pa = h.callTool('math_computation', { op: 'run', engine: 'python', mode: 'code', code: 'a = 1\n' }, h.ROOT)
+  await sleep(40)
+  const parked = seam.runCalls.length === 1
+  const pb = h.callTool('math_computation', { op: 'run', engine: 'octave', mode: 'code', code: 'b = 2\n' }, rootB)
+  const rb = await pb
+  if (typeof seam.state.releaseFirst === 'function') seam.state.releaseFirst()
+  const ra = await pa
+  assert(parked && ra.ok === true && rb.ok === true, 'both sessions completed while the first was parked (' + JSON.stringify({ parked, a: ra.ok, b: rb.ok }) + ')')
+  assert(ra.engineInfo && ra.engineInfo.name === 'python' && rb.engineInfo && rb.engineInfo.name === 'octave',
+    '★ each call used its OWN session mathEngines (' + JSON.stringify({ a: ra.engineInfo && ra.engineInfo.name, b: rb.engineInfo && rb.engineInfo.name }) + ')')
+  const runA = seam.runCalls.filter((c) => c.engine === 'python')
+  const runB = seam.runCalls.filter((c) => c.engine === 'octave')
+  assert(runA.length === 1 && runA.every((c) => N(c.cwd) === N(h.instOf(h.ROOT))),
+    '★ session A ran with A\'s institute root (' + JSON.stringify(runA.map((c) => N(c.cwd))) + ')')
+  assert(runB.length === 1 && runB.every((c) => N(c.cwd) === N(h.instOf(rootB))),
+    '★ session B ran with B\'s institute root — no cross-session takeover (' + JSON.stringify(runB.map((c) => N(c.cwd))) + ')')
+  assert(!!ra.receipt && existsSync(join(h.instOf(h.ROOT), ra.receipt.dir, 'receipt.json')) && !existsSync(join(h.instOf(rootB), ra.receipt.dir, 'receipt.json')),
+    '★ A\'s receipt landed under A\'s institute (and not under B\'s)')
+  assert(!!rb.receipt && existsSync(join(h.instOf(rootB), rb.receipt.dir, 'receipt.json')),
+    'B\'s receipt landed under B\'s institute')
 }
 
 console.log('')

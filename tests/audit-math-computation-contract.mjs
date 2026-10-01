@@ -22,6 +22,8 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
+// The shared defaults are the reference for AUDIT-B #6 (no preset may hold a drifting literal).
+const M = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
 const PRESETS = [
   { dir: 'vibe-math-v2', designator: 'vibe-math-v2', dualRegistration: true },
   { dir: 'vibe-math-v3', designator: 'vibe-math-v3', dualRegistration: true },
@@ -90,20 +92,45 @@ for (const P of PRESETS) {
   ok(js.indexOf('normalizeMathParams(') !== -1, tag + 'normalises through normalizeMathParams()')
 
   // parameter schemas: v2/v3 PARAM_SCHEMA + two set_params schemas; v4 vibe_v4_set; v5 closed set + visibleParams
+  // AUDIT-B #7: check the PROPERTY, not the prose. The set tool's description string naturally
+  // contains every parameter name, so an indexOf over the whole registration call stays green even
+  // when a property is renamed. Only the `objParams({...})` argument counts.
+  const SET_TOOL = P.dir === 'vibe-math-v2' || P.dir === 'vibe-math-v3'
+    ? "registerTool('vibe_math_set_params'"
+    : (P.dir === 'vibe-math-v4' ? "registerTool('vibe_v4_set'" : "registerTool('vibe_v5_set'")
+  {
+    const i = js.indexOf(SET_TOOL)
+    const callText = i === -1 ? '' : js.slice(i, js.indexOf('registerTool(', i + 1) === -1 ? i + 4000 : js.indexOf('registerTool(', i + 1))
+    const oi = callText.lastIndexOf('objParams(')
+    const setSchema = oi === -1 ? '' : callText.slice(oi)
+    ok(setSchema.length > 0, tag + 'set tool takes an objParams({...}) schema argument')
+    for (const k of SIX) {
+      ok(new RegExp('(^|[{,\\s])' + k + '\\s*:').test(setSchema), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'schema len ' + setSchema.length)
+    }
+  }
   if (P.dir === 'vibe-math-v2' || P.dir === 'vibe-math-v3') {
     const schema = arrayBlock(js, 'const PARAM_SCHEMA')
     for (const k of SIX) ok(schema.indexOf(k) !== -1, tag + 'PARAM_SCHEMA documents ' + k)
-    const occurrences = {}
-    for (const k of SIX) occurrences[k] = (js.match(new RegExp(k, 'g')) || []).length
-    for (const k of SIX) ok(occurrences[k] >= 3, tag + k + ' appears in defaults + schema + both set schemas', 'count ' + occurrences[k])
-  } else if (P.dir === 'vibe-math-v4') {
-    const setBlock = callBlock(js, "registerTool('vibe_v4_set'")
-    for (const k of SIX) ok(setBlock.indexOf(k) !== -1, tag + 'vibe_v4_set schema/description carries ' + k)
-  } else {
-    const setBlock = callBlock(js, "registerTool('vibe_v5_set'")
-    for (const k of SIX) ok(setBlock.indexOf(k) !== -1, tag + 'vibe_v5_set CLOSED set carries ' + k)
+  } else if (P.dir === 'vibe-math-v5') {
     const visible = block(js, 'function visibleParams()', '\n    }')
     for (const k of SIX) ok(visible.indexOf(k) !== -1, tag + 'visibleParams exposes ' + k)
+  }
+
+  // AUDIT-B #6: the presets' exposed DEFAULTS must come from the shared MATH_PARAM_DEFAULTS, so the
+  // four copies cannot drift (v4 had a literal `mathPackages: []`). Arrays must be referenced and
+  // sliced; scalar literals must equal the shared value.
+  {
+    const defs = block(js, 'const DEFAULT_PARAMS', '\n  }')
+    for (const k of SIX) {
+      if (new RegExp('MATH_PARAM_DEFAULTS\\.' + k + '\\b').test(defs)) continue
+      if (Array.isArray(M.MATH_PARAM_DEFAULTS[k])) {
+        ok(false, tag + 'DEFAULT_PARAMS.' + k + ' must reference MATH_PARAM_DEFAULTS (array literals drift)')
+        continue
+      }
+      const m = new RegExp(k + ":\\s*(?:'([^']*)'|(\\d+))").exec(defs)
+      const val = m ? (m[1] !== undefined ? m[1] : Number(m[2])) : undefined
+      ok(val === M.MATH_PARAM_DEFAULTS[k], tag + 'DEFAULT_PARAMS.' + k + ' literal must equal the shared default', 'got ' + JSON.stringify(val) + ' want ' + JSON.stringify(M.MATH_PARAM_DEFAULTS[k]))
+    }
   }
 
   // 3. frozen prompt text constants are actually used
@@ -131,6 +158,14 @@ for (const f of ['README.md', 'README.en.md']) {
   const md = existsSync(join(REPO, f)) ? read(f) : ''
   for (const k of SIX) ok(md.indexOf(k) !== -1, f + ' documents ' + k)
   ok(/math-computation\.md|math_computation/.test(md), f + ' links the math_computation feature')
+}
+
+// 6. AUDIT-A/C honesty disclosures must not silently disappear from the contract doc.
+{
+  const doc = existsSync(join(REPO, 'docs/math-computation.md')) ? read('docs/math-computation.md') : ''
+  ok(doc.indexOf('字符串级') !== -1 && doc.indexOf('不解析符号链接') !== -1, 'docs §6 states the path guard is string-level and does not resolve links/junctions')
+  ok(doc.indexOf('只通过假 subprocess seam 验证') !== -1, 'docs §6 states engine execution is verified only through the fake subprocess seam')
+  ok(doc.indexOf('串行') !== -1 && doc.indexOf('跨进程') !== -1, 'docs §6 states the in-process serialisation and the cross-process limitation')
 }
 
 console.log('')

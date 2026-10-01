@@ -332,6 +332,11 @@ assert(!!toolRegs.find(t => t.name === 'vibe_v5_lean_run') && !!toolRegs.find(t 
   }
   assert(JSON.stringify(setSpec.parameters.properties.formalVerify.enum) === JSON.stringify(['off', 'encourage', 'require']),
     'the schema narrows formalVerify to the three real modes (a typo must not be a fourth)')
+  // audit B3: the four Lean keys must be DISCOVERABLE in the description too (v4 already names
+  // them; a schema-only key is invisible in the tool list).
+  const setDesc = String(setSpec.description || '')
+  assert(['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs'].every((k) => setDesc.indexOf(k) !== -1),
+    'the set description names all four Lean toolchain keys (audit B3)')
 }
 
 // A stray `formal` reply in OFF mode must be INERT: the field is not offered in the reply contract

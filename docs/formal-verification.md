@@ -53,8 +53,12 @@
 
 ### `off`（默认）—— 不额外进行任何要求
 
-- **成员提示词**（按模式动态注入的那部分）里**不出现**任何 Lean 相关内容；验证流程、门禁、归档全部不变，
+- **成员提示词**里**不出现**任何 Lean 相关内容（**默认 `leanInitiative:'normal'` 时**）；验证流程、门禁、归档全部不变，
   也不写入任何形式化状态。这是真正的"无操作"，四套都有断言与探针守着。
+- **两个轴必须分清（v5 统一口径）**：`formalVerify` 管**验证阶段**的要求强度，`leanInitiative` 管**日常日线**；
+  `formalVerify:'off'` 只关掉前者——如果用户显式设置 `leanInitiative:'eager'`，日线**仍然注入**（"定论不额外要求，
+  但日常鼓励形式化"是合法组合，见 §6.2 与 `tests/formal-verify-vN` 的 `off+eager` 探针）。`leanInitiative:'off'`
+  则连日线都不注入：两种轴都关掉时，提示词里才真的一个字都不出现。
 - **回执通道在 `off` 档必须失效**：`formal` 字段本来就不在 `off` 档的回执契约里，所以一个残留/幻觉/被
   引用的 `formal` 回执**不得**创建形式化记录（否则 `off` 就不是无操作了）。四个架构都必须在这个入口
   上加 `formalOn()` 守卫。
@@ -337,10 +341,11 @@
 归档前先跑通（<prefix>lean_run 或 lean_archive run=true）：跑不通的定义不要进可复用库。
 ```
 
-- **这段文字的档位由 `leanInitiative` 决定，不是 `formalVerify`**：`off` = 完全不出现；
+- **这段文字的档位由 `leanInitiative` 决定，不是 `formalVerify`**：`off` = 完全不出现（连日线都不注入）；
   `normal` = 上面的"顺手"档；`eager` = 追加"日常就主动把有价值的小引理/命题/定义形式化"。
   `formalVerify` 只影响**验证提示词**的要求强度；两者可自由组合（例如 `formalVerify=off` +
-  `leanInitiative=eager` 表示"定论不额外要求，但日常鼓励形式化"）。
+  `leanInitiative=eager` 表示"定论不额外要求，但日常鼓励形式化"）——**注意：`eager` 在 `formalVerify=off`
+  下也必须注入日线**，`off` 不许把主动性这条独立轴一起吞掉（v5 统一口径，四套都有 `off+eager` 探针）。
 - 异步档（`leanAsync=true`）下这段还必须写清：归档返回的是**排队中的作业**，
   **未落地为 `settled(ok)` 之前不得声称已通过、也不得转忠实性审查**；查进度用
   `<prefix>lean_lib` 的 `jobs` 或 `<prefix>lean_job`，复用先 `<prefix>lean_read` 取原文。
@@ -507,7 +512,10 @@
 
 ## 10. 测试要求（每个架构都要有）
 
-1. **`off` 是无操作**：提示词里不出现 Lean 字样；验证流程与门禁行为与改动前一致。
+1. **`off` 是（验证阶段的）无操作**：`formalVerify:'off'` + 默认 `leanInitiative:'normal'` 时提示词里不出现
+   Lean 字样；验证流程与门禁行为与改动前一致。**主动性是独立轴**：显式 `leanInitiative:'eager'` 时，
+   `off` 档仍注入日线（且只注入日线——验证提示词里不得出现验证阶段的 Lean 文本），
+   `leanInitiative:'off'` 则连日线也不注入。
 2. **`encourage` 注入**：验证提示词含鼓励段落；平时工作提示词含"顺手形式化"段落；
    对象 `passed` 后，验证提示词切换为**忠实性审查**措辞。
 3. **`require` 门禁**：无形式化记录时"真"结论**不写入 Verified/**，而是 `undecided` +

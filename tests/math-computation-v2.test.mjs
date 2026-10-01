@@ -55,6 +55,7 @@ function freshFake() {
     licensed: {},             // { maple: true }（商业引擎）
     packages: {},             // { numpy: 'ok', sympy: null }
     run: 'ok',                // ok | hang | fail3 | argerr | big
+    spawnDelayMs: 0,          // 每次 spawn 的人为延迟（跨会话交错用例用）
     cliCommands: {},          // { echo: '/fake/cli/echo' }
     spawns: [], terminated: 0,
   }
@@ -63,8 +64,12 @@ function engineOfExe(exe) { return CANDIDATES[String(exe).split(/[\\/]/).pop()] 
 function looksLikeRun(argv) { return argv.join(' ').indexOf('/script.') !== -1 }
 const VERSION_RE = { python: /(\d+\.\d+\.\d+)/, r: /(\d+\.\d+\.\d+)/, octave: /(\d+\.\d+\.\d+)/, julia: /(\d+\.\d+\.\d+)/, matlab: /(\d+\.\d+)/, maple: /(\d+\.\d+)/, wolfram: /(\d+\.\d+(\.\d+)?)/ }
 function spawnResult(exit, stdout, stderr) {
+  // 可选延迟：跨会话并发用例（§17）需要两次调用真的在 await 期间交错，默认 0。
+  const done = (fake && fake.spawnDelayMs)
+    ? new Promise(function (r) { setTimeout(function () { r({ exitCode: exit, signal: null }) }, fake.spawnDelayMs) })
+    : Promise.resolve({ exitCode: exit, signal: null })
   return {
-    done: Promise.resolve({ exitCode: exit, signal: null }),
+    done: done,
     collected: {
       stdout: { readFrom: () => ({ text: stdout || '', nextOffset: (stdout || '').length, lossy: false }) },
       stderr: { readFrom: () => ({ text: stderr || '', nextOffset: (stderr || '').length, lossy: false }) },
@@ -513,6 +518,38 @@ section('§16 ensureDirs：项目骨架含 Computation/')
   const missing = need.filter((p) => !existsSync(p))
   assert(missing.length === 0, '★★ 项目骨架含 Computation/（缺失：' + missing.join(',') + '）｜最近 shell: ' + JSON.stringify(fake.spawns.filter((s) => /New-Item|mkdir/.test(s.argv.join(' '))).slice(-1)) + ')')
   assert(existsSync(join(projRoot(), 'Computation', 'installs')), '★ 安装审计的落点 Computation/installs/ 也存在（§13 已写入审计记录）')
+}
+
+// ── §17 跨会话隔离（审计 C#2）：同一插件实例、两个会话并发调用 ─────────────────────────────────
+// 要害：math 调用里所有会话相关的东西（params/projectRoot/writeText/spawn）必须来自**发起调用的那个会话**。
+// 若实现里存在一个"当前 math 调用会话"的单槽，A 在 await 期间被 B 覆盖，A 就会用 B 的引擎/模式/根目录。
+// 这里用不同 mathEngines/mathMode 的两个会话 + Promise.all + 有延迟的假引擎把交错逼出来。
+section('§17 跨会话隔离：两个会话并发调用 math_computation（各用各的参数）')
+{
+  fake = freshFake()
+  fake.installed = { python: '3.11.4', r: '4.3.2' }
+  fake.spawnDelayMs = 40   // 每次 spawn 至少 40ms ⇒ 两次调用在 await 期间真的交错
+  const RA = makeRoot('sess-iso-A')
+  const RB = makeRoot('sess-iso-B')
+  const projA = join(WS, 'VibeMath', 'Projects', 'isoA')
+  const projB = join(WS, 'VibeMath', 'Projects', 'isoB')
+  await call('vibe_math_new_project', { name: 'isoA' }, RA)
+  await call('vibe_math_new_project', { name: 'isoB' }, RB)
+  await call('vibe_math_set_params', { mathEngines: ['python'], mathMode: 'typed+shell' }, RA)
+  await call('vibe_math_set_params', { mathEngines: ['r'], mathMode: 'typed' }, RB)
+  const [ra, rb] = await Promise.all([
+    call('math_computation', { op: 'run', mode: 'code', code: 'print("A")' }, RA),
+    call('math_computation', { op: 'run', mode: 'code', code: 'print("B")' }, RB),
+  ])
+  fake.spawnDelayMs = 0
+  assert(ra.ok === true && rb.ok === true, '★★ 两次并发调用都执行完成（没有任何一个被丢弃）（' + JSON.stringify({ a: ra.ok, b: rb.ok, ac: ra.code, bc: rb.code }) + '）')
+  assert(/^python/.test(String(ra.engine)) && /^r(\b|:)/.test(String(rb.engine)), '★★★ 各自用**自己会话**的引擎（A=python, B=r；实测 ' + JSON.stringify({ a: ra.engine, b: rb.engine }) + '）')
+  assert(String(ra.argv[0]).indexOf('python') !== -1 && /Rscript|R$/.test(String(rb.argv[0])), '★★★ 实际 spawn 的 argv[0] 各是自己的引擎 shim（' + JSON.stringify({ a: ra.argv[0], b: rb.argv[0] }) + '）')
+  const recA = JSON.parse(readIf(join(projA, ra.attemptDir, 'receipt.json')) || '{}')
+  const recB = JSON.parse(readIf(join(projB, rb.attemptDir, 'receipt.json')) || '{}')
+  assert(recA.engine && recA.engine.name === 'python' && recB.engine && recB.engine.name === 'r', '★★★ 回执里的 engine 分别是 python / r（A 的回执没有写进 B 的引擎）')
+  assert(String(recA.cwd).replace(/\\/g, '/').toLowerCase() === projA.replace(/\\/g, '/').toLowerCase() && String(recB.cwd).replace(/\\/g, '/').toLowerCase() === projB.replace(/\\/g, '/').toLowerCase(), '★★★ 两次调用的 cwd 各是自己的项目根（' + JSON.stringify({ a: recA.cwd, b: recB.cwd }) + '）')
+  assert(recA.engine.name !== recB.engine.name, '★ 参数确实不同（否则本用例不能证伪单槽污染）')
 }
 
 console.log('\n=== MATH COMPUTATION V2: ' + passed + ' passed, ' + failed + ' failed ===')

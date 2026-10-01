@@ -30,6 +30,7 @@ export function makeFakeHost(opts = {}) {
     files,
     registrations: [],
     spawns: [],
+    listDirCalls: [],
     logs: [],
     version: opts.version || '1.2.3',
     packages: Object.assign({}, opts.packages || {}), // { name: 'present' | 'missing' | null }
@@ -63,6 +64,14 @@ export function makeFakeHost(opts = {}) {
     hasSubprocess: ('hasSubprocess' in opts) ? (() => opts.hasSubprocess) : undefined,
     readText: async (rel) => { const v = files.get(String(rel).replace(/\\/g, '/')); return v === undefined ? undefined : v },
     exists: async (rel) => files.has(String(rel).replace(/\\/g, '/')),
+    // Optional DSH-fs-like listing (real API: ctx.fs.resolve + listDir, entries {name,type}).
+    // Present only when the test asks for it, so "no listDir => no project-level retention check"
+    // is testable.
+    listDir: ('listDir' in opts) ? (async (rel) => {
+      state.listDirCalls.push(String(rel))
+      if (typeof opts.listDir === 'function') return opts.listDir(rel)
+      return (opts.listDir || []).slice()
+    }) : undefined,
     resolveExecutable: async (cmd) => {
       if (opts.resolveThrows) throw new Error('resolve failed: ' + cmd)
       const raw = String(cmd)
@@ -103,6 +112,8 @@ export function makeFakeHost(opts = {}) {
       if (state.argError) return { exit: 2, timedOut: false, killed: false, ms: 9, stdout: '', stderr: state.argError }
       // P2a: simulate "another member edits the source while this run is in flight".
       if (opts.mutateOnRun && opts.mutateOnRun.rel) files.set(String(opts.mutateOnRun.rel).replace(/\\/g, '/'), String(opts.mutateOnRun.text == null ? '' : opts.mutateOnRun.text))
+      // Audit-A: simulate the source being DELETED mid-run (a change, not "no change").
+      if (opts.deleteOnRun && opts.deleteOnRun.rel) files.delete(String(opts.deleteOnRun.rel).replace(/\\/g, '/'))
       const out = state.stdoutBytes > 0 ? 'x'.repeat(state.stdoutBytes) : 'ran-ok\n'
       if (state.exit !== 0) return { exit: state.exit, timedOut: false, killed: false, ms: 9, stdout: '', stderr: 'boom' }
       return { exit: 0, timedOut: false, killed: false, ms: 9, stdout: out, stderr: '' }

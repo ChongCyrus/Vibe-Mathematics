@@ -2,7 +2,9 @@
 // V4 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
 // Asserts the whole contract of the `formalVerify` knob for the v4 preset:
-//   · 'off'       is a TRUE no-op (no Lean text anywhere, no gate, verification unchanged)
+//   · 'off'       is a TRUE no-op for VERIFICATION (no Lean block, no gate) and for the daily line
+//                 under the default initiative; `leanInitiative:'eager'` is the one exception that
+//                 still injects the DAILY line (the two knobs are independent axes — see §17).
 //   · 'encourage' injects the Lean section into the VERIFICATION prompt AND the ordinary work
 //                 round, and — the actual point of the feature — turns the voting prompt into a
 //                 FIDELITY review once a Lean run has passed
@@ -1418,6 +1420,33 @@ section('23 leanInitiative: off/normal/eager in the work prompt, formalVerify un
   const pv2 = await N.callTool('vibe_v4_status', {})
   assert(/leanAsync=false/.test(pv2.params) && /leanInitiative=off/.test(pv2.params), '★ `/v4 set leanAsync=false leanInitiative=off` coerces the raw strings through normalizeParam')
   assert(!/【顺手形式化/.test(await N.prompts('normal', 'r-1')), '★ and leanInitiative=off set through the slash command really silences the proactive line')
+}
+
+// ===============================================================
+// 17. audit-B #2: `leanInitiative` is an INDEPENDENT axis from `formalVerify` — `eager` asks for the
+//     daily line even with `formalVerify:'off'` (v5 uses the same rule); 'off' never injects it while
+//     the VERIFICATION prompt keeps following `formalVerify`.
+// ===============================================================
+section('17 leanInitiative=eager injects the daily line even with formalVerify=off (independent axes)')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'off', leanInitiative: 'eager' })
+  const daily = await N.prompts('normal', 'r-1')
+  assert(/【顺手形式化（主动（leanInitiative=eager））】/.test(daily), '★ eager + formalVerify=off STILL injects the daily line (the header names the initiative, not a verification mode)')
+  assert(/判断标准：① 有价值或可能复用/.test(daily) && /先 vibe_v4_lean_lib 查已有库/.test(daily), '★ …with the three criteria and the look-up-first rule')
+  const verifyOff = await N.prompts('verify', 'r-1', { target: 'p-eager-off', stage: 'independent' })
+  assert(!/顺手形式化/.test(verifyOff) && !/【Lean 形式化验证/.test(verifyOff), '★ …while the VERIFICATION prompt stays a true no-op under formalVerify=off')
+  // the default initiative is not eager: off mode injects nothing (unchanged behaviour)
+  await N.callTool('vibe_v4_set', { leanInitiative: 'normal' })
+  assert(!/顺手形式化/.test(await N.prompts('normal', 'r-1')), '★ leanInitiative=normal + formalVerify=off injects NO daily line')
+  // 'off' silences the daily line even when formalVerify asks for Lean, without touching verification
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanInitiative: 'off' })
+  assert(!/顺手形式化/.test(await N.prompts('normal', 'r-1')), '★ leanInitiative=off removes the daily line even with formalVerify=encourage')
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(await N.prompts('verify', 'r-1', { target: 'p-eager-off', stage: 'independent' })), '★ …and the verification prompt is untouched by the initiative knob')
+  // with formalVerify on, the header names the verification mode again (not the eager wording)
+  await N.callTool('vibe_v4_set', { formalVerify: 'require', leanInitiative: 'eager' })
+  assert(/【顺手形式化（强制）】/.test(await N.prompts('normal', 'r-1')), '★ with formalVerify on, the header names the verification mode (require → 强制)')
+  await N.callTool('vibe_v4_set', { formalVerify: 'off', leanInitiative: 'normal' })
 }
 
 // ===============================================================

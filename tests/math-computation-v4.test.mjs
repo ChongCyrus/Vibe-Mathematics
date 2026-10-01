@@ -138,6 +138,23 @@ function makeSubprocess(state) {
       const out = state.stdoutBytes > 0 ? 'x'.repeat(state.stdoutBytes) : 'ran-ok\n'
       record.argv = spec.argv.slice()
       state.runs.push(record)
+      // Defer/release hook (§16): the FIRST engine run is held INSIDE spawn until the test releases
+      // it, so a second session's call can be driven to completion while the first is in flight.
+      if (state.holdFirstRun) {
+        state.holdFirstRun = false
+        state.heldRuns++
+        let release
+        const gate = new Promise(r => { release = r })
+        state.releaseFirst = () => release()
+        return {
+          done: gate.then(() => ({ exitCode: 0, signal: null })),
+          collected: {
+            stdout: { readFrom: () => ({ text: out, nextOffset: out.length, lossy: false }) },
+            stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+          },
+          terminate() {},
+        }
+      }
       return collect(out, '')
     },
   }
@@ -158,11 +175,14 @@ function makeHost(opts = {}) {
     argError: opts.argError || null,
     subprocessAvailable: opts.subprocessAvailable !== false,
     resolveOnly: !!opts.resolveOnly,
-    spawns: [], terminated: [], runs: [], shellCalls: [],
+    spawns: [], terminated: [], runs: [], shellCalls: [], holdFirstRun: !!opts.holdFirstRun, heldRuns: 0, releaseFirst: null,
   }
   const subprocess = makeSubprocess(state)
   const subprocessSurface = state.resolveOnly ? { resolveExecutable: subprocess.resolveExecutable } : subprocess
   const ROOT = { id: 'sess-A', session: { id: 'sess-A', header: { cwd: WS, parentSession: undefined } } }
+  // A SECOND root agent on the same ctx: v4 keys sessions by root agent id, so this is a second
+  // session with its OWN `params` (audit C #2 needs two sessions in one plugin instance).
+  const ROOT2 = { id: 'sess-B', session: { id: 'sess-B', header: { cwd: WS, parentSession: undefined } } }
   const ctx = {
     get(name) { return name === 'subprocess' && state.subprocessAvailable ? subprocessSurface : undefined },
     on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
@@ -177,7 +197,7 @@ function makeHost(opts = {}) {
       async sendMessage(parent, childId, blocks) { followups.push({ childId, blocks }) },
       async interrupt() {},
     },
-    agents: { roots() { return [] }, get(id) { return id === 'sess-A' ? ROOT : undefined } },
+    agents: { roots() { return [] }, get(id) { return id === 'sess-A' ? ROOT : (id === 'sess-B' ? ROOT2 : undefined) } },
     fs: {
       async resolve(rel, o) { const b = (o && o.cwd) || WS; return { targetKey: (typeof rel === 'string' && isAbsolute(rel)) ? rel.replace(/\//g, '\\') : join(b, ...String(rel).split('/')) } },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
@@ -188,7 +208,7 @@ function makeHost(opts = {}) {
   }
   const projectRoot = join(WS, 'VibeMath', 'Projects', 'default')
   const h = {
-    WS, ctx, state, ROOT, projectRoot, toolRegs, spawns, followups, cmdRegs, listeners,
+    WS, ctx, state, ROOT, ROOT2, projectRoot, toolRegs, spawns, followups, cmdRegs, listeners,
     async cmd(rawInput) { const c = cmdRegs.find(x => x.name === 'v4'); if (!c) throw new Error('no /v4'); return await c.handler({ agent: ROOT, rawInput }) },
     async callTool(n, a, agent) { const s = toolRegs.find(x => x.name === n); if (!s) throw new Error('no tool ' + n); return JSON.parse(await s.execute(a || {}, { agent: agent || ROOT })) },
     async math(a) { return await h.callTool('math_computation', a) },
@@ -538,8 +558,9 @@ section('15 P2a: scriptPath/scriptHash, the archive→edit→re-run workflow, an
   writeFileSync(src, 'print(2)\n')   // the agent edits the archived/original code
   const f2 = await h.math({ op: 'run', engine: 'python', mode: 'file', file: 'tmp/workflow.py' })
   assert(f2.ok === true, 'the edited script re-runs')
-  assert(f2.receipt.dir !== firstDir && f2.attempt >= 2 && /attempts\//.test(String(f2.receipt.dir)), '★ the re-run is a NEW attempt directory (append-only: attempts/<n>), never an overwrite (' + f2.receipt.dir + ')')
+  assert(f2.receipt.dir !== firstDir && f2.attempt === 2 && /attempts\/2$/.test(String(f2.receipt.dir)), '★ the re-run is exactly attempt 2 in a NEW directory (append-only: attempts/<n>), never an overwrite (' + f2.receipt.dir + ')')
   assert(f2.scriptChanged === true, '★ scriptChanged:true — the receipt for the current code differs from the previous one')
+  assert(!!f2.previousReceipt && String(f2.previousReceipt.scriptHash) === String(firstHash), '★ the RETURN SHELL also carries previousReceipt{runId,attempt,scriptHash} (not only the receipt file)')
   assert(Array.isArray(f2.warnings) && f2.warnings.some(w => w.code === 'SCRIPT_CHANGED_SINCE_LAST_RECEIPT'), '★ warnings carry SCRIPT_CHANGED_SINCE_LAST_RECEIPT')
   assert(String(f2.scriptHash) !== String(firstHash), '★ the new attempt records the NEW scriptHash')
   const rec2 = JSON.parse(readIf(join(h.projectRoot, f2.receipt.dir, 'receipt.json')))
@@ -554,6 +575,42 @@ section('15 P2a: scriptPath/scriptHash, the archive→edit→re-run workflow, an
   // …and the dynamic availability line carries it too (the module appends it)
   const prompt = await h.prompts('normal', 'r-1')
   assert(prompt.indexOf(MODULE.MATH_ARCHIVE_WORKFLOW_LINE.trim()) !== -1, '★ the injected availability line carries the archive-workflow rule as well')
+  h.cleanup()
+}
+
+// ===============================================================
+section('16 audit C #2: per-session module instances — two sessions are fully isolated (v5 structure)')
+{
+  // `holdFirstRun` defers the FIRST engine run inside the subprocess seam, so the test can prove
+  // isolation with a REAL interleaving: A is mid-flight while B runs to completion.
+  const h = await live({ installed: ['python3', 'python', 'octave'], holdFirstRun: true })
+  const setA = await h.callTool('vibe_v4_set', { mathEngines: ['python'], mathMode: 'typed+shell' }, h.ROOT)
+  const setB = await h.callTool('vibe_v4_set', { mathEngines: ['octave'], mathMode: 'typed' }, h.ROOT2)
+  assert(setA.ok === true && setB.ok === true, 'precondition: both sessions accepted their own math parameters')
+  const stA = await h.callTool('vibe_v4_status', {}, h.ROOT)
+  const stB = await h.callTool('vibe_v4_status', {}, h.ROOT2)
+  assert(/mathEngines=python(,|$)/.test(stA.params) && /mathEngines=octave(,|$)/.test(stB.params), 'precondition: the two sessions really hold different allow-lists (' + stA.params.match(/mathEngines=[^,]*/)[0] + ' vs ' + stB.params.match(/mathEngines=[^,]*/)[0] + ')')
+  // A starts and is HELD inside spawn ...
+  const pa = h.callTool('math_computation', { op: 'run', engine: 'auto', mode: 'code', code: 'print("A")\n' }, h.ROOT)
+  for (let i = 0; i < 400 && !h.state.releaseFirst; i++) await sleep(5)
+  assert(!!h.state.releaseFirst && h.state.heldRuns === 1, 'precondition: session A\'s engine run is held inside the subprocess seam')
+  // ... B completes WHILE A is still in flight (no cross-session blocking, no shared slot)
+  const rb = await h.callTool('math_computation', { op: 'run', engine: 'auto', mode: 'code', code: 'print("B")\n' }, h.ROOT2)
+  assert(rb.ok === true && rb.engine === 'octave', '★ B completed with its OWN engine (octave) while A was held (' + rb.engine + ')')
+  h.state.releaseFirst()
+  const ra = await pa
+  assert(ra.ok === true && ra.engine === 'python', '★ A resumed and still used its OWN engine (python), unaffected by B\'s in-flight call (' + ra.engine + ')')
+  assert(ra.receipt.dir !== rb.receipt.dir, '★ the two calls archived into DIFFERENT run dirs (each session its own evidence): ' + ra.receipt.dir + ' vs ' + rb.receipt.dir)
+  const recA = JSON.parse(readIf(join(h.projectRoot, ra.receipt.dir, 'receipt.json')))
+  const recB = JSON.parse(readIf(join(h.projectRoot, rb.receipt.dir, 'receipt.json')))
+  assert(JSON.stringify(recA.engine).indexOf('python') !== -1 && JSON.stringify(recB.engine).indexOf('octave') !== -1, '★ each receipt records its OWN engine (no "current session" slot to clobber)')
+  assert(JSON.stringify(recA.argv).indexOf('python') !== -1 && JSON.stringify(recB.argv).indexOf('octave') !== -1, '★ each receipt echoes its own argv')
+  const engineSpawns = h.state.spawns.filter(s => /python|octave/.test(String(s.argv[0])))
+  const norm = p => String(p).replace(/\\/g, '/').replace(/\/$/, '')
+  assert(engineSpawns.length >= 2 && engineSpawns.every(s => norm(s.cwd) === norm(h.projectRoot)), '★ every engine spawn went through its own session\'s project-root accessor (' + engineSpawns.length + ' spawns, cwd=' + norm(engineSpawns[0] && engineSpawns[0].cwd) + ')')
+  // Session B is in `typed` mode; session A must not inherit that policy either.
+  const cliA = await h.callTool('math_computation', { op: 'run', engine: 'cli', mode: 'code', code: '1\n', cli: { command: 'node', argv: [] } }, h.ROOT)
+  assert(cliA.code !== 'MATH_REFUSED' || !/typed/.test(String(cliA.message || '')), '★ session A is NOT in B\'s typed mode (cli refusal is not inherited)')
   h.cleanup()
 }
 
