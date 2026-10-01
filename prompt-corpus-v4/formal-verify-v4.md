@@ -58,8 +58,10 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题
 
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
-  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v4_lean_lib 显示 passed 再审。
+  · 工具：vibe_v4_lean_run（执行/入队）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库与 jobs）· vibe_v4_lean_read（读归档原文逐字复用）
+  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。复用已归档内容：`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已加入编译搜索路径）。项目工作文件 Formal/<对象 id>.lean 只是归档用，**不是**模块路径，不要 import 它。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision='blocked' 时必须写明 note）。
   · 归档可复用定义/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。
@@ -85,7 +87,14 @@ New items:
   (no new messages)
 
 
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -94,7 +103,14 @@ Reply with ONLY a JSON object:
 
 ```text
 Resident researcher r-1 — CHECKPOINT（团队空闲，请由你们继续自主推进）。当前项目尚未解决（除非你已确认）。团队在等待有人继续：请**继续解决这个问题**——读他人的库对齐、推进某个子问题/引理/方法、尝试一条路线；或向团队发消息（input）、提议任务（propose_task）让大家分工。若你确实认为问题已解决、或已彻底无路可走，才提议开会（propose_meeting）让团队表决/商量、或声明 solved=true。默认立场是：**请推进，而不是停在原地。**
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you will do / what you advanced this round>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -104,7 +120,14 @@ Reply with ONLY a JSON object:
 ```text
 [核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（<VIBEMATH>/Projects/default/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。
 `facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 ```
 
 ## [6] verify · require/verify
@@ -122,8 +145,10 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题
 
 【Lean 形式化验证（强制模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
-  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v4_lean_lib 显示 passed 再审。
+  · 工具：vibe_v4_lean_run（执行/入队）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库与 jobs）· vibe_v4_lean_read（读归档原文逐字复用）
+  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。复用已归档内容：`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已加入编译搜索路径）。项目工作文件 Formal/<对象 id>.lean 只是归档用，**不是**模块路径，不要 import 它。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。
   · 归档可复用定义/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。
@@ -152,8 +177,10 @@ Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题
 
 【Lean 形式化验证（强制模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
-  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v4_lean_lib 显示 passed 再审。
+  · 工具：vibe_v4_lean_run（执行/入队）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库与 jobs）· vibe_v4_lean_read（读归档原文逐字复用）
+  · 工作目录：Formal/（相对项目根）；可复用定义放 <VIBEMATH>/Formal/Lib/，已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v4_lean_lib 查重。复用已归档内容：`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已加入编译搜索路径）。项目工作文件 Formal/<对象 id>.lean 只是归档用，**不是**模块路径，不要 import 它。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
   · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。
   · 归档可复用定义/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。
@@ -179,7 +206,14 @@ New items:
   (no new messages)
 
 
-【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -294,7 +328,14 @@ New items:
   (no new messages)
 
 
-【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 
@@ -311,7 +352,7 @@ Reply with ONLY a JSON object:
 ## [16] hint · lean_lib hint
 
 ```text
-复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'。
+复用优先：先在 Lib/ 里找现成定义（vibe_v4_lean_read 可取原文逐字复制）；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'；后台编译进度看 jobs。
 ```
 
 ## [17] meeting · meeting/first speaker (no prior speech)
@@ -354,7 +395,14 @@ New items:
   [facilitator（框架/人类信使，不是常驻成员，不要向它回信；要回话请用本轮回执的 "input" 或 vibe_v4_send_message {to:"all"}）] 请优先核对引理 B 的假设条件。
 
 
-【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 ```
@@ -407,7 +455,14 @@ New items:
   (no new messages)
 
 
-【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+【顺手形式化（强制）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
+    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用
+    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），
+    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的
+    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。
 Reply with ONLY a JSON object:
 {"summary":"<what you did / decided this round, 1-3 sentences>","input":"<optional: a message to the whole team, or \"\">","solved":false,"propose_verify":"<id|null>","propose_meeting":"<agenda|null>","propose_task":"<task title|null>","task_desc":"<optional: why this task matters / what it covers|null>","claim_task":"<task id|null>","task_done":"<task id|null>","contextPct":40,"formal":{"target":"<对象 id>","decision":"used|blocked|defect","file":"Formal/<对象 id>.lean","note":"难度判断/阻塞原因/具体偏差"}}
 

@@ -125,8 +125,11 @@ const plugin = mod.default || mod
 plugin.apply(ctx)
 
 console.log('tool registrations:', toolRegs.length)
-// 33 = 原有 30 个 + Lean 形式化三件套（vibe_math_lean_run / _archive / _lib，无条件注册）
-assert(toolRegs.length === 33, '33 tools registered once (not per session)')
+// 35 = 原有 30 个 + Lean 三件套（vibe_math_lean_run / _archive / _lib）+ 增量/异步新增的两个只读工具
+// （vibe_math_lean_read / _lean_job）；五个都无条件注册，两条注册路径都有。
+assert(toolRegs.length === 35, '35 tools registered once (not per session)')
+assert(['vibe_math_lean_read', 'vibe_math_lean_job'].every(n => toolRegs.some(t => t.name === n)),
+  'the two new read-only Lean tools are registered unconditionally')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')
 
 async function callTool(name, args, agent) {

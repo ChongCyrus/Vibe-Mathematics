@@ -147,17 +147,17 @@ flowchart TB
 排除不了共同误解；Lean 通过是**机器核对**。于是剩下的唯一不确定项缩小为一个人能有效审查的问题：
 **Lean 代码里的定义 / 对象 / 条件 / 假设 / 结论，是否与命题原文完全一致（忠实性）？**
 
-- **开关 `formalVerify`（四个架构同名，默认 `'off'`）**：`'off'` 是**真正的无操作**（提示词里不出现任何 Lean 内容、不写入任何形式化状态、验证流程与门禁完全不变；三个工具仍注册可用，persona 始终列出它们，否则这个开关不可发现、也无从打开）；`'encourage'` **鼓励但不强制**（验证时按实现难度自行决定是否形式化，一旦 Lean 通过，审查重心转为忠实性，**不设门禁**）；`'require'` **强制**——真/假结论必须满足「**Lean 已通过**」或「**显式记录了阻塞原因**」，否则本次裁定不生效（记为未定论、原因 `formal-required`、写入「形式化待办」）。相关参数：`leanCommand`（默认 `lean`）、`leanArgs`（配合 `lake env lean`）、`leanTimeoutMs`（默认 120s）。
+- **开关 `formalVerify`（四个架构同名，默认 `'off'`）**：`'off'` 是**真正的无操作**（提示词里不出现任何 Lean 内容、不写入任何形式化状态、验证流程与门禁完全不变；五个工具仍注册可用，persona 始终列出它们，否则这个开关不可发现、也无从打开）；`'encourage'` **鼓励但不强制**（验证时按实现难度自行决定是否形式化，一旦 Lean 通过，审查重心转为忠实性，**不设门禁**）；`'require'` **强制**——真/假结论必须满足「**Lean 已通过**」或「**显式记录了阻塞原因**」，否则本次裁定不生效（记为未定论、原因 `formal-required`、写入「形式化待办」）。相关参数：`leanCommand`（默认 `lean`）、`leanArgs`（配合 `lake env lean`）、`leanTimeoutMs`（默认 120s）。
 
 - **⚠️ 忠实性缺陷 ≠ 命题为假（重要）**：Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命题想说的**。表决者逐条核对后发现 Lean 代码与命题原文不一致（写窄 / 写宽 / 换了对象 / 漏了条件）时：**不得投 0**（投 0 的含义是"该命题为假"——那会把"形式化不合格"记成"命题被证伪"，v5 的全 0 一致规则下甚至写进 `Verified/` 标注**假**，用来求真的机制反而伪造出一个错误的否定结论）；正确做法是投一个严格介于 0 与 1 之间的值（记为弃权）+ 用回执 `formal:{decision:'defect', note:'<具体偏差>'}` 记录偏差，框架随即**撤回这条证明的「已通过」状态**（降级为 `attempted`、删除 `Verified/Lean/<id>.lean`、宿主删不掉时改写为"已撤回"说明、写入「形式化待办」），`require` 档下本次裁定不定论（`encourage` 档没有门禁，不得声称框架会强制搁置）；只有表决者**独立于这份 Lean 代码**也能确定命题为假（并能给出独立理由）时才投 0。
 - **回执通道与三条硬要求**（不调用 Lean 工具的成员也能留下判断，`require` 档下必须留）：回执字段 `"formal": {"target":"<对象id>", "decision":"used|blocked|defect", "file":"Formal/<对象id>.lean", "note":"难度判断/阻塞原因/具体偏差"}`；`decision='blocked'`/`'defect'` 时 **`note` 必填**（缺则整条拒绝），`used` 只把对象记为 `attempted`，`off` 档下该通道**失效**（否则 `off` 就不是真正的无操作）。另外三条：注入文本里的工具名一律**全称**（`<prefix>_lean_archive` 不是 `lean_archive`——缩写不是注册名）；归档可复用定义/引理**前先跑通**，跑不通不许进库；**工具链缺失**（`LEAN_NOT_FOUND` 解析不到可执行文件 / `NO_SUBPROCESS` 宿主没有 subprocess 服务）时把代码写下来归档并在 `note` 写明"宿主无 Lean 工具链"——这算显式阻塞原因，门禁据此放行，不会因为装不了 Lean 而卡死。
 
 - **归档位置**：`<VibeMath 根>/Formal/Lib|Proved/`（**跨项目**可复用定义与已证引理，各带 `Index.md` 索引，写新定义前先查这里）；项目内 `Formal/<对象id>.lean` 是对象的工作文件（旁边有 `Index.md` 与 `require` 档的 `TODO.md`），`Verified/Lean/<对象id>.lean` 是**归档证明**（v5 在 `Projects/<项目>/Institutes/<所>/` 下）。
 
-- **三个工具（每个架构一套，前缀跟随各自命名）**：`<prefix>_lean_run` 在宿主 `subprocess` 服务上执行 Lean，返回 `{ok, exitCode, ms, stdout, stderr}`，**绝不抛异常**（缺工具链 → `LEAN_NOT_FOUND`、超时 → `LEAN_TIMEOUT`、越界路径 → 拒绝）；`<prefix>_lean_archive`：`kind='def'/'lemma'` 归档到**跨项目** `Formal/Lib|Proved`，`kind='proof'` 写 `Formal/<target>.lean` 并在运行通过时同时写 `Verified/Lean/<target>.lean` 标记该对象为 Lean 通过，`kind='blocked'` 记录显式难度判断/阻塞原因（**原因必填**）；`<prefix>_lean_lib` 重建并返回三处索引与逐对象状态，**写新定义前先查重复用**。例如 v5 是 `vibe_v5_lean_run` / `vibe_v5_lean_archive` / `vibe_v5_lean_lib`，v2/v3 是 `vibe_math_lean_*`，v4 是 `vibe_v4_lean_*`。
+- **五个工具（每个架构一套，前缀跟随各自命名）**：`<prefix>_lean_run` 在宿主 `subprocess` 服务上执行 Lean（`leanAsync=true` 时入队即返回 `{async:{jobId,state}}`，否则同步返回 `{ok, exitCode, ms, stdout, stderr}`），**绝不抛异常**（缺工具链 → `LEAN_NOT_FOUND`、超时 → `LEAN_TIMEOUT`、越界路径 → 拒绝）；`<prefix>_lean_archive`：`kind='def'/'lemma'` 归档到**跨项目** `Formal/Lib|Proved`（同内容去重），`kind='proof'` 写 `Formal/<target>.lean` 并**只在作业 `settled(ok)` 时**写 `Verified/Lean/<target>.lean` 标记该对象为 Lean 通过，`kind='blocked'` 记录显式难度判断/阻塞原因（**原因必填**）；`<prefix>_lean_lib` 重建并返回三处索引、逐对象状态与后台作业，**写新定义前先查重复用**；`<prefix>_lean_read` 取回归档原文（逐字复用，限 `Formal/Lib|Proved`、64KB）；`<prefix>_lean_job` 查看/等待后台编译作业（只读）。例如 v5 是 `vibe_v5_lean_*`，v2/v3 是 `vibe_math_lean_*`，v4 是 `vibe_v4_lean_*`（各有 run / archive / lib / read / job 五个）。
 - **边界（有意为之）**：框架**不内置 Lean**（不装工具链、不下载依赖；工具链缺失时优雅降级并如实记录）；框架**不判断忠实性**（那是代理/人审查并投票的对象，框架只负责把审查焦点**换成**忠实性）；**Lean 通过 ≠ 命题为真**——它只表示"这段形式化代码通过了内核检查"。
 
-完整契约（参数、路径、状态迁移、提示词语义、门禁位置、索引格式、测试要求）见 [`docs/formal-verification.md`](docs/formal-verification.md)。四个预设的 persona（主代理收到的提示词）都完整列出了这三个工具与四个参数，并且 `prefix` 与 `text` 两个块逐行一致（只允许第 0 行不同）；这一层由 [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) 与 [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) 守护——加入本特性时正是在四个预设里发现了"工具已注册、persona 从未列出"的缺陷（详见随包发布说明）。
+完整契约（参数、路径、状态迁移、提示词语义、门禁位置、索引格式、测试要求）见 [`docs/formal-verification.md`](docs/formal-verification.md)。四个预设的 persona（主代理收到的提示词）都完整列出了这五个工具与八个参数，并且 `prefix` 与 `text` 两个块逐行一致（只允许第 0 行不同）；这一层由 [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) 与 [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) 守护——加入本特性时正是在四个预设里发现了"工具已注册、persona 从未列出"的缺陷（详见随包发布说明）。
 
 ---
 
@@ -515,13 +515,20 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `formalVerify` | `'off'` | 四套 | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
 | `leanCommand` | `'lean'` | 四套 | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | `[]` | 四套 | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 四套 | 单次 Lean 运行的上限（毫秒） |
+| `leanTimeoutMs` | `120000` | 四套 | 单次 Lean 运行的上限（毫秒）（异步作业同样用它作单次预算） |
+| `leanAsync` | `true` | 四套 | Lean 编译模式：`true`（默认）= 后台队列，`lean_run` / `lean_archive{run:true}` 入队即返回 `async.jobId`，成员不阻塞；`false` = 同步 await（旧语义逐字保留） |
+| `leanJobsMaxParallel` | `1` | 四套 | 后台编译并发上限（默认 1 = 串行；调大即并行） |
+| `leanInitiative` | `'normal'` | 四套 | **日常形式化主动性**：`off` / `normal`（默认，顺手形式化）/ `eager`（更主动）。与 `formalVerify`（验证时的要求强度）**是两件事** |
+| `leanSearchPaths` | `[]` | 四套 | 额外 Lean 搜索根（先注入它们、再注入自动的 `<VibeMath 根>`；`leanArgs` 里已有 `--search-path`/`-R`/`--root` 时不注入） |
 | `finalPaper` | `true` | 四套 | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
 | `paperFormat` | `both` | 四套 | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
 | `paperLanguage` | `zh` | 四套 | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
 | `paperCompilePdf` | `true` | 四套 | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
 | `paperLatexCommand` | `''` | 四套 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
 | `paperEditor` | v4 `office`；v5 `academician` | v4·v5 | 定稿代表。v4：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明）；v5：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
+
+- **异步是默认**：`leanAsync=true` 时编译在后台队列里跑，`lean_run` / `lean_archive{run:true}` 立即返回；`leanAsync=false` 才回到同步等待。
+- **只有"落地为通过"才算通过**：作业必须 `settled` 且 exit 0，**并且**编译期间文件内容哈希与构建上下文都没变，才置 `passed` / 写 `Verified/Lean/<id>.lean`；其余（排队 / 失败 / 超时 / 中断 / 内容或上下文已变）一律停在 `attempted`。
 
 ### v2（概率驱动 · 经典）专属参数
 
@@ -613,7 +620,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
 - **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
 - **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 57`（39 套件 + 18 探针/变体）≈3.5 min；哪 18 项随包发布、哪些仅仓库见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
-- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（208 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
+- **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（260 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
 - **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受

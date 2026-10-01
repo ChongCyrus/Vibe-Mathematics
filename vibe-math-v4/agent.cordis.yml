@@ -61,14 +61,16 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
         - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, leanAsync, leanInitiative, leanSearchPaths, leanJobsMaxParallel, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain; leanAsync (true|false, default true) queues each compile as a background job (the tool returns {async:{jobId,state}} and the result lands later), leanInitiative (off|normal|eager, default normal) says how PROACTIVE the group is while working (independent of what formalVerify requires at voting time), leanSearchPaths adds extra compiler search roots (injected BEFORE the automatic VibeMath root), and leanJobsMaxParallel (default 1) caps concurrent compiles. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
         - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
         - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
         - vibe_v4_list_members — list residents.
-        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib — Lean formal verification
-          (execute / archive / list the reuse library). Residents use them too; they work in every mode.
+        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib / vibe_v4_lean_read / vibe_v4_lean_job
+          — Lean formal verification (execute or ENQUEUE / archive / list the reuse library + background jobs /
+          read one archived library file verbatim / check or wait for a background job). Residents use them
+          too; they work in every mode.
         - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
           objects, recorded blockers, formalization TODO, library paths).
         - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
@@ -103,6 +105,15 @@
           explicit, reasoned blocker record; the run is never wedged by it).
         - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
           definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
+          definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
+          (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+        - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
+          necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
+          with the difficulty instead of hiding uncertainty behind a formalization.
+        - Compiles are BACKGROUND JOBS by default: a queued job is not a verification. An object only becomes
+          Lean-passed once its job settles green; the result is announced in the next prompt and visible via
+          vibe_v4_lean_lib.jobs / vibe_v4_lean_job (waitMs).
         - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
           (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
           reported as LEAN_NOT_FOUND and still lets the code be written and archived.
@@ -157,14 +168,16 @@
       Main controls (recommended flow: configure FIRST, then start):
         - vibe_v4_configure {project?, problem?, params?} — create/configure the project (name, problem, params) WITHOUT starting a run; set everything here first.
         - vibe_v4_start {problem?, residentCount?, seedDirections?} — begin the run (spawn residents, brainstorm). If problem was configured, omit it.
-        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
+        - vibe_v4_set {residentCount, compactThreshold, compactAfterRounds, meetingKeepEvery, maxParallel, activityTimeoutMs, stallAutoMeetingMs, verdictMaxRounds, provider, model, residentPersona, toolAllow, toolDeny, formalVerify, leanCommand, leanArgs, leanTimeoutMs, leanAsync, leanInitiative, leanSearchPaths, leanJobsMaxParallel, finalPaper, paperFormat, paperLanguage, paperCompilePdf, paperEditor, paperLatexCommand} — tune params (persisted to the settings file). provider/model override the residents' LLM route (empty = they inherit YOUR model/provider); toolAllow/toolDeny are per-resident tool permissions (empty = they inherit all tools). stallAutoMeetingMs is the stalled-group auto-sync-meeting threshold (分级保活 B). formalVerify (off|encourage|require, default off) enables Lean formal verification; leanCommand/leanArgs/leanTimeoutMs configure the toolchain; leanAsync (true|false, default true) queues each compile as a background job (the tool returns {async:{jobId,state}} and the result lands later), leanInitiative (off|normal|eager, default normal) says how PROACTIVE the group is while working (independent of what formalVerify requires at voting time), leanSearchPaths adds extra compiler search roots (injected BEFORE the automatic VibeMath root), and leanJobsMaxParallel (default 1) caps concurrent compiles. The FINAL PAPER is tuned by finalPaper (true|false, default true), paperFormat (both|md|tex), paperLanguage (zh|en), paperCompilePdf (true|false), paperEditor (office|resident:<id>, default office = the human/assistant side finalises) and paperLatexCommand.
         - vibe_v4_resume / vibe_v4_pause / vibe_v4_abort / vibe_v4_status / vibe_v4_report.
         - vibe_v4_message {to|all, content} — inject a message to a resident (human/assistant intervention).
         - vibe_v4_meeting {agenda} — force a meeting.
         - vibe_v4_add_member {direction?} / vibe_v4_remove_member {id} — add / close a resident.
         - vibe_v4_list_members — list residents.
-        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib — Lean formal verification
-          (execute / archive / list the reuse library). Residents use them too; they work in every mode.
+        - vibe_v4_lean_run / vibe_v4_lean_archive / vibe_v4_lean_lib / vibe_v4_lean_read / vibe_v4_lean_job
+          — Lean formal verification (execute or ENQUEUE / archive / list the reuse library + background jobs /
+          read one archived library file verbatim / check or wait for a background job). Residents use them
+          too; they work in every mode.
         - vibe_v4_formal_report — human-readable Lean formal-verification mirror (mode, Lean-passed
           objects, recorded blockers, formalization TODO, library paths).
         - vibe_v4_prompts {which: brainstorm|normal|heartbeat|meeting|verify|coreRules, member?, target?, stage?} — read the exact prompt text a resident would receive (prompt auditing; prompt text is the product).
@@ -199,6 +212,15 @@
           explicit, reasoned blocker record; the run is never wedged by it).
         - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
           definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
+          definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
+          (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+        - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
+          necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
+          with the difficulty instead of hiding uncertainty behind a formalization.
+        - Compiles are BACKGROUND JOBS by default: a queued job is not a verification. An object only becomes
+          Lean-passed once its job settles green; the result is announced in the next prompt and visible via
+          vibe_v4_lean_lib.jobs / vibe_v4_lean_job (waitMs).
         - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
           (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
           reported as LEAN_NOT_FOUND and still lets the code be written and archived.

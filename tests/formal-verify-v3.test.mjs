@@ -55,6 +55,7 @@ const wakes = []         // { childId, rootId, prompt }
 const interrupts = []
 const leanRuns = []      // { argv, file, cwd, graceMs }
 const terminated = []
+const disposers = []
 const roots = []
 let rootSeq = 0
 let subprocessAvailable = true
@@ -187,7 +188,7 @@ const ctx = {
     return undefined
   },
   on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
-  effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
+  effect(fn) { const d = fn(); const off = () => { if (typeof d === 'function') d() }; disposers.push(off); return off },
   logger: { info() {}, warn() {}, error() {} },
   tools: { register(spec) { toolRegs.push(spec); return () => {} } },
   commands: { register(spec) { cmdRegs.push(spec); return () => {} } },
@@ -229,6 +230,12 @@ const ctx = {
 
 const mod = await import(PLUGIN.href + '?t=' + Date.now())
 ;(mod.default || mod).apply(ctx)
+// leanAsync defaults to TRUE (background queue). The sections above guard the **synchronous** Lean
+// path verbatim, so pin leanAsync=false through the workspace-level settings file (every
+// setProject → loadSettings() picks it up). Section 9b flips it back on explicitly for the async
+// state machine. Nothing else in the suite depends on the async default.
+mkdirSync(VIBE, { recursive: true })
+writeFileSync(join(VIBE, 'vibe_math_setting.json'), '{ "leanAsync": false }\n', 'utf8')
 
 // ---------------------------------------------------------------
 // driving helpers
@@ -518,7 +525,7 @@ writeFileSync(join(toolProj, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1
   assert(/ok/.test(runGood.stdout), 'the compiler stdout is returned')
   const last = leanRuns[leanRuns.length - 1]
   assert(last.cwd.replace(/\\/g, '/') === toolProj.replace(/\\/g, '/'), 'the toolchain runs with the PROJECT root as cwd')
-  assert(last.argv.join(' ') === 'lean', 'by default the argv is just the executable (got ' + last.argv.join(' ') + ')')
+  assert(last.argv.join(' ') === 'lean --search-path ' + VIBE.replace(/\\/g, '/'), 'by default the argv is the executable + the injected search path (got ' + last.argv.join(' ') + ')')
   assert(last.graceMs === 120000, 'the default leanTimeoutMs is passed down as graceMs (' + last.graceMs + ')')
 }
 {
@@ -592,7 +599,7 @@ writeFileSync(join(toolProj, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1
   await callTool('vibe_math_set_params', { leanCommand: 'lake', leanArgs: ['env', 'lean'] }, RE)
   const runLake = await callTool('vibe_math_lean_run', { file: 'Formal/good.lean' }, RE)
   assert(runLake.ok === true, 'lake env lean works through leanCommand/leanArgs')
-  assert(leanRuns[leanRuns.length - 1].argv.join(' ') === 'lake env lean', 'the argv is [exe, ...leanArgs, file] (got ' + leanRuns[leanRuns.length - 1].argv.join(' ') + ')')
+  assert(leanRuns[leanRuns.length - 1].argv.join(' ') === 'lake env lean --search-path ' + VIBE.replace(/\\/g, '/'), 'the argv is [exe, ...leanArgs, injected --search-path] (got ' + leanRuns[leanRuns.length - 1].argv.join(' ') + ')')
   await callTool('vibe_math_set_params', { leanCommand: 'lean', leanArgs: [] }, RE)
 }
 
@@ -609,7 +616,7 @@ const provedPath = join(VIBE, 'Formal', 'Proved')
   assert(!existsSync(join(toolProj, 'Formal', 'Lib', 'ZMod5.lean')), 'it is NOT duplicated inside the project tree')
   assert(defRes.run && defRes.run.ok === true, 'the reusable definition is executed on archive (run defaults to true)')
   const libIdx = readIf(join(libPath, 'Index.md'))
-  assert(/\| 名称 \| 文件 \| 类别 \| 摘要 \| 最近运行 \|/.test(libIdx), 'Lib/Index.md uses the contract columns')
+  assert(/\| 名称 \| 文件 \| 类别 \| 依赖（import） \| 摘要 \| 最近运行 \|/.test(libIdx), 'Lib/Index.md uses the contract columns (incl. the import-dependency column, spec §4.4)')
   assert(/ZMod5/.test(libIdx) && /Lib\/ZMod5\.lean/.test(libIdx) && /\| ok \|/.test(libIdx), 'Lib/Index.md lists the new definition with its run result')
   assert(!/ZMod5/.test(readIf(join(toolProj, 'Formal', 'Index.md'))), 'the global definition does not pollute the project formal index')
 }
@@ -1222,6 +1229,261 @@ section('9 the office can audit formal strength')
   assert(Array.isArray(before.todo), 'the formalization TODO is persisted alongside it')
   assert(before.records['p-blocked-ok'].status === 'blocked' && /分析学/.test(before.records['p-blocked-ok'].note), 'a blocker record keeps its reason across sessions')
   assert(existsSync(join(VIBE, 'Formal', 'Proved', 'Index.md')) && existsSync(join(libPath, 'Index.md')), 'both global indexes are framework-maintained')
+}
+
+// ===============================================================
+// 9b. Lean 增量 + 异步（spec §1–§4 + 修订 §1–§5）：与 v2 同一套断言强度
+// ===============================================================
+section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性/恢复/卸载')
+{
+  const H = mod.__testHelpers
+  const slash = (s) => String(s == null ? '' : s).replace(/\\/g, '/')
+  const SAME = (a, b) => slash(a) === slash(b)
+  const formalOf2 = (proj) => JSON.parse(readIf(join(projRoot(proj), 'State', 'formal.json')) || '{}')
+  const jobFile = (proj, id) => join(projRoot(proj), 'Formal', 'Jobs', id + '.json')
+  const readJob = (proj, id) => JSON.parse(readIf(jobFile(proj, id)) || '{}')
+  const vibeCmd = async (rawInput, root) => JSON.parse(await cmdRegs[0].handler({ rawInput, agent: root }))
+  const findJob = async (proj, id, states, tries = 100, ms = 60) => {
+    for (let i = 0; i < tries; i++) { const r = readJob(proj, id); if (r.state && states.indexOf(r.state) !== -1) return r; await sleep(ms) }
+    return undefined
+  }
+
+  // ── 参数：默认值/归一化（字符串 'false' 绝不能滑过去）────────────────────────────
+  const rp = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-params' }, rp)
+  await callTool('vibe_math_set_params', { leanAsync: true }, rp)
+  const bad = await callTool('vibe_math_set_params', { leanAsync: 'false' }, rp)
+  assert(bad.params.leanAsync === true, '★★★ leanAsync="false" (a STRING) does not slip through the `else out[k]=v` tail: it falls back to the boolean default')
+  const wp = await callTool('vibe_math_set_params', { leanInitiative: 'banana', leanJobsMaxParallel: 0, leanSearchPaths: 'not-an-array' }, rp)
+  assert(wp.params.leanInitiative === 'normal', 'leanInitiative rejects an unknown mode back to normal')
+  assert(wp.params.leanJobsMaxParallel === 1, 'leanJobsMaxParallel floors at 1 (never 0)')
+  assert(Array.isArray(wp.params.leanSearchPaths) && wp.params.leanSearchPaths.length === 0, 'leanSearchPaths rejects a non-array back to []')
+  const dd = await callTool('vibe_math_set_params', { leanSearchPaths: ['  /opt/lean-lib  ', '/opt/lean-lib', ''] }, rp)
+  assert(JSON.stringify(dd.params.leanSearchPaths) === JSON.stringify(['/opt/lean-lib']), 'leanSearchPaths trims, drops empties and de-duplicates')
+
+  // ── 纯函数：搜索路径计划（修订 §2）与指纹（修订 §4）──────────────────────────────
+  const planDefault = H.leanSearchPathPlan([], [], '/root/vm')
+  assert(JSON.stringify(planDefault.paths) === JSON.stringify(['/root/vm']) && planDefault.inject.length === 2, '★ the default plan injects exactly the automatic root')
+  const planExtra = H.leanSearchPathPlan(['env', 'lean'], ['/a', '/b'], '/root/vm')
+  assert(JSON.stringify(planExtra.paths) === JSON.stringify(['/a', '/b', '/root/vm']), '★★ user leanSearchPaths come FIRST, then the automatic root')
+  assert(H.leanSearchPathPlan(['--search-path', '/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['-R', '/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--root', '/x'], ['/a'], '/root/vm').inject.length === 0, '★ an explicit --search-path/-R/--root in leanArgs suppresses all injection (user wins)')
+  const ctxA = H.leanBuildContext('lean', ['a'], ['/p'])
+  const ctxB = H.leanBuildContext('lean', ['b'], ['/p'])
+  assert(H.leanJobFingerprint('x\n', ctxA) !== H.leanJobFingerprint('x\n', ctxB), '★ the job fingerprint covers the build context (engine/args/search paths)')
+
+  // ── argv：注入在用户参数之后、文件名之前 ─────────────────────────────────────────
+  const ra = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-argv' }, ra)
+  await callTool('vibe_math_set_params', { leanAsync: false, leanCommand: 'lake', leanArgs: ['env', 'lean'] }, ra)
+  const projA = projRoot('lean-async-argv')
+  mkdirSync(join(projA, 'Formal'), { recursive: true })
+  writeFileSync(join(projA, 'Formal', 'srch.lean'), 'theorem t : 1 = 1 := rfl\n', 'utf8')
+  const runs0 = leanRuns.length
+  await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
+  const argv1 = leanRuns[leanRuns.length - 1].argv
+  assert(leanRuns.length === runs0 + 1 && JSON.stringify(argv1.slice(0, 3)) === JSON.stringify(['lake', 'env', 'lean']), 'the user leanArgs are preserved in order (lake env lean)')
+  assert(argv1[argv1.length - 2] === '--search-path' && SAME(argv1[argv1.length - 1], VIBE), '★★ --search-path + the VibeMath root are injected AFTER the user args and immediately BEFORE the file (' + JSON.stringify(argv1) + ')')
+  await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean', '--search-path', '/explicit'] }, ra)
+  await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
+  const argv2 = leanRuns[leanRuns.length - 1].argv
+  assert(argv2.filter((x) => x === '--search-path').length === 1 && argv2[4] === '/explicit', '★ an explicit --search-path is respected verbatim (no second injection) — got ' + JSON.stringify(argv2))
+  await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean'], leanSearchPaths: ['/extra1', '/extra2'] }, ra)
+  await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
+  const argv3 = leanRuns[leanRuns.length - 1].argv
+  assert(JSON.stringify(argv3.slice(-6)) === JSON.stringify(['--search-path', '/extra1', '--search-path', '/extra2', '--search-path', slash(VIBE)]), '★★ leanSearchPaths are injected first, then the automatic root (got ' + JSON.stringify(argv3.slice(-6)) + ')')
+
+  // ── 异步状态机：入队立即返回 → 心跳排空 → 只有 settled(ok) 才是通过 ───────────────
+  const rq = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-q' }, rq)
+  await callTool('vibe_math_set_params', { leanAsync: true }, rq)
+  const projQ = projRoot('lean-async-q')
+  mkdirSync(join(projQ, 'Formal'), { recursive: true })
+  writeFileSync(join(projQ, 'Formal', 'async-good.lean'), 'theorem t : 1 = 1 := rfl\n', 'utf8')
+  writeFileSync(join(projQ, 'Formal', 'async-bad.lean'), 'theorem t : 1 = 2 := by sorry\n', 'utf8')
+  const nBefore = leanRuns.length
+  const q1 = await callTool('vibe_math_lean_run', { file: 'Formal/async-good.lean', target: 'pAsync' }, rq)
+  assert(q1.ok === true && !!q1.async && q1.async.state === 'queued' && typeof q1.async.jobId === 'string', '★★ leanAsync=true returns IMMEDIATELY with {async:{jobId,state:queued}} (got ' + JSON.stringify(q1.async) + ')')
+  assert(leanRuns.length === nBefore, '★★ the tool call itself did NOT block on the compiler (enqueued, not run)')
+  assert(q1.async.jobId.indexOf('pAsync-') === 0, 'the jobId is <target>-<fingerprint[0:12]> (got ' + q1.async.jobId + ')')
+  assert(existsSync(jobFile('lean-async-q', q1.async.jobId)), 'the job record is mirrored to <project>/Formal/Jobs/<jobId>.json')
+  const rec0 = readJob('lean-async-q', q1.async.jobId)
+  assert(rec0.state === 'queued' && typeof rec0.sha256 === 'string' && typeof rec0.buildSha256 === 'string' && String(rec0.buildContext).length > 0, '★ the job record carries state + content hash + build-context hash')
+  assert((formalOf2('lean-async-q').records || {}).pAsync === undefined || formalOf2('lean-async-q').records.pAsync.status !== 'passed', '★★ a queued job never marks the object passed')
+  const done1 = await findJob('lean-async-q', q1.async.jobId, ['settled'])
+  assert(!!done1, 'the apply-level heartbeat drained the queue and settled the job (got ' + readJob('lean-async-q', q1.async.jobId).state + ')')
+  assert(done1 && done1.exitCode === 0, 'the settled record keeps exitCode 0')
+  const recAfter = (formalOf2('lean-async-q').records || {}).pAsync
+  assert(!!recAfter && recAfter.status === 'attempted' && recAfter.run && recAfter.run.ok === true, 'a green RUN lands as attempted with run.ok=true')
+  assert(!!recAfter.async && recAfter.async.state === 'settled' && recAfter.async.jobId === q1.async.jobId, 'the object record carries the async job pointer/state')
+  const q2 = await callTool('vibe_math_lean_run', { file: 'Formal/async-bad.lean', target: 'pAsyncBad' }, rq)
+  const done2 = await findJob('lean-async-q', q2.async.jobId, ['failed'])
+  assert(!!done2 && done2.exitCode === 1, '★ a red async run settles as failed with exitCode 1')
+  const recBad = (formalOf2('lean-async-q').records || {}).pAsyncBad
+  assert(!!recBad && recBad.status === 'attempted' && recBad.run.ok === false && /sorry/.test(String(recBad.run.stderrTail || '')), '★ a red async run is recorded as attempted with the compiler output kept (never passed)')
+  // 归档证明：落地前不是 passed，落地 ok 才写 Verified/Lean/
+  const q3 = await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'pAsymProof', content: 'theorem pAsymProof : 1 = 1 := rfl\n' }, rq)
+  assert(q3.ok === true && q3.async && q3.async.state === 'queued' && q3.status === 'attempted', '★★ kind=proof in async档 returns queued + attempted (NOT passed)')
+  assert(!existsSync(join(projQ, 'Verified', 'Lean', 'pAsymProof.lean')), '★★ the archived proof file does NOT exist while the job is still queued')
+  const done3 = await findJob('lean-async-q', q3.async.jobId, ['settled', 'failed'])
+  assert(!!done3 && done3.state === 'settled', 'the proof job settled green (got ' + (done3 && done3.state) + ')')
+  assert(existsSync(join(projQ, 'Verified', 'Lean', 'pAsymProof.lean')), '★★ only after settled(ok) is Verified/Lean/<id>.lean written')
+  assert(((formalOf2('lean-async-q').records || {}).pAsymProof || {}).status === 'passed', '★★ and only then does the object become passed')
+  assert(/pAsymProof/.test(readIf(join(projQ, 'Formal', 'Index.md'))), 'the index reflects the passed object')
+  // ── lean_job（修订 §3）：清单/单查/waitMs ────────────────────────────────────────
+  const listJobs = await callTool('vibe_math_lean_job', {}, rq)
+  assert(listJobs.ok === true && Array.isArray(listJobs.jobs) && listJobs.jobs.length >= 3, '★ lean_job without jobId returns the session job list')
+  assert(listJobs.jobs.every((j) => !!j.paths && typeof j.paths.receipt === 'string'), 'every listed job carries its receipt path')
+  const one = await callTool('vibe_math_lean_job', { jobId: q3.async.jobId }, rq)
+  assert(one.ok === true && one.state === 'settled' && one.passed === true && one.paths.archive === 'Verified/Lean/pAsymProof.lean', '★ lean_job {jobId} returns state/exitCode/paths and the passed verdict')
+  assert((await callTool('vibe_math_lean_job', { jobId: 'nope-000000000000' }, rq)).code === 'V3_NOT_FOUND', 'an unknown jobId is refused with a typed code')
+  const q4 = await callTool('vibe_math_lean_run', { file: 'Formal/async-bad.lean', target: 'pAsyncBad' }, rq)
+  const waited = await callTool('vibe_math_lean_job', { jobId: q4.async.jobId, waitMs: 6000 }, rq)
+  assert(waited.ok === true && waited.state !== 'queued' && waited.stillRunning === false && waited.waitedMs > 0, '★★ lean_job waitMs>0 waits for the job to leave queued/running (got ' + waited.state + ')')
+  assert((await callTool('vibe_math_lean_lib', {}, rq)).paths.searchPath === VIBE.replace(/\\/g, '/'), '★ lean_lib exposes paths.searchPath = the VibeMath root')
+  assert(Array.isArray((await callTool('vibe_math_lean_lib', {}, rq)).jobs), '★ lean_lib exposes the job list')
+
+  // ── 超时：leanTimeoutMs 是每个作业的预算，主动 terminate，绝不 passed ─────────────
+  const rt = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-timeout' }, rt)
+  await callTool('vibe_math_set_params', { leanAsync: true, leanTimeoutMs: 1000 }, rt)
+  const projT = projRoot('lean-async-timeout')
+  mkdirSync(join(projT, 'Formal'), { recursive: true })
+  writeFileSync(join(projT, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1 := rfl\n', 'utf8')
+  const termBefore = terminated.length
+  const q5 = await callTool('vibe_math_lean_run', { file: 'Formal/hang.lean', target: 'pHang' }, rt)
+  const done5 = await findJob('lean-async-timeout', q5.async.jobId, ['timeout'], 150)
+  assert(!!done5 && done5.timedOut === true, '★★ a hanging job times out (state=timeout) with leanTimeoutMs as its budget')
+  assert(terminated.length > termBefore, '★★ the timeout ACTIVELY called handle.terminate()')
+  assert(((formalOf2('lean-async-timeout').records || {}).pHang || {}).status !== 'passed', '★ a timed-out job never sets passed')
+
+  // ── 并发参数（修订 §5）：leanJobsMaxParallel>1 时两个作业同时进入 running ──────────
+  const rc = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-par' }, rc)
+  await callTool('vibe_math_set_params', { leanAsync: true, leanJobsMaxParallel: 2, leanTimeoutMs: 2500 }, rc)
+  const projC = projRoot('lean-async-par')
+  mkdirSync(join(projC, 'Formal'), { recursive: true })
+  writeFileSync(join(projC, 'Formal', 'h1.lean'), '-- HANG\ntheorem h1 : 1 = 1 := rfl\n', 'utf8')
+  writeFileSync(join(projC, 'Formal', 'h2.lean'), '-- HANG\ntheorem h2 : 1 = 1 := rfl\n', 'utf8')
+  const j1 = await callTool('vibe_math_lean_run', { file: 'Formal/h1.lean', target: 'pH1' }, rc)
+  const j2 = await callTool('vibe_math_lean_run', { file: 'Formal/h2.lean', target: 'pH2' }, rc)
+  let both = false
+  for (let i = 0; i < 120 && !both; i++) {
+    const a = readJob('lean-async-par', j1.async.jobId)
+    const b = readJob('lean-async-par', j2.async.jobId)
+    both = (a.state === 'running' && b.state === 'running')
+    if (!both) await sleep(50)
+  }
+  assert(both, '★★ with leanJobsMaxParallel=2 BOTH queued jobs are in running at the same time (concurrency is a parameter, not a constant)')
+  for (const k of [j1, j2]) { try { await callTool('vibe_math_lean_job', { jobId: k.async.jobId, waitMs: 3000 }, rc) } catch (e) { /* ignore */ } }
+
+  // ── 去重（§4.3）+ 构建上下文进指纹（修订 §4）─────────────────────────────────────
+  const rd = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-dedupe' }, rd)
+  await callTool('vibe_math_set_params', { leanAsync: true, leanCommand: 'lake', leanArgs: ['env', 'lean'] }, rd)
+  const defBody = 'def reusableOne : Nat := 1\n'
+  const r1 = await callTool('vibe_math_lean_archive', { kind: 'def', name: 'reusableOne', content: defBody }, rd)
+  assert(r1.ok === true && r1.async && r1.deduped === false, 'the first archive of a definition is enqueued (not deduped)')
+  await findJob('lean-async-dedupe', r1.async.jobId, ['settled'])
+  const runsAfter1 = leanRuns.length
+  const r2 = await callTool('vibe_math_lean_archive', { kind: 'def', name: 'reusableOne', content: defBody }, rd)
+  assert(r2.ok === true && r2.deduped === true && r2.async === undefined, '★★★ re-archiving identical content is DEDUPED (no job, no recompile)')
+  assert(leanRuns.length === runsAfter1, '★★ the deduped archive did NOT recompile')
+  await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean', '--threads=2'] }, rd)
+  const r5 = await callTool('vibe_math_lean_archive', { kind: 'def', name: 'reusableOne', content: defBody }, rd)
+  assert(r5.ok === true && r5.deduped === false && !!r5.async && !!r1.async && r5.async.jobId !== r1.async.jobId, '★★★ the SAME content under a DIFFERENT build context gets a different jobId (not treated as already-verified)')
+  if (r5.async) await findJob('lean-async-dedupe', r5.async.jobId, ['settled', 'failed'])
+  await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean'] }, rd)
+  const changed = defBody + '\n-- 内容变了\n'
+  const r3 = await callTool('vibe_math_lean_archive', { kind: 'def', name: 'reusableOne', content: changed }, rd)
+  assert(r3.ok === true && r3.deduped === false && !!r3.async, 'a changed body is NOT deduped (content hash differs)')
+  if (r3.async) await findJob('lean-async-dedupe', r3.async.jobId, ['settled', 'failed'])
+  const r6 = await callTool('vibe_math_lean_archive', { kind: 'def', name: 'reusableOne', content: changed }, rd)
+  assert(r6.ok === true && r6.deduped === true, 'and the changed body dedupes on its own (content-based, not "first wins")')
+
+  // ── 崩溃恢复（§2.6 + 修订 §4）：绝不置 passed ────────────────────────────────────
+  const rr = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-recover' }, rr)
+  await callTool('vibe_math_set_params', { leanAsync: true }, rr)
+  const projR = projRoot('lean-async-recover')
+  mkdirSync(join(projR, 'Formal', 'Jobs'), { recursive: true })
+  const goodBody = 'theorem recGood : 1 = 1 := rfl\n'
+  writeFileSync(join(projR, 'Formal', 'recGood.lean'), goodBody, 'utf8')
+  const ctxG = H.leanBuildContext('lean', [], [slash(VIBE)])
+  const fpG = H.leanJobFingerprint(goodBody, ctxG)
+  const jobIdG = H.leanJobId('pRecGood', fpG)
+  writeFileSync(jobFile('lean-async-recover', jobIdG), JSON.stringify({
+    jobId: jobIdG, kind: 'archive', state: 'running', attempts: 1, target: 'pRecGood', name: 'pRecGood',
+    rel: 'Formal/recGood.lean', scope: 'project', sha256: H.leanContentSha(goodBody), buildSha256: fpG, buildContext: ctxG,
+    engine: 'lean', argv: [], searchPaths: [slash(VIBE)], archiveKind: 'proof', enqueuedAt: 1, startedAt: 2, settledAt: 0, exitCode: null,
+  }), 'utf8')
+  const otherJob = H.leanJobId('pRecOther', H.leanJobFingerprint('theorem other : 1 = 1 := rfl\n', ctxG))
+  writeFileSync(jobFile('lean-async-recover', otherJob), JSON.stringify({
+    jobId: otherJob, kind: 'archive', state: 'running', attempts: 3, target: 'pRecOther', name: 'pRecOther',
+    rel: 'Formal/recMissing.lean', scope: 'project', sha256: H.leanContentSha('theorem other : 1 = 1 := rfl\n'), buildSha256: 'ffffffffffff', buildContext: ctxG,
+    engine: 'lean', argv: [], searchPaths: [slash(VIBE)], archiveKind: 'proof', enqueuedAt: 1, startedAt: 2, settledAt: 0, exitCode: null,
+  }), 'utf8')
+  await callTool('vibe_math_new_project', { name: 'lean-async-recover' }, rr)   // setProject ⇒ recoverLeanJobs()
+  const recsR = formalOf2('lean-async-recover').records || {}
+  assert((recsR.pRecGood || {}).status === 'attempted', '★★ recovery marks a crashed running job as attempted (never passed)')
+  assert((recsR.pRecOther || {}).status === 'attempted', 'recovery marks the hash-mismatched job object as attempted too')
+  assert(!existsSync(join(projR, 'Verified', 'Lean', 'pRecGood.lean')), '★ recovery never writes an archived proof for a crashed job')
+  const afterG = readJob('lean-async-recover', jobIdG)
+  assert(Number(afterG.attempts) === 2 && ['queued', 'running', 'settled'].indexOf(afterG.state) !== -1, '★★ the matching-hash job was re-enqueued with attempts+1 (got ' + JSON.stringify({ state: afterG.state, attempts: afterG.attempts }) + ')')
+  const afterO = readJob('lean-async-recover', otherJob)
+  assert(afterO.state === 'interrupted' && Number(afterO.attempts) === 3, '★★ the mismatched job is only marked interrupted (NOT re-driven, attempts unchanged)')
+  assert(!!(await findJob('lean-async-recover', jobIdG, ['settled'])), 'the re-enqueued job then settles normally on the heartbeat')
+
+  // ── lean_read（§1.2）：只读、路径守卫、64KB 截断 ─────────────────────────────────
+  mkdirSync(join(VIBE, 'Formal', 'Lib'), { recursive: true })
+  writeFileSync(join(VIBE, 'Formal', 'Lib', 'recGood.lean'), goodBody, 'utf8')
+  const rd1 = await callTool('vibe_math_lean_read', { name: 'recGood' }, rr)
+  assert(rd1.ok === true && rd1.kind === 'lib' && rd1.sha256 === H.leanContentSha(goodBody) && rd1.truncated === false && rd1.text === goodBody, '★ lean_read returns the archived text + sha256 + bytes for a Lib file')
+  assert(rd1.bytes === Buffer.byteLength(goodBody, 'utf8'), 'lean_read reports the byte length (keys=' + Object.keys(rd1).join(',') + ' got ' + JSON.stringify(rd1.bytes) + ' want ' + Buffer.byteLength(goodBody, 'utf8') + ')')
+  assert((await callTool('vibe_math_lean_read', { name: 'recGood', kind: 'proved' }, rr)).code === 'V3_NOT_FOUND', 'kind=proved looks only in Formal/Proved')
+  for (const badName of ['../etc/passwd', 'a/b', 'C:\\x\\y', '..']) {
+    const rbad = await callTool('vibe_math_lean_read', { name: badName }, rr)
+    assert(rbad.ok === false && rbad.code === 'V3_INVALID_ARGUMENT', '★ lean_read rejects the path-escape attempt ' + JSON.stringify(badName))
+  }
+  writeFileSync(join(VIBE, 'Formal', 'Lib', 'bigOne.lean'), '-- ' + 'x'.repeat(70 * 1024) + '\n', 'utf8')
+  const rbig = await callTool('vibe_math_lean_read', { name: 'bigOne' }, rr)
+  assert(rbig.ok === true && rbig.truncated === true && Buffer.byteLength(rbig.text, 'utf8') <= 64 * 1024, '★ lean_read truncates at 64KB and says so (truncated=true)')
+  writeFileSync(join(VIBE, 'Formal', 'Lib', 'depUser.lean'), 'import Formal.Lib.bigOne\n\ndef depUser := 1\n', 'utf8')
+  await callTool('vibe_math_lean_lib', {}, rr)
+  const libIdx = readIf(join(VIBE, 'Formal', 'Lib', 'Index.md'))
+  assert(/Formal\.Lib\.bigOne/.test(libIdx) || /bigOne/.test(libIdx), '★★ the Lib index carries the dependency scanned from import lines (idx=' + String(libIdx).slice(0, 500).replace(/\n/g, ' | ') + ')')
+
+  // ── 主动性档位（修订 §1）：提示词读 leanInitiative，不是 formalVerify ──────────────
+  for (const [mode, rootName, projName, want, notWant] of [
+    ['normal', 'lean-init-normal', 'lean-init-normal-proj', /主动性 normal/, null],
+    ['eager', 'lean-init-eager', 'lean-init-eager-proj', /主动档（leanInitiative=eager）/, null],
+    ['off', 'lean-init-off', 'lean-init-off-proj', /不主动：leanInitiative=off/, /三条筛选判据/],
+  ]) {
+    const rw = makeRoot()
+    await callTool('vibe_math_new_project', { name: projName }, rw)
+    await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'encourage', leanInitiative: mode }), rw)
+    await callTool('vibe_math_add_problem', { id: 'qInit' + mode, 陈述: '主动性提示词 ' + mode }, rw)
+    await callTool('vibe_math_start', {}, rw)
+    const got = await drive(rw, () => spawnOf(rw, 'explorer:').length >= 1 || spawnOf(rw, 'solver:').length >= 1, 'work prompt for ' + mode, 12000)
+    const text = promptText(rw)
+    assert(got && want.test(text), '★★ leanInitiative=' + mode + ' is reflected in the work prompt')
+    if (notWant) assert(!notWant.test(text), 'and the ' + mode + ' work prompt does not carry the proactive criteria (验证要求仍由 formalVerify 表达)')
+    await callTool('vibe_math_pause', {}, rw)
+  }
+
+  // ── 卸载（spec §2.5）：terminate + interrupted，绝不 passed ──────────────────────
+  const rz = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'lean-async-dispose' }, rz)
+  await callTool('vibe_math_set_params', { leanAsync: true, leanTimeoutMs: 60000 }, rz)
+  const projZ = projRoot('lean-async-dispose')
+  mkdirSync(join(projZ, 'Formal'), { recursive: true })
+  writeFileSync(join(projZ, 'Formal', 'orphan.lean'), '-- HANG\ntheorem orphan : 1 = 1 := rfl\n', 'utf8')
+  const termZ = terminated.length
+  const qz = await callTool('vibe_math_lean_run', { file: 'Formal/orphan.lean', target: 'pOrphan' }, rz)
+  const startedZ = await findJob('lean-async-dispose', qz.async.jobId, ['running'])
+  assert(!!startedZ, 'the dispose case got a job into running')
+  for (const off of disposers) { try { off() } catch (e) { /* ignore */ } }
+  assert(terminated.length > termZ, '★★ unmounting the plugin terminated the in-flight compile (no orphan process)')
+  assert(((formalOf2('lean-async-dispose').records || {}).pOrphan || {}).status !== 'passed', '★ dispose never marks the object passed')
 }
 
 // ===============================================================

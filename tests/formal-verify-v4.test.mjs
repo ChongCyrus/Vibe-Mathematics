@@ -131,7 +131,7 @@ function makeSubprocess() {
 
 function makeHost() {
   const WS = mkdtempSync(join(tmpdir(), 'vibe-v4-lean-'))
-  const listeners = {}, toolRegs = [], spawns = [], followups = []
+  const listeners = {}, toolRegs = [], spawns = [], followups = [], cmdRegs = []
   const subprocess = makeSubprocess()
   let ROOT
   const ctx = {
@@ -140,7 +140,7 @@ function makeHost() {
     effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
     logger: { info() {}, warn() {}, error() {} },
     timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
-    tools: { register(s) { toolRegs.push(s) } }, commands: { register() {} },
+    tools: { register(s) { toolRegs.push(s) } }, commands: { register(s) { cmdRegs.push(s) } },
     // Real DSH exposes ONLY subagents.sendMessage for continuable wakes (followup is an Agent
     // method, not a subagents service method) — deliberately no followup, so a regression fails.
     subagents: {
@@ -163,7 +163,9 @@ function makeHost() {
   const vibeRoot = join(WS, 'VibeMath')
   let consumed = 0
   const h = {
-    WS, ctx, toolRegs, spawns, followups, ROOT, projectRoot, vibeRoot,
+    WS, ctx, toolRegs, spawns, followups, ROOT, projectRoot, vibeRoot, cmdRegs,
+    /** Drive the registered `/v4` slash command — the OTHER parameter surface the spec §B names. */
+    async cmd(rawInput) { const c = cmdRegs.find(x => x.name === 'v4'); if (!c) throw new Error('no /v4 command'); return await c.handler({ agent: ROOT, rawInput }) },
     async callTool(n, a, agent) {
       const s = toolRegs.find(x => x.name === n); if (!s) throw new Error('no tool ' + n)
       return JSON.parse(await s.execute(a || {}, { agent: agent || ROOT }))
@@ -210,7 +212,10 @@ async function establish() {
   for (const sp of h.spawns.slice(before)) { h.fireEnd(sp.childId, { summary: '初始见解。', solved: false, contextPct: 10 }); await sleep(30) }
   // Park the heartbeat far away: these tests drive wakes explicitly, so a short heartbeat would
   // only add unrelated normal rounds and make the followup stream harder to reason about.
-  await h.callTool('vibe_v4_set', { activityTimeoutMs: 600000 })
+  // `leanAsync:false` on purpose: sections 1-16 assert the HISTORICAL SYNCHRONOUS contract
+  // (lean_run returns exitCode/stdout in the same call, archive{run:true} compiles inline) verbatim.
+  // The asynchronous contract (enqueue + settle + recovery) has its own sections 17+.
+  await h.callTool('vibe_v4_set', { activityTimeoutMs: 600000, leanAsync: false })
   for (let i = 0; i < 40; i++) { const s = await h.callTool('vibe_v4_status', {}); if (s.phase === 'active') break; await sleep(20) }
   await sleep(30)
   h.resetCursor()
@@ -729,7 +734,7 @@ await G.callTool('vibe_v4_set', { formalVerify: 'encourage' })
   const enc = await G.prompts('verify', 'r-1', { target: 'p-text', stage: 'independent' })
   assert(/【Lean 形式化验证（鼓励模式）】/.test(enc), 'the encourage voting prompt keeps its header')
   assert(/实现难度/.test(enc), 'it still asks for the implementation-difficulty judgement')
-  assert(/工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）/.test(enc), 'it names all three tools in FULL')
+  assert(/工具：vibe_v4_lean_run（执行\/入队）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库与 jobs）· vibe_v4_lean_read（读归档原文逐字复用）/.test(enc), 'it names all FOUR tools in FULL (the new read-only tool included)')
   assert(/归档可复用定义\/引理前先跑通（vibe_v4_lean_archive run=true 或先 vibe_v4_lean_run）；跑不通不要入库。/.test(enc), '★ a reusable definition/lemma must be RUN GREEN before it is archived')
   assert(/宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"/.test(enc), '★ both unavailable-toolchain paths are written out (missing Lean OR no subprocess service) as explicit blocker reasons')
   assert(/一旦 Lean 通过，你唯一需要确认的就是忠实性/.test(enc), 'a green Lean run still shrinks the open question to fidelity')
@@ -1188,6 +1193,231 @@ section('16 a fresh run clears the persisted formal records (even in off mode)')
   assert(st.ok === true && D.spawns.length > beforeSpawns, 'the fresh run actually started (so the clean-slate assertion is falsifiable)')
   const now = readIf(join(D.projectRoot, 'State', 'formal.json'))
   assert(!/"p-proof"/.test(now) && !/"passed"/.test(now), '★ a fresh run clears the persisted formal records on disk, even in off mode (no stale `passed` can open the new run’s gate)')
+}
+
+// ===============================================================
+// 17. leanAsync (default true): the tool ENQUEUES and returns immediately; ONLY a settled, green
+//     job whose file still matches the enqueued content may set `passed` / mint Verified/Lean/.
+// ===============================================================
+const settleJob = async (h, jobId, tries = 80) => {
+  for (let i = 0; i < tries; i++) {
+    const r = await h.callTool('vibe_v4_lean_job', { jobId, waitMs: 200 })
+    if (['settled', 'failed', 'timeout', 'interrupted'].indexOf(r.state) !== -1) return r
+    await sleep(30)
+  }
+  return await h.callTool('vibe_v4_lean_job', { jobId })
+}
+/** The mock's `ensureDirs` records a shell mkdir but does not materialise directories, so a test
+ *  that seeds a project file must create its parent itself. */
+const writeIn = (h, rel, body) => { const p = join(h.WS, 'VibeMath', ...rel.split('/')); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); return p }
+section('17 leanAsync=true enqueues immediately; passed only after a settled green job')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: true, activityTimeoutMs: 60 })
+  writeIn(N, 'Projects/default/Formal/a-async.lean', 'theorem a_async : 1 + 1 = 2 := by decide\n')
+  const runsBefore = leanRuns.length
+  const arc = await N.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-async', content: 'theorem p_async : 1 + 1 = 2 := by decide\n' }, N.resAgent(N.childOf('r-1')))
+  assert(arc.ok === true && arc.async && arc.async.state === 'queued' && /^p-async-[0-9a-f]{12}$/.test(arc.jobId), '★ lean_archive kind=proof ENQUEUES and returns {async:{jobId,state:queued}} immediately (jobId=' + arc.jobId + ')')
+  assert(arc.passed === undefined && !existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-async.lean')), '★ NO proof is minted at enqueue time (nothing may become passed before the compile lands)')
+  assert(leanRuns.length === runsBefore, '★ the compiler has NOT been spawned yet by the enqueueing call (it is genuinely non-blocking)')
+  const st0 = await N.callTool('vibe_v4_status', {})
+  assert(!st0.formal.passed.includes('p-async'), 'and the object is not reported passed while queued')
+  const done = await settleJob(N, arc.jobId)
+  assert(done.state === 'settled' && done.exitCode === 0 && done.archive === 'Verified/Lean/p-async.lean', '★ the job settles green and reports its archive path (' + done.state + '/' + done.exitCode + ')')
+  assert(existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-async.lean')), '★ the archived proof exists only AFTER the settle')
+  const st1 = await N.callTool('vibe_v4_status', {})
+  assert(st1.formal.passed.includes('p-async'), '★ the object is now passed')
+  const list = await N.callTool('vibe_v4_lean_job', {})
+  assert(list.ok === true && list.jobs.some(j => j.jobId === arc.jobId && j.receipt === 'Formal/Jobs/' + arc.jobId + '.json' && j.archive === 'Verified/Lean/p-async.lean'), '★ lean_job (no jobId) lists the job with its receipt + archive paths')
+  const nextWake = await N.callTool('vibe_v4_message', { to: 'r-1', content: '继续。' })
+  const promptsText = N.followups.map(promptOf).join('\n')
+  assert(/【形式化结果】/.test(promptsText), '★ the settled result is announced once in the next prompt (【形式化结果】)')
+}
+
+// ===============================================================
+// 18. The failure + timeout branches stay `attempted`.
+// ===============================================================
+section('18 async failure and timeout never set passed')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'require', leanAsync: true, activityTimeoutMs: 60 })
+  const arc = await N.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-async-fail', content: 'theorem p_async_fail : False := by sorry\n' })
+  const done = await settleJob(N, arc.jobId)
+  assert(done.state === 'failed' && done.exitCode === 1, '★ a red compile settles as failed (not passed)')
+  assert(!existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-async-fail.lean')), '★ no proof is archived for a red run')
+  const st = await N.callTool('vibe_v4_status', {})
+  const rec = (st.formal.objects || []).find(o => o.target === 'p-async-fail') || {}
+  assert(!st.formal.passed.includes('p-async-fail') && rec.status === 'attempted', '★ a failed async proof stays attempted and never satisfies the require gate (record status=' + rec.status + ')')
+  // a HANG file: only the framework's own timeout can end it
+  await N.callTool('vibe_v4_set', { leanTimeoutMs: 1000 })
+  writeIn(N, 'Projects/default/Formal/a-hang.lean', '-- HANG\ntheorem a_hang : True := by trivial\n')
+  const hang = await N.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-async-hang', content: '-- HANG\ntheorem p_async_hang : True := by trivial\n' })
+  const hd = await settleJob(N, hang.jobId, 120)
+  assert(hd.state === 'timeout' && hd.timedOut === true, '★ a hanging compile is timed out by the job budget (leanTimeoutMs), not left running')
+  assert(terminated.length >= 1, '★ the timeout path really called handle.terminate() (an active kill, not just a report)')
+  assert(!existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-async-hang.lean')), 'a timed-out proof is never archived')
+}
+
+// ===============================================================
+// 19. dispose/abort terminates the in-flight compile and marks it interrupted.
+// ===============================================================
+section('19 dispose marks the in-flight job interrupted (never passed)')
+{
+  const N = await establish()
+  // The heartbeat is the queue driver, so it must be SHORT before the enqueue arms it (a long
+  // heartbeat armed at enqueue time would leave the job queued forever — which is the point of §2.2).
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: true, activityTimeoutMs: 40, leanTimeoutMs: 600000 })
+  const arc = await N.callTool('vibe_v4_lean_archive', { kind: 'proof', target: 'p-dispose', content: '-- HANG\ntheorem p_dispose : True := by trivial\n' })
+  for (let i = 0; i < 100; i++) { const r = await N.callTool('vibe_v4_lean_job', { jobId: arc.jobId }); if (r.state === 'running') break; await sleep(25) }
+  const before = await N.callTool('vibe_v4_lean_job', { jobId: arc.jobId })
+  assert(before.state === 'running', 'precondition: the job is genuinely in flight (state=' + before.state + ')')
+  await N.callTool('vibe_v4_abort', {})
+  const after = await N.callTool('vibe_v4_lean_job', { jobId: arc.jobId })
+  assert(after.state === 'interrupted' && after.interrupted === true, '★ abort/dispose marks the in-flight job interrupted (state=' + after.state + ')')
+  assert(!existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-dispose.lean')), '★ an interrupted job never mints a proof')
+  const st = await N.callTool('vibe_v4_status', {})
+  assert(!st.formal.passed.includes('p-dispose'), 'and the object is not passed')
+}
+
+// ===============================================================
+// 20. crash/restart recovery reads Formal/Jobs/*.json and never silently verifies.
+// ===============================================================
+section('20 crash recovery: queued re-driven, changed content never verified, settled completed')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: true, activityTimeoutMs: 600000 })
+  const jobsDir = join(N.projectRoot, 'Formal', 'Jobs')
+  mkdirSync(jobsDir, { recursive: true })
+  const body = 'theorem p_rec : 1 + 1 = 2 := by decide\n'
+  const file = writeIn(N, 'Projects/default/Formal/p-rec.lean', body)
+  const crypto = await import('node:crypto')
+  const sha = crypto.createHash('sha256').update(body.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '') + '\n', 'utf8').digest('hex')
+  // (a) `running` with UNCHANGED content → re-queued (never verified)
+  writeFileSync(join(jobsDir, 'p-rec-aaaaaaaaaaaa.json'), JSON.stringify({ jobId: 'p-rec-aaaaaaaaaaaa', kind: 'proof', key: 'p-rec', target: 'p-rec', rel: 'Formal/p-rec.lean', abs: file, sha256: sha, content: body, state: 'running', attempts: 1, enqueuedAt: 1, startedAt: 2 }))
+  // (b) `running` with CHANGED content → interrupted + attempted, NO auto re-drive
+  const stalePath = writeIn(N, 'Projects/default/Formal/p-stale.lean', 'theorem p_stale : True := by trivial\n')
+  writeFileSync(join(jobsDir, 'p-stale-bbbbbbbbbbbb.json'), JSON.stringify({ jobId: 'p-stale-bbbbbbbbbbbb', kind: 'proof', key: 'p-stale', target: 'p-stale', rel: 'Formal/p-stale.lean', abs: stalePath, sha256: sha, content: body, state: 'running', attempts: 1, enqueuedAt: 1, startedAt: 2 }))
+  // A FRESH run (start) performs the safe half of the recovery table: `queued` jobs are re-driven,
+  // `running` jobs are re-driven only while the content still matches, and a stale `settled` record
+  // is NEVER adopted (that is exactly what the clean formal slate exists to prevent).
+  writeFileSync(join(jobsDir, 'p-done-cccccccccccc.json'), JSON.stringify({ jobId: 'p-done-cccccccccccc', kind: 'proof', key: 'p-done', target: 'p-done', rel: 'Formal/p-done.lean', abs: file, sha256: sha, content: body, state: 'settled', exitCode: 0, verifiedRel: 'Verified/Lean/p-done.lean', attempts: 1, enqueuedAt: 1, startedAt: 2, settledAt: 3 }))
+  await N.callTool('vibe_v4_start', { problem: '恢复扫描', residentCount: 1 })
+  const a = await N.callTool('vibe_v4_lean_job', { jobId: 'p-rec-aaaaaaaaaaaa' })
+  const b = await N.callTool('vibe_v4_lean_job', { jobId: 'p-stale-bbbbbbbbbbbb' })
+  assert(a.state === 'queued' || a.state === 'running' || a.state === 'settled', '★ recovery re-drives a `running` job whose content still matches (state=' + a.state + ')')
+  assert(b.state === 'interrupted', '★ a `running` job whose file CHANGED is interrupted, not verified (state=' + b.state + ')')
+  const st = await N.callTool('vibe_v4_status', {})
+  assert(!st.formal.passed.includes('p-stale'), '★ the changed-content job never reaches `passed`')
+  assert(!st.formal.passed.includes('p-done') && !existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-done.lean')), '★ a fresh run does NOT adopt a previous run’s `settled` record (no stale passed, no minted proof)')
+  assert(N.followups.map(promptOf).join('\n').length >= 0, 'recovery ran without throwing')
+}
+
+// ===============================================================
+// 21. lean_read: verbatim library access, confined to Formal/{Lib,Proved}, 64KB cap.
+// ===============================================================
+section('21 lean_read returns the archived text verbatim and refuses escapes')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: false })   // sync: the file must be on disk for the read
+  const defBody = 'def ZMod9 := Fin 9\n\ntheorem zmod9_card : Fintype.card ZMod9 = 9 := by decide\n'
+  const arch = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'ZMod9', content: defBody }, N.resAgent(N.childOf('r-1')))
+  assert(arch.ok === true, 'precondition: the definition archived')
+  const rd = await N.callTool('vibe_v4_lean_read', { name: 'ZMod9' })
+  assert(rd.ok === true && rd.kind === 'lib' && rd.file === 'Formal/Lib/ZMod9.lean' && rd.text === defBody, '★ lean_read returns the archived file text VERBATIM (import-or-copy reuse)')
+  assert(/^[0-9a-f]{64}$/.test(rd.sha256) && rd.bytes === defBody.length && rd.truncated === false, 'it reports sha256/bytes/truncated')
+  assert(/import Formal\.Lib\.ZMod9/.test(rd.hint || ''), '★ and names the namespace to import (module root = VibeMath root)')
+  const proved = await N.callTool('vibe_v4_lean_read', { name: 'ZMod9', kind: 'proved' })
+  assert(proved.ok === false && proved.code === 'V4_NOT_FOUND', 'kind=proved does not look in Lib/')
+  for (const bad of ['../../etc/passwd', '..', 'Formal/Lib/ZMod9', 'C:\\Windows\\evil']) {
+    const r = await N.callTool('vibe_v4_lean_read', { name: bad })
+    assert(r.ok === false, '★ lean_read refuses the path-escape name ' + JSON.stringify(bad))
+  }
+  assert((await N.callTool('vibe_v4_lean_read', { name: 'ZMod9', kind: 'bogus' })).ok === false, 'an unknown kind is refused')
+  // 64KB truncation
+  const big = 'def Big := 1\n' + ('-- ' + 'x'.repeat(120) + '\n').repeat(600)
+  await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'BigLib', content: big, run: false })
+  const rb = await N.callTool('vibe_v4_lean_read', { name: 'BigLib' })
+  assert(rb.ok === true && rb.truncated === true && rb.text.length <= 64 * 1024 && rb.bytes > 64 * 1024, '★ a >64KB library file is truncated and flagged (truncated:true)')
+}
+
+// ===============================================================
+// 22. Search paths (AMENDMENT §2) + build-context job id (§4) + concurrency (§5) + the new params.
+// ===============================================================
+section('22 leanSearchPaths/leanJobsMaxParallel/leanInitiative + build-context job ids')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: false, leanArgs: [], leanSearchPaths: ['/extra/one', '/extra/one', '/extra/two'] })
+  writeIn(N, 'Projects/default/Formal/a-sp.lean', 'theorem a_sp : True := by trivial\n')
+  await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
+  let last = leanRuns[leanRuns.length - 1]
+  const spIdx = last.argv.indexOf('--search-path')
+  assert(last.argv.filter(a => a === '--search-path').length === 3, '★ one --search-path per DISTINCT root (user paths first, then the automatic VibeMath root)')
+  assert(last.argv[spIdx + 1] === '/extra/one' && last.argv[spIdx + 3] === '/extra/two' && last.argv[spIdx + 5] === N.vibeRoot.replace(/\\/g, '/'), '★ order + de-duplication: user paths in order, automatic root last')
+  assert(last.argv.indexOf('--search-path') < last.argv.length - 1 && /\.lean$/.test(String(last.argv[last.argv.length - 1])), 'the roots stay BEFORE the file name')
+  await N.callTool('vibe_v4_set', { leanArgs: ['--search-path', '/user/own'] })
+  await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
+  last = leanRuns[leanRuns.length - 1]
+  assert(last.argv.filter(a => a === '--search-path').length === 1 && last.argv[last.argv.indexOf('--search-path') + 1] === '/user/own', '★ an explicit --search-path in leanArgs wins outright: nothing is injected')
+  await N.callTool('vibe_v4_set', { leanArgs: ['-R', '/user/root'] })
+  await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
+  assert(leanRuns[leanRuns.length - 1].argv.indexOf('--search-path') === -1, '★ -R/--root count as a user-stated root too')
+  const lib = await N.callTool('vibe_v4_lean_lib', { refresh: false })
+  assert(lib.searchPath === N.vibeRoot.replace(/\\/g, '/') && /import Formal\.Lib\./.test(JSON.stringify(lib.importNamespace)), 'lean_lib shows the injected searchPath and the import namespace')
+  // build-context job id: same content, different engine ⇒ different job
+  await N.callTool('vibe_v4_set', { leanAsync: true, activityTimeoutMs: 600000, leanArgs: [], leanSearchPaths: [], leanCommand: 'lean' })
+  const j1 = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'CtxOne', content: 'def CtxOne := 1\n' })
+  await N.callTool('vibe_v4_set', { leanCommand: 'lake' })
+  const j2 = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'CtxOne', content: 'def CtxOne := 1\n' })
+  assert(j1.jobId !== j2.jobId, '★ the job id covers the BUILD CONTEXT: identical content with a different engine is a different job (' + j1.jobId + ' vs ' + j2.jobId + ')')
+  // concurrency cap
+  await N.callTool('vibe_v4_set', { leanCommand: 'lean', leanJobsMaxParallel: 2, activityTimeoutMs: 40 })
+  const h1 = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'CapA', content: '-- HANG\ndef CapA := 1\n' })
+  const h2 = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'CapB', content: '-- HANG\ndef CapB := 1\n' })
+  const h3 = await N.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'CapC', content: '-- HANG\ndef CapC := 1\n' })
+  for (let i = 0; i < 120; i++) { const s = await N.callTool('vibe_v4_lean_job', {}); if (s.running.length >= 2) break; await sleep(25) }
+  const snap = await N.callTool('vibe_v4_lean_job', {})
+  assert(snap.running.length === 2 && snap.queued.length >= 1, '★ leanJobsMaxParallel=2 runs exactly two compiles and leaves the rest queued (' + snap.running.length + ' running / ' + snap.queued.length + ' queued; all=' + JSON.stringify(snap.jobs.map(j => j.jobId + ':' + j.state)) + '; archives=' + JSON.stringify([h1, h2, h3].map(x => x && (x.jobId || x.code || x.message)))) + ')'
+  await N.callTool('vibe_v4_abort', {})   // terminate the hang jobs
+}
+
+// ===============================================================
+// 23. leanInitiative separates PROACTIVITY from the verification requirement (AMENDMENT §1).
+// ===============================================================
+section('23 leanInitiative: off/normal/eager in the work prompt, formalVerify untouched')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanAsync: false })
+  const normal = await N.prompts('normal', 'r-1')
+  assert(/【顺手形式化（鼓励）】/.test(normal) && /判断标准：① 有价值或可能复用/.test(normal), '★ leanInitiative=normal (default): the daily line carries the three selection criteria')
+  assert(/先 vibe_v4_lean_lib 查已有库/.test(normal) && /没把握就记 blocked/.test(normal) && /import Formal\.Lib\./.test(normal), '★ …and the look-up-first / blocked / namespace rules')
+  assert(!/leanInitiative=eager/.test(normal), 'the normal档 does not claim eagerness')
+  const verify = await N.prompts('verify', 'r-1', { target: 'p-init', stage: 'independent' })
+  assert(/形式化只写你有把握的版本；没把握就记 blocked 并写清难点/.test(verify) && /不得\*\*在它落地前声称已通过/.test(verify), '★ the verification block carries the §5 B contract (blocked-instead-of-guessing + no premature "passed")')
+  await N.callTool('vibe_v4_set', { leanInitiative: 'eager' })
+  const eager = await N.prompts('normal', 'r-1')
+  assert(/leanInitiative=eager/.test(eager) && /主动\*\*顺手形式化并归档/.test(eager), '★ leanInitiative=eager adds the explicit proactive clause')
+  await N.callTool('vibe_v4_set', { leanInitiative: 'off' })
+  const off = await N.prompts('normal', 'r-1')
+  assert(!/【顺手形式化/.test(off), '★ leanInitiative=off removes the proactive daily line entirely')
+  const vOff = await N.prompts('verify', 'r-1', { target: 'p-init', stage: 'independent' })
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(vOff) && /实现难度/.test(vOff), '★ …while the VERIFICATION prompt still states the formalVerify requirement (off ≠ no verification)')
+  // parameter surfaces (AMENDMENT §1/§2/§5 + leanAsync)
+  const setSpec = N.toolRegs.find(t => t.name === 'vibe_v4_set')
+  for (const k of ['leanAsync', 'leanInitiative', 'leanSearchPaths', 'leanJobsMaxParallel']) assert(!!setSpec.parameters.properties[k], '★ vibe_v4_set advertises ' + k)
+  assert(JSON.stringify(setSpec.parameters.properties.leanInitiative.enum) === JSON.stringify(['off', 'normal', 'eager']), 'leanInitiative is a closed enum in the schema')
+  const coerced = await N.callTool('vibe_v4_set', { leanAsync: 'false', leanInitiative: 'bogus', leanSearchPaths: 'a, b ,,c', leanJobsMaxParallel: 0 })
+  const pv = await N.callTool('vibe_v4_status', {})
+  assert(coerced.ok === true && /leanAsync=false/.test(pv.params), '★ the STRING "false" normalises to boolean false (never a truthy string)')
+  assert(/leanInitiative=normal/.test(pv.params), 'an unknown leanInitiative degrades to the default normal')
+  assert(/leanSearchPaths=a,b,c/.test(pv.params), 'a comma string becomes a trimmed, non-empty array')
+  assert(/leanJobsMaxParallel=1/.test(pv.params), 'leanJobsMaxParallel is clamped to ≥1')
+  // The SLASH-COMMAND surface passes RAW STRINGS to the same parameter layer (spec §B: v4's `/v4 set`
+  // hands over strings, so 'false' must not survive as a truthy value there either).
+  const slash = await N.cmd('set leanAsync=false leanInitiative=off')
+  assert(slash.kind === 'success', '/v4 set accepted the Lean parameters')
+  const pv2 = await N.callTool('vibe_v4_status', {})
+  assert(/leanAsync=false/.test(pv2.params) && /leanInitiative=off/.test(pv2.params), '★ `/v4 set leanAsync=false leanInitiative=off` coerces the raw strings through normalizeParam')
+  assert(!/【顺手形式化/.test(await N.prompts('normal', 'r-1')), '★ and leanInitiative=off set through the slash command really silences the proactive line')
 }
 
 // ===============================================================

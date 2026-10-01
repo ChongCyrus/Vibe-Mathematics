@@ -132,29 +132,29 @@ const PRESETS = [
     dir: 'vibe-math-v2',
     js: 'vibe-math-v2.js',
     prefix: 'vibe_math_',
-    tools: 25,
+    tools: 27,
     // member-facing write-lock / scheduler-metadata tools; the v2 coordinator never
     // writes Markdown itself, so they stay out of its persona.
     undocumented: [],
-    lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib'], extra: [] },
+    lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
   },
   {
     dir: 'vibe-math-v3',
     js: 'vibe-math-v3.js',
     prefix: 'vibe_math_',
-    tools: 33,
+    tools: 35,
     // `vibe_math_sync_meta` is no longer undocumented: the promotion-contract line of the
     // persona now names it as the place to report `lemmas[].价值/关键性` (v3 audit M1 —
     // without a prompt-side source for that field the promotion main line is unreachable).
     // The write-lock pair stays out: solver/method-keeper prompts carry it via kcWriteRules().
     undocumented: ['vibe_math_claim_write', 'vibe_math_release_write'],
-    lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib'], extra: [] },
+    lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
   },
   {
     dir: 'vibe-math-v4',
     js: 'vibe-math-v4.js',
     prefix: 'vibe_v4_',
-    tools: 32,
+    tools: 34,
     // resident-facing tools (mail, library cards, task board, write lock). The
     // coordinator drives residents through vibe_v4_message / _meeting / _add_member.
     undocumented: [
@@ -164,13 +164,13 @@ const PRESETS = [
       'vibe_v4_task_done', 'vibe_v4_list_tasks', 'vibe_v4_report_context',
       'vibe_v4_claim_write', 'vibe_v4_release_write',
     ],
-    lean: { tools: ['vibe_v4_lean_run', 'vibe_v4_lean_archive', 'vibe_v4_lean_lib'], extra: ['vibe_v4_formal_report'] },
+    lean: { tools: ['vibe_v4_lean_run', 'vibe_v4_lean_archive', 'vibe_v4_lean_lib', 'vibe_v4_lean_read', 'vibe_v4_lean_job'], extra: ['vibe_v4_formal_report'] },
   },
   {
     dir: 'vibe-math-v5',
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
-    tools: 37,
+    tools: 39,
     // member- and academician-facing tools; the office (main agent) holds only the
     // institute-level controls plus the hiring authority. The final-paper pair is an
     // OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper),
@@ -182,11 +182,11 @@ const PRESETS = [
       'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update',
       'vibe_v5_overview', 'vibe_v5_assign', 'vibe_v5_prioritize', 'vibe_v5_nudge',
     ],
-    lean: { tools: ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib'], extra: [] },
+    lean: { tools: ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job'], extra: [] },
   },
 ]
 
-const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']
+const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs', 'leanAsync', 'leanJobsMaxParallel', 'leanInitiative', 'leanSearchPaths']
 
 for (const P of PRESETS) {
   const ymlPath = join(BASE, P.dir, 'agent.cordis.yml')

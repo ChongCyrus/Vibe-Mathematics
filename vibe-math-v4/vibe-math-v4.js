@@ -12,6 +12,13 @@
 // only from the dynamic-package start path); v2/v3 use those globals and work. An earlier
 // version of this note claimed the globals do not exist — false for file rows, and it would
 // only become true if this preset were ever converted to a dynamic package.
+// The Lean job id and the archive de-duplication are CONTENT-hash based (`lean-incremental-async`
+// spec §4.3), so the plugin needs a real SHA-256. `node:crypto` is a plain Node builtin here: a
+// preset is a FILE row loaded by a host-realm import(), and the plugin already relies on Node
+// builtins (`process.platform`) — see the header note about the vm sandbox applying only to a
+// DYNAMIC package's host half.
+import { createHash } from 'node:crypto'
+
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
 // ---- host live-child cap (DSH ≥ 0.2) ----------------------------------------
@@ -90,6 +97,23 @@ export function apply(ctx) {
       leanCommand: 'lean',
       leanArgs: [],            // inserted BEFORE the file name (e.g. ['env','lean'] with lake)
       leanTimeoutMs: 120000,
+      // ---- incremental + async Lean compilation (lean-incremental-async spec §1.1) ----------
+      // true (default): `lean_run` / `lean_archive{run:true}` ENQUEUE a background job and return
+      // immediately (`async:{jobId,state:'queued'}`); the queue is drained from the existing
+      // heartbeat. false: the historical synchronous `await` path, unchanged. The compile budget
+      // is `leanTimeoutMs`; the executable/args are `leanCommand`/`leanArgs` (no new parameter).
+      leanAsync: true,
+      // AMENDMENT §1: PROACTIVITY is a separate knob from the verification requirement.
+      // `formalVerify` says how strong the check must be at VOTING time; `leanInitiative` says how
+      // eager the group should be while WORKING. 'off' = no proactive nagging (verify-time only),
+      // 'normal' = today's "顺手形式化" line, 'eager' = actively formalize valuable small
+      // lemmas/propositions/definitions as they appear.
+      leanInitiative: 'normal',
+      // AMENDMENT §2: extra search roots, injected in ORDER before the automatic VibeMath root,
+      // de-duplicated; an explicit --search-path/-R/--root in `leanArgs` still wins outright.
+      leanSearchPaths: [],
+      // AMENDMENT §5: how many background compiles may run at once (default 1 = serial).
+      leanJobsMaxParallel: 1,
       // ---- final paper (docs/final-paper.md §1) ----------------------------------
       // The run's conclusion is a PAPER the whole team co-authors once consensus has converged.
       // finalPaper=true triggers it automatically at that moment (idempotent); the other four knobs
@@ -119,6 +143,17 @@ export function apply(ctx) {
     // existence, v2 §C), so a re-trigger after a restart is still recognised even though this object
     // did not survive. While a paper is in flight this holds the whole team-authoring state machine.
     let paperState = null
+    // ---- Lean compile queue (lean-incremental-async spec §2) --------------------------------
+    // Per-SESSION in-memory FIFO (created/destroyed with the session), mirrored to
+    // `<project>/Formal/Jobs/<jobId>.json` for crash recovery and `lean_lib.jobs`. Concurrency is a
+    // CONSTANT (1): compiling competes with the model for CPU and Lean parallelises internally, so
+    // the queue serialises instead of fanning out; the cap is not a parameter (D5: reuse, don't
+    // grow the parameter surface).
+    const LEAN_QUEUE_CONCURRENCY = 1   // the DEFAULT cap; `leanJobsMaxParallel` overrides it (AMENDMENT §5)
+    let leanQueue = []        // job ids waiting (queued, not started)
+    let leanInflight = []     // jobs currently compiling (length ≤ the concurrency cap)
+    let leanJobs = {}         // jobId -> job record (mirrors Formal/Jobs/*.json)
+    let leanNotices = []      // settled-job announcements, injected once into the next prompt
     let busy = new Set(), wakeKind = new Map(), currentResident = ''
     let finalizeLock = null   // 'meeting'|'verify' while a consensus finalize is running (reentry guard)
     const verifiedRecently = new Map()   // targetId -> timestamp when it was closed as Verified (dedup re-propose)
@@ -270,7 +305,7 @@ export function apply(ctx) {
     }
     async function ensureDirs(){
       const base=frameworkRoot()
-      const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Verified/Lean','Formal','Reliable','Notes','State']
+      const dirs=['Problems','Progress','Propos','Methods','Subproblems','Shared/meetings','Shared/debates','Verified/命题','Verified/问题','Verified/Lean','Formal','Formal/Jobs','Reliable','Notes','State']
       // The GLOBAL reuse library (Formal/Lib + Formal/Proved) deliberately lives beside the
       // project tree, NOT inside it: cross-project reuse is the whole point (spec §3). It is
       // created here so the first `lean_archive kind='def'` never has to invent its parent.
@@ -411,7 +446,10 @@ export function apply(ctx) {
       catch(e){
         return {ok:false,code:'LEAN_NOT_FOUND',message:'cannot resolve "'+String(params.leanCommand||'lean')+'": '+String((e&&e.message)||e)+' — 仍可把形式化代码写下来归档，但无法在此宿主上执行',file:rel,ms:now()-started}
       }
-      const argv=[exe].concat((Array.isArray(params.leanArgs)?params.leanArgs:[]).map(String)).concat([abs])
+      // §3.1: the search path is computed HERE (never persisted into `leanArgs`): user args first,
+      // then `--search-path <VibeMath root>` unless the user already stated a search root, then the
+      // file. `lake env lean` therefore becomes `lake env lean --search-path <root> <file>` for free.
+      const argv=leanArgv(exe, abs)
       let handle
       try {
         handle=sub.spawn({ argv, cwd:frameworkRoot(), stdio:{stdin:'ignore',stdout:{maxBytes:64*1024},stderr:{maxBytes:64*1024}}, graceMs:cap })
@@ -482,6 +520,338 @@ export function apply(ctx) {
       }))
     }
 
+    // ================= Lean compile queue + incremental reuse (§2-§4) =================
+    //  · `leanAsync=true` (default): the tools ENQUEUE and return; the queue drains from the existing
+    //    heartbeat (`armHeartbeat`), concurrency 1, budget = `leanTimeoutMs`.
+    //  · `leanAsync=false`: the synchronous `await` path, verbatim.
+    //  · ONLY a settled, green job whose file STILL MATCHES the enqueued content hash may set
+    //    `passed` / write `Verified/Lean/<id>.lean`; every other outcome stays `attempted`.
+    const LEAN_ASYNC_ON = () => params.leanAsync !== false
+    // §3.6: the flag spelling is one constant on purpose — if a toolchain wants `-R <root>`, only
+    // this line changes and the interface stays put.
+    const LEAN_SEARCH_PATH_FLAG = '--search-path'
+    const LEAN_READ_MAX_BYTES = 64 * 1024
+    /** §3.1: never inject when the user already stated a search root (explicit config wins). */
+    function leanHasSearchFlag(args){ return (Array.isArray(args)?args:[]).some(a=>{ const s=String(a); return s===LEAN_SEARCH_PATH_FLAG||s.indexOf(LEAN_SEARCH_PATH_FLAG+'=')===0||s==='-R'||s==='--root' }) }
+    /** AMENDMENT §2: the roots to inject — USER paths first, then the automatic VibeMath root,
+     *  de-duplicated, order preserved. */
+    function leanSearchPathList(){
+      const out=[]
+      for(const p of (Array.isArray(params.leanSearchPaths)?params.leanSearchPaths:[])){ const s=String(p==null?'':p).trim(); if(s&&out.indexOf(s)<0) out.push(s) }
+      const root=vibeRoot().replace(/\\/g,'/')
+      if(out.indexOf(root)<0) out.push(root)
+      return out
+    }
+    /** The injected flag pairs, or [] when the user's own `leanArgs` already state a search root. */
+    function leanSearchPathArgs(){
+      const user=(Array.isArray(params.leanArgs)?params.leanArgs:[]).map(String)
+      if(leanHasSearchFlag(user)) return []
+      const out=[]
+      for(const p of leanSearchPathList()) out.push(LEAN_SEARCH_PATH_FLAG,p)
+      return out
+    }
+    /** `[exe, ...userArgs, ...(search roots unless the user stated one), ...tail]` (§3.1 + AMENDMENT §2). */
+    function leanArgv(exe,tail){
+      const user=(Array.isArray(params.leanArgs)?params.leanArgs:[]).map(String)
+      return [exe].concat(user).concat(leanSearchPathArgs()).concat(tail?[tail]:[])
+    }
+    /**
+     * AMENDMENT §4: the job id pins the WHOLE BUILD CONTEXT — content + engine + normalized argv +
+     * search paths — so a result compiled under a different toolchain/flag set can never be mistaken
+     * for a verification of this one, and only THAT context's `settled(ok)` may set `passed`.
+     */
+    async function leanBuildContext(){
+      const searchPaths=leanSearchPathList()
+      let exe=String(params.leanCommand||'lean')
+      const sub=subprocessOf()
+      try { if(sub&&typeof sub.resolveExecutable==='function') exe=String(await sub.resolveExecutable(exe)) } catch(e){ /* keep the configured name: the run itself will report LEAN_NOT_FOUND */ }
+      const argv=leanArgv(exe,null)
+      return {engine:exe,argv,argvLine:argv.join(' '),searchPaths,searchArgs:leanSearchPathArgs()}
+    }
+    /** §4.3: CRLF/CR → LF, strip trailing whitespace per line and trailing blank lines. */
+    function normalizeLeanContent(s){ return String(s==null?'':s).replace(/\r\n?/g,'\n').replace(/[ \t]+$/gm,'').replace(/\n+$/,'')+'\n' }
+    function sha256Text(s){ return createHash('sha256').update(normalizeLeanContent(s),'utf8').digest('hex') }
+    function leanJobsRel(){ return 'Formal/Jobs' }
+    function leanJobRel(jobId){ return leanJobsRel()+'/'+jobId+'.json' }
+    function leanJobId(key,buildHash){ return idSafe(String(key||'job')).replace(/\.lean$/,'')+'-'+String(buildHash).slice(0,12) }
+    /** AMENDMENT §4: the id hash covers content + engine + normalized argv + search paths. */
+    function leanBuildHashOf(content,ctx){ return sha256Text(JSON.stringify([sha256Text(content),String(ctx.engine||''),ctx.argv||[],ctx.searchPaths||[]])) }
+    async function leanJobIdFor(key,content){ const ctx=await leanBuildContext(); return {jobId:leanJobId(key,leanBuildHashOf(content,ctx)),ctx} }
+    /** Sleep through the host timer service (fiber-owned); the global fallback is what the header
+     *  note documents for file rows. */
+    function leanSleep(ms){ return new Promise(res=>{ if(typeof ctx.timeout==='function'){ ctx.timeout(()=>res(),ms); return } setTimeout(res,ms) }) }
+    function leanJobView(j){ return j?{jobId:j.jobId,state:j.state,rel:j.rel,target:j.target||j.name||'',attempts:j.attempts||1,settledAt:j.settledAt||0,exitCode:(j.exitCode===undefined?null:j.exitCode)}:null }
+    function listLeanJobs(){ return Object.keys(leanJobs).sort().map(k=>leanJobView(leanJobs[k])) }
+    async function writeLeanJob(job){
+      leanJobs[job.jobId]=job
+      try { await writeJson(leanJobRel(job.jobId),job) } catch(e){ logActivity('formal','job 记录写入失败 '+job.jobId+': '+String((e&&e.message)||e)) }
+      return job
+    }
+    async function readLeanJob(jobId){ try { return await readJson(leanJobRel(jobId))||undefined } catch(e){ return undefined } }
+    /** §2.4: ONE line per settled job, injected into the next prompt that is constructed. */
+    function pushLeanNotice(job,run){
+      const sec=run&&run.ms?((run.ms/1000).toFixed(1)+'s'):'—'
+      let line
+      if(job.state==='settled'&&run&&run.ok) line='通过（exit 0，'+sec+(job.kind==='proof'?('，已归档 '+job.verifiedRel):'，已重建索引')+'）'
+      else if(job.state==='timeout') line='超时（leanTimeoutMs='+posMs(params.leanTimeoutMs,120000)+' 已 terminate，对象保持 attempted，可重跑）'
+      else if(job.state==='interrupted') line='中断（会话卸载或崩溃，已标记 attempted，可重跑）'
+      else if(job.state==='failed'&&run&&!run.ok&&!run.hashMatch) line='失败（文件在编译期间被改写，结果不可用——请对新内容重跑）'
+      else line='失败（exit '+String(run&&run.exitCode)+'，见 stderr 尾部：'+tail((run&&run.stderr)||'',160)+'）'
+      leanNotices.push('【形式化结果】'+job.jobId+'：'+line)
+      logActivity('formal','形式化结果 '+job.jobId+' → '+job.state+(job.target?('（对象 '+job.target+'）'):''))
+    }
+    /** Consume-and-clear the pending announcements (injected into the next constructed prompt). */
+    function pendingLeanNoticeText(){ if(!leanNotices.length) return ''; const t=leanNotices.join('\n'); leanNotices=[]; return t }
+    /**
+     * Enqueue one compile. `job` = {kind:'run'|'def'|'lemma'|'proof', key, target, rel, content}.
+     * Deduplicated by CONTENT hash (§4.3): the job id embeds `sha[0:12]`, so re-archiving identical
+     * content cannot produce a second job.
+     */
+    async function enqueueLeanJob(job){
+      const content=String(job.content==null?'':job.content)
+      const sha=job.sha256||sha256Text(content)
+      const ctx=job.ctx||await leanBuildContext()
+      const buildHash=leanBuildHashOf(content,ctx)
+      const jobId=leanJobId(job.key,buildHash)
+      const existing=leanJobs[jobId]
+      if(existing&&(existing.state==='queued'||existing.state==='running')) return {ok:true,duplicate:true,job:existing}
+      const rec={ jobId, kind:job.kind, key:job.key, target:job.target||'', name:job.name||'', rel:job.rel, abs:job.abs||'',
+        sha256:sha, buildHash, build:{engine:ctx.engine,argv:ctx.argv,searchPaths:ctx.searchPaths}, contextChanged:false,
+        content, via:job.via||'', state:'queued', attempts:((existing&&existing.attempts)||0)+1,
+        enqueuedAt:now(), startedAt:0, settledAt:0, exitCode:null, timedOut:false, interrupted:false, run:null, verifiedRel:'' }
+      await writeLeanJob(rec)
+      leanQueue.push(jobId)
+      logActivity('formal','入队后台编译 '+jobId+'（'+(job.kind||'run')+' '+job.rel+'，engine='+ctx.engine+'，search-path='+(ctx.searchPaths.join(',')||'（用户自带）')+'）')
+      armHeartbeat()   // §2.2: the queue is drained from the EXISTING heartbeat
+      return {ok:true,job:rec}
+    }
+    /** §2.1/§2.4: the ONE place an object may become `passed` (and the proof be archived). */
+    async function settleLeanJob(job,run){
+      const nowText=await readTextAbs(job.abs)
+      const hashMatch=nowText!==undefined&&sha256Text(nowText)===job.sha256
+      // AMENDMENT §4: the id already pins the build context; if the user changed the toolchain while
+      // the job was in flight, RECORD that the current context differs (the compile itself was done
+      // with the recorded context, which is what the job id attests to).
+      let contextChanged=false
+      try { const nowCtx=await leanBuildContext()
+        contextChanged=JSON.stringify([nowCtx.engine,nowCtx.argv,nowCtx.searchPaths])!==JSON.stringify([(job.build||{}).engine,(job.build||{}).argv,(job.build||{}).searchPaths])
+        if(contextChanged) logActivity('formal','作业 '+job.jobId+' 的结果属于记录中的构建上下文（engine/argv/search-paths 已被改动，未影响该次编译的结论）')
+      } catch(e){ /* best effort */ }
+      const ok=!!(run&&run.ok)&&hashMatch
+      const timedOut=!!(run&&run.timedOut)
+      const state=ok?'settled':(timedOut?'timeout':'failed')
+      const settled=Object.assign({},job,{
+        state, settledAt:now(), exitCode:(run&&run.exitCode===undefined?null:run.exitCode),
+        timedOut, interrupted:false, hashMatch, contextChanged,
+        run:{at:now(),ok,exitCode:(run&&run.exitCode===undefined?null:run.exitCode),ms:(run&&run.ms)||0,timedOut,interrupted:false,
+             hashMatch,stdoutTail:tail((run&&run.stdout)||'',800),stderrTail:tail((run&&run.stderr)||'',800)},
+      })
+      if(ok&&job.kind==='proof'){
+        // ★ ONLY here: a green run on UNCHANGED content mints the proof and flips the record.
+        settled.verifiedRel='Verified/Lean/'+job.key+'.lean'
+        await writeText(settled.verifiedRel,job.content)
+        const prev=formalOf(job.key)
+        await putFormal(job.key,Object.assign({},prev,{ status:'passed', file:job.rel, proof:settled.verifiedRel, decision:'used',
+          note:prev.note||'', async:{jobId:job.jobId,state,attempts:settled.attempts,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:settled.settledAt,exitCode:settled.exitCode},
+          run:settled.run, updatedAt:now() }))
+      } else {
+        const prev=formalOf(job.key)
+        if(job.kind==='proof'){
+          await putFormal(job.key,Object.assign({},prev,{ status:prev.status==='passed'?'attempted':(prev.status==='blocked'?'blocked':'attempted'),
+            file:job.rel, proof:prev.proof||'', decision:prev.decision||'used', note:prev.note||'',
+            async:{jobId:job.jobId,state,attempts:settled.attempts,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:settled.settledAt,exitCode:settled.exitCode},
+            run:settled.run, updatedAt:now() }))
+        } else if(job.kind==='run'&&job.target){
+          // A plain run only touches the formal records when it was aimed at an OBJECT (exactly what
+          // the synchronous path does: no target, no record). `passed`/`blocked` are preserved.
+          await formalSetRun(job.target,Object.assign({},run,{ok,file:job.rel,timedOut,interrupted:false}))
+          const cur=formalOf(job.target)
+          await putFormal(job.target,Object.assign({},cur,{status:cur.status==='passed'?'passed':(cur.status==='blocked'?'blocked':'attempted'),
+            async:{jobId:job.jobId,state,attempts:settled.attempts,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:settled.settledAt,exitCode:settled.exitCode}}))
+        }
+      }
+      await writeLeanJob(settled)
+      try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ }
+      pushLeanNotice(settled,Object.assign({},run,{ok,hashMatch}))
+      return settled
+    }
+    /** §2.2 + AMENDMENT §5: the drain. One pass starts up to `leanJobsMaxParallel` workers and
+     *  returns IMMEDIATELY (a long compile must not block the heartbeat); each worker chains the
+     *  next pass when it settles. A no-op pass costs one comparison + one array check. */
+    async function runLeanQueue(){
+      const cap=Math.max(1,Math.floor(Number(params.leanJobsMaxParallel))||LEAN_QUEUE_CONCURRENCY)
+      let started=false
+      while(leanInflight.length<cap&&leanQueue.length){
+        const jobId=leanQueue.shift()
+        const job=leanJobs[jobId]
+        if(!job) continue
+        const running=Object.assign({},job,{state:'running',startedAt:now()})
+        leanInflight.push(running); await writeLeanJob(running)
+        started=true
+        ;(async()=>{
+          let run
+          // Compile the ABSOLUTE path recorded at enqueue time: a `def`/`lemma` lives under the
+          // global `VibeMath/Formal/{Lib,Proved}` (beside the project tree), so the project-relative
+          // form would resolve to a non-existent file and report V4_NOT_FOUND.
+          try { run=await leanRunFile(String(running.abs||running.rel)) }
+          catch(e){ run={ok:false,code:'LEAN_RUN_FAILED',message:String((e&&e.message)||e),file:running.rel} }
+          leanInflight=leanInflight.filter(j=>j.jobId!==jobId)
+          if(leanJobs[jobId]&&leanJobs[jobId].state==='interrupted') return   // dispose() already settled it
+          await settleLeanJob(leanJobs[jobId]||running,run)
+          runLeanQueue().catch(()=>{})   // keep the pipeline moving at the cap
+        })()
+      }
+      return started
+    }
+    /** §2.5: dispose/abort terminates every in-flight compile and marks it interrupted — never `passed`. */
+    async function disposeLean(){
+      leanQueue=[]
+      const jobs=leanInflight.slice()
+      leanInflight=[]
+      if(!jobs.length) return false
+      for(const job of jobs){
+        try { if(job.handle&&typeof job.handle.terminate==='function') job.handle.terminate() } catch(e){ /* best effort */ }
+        const cur=leanJobs[job.jobId]||job
+        const rec=Object.assign({},cur,{state:'interrupted',interrupted:true,settledAt:now(),
+          run:Object.assign({},cur.run||{},{ok:false,interrupted:true,hashMatch:false})})
+        await writeLeanJob(rec)
+        if(rec.kind==='proof'&&rec.key){ const prev=formalOf(rec.key)
+          await putFormal(rec.key,Object.assign({},prev,{status:prev.status==='passed'?'attempted':(prev.status||'attempted'),
+            async:{jobId:rec.jobId,state:'interrupted',attempts:rec.attempts,enqueuedAt:rec.enqueuedAt,startedAt:rec.startedAt,settledAt:rec.settledAt,exitCode:null}})) }
+        pushLeanNotice(rec,{ok:false,exitCode:null,ms:0})
+      }
+      return true
+    }
+    /**
+     * §2.6 crash/restart recovery: scan `<project>/Formal/Jobs/*.json` AFTER the project dirs exist.
+     * It NEVER mints a `passed` anything unless the job record itself says exitCode===0 AND the file
+     * on disk still hashes to the enqueued content.
+     */
+    async function recoverLeanJobs(opts){
+      const o=opts||{}
+      const applySettled=o.applySettled!==false
+      let files=[]
+      try {
+        const t=await fs.resolve(leanJobsRel(),{cwd:frameworkRoot()})
+        if(await fs.stat(t)===undefined) return {scanned:0}
+        files=await fs.listDir(t)
+      } catch(e){ return {scanned:0} }
+      let queued=0,redriven=0,stale=0,completed=0
+      for(const f of files||[]){
+        if(!f||f.type!=='file'||!/\.json$/.test(String(f.name))) continue
+        const job=await readJson(leanJobsRel()+'/'+f.name)
+        if(!job||!job.jobId||!job.rel) continue
+        leanJobs[job.jobId]=job
+        const sha=String(job.sha256||'')
+        const text=await readTextAbs(job.abs||vibeRelAbs(job.rel))
+        const hashMatch=text!==undefined&&sha256Text(text)===sha
+        if(job.state==='queued'){ if(leanQueue.indexOf(job.jobId)<0) leanQueue.push(job.jobId); queued++; continue }
+        if(job.state==='running'){
+          if(hashMatch){
+            await writeLeanJob(Object.assign({},job,{state:'queued',interrupted:true,attempts:(job.attempts||1)+1,run:Object.assign({},job.run||{},{ok:false,interrupted:true,hashMatch:true})}))
+            if(leanQueue.indexOf(job.jobId)<0) leanQueue.push(job.jobId)
+            if(job.kind==='proof'&&job.key){ const prev=formalOf(job.key)
+              await putFormal(job.key,Object.assign({},prev,{status:prev.status==='passed'?'attempted':(prev.status||'attempted'),
+                async:{jobId:job.jobId,state:'queued',attempts:(job.attempts||1)+1,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:0,exitCode:null}})) }
+            leanNotices.push('【形式化结果】'+job.jobId+'：崩溃/重启中断，已按新尝试次数重新入队（旧进程结果不可知，对象保持 attempted）')
+            redriven++
+          } else {
+            await writeLeanJob(Object.assign({},job,{state:'interrupted',interrupted:true,settledAt:now(),run:Object.assign({},job.run||{},{ok:false,interrupted:true,hashMatch:false})}))
+            if(job.kind==='proof'&&job.key){ const prev=formalOf(job.key)
+              await putFormal(job.key,Object.assign({},prev,{status:'attempted',
+                async:{jobId:job.jobId,state:'interrupted',attempts:job.attempts||1,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:now(),exitCode:null}})) }
+            leanNotices.push('【形式化结果】'+job.jobId+'：文件已变，请手动重跑（不自动重驱，避免把旧代码的结果贴到新代码上）')
+            stale++
+          }
+          continue
+        }
+        if(job.state==='settled'&&job.kind==='proof'&&job.key&&applySettled){
+          const rec=formalOf(job.key)
+          const applied=rec.async&&rec.async.jobId===job.jobId&&rec.async.state==='settled'
+          if(!applied&&job.exitCode===0&&hashMatch&&job.verifiedRel){
+            await writeText(job.verifiedRel,job.content)
+            await putFormal(job.key,Object.assign({},rec,{status:'passed',file:job.rel,proof:job.verifiedRel,decision:rec.decision||'used',
+              async:{jobId:job.jobId,state:'settled',attempts:job.attempts||1,enqueuedAt:job.enqueuedAt,startedAt:job.startedAt,settledAt:job.settledAt,exitCode:0},
+              run:job.run||rec.run,updatedAt:now()}))
+            leanNotices.push('【形式化结果】'+job.jobId+'：按作业记录补齐（通过，已归档 '+job.verifiedRel+'）')
+            completed++
+          }
+        }
+      }
+      if(queued+redriven+stale+completed){ await writeLeanLibIndexesSafe() ; if(leanQueue.length) armHeartbeat() }
+      return {scanned:(files||[]).length,queued,redriven,stale,completed}
+    }
+    async function writeLeanLibIndexesSafe(){ try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ } }
+    /**
+     * §1.2 `lean_read`: read ONE archived library file VERBATIM (for import-or-copy reuse).
+     * Read-only; the path is confined to `<VibeMath>/Formal/{Lib,Proved}` — the sanitised `name`
+     * cannot contain a separator, and the resolved path is re-checked against the root so a crafted
+     * name can never escape (a `.lean` suffix is added, never accepted as a path).
+     */
+    async function leanRead(o){
+      const args=o||{}
+      const raw=String(args.name==null?'':args.name).trim()
+      const kind=String(args.kind||'auto')
+      if(!raw) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'name is required'}
+      if(raw.indexOf('/')>=0||raw.indexOf('\\')>=0||raw.indexOf('..')>=0) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'name must be a bare library name (no path separators)'}
+      if(['auto','lib','proved'].indexOf(kind)<0) return {ok:false,code:'V4_INVALID_ARGUMENT',message:"kind must be 'auto' | 'lib' | 'proved'"}
+      const name=idSafe(raw).replace(/\.lean$/,'')
+      if(!name||name==='id') return {ok:false,code:'V4_INVALID_ARGUMENT',message:'invalid name'}
+      const cands=[]
+      if(kind==='auto'||kind==='lib') cands.push({kind:'lib',rel:'Formal/Lib/'+name+'.lean',abs:formalLibRoot()+'/'+name+'.lean'})
+      if(kind==='auto'||kind==='proved') cands.push({kind:'proved',rel:'Formal/Proved/'+name+'.lean',abs:formalProvedRoot()+'/'+name+'.lean'})
+      const checked=[]
+      for(const c of cands){
+        const norm=normalizeAbsPath(c.abs)
+        const root=normalizeAbsPath(vibeRoot())
+        if(norm.indexOf(root+'/Formal/')!==0) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'refused: resolves outside the VibeMath/Formal library'}
+        checked.push(c)
+      }
+      const found=await (async()=>{
+        for(const c of checked){ const t=(await readTextAbs(c.abs)); if(t!==undefined) return {c,t} }
+        return null
+      })()
+      if(!found) return {ok:false,code:'V4_NOT_FOUND',message:'no archived library file named '+name+(kind==='auto'?' (checked Formal/Lib and Formal/Proved)':' in Formal/'+(kind==='lib'?'Lib':'Proved')),name,kind}
+      const full=String(found.t)
+      const bytes=(typeof TextEncoder==='function')?new TextEncoder().encode(full).length:full.length
+      const truncated=bytes>LEAN_READ_MAX_BYTES
+      const text=truncated?full.slice(0,LEAN_READ_MAX_BYTES):full
+      return {ok:true,name,file:found.c.rel,kind:found.c.kind,sha256:sha256Text(full),bytes,text,truncated,
+        hint:'复用：新文件里写 '+(found.c.kind==='lib'?'import Formal.Lib.':'import Formal.Proved.')+name+'（模块根=VibeMath 根，框架已把它加入编译搜索路径），或按上面的原文逐字复制。'}
+    }
+
+    /**
+     * AMENDMENT §3: the read-only result/wait surface. Without `jobId` it lists THIS session's jobs;
+     * with it, returns the job's state / exitCode / receipt path (`Formal/Jobs/<id>.json`) / archive
+     * path. `waitMs>0` waits up to that many ms and then reports the CURRENT state (never blocks
+     * forever, never throws).
+     */
+    const LEAN_JOB_TERMINAL=['settled','failed','timeout','interrupted']
+    async function leanJobTool(o){
+      const args=o||{}
+      const jobId=String(args.jobId||'').trim()
+      const waitMs=Math.max(0,Math.min(600000,Math.floor(Number(args.waitMs))||0))
+      if(!jobId){
+        const ids=Object.keys(leanJobs).sort()
+        return {ok:true,count:ids.length,
+          jobs:ids.map(k=>Object.assign(leanJobView(leanJobs[k]),{receipt:leanJobRel(k),archive:leanJobs[k].verifiedRel||'',timedOut:!!leanJobs[k].timedOut,interrupted:!!leanJobs[k].interrupted})),
+          queued:leanQueue.slice(),running:leanInflight.map(j=>j.jobId),
+          hint:'有 jobId 时用 vibe_v4_lean_job {jobId, waitMs} 取结果/等待（waitMs 超时只返回当前 state）。'}
+      }
+      let job=leanJobs[jobId]||await readLeanJob(jobId)
+      if(job&&waitMs>0){
+        const t0=now()
+        while(LEAN_JOB_TERMINAL.indexOf(job.state)<0&&now()-t0<waitMs){ await leanSleep(25); job=leanJobs[jobId]||job }
+      }
+      if(!job) return {ok:false,code:'V4_NOT_FOUND',message:'no such job: '+jobId}
+      return {ok:true,jobId,job:leanJobView(job),state:job.state,exitCode:(job.exitCode===undefined?null:job.exitCode),
+        rel:job.rel,receipt:leanJobRel(jobId),archive:job.verifiedRel||'',target:job.target||'',key:job.key||'',
+        timedOut:!!job.timedOut,interrupted:!!job.interrupted,attempts:job.attempts||1,settledAt:job.settledAt||0,
+        build:job.build||null,buildHash:job.buildHash||'',sha256:job.sha256||'',
+        run:job.run||null,
+        hint:LEAN_JOB_TERMINAL.indexOf(job.state)>=0?'（已终态）':'（仍在队列/编译中；可用 waitMs 再等，或等下一轮【形式化结果】公告）'}
+    }
+
     function formalModeWord(){ return formalMode()==='require'?'强制':'鼓励' }
     /**
      * The verification-prompt block. Every branch is computed from the CURRENT mode and the
@@ -517,8 +887,11 @@ export function apply(ctx) {
         L.push('  ▸ 因此请把 verdict 用在"这个阻塞判断是否成立 / 是否仍有别的形式化路线"上，并给出理由。')
       } else {
         L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
-        L.push('  · 工具：vibe_v4_lean_run（执行）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库）')
-        L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 '+formalLibRoot().replace(/\\/g,'/')+'/，已证引理放 '+formalProvedRoot().replace(/\\/g,'/')+'/；写之前先 vibe_v4_lean_lib 查重。')
+        // lean-incremental-async spec §5 B (verbatim, after the implementation-difficulty line).
+        L.push('  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。')
+        L.push('  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v4_lean_lib 显示 passed 再审。')
+        L.push('  · 工具：vibe_v4_lean_run（执行/入队）· vibe_v4_lean_archive（归档）· vibe_v4_lean_lib（查已有可复用库与 jobs）· vibe_v4_lean_read（读归档原文逐字复用）')
+        L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 '+formalLibRoot().replace(/\\/g,'/')+'/，已证引理放 '+formalProvedRoot().replace(/\\/g,'/')+'/；写之前先 vibe_v4_lean_lib 查重。复用已归档内容：`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已加入编译搜索路径）。项目工作文件 Formal/<对象 id>.lean 只是归档用，**不是**模块路径，不要 import 它。')
         L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
         if(formalMode()==='require'){
           L.push("  · **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因（vibe_v4_lean_archive kind='blocked' note=… 或回执 formal.note）。若两者都没有，本次裁定不会生效，会被记为未定论（原因 formal-required）并进入「形式化待办」。")
@@ -537,15 +910,34 @@ export function apply(ctx) {
       }
       return L.join('\n')
     }
-    /** The ordinary-work-round line (spec §6.2): formalize reusable objects as you go. */
+    /** The ordinary-work-round line (spec §6.2): formalize reusable objects as you go. Carries the
+     *  three selection criteria, the blocked-instead-of-guessing rule, the look-up-first reuse path
+     *  and the background-compile rule (lean-incremental-async spec §5 A, verbatim). */
     function formalWorkLine(){
       if(!formalOn()) return ''
+      // AMENDMENT §1: proactivity is its own knob. 'off' = no proactive nagging at all (the
+      // verification prompt still states the `formalVerify` requirement); the criteria below stay
+      // attached to whichever proactive text is shown.
+      if(String(params.leanInitiative)==='off') return ''
       return '【顺手形式化（'+formalModeWord()+'）】把你工作中常用或可能复用的对象、假设、新定义，'
         +"用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/"
         +"（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。"
+        +'\n  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——'
+        +'\n    进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。'
+        +'\n  · 复用优先：写新定义/证明前**先 vibe_v4_lean_lib 查已有库**；复用已归档内容用'
+        +'\n    `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = VibeMath 根，框架已把它加进编译搜索路径），'
+        +'\n    或 `vibe_v4_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。'
+        +'\n  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v4_lean_lib 的 jobs 字段或下一轮提示里的'
+        +'\n    【形式化结果】行看结果。**在作业落地为"通过"之前，不得把该对象当成已通过。**'
         +(formalMode()==='require'
           ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
           : '这会让后续的验证与证明省掉大量重复工作。')
+        // AMENDMENT §1: only `leanInitiative='eager'` asks for MORE proactivity than the normal line.
+        // `formalVerify` is deliberately NOT consulted here: it expresses the verification-time
+        // requirement, not how eagerly the group should formalize while working.
+        +(String(params.leanInitiative)==='eager'
+          ? '\n  · 本档（leanInitiative=eager）：工作中出现**有价值且你有把握**的小引理 / 小命题 / 小定义时，**主动**顺手形式化并归档，不必等到验证轮；把握不足就照上面的判据记 blocked。'
+          : '')
         +'归档前先跑通（vibe_v4_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
     }
     /** The `formal` object every non-off prompt documents in its JSON reply contract. */
@@ -602,21 +994,24 @@ export function apply(ctx) {
             const txt=(await readTextAbs(dirAbs+'/'+e.name))||''
             const name=String(e.name).replace(/\.lean$/,'')
             const first=(txt.split('\n').filter(l=>l.trim()&&!/^\s*(\/\/|--|import)/.test(l))[0]||'').trim().slice(0,110)
-            rows.push('| '+name+' | '+rel+' | '+kindLabel+' | '+first.replace(/\|/g,'/')+' |')
+            // §4.4: the dependency column v3 already has — one entry per `import` line, so a reader
+            // can see what a reusable file pulls in (and therefore what must travel with it).
+            const deps=(txt.match(/^\s*import\s+[^\s]+/gm)||[]).map(l=>l.replace(/^\s*import\s+/,'').trim()).filter(Boolean)
+            rows.push('| '+name+' | '+rel+' | '+kindLabel+' | '+(deps.length?deps.join(', ').replace(/\|/g,'/'):'—')+' | '+first.replace(/\|/g,'/')+' |')
           }
         } catch(e){ /* listing is best-effort */ }
         return rows
       }
       const libRows=await scan(formalLibRoot(),'Formal/Lib','def')
       await writeTextAbs(formalLibRoot()+'/Index.md',['# 可复用 Lean 定义库（跨项目）｜'+currentProject,'',
-        '> 写新定义之前先查这里：能复用就不要重新定义。','',
-        '| 名称 | 文件 | 类别 | 摘要 |','|---|---|---|---|']
-        .concat(libRows.length?libRows:['| （暂无） | | | |']).join('\n')+'\n')
+        '> 写新定义之前先查这里：能复用就不要重新定义。复用方式：`import Formal.Lib.<名称>`（模块根 = VibeMath 根，框架已加入编译搜索路径），或用 vibe_v4_lean_read 取原文逐字复制。','',
+        '| 名称 | 文件 | 类别 | 依赖 | 摘要 |','|---|---|---|---|---|']
+        .concat(libRows.length?libRows:['| （暂无） | | | | |']).join('\n')+'\n')
       const provedRows=await scan(formalProvedRoot(),'Formal/Proved','lemma')
       await writeTextAbs(formalProvedRoot()+'/Index.md',['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜'+currentProject,'',
-        '> 这些文件是通过内核检查的引理，可直接 import 复用。','',
-        '| 名称 | 文件 | 类别 | 陈述 |','|---|---|---|---|']
-        .concat(provedRows.length?provedRows:['| （暂无） | | | |']).join('\n')+'\n')
+        '> 这些文件是通过内核检查的引理，可直接 `import Formal.Proved.<名称>` 复用（模块根 = VibeMath 根）。','',
+        '| 名称 | 文件 | 类别 | 依赖 | 陈述 |','|---|---|---|---|---|']
+        .concat(provedRows.length?provedRows:['| （暂无） | | | | |']).join('\n')+'\n')
       await writeFormalIndex()
       await writeFormalTodo()
       return {lib:libRows.length,proved:provedRows.length,objects:Object.keys(formalRecords()).length}
@@ -630,7 +1025,24 @@ export function apply(ctx) {
      */
     async function leanRunTool(memberId,o){
       const args=o||{}
-      const run=await leanRunFile(String(args.file||''),args.timeout_ms)
+      const rel=String(args.file||'')
+      // §2.3 (leanAsync=true, the default): ENQUEUE and return immediately — the member keeps
+      // working; the result lands in Formal/ + the indexes and is announced in the next prompt.
+      if(LEAN_ASYNC_ON()){
+        const abs=leanAbsPath(rel)
+        if(abs===null||!/\.lean$/.test(abs)) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'Lean file must live under '+vibeRoot().replace(/\\/g,'/')+'/ and end in .lean (got '+rel+')',file:rel}
+        const content=await readTextAbs(abs)
+        if(content===undefined) return {ok:false,code:'V4_NOT_FOUND',message:'no such file: '+rel,file:rel}
+        const target=String(args.target||'').trim()
+        const key=formalKey(target||rel.replace(/\.lean$/,''))
+        const q=await enqueueLeanJob({kind:'run',key,target,rel,abs,content,via:memberId||'host'})
+        if(q.duplicate) return {ok:true,async:leanJobView(q.job),jobId:q.job.jobId,file:rel,mode:formalMode(),
+          message:'同一内容已在队列/已归档（'+q.job.state+'），未重复入队；用 vibe_v4_lean_lib 的 jobs 查看，或用 lean_read 取原文。'}
+        logActivity('formal',(memberId||'host')+' vibe_v4_lean_run '+rel+' → 已入队 '+q.job.jobId)
+        return {ok:true,async:{jobId:q.job.jobId,state:'queued'},jobId:q.job.jobId,file:rel,mode:formalMode(),
+          message:'已入队后台编译；你可以继续工作。结果会写入 Formal/ 与索引，并在下一轮提示里公告；也可用 vibe_v4_lean_lib 的 jobs 字段随时查看。'}
+      }
+      const run=await leanRunFile(rel,args.timeout_ms)
       try {
         if(run.ok||run.file){
           if(String(args.target||'').trim()) formalSetRun(String(args.target),run)
@@ -642,6 +1054,9 @@ export function apply(ctx) {
       // bare `lean_run` abbreviation (docs §6 hard requirement 1).
       logActivity('formal',(memberId||'host')+' vibe_v4_lean_run '+(run.file||String(args.file||''))+' → '+(run.ok?'通过':(run.code||'未通过')))
       return Object.assign({ok:!!run.ok},run,{
+        // `leanAsync=false`: the historical shape, plus an explicit `async:null` so a caller can
+        // tell "synchronous result" from "queued job" without guessing.
+        async:null, jobId:null,
         mode:formalMode(),
         hint: run.ok
           ? "通过。若是某个对象的证明，请用 vibe_v4_lean_archive kind='proof' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind='def'/'lemma' 归档到全局库——归档前先跑通（run=true 或先 vibe_v4_lean_run）：跑不通的定义不要进可复用库。"
@@ -676,20 +1091,57 @@ export function apply(ctx) {
         if(!name||name==='id') return {ok:false,code:'V4_INVALID_ARGUMENT',message:'name is required for a reusable definition/lemma'}
         const got=await bodyFrom(); if(got.error) return got.error
         const rel='Formal/'+(kind==='def'?'Lib':'Proved')+'/'+name+'.lean'
-        if(!await writeTextAbs(vibeRelAbs(rel),got.body)) return {ok:false,code:'V4_WRITE_FAILED',message:'could not write '+rel}
+        const abs=vibeRelAbs(rel)
+        const sha=sha256Text(got.body)
+        // AMENDMENT §4: de-duplication keys on the WHOLE build context (content + engine + argv +
+        // search paths), so identical content compiled by a different toolchain is a NEW job.
+        const jidFor=await leanJobIdFor(name,got.body)
+        const jobId=jidFor.jobId
+        // §4.3: the SAME content that already compiled green is a no-op — no rewrite, no recompile.
+        const prior=leanJobs[jobId]
+        if(prior&&prior.state==='settled'&&prior.run&&prior.run.ok&&sha256Text((await readTextAbs(abs))||'')===sha){
+          logActivity('formal',String(memberId||'host')+' 归档'+kind+' '+name+' → 去重（内容与已归档版本一致）')
+          return {ok:true,kind,name,file:rel,deduped:true,sha256:sha,jobId,async:leanJobView(prior),run:prior.run,
+            note:'内容与已归档版本一致，跳过重写与重编译'}
+        }
+        if(!await writeTextAbs(abs,got.body)) return {ok:false,code:'V4_WRITE_FAILED',message:'could not write '+rel}
+        if(LEAN_ASYNC_ON()){
+          const q=await enqueueLeanJob({kind,key:name,name,rel,abs,content:got.body,sha256:sha,ctx:jidFor.ctx,via:memberId||'host'})
+          logActivity('formal',String(memberId||'host')+' 归档'+(kind==='def'?'可复用定义':'已证引理')+' '+name+' → '+rel+'（已入队 '+(q.job&&q.job.jobId||jobId)+'）')
+          return {ok:true,kind,name,file:rel,sha256:sha,jobId:(q.job&&q.job.jobId)||jobId,
+            async:{jobId:(q.job&&q.job.jobId)||jobId,state:q.duplicate?'queued':'queued'},run:undefined,
+            note:'已并入全局可复用库并**入队后台编译**：通过前不要在别处把它当作已核对引理；结果见 vibe_v4_lean_lib.jobs 与下一轮【形式化结果】行'}
+        }
         // The global library sits BESIDE the project tree, so it must be executed through its
         // ABSOLUTE path — the project-relative form would resolve inside frameworkRoot.
-        const run=args.run===false?null:await leanRunFile(vibeRelAbs(rel))
+        const run=args.run===false?null:await leanRunFile(abs)
         try { await rebuildLeanLibIndexes() } catch(e){ /* index rebuild is best-effort */ }
         logActivity('formal',String(memberId||'host')+' 归档'+(kind==='def'?'可复用定义':'已证引理')+' '+name+' → '+rel+(run?('（运行 '+(run.ok?'通过':'未通过')+'）'):''))
-        return {ok:true,kind,name,file:rel,run:run||undefined,note:'已并入全局可复用库，后续项目可直接 import 复用'}
+        return {ok:true,kind,name,file:rel,deduped:false,sha256:sha,async:null,run:run||undefined,note:'已并入全局可复用库，后续项目可直接 import 复用'}
       }
       if(kind==='proof'){
         const key=formalKey(String(args.target||''))
         if(!key) return {ok:false,code:'V4_INVALID_ARGUMENT',message:'target is required for kind=proof'}
         const got=await bodyFrom(); if(got.error) return got.error
         const workRel='Formal/'+key+'.lean'
+        const sha=sha256Text(got.body)
+        const jidFor=await leanJobIdFor(key,got.body)
+        // §4.3 (proof variant): identical content + the object is ALREADY `passed` and the archived
+        // proof still hashes the same ⇒ nothing to do.
+        const prevRec=formalOf(key)
+        if(prevRec.status==='passed'&&sha256Text((await readText('Verified/Lean/'+key+'.lean'))||'')===sha){
+          logActivity('formal',String(memberId||'host')+' 归档证明 '+key+' → 去重（对象已 passed 且归档内容一致）')
+          return {ok:true,kind,target:key,file:workRel,proof:prevRec.proof,passed:true,deduped:true,sha256:sha,async:leanJobView(leanJobs[jidFor.jobId])||null,status:prevRec.status}
+        }
         if(!await writeText(workRel,got.body)) return {ok:false,code:'V4_WRITE_FAILED',message:'could not write '+workRel}
+        if(LEAN_ASYNC_ON()){
+          const q=await enqueueLeanJob({kind:'proof',key,target:key,rel:workRel,abs:leanAbsPath(workRel),content:got.body,sha256:sha,ctx:jidFor.ctx,via:memberId||'host'})
+          const jid=(q.job&&q.job.jobId)||jidFor.jobId
+          logActivity('formal',String(memberId||'host')+' 为 '+key+' 归档形式化证明 '+workRel+'（已入队 '+jid+'；通过前不改 passed）')
+          return {ok:true,kind,target:key,file:workRel,sha256:sha,jobId:jid,
+            async:{jobId:jid,state:'queued'},run:undefined,
+            note:'证明已入队后台编译：**只有作业落地为通过**才会写入 Verified/Lean/'+key+'.lean 并把对象置 passed；其余情况保持 attempted，见 vibe_v4_lean_lib.jobs'}
+        }
         const run=await leanRunFile(workRel)
         const prev=formalOf(key)
         const passed=!!run.ok
@@ -709,7 +1161,7 @@ export function apply(ctx) {
         await putFormal(key,rec)
         try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ }
         logActivity('formal',String(memberId||'host')+' 为 '+key+' 归档形式化证明 '+workRel+(passed?'（**通过**，已归档到 '+rec.proof+'，验证转为忠实性审查）':'（**未通过**：'+tail(run.stderr||run.message,160)+'）'))
-        return {ok:true,kind,target:key,file:workRel,proof:rec.proof,passed,run,status:rec.status}
+        return {ok:true,kind,target:key,file:workRel,proof:rec.proof,passed,run,status:rec.status,deduped:false,sha256:sha,async:null}
       }
       if(kind==='blocked'){
         const key=formalKey(String(args.target||''))
@@ -1000,10 +1452,15 @@ export function apply(ctx) {
         +'{"summary":"<your insight / direction / rough plan, one tight paragraph>","solved":false}'
     }
     async function normalPrompt(r){
+      // Consume-and-clear ONCE: calling the accessor twice would return '' the second time (bug).
+      const leanNotice=pendingLeanNoticeText()
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。\n'
         +'\n团队成员：\n'+banner()+'\n'
         +'New items:\n'+ (await inboxText(r.rId)) +'\n'
+        // Settled background compiles are announced ONCE, in the next prompt constructed (spec §2.4):
+        // the same dynamic discipline as the mode — an announcement is never frozen into a brief.
+        +(leanNotice?('\n'+leanNotice+'\n'):'')
         // 顺手形式化: computed from the CURRENT mode on every wake (docs §1: the mode is dynamic).
         +(formalOn()?('\n'+formalWorkLine()+'\n'):'')
         +'Reply with ONLY a JSON object:\n'
@@ -1051,6 +1508,9 @@ export function apply(ctx) {
         L.push('')
         L.push(formalPromptBlock(vs.targetId))
       }
+      // A settled background compile is announced once, here too: a voter must not conclude on a
+      // "passed" that only landed in the queue a moment ago (spec §2.4/§5 B).
+      { const notice=pendingLeanNoticeText(); if(notice){ L.push(''); L.push(notice) } }
       L.push('')
       L.push('Reply with ONLY a JSON object:')
       L.push('{"vote":{"verdict":1,"reason":"<your logic>"}}')
@@ -1786,7 +2246,9 @@ export function apply(ctx) {
       clearHeartbeat()
       const ms=posMs(params.activityTimeoutMs,120000)
       if(typeof ctx.timeout!=='function') return
-      heartbeatDisposer=ctx.timeout(()=>{ heartbeatDisposer=null; scheduleNext().catch(()=>{}) }, ms)
+      // §2.2: the EXISTING heartbeat is the queue driver (same place, same discipline as the paper
+      // retry: independent of `scheduler.running`). `runLeanQueue()` is one boolean when idle.
+      heartbeatDisposer=ctx.timeout(()=>{ heartbeatDisposer=null; runLeanQueue().catch(()=>{}).then(()=>scheduleNext().catch(()=>{})) }, ms)
     }
     // Real DSH /compact of a resident's OWN session via ctx.compaction (if the host provides it);
     // falling back silently to the resident self-summary directive when the service is absent.
@@ -2823,6 +3285,11 @@ export function apply(ctx) {
       // A fresh run starts with a clean formal slate: the ids r-1.. and p-* are reused, so
       // carrying a previous run's records over would let a stale `passed` open the new gate.
       formal={}; formalTodos=[]
+      // §2.6 recovery (fresh-run variant): a dead process may have left `Formal/Jobs/*.json` behind.
+      // A FRESH run must not adopt the previous run's SETTLED outcomes (that is what the clean slate
+      // above exists to prevent), so only the safe half of the table runs: `queued` jobs are
+      // re-driven and `running` jobs are marked/re-queued — never a `passed` from a stale record.
+      await recoverLeanJobs({mode:'start',applySettled:false})
       busy=new Set(); wakeKind=new Map(); currentResident=''; pendingMeeting=null; lastSyncMeetingAt=0; finalizeLock=null; verifiedRecently.clear()   // fresh run must NOT inherit stale concurrency/coordination state (busy/wakeKind/currentResident/pendingMeeting) from a previous run on the same reused session
       paperState=null   // a fresh run gets a fresh paper flow (its durable record lives in Paper/<run id>/)
       // Re-base the artifact counter on the cards already on disk, so the auto-sync meeting counts
@@ -2855,6 +3322,9 @@ export function apply(ctx) {
       const pre=await readJson('State/session.json')
       if(running && !autoDone && pre && pre.processEpoch===processEpoch) return {ok:true,message:'already running (no-op)'}
       await loadAll(); await loadSettings()
+      // §2.6 recovery runs AFTER loadAll (the formal records it may complete/annotate are restored
+      // there — recovering earlier would write onto an unloaded `formal` and clobber them).
+      await recoverLeanJobs({mode:'resume',applySettled:true})
       // A run the group CONCLUDED (unanimous voteSolved → autoDone) must not be silently revived into
       // a zombie that keeps waking residents with no consensus that it should still run. The group
       // decided it is done; continuing means a NEW run (vibe_v4_start / vibe_v4_configure).
@@ -2919,7 +3389,7 @@ export function apply(ctx) {
       // The parameter NAMES (not just the rendered string) so a caller — the `/v4 set` handler in
       // particular — can reject an unknown key instead of silently dropping it.
       paramsKeys: Object.keys(params),
-      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs','finalPaper','paperFormat','paperLanguage','paperCompilePdf','paperEditor','paperLatexCommand'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
+      params:['residentCount','compactAfterRounds','compactThreshold','maxParallel','activityTimeoutMs','meetingKeepEvery','verdictMaxRounds','stallAutoMeetingMs','provider','model','residentPersona','toolAllow','toolDeny','formalVerify','leanCommand','leanArgs','leanTimeoutMs','finalPaper','paperFormat','paperLanguage','paperCompilePdf','paperEditor','paperLatexCommand','leanAsync','leanInitiative','leanSearchPaths','leanJobsMaxParallel'].map(k=>k+'='+(Array.isArray(params[k])?params[k].join(','):params[k])).join(', ') } }
     function formalReportText(){
       if(!formalOn()) return '- 未启用（`formalVerify` = off；可用 vibe_v4_set 切到 encourage / require）'
       const v=formalView()
@@ -2976,9 +3446,9 @@ export function apply(ctx) {
     // Normalize one parameter value to its intended type so a string from /v4 set or configure
     // becomes the right number/array. Keeps settings.json clean regardless of how it was set.
     function normalizeParam(k, v){
-      const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery','stallAutoMeetingMs']
+      const INT_KEYS=['residentCount','compactThreshold','compactAfterRounds','maxParallel','activityTimeoutMs','verdictMaxRounds','meetingKeepEvery','stallAutoMeetingMs','leanJobsMaxParallel']
       if(INT_KEYS.includes(k)){ const n=Number(v); if(!Number.isFinite(n)) return v; return Math.floor(n) }
-      if(k==='toolAllow'||k==='toolDeny'||k==='leanArgs'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
+      if(k==='toolAllow'||k==='toolDeny'||k==='leanArgs'||k==='leanSearchPaths'){ if(Array.isArray(v)) return v.map(x=>String(x).trim()).filter(Boolean); if(typeof v==='string') return v.split(',').map(x=>x.trim()).filter(Boolean); return [] }
       // ---- Lean formal verification (docs §1) ------------------------------------------
       // `formalVerify` is a three-way enum and MUST degrade to the no-op 'off' on anything else.
       // Degrading to a STRONGER mode would let a typo silently gate every conclusion — the exact
@@ -2999,6 +3469,18 @@ export function apply(ctx) {
       // v2 §A5: `office` (the session root / human side) by default, or `resident:<id>`.
       if(k==='paperEditor'){ const s=String(v==null?'':v).trim(); return paperEditorOk(s)?s:DEFAULT_PARAMS.paperEditor }
       if(k==='paperLatexCommand'){ const s=String(v==null?'':v).trim(); return s }
+      // lean-incremental-async §1.1: an EXPLICIT branch — the string 'false' (what `/v4 set` hands us)
+      // must normalise to boolean false, never survive as a truthy string.
+      if(k==='leanAsync'){
+        if(typeof v==='boolean') return v
+        const s=String(v==null?'':v).trim().toLowerCase()
+        if(s==='true'||s==='1'||s==='yes'||s==='on') return true
+        if(s==='false'||s==='0'||s==='no'||s==='off') return false
+        return DEFAULT_PARAMS.leanAsync
+      }
+      // AMENDMENT §1: three-way PROACTIVITY enum — anything unknown degrades to the default
+      // ('normal'), never to a stronger setting.
+      if(k==='leanInitiative') return ['off','normal','eager'].indexOf(String(v))!==-1?String(v):DEFAULT_PARAMS.leanInitiative
       // A blank command would make resolveExecutable('') fail confusingly; fall back to the default.
       if(k==='leanCommand'){ const s=String(v==null?'':v).trim(); return s||'lean' }
       // A non-positive timeout is meaningless (the run would be killed instantly) → default.
@@ -3016,7 +3498,7 @@ export function apply(ctx) {
      * 注意**不要**给 activityTimeoutMs / compactThreshold 之类加下界：文档明确建议测试时把
      * activityTimeoutMs 设成 40ms 这种小值，钳制它会破坏受支持的配置。
      */
-    const INT_MIN = { maxParallel: 1, residentCount: 1 }
+    const INT_MIN = { maxParallel: 1, residentCount: 1, leanJobsMaxParallel: 1 }
     function clampInt(k, n){
       const min = INT_MIN[k]
       if(min===undefined) return n
@@ -3071,6 +3553,7 @@ export function apply(ctx) {
       // between abort and the next action.
       meetingState=null; verifyState=null; pendingMeeting=null; pendingVerify=[]; busy=new Set(); wakeKind=new Map(); currentResident=''; finalizeLock=null
       paperState=null   // an aborted run is over: its paper flow (if any) must not keep driving wakes
+      await disposeLean()   // §2.5: abort terminates the in-flight compile and marks it interrupted
       await saveAll(); return {ok:true,message:'aborted'} }
     function setPause(){ clearHeartbeat(); running=false; return {ok:true,message:'paused'} }
 
@@ -3118,6 +3601,12 @@ export function apply(ctx) {
       formalMode, formalOn, formalRecords, formalTodo, formalOf, formalView, formalReport,
       rebuildLeanLibIndexes, leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo,
       leanRunToolApi: async (relPath,timeoutMs)=>await leanRunFile(relPath,timeoutMs),
+      // lean-incremental-async §6.3: the queue is reachable from the suite/dispatcher exactly like
+      // `leanRunToolApi`, so the async paths can be driven deterministically (no timer races).
+      leanQueueApi:{ enqueue:enqueueLeanJob, runQueue:runLeanQueue, state:()=>({running:leanInflight.map(leanJobView),queued:leanQueue.slice(),jobs:listLeanJobs(),notices:leanNotices.slice(),cap:Math.max(1,Math.floor(Number(params.leanJobsMaxParallel))||1)}), dispose:disposeLean, recover:recoverLeanJobs, job:leanJobTool },
+      leanRead, listLeanJobs, leanJobs:()=>Object.assign({},leanJobs), leanJobTool,
+      /** Absolute paths the Lean layer uses (read-only display; `searchPaths` are injected per spawn). */
+      leanPaths:()=>({searchPath:vibeRoot().replace(/\\/g,'/'),searchPaths:leanSearchPathList(),lib:formalLibRoot().replace(/\\/g,'/'),proved:formalProvedRoot().replace(/\\/g,'/'),jobs:leanJobsRel()}),
       /**
        * The prompt builders, addressed BY RESIDENT ID. "成员读到的文字就是产品"
        * (AUDIT-CHECKLIST §0.1): a suite that can only observe tool return values is blind to a
@@ -3208,7 +3697,7 @@ export function apply(ctx) {
   // MODE is dynamic — switching it changes the very next prompt), leanCommand/leanArgs select the
   // executable, leanTimeoutMs bounds one run. Invalid values fall back to the defaults and an
   // unknown mode degrades to 'off' (never to a STRONGER mode).
-  registerTool('vibe_v4_set','Set V4 parameters: residentCount (how many residents a start spawns), compactThreshold (resident context % that triggers a compaction) and compactAfterRounds (rounds between soft compactions), meetingKeepEvery (every N newly accumulated artifacts an automatic sync meeting is convened), maxParallel (how many residents may be woken concurrently), activityTimeoutMs (idle window before a resident is nudged; also the heartbeat/watchdog period), stallAutoMeetingMs (how long the group may make NO progress before an auto sync meeting is convened), verdictMaxRounds (how many verification rounds one object gets: 1 independent round + re-vote debate rounds), model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain; finalPaper (default true) writes the run\'s final PAPER automatically once the closing meeting votes unanimously to stop, paperFormat: "both" (default) | "md" | "tex" decides which text versions are produced, paperLanguage: "zh" (default) | "en", paperCompilePdf (default true) compiles a PDF when a LaTeX engine is actually detected (xelatex|latexmk|pdflatex|lualatex|tectonic, overridable via paperLatexCommand), paperEditor: "office" (default — the session root/human side) | "resident:<id>" names who finalises the merged draft after the cross-review round. A key outside this list is refused (ok:false, ignored:[...]) instead of being silently dropped.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'},finalPaper:{type:'boolean'},paperFormat:{type:'string',enum:['both','md','tex']},paperLanguage:{type:'string',enum:['zh','en']},paperCompilePdf:{type:'boolean'},paperEditor:{type:'string'},paperLatexCommand:{type:'string'}}),(s,a)=>{ const r=s.setParams(a); const st=s.status(); if(r&&r.ok===false) return Object.assign({},st,{ok:false,warning:r.message,ignored:r.ignored}); return st })
+  registerTool('vibe_v4_set','Set V4 parameters: residentCount (how many residents a start spawns), compactThreshold (resident context % that triggers a compaction) and compactAfterRounds (rounds between soft compactions), meetingKeepEvery (every N newly accumulated artifacts an automatic sync meeting is convened), maxParallel (how many residents may be woken concurrently), activityTimeoutMs (idle window before a resident is nudged; also the heartbeat/watchdog period), stallAutoMeetingMs (how long the group may make NO progress before an auto sync meeting is convened), verdictMaxRounds (how many verification rounds one object gets: 1 independent round + re-vote debate rounds), model/provider override resident LLM route (empty=inherit main); toolAllow/toolDeny restrict resident tools (arrays of tool names); residentPersona adds a persona line; formalVerify: "off" (default, a true no-op) | "encourage" (residents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a unanimous true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record); leanCommand/leanArgs/leanTimeoutMs configure the toolchain; leanAsync (default true) ENQUEUES each compile to a per-session background queue (concurrency 1, budget = leanTimeoutMs) and returns immediately with async:{jobId,state:\'queued\'} — results are announced in the next prompt and visible in vibe_v4_lean_lib.jobs; set leanAsync=false for the historical synchronous await; leanInitiative: "off" | "normal" (default) | "eager" is how PROACTIVE the group should be while working (it never changes what formalVerify requires at voting time); leanSearchPaths (array, default empty) adds extra compiler search roots — they are injected BEFORE the automatic VibeMath root, de-duplicated, and an explicit --search-path/-R/--root in leanArgs still wins; leanJobsMaxParallel (default 1) caps how many background compiles run at once; finalPaper (default true) writes the run\'s final PAPER automatically once the closing meeting votes unanimously to stop, paperFormat: "both" (default) | "md" | "tex" decides which text versions are produced, paperLanguage: "zh" (default) | "en", paperCompilePdf (default true) compiles a PDF when a LaTeX engine is actually detected (xelatex|latexmk|pdflatex|lualatex|tectonic, overridable via paperLatexCommand), paperEditor: "office" (default — the session root/human side) | "resident:<id>" names who finalises the merged draft after the cross-review round. A key outside this list is refused (ok:false, ignored:[...]) instead of being silently dropped.',objParams({residentCount:{type:'integer'},compactAfterRounds:{type:'integer'},compactThreshold:{type:'integer'},meetingKeepEvery:{type:'integer'},maxParallel:{type:'integer'},activityTimeoutMs:{type:'integer'},verdictMaxRounds:{type:'integer'},stallAutoMeetingMs:{type:'integer'},provider:{type:'string'},model:{type:'string'},residentPersona:{type:'string'},toolAllow:{type:'array',items:{type:'string'}},toolDeny:{type:'array',items:{type:'string'}},formalVerify:{type:'string',enum:['off','encourage','require']},leanCommand:{type:'string'},leanArgs:{type:'array',items:{type:'string'}},leanTimeoutMs:{type:'integer'},finalPaper:{type:'boolean'},paperFormat:{type:'string',enum:['both','md','tex']},paperLanguage:{type:'string',enum:['zh','en']},paperCompilePdf:{type:'boolean'},paperEditor:{type:'string'},paperLatexCommand:{type:'string'},leanAsync:{type:'boolean'},leanInitiative:{type:'string',enum:['off','normal','eager']},leanSearchPaths:{type:'array',items:{type:'string'}},leanJobsMaxParallel:{type:'integer'}}),(s,a)=>{ const r=s.setParams(a); const st=s.status(); if(r&&r.ok===false) return Object.assign({},st,{ok:false,warning:r.message,ignored:r.ignored}); return st })
   // resident-facing tools: route to the CALLING resident (exec.agent.id === childId);
   // fall back to the last-woken resident when called by the host/assistant.
   registerTool('vibe_v4_send_message','(resident) Send a message to another resident (to=all broadcasts to the whole team).',objParams({to:{type:'string'},content:{type:'string'}},['to','content']),(s,a,x)=>{ const from=s.residentIdOf(x); if(!from) return {ok:false,message:'no such resident'}; if(String(a.to)==='all') return s.broadcast(a.content, from); return s.postMessage(from,a.to,a.content) })
@@ -3243,13 +3732,27 @@ export function apply(ctx) {
   // if a human or an agent calls them deliberately, but no prompt mentions them.
   registerTool('vibe_v4_lean_run','(resident) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output verbatim, a timeout returns LEAN_TIMEOUT. Pass target=<object id> to also record the run against that object.',objParams({file:{type:'string'},target:{type:'string'},timeout_ms:{type:'integer'}},['file']),(s,a,x)=>s.leanRunTool(s.residentIdOf(x),a))
   registerTool('vibe_v4_lean_archive',"(resident) Archive Lean code. kind=\"def\": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind=\"lemma\": a machine-checked lemma → Formal/Proved. kind=\"proof\": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind=\"blocked\": record an explicit, reasoned \"cannot/not worth formalizing\" decision (note required).",objParams({kind:{type:'string',enum:['def','lemma','proof','blocked']},name:{type:'string'},target:{type:'string'},content:{type:'string'},from:{type:'string'},note:{type:'string'},run:{type:'boolean'}},['kind']),(s,a,x)=>s.leanArchive(s.residentIdOf(x),a))
-  registerTool('vibe_v4_lean_lib','(resident) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.',objParams({refresh:{type:'boolean'}}),async (s,a)=>{
+  registerTool('vibe_v4_lean_lib','(resident) List (and by default rebuild) the Lean reuse library: this project\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining. The `paths.searchPath` field is the module root the framework injects into the compiler, and `jobs` shows the state of every background compile (leanAsync).',objParams({refresh:{type:'boolean'}}),async (s,a)=>{
     const r=(a&&a.refresh===false)?{lib:null,proved:null,objects:Object.keys(s.formalRecords()).length}:await s.rebuildLeanLibIndexes()
     return { ok:true, mode:s.formalMode(), rebuilt:!(a&&a.refresh===false), counts:r, todo:s.formalTodo(),
       objects:s.formalView().objects,
-      paths:{project:'Formal/（相对项目根）',lib:'VibeMath/Formal/Lib/',proved:'VibeMath/Formal/Proved/',proofs:'Verified/Lean/'},
-      hint:"复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'。" }
+      paths:{project:'Formal/（相对项目根）',lib:'VibeMath/Formal/Lib/',proved:'VibeMath/Formal/Proved/',proofs:'Verified/Lean/',searchPath:s.leanPaths().searchPath,searchPaths:s.leanPaths().searchPaths},
+      searchPath:s.leanPaths().searchPath,
+      importNamespace:{lib:'import Formal.Lib.<name>',proved:'import Formal.Proved.<name>'},
+      jobs:s.listLeanJobs(),
+      hint:"复用优先：先在 Lib/ 里找现成定义（vibe_v4_lean_read 可取原文逐字复制）；新定义用 vibe_v4_lean_archive kind='def' 归档，已证引理用 kind='lemma'；后台编译进度看 jobs。" }
   })
+  // lean-incremental-async §1.2: the ONLY new (read-only) tool. Reading an archived definition or
+  // lemma VERBATIM is how a member reuses it without re-deriving it — or copies it when the local
+  // toolchain cannot follow the import.
+  registerTool('vibe_v4_lean_read','(resident, read-only) Read ONE archived Lean library file verbatim (for import-or-copy reuse). name is a bare library name (no path); kind is auto|lib|proved. Refuses anything outside <VibeMath>/Formal/{Lib,Proved}, and truncates at 64KB (truncated:true).',objParams({name:{type:'string'},kind:{type:'string',enum:['auto','lib','proved']}},['name']),(s,a)=>s.leanRead(a))
+  // AMENDMENT §3: the read-only job/result surface (no polling tool beyond this one).
+  registerTool('vibe_v4_lean_job','(resident, read-only) Background-compile jobs. Without jobId: this session\'s job list (state/receipt/archive). With jobId: that job\'s state, exitCode, receipt path (Formal/Jobs/<jobId>.json) and archive path; waitMs>0 waits up to that many milliseconds and then reports the current state (it never blocks forever).',objParams({jobId:{type:'string'},waitMs:{type:'integer'}}),(s,a)=>s.leanJobTool(a))
+
+  // §2.5: the fiber's disposer must not leave an orphan compiler behind. Every session's in-flight
+  // Lean job is terminated (and marked `interrupted`, never `passed`) when this preset subtree
+  // unloads — the same lifecycle the tool/command registrations above already follow.
+  ctx.effect(() => () => { for(const s of sessions.values()){ try { s.disposeLean() } catch(e){ /* best effort */ } } })
 
   // Same lifecycle rule as registerTool: commands.register() returns a disposer, so the
   // registration belongs to this fiber and must be unwound with it.

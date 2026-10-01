@@ -60,9 +60,12 @@
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
       - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
-      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
-        verification (execute / archive / list the reuse library). The scheduler's child agents
-        use them too; they work in every mode.
+      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib / vibe_math_lean_read /
+        vibe_math_lean_job — Lean formal verification (execute / archive / list + read the reuse
+        library / inspect or wait for a background compile job). leanAsync=true (default) queues the
+        compile and returns a jobId; nothing counts as proved until that job settles ok (so "有把握"
+        is not the same as "已验证"). The scheduler's child agents use them too; they work in every
+        mode.
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
@@ -90,7 +93,7 @@
           explicit, reasoned blocker record; the scheduler is never wedged by it).
         - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
           definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
-        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
           (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
           reported as LEAN_NOT_FOUND and still lets the code be written and archived.
         - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
@@ -145,9 +148,12 @@
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
       - vibe_math_list_agents / vibe_math_message_agent / vibe_math_interrupt_agent — inspect / steer / interrupt subagents.
-      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal
-        verification (execute / archive / list the reuse library). The scheduler's child agents
-        use them too; they work in every mode.
+      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib / vibe_math_lean_read /
+        vibe_math_lean_job — Lean formal verification (execute / archive / list + read the reuse
+        library / inspect or wait for a background compile job). leanAsync=true (default) queues the
+        compile and returns a jobId; nothing counts as proved until that job settles ok (so "有把握"
+        is not the same as "已验证"). The scheduler's child agents use them too; they work in every
+        mode.
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
@@ -175,7 +181,7 @@
           explicit, reasoned blocker record; the scheduler is never wedged by it).
         - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
           definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
-        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs are tunable as well
+        - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
           (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
           reported as LEAN_NOT_FOUND and still lets the code be written and archived.
         - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the

@@ -19,6 +19,12 @@ function assert(cond, msg) {
   if (cond) { passed++; console.log('  ok - ' + msg) }
   else { failed++; console.error('  FAIL - ' + msg) }
 }
+// The framework reports shell/mkdir failures through console.error. Capture them (and still print):
+// the phantom-mkdir regression below is only visible on that channel, so a suite that swallowed it
+// would stay green while the framework could not tell "mkdir ok" from "mkdir failed".
+const shellErrors = []
+const origConsoleError = console.error.bind(console)
+console.error = function (...a) { shellErrors.push(a.map(x => String(x)).join(' ')); return origConsoleError(...a) }
 
 // ---------- ONE shared host ctx (standing mount: ONE plugin instance for ALL sessions) ----------
 const WS = mkdtempSync(join(tmpdir(), 'vibe-multi-'))
@@ -39,9 +45,13 @@ const ctx = {
           const fsmod = await import('node:fs')
           const pathmod = await import('node:path')
           if (/New-Item/.test(script)) {
-            const m = script.match(/-Path\s+(?:'((?:[^']|'')*)'|"((?:[^"]|"")*)")/)
-            const raw = (m && (m[1] || m[2])) || ''
-            const paths = raw.split(',').map(x => x.replace(/''/g, "'"))
+            // The framework asks for the WHOLE directory list in one command
+            // (`-Path 'a','b',…`); the old regex only captured the first quoted path, so the
+            // mock silently created one directory — which is exactly why a phantom failure could
+            // hide here. Parse every quoted path after -Path (the real PowerShell creates them all).
+            const head = script.match(/-Path\s+([^|]*)/)
+            const raw = (head && head[1]) || ''
+            const paths = raw.split(',').map(x => x.trim().replace(/^'|'$/g, '').replace(/^"|"$/g, '').replace(/''/g, "'"))
             for (const p of paths) { if (p) fsmod.mkdirSync(p, { recursive: true }) }
           } else if (/Move-Item/.test(script)) {
             const m = script.match(/-LiteralPath\s+'((?:[^']|'')*)'\s+-Destination\s+'((?:[^']|'')*)'/)
@@ -109,10 +119,12 @@ console.log('tool registrations:', toolRegs.length)
 // 22 → 25: the Lean formal-verification feature (docs/formal-verification.md) added
 // vibe_math_lean_run / _lean_archive / _lean_lib, which are registered UNCONDITIONALLY
 // (registration is static; the formalVerify mode only decides whether members are told about
-// them). The invariant this asserts is "registered ONCE per preset, not per session".
-assert(toolRegs.length === 25, '25 tools registered once (not per session)')
-assert(['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib'].every(n => toolRegs.some(t => t.name === n)),
-  'the three Lean tools are registered unconditionally (registration is static, not mode-dependent)')
+// them). 25 → 27: the incremental/async slice (docs/formal-verification.md §1) added the read-only
+// vibe_math_lean_read + vibe_math_lean_job, also unconditional and registered on both paths.
+// The invariant this asserts is "registered ONCE per preset, not per session".
+assert(toolRegs.length === 27, '27 tools registered once (not per session)')
+assert(['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'].every(n => toolRegs.some(t => t.name === n)),
+  'all five Lean tools are registered unconditionally (registration is static, not mode-dependent)')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')
 
 async function callTool(name, args, agent) {
@@ -152,6 +164,22 @@ const sA = await callTool('vibe_math_start', {}, ROOT_A)
 assert(sA.ok === true && sA.project === 'proja', 'session A starts scheduler (projA)')
 const sB = await callTool('vibe_math_start', {}, ROOT_B)
 assert(sB.ok === true && sB.project === 'projb', 'session B starts scheduler (projB)')
+
+// ---------- regression: the SECOND session's ensureDirs must really succeed ----------
+// This host's mock `spawn` is `async` (it resolves to the handle). A framework that assumes
+// `handle.done` exists dereferences `undefined.exitCode`, reports a phantom mkdir failure and
+// (worse) never notices that it cannot tell success from failure. Guard both halves: the project
+// tree for projB really exists on disk, and no ensureDirs failure reached the error channel.
+{
+  const projB = join(WS, 'VibeMath', 'Projects', 'projb')
+  const need = ['qs', 'Propos', 'Verified', 'Verified/Lean', 'Formal', 'VibeMath_State'].map(d => join(projB, d))
+  const missing = need.filter(p => !existsSync(p))
+  assert(missing.length === 0, '★★ session B (second session) really got its project directory tree (missing: ' + missing.join(',') + ')')
+  assert(existsSync(join(WS, 'VibeMath', 'Formal', 'Lib')) && existsSync(join(WS, 'VibeMath', 'Formal', 'Proved')),
+    'the GLOBAL Lean library dirs were created by the second session too')
+  const mkdirErrors = shellErrors.filter(l => /ensureDirs/.test(l))
+  assert(mkdirErrors.length === 0, '★★ no phantom "ensureDirs (mkdir …) failed" on a host whose spawn resolves asynchronously (got ' + JSON.stringify(mkdirErrors.slice(0, 2)) + ')')
+}
 
 // wait for ticks -> explorer spawn must have parent = ROOT_A
 await new Promise(r => setTimeout(r, 2600))

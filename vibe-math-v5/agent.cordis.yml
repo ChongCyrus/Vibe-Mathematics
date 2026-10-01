@@ -98,9 +98,9 @@
         - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
         - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
         - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
-        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
-          verification (execute / archive / list the reuse library). Members use them
-          too; they work in every mode.
+        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_job — Lean formal
+          verification (execute / archive / list the reuse library / read an archived file
+          verbatim / watch the background compile queue). Members use them too; they work in every mode.
       A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
@@ -116,6 +116,19 @@
           reported as LEAN_NOT_FOUND, a host with no subprocess service as NO_SUBPROCESS
           (on a timeout the process is terminated first), and in every one of those cases the
           code can still be written down and archived.
+        - Daily eagerness is a SEPARATE knob: leanInitiative 'off' (no daily drive) |
+          'normal' (default; the reminder rides with formalVerify) | 'eager' (push valuable
+          small lemmas/propositions/definitions into the library even in ordinary rounds).
+        - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
+          content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
+          gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+          exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
+        - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
+          vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with
+          vibe_v5_lean_job {jobId, waitMs} or vibe_v5_lean_lib.jobs, and NEVER treat an object
+          as passed before its job settles ok (exit 0, same content, same build context).
+        - Only formalize what you are confident about; when unsure record kind='blocked' with a
+          reason instead of dressing uncertainty up as a formalization.
         - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
           formalization TODO. The framework never installs Lean and never judges fidelity.
 
@@ -196,9 +209,9 @@
         - vibe_v5_add_researcher / vibe_v5_remove_researcher — OFFICE only: add or dismiss a PERMANENT researcher (the academician can only propose those).
         - vibe_v5_paper {lang?, format?, editor?, force?} — write the FINAL PAPER: the permanent staff write their own parts, cross-review each other, then the editor finalises. lang/format/editor override this one paper only.
         - vibe_v5_finalize_paper {decision, note, conclusion?} — OFFICE only when paperEditor=office: consult the institute first (>=1 office message + >=1 meeting), then finalise and put the conclusion in note.
-        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib — Lean formal
-          verification (execute / archive / list the reuse library). Members use them
-          too; they work in every mode.
+        - vibe_v5_lean_run / vibe_v5_lean_archive / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_job — Lean formal
+          verification (execute / archive / list the reuse library / read an archived file
+          verbatim / watch the background compile queue). Members use them too; they work in every mode.
       A /v5 slash command mirrors these (configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper).
 
       LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
@@ -214,6 +227,19 @@
           reported as LEAN_NOT_FOUND, a host with no subprocess service as NO_SUBPROCESS
           (on a timeout the process is terminated first), and in every one of those cases the
           code can still be written down and archived.
+        - Daily eagerness is a SEPARATE knob: leanInitiative 'off' (no daily drive) |
+          'normal' (default; the reminder rides with formalVerify) | 'eager' (push valuable
+          small lemmas/propositions/definitions into the library even in ordinary rounds).
+        - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
+          content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
+          gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+          exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
+        - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
+          vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with
+          vibe_v5_lean_job {jobId, waitMs} or vibe_v5_lean_lib.jobs, and NEVER treat an object
+          as passed before its job settles ok (exit 0, same content, same build context).
+        - Only formalize what you are confident about; when unsure record kind='blocked' with a
+          reason instead of dressing uncertainty up as a formalization.
         - vibe_v5_status / vibe_v5_report show the mode, per-object formal status and the
           formalization TODO. The framework never installs Lean and never judges fidelity.
 

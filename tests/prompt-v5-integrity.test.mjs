@@ -991,7 +991,7 @@ const RK = makeRoot()
 await callTool('vibe_v5_start', { problem: 'Lean 提示词测试', researcherCount: 2 }, RK)
 for (const sp of spawnsFor(RK)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(RK)
-await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, RK)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage', leanAsync: false }, RK)
 // (a) an ordinary work round carries the "formalize reusable things as you go" request
 delivered.length = 0
 await callTool('vibe_v5_say', { to: 'r-1', text: '继续推进。' }, childAgent(childOf(RK, 'acad')))
@@ -1024,7 +1024,7 @@ const RL2 = makeRoot()
 await callTool('vibe_v5_start', { problem: 'Lean 忠实性提示词测试', researcherCount: 2 }, RL2)
 for (const sp of spawnsFor(RL2)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(RL2)
-await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, RL2)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage', leanAsync: false }, RL2)
 await callTool('vibe_v5_record_proposition', { id: 'p-lean-b', statement: 'Lean 语料对象乙', value: 0.6, motive: 'm', p: 0.9 }, childAgent(childOf(RL2, 'r-1')))
 const leanB = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-b', content: 'theorem p_lean_b : 1 + 1 = 2 := by decide\n' }, childAgent(childOf(RL2, 'r-1')))
 assert(leanB.ok === true && leanB.passed === true, 'object 乙 has a proof that really passes (' + JSON.stringify({ ok: leanB.ok, passed: leanB.passed, code: leanB.run && leanB.run.code }) + ')')
@@ -1053,7 +1053,7 @@ const R_LEANREQ = makeRoot()
 await callTool('vibe_v5_start', { problem: 'Lean require 提示词测试', researcherCount: 2 }, R_LEANREQ)
 for (const sp of spawnsFor(R_LEANREQ)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(R_LEANREQ)
-await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'require' }, R_LEANREQ)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'require', leanAsync: false }, R_LEANREQ)
 await callTool('vibe_v5_record_proposition', { id: 'p-lean-req', statement: 'Lean 语料对象丙（require 档）', value: 0.6, motive: 'm', p: 0.8 }, childAgent(childOf(R_LEANREQ, 'r-1')))
 const propR = await callTool('vibe_v5_propose_verify', { target: 'p-lean-req', kind: 'proposition', reason: '语料' }, childAgent(childOf(R_LEANREQ, 'r-1')))
 assert(propR.ok === true && propR.started === true, 'the require-mode ballot started (' + JSON.stringify(propR).slice(0, 90) + ')')
@@ -1077,7 +1077,7 @@ const R_LEANDEF = makeRoot()
 await callTool('vibe_v5_start', { problem: 'Lean 缺陷后提示词测试', researcherCount: 2 }, R_LEANDEF)
 for (const sp of spawnsFor(R_LEANDEF)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(R_LEANDEF)
-await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, R_LEANDEF)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage', leanAsync: false }, R_LEANDEF)
 await callTool('vibe_v5_record_proposition', { id: 'p-lean-def', statement: 'Lean 语料对象丁', value: 0.6, motive: 'm', p: 0.9 }, childAgent(childOf(R_LEANDEF, 'r-1')))
 const leanD = await callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-def', content: 'theorem p_lean_d : 1 + 1 = 2 := by decide\n' }, childAgent(childOf(R_LEANDEF, 'r-1')))
 assert(leanD.ok === true && leanD.passed === true, 'object 丁 has a passing proof before the defect')
@@ -1109,7 +1109,7 @@ const R_LEANHINT = makeRoot()
 await callTool('vibe_v5_start', { problem: 'Lean 工具提示语料测试', researcherCount: 2 }, R_LEANHINT)
 for (const sp of spawnsFor(R_LEANHINT)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初始见解。', solved: false, contextPct: 10 }); await settle() }
 await settleInstitute(R_LEANHINT)
-await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage' }, R_LEANHINT)
+await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage', leanAsync: false }, R_LEANHINT)
 {
   const r1 = childAgent(childOf(R_LEANHINT, 'r-1'))
   // Labels are OURS (they name the call that produced the string); only the VALUES are

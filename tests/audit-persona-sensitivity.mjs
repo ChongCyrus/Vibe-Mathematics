@@ -83,16 +83,16 @@ const probes = [
   {
     name: 'v2-lean-tools-line-removed',
     preset: 'vibe-math-v2', file: 'agent.cordis.yml', nth: 'all', expect: 2,
-    guarantee: 'the three Lean tools must be named in the persona the main agent receives',
-    from: '      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal\n        verification (execute / archive / list the reuse library). The scheduler\'s child agents\n        use them too; they work in every mode.\n',
+    guarantee: 'the five Lean tools must be named in the persona the main agent receives',
+    from: '      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib / vibe_math_lean_read /\n        vibe_math_lean_job — Lean formal verification (execute / archive / list + read the reuse\n        library / inspect or wait for a background compile job). leanAsync=true (default) queues the\n        compile and returns a jobId; nothing counts as proved until that job settles ok (so "有把握"\n        is not the same as "已验证"). The scheduler\'s child agents use them too; they work in every\n        mode.\n',
     to: '',
   },
   {
     name: 'v2-phantom-tool-mentioned',
     preset: 'vibe-math-v2', file: 'agent.cordis.yml', nth: 'all', expect: 2,
     guarantee: 'the persona must not advertise a tool that is not registered (the agent would call it and fail)',
-    from: '      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal',
-    to: '      - vibe_math_lean_exec / vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib — Lean formal',
+    from: '      - vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib / vibe_math_lean_read /',
+    to: '      - vibe_math_lean_exec / vibe_math_lean_run / vibe_math_lean_archive / vibe_math_lean_lib / vibe_math_lean_read /',
   },
 
   // ── v3 ─────────────────────────────────────────────────────────────────────

@@ -28,12 +28,19 @@
 
 | 参数 | 取值 | 默认 | 含义 |
 |---|---|---|---|
-| `formalVerify` | `'off'` \| `'encourage'` \| `'require'` | `'off'` | 三档开关，见 §2 |
+| `formalVerify` | `'off'` \| `'encourage'` \| `'require'` | `'off'` | 三档开关，见 §2（**只**表示"验证时的要求强度"） |
 | `leanCommand` | 字符串 | `'lean'` | 要执行的 Lean 可执行文件（例：`'lake'`） |
 | `leanArgs` | 字符串数组 | `[]` | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | 正整数 | `120000` | 单次 Lean 运行的超时上限 |
+| `leanTimeoutMs` | 正整数 | `120000` | 单次 Lean 运行的超时上限（异步作业同样用它作单次预算） |
+| `leanAsync` | 布尔 | `true` | `true` = 编译走**后台队列**（`lean_run` / `lean_archive{run:true}` 入队后立即返回 `{async:{jobId,state:'queued'}}`）；`false` = **完全同步 await**（旧路径逐字保留）。只有 `settled(ok)` 才可能置 `passed`，见 §7.3 |
+| `leanJobsMaxParallel` | 正整数 | `1` | 后台编译并发上限（默认 1 = 串行；调大即并行，v2/v3 把合法范围夹在 1–8） |
+| `leanInitiative` | `'off'` \| `'normal'` \| `'eager'` | `'normal'` | **日常流程中的形式化主动性**：`off` 不主动（只在验证提示词里按 `formalVerify` 的要求做）/ `normal` 顺手把有价值且可能复用的东西形式化 / `eager` 更主动。**与 `formalVerify` 是两件事**：它不改变定论门禁 |
+| `leanSearchPaths` | 字符串数组 | `[]` | 额外编译搜索根：先注入它们、再注入自动的 `<VibeMath 根>`（去重、保持用户给的顺序）；`leanArgs` 里已显式给 `--search-path`/`-R`/`--root` 时**不注入任何东西**，见 §7.6 |
 
-- 非法值一律**回退到默认**（`formalVerify` 非三档之一 → `'off'`；`leanTimeoutMs` 非正 → 默认）。
+- 非法值一律**回退到默认**（`formalVerify` 非三档之一 → `'off'`；`leanInitiative` 非三档之一 → `'normal'`；
+  `leanTimeoutMs` 非正 → 默认；`leanJobsMaxParallel` < 1 → 1；`leanSearchPaths` 非数组 → `[]` 并去空串/去重）。
+- **`leanAsync` 必须显式布尔归一化**：字符串 `'false'` 不得被当作真值放行（它是"关掉后台队列"的开关，
+  错误归一化会让用户以为已同步执行、实际仍在排队）。
 - 参数必须出现在该架构既有的参数体系里：`set_params` / `vibe_v4_set` / `vibe_v5_set`、
   参数 schema（`*_setup` / `*_template`）、`status`/`report` 的可读参数表。
 - **模式是动态的**，可以在运行中切换：所有与模式相关的提示词文本都必须在**构造提示词的那一刻**
@@ -51,10 +58,10 @@
 - **回执通道在 `off` 档必须失效**：`formal` 字段本来就不在 `off` 档的回执契约里，所以一个残留/幻觉/被
   引用的 `formal` 回执**不得**创建形式化记录（否则 `off` 就不是无操作了）。四个架构都必须在这个入口
   上加 `formalOn()` 守卫。
-- 三个 Lean 工具**仍然注册且可用**（注册是静态的，与既有 `ctx.effect` 纪律一致）；`off` 只是不主动
+- 五个 Lean 工具（run / archive / lib / read / job）**仍然注册且可用**（注册是静态的，与既有 `ctx.effect` 纪律一致）；`off` 只是不主动
   向成员宣讲它们。代理/人主动调用时照常工作——**工具调用是刻意行为，回执字段不是**，这条区别就是
   上一条守卫的理由。
-- **主代理的 persona 是静态的，不受档位影响**：它**必须始终**文档化这三个工具与四个参数
+- **主代理的 persona 是静态的，不受档位影响**：它**必须始终**文档化这五个工具与八个参数
   （否则用户在 `off` 档根本发现不了这个开关，也就无法打开它）。"成员提示词里没有 Lean 文字"与
   "persona 里写着这个能力"**不矛盾**，两者都由测试守着（前者见各 `formal-verify-vN` 的 `off` 小节，
   后者见 `audit-persona-surface.test.mjs`）。
@@ -100,18 +107,23 @@
 <VibeMath 根>/
 ├─ Formal/                                  # 全局可复用 Lean 库（跨项目）
 │   ├─ Lib/<name>.lean                      # 可复用定义/对象/假设（def / structure / notation）
-│   ├─ Lib/Index.md                         # 名称 → 文件 → 类别 → 摘要
+│   ├─ Lib/Index.md                         # 名称 → 文件 → 类别 → 依赖（import）→ 摘要
 │   ├─ Proved/<name>.lean                   # 已成立的 Lean 命题/引理（机器已核对）
 │   └─ Proved/Index.md                      # 名称 → 文件 → 陈述 → 依赖
 └─ Projects/<项目>/                          # （v5 为 Projects/<项目>/Institutes/<所>/）
     ├─ Formal/
     │   ├─ <对象id>.lean                     # 该对象的形式化工作文件
     │   ├─ Index.md                          # 对象 → 状态 → 文件 → 归档证明 → 运行结果 → 难度判断
+    │   ├─ Jobs/<jobId>.json                 # 后台编译作业的镜像（崩溃恢复 + lean_lib.jobs 都读它）
     │   └─ TODO.md                           # require 模式下的「形式化待办」
     └─ Verified/
         ├─ <原有定论卡片>
         └─ Lean/<对象id>.lean                # ★ 归档证明：该定论对象对应的形式化代码
 ```
+
+- **`Formal/Jobs/<jobId>.json` 是异步队列的**唯一持久镜像**：内存队列是权威，但这个文件让崩溃/重启后
+  的恢复、`<prefix>lean_lib` 的 `jobs` 字段与 `<prefix>lean_job` 三处看到同一份事实。作业终态为
+  `settled` / `failed` / `timeout` / `interrupted` 四者之一。
 
 - **归档证明放在 `Verified/Lean/<id>.lean`**：它和定论卡片同处 `Verified/`，
   一眼可见"这条结论的形式化证明在哪"。
@@ -185,7 +197,7 @@
 
 ---
 
-## 5. 工具（每个架构三个，前缀各自不同）
+## 5. 工具（每个架构五个，前缀各自不同）
 
 前缀：v2/v3 → `vibe_math_`；v4 → `vibe_v4_`；v5 → `vibe_v5_`。
 
@@ -197,9 +209,11 @@
 | `target` | string | | 关联对象 id（给了就更新该对象的运行记录） |
 | `timeout_ms` | integer | | 覆盖 `leanTimeoutMs` |
 
-返回：`{ok, exitCode, signal, ms, command, stdout, stderr, file}`；
-找不到工具链返回 `{ok:false, code:'LEAN_NOT_FOUND', error}`；超时返回 `{ok:false, code:'LEAN_TIMEOUT'}`。
-**绝不抛异常到调度循环**——任何失败都要变成可读结果并记录。
+- `leanAsync=false`（同步路径）返回：`{ok, exitCode, signal, ms, command, stdout, stderr, file}`；
+  找不到工具链返回 `{ok:false, code:'LEAN_NOT_FOUND', error}`；超时返回 `{ok:false, code:'LEAN_TIMEOUT'}`。
+- `leanAsync=true`（默认）**不编译**：入队后立即返回 `{ok:true, file, async:{jobId,state:'queued'}, hint}`，
+  结果在下一轮提示的【形式化结果】行公告，或用 §5.5 的 `lean_job` / `lean_lib` 的 `jobs` 字段查询。
+- **绝不抛异常到调度循环**——任何失败都要变成可读结果并记录。
 
 ### 5.2 `<prefix>lean_archive`
 
@@ -208,21 +222,57 @@
 | `kind` | 必填 | 行为 |
 |---|---|---|
 | `'def'` / `'lemma'` | `name`, `content` 或 `from` | 写入全局 `Formal/Lib/<name>.lean`（def）或 `Formal/Proved/<name>.lean`（lemma），重建对应 `Index.md`；可选 `run:true` 先跑一次再归档 |
-| `'proof'` | `target`, `content` 或 `from` | 写入 `Formal/<target>.lean`；若该文件最近一次运行 `ok`，同时写 `Verified/Lean/<target>.lean` 并把对象标为 `passed` |
+| `'proof'` | `target`, `content` 或 `from` | 写入 `Formal/<target>.lean`；**只有 `settled(ok)`**（§7.3）才同时写 `Verified/Lean/<target>.lean` 并把对象标为 `passed`，否则记 `attempted` |
 | `'blocked'` | `target`, `note` | 记录显式难度判断/阻塞原因（`note` 空 → 拒绝），对象标为 `blocked` |
+
+- **内容哈希去重**：同 `content`（规范化后哈希相同）且**构建上下文一致**的 `def`/`lemma`/`proof` 不再重写、
+  不再重编译，直接返回 `{ok:true, deduped:true, …}`（对象已是 `passed` 时也返回 `passed`）。去重的判据与
+  §7.3 的 `settled(ok)` 同源；内容变了就正常走新作业。
+- `leanAsync=true` 时 `run:true`（或 `kind='lemma'` 的隐式编译）同样**入队即返回**；文件已写、编译未完成，
+  所以返回里明确要求"落地为通过之前不得把它当作可复用定义"。
 
 ### 5.3 `<prefix>lean_lib`
 
 无必填参数。**扫描并重建**三处索引（项目 `Formal/Index.md`、全局 `Lib/Index.md`、`Proved/Index.md`），
 返回可复用库清单（供代理写新定义前先查重、直接复用）。`refresh:false` 时只读不重建。
+`leanAsync=true` 时额外返回 `async` 与 `jobs`（每个作业的 state/rel/target/attempts/路径），
+以及 `paths.searchPath`（框架注入的模块根）。
+
+### 5.4 `<prefix>lean_read`
+
+只读地取回**一个已归档** Lean 文件的原文（供"逐字复用"）：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | ✅ | 归档文件名（可省略 `.lean`），经该架构的 id 安全化 |
+| `kind` | `'auto'` \| `'lib'` \| `'proved'` | | 默认 `auto`（先 Lib 再 Proved） |
+
+返回 `{ok, name, file, kind, sha256, bytes, text, truncated}`；**只允许** `<VibeMath 根>/Formal/{Lib,Proved}`
+之内的文件（越界拒绝），正文上限 64KB（超出则 `truncated:true`）。这是"先查库再写新定义"的闭环：
+`lean_lib` 告诉你有什么，`lean_read` 给你原文，然后 `import` 或逐字复制。
+
+### 5.5 `<prefix>lean_job`
+
+只读地查看后台编译作业：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `jobId` | string | | 省略 = 本会话作业清单；给了 = 该作业的 state/exitCode/回执路径/归档路径 |
+| `waitMs` | integer | | >0 时最多等这么多毫秒（轮询队列，**不阻塞心跳**），超时返回当前 state |
+
+`leanAsync=false`（同步档）时它仍然可用（此时清单里只会有同步运行留下的记录），返回体里带
+`async:false` 与 `maxParallel`，便于成员判断当前模式。**只有 `state='settled'` 且 `exitCode=0`
+（且内容哈希/构建上下文一致）才算通过**；`queued`/`running` 一律还不算，`failed`/`timeout`/`interrupted`
+都不算。
 
 ---
 
 ## 6. 提示词注入（在构造提示词时现算）
 
 > **硬要求（四套一致，逐字级别的约束）**
-> 1. **工具名一律写全称**（`<prefix>lean_run` / `<prefix>lean_archive` / `<prefix>lean_lib`）。
->    注入文本里**不得**出现 `lean_run` / `lean_archive` / `lean_lib` 这类缩写——那不是注册名，
+> 1. **工具名一律写全称**（`<prefix>lean_run` / `<prefix>lean_archive` / `<prefix>lean_lib` /
+>    `<prefix>lean_read` / `<prefix>lean_job`）。
+>    注入文本里**不得**出现 `lean_run` / `lean_archive` / `lean_lib` / `lean_read` / `lean_job` 这类缩写——那不是注册名，
 >    代理照抄会调用一个不存在的工具（工具自己返回的 `hint` 字段同样算注入文本）。
 > 2. **回执字段名必须与该架构真实契约一致**：v2/v3 的评审值字段是 `Result`，v4/v5 是 `verdict`。
 >    写错字段名 = 那一票被静默丢弃。
@@ -287,6 +337,14 @@
 归档前先跑通（<prefix>lean_run 或 lean_archive run=true）：跑不通的定义不要进可复用库。
 ```
 
+- **这段文字的档位由 `leanInitiative` 决定，不是 `formalVerify`**：`off` = 完全不出现；
+  `normal` = 上面的"顺手"档；`eager` = 追加"日常就主动把有价值的小引理/命题/定义形式化"。
+  `formalVerify` 只影响**验证提示词**的要求强度；两者可自由组合（例如 `formalVerify=off` +
+  `leanInitiative=eager` 表示"定论不额外要求，但日常鼓励形式化"）。
+- 异步档（`leanAsync=true`）下这段还必须写清：归档返回的是**排队中的作业**，
+  **未落地为 `settled(ok)` 之前不得声称已通过、也不得转忠实性审查**；查进度用
+  `<prefix>lean_lib` 的 `jobs` 或 `<prefix>lean_job`，复用先 `<prefix>lean_read` 取原文。
+
 ### 6.3 回执契约
 
 非 `off` 模式时，在每轮回执契约里加入（**必须真的被框架解析并落库**——只把字段写进提示词而不实现
@@ -306,11 +364,76 @@
 
 ## 7. Run 语义（实现要点）
 
-- 用 `subprocess` 服务：`resolveExecutable(leanCommand)` → `spawn({argv:[exe,...leanArgs,file], cwd, stdio:{stdin:'ignore',stdout:{maxBytes},stderr:{maxBytes}}, graceMs})`
+### 7.1 调用与超时
+
+- 用 `subprocess` 服务：`resolveExecutable(leanCommand)` → `spawn({argv, cwd, stdio:{stdin:'ignore',stdout:{maxBytes},stderr:{maxBytes}}, graceMs})`
   → `await handle.done` → `handle.collected.stdout?.readFrom(0).text`。
-- **必须**给 `cwd`（项目根或 `<VibeMath 根>`），并对超时调用 `handle.terminate()`。
+- **必须**给 `cwd`（项目根或 `<VibeMath 根>`），并在超时时调用 `handle.terminate()`——
+  **不能只依赖 `graceMs`**：宿主不杀进程时，超时的编译会变成泄漏的孤儿进程。
 - 输出截断到 ~4KB 再入库（避免把巨大的编译器输出写进状态）。
 - 宿主没有 `subprocess` 服务 → 返回 `{ok:false, code:'NO_SUBPROCESS'}`，并只记录 `attempted`。
+
+### 7.2 同步路径（`leanAsync=false`）
+
+与旧版逐字一致：`await` 编译器返回，直接得到 exitCode/stdout/stderr，然后按 §7.3 判 `settled(ok)`。
+保留它是为了"我需要一个确定的答案再继续"的场景，以及给探针一个不依赖队列的对照路径。
+
+### 7.3 `settled(ok)`：唯一允许置 `passed` 的判据
+
+一次编译只有在**三件事同时成立**时才算"落地为通过"：
+
+1. **进程退出码为 0**（`exitCode === 0`，且不是 `timeout`、不是 `interrupted`）；
+2. **内容哈希未变**：编译期间该 `.lean` 文件没有被改写（同一次归档的内容哈希一致）；
+3. **构建上下文未变**：引擎、`leanArgs`、搜索路径这一组"编译上下文"与入队时一致。
+
+只有 `settled(ok)` 可以：把对象标为 `passed`、写 `Verified/Lean/<id>.lean`、把引理并入可复用库。
+**其它一切结果都停在 `attempted`**：`failed`（退出码非 0）、`timeout`、`interrupted`、
+以及哈希/上下文不匹配（此时结果**作废**并在 `note` 里写明 "file changed while compiling" /
+"build context changed while compiling"）。`require` 档的门禁据此判定——排队中或失败中的作业
+**绝不能**让一条结论变成"已形式化"。
+
+### 7.4 后台队列（`leanAsync=true`，默认）
+
+- 入队即返回：成员继续工作；每个作业在 `<项目>/Formal/Jobs/<jobId>.json` 有镜像。
+- 并发上限 = `leanJobsMaxParallel`（默认 1 = 串行，资源占用可预期）。
+- 落地时**一次性公告**给成员（注入到其下一轮提示的【形式化结果】行），并在群聊/活动日志留痕；
+  随后由 §7.3 决定 `passed` 还是 `attempted`。
+- **成员不得抢跑**：提示词明确写"作业落地为通过之前不得声称已通过或转忠实性审查"（§6.2）。
+
+### 7.5 卸载与中断（`dispose` / abort）
+
+插件 fiber 卸载、会话销毁或 abort 时：**终止每一个在跑的编译器进程**（`terminate()`），
+并把作业标为 `interrupted`、把对象停在 `attempted`——**绝不因为"进程已经不在"而当作通过**。
+`interrupted` 的作业可以重跑（重跑会 `attempts+1`）。
+
+### 7.6 `--search-path` 注入（四套一致）
+
+编译器 argv 固定为：
+
+```
+[exe, ...用户 leanArgs, --search-path <VibeMath 根>, <file>]
+```
+
+- 自动根**只有一个**：`<VibeMath 根>`（`import Formal.Lib.<name>` 的模块根），插在
+  **用户参数之后、文件名之前**——`lake env lean` 因此自然变成 `lake env lean --search-path <root> <file>`。
+- `leanSearchPaths` 非空时，**先注入用户给的路径（按给定顺序），再注入自动根**，整体去重。
+- **用户显式给出搜索根就不注入**：`leanArgs` 里已有 `--search-path` / `-R` / `--root` 时完全尊重用户配置。
+- **不使用环境变量**：宿主的 `spawn` 没有 env 槽位，所以"注入"只能是参数注入；
+  也不依赖 `LEAN_PATH` 之类的约定。
+
+### 7.7 崩溃 / 重启恢复
+
+启动或 resume 时扫描 `<项目>/Formal/Jobs/*.json`（**在状态文件装好之后**，否则会写在未加载的
+`formal` 记录上）：
+
+- `queued` → 重新入队；
+- `running` + 文件哈希仍匹配 → 标 `interrupted`，并**重新入队**（`attempts+1`）；
+- `running` + 哈希不匹配 → 只标 `interrupted`（结果不可用，不重跑旧内容）；
+- `settled` 且**同一构建上下文** → 只补写那次已成立的结论（`resume` 路径）；
+  上下文已变则标 `interrupted` 并记 `build context changed`。
+
+**恢复绝不"静默地"把对象验证掉**：任何不确定的情形都落到 `attempted`/`interrupted` + 明确 note，
+由代理决定是否重跑。
 
 ---
 
@@ -350,27 +473,29 @@
 
 ### 9.2 `<VibeMath 根>/Formal/Lib/Index.md`
 
-**必需列**：`名称 | 文件 | 类别 | 摘要`。
+**必需列**：`名称 | 文件 | 类别 | 依赖（import） | 摘要`。
 **可选列**：若该架构为库文件保留运行记录，可增加 `最近运行`（v3 就是这样做的，v2/v4/v5 没有）；
 **没有记录就不许加这一列、更不许写假数据**——"说得出这个文件还编不编得过"是有价值的信息，
 但编一个不说实话的运行状态比没有更糟。
 
+**依赖列由框架扫描该 `.lean` 的 `import` 行得到**（四套都写），这样索引一次回答
+"有什么 / 叫什么 / 怎么导入"：一个定义 import 了谁，决定了它能不能被逐字复用。
+
 ```markdown
 # 可复用 Lean 定义库（跨项目）
-| 名称 | 文件 | 类别 | 摘要 | 最近运行 |      ← 最后一列可选
-|---|---|---|---|---|---|
-| ZMod5 | Lib/ZMod5.lean | def | 模 5 剩余类与基本引理 | ok |
+| 名称 | 文件 | 类别 | 依赖（import） | 摘要 | 最近运行 |      ← 最后一列可选
+|---|---|---|---|---|---|---|
+| ZMod5 | Lib/ZMod5.lean | def | Mathlib.Data.ZMod.Basic | 模 5 剩余类与基本引理 | ok |
 ```
 
 ### 9.3 `<VibeMath 根>/Formal/Proved/Index.md`
 
-**必需列**：`名称 | 文件 | 陈述`。
-**可选列**：`依赖`（仅当该架构记录依赖关系时）、`最近运行`（同上）、`类别`（v2/v4/v5 用它标注
-`lemma`；v3 不加，因为整张表都是引理）。
+**必需列**：`名称 | 文件 | 陈述 | 依赖`（依赖同样由 `import` 行扫描得到，四套都写）。
+**可选列**：`最近运行`、`类别`（v2/v4/v5 用它标注 `lemma`；v3 不加，因为整张表都是引理）。
 
 ```markdown
 # 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）
-| 名称 | 文件 | 陈述 | 依赖 | 最近运行 |      ← 后两列可选
+| 名称 | 文件 | 陈述 | 依赖 | 最近运行 |      ← 最后一列可选
 |---|---|---|---|---|---|
 | pell_sq_odd | Proved/pell_sq_odd.lean | … | ZMod5 | ok |
 ```
@@ -394,7 +519,7 @@
 5. **参数**：非法值回退；可在运行中切换（切换后新提示词立刻反映新模式）。
 6. **灵敏度探针**（新增，放进 `audit-formal-sensitivity.mjs`）：每条不变式都要有能让对应套件**变红**的变异，
    且探针必须真的启动套件、真的被套件读取、变异真的改变行为（见 `AUDIT-CHECKLIST.md` §2）。
-7. **静态提示词面**（放进 `audit-persona-surface.test.mjs`，四个预设一起）：三个 Lean 工具名与四个参数名
+7. **静态提示词面**（放进 `audit-persona-surface.test.mjs`，四个预设一起）：五个 Lean 工具名与八个参数名
    必须出现在**该预设 persona 的 `prefix` 与 `text` 两个块**里，档位名（`'off'`/`'encourage'`/`'require'`）
    逐字出现，忠实性语义与 `Formal/Lib` / `Formal/Proved` / `Verified/Lean` 路径写清；
    反向：persona 里的每个 `vibe_*` 名字必须真的注册。`audit-persona-sensitivity.mjs` 用变异副本
@@ -419,6 +544,18 @@
 11. **提示词硬要求的探针**（放进 `audit-formal-sensitivity.mjs`）：把注入文本里的工具名改成缩写
     （`lean_archive`）、删掉 `require` 档的要求段落、把忠实性分支改回"偏离 → 0"——三者都必须让
     对应套件**变红**。
+12. **异步队列**（四套都要）：`leanAsync=true` 时 `lean_run` / `lean_archive{run:true}` **立即返回**
+    `async.jobId` 且不阻塞成员；作业在 `Formal/Jobs/<jobId>.json` 有镜像；落地后**恰好公告一次**
+    （【形式化结果】行）；`leanAsync=false` 走同步路径并给出与旧版一致的返回体。
+13. **`settled(ok)` 判据**：只有 exit 0 + 内容哈希未变 + 构建上下文未变三者同时成立才置 `passed`
+    并写 `Verified/Lean/<id>.lean`；编译期间文件被改写或上下文改变时，结果必须**作废**并停在
+    `attempted`（断言状态与 note）。排队中/失败/超时/中断**一律不得**让对象变成已形式化。
+14. **卸载与崩溃恢复**：dispose/abort 必须 `terminate()` 在跑的编译并标 `interrupted`（绝不 `passed`）；
+    恢复扫描 `Formal/Jobs/*.json`——`queued` 重入队、`running` 标记中断（哈希匹配则重入队、`attempts+1`）、
+    `settled` 只在**同一构建上下文**下补写结论。
+15. **去重与搜索路径注入**：同内容 + 同构建上下文再归档 → `deduped:true` 且不重写不重编译；
+    编译器 argv 必须是 `[exe, ...用户 leanArgs, --search-path <VibeMath 根>, <file>]`，
+    用户已显式给出搜索根时**不注入**，`leanSearchPaths` 先于自动根且去重。
 
 ---
 
@@ -431,3 +568,11 @@
   一档落库语义（§4.1）——**降级 + 待办 + 不定论**，而不是把它记成"命题为假"。
 - **不把 Lean 通过等同于"命题为真"**：`passed` 只表示"形式化代码通过内核检查"，
   该代码是否忠实于命题仍需 m 票审查。这正是 §0 表格里"审查对象变化"的含义。
+- **不注入环境变量**：宿主的 `spawn` 没有 env 槽位，"搜索路径"只能靠 argv 注入（§7.6）。
+  因此也不依赖 `LEAN_PATH` 之类的约定——换宿主时行为不会因为环境差异而变。
+- **异步队列不是持久任务系统**：队列是内存态 + `Formal/Jobs/*.json` 镜像，没有后台守护进程；
+  进程消失时进行中的编译就是 `interrupted`，由恢复逻辑重入队或标记（§7.7）。
+- **不做数学引擎的 argv 模板**：本版本**没有** Maple / MATLAB / Wolfram 的命令行模板，
+  也没有 `mathEngineOverride` 参数（四套插件与本文件都不包含它们）。若将来加入这类外部引擎，
+  其 argv 是**版本相关**的（同一命令在不同版本上参数不同），必须逐个标注 `VERIFY` 并保留一个显式的
+  覆盖入口（如 `mathEngineOverride`）作为逃生门——**不得**把一个未经验证的模板写成"可用"。

@@ -226,7 +226,10 @@ async function settleInstitute(root, rounds = 12) {
 async function foundInstitute(root, problem, params) {
   await callTool('vibe_v5_start', Object.assign({ problem, researcherCount: 2 }, params || {}), root)
   for (const sp of spawnsFor(root)) { fireEnd(sp.childId, { progress: memberOfChild(sp.childId) + '：初见解。', solved: false, contextPct: 10 }); await settle() }
-  await callTool('vibe_v5_set', { maxParallel: 8 }, root)
+  // This suite pins the SYNCHRONOUS publish path verbatim (`leanAsync:false`): every assertion
+  // below reads the compiler result straight off the tool return. The asynchronous queue (the
+  // default) is covered end-to-end by `e2e-v5-round2.test.mjs` (async section).
+  await callTool('vibe_v5_set', { maxParallel: 8, leanAsync: false }, root)
   return await settleInstitute(root)
 }
 // Vote a verdict through to completion. `waitRounds` bounds the debate loop.

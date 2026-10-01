@@ -3212,7 +3212,10 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。这会让后续的验证与证明省掉大量重复工作。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -3270,6 +3273,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3318,6 +3323,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3366,6 +3373,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（鼓励模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3555,6 +3564,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（强制模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3607,6 +3618,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（强制模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3659,6 +3672,8 @@ r-2：初始见解。
 
 【Lean 形式化验证（强制模式）】
   · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。
+  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
+  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
   · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
@@ -3705,7 +3720,10 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。这会让后续的验证与证明省掉大量重复工作。
+【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/（kind='lemma'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。
+  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。
+  · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
+  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -3754,7 +3772,7 @@ vibe_v5_lean_run hint (red): 未通过。请按上面的编译器输出修复后
 vibe_v5_lean_run on a missing file: V5_NOT_FOUND｜no such file: Formal/no-such-file.lean
 vibe_v5_lean_archive without a name: V5_INVALID_ARGUMENT｜name is required for a reusable definition/lemma
 vibe_v5_lean_archive blocked without a note: V5_INVALID_ARGUMENT｜阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计
-vibe_v5_lean_lib hint: 复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind='def' 归档，已证引理用 kind='lemma'。
+vibe_v5_lean_lib hint: 复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind='def' 归档，已证引理用 kind='lemma'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>，或用 vibe_v5_lean_read {name} 取原文逐字复制。同内容重复归档会自动去重。
 ```
 
 ---

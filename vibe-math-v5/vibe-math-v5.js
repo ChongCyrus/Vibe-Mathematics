@@ -96,6 +96,92 @@ const PAPER_SECTIONS = [
   '附录：证据与文件索引',
 ]
 
+// ── Lean async compile queue + search path (docs/formal-verification.md §1/§5/§7) ──────────
+// The queue is a per-session FIFO driven by the existing heartbeat, so the constants and the
+// pure helpers live at module scope. Concurrency is a CONSTANT, not a parameter: compiles and
+// the model compete for the same CPU, and the parameter surface deliberately gains only
+// `leanAsync` (the per-compile budget reuses `leanTimeoutMs`).
+const LEAN_QUEUE_CONCURRENCY = 1
+// ONE place for the flag spelling: a toolchain that does not know `--search-path` only needs
+// this constant changed (never the interface).
+const LEAN_SEARCH_PATH_FLAG = '--search-path'
+const LEAN_READ_MAX_BYTES = 64 * 1024
+// A user-supplied search root wins: never inject a second one (explicit override first).
+function leanHasSearchFlag(args) {
+  return (Array.isArray(args) ? args : []).some((a) => {
+    const t = String(a)
+    return t === LEAN_SEARCH_PATH_FLAG || t.indexOf(LEAN_SEARCH_PATH_FLAG + '=') === 0 || t === '-R' || t === '--root'
+  })
+}
+// Content identity for queue dedupe: CRLF normalised, trailing blank lines dropped.
+function leanHashText(s) {
+  return String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/[\s\n]+$/, '')
+}
+const SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]
+const sha256Rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0
+// SHA-256 (FIPS 180-4), implemented here instead of importing `node:crypto`: this preset is a
+// self-contained file row with ZERO imports, and the digest is only a content identity (queue
+// dedupe + job id). `__testHelpers.sha256Hex` is checked against the published vectors AND
+// against `node:crypto` in the tests, so correctness is proven rather than assumed.
+function sha256Hex(input) {
+  const text = String(input == null ? '' : input)
+  const bytes = []
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length && text.charCodeAt(i + 1) >= 0xdc00 && text.charCodeAt(i + 1) <= 0xdfff) {
+      const cp = 0x10000 + ((c - 0xd800) << 10) + (text.charCodeAt(i + 1) - 0xdc00)
+      i++
+      bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63))
+    } else bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  const bitLen = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  const hi = Math.floor(bitLen / 0x100000000)
+  bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255)
+  bytes.push((bitLen >>> 24) & 255, (bitLen >>> 16) & 255, (bitLen >>> 8) & 255, bitLen & 255)
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19
+  const w = new Array(64)
+  for (let off = 0; off < bytes.length; off += 64) {
+    for (let i = 0; i < 16; i++) {
+      const j = off + i * 4
+      w[i] = ((bytes[j] << 24) | (bytes[j + 1] << 16) | (bytes[j + 2] << 8) | bytes[j + 3]) >>> 0
+    }
+    for (let i = 16; i < 64; i++) {
+      const x = w[i - 15], y = w[i - 2]
+      const s0 = (sha256Rotr(x, 7) ^ sha256Rotr(x, 18) ^ (x >>> 3)) >>> 0
+      const s1 = (sha256Rotr(y, 17) ^ sha256Rotr(y, 19) ^ (y >>> 10)) >>> 0
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7
+    for (let i = 0; i < 64; i++) {
+      const S1 = (sha256Rotr(e, 6) ^ sha256Rotr(e, 11) ^ sha256Rotr(e, 25)) >>> 0
+      const ch = ((e & f) ^ (~e & g)) >>> 0
+      const t1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0
+      const S0 = (sha256Rotr(a, 2) ^ sha256Rotr(a, 13) ^ sha256Rotr(a, 22)) >>> 0
+      const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0
+      const t2 = (S0 + maj) >>> 0
+      h = g; g = f; f = e; e = (d + t1) >>> 0
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0
+  }
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => ('00000000' + x.toString(16)).slice(-8)).join('')
+}
+
 // Stable error codes (ported from DSH agent-teams' typed-error discipline).
 function v5err(code, message) {
   const e = new Error(message || code)
@@ -137,6 +223,15 @@ export function apply(ctx) {
   const fs = ctx.fs
   const tools = ctx.tools
   const commands = ctx.commands
+
+  // A plugin UNLOAD must not leave an orphan compiler behind (docs/formal-verification.md §7-6):
+  // every session registers its Lean disposer here, and this effect's disposer terminates what
+  // is in flight and marks it `interrupted` (never `passed`). Registered FIRST so a host that
+  // records effect disposers (the tests do) can reach it deterministically.
+  const leanDisposers = new Set()
+  ctx.effect(() => () => {
+    for (const d of Array.from(leanDisposers)) { try { d() } catch (e) { /* best effort */ } }
+  })
 
   // Optional services are resolved LAZILY at call time, never snapshotted in apply():
   // a `ctx.get()` snapshot taken here is order-sensitive, so a service provided later
@@ -551,6 +646,22 @@ export function apply(ctx) {
       leanCommand: 'lean',
       leanArgs: [],
       leanTimeoutMs: 120000,
+      // leanAsync: compile on a per-session background queue (default) instead of blocking the
+      // member's turn. `false` restores the previous synchronous `await` verbatim. Only
+      // `settled(ok)` (exit 0 AND the file's content hash unchanged) may mark an object
+      // `passed`; every other ending stays `attempted`.
+      leanAsync: true,
+      // leanInitiative: how EAGER the staff are about formalizing during normal work, kept
+      // separate from `formalVerify` (which only expresses the VERDICT-time requirement).
+      // 'off' = no daily drive (formalize only when verification asks); 'normal' (default) =
+      // today's behaviour (the reminder rides with formalVerify); 'eager' = push valuable small
+      // lemmas/propositions/definitions into the library even in daily rounds.
+      leanInitiative: 'normal',
+      // leanSearchPaths: extra `--search-path` roots injected BEFORE the automatic VibeMath
+      // root (deduped; an explicit --search-path/-R/--root in leanArgs wins).
+      leanSearchPaths: [],
+      // leanJobsMaxParallel: how many background compiles may run at once (default 1 = serial).
+      leanJobsMaxParallel: 1,
       // ── final paper (docs/final-paper.md; the phase runs BEFORE the completion flags) ──
       // finalPaper        — write the final paper when the run concludes (manual /v5 paper
       //                     still works when this is false, and says so).
@@ -661,7 +772,14 @@ export function apply(ctx) {
     // i.e. the fallback would silently lose the whole institute across a restart.
     async function ready() {
       if (!backend) installBackend()
-      return await awaitBackendLoad()
+      await awaitBackendLoad()
+      // Crash recovery for the Lean queue runs ONCE per session, after the state file is
+      // folded in: a leftover Formal/Jobs/*.json is re-queued or explicitly interrupted, and
+      // is NEVER silently turned into `passed` (docs/formal-verification.md §7-7).
+      if (!leanRecoveryDone) {
+        try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v5: lean recovery: ' + String((e && e.message) || e)) }
+      }
+      return true
     }
     // Load the CURRENT state path before its first read. `state()` is synchronous by design
     // (the whole fold is read through it), so it kicks the load off eagerly; the caller that
@@ -1151,6 +1269,9 @@ export function apply(ctx) {
         b.push('[形式化] ' + (formalMode() === 'require' ? '强制' : '鼓励') + ' Lean｜已通过 ' + passed
           + '｜已记录阻塞 ' + blocked + (formalTodo().length ? '｜形式化待办 ' + formalTodo().length + ' 项（见 Formal/TODO.md）' : ''))
       }
+      // Settled async compiles are announced EXACTLY ONCE, in the member's next prompt
+      // (docs/formal-verification.md §2.4: the announcement point is the next prompt).
+      for (const line of takeLeanNoticesFor(member.id)) b.push(line)
       const tasks = inst().tasks.filter((t) => t.status !== 'deleted')
       const mine = tasks.filter((t) => t.ownerId === member.id && t.status === 'in_progress')
       const ready = tasks.filter((t) => t.status === 'pending' && taskReady(t))
@@ -1757,7 +1878,7 @@ export function apply(ctx) {
         L.push('作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、')
         L.push('哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。')
       }
-      if (formalOn()) { L.push(''); L.push(formalWorkLine()) }
+      if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1773,7 +1894,7 @@ export function apply(ctx) {
       L.push('读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；')
       L.push('或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。')
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
-      if (formalOn()) { L.push(''); L.push(formalWorkLine()) }
+      if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -1879,6 +2000,9 @@ export function apply(ctx) {
       const delay = posMs(ms, posMs(params.activityTimeoutMs, 120000))
       heartbeatDisposer = ctx.timeout(() => {
         heartbeatDisposer = null
+        // Drain the Lean compile queue FIRST: it is independent of the scheduler and must run
+        // even when the pass below decides there is nothing to do (docs/formal-verification.md §7).
+        runLeanQueue().catch((e) => console.error('vibe-math-v5: lean queue: ' + String((e && e.message) || e)))
         scheduleNext().catch((e) => console.error('vibe-math-v5: heartbeat: ' + String((e && e.message) || e)))
       }, delay)
     }
@@ -1939,6 +2063,12 @@ export function apply(ctx) {
     const FORMAL_MODES = ['off', 'encourage', 'require']
     const formalMode = () => (FORMAL_MODES.indexOf(String(params.formalVerify)) !== -1 ? String(params.formalVerify) : 'off')
     const formalOn = () => formalMode() !== 'off'
+    // `leanInitiative` is SEPARATE from `formalVerify`: the latter only says how strong the
+    // requirement is AT VERDICT TIME, this says how eager the staff should be about formalizing
+    // during ordinary work. 'off' suppresses the daily reminder; 'eager' adds it even when
+    // `formalVerify` is off; 'normal' keeps today's rule (the reminder rides with formalVerify).
+    const leanInitiative = () => (['off', 'normal', 'eager'].indexOf(String(params.leanInitiative)) !== -1 ? String(params.leanInitiative) : 'normal')
+    const leanDailyOn = () => leanInitiative() !== 'off' && (formalOn() || leanInitiative() === 'eager')
     const formalRoot = () => instRoot() + '/Formal'
     const formalLibRoot = () => vibeRoot() + '/Formal/Lib'
     const formalProvedRoot = () => vibeRoot() + '/Formal/Proved'
@@ -1993,7 +2123,10 @@ export function apply(ctx) {
 
     // Run the toolchain on one file. NEVER throws into the scheduler: every failure mode
     // (no service, no executable, timeout, non-zero exit) becomes a readable result.
-    async function leanRunFile(relPath, timeoutMs) {
+    // `hooks.onHandle(handle)` (optional) hands the live process to the caller so a session
+    // dispose can terminate it; it is a hook rather than a return value because the run must
+    // stay a single awaitable result.
+    async function leanRunFile(relPath, timeoutMs, hooks) {
       const started = now()
       const rel = String(relPath || '').trim()
       if (!rel) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'file is required' }
@@ -2016,7 +2149,8 @@ export function apply(ctx) {
       } catch (e) {
         return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + String(params.leanCommand || 'lean') + '": ' + String((e && e.message) || e) + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
       }
-      const argv = [exe].concat((Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)).concat([abs])
+      const pfx = await leanRunPrefix()
+      const argv = [exe].concat(pfx.prefix.slice(1), [abs])
       let handle
       try {
         handle = sub.spawn({
@@ -2025,6 +2159,11 @@ export function apply(ctx) {
           stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
           graceMs: cap,
         })
+        // Hand the live process to the async queue (session dispose terminates it) and the
+        // NORMALISED build prefix (engine + args + search paths, no file) to the settle check —
+        // a job may only settle the build context it was queued under.
+        if (hooks && typeof hooks.onHandle === 'function') hooks.onHandle(handle)
+        if (hooks && typeof hooks.onBuildPrefix === 'function') hooks.onBuildPrefix(pfx.prefix)
       } catch (e) {
         return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
       }
@@ -2152,6 +2291,421 @@ export function apply(ctx) {
         + ' —— 已撤回「已通过」状态' + (removed ? '，并已使 Verified/Lean/ 中的归档证明失效（删除或覆盖为撤回声明）' : '') + '；请修正形式化、重新跑通后再投票。' + stillThere.join(''))
       return { ok: true, target: t, status: 'attempted', removed }
     }
+    // ================= async Lean compile queue (docs/formal-verification.md §7) ==========
+    // ONE compile at a time, per session. A tool call ENQUEUES and returns immediately; the
+    // queue is drained by the existing heartbeat (`armHeartbeat`) and by a 0ms kick armed at
+    // enqueue time, so a paused or concluded institute still drains what it accepted. Every job
+    // is mirrored to Formal/Jobs/<jobId>.json for crash recovery and for `lean_lib.jobs`.
+    // ONLY `settled(ok)` — exit 0 AND the file's content hash unchanged — may mark an object
+    // `passed` and write Verified/Lean/<id>.lean; every other ending stays `attempted`.
+    const leanJobs = new Map()
+    const leanActive = new Map()      // jobId -> { job, handle } (up to leanJobsMaxParallel)
+    let leanActiveJob = null          // the MOST RECENTLY started job (prompt/dispose reporting)
+    let leanActiveHandle = null
+    let leanDrainTimer = null
+    let leanRecoveryDone = false
+    let leanDisposed = false
+    const leanNotices = []            // settled results not yet announced to a member
+    function leanJobsMax() { return Math.max(1, Math.floor(Number(params.leanJobsMaxParallel) || 1)) }
+    function leanJobRel(jobId) { return 'Formal/Jobs/' + jobId + '.json' }
+    async function leanWriteJob(job) {
+      try { await writeTextRel(leanJobRel(job.jobId), JSON.stringify(job, null, 2) + '\n') } catch (e) { /* best effort */ }
+    }
+    async function leanReadJobMirror(jobId) {
+      try { return JSON.parse((await readTextRel(leanJobRel(jobId))) || 'null') } catch (e) { return null }
+    }
+    function leanJobMirrorSettled(rec) { return !!rec && rec.state === 'settled' && Number(rec.exitCode) === 0 }
+    // Has this EXACT library content already been compiled successfully? The job id digests the
+    // build context, so the check looks at the jobs rather than reconstructing an id: first the
+    // in-memory queue, then the durable mirrors in Formal/Jobs/.
+    async function leanLibArchivedOk(name, sha) {
+      for (const j of leanJobs.values()) {
+        if (j.kind === 'lib' && j.name === name && j.contentSha256 === sha && leanJobMirrorSettled(j)) return true
+      }
+      try {
+        const t = await fs.resolve(instRoot() + '/Formal/Jobs')
+        if (await fs.stat(t) !== undefined) {
+          for (const e of (await fs.listDir(t)) || []) {
+            if (!e || e.type !== 'file' || !/\.json$/.test(String(e.name))) continue
+            const rec = await leanReadJobMirror(String(e.name).replace(/\.json$/, ''))
+            if (rec && rec.kind === 'lib' && rec.name === name && rec.contentSha256 === sha && leanJobMirrorSettled(rec)) return true
+          }
+        }
+      } catch (e) { /* best effort: no mirror ⇒ no dedupe */ }
+      return false
+    }
+    function leanJobsView() {
+      return Array.from(leanJobs.values())
+        .sort((a, b) => (a.enqueuedAt || 0) - (b.enqueuedAt || 0))
+        .map((j) => ({ jobId: j.jobId, state: j.state, rel: j.file || j.rel || '', target: j.target || j.name || '', attempts: j.attempts || 1, settledAt: j.settledAt || 0 }))
+    }
+    function leanNextQueued() {
+      let best = null
+      for (const j of leanJobs.values()) if (j.state === 'queued' && (!best || (j.enqueuedAt || 0) < (best.enqueuedAt || 0))) best = j
+      return best
+    }
+    // The absolute VibeMath root handed to `--search-path` (the compile runs with cwd=instRoot()).
+    function leanSearchRootView() { return vibeRoot().replace(/\\/g, '/') }
+    async function leanSearchRoot() {
+      const root = vibeRoot()
+      if (root.charAt(0) === '/' || /^[a-z]:/i.test(root)) return root.replace(/\\/g, '/')
+      try {
+        const t = await fs.resolve(root)
+        const s = typeof t === 'string' ? t : String((t && (t.targetKey || t.displayPath)) || root)
+        return String(s).replace(/\\/g, '/')
+      } catch (e) { return root.replace(/\\/g, '/') }
+    }
+    async function leanHashFile(rel) {
+      const abs = leanAbsPath(rel)
+      if (abs === null) return undefined
+      const txt = await readTextAbs(abs)
+      return txt === undefined ? undefined : sha256Hex(leanHashText(txt))
+    }
+    function leanJobId(key, sha) {
+      // `sha` is the BUILD digest: content + engine + normalised argv + search paths, so the
+      // same text compiled under different flags gets a different job (amendment §4).
+      return String(key) + '-' + String(sha || '').slice(0, 12)
+    }
+    // The NORMALISED build prefix (engine + user args + injected search flags, WITHOUT the file
+    // name). It is what the job id digests and what the settle re-checks.
+    async function leanRunPrefix() {
+      const userArgs = (Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)
+      const engine = String(params.leanCommand || 'lean')
+      const searchList = await leanInjectedSearchList(userArgs)
+      const searchArgs = []
+      for (const p of searchList) searchArgs.push(LEAN_SEARCH_PATH_FLAG, p)
+      return { engine, userArgs, searchList, searchArgs, prefix: [engine].concat(userArgs, searchArgs) }
+    }
+    // leanSearchPaths FIRST (the order the user gave), then the automatic VibeMath root; deduped;
+    // empty when leanArgs already carries an explicit search flag (explicit override wins).
+    async function leanInjectedSearchList(userArgs) {
+      if (leanHasSearchFlag(userArgs)) return []
+      const extra = (Array.isArray(params.leanSearchPaths) ? params.leanSearchPaths : [])
+        .map((s) => String(s == null ? '' : s).trim()).filter(Boolean)
+      const root = await leanSearchRoot()
+      return Array.from(new Set(extra.concat([root])))
+    }
+    function leanBuildDigest(contentText, prefix) {
+      return sha256Hex(leanHashText(String(contentText == null ? '' : contentText)) + '|' + JSON.stringify((prefix || []).map(String)))
+    }
+    function leanBuildHash(prefix) { return sha256Hex(JSON.stringify((prefix || []).map(String))) }
+    function armLeanDrain(ms) {
+      if (leanDisposed || leanDrainTimer) return
+      // `posMs` treats 0 as "use the default" (120s!), which would stall the queue: the kick
+      // must be an IMMEDIATE next-tick timer.
+      const delay = (typeof ms === 'number' && ms > 0) ? Math.floor(ms) : 0
+      leanDrainTimer = ctx.timeout(() => {
+        leanDrainTimer = null
+        runLeanQueue().catch((e) => console.error('vibe-math-v5: lean queue: ' + String((e && e.message) || e)))
+      }, delay)
+    }
+    function clearLeanDrain() { if (leanDrainTimer) { try { leanDrainTimer() } catch (e) { /* ignore */ } leanDrainTimer = null } }
+    // The toolchain probe shared by the enqueue path: a host with no subprocess service — or no
+    // reachable executable — must keep today's honest NO_SUBPROCESS / LEAN_NOT_FOUND behaviour
+    // rather than queueing a job that can never settle.
+    async function leanPrecheck(relPath) {
+      const rel = String(relPath == null ? '' : relPath).trim()
+      if (!rel) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'file is required' }
+      const abs = leanAbsPath(rel)
+      if (abs === null) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'Lean file must live under ' + vibeRoot().replace(/\\/g, '/') + '/ (got ' + rel + ')' }
+      if (!/\.lean$/.test(abs)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'only .lean files can be executed' }
+      if (await readTextAbs(abs) === undefined) return { ok: false, code: 'V5_NOT_FOUND', message: 'no such file: ' + rel }
+      const sub = subprocessOf()
+      if (sub === undefined || typeof sub.spawn !== 'function') {
+        return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel }
+      }
+      try { await sub.resolveExecutable(String(params.leanCommand || 'lean')) } catch (e) {
+        return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + String(params.leanCommand || 'lean') + '": ' + String((e && e.message) || e) + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel }
+      }
+      return { ok: true, rel, abs }
+    }
+    async function enqueueLeanJob(spec) {
+      const job = Object.assign({}, spec, {
+        state: 'queued', attempts: 0, enqueuedAt: now(), startedAt: 0, settledAt: 0,
+        exitCode: null, ok: false, timedOut: false, interrupted: false,
+      })
+      leanJobs.set(job.jobId, job)
+      await leanWriteJob(job)
+      // Kick on a LATER tick: the tool must return before any compiler process starts.
+      armLeanDrain()
+      return job
+    }
+    async function runLeanQueue() {
+      let started = false
+      // Up to leanJobsMaxParallel compiles at once (default 1 = strictly serial). Each job runs
+      // to completion in the background; its own settle re-arms the queue.
+      while (leanActive.size < leanJobsMax()) {
+        const job = leanNextQueued()
+        if (!job) break
+        started = true
+        const slot = { job, handle: null }
+        leanActive.set(job.jobId, slot)
+        runLeanJob(job, slot)
+          .catch((e) => console.error('vibe-math-v5: lean job ' + job.jobId + ': ' + String((e && e.message) || e)))
+          .finally(() => {
+            leanActive.delete(job.jobId)
+            if (leanActiveJob === job) { leanActiveJob = null; leanActiveHandle = null }
+            if (leanNextQueued()) armLeanDrain()
+          })
+      }
+      return started
+    }
+    async function runLeanJob(job, slot) {
+      leanActiveJob = job
+      leanActiveHandle = null
+      job.state = 'running'
+      job.startedAt = now()
+      job.attempts = (Number(job.attempts) || 0) + 1
+      await leanWriteJob(job)
+      let run = null
+      let actualPrefix = null
+      try {
+        run = await leanRunFile(job.rel, job.timeoutMs, {
+          onHandle: (h) => { if (slot) slot.handle = h; if (leanActiveJob === job) leanActiveHandle = h },
+          onBuildPrefix: (p) => { actualPrefix = p },
+        })
+      } catch (e) {
+        run = { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: job.rel, ms: 0 }
+      }
+      const hashNow = await leanHashFile(job.rel)
+      const hashMatched = hashNow !== undefined && hashNow === job.contentSha256
+      // The build context must be the one the job was QUEUED under: args/search paths may have
+      // been retuned while it waited, and a compile under different flags settles nothing.
+      const buildMatched = !!actualPrefix && leanBuildHash(actualPrefix) === job.buildHash
+      const settledOk = !!run.ok && hashMatched && buildMatched
+      job.exitCode = run.exitCode === undefined ? null : run.exitCode
+      job.ok = settledOk
+      job.timedOut = !!run.timedOut
+      job.buildMatched = buildMatched
+      job.settledAt = now()
+      job.state = settledOk ? 'settled' : (job.interrupted === true ? 'interrupted' : (job.timedOut ? 'timeout' : 'failed'))
+      job.run = {
+        at: job.settledAt, ok: !!job.ok, exitCode: job.exitCode, ms: run.ms || 0,
+        timedOut: !!job.timedOut, interrupted: !!job.interrupted, buildMatched,
+        stderrTail: tail(run.stderr || (buildMatched ? '' : '构建上下文已改变（leanArgs/搜索路径在入队后被修改），本次结果不用于判定'), 800),
+      }
+      try { await leanApplySettle(job, run, settledOk, hashMatched && buildMatched) } catch (e) { console.error('vibe-math-v5: lean settle ' + job.jobId + ': ' + String((e && e.message) || e)) }
+      await leanWriteJob(job)
+      leanQueueNotice(job, run, hashMatched && buildMatched)
+    }
+    // The ONE place a job's outcome reaches the state — and the ONLY place an object may become
+    // `passed` from a compile (proof jobs, and only when settledOk).
+    async function leanApplySettle(job, run, settledOk, hashMatched) {
+      const asyncRec = {
+        jobId: job.jobId, state: job.state, attempts: job.attempts || 1,
+        enqueuedAt: job.enqueuedAt || 0, startedAt: job.startedAt || 0, settledAt: job.settledAt || 0,
+        exitCode: job.exitCode === undefined ? null : job.exitCode,
+      }
+      const target = idSafe(String(job.target || job.name || ''))
+      if (job.kind === 'proof') {
+        if (!target) return
+        const prev = formalOf(target)
+        const stale = hashMatched ? '' : '（异步落地：编译完成后文件内容已改变，本次结果不用于判定）'
+        const rec = Object.assign({}, prev, {
+          status: settledOk ? 'passed' : 'attempted',
+          file: job.rel,
+          proof: settledOk ? 'Verified/Lean/' + target + '.lean' : '',
+          decision: 'used',
+          note: (String(prev.note || '') + stale).trim(),
+          run: job.run, async: asyncRec, updatedAt: now(),
+        })
+        if (settledOk) await writeTextRel('Verified/Lean/' + target + '.lean', String(job.content == null ? '' : job.content))
+        await putFormal(target, rec)
+        await rebuildLeanLibIndexes()
+        await saveChatLine('【形式化】' + (job.member || '成员') + ' 的后台作业 ' + job.jobId + ' 落地：' + target + ' → ' + rec.status
+          + (settledOk ? '（已归档 ' + rec.proof + '，验证转为忠实性审查）' : '（未通过：' + tail(run.stderr || run.message, 160) + '）'))
+        return
+      }
+      if (job.kind === 'lib') {
+        if (target) {
+          const prev = formalOf(target)
+          await putFormal(target, Object.assign({}, prev, { file: job.file || prev.file || '', run: job.run, async: asyncRec, updatedAt: now() }))
+        }
+        await rebuildLeanLibIndexes()
+        await saveChatLine('【形式化】' + (job.member || '成员') + ' 的后台作业 ' + job.jobId + ' 落地：' + (job.file || job.rel) + ' → ' + (settledOk ? '通过' : '未通过')
+          + (settledOk ? '' : '（' + tail(run.stderr || run.message, 160) + '）'))
+        return
+      }
+      if (target) {
+        await formalSetRun(target, run)
+        const rec = formalOf(target)
+        await putFormal(target, Object.assign({}, rec, { async: asyncRec, updatedAt: now() }))
+      }
+      await writeFormalIndex()
+      await saveChatLine('【形式化】' + (job.member || '成员') + ' 的后台作业 ' + job.jobId + ' 落地：' + (job.file || job.rel) + ' → ' + (settledOk ? '通过' : '未通过')
+        + (settledOk ? '' : '（' + tail(run.stderr || run.message, 160) + '）'))
+    }
+    function leanQueueNotice(job, run, hashMatched) {
+      const secs = ((run && run.ms) || 0) / 1000
+      let line
+      if (job.state === 'settled') line = '【形式化结果】' + job.jobId + '：通过（exit 0，' + secs.toFixed(1) + 's' + (job.kind === 'proof' ? '，已归档 Verified/Lean/' + job.target + '.lean' : '') + '）'
+      else if (job.state === 'timeout') line = '【形式化结果】' + job.jobId + '：超时（leanTimeoutMs=' + posMs(params.leanTimeoutMs, 120000) + ' 已 terminate）'
+      else if (job.state === 'interrupted') line = '【形式化结果】' + job.jobId + '：中断（会话卸载或崩溃，已标记 attempted，可重跑）'
+      else line = '【形式化结果】' + job.jobId + '：失败（exit ' + job.exitCode + (hashMatched ? '' : '；文件内容已变，结果不可用') + '，见 stderr 尾部）'
+      leanNotices.push({ member: String(job.member || ''), jobId: job.jobId, line, at: now() })
+      while (leanNotices.length > 20) leanNotices.shift()
+    }
+    // ONE-SHOT: a member sees each settled result exactly once, in its next round prompt
+    // (the "announcement point is the next prompt" discipline).
+    function takeLeanNoticesFor(memberId) {
+      if (!leanNotices.length) return []
+      const mine = leanNotices.filter((n) => n.member === memberId)
+      if (!mine.length) return []
+      for (const n of mine) { const i = leanNotices.indexOf(n); if (i !== -1) leanNotices.splice(i, 1) }
+      return mine.map((n) => n.line)
+    }
+    // Crash recovery: an object is NEVER silently verified. Only a job record that says
+    // exitCode 0 AND whose content hash still matches may补 the archive; everything else is
+    // downgraded to `attempted` (or re-queued when the interrupted run is safe to retry).
+    async function leanMarkAttempted(rec, why) {
+      const target = idSafe(String(rec.target || ''))
+      if (!target) return
+      const prev = formalOf(target)
+      const sameJob = !!(prev && prev.async && prev.async.jobId === rec.jobId)
+      if (!sameJob && prev.status === 'passed') return       // never downgrade a newer pass
+      if (!sameJob && rec.kind !== 'proof') return
+      const note = String(prev.note || '')
+      await putFormal(target, Object.assign({}, prev, {
+        status: prev.status === 'blocked' ? 'blocked' : 'attempted',
+        proof: rec.kind === 'proof' ? '' : prev.proof,
+        async: { jobId: rec.jobId, state: 'interrupted', attempts: Number(rec.attempts) || 1, enqueuedAt: rec.enqueuedAt || 0, startedAt: rec.startedAt || 0, settledAt: now(), exitCode: rec.exitCode === undefined ? null : rec.exitCode },
+        note: (note.indexOf(why) === -1 ? (note + (note ? ' ' : '') + '（' + why + '）') : note).trim(),
+        updatedAt: now(),
+      }))
+      await writeFormalIndex()
+    }
+    async function leanApplyRecovered(rec) {
+      const target = idSafe(String(rec.target || ''))
+      const asyncRec = { jobId: rec.jobId, state: 'settled', attempts: Number(rec.attempts) || 1, enqueuedAt: rec.enqueuedAt || 0, startedAt: rec.startedAt || 0, settledAt: rec.settledAt || now(), exitCode: 0 }
+      if (rec.kind === 'proof' && target) {
+        const prev = formalOf(target)
+        await writeTextRel('Verified/Lean/' + target + '.lean', String(rec.content == null ? '' : rec.content))
+        await putFormal(target, Object.assign({}, prev, {
+          status: 'passed', file: rec.rel, proof: 'Verified/Lean/' + target + '.lean', decision: 'used',
+          run: Object.assign({}, rec.run || {}, { ok: true, exitCode: 0 }), async: asyncRec, updatedAt: now(),
+        }))
+        await rebuildLeanLibIndexes()
+        return true
+      }
+      if (target) {
+        const prev = formalOf(target)
+        await putFormal(target, Object.assign({}, prev, { run: Object.assign({}, rec.run || {}, { ok: true, exitCode: 0 }), async: asyncRec, updatedAt: now() }))
+      }
+      await rebuildLeanLibIndexes()
+      return true
+    }
+    async function recoverLeanJobs() {
+      if (leanRecoveryDone) return { scanned: 0, requeued: 0, attempted: 0 }
+      leanRecoveryDone = true
+      let entries = []
+      try {
+        const t = await fs.resolve(instRoot() + '/Formal/Jobs')
+        if (await fs.stat(t) !== undefined) entries = await fs.listDir(t)
+      } catch (e) { return { scanned: 0, requeued: 0, attempted: 0 } }
+      let scanned = 0, requeued = 0, attempted = 0
+      for (const e of entries || []) {
+        if (!e || e.type !== 'file' || !/\.json$/.test(String(e.name))) continue
+        const jobId = String(e.name).replace(/\.json$/, '')
+        const rec = await leanReadJobMirror(jobId)
+        if (!rec || !rec.jobId || !rec.rel) continue
+        scanned++
+        const hashNow = await leanHashFile(rec.rel)
+        const matched = hashNow !== undefined && hashNow === rec.contentSha256
+        if (rec.state === 'queued') {
+          rec.attempts = Number(rec.attempts) || 0
+          leanJobs.set(rec.jobId, rec)
+          requeued++
+          await saveChatLine('【形式化·恢复】后台作业 ' + rec.jobId + ' 从未开始，已重新入队。')
+          continue
+        }
+        if (rec.state === 'running' || rec.state === 'interrupted') {
+          rec.interrupted = true
+          await leanMarkAttempted(rec, matched ? '崩溃恢复：上一次运行的结果不可知' : '崩溃恢复：运行期间文件已被改写')
+          attempted++
+          if (matched) {
+            rec.state = 'queued'
+            rec.startedAt = 0
+            leanJobs.set(rec.jobId, rec)
+            requeued++
+            await saveChatLine('【形式化·恢复】后台作业 ' + rec.jobId + ' 中断且内容未变：已以新 attempts 重新入队（旧结果不可知）。')
+          } else {
+            rec.state = 'failed'
+            await leanWriteJob(rec)
+            await saveChatLine('【形式化·恢复】后台作业 ' + rec.jobId + ' 运行期间文件已被改写：**不自动重驱**，请手动重跑（对象保持 attempted）。')
+          }
+          continue
+        }
+        if (leanJobMirrorSettled(rec) && matched) {
+          await leanApplyRecovered(rec)
+          await saveChatLine('【形式化·恢复】后台作业 ' + rec.jobId + ' 已通过且内容未变：按作业记录补齐归档与 passed。')
+        } else {
+          await leanMarkAttempted(rec, '崩溃恢复：作业未通过或内容已变')
+          attempted++
+        }
+      }
+      if (leanNextQueued()) armLeanDrain()
+      return { scanned, requeued, attempted }
+    }
+    function leanJobView(job) {
+      if (!job) return null
+      return {
+        jobId: job.jobId, state: job.state, kind: job.kind || 'run',
+        file: job.file || job.rel || '', rel: job.rel || '', target: job.target || job.name || '',
+        attempts: job.attempts || 1, exitCode: job.exitCode === undefined ? null : job.exitCode,
+        ok: job.ok === true, timedOut: !!job.timedOut, interrupted: !!job.interrupted,
+        buildMatched: job.buildMatched !== false,
+        enqueuedAt: job.enqueuedAt || 0, startedAt: job.startedAt || 0, settledAt: job.settledAt || 0,
+        jobFile: leanJobRel(job.jobId),
+        proof: job.kind === 'proof' && job.ok === true ? 'Verified/Lean/' + job.target + '.lean' : '',
+        stderrTail: (job.run && job.run.stderrTail) || '',
+      }
+    }
+    // `lean_job {jobId?, waitMs?}` — the WAIT path for a background compile. It polls the queue
+    // itself (bounded by waitMs) and never touches the heartbeat; with no jobId it lists this
+    // session's jobs. Returns the CURRENT state on timeout rather than throwing.
+    async function leanJobTool(o) {
+      const args = o || {}
+      const jobId = String(args.jobId || '').trim()
+      const waitMs = Math.max(0, Math.min(600000, Math.floor(Number(args.waitMs) || 0)))
+      if (!jobId) return { ok: true, jobs: leanJobsView(), count: leanJobs.size, running: leanActive.size, maxParallel: leanJobsMax() }
+      let job = leanJobs.get(jobId) || await leanReadJobMirror(jobId)
+      if (!job) return { ok: false, code: 'V5_NOT_FOUND', message: 'no such job ' + jobId, jobs: leanJobsView() }
+      const deadline = now() + waitMs
+      let waitedMs = 0
+      while (waitMs > 0 && (job.state === 'queued' || job.state === 'running') && now() < deadline) {
+        const t0 = now()
+        try { await runLeanQueue() } catch (e) { console.error('vibe-math-v5: lean wait: ' + String((e && e.message) || e)) }
+        if (job.state === 'queued' || job.state === 'running') {
+          await new Promise((resolve) => { ctx.timeout(() => resolve(true), Math.min(25, waitMs)) })
+        }
+        waitedMs += now() - t0
+        job = leanJobs.get(jobId) || await leanReadJobMirror(jobId) || job
+      }
+      return { ok: true, job: leanJobView(job), waitedMs, timedOut: job.state === 'queued' || job.state === 'running' }
+    }
+    // Session dispose: terminate EVERY in-flight compile and mark it `interrupted` — never passed.
+    function disposeLeanJobs() {
+      leanDisposed = true
+      clearLeanDrain()
+      const jobs = []
+      for (const slot of leanActive.values()) {
+        const job = slot && slot.job
+        if (job) { job.interrupted = true; job.state = 'interrupted'; job.settledAt = now(); jobs.push(job) }
+        if (slot && slot.handle && typeof slot.handle.terminate === 'function') {
+          try { slot.handle.terminate() } catch (e) { /* best effort */ }
+        }
+      }
+      if (leanActiveHandle && typeof leanActiveHandle.terminate === 'function') {
+        try { leanActiveHandle.terminate() } catch (e) { /* best effort */ }
+      }
+      for (const job of jobs) {
+        leanWriteJob(job).catch(() => {})
+        leanQueueNotice(job, { ms: now() - (job.startedAt || now()) }, true)
+      }
+      return { terminated: jobs.length }
+    }
+    try { leanDisposers.add(disposeLeanJobs) } catch (e) { /* host without the disposer set */ }
+
     function formalPromptBlock(target) {
       if (!formalOn()) return ''
       const mode = formalMode()
@@ -2185,6 +2739,9 @@ export function apply(ctx) {
         L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
       } else {
         L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
+        // D4 criteria + async honesty (verbatim prompt text, docs/formal-verification.md §6).
+        L.push('  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。')
+        L.push('  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。')
         L.push('  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）')
         L.push('  · 工作目录：Formal/（相对研究所根）；可复用定义放 ' + formalLibRoot().replace(/\\/g, '/') + '/，')
         L.push('    已证引理放 ' + formalProvedRoot().replace(/\\/g, '/') + '/；写之前先 vibe_v5_lean_lib 查重。')
@@ -2205,11 +2762,21 @@ export function apply(ctx) {
       return L.join('\n')
     }
     function formalWorkLine() {
-      if (!formalOn()) return ''
-      return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
+      if (!leanDailyOn()) return ''
+      const eager = leanInitiative() === 'eager'
+      return '【顺手形式化（' + (formalOn() ? (formalMode() === 'require' ? '强制' : '鼓励') : '主动（leanInitiative=eager）') + '）】'
+        + (eager ? '**主动**把工作中出现的有价值的小引理、命题、定义顺手形式化并存库；' : '')
+        + '把你工作中常用或可能复用的对象、假设、'
         + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind=\'def\'），已成立的引理归到 Proved/'
         + '（kind=\'lemma\'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。'
         + '归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
+        + '\n  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——'
+        + '进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。'
+        + '\n  · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 '
+        + '`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），'
+        + '或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。'
+        + '\n  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 '
+        + '【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**'
         + (formalMode() === 'require'
           ? '本模式下，任何要定论为真/假的对象都必须先有 Lean 通过或显式阻塞记录。'
           : '这会让后续的验证与证明省掉大量重复工作。')
@@ -2262,7 +2829,10 @@ export function apply(ctx) {
             const txt = (await readTextAbs(dirAbs + '/' + e.name)) || ''
             const name = String(e.name).replace(/\.lean$/, '')
             const first = (txt.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|--|import)/.test(l))[0] || '').trim().slice(0, 110)
-            rows.push('| ' + name + ' | ' + rel + ' | ' + kindLabel + ' | ' + first.replace(/\|/g, '/') + ' |')
+            // Dependency column (docs/formal-verification.md §9): what this file imports — the
+            // answer to "can I reuse it, and what does it drag in?".
+            const depend = (txt.split('\n').filter((l) => /^\s*import\s+/.test(l)).map((l) => l.replace(/^\s*import\s+/, '').trim()).join('、')) || '—'
+            rows.push('| ' + name + ' | ' + rel + ' | ' + kindLabel + ' | ' + first.replace(/\|/g, '/') + ' | ' + depend.replace(/\|/g, '/') + ' |')
           }
         } catch (e) { /* listing is best-effort */ }
         return rows
@@ -2270,13 +2840,13 @@ export function apply(ctx) {
       const libRows = await scan(formalLibRoot(), 'Formal/Lib', 'def')
       await writeTextAbs(vibeRoot() + '/Formal/Lib/Index.md', ['# 可复用 Lean 定义库（跨项目）｜' + instituteName, '',
         '> 写新定义之前先查这里：能复用就不要重新定义。', '',
-        '| 名称 | 文件 | 类别 | 摘要 |', '|---|---|---|---|']
-        .concat(libRows.length ? libRows : ['| （暂无） | | | |']).join('\n') + '\n')
+        '| 名称 | 文件 | 类别 | 摘要 | 依赖 |', '|---|---|---|---|---|']
+        .concat(libRows.length ? libRows : ['| （暂无） | | | | |']).join('\n') + '\n')
       const provedRows = await scan(formalProvedRoot(), 'Formal/Proved', 'lemma')
       await writeTextAbs(vibeRoot() + '/Formal/Proved/Index.md', ['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜' + instituteName, '',
         '> 这些文件是通过内核检查的引理，可直接 import 复用。', '',
-        '| 名称 | 文件 | 类别 | 陈述 |', '|---|---|---|---|']
-        .concat(provedRows.length ? provedRows : ['| （暂无） | | | |']).join('\n') + '\n')
+        '| 名称 | 文件 | 类别 | 陈述 | 依赖 |', '|---|---|---|---|---|']
+        .concat(provedRows.length ? provedRows : ['| （暂无） | | | | |']).join('\n') + '\n')
       await writeFormalIndex()
       await writeFormalTodo()
       return { lib: libRows.length, proved: provedRows.length, objects: Object.keys(formalRecords()).length }
@@ -2288,9 +2858,30 @@ export function apply(ctx) {
     // Execute one Lean file through the toolchain, record the run (optionally against an
     // object), refresh the indexes, and report the outcome verbatim. Deliberately called
     // even from `off` mode: a human debugging their toolchain may want it.
+    // `leanAsync` (default): ENQUEUE and return immediately — the compiler has not been
+    // started when this returns (docs/formal-verification.md §7-2). `false`: today's await.
     async function leanRunTool(memberId, o) {
       const args = o || {}
-      const run = await leanRunFile(String(args.file || ''), args.timeout_ms)
+      const rel = String(args.file || '')
+      if (params.leanAsync !== false) {
+        const pre = await leanPrecheck(rel)
+        if (pre.ok === false) return Object.assign({ async: null }, pre)
+        const fileText = await readTextAbs(pre.abs)
+        const text = fileText === undefined ? '' : String(fileText)
+        const pfx = await leanRunPrefix()
+        const target = idSafe(String(args.target || ''))
+        const job = await enqueueLeanJob({
+          jobId: leanJobId(target || pre.rel, leanBuildDigest(text, pfx.prefix)), kind: 'run', rel: pre.rel, file: pre.rel,
+          target, member: memberId, contentSha256: sha256Hex(leanHashText(text)), buildHash: leanBuildHash(pfx.prefix),
+          buildPrefix: pfx.prefix, timeoutMs: args.timeout_ms,
+        })
+        return {
+          ok: true, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId,
+          file: pre.rel, target: target || undefined,
+          message: '已入队后台编译；你可以继续工作。结果会写入 Formal/ 与索引，并在下一轮提示里公告；也可用 vibe_v5_lean_lib 的 jobs 字段随时查看。',
+        }
+      }
+      const run = await leanRunFile(rel, args.timeout_ms)
       if (run.ok || run.file) {
         if (String(args.target || '').trim()) await formalSetRun(String(args.target), run)
         await writeFormalIndex()
@@ -2300,10 +2891,45 @@ export function apply(ctx) {
           + '（' + (run.ms / 1000).toFixed(1) + 's）' + (args.target ? '｜对象 ' + args.target + ' 记为已尝试（若此前已通过/已阻塞则保留原状态）' : ''))
       }
       return Object.assign({ ok: !!run.ok }, run, {
+        async: null,
         hint: run.ok
           ? '通过。若是某个对象的证明，请用 vibe_v5_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
           : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_v5_lean_archive kind=\'blocked\' 记录原因。',
       })
+    }
+    // Read an ARCHIVED definition/lemma verbatim (docs/formal-verification.md §5.4): the reuse
+    // path is `lean_lib` (what exists) → `lean_read` (its exact text) → `import` or copy.
+    async function leanRead(o) {
+      const args = o || {}
+      const raw = String(args.name || '').trim().replace(/\.lean$/i, '')
+      if (!raw) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'name is required' }
+      // Reject a path-shaped name outright: the guard must refuse `../`, absolute paths and
+      // any sub-directory, not silently sanitise them into a different file.
+      if (raw.indexOf('/') !== -1 || raw.indexOf('\\') !== -1 || raw.indexOf('..') !== -1 || /^[a-z]:/i.test(raw)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'name must be a plain archived file name (no path separators, no .., no absolute path)' }
+      }
+      const name = idSafe(raw)
+      if (!name || name !== raw) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'name is not a valid archived file name' }
+      const kindArg = String(args.kind || 'auto')
+      if (['auto', 'lib', 'proved'].indexOf(kindArg) === -1) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "kind must be 'auto' | 'lib' | 'proved'" }
+      const dirs = kindArg === 'auto' ? ['Lib', 'Proved'] : [kindArg === 'lib' ? 'Lib' : 'Proved']
+      for (const d of dirs) {
+        const rel = 'Formal/' + d + '/' + name + '.lean'
+        const abs = leanAbsPath(instRootless(rel))
+        if (abs === null) continue
+        const txt = await readTextAbs(abs)
+        if (txt === undefined) continue
+        const full = String(txt)
+        const truncated = full.length > LEAN_READ_MAX_BYTES
+        return {
+          ok: true, name, file: rel, kind: d === 'Lib' ? 'lib' : 'proved',
+          sha256: sha256Hex(leanHashText(full)),
+          bytes: new TextEncoder().encode(full).length,
+          text: truncated ? full.slice(0, LEAN_READ_MAX_BYTES) : full,
+          truncated,
+        }
+      }
+      return { ok: false, code: 'V5_NOT_FOUND', message: 'no archived ' + (kindArg === 'auto' ? 'definition/lemma' : kindArg) + ' named ' + name }
     }
     async function leanArchive(memberId, o) {
       const args = o || {}
@@ -2321,15 +2947,46 @@ export function apply(ctx) {
         }
         if (body === undefined) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
         const rel = 'Formal/' + (kind === 'def' ? 'Lib' : 'Proved') + '/' + name + '.lean'
+        const sha = sha256Hex(leanHashText(String(body)))
+        // Content-hash dedupe (docs/formal-verification.md §5.3): the file already holds EXACTLY
+        // this content AND the recorded run for that content succeeded ⇒ skip rewrite + compile.
+        const fileSha = await leanHashFile(instRootless(rel))
+        if (fileSha === sha && await leanLibArchivedOk(name, sha)) {
+          return { ok: true, deduped: true, kind, name, file: rel, sha256: sha, note: '内容与已归档版本一致，跳过重写与重编译' }
+        }
         const okWrite = await writeTextAbs(instRootless(rel), body)
         if (!okWrite) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
-        // The global library sits beside the project tree, so it must be executed through
-        // its ABSOLUTE path (the relative form would resolve inside the institute root).
+        if (args.run !== false && params.leanAsync !== false) {
+          // The global library sits beside the project tree, so it is executed through its
+          // ABSOLUTE path (the relative form would resolve inside the institute root).
+          const pre = await leanPrecheck(instRootless(rel))
+          if (pre.ok === true) {
+            const pfx = await leanRunPrefix()
+            const job = await enqueueLeanJob({
+              jobId: leanJobId(name, leanBuildDigest(String(body), pfx.prefix)), kind: 'lib', rel: instRootless(rel), file: rel, name,
+              member: memberId, contentSha256: sha, buildHash: leanBuildHash(pfx.prefix), buildPrefix: pfx.prefix, content: String(body),
+            })
+            await rebuildLeanLibIndexes()
+            await saveChatLine('【形式化】' + memberId + ' 归档了' + (kind === 'def' ? '可复用定义' : '已证引理') + ' `' + name + '` → ' + rel + '（已入队后台编译）')
+            return { ok: true, kind, name, file: rel, sha256: sha, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId, note: '已并入全局可复用库（后台编译中）：用 vibe_v5_lean_lib 的 jobs 字段查看结果' }
+          }
+          // No usable toolchain on this host: fall through to the synchronous path so the honest
+          // NO_SUBPROCESS / LEAN_NOT_FOUND result is recorded exactly as before.
+        }
         const run = args.run === false ? null : await leanRunFile(instRootless(rel))
+        // Mirror the outcome as a job record: later re-archives of the SAME content dedupe
+        // against it (and it is what `Formal/Jobs/` recovery scans).
+        if (run) await leanWriteJob({
+          jobId: leanJobId(name, sha), kind: 'lib', rel: instRootless(rel), file: rel, name,
+          member: memberId, contentSha256: sha, state: run.ok ? 'settled' : (run.timedOut ? 'timeout' : 'failed'),
+          attempts: 1, enqueuedAt: now(), startedAt: now(), settledAt: now(),
+          exitCode: run.exitCode === undefined ? null : run.exitCode, ok: !!run.ok,
+          timedOut: !!run.timedOut, interrupted: false,
+        })
         await rebuildLeanLibIndexes()
         await saveChatLine('【形式化】' + memberId + ' 归档了' + (kind === 'def' ? '可复用定义' : '已证引理') + ' `' + name + '` → ' + rel
           + (run ? '（运行 ' + (run.ok ? '通过' : '未通过') + '）' : ''))
-        return { ok: true, kind, name, file: rel, run: run || undefined, note: '已并入全局可复用库，后续项目可直接 import 复用' }
+        return { ok: true, kind, name, file: rel, sha256: sha, async: null, run: run || undefined, note: '已并入全局可复用库，后续项目可直接 import 复用' }
       }
       if (kind === 'proof') {
         const target = idSafe(String(args.target || ''))
@@ -2342,9 +2999,41 @@ export function apply(ctx) {
         }
         if (body === undefined) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
         const workRel = 'Formal/' + target + '.lean'
-        if (!await writeTextRel(workRel, body)) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + workRel }
-        const run = await leanRunFile(workRel)
+        const sha = sha256Hex(leanHashText(String(body)))
         const prev = formalOf(target)
+        // Dedupe (§5.3): the object is already `passed` AND the work file still holds EXACTLY
+        // this content ⇒ the compile result is already known: skip rewrite + recompile.
+        if (prev.status === 'passed' && (await leanHashFile(workRel)) === sha) {
+          return { ok: true, deduped: true, kind, target, file: workRel, sha256: sha, proof: prev.proof || ('Verified/Lean/' + target + '.lean'), note: '内容与已归档版本一致，跳过重写与重编译' }
+        }
+        if (!await writeTextRel(workRel, body)) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + workRel }
+        if (params.leanAsync !== false) {
+          const pre = await leanPrecheck(workRel)
+          if (pre.ok === true) {
+            const pfx = await leanRunPrefix()
+            const job = await enqueueLeanJob({
+              jobId: leanJobId(target, leanBuildDigest(String(body), pfx.prefix)), kind: 'proof', rel: workRel, file: workRel, target,
+              member: memberId, contentSha256: sha, buildHash: leanBuildHash(pfx.prefix), buildPrefix: pfx.prefix, content: String(body),
+            })
+            // The object is `attempted` while the job is queued: it may only become `passed`
+            // when the job settles ok (exit 0 + unchanged hash). A previous proof pointer is
+            // dropped because the file it referred to has just been overwritten.
+            const rec0 = Object.assign({}, prev, {
+              status: prev.status === 'blocked' ? 'blocked' : 'attempted',
+              file: workRel, proof: '',
+              decision: 'used', note: String(args.note || prev.note || ''),
+              async: { jobId: job.jobId, state: 'queued', attempts: 0, enqueuedAt: job.enqueuedAt, startedAt: 0, settledAt: 0, exitCode: null },
+              updatedAt: now(),
+            })
+            await putFormal(target, rec0)
+            await rebuildLeanLibIndexes()
+            await saveChatLine('【形式化】' + memberId + ' 为 ' + target + ' 归档形式化证明 ' + workRel
+              + '（已入队后台编译；落地为“通过”之前**不会**写 Verified/Lean/、也不会转为忠实性审查）')
+            return { ok: true, kind, target, file: workRel, sha256: sha, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId, status: rec0.status, note: '已入队后台编译；只有作业落地为“通过”才会写 Verified/Lean/ 并转为忠实性审查' }
+          }
+          // No toolchain: fall through to the synchronous path (honest NO_SUBPROCESS record).
+        }
+        const run = await leanRunFile(workRel)
         const passed = !!run.ok
         const rec = Object.assign({}, prev, {
           status: passed ? 'passed' : 'attempted',
@@ -2358,6 +3047,7 @@ export function apply(ctx) {
           decision: 'used',
           note: String(args.note || prev.note || ''),
           run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
+          async: null,
           updatedAt: now(),
         })
         if (passed) await writeTextRel('Verified/Lean/' + target + '.lean', body)
@@ -2365,7 +3055,7 @@ export function apply(ctx) {
         await rebuildLeanLibIndexes()
         await saveChatLine('【形式化】' + memberId + ' 为 ' + target + ' 归档形式化证明 ' + workRel
           + '（运行 ' + (passed ? '**通过**，已归档到 ' + rec.proof + '，验证转为忠实性审查' : '**未通过**：' + tail(run.stderr || run.message, 160)) + '）')
-        return { ok: true, kind, target, file: workRel, proof: rec.proof, passed, run, status: rec.status }
+        return { ok: true, kind, target, file: workRel, sha256: sha, proof: rec.proof, passed, run, status: rec.status, async: null }
       }
       if (kind === 'blocked') {
         const target = idSafe(String(args.target || ''))
@@ -5021,13 +5711,17 @@ export function apply(ctx) {
     // ---- control plane -----------------------------------------------------
     function normalizeParams(input) {
       const out = {}
-      const ints = ['researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
+      // NOTE: new INT params go BEFORE the last two entries. The cross-preset
+      // prompt-invariants self-probe mutates the exact TAIL of this array (dropping
+      // leanTimeoutMs from the accept-set), so appending a key after it would silently
+      // disarm that guard.
+      const ints = ['leanJobsMaxParallel', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
-      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf']
+      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
       const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
-        'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand']
-      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs']
+        'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative']
+      const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs', 'leanSearchPaths']
       for (const k of ints) if (input[k] !== undefined) { const n = Math.floor(Number(input[k])); if (Number.isFinite(n)) out[k] = n }
       // Explicit boolean coercion (docs/final-paper.md §2): the old `=== true || === 'true'` turned a
       // legitimate `1` / `'yes'` into FALSE and left junk values truthy-looking. An
@@ -5046,6 +5740,21 @@ export function apply(ctx) {
         out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'off'
       }
       if (out.leanCommand !== undefined && !String(out.leanCommand).trim()) out.leanCommand = 'lean'
+      // `leanAsync` gets an EXPLICIT branch (not just the shared bool loop): the mode must be
+      // selected only by a real boolean (or the documented spellings) and an unknown value must
+      // keep the DEFAULT (true) — and the string 'false' must never survive as truthy.
+      if (input.leanAsync !== undefined) {
+        out.leanAsync = (input.leanAsync === true || input.leanAsync === false)
+          ? input.leanAsync
+          : coerceBool(input.leanAsync, DEFAULT_PARAMS.leanAsync)
+      }
+      // `leanInitiative` is a CLOSED enum (like quorumMode/formalVerify): a typo degrades to the
+      // documented default ('normal') rather than becoming an unreachable fourth mode.
+      if (out.leanInitiative !== undefined) {
+        out.leanInitiative = ['off', 'normal', 'eager'].indexOf(String(out.leanInitiative)) !== -1 ? String(out.leanInitiative) : 'normal'
+      }
+      // Concurrency floor, same discipline as quorumCap/verdictMaxRounds.
+      if (out.leanJobsMaxParallel !== undefined && out.leanJobsMaxParallel < 1) out.leanJobsMaxParallel = 1
       // ── final-paper enums (closed sets; an unknown value degrades to the documented
       // default instead of silently becoming an unreachable fourth mode) ────────────────
       if (out.paperFormat !== undefined) out.paperFormat = coercePaperEnum('paperFormat', out.paperFormat, ['both', 'md', 'tex'], 'both')
@@ -5096,6 +5805,8 @@ export function apply(ctx) {
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
         formalVerify: params.formalVerify, leanCommand: params.leanCommand,
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
+        leanAsync: params.leanAsync, leanInitiative: params.leanInitiative,
+        leanSearchPaths: params.leanSearchPaths, leanJobsMaxParallel: params.leanJobsMaxParallel,
         // ── final paper ──────────────────────────────────────────────────────
         finalPaper: params.finalPaper, paperFormat: params.paperFormat,
         paperLanguage: params.paperLanguage, paperCompilePdf: params.paperCompilePdf,
@@ -5345,6 +6056,8 @@ export function apply(ctx) {
       // An interrupted FINAL PAPER resumes its own stage (the paper phase runs before the
       // completion flags, so a crash there leaves a live, resumable institute).
       if (paperActive()) { try { await paperPass() } catch (e) { console.error('vibe-math-v5: paper after resume: ' + String((e && e.message) || e)) } }
+      // Leftover Lean jobs are re-driven (or explicitly interrupted) on the resume path too.
+      try { await recoverLeanJobs() } catch (e) { /* already reported on the ready() path */ }
       return { ok: true, resumed: true, members: members.map((m) => m.id), respawned, running: true }
     }
     function setPause() {
@@ -5415,7 +6128,7 @@ export function apply(ctx) {
           mode: formalMode(),
           objects: Object.keys(formalRecords()).map((k) => {
             const r = formalRecords()[k] || {}
-            return { target: k, status: r.status, file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null }
+            return { target: k, status: r.status, file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null, async: r.async || null }
           }),
           passed: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'passed'),
           blocked: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'blocked'),
@@ -5569,6 +6282,9 @@ export function apply(ctx) {
       // Lean formal verification (docs/formal-verification.md)
       formalMode, formalOn, formalRecords, formalTodo, formalOf, rebuildLeanLibIndexes,
       leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo, recordFidelityDefect,
+      leanRead, leanJobTool, leanJobView, leanJobsView, leanSearchRootView, leanInitiative, leanDailyOn,
+      runLeanQueue, disposeLeanJobs, leanRecover: recoverLeanJobs,
+      leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
@@ -5647,14 +6363,16 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). Unknown spellings of these enums fall back to the documented default.', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra --search-path roots before the automatic VibeMath root (deduped; an explicit --search-path/-R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. Unknown spellings of these enums fall back to the documented default.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
     compactThreshold: I, compactAfterRounds: I, maxParallel: I,
     activityTimeoutMs: I, stallAutoMeetingMs: I, chatDigestMs: I, chatDigestMax: I, meetingKeepEvery: I,
     formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
-    leanCommand: S, leanArgs: SA, leanTimeoutMs: I,
+    leanCommand: S, leanArgs: SA, leanTimeoutMs: I, leanAsync: B,
+    leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] },
+    leanSearchPaths: SA, leanJobsMaxParallel: I,
     finalPaper: B, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] },
     paperLanguage: { type: 'string', enum: ['zh', 'en'] },
     paperCompilePdf: B, paperEditor: { type: 'string', enum: ['office', 'academician'] }, paperLatexCommand: S,
@@ -5791,20 +6509,28 @@ export function apply(ctx) {
   // dynamic registration would depend on a runtime knob and break the effect discipline),
   // while the MODE only decides whether the framework TELLS members about them. In 'off'
   // mode they still work if a human or agent calls them deliberately.
-  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT, and a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
-  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
-  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; inspect it via vibe_v5_lean_lib.jobs or wait for the next round\'s 【形式化结果】 line. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. Pass target=<object id> to also record the run against that object. The framework appends `--search-path <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
+  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
+  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
     const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
     const st = s.status()
     return {
       ok: true, mode: s.formalMode(), rebuilt: !(a && a.refresh === false),
-      counts: r, todo: s.formalTodo(),
-      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note })),
-      paths: { project: 'Formal/（相对研究所根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
-      hint: '复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。',
+      counts: r, todo: s.formalTodo(), jobs: s.leanJobsView(),
+      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
+      paths: { project: 'Formal/（相对研究所根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/', searchPath: s.leanSearchRootView() },
+      hint: '复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>，或用 vibe_v5_lean_read {name} 取原文逐字复制。同内容重复归档会自动去重。',
       verify: st.verify ? st.verify.target : null,
     }
   })
+  // Read-only: the EXACT text of an archived definition/lemma (docs/formal-verification.md §5.4).
+  // Only <VibeMath root>/Formal/{Lib,Proved}/<name>.lean is reachable; a path-shaped name is
+  // refused (never sanitised into a different file).
+  registerTool('vibe_v5_lean_read', '(member) Read one archived Lean file VERBATIM so it can be reused: name is the archived file name (no extension needed), kind is "auto" (Lib then Proved, default), "lib" or "proved". Returns {ok,name,file,kind,sha256,bytes,text,truncated} (text capped at 64KB). Only the global reusable library is reachable.', objParams({ name: S, kind: { type: 'string', enum: ['auto', 'lib', 'proved'] } }, ['name']), (s, a) => s.leanRead(a))
+  // Wait/observe the background compile queue (docs/formal-verification.md §7: no polling tool
+  // for the member's own turn — `waitMs` is a bounded internal wait, and the state is returned
+  // either way, so a member can also just check and continue).
+  registerTool('vibe_v5_lean_job', '(member) Inspect the background Lean compile queue. With no jobId it lists this session\'s jobs ({jobs,count,running,maxParallel}); with jobId it returns that job\'s state/exitCode, its receipt Formal/Jobs/<jobId>.json and, when it passed, the archived proof path. waitMs>0 waits up to that many milliseconds for a queued/running job to settle (it polls the queue instead of blocking the heartbeat) and otherwise returns the CURRENT state.', objParams({ jobId: S, waitMs: I }), (s, a) => s.leanJobTool(a))
 
   // ── /v5 slash command ────────────────────────────────────────────────────
   ctx.effect(() => commands.register({
@@ -5949,6 +6675,9 @@ export const __testHelpers = {
   parseReply,
   sanitizeToolFilter,
   registeredToolsFromError,
+  sha256Hex,
+  leanHashText,
+  leanHasSearchFlag,
 }
 
 function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }

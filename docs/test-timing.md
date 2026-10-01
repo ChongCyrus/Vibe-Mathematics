@@ -46,8 +46,8 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**57 项** = 39 套件 + 18 探针/变体） | ≈ 629 s | **≈ 208 s**（并发 4，speed-up x3.02） | `TOTAL 57  PASS 57  FAIL 0  (suites 39 · probes 18)`；关键路径 = `audit-formal-sensitivity` 208 s |
-| `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4） | 803 s | **≈ 208 s** | 关键路径 = 12 个 v2 探针（每个 ≈42–60 s） |
+| `tests/run-tests.mjs`（**57 项** = 39 套件 + 18 探针/变体） | ≈ 629 s | **≈ 208 s**（并发 4，speed-up x3.02） | `TOTAL 57  PASS 57  FAIL 0  (suites 39 · probes 18)`；关键路径 = `audit-formal-sensitivity`（Lean 轮后实测 260.7 s，见下一行） |
+| `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
 | `tests/audit-prompt-invariants.mjs`（157 条） | ≈ 1.9 s | — | 静态 |
@@ -64,9 +64,10 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/v2-path-escape.test.mjs` | ≈ 2.2 s | — | 验证日志路径逃逸（7 条） |
 | `tests/v2-tool-cap.test.mjs` | ≈ 0.4 s | — | 能力表来自真实组合、*MaxToolCalls 只是提示（10 条） |
 
-> 上表 `≈629 s / ≈208 s` 两列是 **56 项（38 套件）** 时的实测；第 39 个套件是随 final-paper 功能加入的
-> `tests/v4-final-paper.test.mjs`，本表尚未单独计时，所以全量的绝对时间会比 208 s 略大——数字**形状**
-> （`TOTAL 57 … suites 39 · probes 18`）以 runner 每次运行的输出为准。
+> 上表 `run-tests` 的 `≈629 s / ≈208 s` 两列是 **56 项（38 套件）** 时的实测；第 39 个套件是随 final-paper
+> 功能加入的 `tests/v4-final-paper.test.mjs`，而 **Lean 轮**又给 `audit-formal-sensitivity` 增加了探针
+> （本轮实测 **wall 260.7 s / sum 1034.6 s**，见上表）——所以整轮 `run-tests` 的 wall **至少**是 260.7 s，
+> 绝对时间会比 208 s 大。数字**形状**（`TOTAL 57 … suites 39 · probes 18`）以 runner 每次运行的输出为准。
 
 单套件耗时（并行时的关键路径按此排序）：
 

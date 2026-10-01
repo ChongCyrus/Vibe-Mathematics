@@ -17,6 +17,7 @@
 // Run: node tests/e2e-v5-round2.test.mjs
 // ============================================================
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 
@@ -59,6 +60,9 @@ function makeHost(opts) {
   const o = opts || {}
   const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-v5r2-'))
   const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = []
+  // Every effect disposer, so a test can simulate a plugin UNLOAD (the Lean queue's disposer is
+  // registered first: it terminates in-flight compiles and marks them interrupted).
+  const effectDisposers = []
   const liveAgents = new Map()
   // The two services the fix removed. This host does not provide them, and records every
   // request so the suite can assert the plugin never even LOOKS for them any more.
@@ -87,7 +91,7 @@ function makeHost(opts) {
       return undefined
     },
     on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
-    effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
+    effect(fn) { const d = fn(); const disp = () => { if (typeof d === 'function') d() }; effectDisposers.push(disp); return disp },
     logger: { info() {}, warn() {}, error() {} },
     timeout(cb, ms) { const h = setTimeout(cb, ms); return () => clearTimeout(h) },
     tools: { register(spec) { toolRegs.push(spec); return () => {} } },
@@ -194,7 +198,7 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -239,7 +243,58 @@ function fakeLatex(opts) {
 const paperKindOf = (p) => /【最终论文·撰写/.test(p) ? 'write'
   : /【最终论文·互审/.test(p) ? 'review'
     : /【最终论文·定稿/.test(p) ? 'final' : ''
+
+// ── fake Lean toolchain (docs/formal-verification.md §7) ────────────────────
+// Injected through the SAME `subprocess` service the plugin compiles with, so detection,
+// argv assembly, the queue and the settle logic all run unchanged; only the toolchain is fake.
+//   exitFor(argv, file) -> exitCode | undefined    terminated -> count of terminate() calls
+//   defer: true  every spawn stays alive until releaseAll() (for timeout/dispose/build-context)
+function fakeLean(opts) {
+  const o = opts || {}
+  const calls = []
+  return {
+    calls,
+    terminated: 0,
+    async resolveExecutable(cmd) {
+      const name = String(cmd || 'lean')
+      if (o.missing) throw new Error('ENOENT: ' + name)
+      return 'C:/fake/' + name
+    },
+    spawn(spec) {
+      const argv = (spec.argv || []).map(String)
+      // Only the LEAN engine is a compile: the plugin also uses the subprocess service for
+      // platform shell helpers (directory setup), and those must never pollute the call log
+      // nor be deferred by the gate.
+      const head = String(argv[0] || '')
+      if (!/(^|[\\/])fake[\\/]/i.test(head) && !/(^|[\\/])lean$/i.test(head)) {
+        return { done: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }), terminate() { /* shell helper */ } }
+      }
+      const file = argv[argv.length - 1]
+      calls.push({ argv, file, cwd: spec.cwd })
+      let exitCode = 0
+      if (o.alwaysFail) exitCode = 1
+      else if (typeof o.exitFor === 'function') { const r = o.exitFor(argv, file); if (r !== undefined && r !== null) exitCode = r }
+      const self = this
+      if (!o.defer) return { done: Promise.resolve({ exitCode }), terminate() { self.terminated += 1 } }
+      let settled = false
+      let resolveDone = null
+      const done = new Promise((resolve) => { resolveDone = resolve })
+      const finish = (v) => { if (!settled) { settled = true; resolveDone(v) } }
+      o._release = o._release || []
+      o._release.push(() => finish({ exitCode }))
+      return { done, terminate() { self.terminated += 1; finish({ exitCode: null, signal: 'SIGTERM' }) } }
+    },
+    releaseAll() { for (const f of (o._release || []).splice(0)) { try { f() } catch (e) { /* ignore */ } } },
+  }
+}
 const paperDirOf = (h, id) => join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Paper', id || 'institute')
+// Seed a .lean work file inside the institute tree (a run job needs an existing file).
+function seedLeanFile(h, rel, text) {
+  const abs = join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', ...String(rel).split('/'))
+  mkdirSync(dirname(abs), { recursive: true })
+  writeFileSync(abs, text, 'utf8')
+  return abs
+}
 function listFilesUnder(root, rel) {
   const out = []
   const base = rel === undefined ? '' : rel
@@ -1406,6 +1461,248 @@ console.log('\n[33] an existing Paper/<id>/paper.pdf is never overwritten or del
   await drivePaper(h2)
   assert(readFileSync(join(dir2, 'paper.pdf'), 'utf8') === PRE, '★ even an always-failing toolchain leaves the existing pdf untouched')
   assert(fake2.calls.length === 0, 'no compiler process was launched for the already-delivered pdf')
+}
+
+// ---------- 34. Lean async/initiative/search params: closed schema + coercion ----------
+console.log('\n[34] Lean async params: closed schema, coercion, visibleParams, embedded sha256')
+{
+  const h = makeHost({ pluginModule })
+  const setSpec = h.toolRegs.find(t => t.name === 'vibe_v5_set')
+  const keys = ['leanAsync', 'leanInitiative', 'leanSearchPaths', 'leanJobsMaxParallel']
+  assert(keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
+    '★ vibe_v5_set advertises all four new Lean keys (the schema is closed, so an unlisted key is unreachable)')
+  assert(JSON.stringify(setSpec.parameters.properties.leanInitiative.enum) === JSON.stringify(['off', 'normal', 'eager']),
+    'leanInitiative is a closed enum in the schema')
+  const p0 = (await h.callTool('vibe_v5_status', {})).params
+  assert(p0.leanAsync === true && p0.leanInitiative === 'normal' && Array.isArray(p0.leanSearchPaths) && p0.leanSearchPaths.length === 0 && p0.leanJobsMaxParallel === 1,
+    '★ the documented defaults are live and visibleParams exposes all four (' + JSON.stringify({ a: p0.leanAsync, i: p0.leanInitiative, sp: p0.leanSearchPaths, mp: p0.leanJobsMaxParallel }) + ')')
+  const r = await h.callTool('vibe_v5_set', { leanAsync: 'false', leanInitiative: 'bogus', leanJobsMaxParallel: 0, leanSearchPaths: '/libA, /libB' })
+  assert(r.params.leanAsync === false, "★ leanAsync:'false' normalises to FALSE (a string must never stay truthy)")
+  assert(r.params.leanInitiative === 'normal', 'a bogus leanInitiative falls back to the documented default')
+  assert(r.params.leanJobsMaxParallel === 1, 'leanJobsMaxParallel:0 floors at 1')
+  assert(JSON.stringify(r.params.leanSearchPaths) === JSON.stringify(['/libA', '/libB']),
+    'leanSearchPaths accepts a comma string and keeps the given order (' + JSON.stringify(r.params.leanSearchPaths) + ')')
+  const help = String(setSpec.description || '')
+  assert(/leanAsync/.test(help) && /leanInitiative/.test(help) && /leanSearchPaths/.test(help) && /leanJobsMaxParallel/.test(help),
+    'the set-tool help text names all four (the switch is discoverable)')
+  const H = pluginModule.__testHelpers
+  assert(H.sha256Hex('abc') === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' &&
+    H.sha256Hex('') === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    '★ the embedded sha256 matches the published vectors (job ids/dedupe rest on it)')
+  assert(H.sha256Hex('中文abc') === createHash('sha256').update('中文abc', 'utf8').digest('hex'), 'it also matches node:crypto on non-ASCII input')
+  assert(H.leanHasSearchFlag(['-R', 'x']) && H.leanHasSearchFlag(['--search-path=o']) && H.leanHasSearchFlag(['--root', 'r']) && !H.leanHasSearchFlag(['-j4']),
+    'the search-flag guard recognises -R / --search-path(=) / --root and nothing else')
+}
+
+// ---------- 35. async Lean: enqueue → settle(ok) → passed ----------
+console.log('\n[35] async Lean: enqueue returns at once, settle(ok) is the only path to passed')
+{
+  const fake = fakeLean({})
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  await h.callTool('vibe_v5_set', { formalVerify: 'encourage' })
+  const arch = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-async', content: 'theorem p_async : 1 + 1 = 2 := by decide\n' })
+  assert(arch.ok === true && arch.async && arch.async.state === 'queued' && arch.status === 'attempted',
+    '★ the archive ENQUEUES and returns async:{jobId,state} with the object at attempted (' + JSON.stringify(arch).slice(0, 150) + ')')
+  assert(fake.calls.length === 0, '★ the compiler has NOT been started when the tool returns')
+  const st0 = await h.callTool('vibe_v5_status', {})
+  assert(st0.formal.passed.indexOf('p-async') === -1, 'the queued object is not passed')
+  const listed = await h.callTool('vibe_v5_lean_job', {})
+  assert(listed.ok === true && listed.jobs.some(j => j.jobId === arch.jobId), 'lean_job lists the job (' + JSON.stringify(listed.jobs).slice(0, 140) + ')')
+  const waited = await h.callTool('vibe_v5_lean_job', { jobId: arch.jobId, waitMs: 3000 })
+  assert(waited.ok === true && waited.job.state === 'settled' && waited.job.exitCode === 0 && waited.job.proof === 'Verified/Lean/p-async.lean',
+    '★ lean_job {jobId,waitMs} waits for the settle and reports the archived proof (' + JSON.stringify(waited.job).slice(0, 170) + ')')
+  const st1 = await h.callTool('vibe_v5_status', {})
+  assert(st1.formal.passed.indexOf('p-async') !== -1 && st1.formal.objects.find(o => o.target === 'p-async').async.jobId === arch.jobId,
+    '★ ONLY the settled(ok) job set the object passed, and its receipt is on the record')
+  assert(existsSync(join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Verified', 'Lean', 'p-async.lean')),
+    'the proof is archived under Verified/Lean/<id>.lean')
+  const argv = fake.calls[0].argv
+  const root = join(h.WS, 'VibeMath').replace(/\\/g, '/')
+  const si = argv.indexOf('--search-path')
+  assert(si > 0 && argv[si + 1] === root && si + 2 === argv.length - 1 && /\.lean$/.test(argv[argv.length - 1]),
+    '★ argv carries `--search-path <ABSOLUTE VibeMath root>` right before the file (' + JSON.stringify(argv) + ')')
+  assert(fake.calls.length === 1, 'exactly one compile ran for the settle (got ' + fake.calls.length + ')')
+}
+
+// ---------- 36. failure / timeout / dispose never verify ----------
+console.log('\n[36] async Lean: failure, timeout and session dispose never verify')
+{
+  const fakeFail = fakeLean({ alwaysFail: true })
+  const h = makeHost({ pluginModule, subprocess: fakeFail })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const a = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-fail', content: 'theorem p_fail : 1 = 2 := by decide\n' })
+  const w = await h.callTool('vibe_v5_lean_job', { jobId: a.jobId, waitMs: 3000 })
+  assert(w.job.state === 'failed', '★ a failed compile settles as failed (' + w.job.state + ')')
+  assert(!existsSync(join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Verified', 'Lean', 'p-fail.lean')),
+    '★ no Verified/Lean file is written for a failure')
+  assert((await h.callTool('vibe_v5_status', {})).formal.passed.indexOf('p-fail') === -1, 'the failed object stays attempted')
+  // (b) the budget terminates the process
+  const fakeHang = fakeLean({ defer: true })
+  const h2 = makeHost({ pluginModule, subprocess: fakeHang })
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h2.settleSpawns()
+  seedLeanFile(h2, 'Formal/good.lean', 'theorem good : 1 + 1 = 2 := by decide\n')
+  const r = await h2.callTool('vibe_v5_lean_run', { file: 'Formal/good.lean', timeout_ms: 1000 })
+  assert(r.ok === true && r.async.state === 'queued', 'the run is queued')
+  const w2 = await h2.callTool('vibe_v5_lean_job', { jobId: r.jobId, waitMs: 5000 })
+  assert(w2.job.state === 'timeout' && fakeHang.terminated >= 1,
+    '★ the per-job budget TERMINATED the process and the job is timeout (' + JSON.stringify({ s: w2.job.state, t: fakeHang.terminated }) + ')')
+  // (c) session dispose (the plugin-unload disposer)
+  const fakeGate = fakeLean({ defer: true })
+  const h3 = makeHost({ pluginModule, subprocess: fakeGate })
+  await h3.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h3.settleSpawns()
+  const a3 = await h3.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-dispose', content: 'theorem p_dispose : 1 + 1 = 2 := by decide\n' })
+  await sleep(40)
+  assert(fakeGate.calls.length >= 1, 'precondition: the compile is in flight')
+  h3.effectDisposers[0]()
+  assert(fakeGate.terminated >= 1, '★ dispose TERMINATED the in-flight compiler (no orphan process)')
+  const w3 = await h3.callTool('vibe_v5_lean_job', { jobId: a3.jobId })
+  assert(w3.job.state === 'interrupted', '★ the job is marked interrupted, not settled (' + w3.job.state + ')')
+  assert((await h3.callTool('vibe_v5_status', {})).formal.passed.indexOf('p-dispose') === -1, '★ dispose NEVER verifies an object')
+}
+
+// ---------- 37. content-hash dedupe ----------
+console.log('\n[37] identical re-archive is de-duplicated (no rewrite, no recompile)')
+{
+  const fake = fakeLean({})
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const PROOF = 'theorem p_dup : 2 + 2 = 4 := by decide\n'
+  const one = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-dup', content: PROOF })
+  await h.callTool('vibe_v5_lean_job', { jobId: one.jobId, waitMs: 3000 })
+  const before = fake.calls.length
+  const again = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-dup', content: PROOF })
+  assert(again.deduped === true && fake.calls.length === before,
+    '★ identical content is deduped: no new compile (' + JSON.stringify({ d: again.deduped, before, after: fake.calls.length }) + ')')
+  const diff = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-dup', content: PROOF + '-- changed\n' })
+  assert(diff.deduped !== true && diff.async && diff.async.state === 'queued', 'different content is NOT deduped (a new job is queued)')
+  const DEF = 'def ZDup := Fin 2\n'
+  const d1 = await h.callTool('vibe_v5_lean_archive', { kind: 'def', name: 'ZDup', content: DEF })
+  await h.callTool('vibe_v5_lean_job', { jobId: d1.jobId, waitMs: 3000 })
+  const callsAfter = fake.calls.length
+  const d2 = await h.callTool('vibe_v5_lean_archive', { kind: 'def', name: 'ZDup', content: DEF })
+  assert(d2.deduped === true && fake.calls.length === callsAfter, '★ the global library dedupes on the same content hash too')
+}
+
+// ---------- 38. lean_read: verbatim text + path guard ----------
+console.log('\n[38] lean_read returns archived text verbatim and refuses a path-shaped name')
+{
+  const fake = fakeLean({})
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  const body = 'def ZRead : Nat := 7\n'
+  const a = await h.callTool('vibe_v5_lean_archive', { kind: 'def', name: 'ZRead', content: body })
+  await h.callTool('vibe_v5_lean_job', { jobId: a.jobId, waitMs: 3000 })
+  const rd = await h.callTool('vibe_v5_lean_read', { name: 'ZRead' })
+  assert(rd.ok === true && rd.kind === 'lib' && rd.text === body && rd.bytes === body.length && /^[0-9a-f]{64}$/.test(rd.sha256) && rd.truncated === false,
+    '★ lean_read returns the archived text verbatim with sha/bytes (' + JSON.stringify({ k: rd.kind, b: rd.bytes }) + ')')
+  const esc = await h.callTool('vibe_v5_lean_read', { name: '../ZRead' })
+  assert(esc.ok === false && esc.code === 'V5_INVALID_ARGUMENT', 'a path-shaped name is REFUSED, never sanitised into another file (' + JSON.stringify(esc).slice(0, 90) + ')')
+  assert((await h.callTool('vibe_v5_lean_read', { name: 'C:/x/ZRead' })).ok === false, 'an absolute name is refused')
+  const miss = await h.callTool('vibe_v5_lean_read', { name: 'NoSuchThing' })
+  assert(miss.ok === false && miss.code === 'V5_NOT_FOUND', 'an unknown name is V5_NOT_FOUND')
+  assert((await h.callTool('vibe_v5_lean_read', { name: 'ZRead', kind: 'bogus' })).ok === false, 'a bogus kind is refused')
+}
+
+// ---------- 39. a job only settles the BUILD CONTEXT it was queued under ----------
+console.log('\n[39] a job only settles the build context it was queued under')
+{
+  const fake = fakeLean({ defer: true })
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  seedLeanFile(h, 'Formal/good.lean', 'theorem good : 1 + 1 = 2 := by decide\n')
+  await h.callTool('vibe_v5_lean_run', { file: 'Formal/good.lean' })
+  await sleep(40)
+  const proof = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-ctx', content: 'theorem p_ctx : 3 + 3 = 6 := by decide\n' })
+  await h.callTool('vibe_v5_set', { leanArgs: ['-Dctx=1'] })     // retune AFTER queueing
+  for (let i = 0; i < 10; i++) { fake.releaseAll(); await sleep(25) }
+  const w = await h.callTool('vibe_v5_lean_job', { jobId: proof.jobId, waitMs: 1000 })
+  assert(w.job.state === 'failed' && w.job.buildMatched === false,
+    '★ a job compiled under retuned args does NOT settle (' + JSON.stringify({ s: w.job.state, b: w.job.buildMatched }) + ')')
+  const st = await h.callTool('vibe_v5_status', {})
+  assert(st.formal.passed.indexOf('p-ctx') === -1, '★ the object stays attempted on a build-context mismatch')
+  assert(!existsSync(join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Verified', 'Lean', 'p-ctx.lean')),
+    'no Verified/Lean file for a mismatched build')
+  // (b) the CONTENT changed after the job was queued: the compile succeeds, but it compiled
+  // something else — the object must stay attempted.
+  const blocker2 = await h.callTool('vibe_v5_lean_run', { file: 'Formal/good.lean' })
+  await sleep(40)
+  const p2 = await h.callTool('vibe_v5_lean_archive', { kind: 'proof', target: 'p-hash', content: 'theorem p_hash : 4 + 4 = 8 := by decide\n' })
+  seedLeanFile(h, 'Formal/p-hash.lean', 'theorem p_hash : 4 + 4 = 8 := by decide\n-- edited while queued\n')
+  for (let i = 0; i < 10; i++) { fake.releaseAll(); await sleep(25) }
+  const w2 = await h.callTool('vibe_v5_lean_job', { jobId: p2.jobId, waitMs: 1000 })
+  assert(w2.job.exitCode === 0 && w2.job.state === 'failed' && w2.job.buildMatched === true,
+    '★ exit 0 with CHANGED content does not settle either (' + JSON.stringify({ s: w2.job.state, e: w2.job.exitCode, b: w2.job.buildMatched, blocker: blocker2.jobId }) + ')')
+  assert(!existsSync(join(h.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Verified', 'Lean', 'p-hash.lean')),
+    'a changed-content compile writes no proof either')
+}
+
+// ---------- 40. leanJobsMaxParallel (default 1 = serial) ----------
+console.log('\n[40] leanJobsMaxParallel caps simultaneous compiles')
+{
+  const fake = fakeLean({ defer: true })
+  const h = makeHost({ pluginModule, subprocess: fake })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  seedLeanFile(h, 'Formal/a.lean', 'theorem a : 1 = 1 := rfl\n')
+  seedLeanFile(h, 'Formal/b.lean', 'theorem b : 2 = 2 := rfl\n')
+  await h.callTool('vibe_v5_lean_run', { file: 'Formal/a.lean' })
+  await h.callTool('vibe_v5_lean_run', { file: 'Formal/b.lean' })
+  await sleep(50)
+  assert(fake.calls.length === 1, '★ with the default maxParallel=1 only ONE compile is in flight (got ' + fake.calls.length + ')')
+  const listed = await h.callTool('vibe_v5_lean_job', {})
+  assert(listed.maxParallel === 1 && listed.jobs.filter(j => j.state === 'queued').length === 1,
+    'lean_job reports maxParallel=1 with the second job queued (' + JSON.stringify(listed).slice(0, 150) + ')')
+  const q = listed.jobs.find(j => j.state === 'queued')
+  await h.callTool('vibe_v5_set', { leanJobsMaxParallel: 2 })
+  await h.callTool('vibe_v5_lean_job', { jobId: q.jobId, waitMs: 150 })
+  await sleep(30)
+  assert(fake.calls.length === 2, '★ raising maxParallel to 2 starts the queued job as well (got ' + fake.calls.length + ')')
+  for (let i = 0; i < 8; i++) { fake.releaseAll(); await sleep(20) }
+}
+
+// ---------- 41. the daily/verify Lean text is gated by leanInitiative ----------
+console.log('\n[41] leanInitiative gates the daily Lean reminders; the async rule is in both blocks')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const promptFor = async (member, plan) => {
+    if (plan) await h.callTool('vibe_v5_set', plan)
+    await h.callTool('vibe_v5_say', { to: member, text: '请继续推进。' }, h.childAgent(h.childOf('acad')))
+    const w = await h.peekWakeOf(member, 3000)
+    if (!w) return ''
+    h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+    await sleep(25)
+    return w.text
+  }
+  const normal = await promptFor('r-1', { formalVerify: 'off', leanInitiative: 'normal' })
+  assert(normal.indexOf('【顺手形式化') === -1, "leanInitiative=normal + formalVerify=off keeps today's behaviour (no daily Lean line)")
+  const eager = await promptFor('r-1', { leanInitiative: 'eager' })
+  assert(eager.indexOf('【顺手形式化') !== -1 && eager.indexOf('**主动**') !== -1,
+    '★ leanInitiative=eager injects the daily line even when formalVerify is off')
+  assert(eager.indexOf('判断标准：①') !== -1 && eager.indexOf('先 vibe_v5_lean_lib 查已有库') !== -1 && eager.indexOf('**查不到再新写**') !== -1,
+    '★ the three criteria + reuse-first ride in the daily line')
+  assert(eager.indexOf('import Formal.Lib.<name>') !== -1 && eager.indexOf('vibe_v5_lean_read') !== -1, 'the import/read reuse routes are named')
+  assert(eager.indexOf('没把握就记 blocked') !== -1, 'the no-confidence→blocked rule rides in the daily line')
+  assert(eager.indexOf('leanAsync=true') !== -1 && eager.indexOf('不得把该对象当成已通过') !== -1, '★ the async honesty rule rides in the daily line')
+  const offInit = await promptFor('r-1', { formalVerify: 'encourage', leanInitiative: 'off' })
+  assert(offInit.indexOf('【顺手形式化') === -1, '★ leanInitiative=off suppresses the daily line even when formalVerify is on')
+  // The VERIFY block carries the async rule too.
+  await h.callTool('vibe_v5_set', { formalVerify: 'encourage', leanInitiative: 'normal' })
+  await h.callTool('vibe_v5_record_proposition', { id: 'p-leanv', statement: '异步落地前不得当已通过', value: 0.6, motive: 'm', p: 0.9 }, h.childAgent(h.childOf('r-1')))
+  await h.callTool('vibe_v5_propose_verify', { target: 'p-leanv', kind: 'proposition', reason: '测试' }, h.childAgent(h.childOf('r-1')))
+  const vw = await h.peekWakeOf('r-1', 3000)
+  const vtxt = vw ? vw.text : ''
+  assert(/形式化只写你有把握的版本/.test(vtxt) && /不得\*\*在它落地前声称已通过/.test(vtxt),
+    '★ the verify block carries the confidence + async-honesty lines (' + JSON.stringify(vtxt.slice(-260)) + ')')
 }
 
 console.log('')

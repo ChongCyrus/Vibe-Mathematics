@@ -39,6 +39,7 @@
 //   VibeMath/current.<sessionId>.json = per-session current project.
 export const name = 'vibe-math-v3'
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
+import { createHash } from 'node:crypto'
 
 // Standing mount: DSH mounts each agent preset ONCE per preset and joins every
 // session that names it to that SAME plugin instance (see @deepseek-ai/dsh-agent-presets).
@@ -179,6 +180,10 @@ export function apply(ctx) {
     leanCommand: 'lean',          // 要执行的 Lean 可执行文件（例：'lake'）
     leanArgs: [],                 // 插在文件名之前的附加参数（例：['env','lean'] 配 leanCommand='lake'）
     leanTimeoutMs: 120000,        // 单次 Lean 运行超时上限（毫秒，正整数）
+    leanAsync: true,              // true = Lean 编译走后台队列（入队即返回）| false = 同步 await（旧语义）
+    leanJobsMaxParallel: 1,       // 后台编译并发上限（默认 1 = 串行；可调大以并行编译）
+    leanInitiative: 'normal',     // 日常流程中的形式化主动性：off | normal | eager（与 formalVerify 的"验证要求强度"是两件事）
+    leanSearchPaths: [],          // 额外搜索路径（默认空 = 只用自动注入的 VibeMath 根）；非空时先注入它们、再注入自动根
     // ---- 最终论文（规格：docs/final-paper.md；v2/v3 为单作者变体）----
     finalPaper: true,             // 收口时是否自动撰写最终论文（false 只关自动触发；/vibe paper 仍可用）
     paperFormat: 'both',          // both = md + tex | md = 只写 markdown | tex = 只写 latex
@@ -304,7 +309,11 @@ export function apply(ctx) {
     { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证：off = 不额外要求（默认，提示词里不出现任何 Lean 内容）；encourage = 鼓励按实现难度形式化，Lean 通过后验证转为忠实性审查；require = 同上并加门禁：真/假定论必须先达到 Lean 已通过 或 已记录显式阻塞原因，否则记为未定论（formal-required）并进「形式化待办」', suggestion: 'off' },
     { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
     { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
-    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）', suggestion: 120000 },
+    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）；异步档下它同时是**每个后台作业**的预算（到时主动 terminate，作业记 timeout，对象留在 attempted）', suggestion: 120000 },
+    { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
+    { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
+    { name: 'leanInitiative', type: 'enum', options: ['off', 'normal', 'eager'], description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
+    { name: 'leanSearchPaths', type: 'string[]', description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
     { name: 'finalPaper', type: 'boolean', description: '收口（checkTermination 的完整收口分支：无未解决问题、无待验证对象、无任务/计划/门）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已定论命题/解法/方法整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
     { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md（跳过编译）；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
     { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
@@ -371,6 +380,18 @@ export function apply(ctx) {
     if (isWindows()) return 'Remove-Item -Force -LiteralPath ' + psQuote(path) + ' -ErrorAction SilentlyContinue'
     return 'rm -f ' + shQuote(path)
   }
+  /**
+   * `subprocess.spawn` 的契约返回**句柄**（带 `done`），但桩宿主/测试替身常常写成 `async spawn(...)`
+   * ——返回的是 Promise，`handle.done` 是 undefined，`await handle.done` 得到 undefined，随后
+   * `outcome.exitCode` 抛 "Cannot read properties of undefined (reading 'exitCode')"，被 catch 成一条
+   * 误导性的目录创建失败。这里统一兼容一次：Promise 就先 await，句柄缺 `done` 才如实报错。
+   */
+  async function spawnHandle(subprocess, spec) {
+    const raw = subprocess.spawn(spec)
+    const handle = (raw && typeof raw.then === 'function') ? await raw : raw
+    if (!handle || handle.done === undefined) throw new Error('subprocess.spawn returned no handle.done')
+    return handle
+  }
   async function runShell(script, cwd) {
     const subprocess = subprocessOf()
     if (subprocess === undefined) return { ok: false, error: 'no-subprocess' }
@@ -378,9 +399,9 @@ export function apply(ctx) {
       const argv = isWindows()
         ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', script]
         : ['/bin/sh', '-c', script]
-      const handle = subprocess.spawn({ argv: argv, cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 })
+      const handle = await spawnHandle(subprocess, { argv: argv, cwd: cwd || workspaceRoot(), stdio: { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }, graceMs: 20000 })
       const outcome = await handle.done
-      return { ok: outcome.exitCode === 0, exitCode: outcome.exitCode }
+      return { ok: !!outcome && outcome.exitCode === 0, exitCode: (outcome && outcome.exitCode !== undefined) ? outcome.exitCode : null }
     } catch (e) { return { ok: false, error: String((e && e.message) || e) } }
   }
   /**
@@ -400,7 +421,7 @@ export function apply(ctx) {
     const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'planningHorizon', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'projectLockTimeoutMs']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'leanArgs']
-    const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild', 'finalPaper', 'paperCompilePdf']
+    const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild', 'finalPaper', 'paperCompilePdf', 'leanAsync']
     for (const k of Object.keys(DEFAULT_PARAMS)) {
       if (!(k in obj)) continue
       const v = obj[k]
@@ -418,6 +439,15 @@ export function apply(ctx) {
       else if (k === 'formalVerify') { out[k] = (v === 'off' || v === 'encourage' || v === 'require') ? v : 'off' }
       else if (k === 'leanCommand') { const s = String(v == null ? '' : v).trim(); out[k] = s || 'lean' }
       else if (k === 'leanTimeoutMs') { const n = Number(v); out[k] = (Number.isFinite(n) && n > 0) ? Math.floor(n) : DEFAULT_PARAMS[k] }
+      // Lean 增量/异步（spec §1.1 + 修订 §5）：并行度必须有下界（0 会让队列永不推进，静默失效）。
+      else if (k === 'leanJobsMaxParallel') { const n = Number(v); out[k] = Number.isFinite(n) ? Math.max(1, Math.min(8, Math.floor(n))) : DEFAULT_PARAMS[k] }
+      else if (k === 'leanInitiative') { out[k] = (v === 'off' || v === 'normal' || v === 'eager') ? v : DEFAULT_PARAMS[k] }
+      else if (k === 'leanSearchPaths') {
+        if (!Array.isArray(v)) { out[k] = DEFAULT_PARAMS[k] } else {
+          const seen = {}
+          out[k] = v.map(function (x) { return String(x == null ? '' : x).trim() }).filter(function (x) { if (!x || seen[x]) return false; seen[x] = true; return true })
+        }
+      }
       else if (k === 'solverAllowNetwork' || k === 'verifierAllowNetwork' || k === 'solverAllowScripts' || k === 'verifierAllowScripts') { out[k] = (v === true || v === false || v === '') ? v : DEFAULT_PARAMS[k] }
       // 最终论文（spec v2 §B）：布尔/枚举必须**显式归一化**，不允许未知键直通（'false' 会保持真值）。
       else if (k === 'paperFormat') { out[k] = (v === 'both' || v === 'md' || v === 'tex') ? v : DEFAULT_PARAMS[k] }
@@ -2487,21 +2517,30 @@ export function apply(ctx) {
    * 在一个 .lean 文件上跑工具链。**任何**失败模式（无 subprocess 服务、工具链不存在、
    * spawn 失败、超时、非零退出）都变成可读结果：调度循环永远不会因为 Lean 而崩。
    */
+  /**
+   * 路径/存在性守卫（同步档与异步档共用同一套错误码）。
+   */
   async function leanRunFile(relPath, timeoutMs) {
-    const started = now()
     const rel = String(relPath == null ? '' : relPath).trim()
     if (!rel) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'file is required' }
     const abs = await leanResolveRun(rel)
-    if (abs === null) {
-      return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'Lean 文件必须位于 ' + vibeRoot().replace(/\\/g, '/') + '/ 之内（收到 ' + rel + '）' }
-    }
+    if (abs === null) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'Lean 文件必须位于 ' + vibeRoot().replace(/\\/g, '/') + '/ 之内（收到 ' + rel + '）' }
     if (!/\.lean$/i.test(abs)) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'only .lean files can be executed' }
     if (await readTextAbs(abs) === undefined) return { ok: false, code: 'V3_NOT_FOUND', message: 'no such file: ' + rel }
+    return await leanExecFile(rel, abs, timeoutMs)
+  }
+  /**
+   * 已解析路径的**实际执行**（同步档与后台作业共用）：搜索路径注入（spec §3 + 修订 §2）
+   * 在**用户 leanArgs 之后、文件名之前**；作业用入队时冻结的 plan（修订 §4）。
+   */
+  async function leanExecFile(rel, abs, timeoutMs, plan, onHandle) {
+    const started = now()
     const sub = subprocessOf()
     if (sub === undefined || typeof sub.spawn !== 'function') {
       return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel, ms: 0 }
     }
-    const cmd = String(params.leanCommand || 'lean')
+    const p = plan || leanBuildPlan()
+    const cmd = String(p.engine || 'lean')
     const cap = Math.max(1000, Number(timeoutMs) || Number(params.leanTimeoutMs) || 120000)
     if (typeof sub.resolveExecutable !== 'function') {
       return { ok: false, code: 'LEAN_NOT_FOUND', message: 'the host subprocess service exposes no resolveExecutable(); cannot resolve "' + cmd + '" —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
@@ -2510,10 +2549,13 @@ export function apply(ctx) {
     try { exe = await sub.resolveExecutable(cmd) } catch (e) {
       return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + cmd + '": ' + String((e && e.message) || e) + ' —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
     }
-    const argv = [exe].concat((Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)).concat([abs])
+    const inject = Array.isArray(p.inject) ? p.inject : leanSearchPathPlan(p.args, p.searchPaths, vibeRoot()).inject
+    const argv = [exe].concat((Array.isArray(p.args) ? p.args : []).map(String)).concat(inject).concat([abs])
+    const searchPath = (Array.isArray(p.searchPaths) && p.searchPaths.length) ? p.searchPaths.join(',') : vibeRoot()
+    logActivity('formal', 'Lean 运行 ' + rel + '（search-path=' + searchPath + '）')
     let handle
     try {
-      handle = sub.spawn({
+      handle = await spawnHandle(sub, {
         argv: argv,
         cwd: frameworkRoot(),
         stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
@@ -2522,7 +2564,8 @@ export function apply(ctx) {
     } catch (e) {
       return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
     }
-    // 超时必须有**主动**兜底：graceMs 只是宿主侧的宽限，契约 §7 要求超时后调用 handle.terminate()。
+    leanSyncHandle = handle
+    if (typeof onHandle === 'function') { try { onHandle(handle) } catch (e) { /* best effort */ } }
     let timedOut = false
     let timer = null
     let outcome
@@ -2542,26 +2585,24 @@ export function apply(ctx) {
       return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
     }
     if (timer) clearTimeout(timer)
+    leanSyncHandle = null
+    if (typeof onHandle === 'function') { try { onHandle(null) } catch (e) { /* best effort */ } }
     let out = '', err = ''
     try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
     try { if (handle.collected && handle.collected.stderr) err = handle.collected.stderr.readFrom(0).text } catch (e) { /* best effort */ }
     const exitCode = outcome ? outcome.exitCode : null
     const ms = now() - started
     const ok = exitCode === 0
+    const isTimeout = timedOut || ms >= cap
     return {
       ok: ok, exitCode: exitCode, signal: (outcome && outcome.signal) || null, ms: ms,
-      command: argv.join(' '), file: rel,
+      command: argv.join(' '), file: rel, searchPath: searchPath,
       stdout: formalTail(out, 4000), stderr: formalTail(err, 4000),
-      timedOut: timedOut,
-      code: ok ? undefined : (timedOut ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
+      timedOut: isTimeout,
+      code: ok ? undefined : (isTimeout ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
     }
   }
-  /**
-   * 把一次运行记到对象上（契约 §4 状态迁移）。普通运行最多把对象推进到 `attempted`；
-   * `passed` 只能由 vibe_math_lean_archive{kind:'proof'} 且该文件最近一次运行 ok 产生——否则一次
-   * 顺手跑个无关文件就能把对象"洗白"成已形式化。passed/blocked 不会被普通运行降级。
-   */
-  async function formalSetRun(target, run) {
+  async function formalSetRun(target, run, asyncInfo) {
     const t = formalId(target)
     if (!t) return
     const prev = formalOf(t)
@@ -2570,10 +2611,10 @@ export function apply(ctx) {
       status: status,
       file: (run && run.file) || prev.file || '',
       run: { at: now(), ok: !!(run && run.ok), exitCode: (run && run.exitCode !== undefined) ? run.exitCode : null, ms: (run && run.ms) || 0, stdoutTail: formalTail(run && run.stdout, 800), stderrTail: formalTail(run && run.stderr, 800) },
+      async: asyncInfo || prev.async || null,
       updatedAt: now(),
     }))
   }
-
   // ---- 提示词注入（都在**构造提示词的那一刻**现算，故运行中切模式立刻生效）--------
   function formalPromptBlock(target) {
     if (!formalOn()) return ''
@@ -2604,7 +2645,7 @@ export function apply(ctx) {
       L.push('    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。')
     } else {
       L.push('  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。')
-      L.push('  · 工具：vibe_math_lean_run（执行）· vibe_math_lean_archive（归档）· vibe_math_lean_lib（查已有可复用库）')
+      L.push('  · 工具：vibe_math_lean_run（执行）· vibe_math_lean_archive（归档）· vibe_math_lean_lib（查已有可复用库/jobs）· vibe_math_lean_read（取回归档原文）')
       L.push('  · 工作目录：Formal/（相对项目根）；可复用定义放 ' + (vibeRoot() + '/Formal/Lib/').replace(/\\/g, '/')
         + '，已证引理放 ' + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '；写之前先 vibe_math_lean_lib 查重。')
       L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义/对象/条件/假设/结论是否与命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
@@ -2616,13 +2657,25 @@ export function apply(ctx) {
         L.push('  · 若你判断不值得或无法形式化，可以不做，但请在回执的 formal 字段写明难度判断（decision=\'blocked\' 时必须写明 note）。')
       }
       L.push('  · 归档可复用定义/引理前先跑通（vibe_math_lean_archive run=true 或先 vibe_math_lean_run）；跑不通不要入库。')
+      // —— §5 B（逐字）：三条筛选判据 + 先查再写 + 异步"落地前不得当成已通过" ——
+      L.push('  · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。')
+      L.push('  · 写新定义/证明前**先 vibe_math_lean_lib 查已有库**（vibe_math_lean_read 可取回归档原文逐字复用），查不到再写；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`。')
+      L.push('  · **没把握就记 blocked** 并写清难点，别用形式化掩盖不确定。')
+      L.push('  · 该对象若已有后台编译在队列中（leanAsync 默认开启），**不得**在作业落地为通过之前声称已通过或转忠实性审查；等 vibe_math_lean_lib 的 jobs 显示 settled 再审。')
       L.push('  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或宿主不提供 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并在回执的 note 里写明"宿主无 Lean 工具链"——这算显式阻塞原因，定论门禁可以据此放行。')
     }
-    return L.join('\n')
+    return L.join('\n') + leanNoticeSection()
   }
   /** 日常提示词里的"顺手形式化"一行（off 模式返回空串 = 一个字都不多）。 */
   function formalWorkLine() {
     if (!formalOn()) return ''
+    // 修订 §1：「日常主动性」（leanInitiative）与「验证时的要求强度」（formalVerify）是两件事。
+    const initiative = LEAN_INITIATIVE_MODES.indexOf(params.leanInitiative) !== -1 ? params.leanInitiative : 'normal'
+    // 后台作业的一次性公告（spec §2.4）：注入到本轮提示里，取走即清空。
+    const notice = leanNoticeSection()
+    if (initiative === 'off') {
+      return '【顺手形式化（不主动：leanInitiative=off）】日常流程**不主动**做形式化；只在验证提示词按 formalVerify 的要求做（要求里已给出判据、工具与归档方式）。' + notice
+    }
     return '【顺手形式化（' + (formalMode() === 'require' ? '强制' : '鼓励') + '）】把你工作中常用或可能复用的对象、假设、'
       + '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_math_lean_archive kind=\'def\'），已成立的引理归到 '
       + (vibeRoot() + '/Formal/Proved/').replace(/\\/g, '/') + '（kind=\'lemma\'）；写之前先 vibe_math_lean_lib 查重，避免重复定义。'
@@ -2631,6 +2684,17 @@ export function apply(ctx) {
         : '这会让后续的验证与证明省掉大量重复工作。')
       // 硬要求 3（契约 §6 顶部）：可复用库只收**跑通过**的代码，否则它会被不编译的定义污染。
       + '归档前先跑通（vibe_math_lean_run 或 run=true）；跑不通的定义不要进可复用库。'
+      + (initiative === 'eager'
+        ? '\n  · **主动档（leanInitiative=eager）**：日常就主动把有价值的小引理/命题/定义形式化——每轮工作结束时审视一次"这轮有什么值得进库"，值得就顺手归档。'
+        : '\n  · 主动性 normal：顺手把明显有价值且可能复用的东西形式化；不必刻意扩大范围。')
+      // —— §5 A（逐字）：三条筛选判据 + 先查再写 + 「没把握就记 blocked」 + 异步"落地前不得当成已通过" ——
+      + '\n  · 三条筛选判据：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。'
+      + '\n  · **先 vibe_math_lean_lib 查再决定是否重写**：vibe_math_lean_lib 列出现成定义/引理，vibe_math_lean_read 可取回归档原文逐字复用；'
+      + '复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = ' + vibeRoot().replace(/\\/g, '/') + '，框架已把它加进编译搜索路径）。'
+      + '\n  · **没把握就记 blocked**（vibe_math_lean_archive kind=\'blocked\' note=…，或回执 formal 的 blocked）：把难点写清楚，别用形式化掩盖不确定。'
+      + '\n  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_math_lean_job（可 waitMs 等结果）或下一轮提示里的'
+      + '【形式化结果】行看结果。**在作业落地为通过之前，不得把该对象当成已通过。**'
+      + notice
   }
   /** 回执契约里的 formal 字段（契约 §6.3）：非 off 模式必须出现在回执契约里，否则这条通道不可发现。 */
   function formalJsonField(target) {
@@ -2725,6 +2789,304 @@ export function apply(ctx) {
       note: formalOn() ? '' : '未启用（formalVerify = off；可用 vibe_math_set_params 切到 encourage / require）',
     }
   }
+  // ================= Lean 增量 + 异步：作业队列（spec §2） =================
+  // 并发上限 = `leanJobsMaxParallel`（默认 1 = 串行）。队列是**内存**态，作业记录镜像到
+  // <项目>/Formal/Jobs/<jobId>.json —— 崩溃恢复、lean_lib.jobs 与 lean_job 都读它。
+  const LEAN_QUEUE_CONCURRENCY_MAX = 8
+  const leanQueue = []            // FIFO：待跑作业
+  const leanJobs = new Map()      // jobId -> job（内存视图，含 state）
+  const leanRunningHandles = new Map() // jobId -> 子进程 handle（dispose 时 terminate）
+  let leanSyncHandle = null       // 同步档在跑的 handle（同样能被 terminate）
+  const leanPendingNotices = []   // 一次性公告行（注入下一次 round prompt，spec §2.4）
+  /** 当前会话的构建计划（修订 §2/§4）：冻结 engine/args/搜索路径，作业与指纹都用它。 */
+  function leanBuildPlan() {
+    const userArgs = (Array.isArray(params.leanArgs) ? params.leanArgs : []).map(String)
+    const plan = leanSearchPathPlan(userArgs, params.leanSearchPaths, vibeRoot())
+    return { engine: String(params.leanCommand || 'lean'), args: userArgs, searchPaths: plan.paths, inject: plan.inject, explicit: plan.explicit }
+  }
+  function leanPlanContext(plan) { return leanBuildContext(plan.engine, plan.args, plan.searchPaths) }
+  /** 归档作业当前应绑定的构建计划（def/lemma 与 proof 都是本项目计划）。 */
+  function leanContextNow() { return leanPlanContext(leanBuildPlan()) }
+  function leanJobsMaxParallel() { return Math.max(1, Math.min(LEAN_QUEUE_CONCURRENCY_MAX, Number(params.leanJobsMaxParallel) || 1)) }
+  function leanActiveCount() { let n = 0; for (const j of leanJobs.values()) if (j.state === 'running') n++ ; return n }
+  function leanSleep(ms) { return new Promise(function (r) { setTimeout(r, Math.max(0, Number(ms) || 0)) }) }
+  /** VibeMath 根相对 → 绝对（全局库不在项目树内）。 */
+  function vibeAbs(rel) { return vibeRoot() + '/' + String(rel).replace(/^\.\//, '') }
+  function leanJobAbs(job) {
+    const rel = String((job && job.rel) || '')
+    if (!rel) return null
+    return job.scope === 'root' ? normalizeAbsPath(vibeAbs(rel)) : normalizeAbsPath(frameworkRoot() + '/' + rel)
+  }
+  /** 作业的回执路径与归档路径（lean_job 返回它们，修订 §3）。 */
+  function leanJobPaths(job) {
+    const rec = { receipt: 'Formal/Jobs/' + job.jobId + '.json' }
+    if (job.kind === 'archive' && job.archive && job.archive.kind === 'proof' && job.target) {
+      rec.work = job.rel
+      rec.archive = job.state === 'settled' ? ('Verified/Lean/' + job.target + '.lean') : ''
+    } else if (job.kind === 'archive') rec.archive = job.rel
+    else rec.file = job.rel
+    return rec
+  }
+  function leanJobRecord(job) {
+    return {
+      jobId: job.jobId, kind: job.kind, state: job.state, attempts: Number(job.attempts || 1),
+      target: job.target || '', name: job.name || '', rel: job.rel || '', scope: job.scope || 'project',
+      sha256: job.sha || '', buildSha256: job.buildSha || '', buildContext: job.buildCtx || '',
+      engine: (job.plan && job.plan.engine) || '', argv: (job.plan && job.plan.args) || [], searchPaths: (job.plan && job.plan.searchPaths) || [],
+      archiveKind: (job.archive && job.archive.kind) || '',
+      enqueuedAt: job.enqueuedAt || 0, startedAt: job.startedAt || 0, settledAt: job.settledAt || 0,
+      exitCode: job.exitCode === undefined ? null : job.exitCode,
+      timedOut: !!job.timedOut, interrupted: !!job.interrupted, note: job.note || '',
+      project: currentProject,
+    }
+  }
+  async function writeLeanJobFile(job) { await writeJson('Formal/Jobs/' + job.jobId + '.json', leanJobRecord(job)) }
+  function hydrateLeanJob(rec) {
+    return {
+      jobId: String(rec.jobId), kind: rec.kind || 'run', target: rec.target || '', name: rec.name || '',
+      rel: rec.rel || '', scope: rec.scope || 'project', sha: rec.sha256 || '',
+      buildSha: rec.buildSha256 || '', buildCtx: rec.buildContext || '',
+      plan: rec.engine !== undefined ? { engine: rec.engine || '', args: rec.argv || [], searchPaths: rec.searchPaths || [] } : null,
+      archive: rec.archiveKind ? { kind: rec.archiveKind, target: rec.target || '', name: rec.name || '' } : null,
+      state: rec.state || 'queued', attempts: Number(rec.attempts || 1), enqueuedAt: Number(rec.enqueuedAt || 0),
+      startedAt: Number(rec.startedAt || 0), settledAt: Number(rec.settledAt || 0),
+      exitCode: rec.exitCode === undefined ? null : rec.exitCode, timedOut: !!rec.timedOut,
+      interrupted: !!rec.interrupted, run: rec.run || null, note: rec.note || '',
+    }
+  }
+  /** 入队：同 jobId 已在队列/在跑 ⇒ 复用（幂等）；返回作业对象。 */
+  async function enqueueLeanJob(spec) {
+    const existing = leanJobs.get(spec.jobId)
+    if (existing && (existing.state === 'queued' || existing.state === 'running')) return existing
+    const job = Object.assign({}, spec, {
+      state: 'queued', attempts: Number(spec.attempts || ((existing && existing.attempts) || 0) + 1),
+      enqueuedAt: spec.enqueuedAt || now(), startedAt: 0, settledAt: 0, exitCode: null,
+      timedOut: false, interrupted: false, run: null, note: spec.note || '',
+    })
+    leanJobs.set(job.jobId, job)
+    leanQueue.push(job)
+    await writeLeanJobFile(job)
+    formalAnnounce('Lean 作业入队 ' + job.jobId + '（' + job.kind + (job.target ? '｜对象 ' + job.target : (job.name ? '｜' + job.name : '')) + '，state=queued）')
+    return job
+  }
+  function pushLeanNotice(line) { if (leanPendingNotices.length >= 20) leanPendingNotices.shift(); leanPendingNotices.push(String(line)) }
+  /** 一次性公告（spec §2.4）：取走即清空，保证同一条结果只注入一次。 */
+  function leanNoticeSection() {
+    if (leanPendingNotices.length === 0) return ''
+    const lines = leanPendingNotices.splice(0, leanPendingNotices.length)
+    return '\n' + lines.join('\n') + '\n'
+  }
+  function leanJobPublic(job) { return { jobId: job.jobId, state: job.state, rel: job.rel || '', target: job.target || '', attempts: Number(job.attempts || 1), settledAt: Number(job.settledAt || 0) } }
+  /**
+   * 心跳里推进队列：**不 await 编译本身**（调用方不 await 本函数）。
+   * 并发上限 = `leanJobsMaxParallel`（默认 1，串行）；串行时本函数等待该作业跑完再返回。
+   */
+  async function runLeanQueue() {
+    const max = leanJobsMaxParallel()
+    let started = 0
+    while (leanQueue.length > 0 && leanActiveCount() + started < max) {
+      const job = leanQueue.shift()
+      if (!job || job.state !== 'queued') continue
+      started++
+      if (max <= 1) { await runLeanJob(job); return }
+      runLeanJob(job).catch(function (e) { console.error('vibe-math-v3: lean job failed: ' + String((e && e.message) || e)) })
+    }
+  }
+  async function runLeanJob(job) {
+    if (job.state !== 'queued') return
+    job.state = 'running'; job.startedAt = now(); job.interrupted = false
+    await writeLeanJobFile(job)
+    let run
+    try { run = await leanExecFile(job.rel, leanJobAbs(job), job.timeoutMs, job.plan, function (h) { if (h) leanRunningHandles.set(job.jobId, h); else leanRunningHandles.delete(job.jobId) }) }
+    catch (e) { run = { ok: false, exitCode: null, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), ms: 0 } }
+    try { await settleLeanJob(job, run) } catch (e) { console.error('vibe-math-v3: lean job settle failed: ' + String((e && e.stack) || e)) }
+  }
+  /** 结果公告行（spec §2.4 的四种结局）。 */
+  function leanSettleNotice(job, settledOk, capMs) {
+    const ms = (job.run && job.run.ms) || 0
+    if (job.interrupted) return '【形式化结果】' + job.jobId + '：中断（会话卸载或崩溃，已标记 attempted，可重跑）'
+    if (job.timedOut) return '【形式化结果】' + job.jobId + '：超时（leanTimeoutMs=' + capMs + ' 已 terminate；对象留在 attempted）'
+    if (settledOk) return '【形式化结果】' + job.jobId + '：通过（exit 0，' + (ms / 1000).toFixed(1) + 's' + ((job.kind === 'archive' && job.archive && job.archive.kind === 'proof') ? ('，已归档 Verified/Lean/' + job.target + '.lean') : '') + '）'
+    if (job.hashMismatch) return '【形式化结果】' + job.jobId + '：失败（编译期间文件内容已变，本次结果已丢弃；请重跑）'
+    if (job.contextMismatch) return '【形式化结果】' + job.jobId + '：失败（编译期间构建上下文已变：引擎/参数/搜索路径，本次结果已丢弃；请在新上下文下重跑）'
+    return '【形式化结果】' + job.jobId + '：失败（exit ' + String(job.exitCode) + '，见 stderr 尾部）'
+  }
+  /**
+   * 落地一个作业（**唯一**的 passed 入口，spec §2.1）：只有 exit 0 **且** 内容哈希仍匹配才算 ok；
+   * 其余一律 attempted；中断/超时都不是 passed；内容变了只标记不贴结果。
+   */
+  async function settleLeanJob(job, run) {
+    const capMs = Math.max(1000, Number(job.timeoutMs) || Number(params.leanTimeoutMs) || 120000)
+    let currentSha = null
+    try { const t = await readTextAbs(leanJobAbs(job)); if (t !== undefined) currentSha = leanContentSha(t) } catch (e) { /* 读不到 ⇒ 视为不匹配 */ }
+    const hashOk = currentSha !== null && currentSha === job.sha
+    // 修订 §4：结果只对**产生它的那个构建上下文**有效。参数在编译途中被改（引擎/参数/搜索路径）
+    // ⇒ 这次 ok 不能贴到"现在的配置"上，宁可判为未通过并明确公告。
+    const ctxNow = leanContextNow()
+    const ctxOk = !job.buildCtx || job.buildCtx === ctxNow
+    job.hashMismatch = !hashOk
+    job.contextMismatch = !ctxOk
+    job.exitCode = run.exitCode === undefined ? null : run.exitCode
+    job.timedOut = !!run.timedOut
+    job.settledAt = now()
+    const settledOk = !job.interrupted && !job.timedOut && run.exitCode === 0 && hashOk && ctxOk
+    job.state = job.interrupted ? 'interrupted' : (job.timedOut ? 'timeout' : (settledOk ? 'settled' : 'failed'))
+    job.run = { at: now(), ok: settledOk, exitCode: job.exitCode, ms: run.ms || 0, timedOut: !!job.timedOut, interrupted: !!job.interrupted, stdoutTail: formalTail(run.stdout, 800), stderrTail: formalTail(run.stderr, 800), searchPath: run.searchPath || vibeRoot(), buildContext: job.buildCtx || '' }
+    if (job.hashMismatch && !job.interrupted && !job.timedOut) job.note = 'file changed while compiling — result discarded (hash mismatch)'
+    else if (job.contextMismatch && !job.interrupted && !job.timedOut) job.note = 'build context changed while compiling (engine/args/search paths) — result discarded; re-run under the new context'
+    const asyncInfo = { jobId: job.jobId, state: job.state, attempts: job.attempts, enqueuedAt: job.enqueuedAt, startedAt: job.startedAt, settledAt: job.settledAt, exitCode: job.exitCode, buildSha256: job.buildSha || '' }
+    if (job.kind === 'archive') await settleLeanArchiveJob(job, settledOk, asyncInfo)
+    else if (job.target) await formalSetRun(job.target, Object.assign({}, run, { ok: settledOk, file: job.rel }), asyncInfo)
+    if (!job.interrupted) await writeFormalIndex()
+    await writeLeanJobFile(job)
+    pushLeanNotice(leanSettleNotice(job, settledOk, capMs))
+    formalAnnounce('Lean 作业 ' + job.jobId + ' ' + job.state + '（' + job.kind + '）' + (job.target ? '｜对象 ' + job.target : ''))
+    reportDirty = true
+  }
+  /** 归档类作业的落地：**只有 ok 才落库/置 passed**（def/lemma 的文件在入队前已写好）。 */
+  async function settleLeanArchiveJob(job, ok, asyncInfo) {
+    const a = job.archive || {}
+    if (a.kind !== 'proof') {
+      // 与同步档同一份记账：全局库的运行结果进 formalState.libRuns（索引据此显示"跑通/未跑通"）。
+      const libRel = String(job.rel || '').replace(/^Formal\//, '')
+      if (libRel) formalState.libRuns[libRel] = { ok: !!ok, exitCode: job.exitCode === undefined ? null : job.exitCode, ms: (job.run && job.run.ms) || 0, at: now() }
+      await rebuildLeanLibIndexes()
+      formalAnnounce('归档作业 ' + job.jobId + '（' + a.kind + ' ' + job.rel + '）' + (ok ? '运行通过' : '运行未通过（见 stderr 尾部；该文件不应被当作可复用定义）'))
+      return
+    }
+    const target = job.target
+    const prev = formalOf(target)
+    const passed = !!ok
+    const stalePrev = passed ? '' : String(prev.proof || ('Verified/Lean/' + target + '.lean'))
+    const rec = Object.assign({}, prev, {
+      status: passed ? 'passed' : 'attempted',
+      file: job.rel,
+      proof: passed ? 'Verified/Lean/' + target + '.lean' : '',
+      decision: 'used',
+      note: String(prev.note || ''),
+      run: job.run,
+      async: asyncInfo,
+      updatedAt: now(),
+    })
+    let withdrawn = null
+    if (passed) {
+      const body = await readTextAbs(leanJobAbs(job))
+      if (body !== undefined) await writeText('Verified/Lean/' + target + '.lean', body)
+    } else if (stalePrev) { try { withdrawn = await withdrawArchivedProof(stalePrev) } catch (e) { withdrawn = { rel: stalePrev, outcome: 'failed' } } }
+    await putFormal(target, rec)
+    await upsertFormalAnchor(target)
+    await rebuildLeanLibIndexes()
+    formalAnnounce('归档作业 ' + job.jobId + ' 为 ' + target + ' ' + (passed ? ('通过，已归档 ' + rec.proof + '，验证转为忠实性审查')
+      : ('未通过：' + formalTail(job.run && job.run.stderrTail, 160) + '；已撤回上一份已通过状态与归档证明' + (withdrawn && withdrawn.outcome !== 'failed' ? '（' + withdrawn.outcome + '）' : '（⚠ 撤回失败，请不要把 ' + stalePrev + ' 当作该对象的证明）'))))
+  }
+  /** 去重（spec §4.3）：同内容且已成功过 ⇒ 跳过写盘与重编译。 */
+  async function leanDedupeLookup(jobId, abs, sha, proofTarget) {
+    if (proofTarget) {
+      const rec = formalOf(proofTarget)
+      if (rec && rec.status === 'passed') {
+        const cur = await readTextAbs(vibeAbs('Verified/Lean/' + proofTarget + '.lean'))
+        if (cur !== undefined && leanContentSha(cur) === sha) return { deduped: true, file: 'Verified/Lean/' + proofTarget + '.lean' }
+      }
+      return null
+    }
+    const prev = await readJson('Formal/Jobs/' + jobId + '.json')
+    if (leanJobSettledOk(prev)) {
+      const cur = await readTextAbs(abs)
+      if (cur !== undefined && leanContentSha(cur) === sha) return { deduped: true, file: String(prev.rel || '') }
+    }
+    return null
+  }
+  /** 后台作业的公共返回形状（§1.2）。 */
+  function leanAsyncReturn(job, extra) {
+    return Object.assign({
+      ok: true, async: { jobId: job.jobId, state: job.state }, jobId: job.jobId,
+      message: '已入队后台编译（并发上限 1）；你可以继续工作。结果会写入 Formal/ 与索引，并在下一轮提示里公告；也可用 vibe_math_lean_lib 的 jobs 字段随时查看。**在该作业落地为通过之前，不得把相关对象当成已通过。**',
+    }, extra || {})
+  }
+  /** 崩溃恢复（spec §2.6）：queued 重入队；running 哈希匹配 ⇒ 标记 interrupted + 重入队（attempts+1），不匹配 ⇒ 只标记；恢复**绝不**置 passed。 */
+  async function recoverLeanJobs() {
+    let files = []
+    try { files = (await listFiles('Formal/Jobs')) || [] } catch (e) { return { recovered: 0 } }
+    let recovered = 0
+    for (let i = 0; i < files.length; i++) {
+      const f = String(files[i])
+      if (!/\.json$/.test(f)) continue
+      const rec = await readJson('Formal/Jobs/' + f)
+      if (!rec || !rec.jobId) continue
+      // 本进程内存里已知的作业（queued/running 或已落地）不再恢复：同一进程内切换项目时，
+      // 内存队列还在正常跑，按文件状态"恢复"会把一个在跑的作业误判成崩溃（重复入队/误置 interrupted）。
+      if (leanJobs.has(String(rec.jobId))) continue
+      const job = hydrateLeanJob(rec)
+      leanJobs.set(job.jobId, job)
+      const abs = leanJobAbs(job)
+      const txt = abs ? await readTextAbs(abs) : undefined
+      const curSha = txt === undefined ? null : leanContentSha(txt)
+      const hashMatch = curSha !== null && curSha === job.sha
+      if (job.state === 'queued') {
+        await enqueueLeanJob(job)
+        pushLeanNotice('【形式化结果】' + job.jobId + '：上次会话未执行的排队作业已重新入队')
+        recovered++
+      } else if (job.state === 'running') {
+        if (hashMatch) {
+          if (job.target) await putFormal(job.target, Object.assign({}, formalOf(job.target), { status: 'attempted', async: { jobId: job.jobId, state: 'interrupted', attempts: job.attempts }, updatedAt: now() }))
+          job.interrupted = true
+          // 先落到 interrupted，再重入队：否则 enqueueLeanJob 的幂等守卫会把这条 "running" 记录
+          // 当成"仍在跑"而早退，attempts 也不会 +1（恢复就静默失效了）。
+          job.state = 'interrupted'
+          await enqueueLeanJob(Object.assign({}, job, { attempts: job.attempts + 1 }))
+          pushLeanNotice('【形式化结果】' + job.jobId + '：中断（会话崩溃，已标记 attempted，已用新 attempts 重新入队）')
+        } else {
+          if (job.target) await putFormal(job.target, Object.assign({}, formalOf(job.target), { status: 'attempted', async: { jobId: job.jobId, state: 'interrupted', attempts: job.attempts, note: 'file changed' }, updatedAt: now() }))
+          job.state = 'interrupted'; job.interrupted = true
+          job.note = 'file changed while the previous session was compiling — not auto-re-driven'
+          await writeLeanJobFile(job)
+          pushLeanNotice('【形式化结果】' + job.jobId + '：中断（文件已变，未自动重驱；请手动重跑）')
+        }
+        recovered++
+      } else if (job.state === 'settled') {
+        // 修订 §4：只有**同一构建上下文**下的 settled(ok) 才允许恢复成 passed。
+        const ctxNow = leanContextNow()
+        const ctxOk = !job.buildCtx || job.buildCtx === ctxNow
+        if (leanJobSettledOk(rec) && hashMatch && ctxOk) {
+          job.run = { at: now(), ok: true, exitCode: 0, ms: 0, timedOut: false, interrupted: false, stdoutTail: '', stderrTail: '', searchPath: vibeRoot(), buildContext: job.buildCtx || '' }
+          if (job.kind === 'archive') await settleLeanArchiveJob(job, true, { jobId: job.jobId, state: 'settled', attempts: job.attempts, settledAt: job.settledAt, exitCode: 0, buildSha256: job.buildSha || '' })
+          else if (job.target) await formalSetRun(job.target, job.run, { jobId: job.jobId, state: 'settled', buildSha256: job.buildSha || '' })
+          pushLeanNotice('【形式化结果】' + job.jobId + '：已按作业记录补写归档与 passed（恢复时校验内容哈希与构建上下文一致）')
+        } else if (job.target) {
+          await putFormal(job.target, Object.assign({}, formalOf(job.target), { status: 'attempted', async: { jobId: job.jobId, state: 'interrupted', attempts: job.attempts, note: ctxOk ? 'recovered-incomplete' : 'build context changed' }, updatedAt: now() }))
+          pushLeanNotice('【形式化结果】' + job.jobId + '：按作业记录标记为未通过/已变（恢复绝不置 passed）')
+        }
+        recovered++
+      }
+    }
+    if (recovered > 0) formalAnnounce('Lean 作业恢复：处理了 ' + recovered + ' 条遗留作业记录（queued 重入队 / running 标记中断 / settled 补写；绝不置 passed）')
+    return { recovered: recovered }
+  }
+  /** 会话卸载/销毁：终止在跑的编译并标记 interrupted（不留孤儿进程，spec §2.5）。 */
+  function disposeLeanJobs() {
+    let n = 0
+    for (const job of leanJobs.values()) {
+      if (job.state === 'running') { job.interrupted = true; n++ }
+    }
+    for (const job of leanQueue) { job.state = 'interrupted'; job.interrupted = true; n++ }
+    for (const h of leanRunningHandles.values()) {
+      try { if (h && typeof h.terminate === 'function') h.terminate() } catch (e) { /* best effort */ }
+    }
+    leanRunningHandles.clear()
+    if (leanSyncHandle && typeof leanSyncHandle.terminate === 'function') { try { leanSyncHandle.terminate() } catch (e) { /* best effort */ } }
+    leanSyncHandle = null
+    leanQueue.length = 0
+    if (n > 0) {
+      pushLeanNotice('【形式化结果】干预：会话卸载，' + n + ' 个 Lean 作业已标记 interrupted（未落地为 passed）')
+      // 落盘尽力而为（disposer 不能 await）：作业记录留着，供下次 init 恢复时标记。
+      try {
+        for (const job of leanJobs.values()) { if (job.state === 'running' || job.interrupted) writeLeanJobFile(job).catch(function () { }) }
+      } catch (e) { /* best effort */ }
+    }
+    return n
+  }
+
+  // ---- 三份索引（框架维护；契约 §9）----
   async function writeFormalIndex() {
     const recs = formalRecords()
     const keys = Object.keys(recs).sort()
@@ -2784,9 +3146,9 @@ export function apply(ctx) {
     }
     const libRows = await scan(vibeRoot() + '/Formal/Lib', 'Lib')
     await writeTextAbs(vibeRoot() + '/Formal/Lib/Index.md', ['# 可复用 Lean 定义库（跨项目）｜' + currentProject, '',
-      '> 写新定义之前先查这里：能复用就不要重新定义。', '',
-      '| 名称 | 文件 | 类别 | 摘要 | 最近运行 |', '|---|---|---|---|---|']
-      .concat(libRows.length ? libRows.map(function (r) { return '| ' + r.base + ' | ' + r.rel + ' | def | ' + r.first.replace(/\|/g, '/') + ' | ' + r.run + ' |' }) : ['| （暂无） | | | | |']).join('\n') + '\n')
+      '> 写新定义之前先查这里：能复用就不要重新定义。复用方式：`import Formal.Lib.<名称>`（模块根 = VibeMath 根）。', '',
+      '| 名称 | 文件 | 类别 | 依赖（import） | 摘要 | 最近运行 |', '|---|---|---|---|---|---|']
+      .concat(libRows.length ? libRows.map(function (r) { return '| ' + r.base + ' | ' + r.rel + ' | def | ' + String(r.depend || '—').replace(/\|/g, '/') + ' | ' + r.first.replace(/\|/g, '/') + ' | ' + r.run + ' |' }) : ['| （暂无） | | | | | |']).join('\n') + '\n')
     const provedRows = await scan(vibeRoot() + '/Formal/Proved', 'Proved')
     await writeTextAbs(vibeRoot() + '/Formal/Proved/Index.md', ['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜' + currentProject, '',
       '> 这些文件是通过内核检查的引理，可直接 import 复用。', '',
@@ -2844,24 +3206,107 @@ export function apply(ctx) {
    */
   async function leanRunTool(memberId, o) {
     const args = o || {}
-    const run = await leanRunFile(String(args.file || ''), args.timeout_ms)
+    const rel = String(args.file || '').trim()
     const target = String(args.target || '').trim()
+    if (params.leanAsync !== false) {
+      const guard = await leanResolveRunTarget(rel)
+      if (!guard.ok) return guard
+      const plan = leanBuildPlan()
+      const ctx = leanPlanContext(plan)
+      const fp = leanJobFingerprint(guard.text, ctx)
+      const jobId = leanJobId(target || guard.rel, fp)
+      const job = await enqueueLeanJob({ jobId: jobId, kind: 'run', key: target || guard.rel, rel: guard.rel, scope: 'project', target: target, sha: guard.sha, buildSha: fp, buildCtx: ctx, plan: plan, memberId: memberId, timeoutMs: args.timeout_ms })
+      return leanAsyncReturn(job, { file: guard.rel, state: job.state, hint: '已入队。**在它落地为通过之前，不得把该对象当成已通过**；结果会在下一轮提示的【形式化结果】行里公告，或用 vibe_math_lean_job（可 waitMs 等待）查看。' })
+    }
+    const run = await leanRunFile(rel, args.timeout_ms)
     if (run.file || run.ok) {
       if (target) { await formalSetRun(target, run); await upsertFormalAnchor(target) }
       await writeFormalIndex()
     }
     if (run.ok) await formalAnnounce('【形式化】' + (memberId || 'scheduler') + ' 运行 Lean 通过：' + run.file + '（' + ((run.ms || 0) / 1000).toFixed(1) + 's）' + (target ? '｜对象 ' + target : ''))
-    // 失败提示必须与失败原因一致：工具链缺失 / 宿主没有 subprocess 服务时**没有任何编译器输出**
-    // 可以"按它修复"，把它当成普通编译错误会让代理反复重试而不是走"写下代码 + 记录显式阻塞"
-    // 这条出路（契约 §6 硬要求 4）。
     const noHost = run.code === 'LEAN_NOT_FOUND' || run.code === 'NO_SUBPROCESS' || run.code === 'LEAN_SPAWN_FAILED'
     return Object.assign({ ok: !!run.ok }, run, {
+      async: null,
       hint: run.ok
         ? '通过。若是某个对象的证明，请用 vibe_math_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。'
         : (noHost
           ? '本宿主无法执行 Lean（' + run.code + '），没有编译器输出可以修：把形式化代码写下来并用 vibe_math_lean_archive 归档，并在回执的 note 里写明原因——这算显式阻塞原因，定论门禁可以据此放行。'
           : '未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_math_lean_archive kind=\'blocked\' 记录原因。'),
     })
+  }
+  /** 异步档的路径/存在性校验（与 leanRunFile 同一套守卫与错误码）。 */
+  async function leanResolveRunTarget(relPath) {
+    const rel = String(relPath || '').trim()
+    if (!rel) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'file is required' }
+    const abs = await leanResolveRun(rel)
+    if (abs === null) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'Lean 文件必须位于 ' + vibeRoot().replace(/\\/g, '/') + '/ 之内（收到 ' + rel + '）' }
+    if (!/\.lean$/i.test(abs)) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'only .lean files can be executed' }
+    const txt = await readTextAbs(abs)
+    if (txt === undefined) return { ok: false, code: 'V3_NOT_FOUND', message: 'no such file: ' + rel }
+    return { ok: true, rel: rel, abs: abs, sha: leanContentSha(txt), text: txt }
+  }
+  /** `lean_read`：只读地取回归档的 Lean 原文（verbatim 复用；§1.2）。 */
+  async function leanReadTool(o) {
+    const args = o || {}
+    const rawName = String(args.name || '').trim()
+    if (!rawName) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'name is required' }
+    if (rawName.indexOf('..') !== -1 || /[\\/]/.test(rawName) || /^[a-z]:/i.test(rawName)) {
+      return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'name must be a bare library name (no path separators, no "..", no absolute path)' }
+    }
+    const name = idSafe(rawName)
+    const kind = (args.kind === 'lib' || args.kind === 'proved') ? args.kind : 'auto'
+    const order = kind === 'auto' ? ['lib', 'proved'] : [kind]
+    for (let i = 0; i < order.length; i++) {
+      const k = order[i]
+      const rel = 'Formal/' + (k === 'lib' ? 'Lib' : 'Proved') + '/' + name + '.lean'
+      const dir = normalizeAbsPath(vibeRoot() + '/Formal/' + (k === 'lib' ? 'Lib' : 'Proved'))
+      const abs = normalizeAbsPath(vibeRoot() + '/' + rel)
+      if (abs.indexOf(dir + '/') !== 0) continue
+      const txt = await readTextAbs(abs)
+      if (txt === undefined) continue
+      const LIMIT = 64 * 1024
+      const bytes = Buffer.byteLength(txt, 'utf8')
+      const truncated = bytes > LIMIT
+      return { ok: true, name: name, file: rel, kind: k, sha256: leanContentSha(txt), bytes: bytes, text: truncated ? Buffer.from(txt, 'utf8').slice(0, LIMIT).toString('utf8') : txt, truncated: truncated }
+    }
+    return { ok: false, code: 'V3_NOT_FOUND', message: 'no archived Lean file named ' + name + '（查过 Formal/Lib 与 Formal/Proved）；可先用 vibe_math_lean_lib 看清单' }
+  }
+  /**
+   * `lean_job`（修订 §3，只读）：不带 jobId ⇒ 本会话作业清单；带 ⇒ 该作业 state/exitCode/回执路径/归档路径。
+   * waitMs>0 最多等这么久（内部轮询；心跳是独立 timer，不会被阻塞），超时返回当前 state。
+   */
+  async function leanJobTool(o) {
+    const args = o || {}
+    const wantId = String(args.jobId || '').trim()
+    const waitMs = Math.max(0, Math.min(600000, Number(args.waitMs) || 0))
+    if (!wantId) {
+      const jobs = []
+      for (const j of leanJobs.values()) jobs.push(Object.assign(leanJobPublic(j), { exitCode: j.exitCode === undefined ? null : j.exitCode, paths: leanJobPaths(j), buildSha256: j.buildSha || '' }))
+      jobs.sort(function (a, b) { return (b.settledAt || 0) - (a.settledAt || 0) || String(a.jobId).localeCompare(String(b.jobId)) })
+      return { ok: true, async: params.leanAsync !== false, maxParallel: leanJobsMaxParallel(), queued: leanQueue.length, running: leanActiveCount(), jobs: jobs, paths: { receipts: 'Formal/Jobs/', proofs: 'Verified/Lean/', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/' }, hint: 'state=settled 且 exitCode=0（且内容哈希/构建上下文一致）才算通过；queued/running 一律还不算。' }
+    }
+    let job = leanJobs.get(wantId)
+    if (!job) {
+      const rec = await readJson('Formal/Jobs/' + wantId + '.json')
+      if (!rec || !rec.jobId) return { ok: false, code: 'V3_NOT_FOUND', message: 'no such Lean job: ' + wantId + '（用不带 jobId 的 vibe_math_lean_job 列清单）' }
+      job = hydrateLeanJob(rec)
+      if (!leanJobs.has(job.jobId)) leanJobs.set(job.jobId, job)
+    }
+    const startedAt = now()
+    while (waitMs > 0 && (job.state === 'queued' || job.state === 'running') && (now() - startedAt) < waitMs) {
+      await leanSleep(50)
+      const cur = leanJobs.get(wantId)
+      if (cur) job = cur
+    }
+    return {
+      ok: true, jobId: job.jobId, state: job.state, exitCode: job.exitCode === undefined ? null : job.exitCode,
+      attempt: Number(job.attempts || 1), timedOut: !!job.timedOut, interrupted: !!job.interrupted, note: job.note || '',
+      buildSha256: job.buildSha || '', buildContext: job.buildCtx || '',
+      waitedMs: now() - startedAt, stillRunning: (job.state === 'queued' || job.state === 'running'),
+      passed: leanJobSettledOk(leanJobRecord(job)),
+      paths: leanJobPaths(job),
+      run: job.run || null,
+    }
   }
   async function leanArchive(memberId, o) {
     const args = o || {}
@@ -2887,6 +3332,22 @@ export function apply(ctx) {
       const dirRel = kind === 'def' ? 'Lib' : 'Proved'
       const rel = 'Formal/' + dirRel + '/' + name + '.lean'
       const abs = vibeRoot() + '/' + rel
+      const sha = leanContentSha(body)
+      const plan = leanBuildPlan()
+      const ctx = leanPlanContext(plan)
+      const fp = leanJobFingerprint(body, ctx)
+      const jobId = leanJobId(name, fp)
+      // 去重（§4.3）：同内容 + 同构建上下文且已成功归档过 ⇒ 跳过重写与重编译。
+      const dedupe = await leanDedupeLookup(jobId, abs, sha, null)
+      if (dedupe) {
+        await formalAnnounce('【形式化】' + who + ' 归档 ' + kind + ' `' + name + '` 命中去重（同内容与构建上下文，跳过重写与重编译）')
+        return { ok: true, kind: kind, name: name, file: rel, deduped: true, sha256: sha, buildSha256: fp, note: '内容与构建上下文都与已归档并编译通过的版本一致：跳过重写与重编译（去重）。' }
+      }
+      if (params.leanAsync !== false && args.run !== false) {
+        if (!await writeTextAbs(abs, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + rel }
+        const job = await enqueueLeanJob({ jobId: jobId, kind: 'archive', key: name, rel: rel, scope: 'root', name: name, target: '', sha: sha, buildSha: fp, buildCtx: ctx, plan: plan, memberId: memberId, archive: { kind: kind } })
+        return leanAsyncReturn(job, { kind: kind, name: name, file: rel, sha256: sha, buildSha256: fp, deduped: false, note: '文件已写入 ' + rel + '；编译已入队（并发上限 leanJobsMaxParallel）。**落地为通过之前，请不要把它当作可复用定义**；结果会在下一轮提示的【形式化结果】行公告，也可用 vibe_math_lean_job 查/等。' })
+      }
       if (!await writeTextAbs(abs, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + rel }
       // 全局库在项目树之外，必须用**绝对路径**执行（相对形式会在项目根里找）。
       const run = args.run === false ? null : await leanRunFile(abs)
@@ -2903,6 +3364,36 @@ export function apply(ctx) {
       if (body === undefined && from) { const r = await readFrom(); if (r.err) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: r.err }; body = r.body }
       if (body === undefined) return { ok: false, code: 'V3_INVALID_ARGUMENT', message: 'provide content, or from=<existing .lean file>' }
       const workRel = 'Formal/' + target + '.lean'
+      const sha = leanContentSha(body)
+      const plan = leanBuildPlan()
+      const ctx = leanPlanContext(plan)
+      const fp = leanJobFingerprint(body, ctx)
+      const jobId = leanJobId(target, fp)
+      // 去重（§4.3）：对象已 passed 且归档证明与新提交内容一致 ⇒ 跳过。
+      const dedupe = await leanDedupeLookup(jobId, null, sha, target)
+      if (dedupe) {
+        await formalAnnounce('【形式化】' + who + ' 归档证明 ' + target + ' 命中去重（已 passed 且内容一致）')
+        return { ok: true, kind: kind, target: target, file: workRel, proof: dedupe.file, passed: true, deduped: true, sha256: sha, buildSha256: fp, status: 'passed', note: '该对象已是 passed，且归档证明与新提交内容一致：跳过重写与重编译（去重）。' }
+      }
+      if (params.leanAsync !== false) {
+        if (!await writeTextAbs(frameworkRoot() + '/' + workRel, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + workRel }
+        const prevA = formalOf(target)
+        await putFormal(target, Object.assign({}, prevA, {
+          status: prevA.status === 'passed' ? 'passed' : 'attempted',
+          file: workRel,
+          decision: 'used',
+          note: String(args.note || prevA.note || ''),
+          async: { jobId: jobId, state: 'queued', attempts: 0, enqueuedAt: now(), startedAt: 0, settledAt: 0, exitCode: null, buildSha256: fp },
+          updatedAt: now(),
+        }))
+        await upsertFormalAnchor(target)
+        await writeFormalIndex()
+        const job = await enqueueLeanJob({ jobId: jobId, kind: 'archive', key: target, rel: workRel, scope: 'project', target: target, sha: sha, buildSha: fp, buildCtx: ctx, plan: plan, memberId: memberId, archive: { kind: 'proof', target: target } })
+        return leanAsyncReturn(job, {
+          kind: kind, target: target, file: workRel, status: 'attempted', sha256: sha, buildSha256: fp,
+          note: '工作文件已写入 ' + workRel + '；编译已入队。**只有该作业在同一个构建上下文下落地为通过，才会写入 Verified/Lean/' + target + '.lean 并把状态变为 passed**——在它落地之前，这个对象不是"已通过形式化"。',
+        })
+      }
       // 用绝对路径写：`writeText` 写失败时只会抛（由工具包装层变成通用 error），
       // 这一行的 V3_WRITE_FAILED 分支就永远不可能触发；writeTextAbs 会如实返回 false。
       if (!await writeTextAbs(frameworkRoot() + '/' + workRel, body)) return { ok: false, code: 'V3_WRITE_FAILED', message: 'could not write ' + workRel }
@@ -3503,7 +3994,7 @@ export function apply(ctx) {
     const sub = subprocessOf()
     if (sub === undefined || typeof sub.spawn !== 'function') return { ok: false, exitCode: null, code: 'NO_SUBPROCESS' }
     let handle
-    try { handle = sub.spawn({ argv: paperArgvFor(engine), cwd: dirAbs, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: capMs }) }
+    try { handle = await spawnHandle(sub, { argv: paperArgvFor(engine), cwd: dirAbs, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: capMs }) }
     catch (e) { return { ok: false, exitCode: null, code: 'SPAWN_FAILED', message: String((e && e.message) || e) } }
     let timedOut = false, timer = null, outcome
     try {
@@ -3825,6 +4316,9 @@ export function apply(ctx) {
       }
     }
     await writeJson('State/process_epoch.json', processEpoch)
+    // Lean 异步作业的崩溃恢复（spec §2.6）：同一进程 continue 不重驱（内存队列还在跑），
+    // 只有新进程/新会话接手（fresh 或 stale epoch）才按 Formal/Jobs/*.json 恢复；恢复绝不置 passed。
+    if (fresh || stale) { try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v3: lean job recovery failed: ' + String((e && e.message) || e)) } }
     await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true }
@@ -3974,7 +4468,9 @@ export function apply(ctx) {
     if (scheduler.running) await abortScheduler()
     currentProject = slug; await writeCurrentProject(); await ensureDirs()
     params = Object.assign({}, DEFAULT_PARAMS); scheduler = { running: false, startedAt: 0, lastCheckpoint: 0, gate: null }; agentRegistry = {}; decisionQueue = []; verifierAccuracy = {}; tasks = {}; explorerRetries = {}; activityLog = []; planQueue = []; plannerFails = 0; methodLog = { pendingInventions: [], keepCount: 0, lastKeepAt: 0 }; projectLock = { sessionId: '', at: 0 }; lastReportWrite = 0; lastPushReport = 0; reportDirty = false; lastPlanSummary = null; archivedJ = {}; lastIndexWrite = 0; formalState = { records: {}, todo: [], libRuns: {} }; paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null
-    await loadSettings(); await migrateLegacyParams(); await loadState(); await loadKnowledgeBase(); await saveAll()
+    await loadSettings(); await migrateLegacyParams(); await loadState()
+    // 切到/新建项目 = 接手这棵树的遗留作业（本进程不认识的 jobId 才恢复）。
+    try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v3: lean job recovery on project switch failed: ' + String((e && e.message) || e)) }; await loadKnowledgeBase(); await saveAll()
     if (params.indexAutoRebuild) await rebuildIndex()
     return { ok: true, project: slug, frameworkRoot: frameworkRoot() }
   }
@@ -3992,7 +4488,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); return { ok: true, params: params } })
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -4038,13 +4534,17 @@ export function apply(ctx) {
       counts: r, todo: formalTodo().map(function (t) { return { id: t.id, why: t.why, at: t.at } }),
       objects: Object.keys(formalRecords()).map(function (k) {
         const rec = formalRecords()[k] || {}
-        return { target: k, status: rec.status, file: rec.file, proof: rec.proof, note: rec.note }
+        return { target: k, status: rec.status, file: rec.file, proof: rec.proof, note: rec.note, async: rec.async || null }
       }),
-      paths: { project: 'Formal/（相对项目根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/' },
-      hint: "复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_math_lean_archive kind='def' 归档，已证引理用 kind='lemma'；归档前先跑通（run=true 或先 vibe_math_lean_run），跑不通不要入库。",
+      async: params.leanAsync !== false,
+      jobs: (function () { const out = []; for (const j of leanJobs.values()) out.push(Object.assign(leanJobPublic(j), { exitCode: j.exitCode === undefined ? null : j.exitCode, paths: leanJobPaths(j), buildSha256: j.buildSha || '' })); out.sort(function (x, y) { return (y.settledAt || 0) - (x.settledAt || 0) || String(x.jobId).localeCompare(String(y.jobId)) }); return out })(),
+      paths: { project: 'Formal/（相对项目根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/', searchPath: vibeRoot(), jobs: 'Formal/Jobs/' },
+      hint: "复用优先：先在 Lib/ 里找现成定义（vibe_math_lean_read 可取原文）；新定义用 vibe_math_lean_archive kind='def' 归档，已证引理用 kind='lemma'；归档前先跑通（run=true 或先 vibe_math_lean_run），跑不通不要入库。异步档用 jobs 字段查后台编译：**只有 state=settled 才算通过**。",
       verify: (Object.keys(tasks).length ? String(tasks[Object.keys(tasks)[0]].rId || '') : null),
     }
   })
+  registerTool('vibe_math_lean_read', TOOL_DESC.vibe_math_lean_read, objParams({ name: { type: 'string' }, kind: { type: 'string', enum: ['auto', 'lib', 'proved'] } }, ['name']), async function (args) { return await leanReadTool(args) })
+  registerTool('vibe_math_lean_job', TOOL_DESC.vibe_math_lean_job, objParams({ jobId: { type: 'string' }, waitMs: { type: 'integer' } }), async function (args) { return await leanJobTool(args) })
 
   // ---- 代理直接写 md 的写锁 + 轻元数据同步（任务2：代理自组织写各自对应路径的 md，避免并发写同一文件） ----
   /**
@@ -4280,6 +4780,11 @@ export function apply(ctx) {
     // （激活上限）与 paper 锁续租必须由**独立于调度器**的心跳驱动。
     paperRetryDue: paperRetryDue,
     runPaperRetry: runPaperRetry,
+    // Lean 异步队列（spec §2）：心跳推进队列；dispose 由 apply 级 disposer 调用（不留孤儿进程）。
+    runLeanQueue: runLeanQueue,
+    disposeLeanJobs: disposeLeanJobs,
+    leanQueueSize: function () { return leanQueue.length },
+    leanJobsPublic: function () { const out = []; for (const j of leanJobs.values()) out.push(leanJobPublic(j)); return out },
     // childOwner 裁剪用（审计 L1）：这个会话当前仍"可能再发 subagent/end"的 child
     // = 在册子代理 + 任何任务正在等的那几个。
     referencedChildIds: function () {
@@ -4318,7 +4823,7 @@ export function apply(ctx) {
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
@@ -4346,6 +4851,8 @@ export function apply(ctx) {
   registerTool('vibe_math_lean_run', TOOL_DESC.vibe_math_lean_run, objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), 'vibe_math_lean_run')
   registerTool('vibe_math_lean_archive', TOOL_DESC.vibe_math_lean_archive, objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), 'vibe_math_lean_archive')
   registerTool('vibe_math_lean_lib', TOOL_DESC.vibe_math_lean_lib, objParams({ refresh: { type: 'boolean' } }), 'vibe_math_lean_lib')
+  registerTool('vibe_math_lean_read', TOOL_DESC.vibe_math_lean_read, objParams({ name: { type: 'string' }, kind: { type: 'string', enum: ['auto', 'lib', 'proved'] } }, ['name']), 'vibe_math_lean_read')
+  registerTool('vibe_math_lean_job', TOOL_DESC.vibe_math_lean_job, objParams({ jobId: { type: 'string' }, waitMs: { type: 'integer' } }), 'vibe_math_lean_job')
 
   // /vibe slash command (registered once; routed per session)
   ctx.effect(() => commands.register({
@@ -4406,7 +4913,13 @@ export function apply(ctx) {
   function everyMs(ms, fn) {
     try { if (typeof ctx.interval === 'function') return ctx.interval(fn, ms) } catch (e) { /* 回落到 setInterval */ }
     const t = setInterval(fn, ms)
-    return () => clearInterval(t)
+    return () => {
+      clearInterval(t)
+      // 卸载/销毁：终止在跑的编译并标记 interrupted（不留孤儿进程，spec §2.5）。
+      for (const s of sessions.values()) {
+        try { if (typeof s.disposeLeanJobs === 'function') s.disposeLeanJobs() } catch (e) { console.error('vibe-math-v3: lean dispose failed: ' + String((e && e.message) || e)) }
+      }
+    }
   }
   ctx.effect(() => everyMs(LOCK_POLL_MS, function () { for (const s of sessions.values()) { s.renewLockIfDue().catch(function (e) { console.error('vibe-math-v3 lock renew error: ' + String((e && e.message) || e)) }) } }))
   // tick timer (registered once; ticks every running session at its own pace)
@@ -4418,6 +4931,8 @@ export function apply(ctx) {
         // 论文心跳（修订 §A2）：**独立于 scheduler.running** —— 收口后 running=false，但被激活上限
         // 拒绝的撰写派遣仍要重试，在途时还要续租 paper 锁。runPaperRetry() 无事可做时立即返回。
         if (typeof s.runPaperRetry === 'function') s.runPaperRetry().catch(function (e) { console.error('vibe-math-v3: paper retry failed: ' + String((e && e.message) || e)) })
+        // Lean 异步队列（spec §2.2）：独立于 scheduler.running；runLeanQueue() 内部不 await 编译。
+        if (typeof s.runLeanQueue === 'function') s.runLeanQueue().catch(function (e) { console.error('vibe-math-v3: lean queue failed: ' + String((e && e.message) || e)) })
       }
       // childOwner 裁剪（审计 L1）：每 30 拍（约 30s）一次，成本是"会话数 × 映射数"的一次扫描。
       if ((++beat % 30) === 0) {
@@ -4689,6 +5204,67 @@ function paperTitleFromMd(md) {
   return m ? m[1].trim() : ''
 }
 
+/** 搜索路径 flag：收敛成一个常量（不同 Lean 版本拼写可能不同，改这里即可，接口不变）。 */
+const LEAN_SEARCH_PATH_FLAG = '--search-path'
+/** 用户已显式给出搜索路径就不再注入（显式覆盖优先）。 */
+function hasLeanSearchFlag(args) {
+  return (Array.isArray(args) ? args : []).some(function (a) {
+    const s = String(a)
+    return s === LEAN_SEARCH_PATH_FLAG || s.indexOf(LEAN_SEARCH_PATH_FLAG + '=') === 0 || s === '-R' || s === '--root'
+  })
+}
+/**
+ * 搜索路径注入计划（修订 §2）：用户 leanArgs 已显式给过 ⇒ 什么都不注入（显式覆盖优先）；
+ * 否则**先注入用户给的 leanSearchPaths，再注入自动根**，去重且保持顺序。
+ */
+function leanSearchPathPlan(userArgs, extraPaths, autoRoot) {
+  const args = Array.isArray(userArgs) ? userArgs.map(String) : []
+  if (hasLeanSearchFlag(args)) return { inject: [], paths: [], explicit: true }
+  const out = []
+  const seen = {}
+  const add = function (p) {
+    const s = String(p == null ? '' : p).trim()
+    if (!s || seen[s]) return
+    seen[s] = true
+    out.push(s)
+  }
+  for (const p of (Array.isArray(extraPaths) ? extraPaths : [])) add(p)
+  add(autoRoot)
+  const inject = []
+  for (const p of out) { inject.push(LEAN_SEARCH_PATH_FLAG, p) }
+  return { inject: inject, paths: out, explicit: false }
+}
+/** 规范化文本：换行统一 \n、去行尾空白、去尾部空行——内容哈希只反映语义内容。 */
+function normalizeLeanText(t) {
+  return String(t == null ? '' : t).replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '') + '\n'
+}
+/** 内容 sha256（归档去重与作业幂等的键）。 */
+function leanContentSha(t) { return createHash('sha256').update(normalizeLeanText(t), 'utf8').digest('hex') }
+/**
+ * 构建上下文（修订 §4）：同一段代码在不同引擎/参数/搜索路径下结果可能不同，
+ * 所以"已通过"的判定必须绑定**构建上下文**，不能只看内容。
+ */
+function leanBuildContext(engine, args, searchPaths) {
+  return JSON.stringify({
+    engine: String(engine == null ? '' : engine),
+    args: (Array.isArray(args) ? args : []).map(String),
+    searchPaths: (Array.isArray(searchPaths) ? searchPaths : []).map(String),
+  })
+}
+/** 作业指纹 = sha256(内容 + 构建上下文)（修订 §4：jobId 取它的前 12 位）。 */
+function leanJobFingerprint(contentText, buildCtx) {
+  return createHash('sha256').update(normalizeLeanText(contentText) + '\n' + String(buildCtx || ''), 'utf8').digest('hex')
+}
+/** jobId = `<target|name>-<指纹[0:12]>`：同一内容 + 同一构建上下文天然只有一个作业。 */
+function leanJobId(key, fingerprint) {
+  const k = String(key == null ? '' : key).replace(/[^A-Za-z0-9_.-]/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'job'
+  return k + '-' + String(fingerprint == null ? '' : fingerprint).slice(0, 12)
+}
+/** "已落地且通过"的**唯一**判据：state=settled 且 exit 0 且未超时未中断（内容哈希由 settle 校验）。 */
+function leanJobSettledOk(rec) { return !!rec && rec.state === 'settled' && rec.exitCode === 0 && !rec.timedOut && !rec.interrupted }
+/** 主动性档位（修订 §1）：与"验证时的要求强度"（formalVerify）是两件事。 */
+const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
+
 export const __testHelpers = {
   uuid,
   shortId,
@@ -4716,6 +5292,16 @@ export const __testHelpers = {
   parseMethodMd,
   sanitizeToolFilter,
   registeredToolsFromError,
+  LEAN_INITIATIVE_MODES,
+  leanJobSettledOk,
+  leanJobId,
+  leanJobFingerprint,
+  leanBuildContext,
+  leanContentSha,
+  normalizeLeanText,
+  leanSearchPathPlan,
+  hasLeanSearchFlag,
+  LEAN_SEARCH_PATH_FLAG,
   // final paper（spec §6 的纯函数守卫面；与 v2 同构）
   PAPER_SKELETON,
   PAPER_NO_EVIDENCE,
@@ -4757,7 +5343,7 @@ const TOOL_DESC = {
   vibe_math_set_mode: 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.',
   // set_params 的 schema 现在也收 mode（M10）：同一能力既有专用工具 vibe_math_set_mode，也可用这个键；
   // 两条注册路径共用这一份描述，`--self-probe` 会证明漂移能被抓到。
-  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic），产物在 Paper/<项目>/。',
+  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 --search-path <VibeMath 根>，用户已显式给出就不注入；leanSearchPaths 可附加额外搜索路径，先注入它们再注入自动根）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）；leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic），产物在 Paper/<项目>/。',
   vibe_math_setup: 'Return the interactive parameter schema for guided configuration.',
   vibe_math_save_settings: 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.',
   vibe_math_template: 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.',
@@ -4783,6 +5369,8 @@ const TOOL_DESC = {
   vibe_math_lean_run: "(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.",
   vibe_math_lean_archive: '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (VibeMath/Formal/Lib). kind="lemma": a machine-checked lemma → VibeMath/Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).',
   vibe_math_lean_lib: "(member) List (and by default rebuild) the Lean reuse library: this project's Formal/Index.md, plus the global cross-project Formal/Lib and Formal/Proved indexes. Look here BEFORE writing a new definition so you reuse instead of redefining.",
+  vibe_math_lean_read: '(member) Read back the original text of one archived Lean file (verbatim reuse). Only files under Formal/Lib and Formal/Proved are readable; name is id-sanitised and path escapes are rejected. Returns {ok,name,file,kind,sha256,bytes,text,truncated} (text capped at 64KB).',
+  vibe_math_lean_job: '(member) Read-only view of the background Lean compile jobs. Without jobId: the session job list (state/rel/target/attempts/paths). With jobId: that job state/exitCode/receipt + archive paths. waitMs>0 waits up to that many ms for a queued/running job to settle (polling; it does not block the heartbeat) and returns the current state on timeout. Only state=settled with exitCode=0 (same content hash AND same build context) counts as passed.',
 }
 
 function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
