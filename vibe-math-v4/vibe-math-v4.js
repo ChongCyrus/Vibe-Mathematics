@@ -255,6 +255,11 @@ export function apply(ctx) {
     }
     let running = false, autoDone = false, phase = 'idle'
     let residents = new Map(), mailboxes = new Map(), taskboard = [], decisions = []
+    // round-9 (P2/D4): the participant set is frozen per verify/meeting together with this version, so
+    // every view reads the SAME roster instead of re-deriving it from the live map (mid-flight
+    // addMember/removeMember is possible: removeMember reconciles in-flight work, addMember has no
+    // verify/meeting gate).
+    let rosterVersion = 0
     let meetings = [], reports = [], activityLog = []
     let problemText = '', problemId = 'problem', runId = 'run-' + shortId()
     // Lean formalization records, keyed by object id. v4 has no session-log projection, so this
@@ -2089,7 +2094,7 @@ export function apply(ctx) {
       // who sees no one else's contribution"; a real discussion lets each member lead sometimes.
       const rot=Math.floor(Math.random()*Math.max(1,ids.length))
       const order=ids.slice(rot).concat(ids.slice(0,rot))
-      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order,at:now(),lastInputAt:now()}
+      meetingState={id:'mt-'+shortId(),agenda,type:type||'general',targetId:targetId||null,round:0,asked:[],inputs:{},transcript:[],order,at:now(),lastInputAt:now(),rosterSnapshot:order.slice(),rosterVersion}
       markProgress();
       logActivity('meeting','start: '+agenda); await saveAll(); await scheduleNext(); return {ok:true,id:meetingState.id}
     }
@@ -2104,7 +2109,7 @@ export function apply(ctx) {
         meetingState=null; wakeKind.clear(); logActivity('meeting','abandoned (stuck: no resident spoke)')
         await saveAll(); await scheduleNext(); return
       }
-      const ids=Array.from(residents.keys()); const allSpoke=ids.every(id=>st.inputs[id]!==undefined)
+      const ids=(st.rosterSnapshot||Array.from(residents.keys())).slice(); const allSpoke=ids.every(id=>st.inputs[id]!==undefined)
       if(allSpoke){ await finalizeMeeting(); return }
       // only wake IDLE un-spoken residents (rotated order); in-flight ones re-trigger this on end.
       // NOTE: we deliberately do NOT flush mailboxes here — drafting an un-spoken resident into a normal
@@ -2123,7 +2128,7 @@ export function apply(ctx) {
       let doSchedule=false
       try {
         const st=meetingState
-        const ids=Array.from(residents.keys()); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
+        const ids=(st.rosterSnapshot||Array.from(residents.keys())).slice(); const allSpoke=ids.length>0 && ids.every(id=>st.inputs[id]!==undefined)
         const lines=['# 会议 '+st.id+'｜'+fmtTime(),'','**议程**：'+st.agenda,'']
         for(const [id,iv] of Object.entries(st.inputs)){ lines.push('### '+id); lines.push(iv.input||''); lines.push('') }
         await writeText('Shared/meetings/'+st.id+'.md', lines.join('\n'))
@@ -2192,7 +2197,7 @@ export function apply(ctx) {
           await saveAll(); await scheduleNext(); return
         }
       }
-      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},history:{},transcript:[],at:now(),lastVerdictAt:now()}
+      verifyState={targetId:pv.targetId,targetType:pv.targetType,targetOwner:pv.proposer||'',stage:'independent',round:0,asked:[],verdicts:{},history:{},transcript:[],at:now(),lastVerdictAt:now(),rosterSnapshot:Array.from(residents.keys()),rosterVersion}
       markProgress();
       logActivity('verify','debate begin: '+pv.targetId+' ('+pv.targetType+')'); await saveAll(); await scheduleNext()
     }
@@ -2207,7 +2212,7 @@ export function apply(ctx) {
         verifyState=null; wakeKind.clear(); logActivity('verify',vs.targetId+' abandoned (stuck: no unanimous verdict reachable)')
         await saveAll(); await scheduleNext(); return
       }
-      const ids=Array.from(residents.keys()); const allVoted=ids.every(id=>vs.verdicts[id]!==undefined)
+      const ids=(vs.rosterSnapshot||Array.from(residents.keys())).slice(); const allVoted=ids.every(id=>vs.verdicts[id]!==undefined)
       if(allVoted){ await finalizeVerify(); return }
       // NOTE: we deliberately do NOT flush mailboxes here — drafting an un-voted resident into a normal
       // mail round would delay its verdict and can starve the verify past its watchdog when the backlog
@@ -3586,6 +3591,10 @@ export function apply(ctx) {
       logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':needRespawn?' (re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
     }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
+      // round-9 (P2): the roster VERSION travels with every status read, and an active verify/meeting
+      // reports the participant set it froze (never a re-derivation from the live map).
+      rosterVersion,
+      frozenParticipants: verifyState&&Array.isArray(verifyState.rosterSnapshot)?verifyState.rosterSnapshot:(meetingState&&Array.isArray(meetingState.rosterSnapshot)?meetingState.rosterSnapshot:null),
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
       // Residents the host's live-child cap refused (maxActiveSubagents): queued, not lost. Without
       // this the only trace would be the one console line, and `residentCount` alone cannot tell a
@@ -3596,8 +3605,8 @@ export function apply(ctx) {
       // The coordination counters (`spoke k/N`, `voted k/N`, the verification round) used to live only
       // in `report()`: from `status()` alone an operator could not tell "the group is progressing"
       // from "the group is stuck at 2/4 votes", which is exactly how F1/F2/F7 stay invisible.
-      consensus: meetingState?{kind:'meeting',id:meetingState.id,agenda:meetingState.agenda,round:meetingState.round,spoke:Object.keys(meetingState.inputs).length,expected:residents.size,solvedVotes:Object.values(meetingState.inputs).filter(iv=>iv.voteSolved===true).length}
-        :(verifyState?{kind:'verify',target:verifyState.targetId,targetType:verifyState.targetType,stage:verifyState.stage,round:verifyState.round,voted:Object.keys(verifyState.verdicts).length,expected:residents.size}:null),
+      consensus: meetingState?{kind:'meeting',id:meetingState.id,agenda:meetingState.agenda,round:meetingState.round,spoke:Object.keys(meetingState.inputs).length,expected:(meetingState.rosterSnapshot||Array.from(residents.keys())).length,solvedVotes:Object.values(meetingState.inputs).filter(iv=>iv.voteSolved===true).length,rosterVersion:meetingState.rosterVersion}
+        :(verifyState?{kind:'verify',target:verifyState.targetId,targetType:verifyState.targetType,stage:verifyState.stage,round:verifyState.round,voted:Object.keys(verifyState.verdicts).length,expected:(verifyState.rosterSnapshot||Array.from(residents.keys())).length,rosterVersion:verifyState.rosterVersion}:null),
       artifactCount: artifactCount, artifactBaseline: artifactBaseline,
       paper: paperStatusSummary(),
       // The Lean knobs and the per-object formal records are part of the readable status: without
@@ -3618,8 +3627,8 @@ export function apply(ctx) {
     }
     function report(){ return { ok:true, running, phase, autoDone, project:currentProject, problem:problemText,
       residents:listResidents(), taskboard:taskboard.filter(t=>t.status!=='done'),
-      meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+residents.size}:null,
-      verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+residents.size}:null,
+      meeting: meetingState?{id:meetingState.id, agenda:meetingState.agenda, spoke:Object.keys(meetingState.inputs).length+'/'+(meetingState.rosterSnapshot||Array.from(residents.keys())).length,rosterVersion:meetingState.rosterVersion}:null,
+      verify: verifyState?{target:verifyState.targetId,stage:verifyState.stage, voted:Object.keys(verifyState.verdicts).length+'/'+(verifyState.rosterSnapshot||Array.from(residents.keys())).length,rosterVersion:verifyState.rosterVersion}:null,
       pendingVerify: pendingVerify.length?pendingVerify[0].targetId:null,
       parkedMeeting: pendingMeeting?pendingMeeting.agenda:null,
       formal: formalView(),
@@ -3639,10 +3648,15 @@ export function apply(ctx) {
       // residents) can never be true for the new member (not in the snapshot order) and the meeting is
       // only ever released by the stuck watchdog instead of finalizing with everyone's input.
       if(meetingState){ if(!Array.isArray(meetingState.order)) meetingState.order=Array.from(residents.keys()); if(!meetingState.order.includes(r.rId)) meetingState.order.push(r.rId) }
+      // P2: the roster CHANGED - bump the version so any frozen participant set is visibly stale.
+      rosterVersion++
       // Mid-verify additions are automatically asked to vote (continueVerifyRound recomputes ids from
       // the live residents map), so no extra handling is needed there.
       return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return noSuchResident(id,'vibe_v4_remove_member'); if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
+      // P2: the roster CHANGED - bump the version (a frozen participant set stays readable, but is
+      // now visibly stale; every view reports the same version it snapshotted).
+      rosterVersion++
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
       // drop its meeting speech / verify verdict and prune it from the meeting's speaking order so the
       // find() there never selects a ghost. Its QUEUED verify proposals are deliberately KEPT: a
@@ -3652,6 +3666,12 @@ export function apply(ctx) {
       // only the first entry, which may belong to the removed member).
       if(meetingState){ delete meetingState.inputs[id]; meetingState.order=(meetingState.order||[]).filter(x=>x!==id) }
       if(verifyState){ delete verifyState.verdicts[id] }
+      // P2 (round-9): REMOVAL prunes the FROZEN participant set as well - v4's long-standing contract is
+      // that removing an in-flight voter RELEASES the wait (T26/T31), while the snapshot still gives
+      // every view one identical set + version. Additions never touch a frozen set (that is the point
+      // of freezing); the version bump above marks the set as changed.
+      if(meetingState&&Array.isArray(meetingState.rosterSnapshot)) meetingState.rosterSnapshot=meetingState.rosterSnapshot.filter(x=>x!==id)
+      if(verifyState&&Array.isArray(verifyState.rosterSnapshot)) verifyState.rosterSnapshot=verifyState.rosterSnapshot.filter(x=>x!==id)
       await saveAll()
       // Re-drive the scheduler right away. If the removed member was the ONLY turn in flight (e.g. the
       // last unspoken meeting speaker / the last unvoted voter, interrupted mid-turn), NO subagent/end

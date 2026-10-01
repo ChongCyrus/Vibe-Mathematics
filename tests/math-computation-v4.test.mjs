@@ -278,6 +278,22 @@ section('1 the tool is registered ONCE, with the shared module\'s description/sc
     assert(st.paper.readSideEffect === false, '★ the paper view declares it has no read side effects')
     assert(!existsSync(join(h.projectRoot, 'Paper')), '★ merely reading status did NOT create Paper/')
   }
+  // round-9 (P2/D4): the roster is single-sourced - `status` exposes a version that BUMPS whenever the
+  // roster really changes (mid-flight add/remove is possible: removeMember reconciles in-flight work,
+  // addMember has no verify/meeting gate), and the participant set is reported as a FROZEN snapshot.
+  if (typeof st.rosterVersion === 'number') {
+    assert(st.rosterVersion >= 0 && 'frozenParticipants' in st, '★ status exposes rosterVersion + the frozen participant set')
+    const v0 = st.rosterVersion
+    const hire = await h.callTool('vibe_v4_add_member', { direction: 'P2 roster-version assertion' })
+    const st2 = await h.callTool('vibe_v4_status', {})
+    assert(st2.rosterVersion > v0, '★ hiring mid-flight bumps rosterVersion (' + v0 + ' -> ' + st2.rosterVersion + ')')
+    assert(st2.frozenParticipants === null || Array.isArray(st2.frozenParticipants), '★ with nothing frozen the field is explicitly null (not a stale set)')
+    if (hire && hire.ok && hire.id) {
+      await h.callTool('vibe_v4_remove_member', { id: hire.id })
+      const st3 = await h.callTool('vibe_v4_status', {})
+      assert(st3.rosterVersion > st2.rosterVersion, '★ firing mid-flight bumps rosterVersion too (' + st2.rosterVersion + ' -> ' + st3.rosterVersion + ')')
+    }
+  }
   h.cleanup()
 }
 

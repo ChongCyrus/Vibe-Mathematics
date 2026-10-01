@@ -1508,8 +1508,15 @@ section('23 audit P1: member-facing not-found carries code + status + next')
   assert(kicked.ok === false && kicked.code === 'V4_NO_SUCH_RESIDENT' && !!kicked.next && kicked.next.tool === 'vibe_v4_remove_member', '★ vibe_v4_remove_member {id:r-404} ⇒ code + next naming that tool (was a bare {ok:false})')
   const fresh = await mount()
   const notStarted = await fresh.callTool('vibe_v4_publish_progress', { content: 'x' })
-  assert(notStarted.ok === false && notStarted.code === 'V4_NO_SUCH_RESIDENT' && !!notStarted.next && !!notStarted.status && notStarted.status.running === false, '★ run not started ⇒ code + next + status.running=false')
+  assert(notStarted.ok === false && notStarted.code === 'V4_NO_SUCH_RESIDENT' && !!notStarted.next && !!notStarted.status && notStarted.status.running === false, '★ run not started ⇒ code + next + status.running=false')
 }
+
+// D4 cross-view assertion: NOT LANDED YET (see notes). `establish()` + a proposal-only drive does not
+// bring the verification to an ACTIVE state in this harness (the existing `proposeAndVote` helper
+// deliberately drives proposal + vote + settle together), so the cross-view check needs the helper
+// split into "start the verify, keep it in flight" and "finish it". The version-increment assertions
+// live in math-computation-v4.test.mjs; this one is queued for the next round rather than left as a
+// permanently-red assertion.
 
 // ===============================================================
 console.log('')

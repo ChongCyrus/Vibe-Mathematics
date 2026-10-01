@@ -120,6 +120,11 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **接受的写法**：`名称`、`名称[extras]`、`名称<op>版本`，其中 `<op>` ∈ `==` `>=` `<=` `~=` `!=` `>` `<` `=`（例如 pip 的 `numpy==1.2`、conda 的 `numpy=1.2`）。
 - **拒绝的写法**：空格、`;`、`|`、`&`、`$`、反引号、`@`、括号等 shell 危险或管理器不认识的语法 ⇒ `MATH_INVALID_ARGUMENT` + `next.reason='unsupported-version-syntax'`（**不会**把可疑字符串丢给 shell）。
 
+- **冻结参与集（freeze/prune）规则（v4，round-9 P2/D4 的设计决定）**：验证/会议开始时把当时的名册**快照**下来（`rosterSnapshot`）并记录 `rosterVersion`，所有视图（`status()` 的 `consensus`/`meeting`/`verify`、以及内部的 `allSpoke`/`allVoted` 判据）**一律读快照**，不再从活的 `residents` 重新推导。三条配套语义：① **移除成员时同时从冻结集里剔除它**（`removeMember`），否则在飞投票永远凑不齐、验证/会议会卡死——v4 既有契约是"移除即释放等待"（`e2e-v4-fixes` T26/T31 钉住这一点）；② **新增成员不进入已冻结的集合**（冻结的意义）；③ **成员集真的变化时 `rosterVersion` 递增**，让任何视图都能看出自己读到的是否已过期。**约定**：没有进行中的验证/会议时，`status().frozenParticipants` 为**显式 `null`**（不是空数组、也不是旧的活名册），`rosterVersion` 仍然给出当前值。
+### 4.3 已知差异（不打算改，记录以便不再重复提问）
+
+- **`projects:[]` 与 `project:"default"` + `frameworkRoot` 并存**：它们描述的是**两个不同层次**——`project` 是**当前工作项目名**（默认 `default`），`frameworkRoot` 是该预设的**框架根目录**（语料/状态/论文都相对它解析），而 `projects` 是**可切换的项目清单**（尚未配置过项目时为空数组是诚实的）。**结论：不改行为**，只在此说明字段含义（改名会破坏既有状态文件与文档）。
+- **`cli` 逃生口的归档脚本扩展名是 `.txt`，原生引擎是各自扩展名（`.py`/`.R`/`.jl`…）**：这是**有意为之**——`cli` 的 `cli.command` 可能是任何解释器/工具，我们**不知道**它期待什么扩展名，用一个中性扩展名 `.txt` 反而更诚实（不会暗示"这一定是 python"）。内容与 `scriptHash` 与原生路径完全一致（同一 runId 计算）。**结论：不改行为**，在此说明。
 ### 5.4 引擎发现顺序、`op:'probe'` 的语义与 `mathEngineOverride` 的边界
 
 - **发现顺序（PATH 永远优先）**：① PATH 上的描述符候选名（`python3`→`python`→`py`、`Rscript`→`R`、`octave`→`octave-cli`、`julia`）；② 以上都失败、且宿主声明了可选字段 `runtimeRoots` + `listDirAbs` 时，**最后**扫描 **DSH 自带运行时** `<root>/dsh-runtimes/*/dependencies/<engine>/<候选名>{,.exe,.cmd}`——**树名通配**（不写死 `dsh-primary-runtime`），且只接受描述符自己的候选名（不会塞进无关二进制）。`<root>` 由宿主给出（当前四套预设：**若 `DSH_HOME` 已设置则以它为唯一根**，否则用用户主目录下的 `.dsh`——显式设置即隔离发现，测试与定制部署都靠这个）。
