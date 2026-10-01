@@ -77,7 +77,7 @@ const PROBES = [
   {
     name: 'script-fields-dropped-from-return',
     file: 'math-computation.js',
-    from: '    scriptPath: scriptRel, scriptHash: scriptHash,\n    attempt: attempt, attemptDir: dir, baseRunDir: baseDir,\n    scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,\n    sourceFile: fileRel || null,\n    previousReceipt: receipt.previousReceipt,\n    cliScriptAppended: !!(receipt.cli && receipt.cli.scriptAppended),\n    packages: pk.found,',
+    from: '    scriptPath: scriptRel, scriptHash: scriptHash,\n    scriptAbs: scriptAbs, cwd: root,\n    attempt: attempt, attemptDir: dir, baseRunDir: baseDir,\n    scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,\n    sourceFile: fileRel || null,\n    previousReceipt: receipt.previousReceipt,\n    cliScriptAppended: !!(receipt.cli && receipt.cli.scriptAppended),\n    packages: pk.found,',
     to: '    packages: pk.found,',
     expect: 'scriptPath + scriptHash are in the return value AND the receipt',
   },

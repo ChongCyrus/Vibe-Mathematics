@@ -2165,7 +2165,22 @@ export function apply(ctx) {
     // 不再手工累加并发计数：唤醒的是 registry 里已登记的 child，计数已由 registry 长度体现。
     await saveAll()
   }
-  async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
+  /**
+   * 中断一个**在册**子代理。审计 D1：旧实现 `try{…}catch(e){}` 把"没有这个 child / 宿主拒绝中断"
+   * 都吞成静默成功（调用方拿到 undefined，还以为已经中断）。现在：空/未知 id ⇒ `code` +
+   * `next{tool,hint}`，宿主抛错 ⇒ 保留错误文本并给替代出口；只有真的发出中断才 `ok:true`。
+   */
+  async function interruptChild(childId) {
+    const id = String(childId == null ? '' : childId).trim()
+    if (!id) return { ok: false, code: 'VIBE_MATH_INVALID_ARGUMENT', message: 'interruptChild 失败：childId 为空——无法确定要中断哪个子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 列出本会话在册子代理的 id，再带 childId 调用。' } }
+    if (!Object.prototype.hasOwnProperty.call(agentRegistry, id)) return { ok: false, code: 'VIBE_MATH_CHILD_NOT_FOUND', message: 'interruptChild 失败：' + id + ' 不在本会话的在册子代理里（在册 ' + Object.keys(agentRegistry).length + ' 个）——可能已经结束，或不是本会话的子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 取当前在册 id；要停整个会话用 vibe_math_abort。' } }
+    try {
+      await subagents.interrupt(id, { kind: 'ancestor', agent: rootAgent })
+      return { ok: true, childId: id }
+    } catch (e) {
+      return { ok: false, code: 'VIBE_MATH_INTERRUPT_FAILED', message: 'interruptChild 失败：宿主拒绝中断 ' + id + '（' + String((e && e.message) || e) + '）。', next: { kind: 'reason', tool: 'vibe_math_abort', hint: '宿主不接受单点中断时，用 vibe_math_abort 终止整个会话的子代理。' } }
+    }
+  }
 
   // ================= prompts =================
   function solverPersonaText() { return params.solverPersona ? (String(params.solverPersona) + '\n\n') : '' }
@@ -2402,7 +2417,10 @@ export function apply(ctx) {
     if (node === 'verdict') { const overridden = resolution.action === 'override' && (resolution.verdict === 1 || resolution.verdict === 0); const v = overridden ? Number(resolution.verdict) : data.verdict; const applied = await settleVerdict(data.task, v); delete tasks[data.task.id]; return { verdict: v, overridden: overridden, applied: applied } }
     return {}
   }
-  async function resolveDecision(id, resolution) { const d = decisionQueue.find(function (x) { return x.id === id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
+  async function resolveDecision(id, resolution) {
+    const d = decisionQueue.find(function (x) { return x.id === id })
+    if (!d) return { ok: false, code: 'VIBE_MATH_DECISION_NOT_FOUND', message: 'decision not found：' + String(id == null ? '' : id) + ' 不在人工决策队列里（队列现有 ' + decisionQueue.length + ' 个' + (decisionQueue.length ? ('：' + decisionQueue.map(function (x) { return x.id }).join(', ')) : '') + '）——可能已被 vibe_math_decide 结清，或被 start/resume/abort/换项目作废（作废是终态，不会回到 pending）。', next: { kind: 'reason', tool: 'vibe_math_list_decisions', hint: '先用 vibe_math_list_decisions 取当前 pending 的 id；若期望它还在，检查是否发生过 start/resume/abort/换项目。' } }
+    if (d.status !== 'pending') return { ok: false, code: 'VIBE_MATH_DECISION_ALREADY_RESOLVED', message: 'decision already resolved：' + String(id) + ' 当前状态是 ' + String(d.status) + '——每次决策只生效一次。', next: { kind: 'reason', tool: 'vibe_math_list_decisions', hint: '用 vibe_math_list_decisions 看还有哪些 pending；要重新决策请等框架发起新的决策项。' } }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
   /**
    * 清掉 gate 时**必须结清它指向的那个人工决策**（审计 M10）。start/resume/abort/切项目都会离开
    * 需要那次决策的运行，而决策若仍是 `pending`，它会永远留在 `vibe_math_list_decisions` 里反复出现——
@@ -4011,10 +4029,10 @@ export function apply(ctx) {
   registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
   registerTool('vibe_math_list_projects', 'List math projects.', objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
   registerTool('vibe_math_list_decisions', 'List pending manual decisions.', objParams({}), async function () { return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) } })
-  registerTool('vibe_math_decide', 'Resolve a pending manual decision (verdict override uses verdict: 1|0).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; const resolution = { action: args.action, verdict: args.verdict }; const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
+  registerTool('vibe_math_decide', 'Resolve a pending manual decision (verdict override uses verdict: 1|0).', objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); const resolution = { action: args.action, verdict: args.verdict }; if (!d || d.status !== 'pending') return await resolveDecision(args.id, resolution); const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
   registerTool('vibe_math_list_agents', 'List tracked sub-agents (child sessions).', objParams({}), async function () { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round, rId: m.rId }) } return { ok: true, agents: out, count: out.length } })
   registerTool('vibe_math_message_agent', 'Send a message to a tracked child agent (next turn).', objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
-  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
+  registerTool('vibe_math_interrupt_agent', 'Interrupt a tracked child agent.', objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { const r = await interruptChild(args.childId); return Object.assign({}, r, { ok: !!(r && r.ok) }) })
   // ---- Lean 形式化验证（契约 §5）----
   registerTool('vibe_math_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the VibeMath root and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.', objParams({ file: { type: 'string' }, target: { type: 'string' }, timeout_ms: { type: 'integer' } }, ['file']), async function (args, agent) { return await leanRunTool(memberIdOf(agent), args) })
   registerTool('vibe_math_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (when the run passes) also Verified/Lean/<target>.lean, marking the object Lean-passed. kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: { type: 'string' }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } }, ['kind']), async function (args, agent) { return await leanArchive(memberIdOf(agent), args) })

@@ -1557,6 +1557,7 @@ export function apply(ctx) {
         +'    然后 ## 陈述 <陈述>；## 证明尝试；## 证伪尝试。\n'
         +'  Methods/<你>/<id>.md —— 你的理论/方法/工具。格式：- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。\n'
         +'  Subproblems/<你>/<id>.md —— 你的子问题。格式：- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 陈述；## 进度。\n'
+        +'  ⚠ 你的文件工具（读/写）按**会话 cwd** 解析路径：上面列出的相对子路径都要先拼上**绝对前缀** '+base+'/ 再使用（例如 '+base+'/Propos/<你>/p-1.md）；计算产物同理——请用回执里的**绝对**字段 receipt.scriptAbs，或把 receipt.cwd 与 receipt.scriptPath 拼起来，不要用相对路径。\n'
     }
     function toolList(){
       return 'vibe_v4_send_message {to, content} —— 给某常驻发消息（to=all 广播）。\n'
@@ -1898,10 +1899,23 @@ export function apply(ctx) {
     function byChild(childId){ for(const [,r] of residents){ if(r.childId===childId) return r } return undefined }
 
     // ---- artifact writers (resident-facing) ----
-    async function publishProgress(rId,content){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
-    async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
-    async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
-    async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return {ok:false,message:'no such resident'} ; const id=o.id?idSafe(o.id):('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
+    /** Cross-preset audit D1: a member-facing tool must never answer with a bare `no such resident`.
+     *  "not started yet" / "wrong id" / "already dismissed" are DIFFERENT problems, so the answer
+     *  carries a code, the LIVE roster state and an actionable next step (v5's `memberDiagnosis`). */
+    function noSuchResident(id, tool){
+      const ids=[...residents.keys()]
+      const active=[...residents.values()].filter(r=>r&&r.childId).length
+      const nextTool=tool||(running?'vibe_v4_list_members':'vibe_v4_start')
+      return {ok:false,code:'V4_NO_SUCH_RESIDENT',
+        message:'no such resident: '+String(id||'(none)')+(running?('（当前在册 '+residents.size+' 名，active '+active+' 名）'):'（本次运行尚未 start）'),
+        status:{running:!!running,autoDone:!!autoDone,residentCount:residents.size,activeCount:active,ids:ids},
+        next:{tool:nextTool,
+          hint:running?'核对有效 id（新建成员可能仍在 spawn 中）；列表用 vibe_v4_list_members':'先 vibe_v4_start 或 vibe_v4_add_member，再调用 '+nextTool}}
+    }
+    async function publishProgress(rId,content){ if(!rId||!residents.has(rId)) return noSuchResident(rId) ; const rel='Progress/'+rId+'/progress.md'; const prev=(await readText(rel))||''; await writeText(rel, prev+'\n### '+fmtTime()+'｜'+rId+'\n'+String(content||'')+'\n'); return {ok:true} }
+    async function recordProposition(rId,o){ if(!rId||!residents.has(rId)) return noSuchResident(rId) ; const id=o.id?idSafe(o.id):('p-'+shortId()); const lines=['# 命题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: 命题','- 状态: 未定论','- 概率: '+cl(o.prob!=null?o.prob:0.5),'- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 证明尝试','','## 证伪尝试','']; await writeText('Propos/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 命题 '+id); bumpArtifacts(); return {ok:true,id,file:'Propos/'+rId+'/'+id+'.md'} }
+    async function recordMethod(rId,o){ if(!rId||!residents.has(rId)) return noSuchResident(rId) ; const id=o.id?idSafe(o.id):('m-'+shortId()); const lines=['# 方法｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 类型: '+(o.type||'方法'),'- 状态: 经验','- 可信断言: []','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'','## 核心内容',String(o.content||''),'','## 定义与记号',String(o.notation||''),'','## 应用记录','## 改进历史','']; await writeText('Methods/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 方法 '+id); bumpArtifacts(); return {ok:true,id,file:'Methods/'+rId+'/'+id+'.md'} }
+    async function recordSubproblem(rId,o){ if(!rId||!residents.has(rId)) return noSuchResident(rId) ; const id=o.id?idSafe(o.id):('s-'+shortId()); const lines=['# 子问题｜'+(o.title||id),'- 标题: '+(o.title||id),'- ID: '+id,'- 状态: 求解中','- 价值程度: '+cl(o.value!=null?o.value:0.5),'- 动机用途计划: '+(o.motivation||''),'- 依赖: []','','## 陈述',String(o.statement||''),'','## 进度','']; await writeText('Subproblems/'+rId+'/'+id+'.md',lines.join('\n')); logActivity('record',rId+' 子问题 '+id); bumpArtifacts(); return {ok:true,id,file:'Subproblems/'+rId+'/'+id+'.md'} }
     // ── auto-sync meeting: every `meetingKeepEvery` NEW artifacts, convene a coordination meeting ──
     //
     // The counting basis is the RESIDENTS' card libraries themselves (Propos/Methods/Subproblems),
@@ -2015,7 +2029,7 @@ export function apply(ctx) {
 
     // ---- messaging ----
     async function postMessage(from,to,content){
-      const r=residents.get(to); if(!r) return {ok:false,message:'no such resident'}
+      const r=residents.get(to); if(!r) return noSuchResident(to,'vibe_v4_send_message')
       if(!busy.has(to)){
         currentResident=r.rId
         const ok=await wakeResident(r, (await normalPrompt(r))+'\n\n[NEW MESSAGE from '+from+']\n'+content,'normal')
@@ -3357,6 +3371,10 @@ export function apply(ctx) {
       return {
         params:{finalPaper:params.finalPaper,paperFormat:params.paperFormat,paperLanguage:params.paperLanguage,paperCompilePdf:params.paperCompilePdf,paperEditor:params.paperEditor,paperLatexCommand:params.paperLatexCommand},
         id:ps?ps.id:paperIdFor(), dir:ps?ps.dir:paperDirFor(), status:ps?ps.status:'idle',
+        // round-9 (F2): with no paper state this path is a PROJECTION (f2: paperIdFor/paperDirFor are
+        // pure - reading `status` touches no fs and creates no directory). Say so explicitly instead of
+        // handing callers a path that looks like it exists.
+        dirProjected:!ps, dirSource:ps?'paper-state':'projection', readSideEffect:false,
         running:!!(ps&&ps.status!=='done'&&ps.status!=='failed'), trigger:ps?ps.trigger:'',
         rounds:ps?ps.round:0, maxRounds:ps?ps.maxRounds:PAPER_MAX_ROUNDS, participants:ps?ps.participants:[],
         editor:ps?(ps.editorId||ps.cfg.editor):params.paperEditor, editorDowngraded:!!(ps&&ps.editorDowngraded),
@@ -3368,6 +3386,8 @@ export function apply(ctx) {
     function paperStatusSummary(){
       const v=paperStatusView()
       return {ok:true, id:v.id, dir:v.dir, status:v.status, running:v.running, trigger:v.trigger, lang:v.params.paperLanguage,
+        // round-9 (F2): carry the projection flags through the SUMMARY too (this is what `status` returns).
+        dirProjected:v.dirProjected, dirSource:v.dirSource, readSideEffect:v.readSideEffect,
         format:v.params.paperFormat, editor:v.editor, editorDowngraded:v.editorDowngraded, participants:v.participants,
         parts:v.parts, reviews:v.reviews, rounds:v.rounds+'/'+v.maxRounds, finalizedAt:v.finalizedAt, files:v.files,
         params:v.params,
@@ -3622,7 +3642,7 @@ export function apply(ctx) {
       // Mid-verify additions are automatically asked to vote (continueVerifyRound recomputes ids from
       // the live residents map), so no extra handling is needed there.
       return {ok:true,id:r.rId,direction:r.direction} }
-    async function removeMember(id){ const r=residents.get(id); if(!r) return {ok:false}; if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
+    async function removeMember(id){ const r=residents.get(id); if(!r) return noSuchResident(id,'vibe_v4_remove_member'); if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
       // drop its meeting speech / verify verdict and prune it from the meeting's speaking order so the
       // find() there never selects a ghost. Its QUEUED verify proposals are deliberately KEPT: a

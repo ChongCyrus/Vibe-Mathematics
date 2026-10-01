@@ -1480,6 +1480,38 @@ section('18 every daily-line injection site (coreRules/normal/heartbeat) obeys t
 }
 
 // ===============================================================
+// 22. cross-preset audit P0 (v4 station): the member-visible library text must state that the
+//     residents' file tools resolve against the SESSION CWD, so the listed sub-paths must be used
+//     with the ABSOLUTE prefix (and computation artifacts via receipt.scriptAbs / receipt.cwd).
+// ===============================================================
+section('22 audit P0: member-facing paths carry the session-cwd / absolute-prefix instruction')
+{
+  const N = await establish()
+  const texts = [await N.prompts('brainstorm', 'r-1'), await N.prompts('coreRules'), await N.prompts('normal', 'r-1')]
+  const ok = texts.filter((t) => t.indexOf('会话 cwd') !== -1 && t.indexOf('绝对前缀') !== -1)
+  assert(ok.length >= 1, '★ the member-visible library text says file tools resolve against the SESSION CWD and that listed paths need the ABSOLUTE prefix (found in ' + ok.length + '/3 variants)')
+  assert(ok.some((t) => t.indexOf('receipt.scriptAbs') !== -1 || t.indexOf('receipt.cwd') !== -1), '★ …and names the absolute receipt field (receipt.scriptAbs / receipt.cwd) for computation artifacts')
+}
+
+// ===============================================================
+// 23. cross-preset audit P1 (v4 stations): a member-facing not-found must be diagnosable — code +
+//     live roster status + an actionable next step — including `removeMember` (previously a bare
+//     {ok:false}) and the not-yet-started case.
+// ===============================================================
+section('23 audit P1: member-facing not-found carries code + status + next')
+{
+  const N = await establish()
+  const wrong = await N.callTool('vibe_v4_send_message', { to: 'r-404', content: 'hi' }, N.resAgent(N.childOf('r-1')))
+  assert(wrong.ok === false && wrong.code === 'V4_NO_SUCH_RESIDENT' && !!wrong.next && !!wrong.next.tool, '★ wrong resident id ⇒ code V4_NO_SUCH_RESIDENT + next{tool} (not a bare message)')
+  assert(wrong.status && wrong.status.residentCount >= 1 && wrong.status.running === true, '★ …plus LIVE roster status, so "wrong id" is distinguishable from "not started"')
+  const kicked = await N.callTool('vibe_v4_remove_member', { id: 'r-404' })
+  assert(kicked.ok === false && kicked.code === 'V4_NO_SUCH_RESIDENT' && !!kicked.next && kicked.next.tool === 'vibe_v4_remove_member', '★ vibe_v4_remove_member {id:r-404} ⇒ code + next naming that tool (was a bare {ok:false})')
+  const fresh = await mount()
+  const notStarted = await fresh.callTool('vibe_v4_publish_progress', { content: 'x' })
+  assert(notStarted.ok === false && notStarted.code === 'V4_NO_SUCH_RESIDENT' && !!notStarted.next && !!notStarted.status && notStarted.status.running === false, '★ run not started ⇒ code + next + status.running=false')
+}
+
+// ===============================================================
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

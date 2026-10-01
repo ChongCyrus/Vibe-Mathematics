@@ -267,7 +267,21 @@ section('§3 op=probe：命中与未命中')
   fake = freshFake()
   const miss = await call('math_computation', { op: 'probe', packages: ['refresh'] })
   assert(miss.ok === false && miss.code === 'MATH_ENGINE_NOT_FOUND', '★ 没有引擎 ⇒ MATH_ENGINE_NOT_FOUND')
-  assert(!!miss.next && miss.next.kind === 'user-install' && String(miss.next.command || '').length > 0, '★★ 未命中必须带可执行的下一步：next.kind=user-install + 非空 per-OS 命令')
+  assert(!!miss.next && miss.next.kind === 'user-install', '★★ 未命中必须带可执行的下一步：next.kind=user-install')
+  const perOs = (miss.next && miss.next.perOs) || {}
+  assert(['windows', 'macos', 'linux'].every((k) => typeof perOs[k] === 'string' && perOs[k].length > 0), '★★ user-install 指引带 perOs 三平台的官方命令（实测 ' + JSON.stringify(perOs) + '）')
+  assert(!!miss.next && miss.next.suggestedCommand === miss.next.perOs[miss.next.platform], '★★ suggestedCommand === perOs[platform]（platform=' + (miss.next && miss.next.platform) + '）')
+  assert(!!miss.next && (miss.next.packageManagerAvailable === false ? miss.next.command === '' : typeof miss.next.command === 'string'), '★★★ 包管理器不可用时**绝不**给出跑不了的命令（command 必须是空串），可用时才是字符串（实测 ' + JSON.stringify(miss.next && { mgr: miss.next.packageManager, avail: miss.next.packageManagerAvailable, command: miss.next.command }) + '）')
+  assert(!miss.next || miss.next.packageManagerAvailable !== false || (String(miss.next.note || '').length > 0 && String(miss.next.suggestedCommand || '').length > 0), '★★ 命令被撤下时必须给出替代出口：note + perOs 里的官方命令（vendorUrl 只有商业引擎才有，可为 null；实测 ' + JSON.stringify(miss.next && { note: String(miss.next.note || '').slice(0, 40), suggested: miss.next.suggestedCommand }) + '）')
+  // 另一半：包管理器**存在**时给出可执行命令（command === suggestedCommand）
+  if (miss.next && miss.next.packageManager) {
+    fake.cliCommands = {}
+    fake.cliCommands[miss.next.packageManager] = '/fake/' + miss.next.packageManager + '.exe'
+    const withMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
+    assert(!!withMgr.next && withMgr.next.packageManagerAvailable === true && typeof withMgr.next.command === 'string' && withMgr.next.command.length > 0 && withMgr.next.command === withMgr.next.suggestedCommand, '★★★ 包管理器存在时给出**可执行**命令（command === suggestedCommand，实测 ' + JSON.stringify(withMgr.next && { mgr: withMgr.next.packageManager, avail: withMgr.next.packageManagerAvailable, command: withMgr.next.command }) + '）')
+  } else {
+    assert(true, '（本平台 userInstall 模板无包管理器前缀：跳过「管理器存在」分支）')
+  }
 }
 
 // ── §4 缺包：只报告、不执行 ──────────────────────────────────────────────────────────────────
@@ -649,6 +663,26 @@ section('§18 可选 host 回调：listDir（保留上限只告警）与 hasSubp
   }
 }
 
+// ── §19 成员/常驻作用域失败诊断（审计 D1）：不许静默成功、不许裸消息 ─────────────────────────────
+section('§19 成员作用域失败诊断：interruptChild 显式失败 + decision 诊断（code + 解释 + next）')
+{
+  // 直接执行工具面（不经过 JSON.parse），这样"旧实现返回 undefined"这种静默成功也能被断言到。
+  const rawInterrupt = async (args) => {
+    const spec = specOf('vibe_math_interrupt_agent')
+    const out = await spec.execute(args, { agent: ROOT })
+    return out === undefined ? { ok: true, silentUndefined: true } : JSON.parse(out)
+  }
+  const unknown = await rawInterrupt({ childId: 'no-such-child' })
+  assert(unknown.ok !== true && unknown.code === 'VIBE_MATH_CHILD_NOT_FOUND', '★ [D1] interruptChild 未知 child 必须显式失败并带 code（实测 ' + JSON.stringify(unknown).slice(0, 170) + '）')
+  assert(!!unknown.next && typeof unknown.next.tool === 'string' && !!unknown.next.hint, '★ [D1] 未知 child 的诊断带 next{tool,hint}（实测 ' + JSON.stringify(unknown.next || null) + '）')
+  const empty = await rawInterrupt({ childId: '   ' })
+  assert(empty.ok !== true && empty.code === 'VIBE_MATH_INVALID_ARGUMENT' && !!empty.next, '★ [D1] 空 childId 同样显式失败并带 code+next（实测 ' + JSON.stringify(empty).slice(0, 140) + '）')
+  const listed = await call('vibe_math_list_agents', {})
+  assert(!!listed && listed.ok === true, '对照：vibe_math_list_agents 可调用——诊断里指向的工具必须真实存在（否则诊断本身是坑）')
+  const badDecide = await call('vibe_math_decide', { id: 'no-such-decision', action: 'approve' })
+  assert(badDecide.ok === false && badDecide.code === 'VIBE_MATH_DECISION_NOT_FOUND', '★ [D1] 未知 decision id ⇒ code=VIBE_MATH_DECISION_NOT_FOUND，不是裸 message（实测 ' + JSON.stringify(badDecide).slice(0, 170) + '）')
+  assert(!!badDecide.next && badDecide.next.tool === 'vibe_math_list_decisions', '★ [D1] 决策诊断的 next 指向真实存在的 vibe_math_list_decisions（实测 ' + JSON.stringify(badDecide.next || null) + '）')
+}
 console.log('\n=== MATH COMPUTATION V2: ' + passed + ' passed, ' + failed + ' failed ===')
 rmSync(WS, { recursive: true, force: true })
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

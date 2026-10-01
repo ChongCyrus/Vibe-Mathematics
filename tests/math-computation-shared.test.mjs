@@ -116,7 +116,11 @@ console.log('-- math_computation shared contract --')
   await withHost({ installed: [] }, async (state) => {
     const r = await state.call({ op: 'probe' })
     ok(r.ok === false && r.code === 'MATH_ENGINE_NOT_FOUND', 'no engine -> ENGINE_NOT_FOUND')
-    ok(r.next && r.next.kind === 'user-install' && r.next.command, 'ENGINE_NOT_FOUND carries the per-OS user-install guide')
+    // round-9: the guide is per-OS and always carries the SUGGESTED command; `command` itself is only
+    // populated when that OS's package manager is actually resolvable on this machine.
+    ok(r.next && r.next.kind === 'user-install' && r.next.perOs && r.next.perOs.windows && r.next.perOs.linux, 'ENGINE_NOT_FOUND carries the per-OS user-install guide')
+    ok(r.next.suggestedCommand === r.next.perOs[r.next.platform], 'the guide keeps the suggested per-OS command alongside the executable one')
+    ok(r.next.packageManagerAvailable === false ? r.next.command === '' : typeof r.next.command === 'string', 'command ⇔ package-manager availability (never a command that cannot run)')
   })
   await withHost({ packages: { numpy: 'present', sympy: 'missing' } }, async (state) => {
     const r = await state.call({ op: 'probe', packages: ['numpy', 'sympy'] })
@@ -798,6 +802,84 @@ console.log('-- math_computation shared contract --')
   ok(r.ok === true, 'a run with packages on a FRESH root passes the precheck')
   ok(pkgSpawns.length > 0 && pkgSpawns.every((s) => String(s.cwd) !== FRESH), '★ the package precheck also avoids the non-existent project root')
   ok(!(r.warnings || []).some((w) => w.code === 'PACKAGE_PRECHECK_UNKNOWN'), 'the precheck RAN (no PACKAGE_PRECHECK_UNKNOWN on a fresh root)')
+}
+
+// ── 22. round-8 (P0/D3): member-facing artifact paths must be OPENABLE by members
+// The receipt's scriptPath is PROJECT-ROOT relative, but members' file tools resolve against the
+// SESSION CWD. The receipt/return therefore carry the absolute `scriptAbs` and the `cwd` to join with.
+{
+  const h = makeFakeHost({ installed: ['python3'] })
+  M.registerMathComputation(h.host)
+  const r = await h.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  ok(r.ok === true, 'a run succeeds (P0 context)')
+  ok(typeof r.scriptAbs === 'string' && r.scriptAbs.length > 0, '★ the return carries an ABSOLUTE scriptAbs (members can open it directly)')
+  ok(typeof r.cwd === 'string' && r.cwd.length > 0, '★ the return carries cwd (the project root to join with)')
+  ok(String(r.scriptAbs).replace(/\\/g, '/').endsWith(String(r.scriptPath).replace(/\\/g, '/')), '★ scriptAbs ends with the receipt-relative scriptPath (join consistency)')
+  ok(!!h.files && h.files.has(String(r.scriptPath).replace(/\\/g, '/')), '★ the archived script really exists at scriptPath (the path handed to members is real)')
+  const rj = JSON.parse(h.files.get(String(r.receipt.json).replace(/\\/g, '/')))
+  ok(rj.scriptAbs === r.scriptAbs && rj.cwd === r.cwd, 'the RECEIPT carries scriptAbs + cwd too (a later reader can reconstruct the location)')
+  ok(String(M.MATH_ARCHIVE_WORKFLOW_LINE).indexOf('receipt.scriptAbs') !== -1 && String(M.MATH_ARCHIVE_WORKFLOW_LINE_EN).indexOf('receipt.scriptAbs') !== -1, 'the injected archive rule tells members HOW to open the script (zh+en)')
+  ok(/会话 cwd/.test(String(M.MATH_ARCHIVE_WORKFLOW_LINE)) && /SESSION CWD/.test(String(M.MATH_ARCHIVE_WORKFLOW_LINE_EN)), 'the rule states the session-cwd resolution fact (zh+en)')
+}
+
+// ── 23. round-9 (real-engine): an engine INSTALLED but not on PATH must still be discovered
+// R 4.6.1 went to `C:\Program Files\R\R-4.6.1\bin` without touching PATH, so `probe` used to say R
+// was missing even though it was installed.
+{
+  const absTree = {
+    'C:/Program Files/R': [{ name: 'R-4.6.1', type: 'directory' }],
+    'C:/Program Files/R/R-4.6.1/bin': [{ name: 'Rscript.exe', type: 'file' }, { name: 'R.exe', type: 'file' }],
+  }
+  const h = makeFakeHost({ installed: [], absTree: absTree, runtimeRoots: [] })
+  M.registerMathComputation(h.host)
+  const p = await h.call({ op: 'probe', engine: 'r' })
+  ok(p.ok === true && p.engine === 'r', '★ a Rscript that exists ONLY in the default install dir is discovered (not on PATH)')
+  ok(!!p.engineInfo && /Program Files\/R\/R-4\.6\.1\/bin\/Rscript/.test(String(p.engineInfo.path)), 'the discovered path is the versioned install dir (' + String(p.engineInfo && p.engineInfo.path).slice(0, 60) + ')')
+}
+// ── 24. round-9 (real-engine): never suggest an install command that cannot run on this machine
+{
+  const h = makeFakeHost({ installed: [] })   // `winget` is NOT resolvable here
+  M.registerMathComputation(h.host)
+  const p = await h.call({ op: 'probe', engine: 'octave' })
+  ok(p.ok === false && p.code === 'MATH_ENGINE_NOT_FOUND', 'a missing engine still fails with ENGINE_NOT_FOUND')
+  ok(!!p.next && p.next.kind === 'user-install', 'the guidance is still user-install shaped')
+  ok(String(p.next.command) === '', '★ no runnable-looking command when its package manager is absent (command is empty)')
+  ok(!/winget|brew|apt|choco|scoop/i.test(String(p.next.command) + ' ' + String(p.message)), '★ no winget/brew/apt suggestion anywhere when that manager is absent')
+  ok(p.next.packageManager === 'winget' && p.next.packageManagerAvailable === false, 'the response SAYS which manager was assumed and that it is unavailable')
+  ok(typeof p.next.note === 'string' && p.next.note.length > 0, 'an explicit note explains that the suggested command cannot run')
+  const h2 = makeFakeHost({ installed: [], resolveMap: { winget: 'C:/fake/winget.exe' } })
+  M.registerMathComputation(h2.host)
+  const p2 = await h2.call({ op: 'probe', engine: 'octave' })
+  ok(/winget/i.test(String(p2.next.command)) && p2.next.packageManagerAvailable === true, 'when the manager IS present the command is offered as before')
+}
+
+// ── 25. round-9 F3/F5/F7: probe completeness, uniform failure evidence, explicit constraint policy
+{
+  // F3: a partial availability line must NAME the configured-but-absent engines.
+  const h = makeFakeHost({ installed: ['python3'] })
+  M.registerMathComputation(h.host)
+  const p = await h.call({ op: 'probe', engine: 'python' })
+  ok(p.ok === true && Array.isArray(p.absent) && p.absent.length > 0, '★ probe names the configured-but-absent engines instead of being silently partial')
+  ok(p.absent.some((a) => a.engine === 'r' && a.why === 'not-found-on-this-machine'), 'the absent list carries a reason (key `why`) per engine')
+  ok(p.absent.some((a) => a.engine === 'cli' && /caller-supplied/.test(a.why)), 'cli is explained as needing a caller-supplied command')
+  ok(/未发现/.test(String(p.message)), 'the message states which configured engines were not found')
+  // F5: MATH_TIMEOUT carries the SAME evidence fields a non-zero exit does.
+  const h2 = makeFakeHost({ installed: ['python3'], hang: true })
+  M.registerMathComputation(h2.host)
+  const t = await h2.call({ op: 'run', engine: 'python', mode: 'code', code: 'while True: pass\n', timeoutMs: 1000 })
+  ok(t.ok === false && t.code === 'MATH_TIMEOUT', 'a hanging run reports MATH_TIMEOUT')
+  ok(t.timedOut === true && 'exit' in t && t.exit === null, '★ MATH_TIMEOUT carries timedOut:true and an explicit exit field (uniform with NONZERO_EXIT)')
+  ok('stderr' in t && typeof t.stderr === 'string', '★ MATH_TIMEOUT carries the captured stderr like NONZERO_EXIT does')
+  // F7: the response says the constraints are existence-only, and lists the ones that were NOT checked.
+  const h3 = makeFakeHost({ installed: ['python3'], packages: { numpy: 'present' } })
+  M.registerMathComputation(h3.host)
+  const c = await h3.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['numpy>=1'] })
+  ok(c.ok === true && /existence-only/.test(String(c.versionPolicy)), '★ the run response states the version constraints are existence-only')
+  ok(Array.isArray(c.constraintsNotEnforced) && c.constraintsNotEnforced.indexOf('numpy>=1') !== -1, '★ the response names the constraint it did NOT check (no silent drop)')
+  const c2 = await h3.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['numpy'] })
+  ok(Array.isArray(c2.constraintsNotEnforced) && c2.constraintsNotEnforced.length === 0, 'an unconstrained request reports an empty not-enforced list')
+  const m = await h3.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['pandas>=2'] })
+  ok(m.ok === false && /existence-only/.test(String(m.versionPolicy)), 'the missing-package failure also states the constraint policy')
 }
 
 console.log('')

@@ -125,6 +125,10 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **发现顺序（PATH 永远优先）**：① PATH 上的描述符候选名（`python3`→`python`→`py`、`Rscript`→`R`、`octave`→`octave-cli`、`julia`）；② 以上都失败、且宿主声明了可选字段 `runtimeRoots` + `listDirAbs` 时，**最后**扫描 **DSH 自带运行时** `<root>/dsh-runtimes/*/dependencies/<engine>/<候选名>{,.exe,.cmd}`——**树名通配**（不写死 `dsh-primary-runtime`），且只接受描述符自己的候选名（不会塞进无关二进制）。`<root>` 由宿主给出（当前四套预设：**若 `DSH_HOME` 已设置则以它为唯一根**，否则用用户主目录下的 `.dsh`——显式设置即隔离发现，测试与定制部署都靠这个）。
 - **找到可用引擎就报它的真实版本**（`engineInfo.path` + `version`），**不再**给安装指引；**只有**一个可用引擎都找不到时，才按 OS 给安装指引——而且是对**请求的那个引擎**（不是"第一个允许的引擎"）。`op:'probe'` 的 `engine`/`engineInfo` 就是**请求的**引擎；请求的引擎缺失时，`code`/`message`/`next` 全部指向它（历史上这里会回显 `python`）。
 - **`mathEngineOverride` **不是**发现手段**：它只按引擎名覆盖 **argv 模板**（如 `{python:{versionArgv,scriptArgv,evalArgv,packageProbe}}`），**不能指定一个可执行文件**。所以 `MATH_ENGINE_NOT_FOUND` 的正解是：装上引擎、把解释器放进 PATH、让上面的 DSH 运行时被扫到，或用 `engine:'cli'` + `cli.command` 显式给命令。
+- **round-9 响应字段（真机发现后新增，文档与实现同步）**：
+  - `probe` 返回 `configured`（配置里启用的引擎全集）与 **`absent[]`**（每个缺席引擎带 **`why`**：`not-found-on-this-machine` / `needs-a-caller-supplied-command`），message 也会点名"已配置但本机未发现：…"——可用性行**不再静默地只报一部分**（F3）。
+  - `run` 的成功响应与 `MATH_MISSING_PACKAGES` 失败**都**带 **`versionPolicy`** 与 **`constraintsNotEnforced:[…]`**：明确"版本约束只按 base name 查存在、从不校验"，并点名本次**未校验**的约束（无约束时为空数组）——杜绝"静默丢弃约束"（F7）。
+  - **`MATH_TIMEOUT` 与 `MATH_NONZERO_EXIT` 的证据字段一致**：都带 `argv`、`receipt`、`exit`（超时为 `null`）与 `stderr`（同样的截断上限），超时另有 `timedOut:true`（F5）。
 - **`engine:'cli'` 的三条行为**：① **包预检按 `cli.command` 的族**执行（`python*`/`Rscript`/`octave`/`julia` 用对应描述符的探测）；命令族**不可识别** ⇒ **跳过**预检并给出 `PACKAGE_PRECHECK_SKIPPED` 警告（**不误报缺包、不阻塞**逃生口）。② `mode:'code'`/`'file'` 时归档脚本的**绝对路径会自动追加到 argv 末尾**（回执里 `cli.scriptAppended: true`；`cli.argv` 仍是调用方给的 argv）——否则会掉进 REPL、`exit=0` 而 stdout 为空，读起来像成功。**但若调用方 argv 自带程序槽（`-c`/`-m`/`-e`/`--eval`/`--command`），则调用方 argv 优先、不追加**（否则脚本会被当作多余参数，例如 `python -c 'print(1)' script.txt` 会把脚本喂给 `sys.argv[1]`）；此时回执给 `cli.scriptAppended:false` + `cli.scriptSkipped` 说明原因。③ `engineInfo.version` 取自**真实的版本探测**（族可识别时），不再是 `"unknown"`。
 - **真实宿主上的"空 spawn"与失败可见性（round-7 实测）**：真实会话里宿主的 `subprocess` 通路**在会话早期可能对一次 spawn 返回空**（`exit=null`）。因此：版本探测**最多尝试 3 次**（20s / 45s / 45s + 退避），且只在**看起来像冷启动/空返回**（`timedOut`、`exit===null`、`spawned=false`）时重试——确定性失败（非零退出、输出无法解析）**不重试**。仍然失败时返回 `MATH_ENGINE_UNUSABLE` 并携带**机读诊断** `probe: {argv, exit, timedOut, ms, spawned, stderrTail, attempts, retried, retryDiag}`；**引擎已找到就绝不再给"去装引擎"的指引**（那会误导），改为 `next.kind:'note'`。包预检同样重试；若预检**始终跑不起来**，**不判缺包、不阻塞**，给出 `PACKAGE_PRECHECK_UNKNOWN` 警告（附 attempts/argv）——"探测失败"永远不会被读成"包没装"。
 - **包存在性探测的 argv 形态**：python 的探针代码遍历 `sys.argv[1:]`，所以包名按**每个一个 argv 项**传入（`<pkgs...>`）；R/Julia/Octave 的模板把逗号串插进代码（`<pkgs>`/`__PKGS__`）。真机上曾经把 `numpy,pandas` 当成**一个**包名，导致"已装的包也报缺"。
@@ -144,7 +148,13 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - 商业引擎的 CLI 模板随版本变化（Maple 尤甚）：描述符带 `VERIFY` 标记，**每次运行都回显实际 argv**；若引擎以用法/选项错退出，返回 `MATH_ENGINE_BAD_ARGV` + `next.kind='engine-override'`（指向 `mathEngineOverride` 覆盖模板），而不是裸 `MATH_NONZERO_EXIT`。有许可的机器应验证这三个模板。
 - 真强制（禁网/限权）需要宿主 sandbox/policy 支持——**列为待上游需求**，不在本轮范围。
 
-**验证边界（诚实声明）**：引擎执行本身、各引擎的真实 argv/版本/许可路径与安装器命令**只通过假 subprocess seam 验证**（`tests/helpers/math-computation-fake-seam.mjs`），**没有**在真实 python/R/octave/julia/matlab/maple/wolfram 上跑过；真机验证需要一台装有这些引擎的机器（安装计划、模板与许可探测的**静态**面已在 `guards.md` 与 parity 守卫里冻结）。
+**验证边界（诚实声明，2026-10-01 更新）**：
+- **已在真机上验证过的**（本机，真实引擎、真实子进程、真实回执）：**python 3.12.10**（用户级安装，镜像二进制 SHA256 校验通过；numpy/pandas/sympy/scipy/matplotlib/mpmath 经 TUNA PyPI 安装）与 **R 4.6.1**（CRAN 镜像；⚠️ 机器级安装、**不在 PATH**、该镜像未发布校验和 ⇒ 记为**未验证校验和**）。
+  - 四个预设都能挂载并暴露同一个 15 参数 `math_computation`；四个预设在同一真实引擎上给出**相同数字**（`det=-2`、`sum=1.6439345666815597`、`integrate(x²,0,1)=1/3`、`simplify(sqrt(8))=2*sqrt(2)`；R 侧 `[1] -2`、`[1] 2/3`）。
+  - **native 与 `cli` 逃生口产出完全相同的数字与相同的 `scriptHash`**（仅元数据不同）。
+  - 边界码在真机上确认：语法错误 ⇒ `MATH_NONZERO_EXIT`（带 stderr + 回执，**不是** `MATH_INVALID_ARGUMENT`）；超时 ⇒ `MATH_TIMEOUT`（进程被终止）；R 警告 ⇒ `exit=0` + stderr + 回执；缺包 ⇒ `MATH_MISSING_PACKAGES` 且**不产生回执目录**；`numpy>=1` 只按存在性接受；独立 shell 重跑与回执里的 stdout **逐字一致**。
+- **仍未验证的**：**Octave / Julia 未安装**（本机没有 `winget`，scoop 的依赖拉取被 `raw.githubusercontent` 阻断）；**MATLAB / Maple / Wolfram 的商业模板**仍标 `VERIFY`（需许可机器确认，`mathEngineOverride` 可覆盖模板）；**插件无法强制禁网/限权**（宿主 `subprocess.spawn` 没有 policy 槽，需宿主 sandbox）。
+- 引擎发现顺序与"装了却不在 PATH"的处理见 §5.4；假 subprocess seam（`tests/helpers/math-computation-fake-seam.mjs`）仍是**回归**主力，但已**不再**是唯一的执行证据。
 
 **并发下的完整性**：同一 archive id 的分配与"占用"（receipt.json 落盘）在**一个插件实例内**是串行的，因此两个并发同 id 运行会分别拿到 attempt 1 / attempt 2，绝不会共用目录。**跨进程**并发仍依赖宿主的独占创建原语（当前 fs 接口没有暴露，列为已知限制）。
 

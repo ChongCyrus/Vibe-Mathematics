@@ -271,6 +271,13 @@ section('1 the tool is registered ONCE, with the shared module\'s description/sc
   // param visibility: paramsKeys is Object.keys(params) — the six keys must be there.
   const st = await h.callTool('vibe_v4_status', {})
   for (const k of MODULE.MATH_PARAM_NAMES) assert(st.paramsKeys.indexOf(k) !== -1, '★ status().paramsKeys exposes ' + k)
+  // round-9 (F2): in a fresh workspace there is no paper state, so `paper.dir` is a PROJECTION - the
+  // response must say so (reading status touches no fs and creates no directory).
+  if (st.paper) {
+    assert(st.paper.dirProjected === true && st.paper.dirSource === 'projection', '★ a fresh status labels paper.dir as a PROJECTION (not a real directory)')
+    assert(st.paper.readSideEffect === false, '★ the paper view declares it has no read side effects')
+    assert(!existsSync(join(h.projectRoot, 'Paper')), '★ merely reading status did NOT create Paper/')
+  }
   h.cleanup()
 }
 
@@ -337,7 +344,10 @@ section('4 refusals: path escape, cli without command, cli+expr, policy, missing
   const before = h.state.spawns.length
   const notThere = await h.math({ op: 'run', engine: 'octave', mode: 'code', code: 'x=1\n' })
   assert(notThere.ok === false && notThere.code === 'MATH_ENGINE_NOT_FOUND', '★ a missing engine reports MATH_ENGINE_NOT_FOUND')
-  assert(notThere.next && notThere.next.kind === 'user-install' && !!notThere.next.command, '★ …with per-OS user-install guidance (next.kind=user-install)')
+  // round-9 (real-engine): the guide is always per-OS; `command` itself is only offered when that
+  // OS's package manager is actually resolvable (a command that cannot run is misleading).
+  assert(notThere.next && notThere.next.kind === 'user-install' && notThere.next.perOs && notThere.next.perOs.windows, '★ …with per-OS user-install guidance (next.kind=user-install)')
+  assert(notThere.next.packageManagerAvailable === false ? notThere.next.command === '' : typeof notThere.next.command === 'string', '★ command ⇔ package-manager availability (never a command that cannot run)')
   assert(h.state.spawns.length === before, 'a missing engine spawns nothing')
   // (a) no subprocess service at all ⇒ the host's capability flag short-circuits to
   //     MATH_NO_SUBPROCESS (not a misleading ENGINE_NOT_FOUND + "install python" guide)

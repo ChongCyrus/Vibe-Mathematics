@@ -72,11 +72,12 @@ export const MATH_PERSONA_TOOL_LINE = '- math_computation {op: probe|run|receipt
 // P2a: the archive -> edit -> re-run workflow. Injected into every preset's rule block (and appended
 // to both persona blocks) so an agent cannot miss that (a) the script is archived, (b) it may edit
 // it, and (c) re-running is what produces evidence for the edited code.
-export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>），你可以用普通文件工具打开并编辑它；'
+export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；'
+  + '**成员的文件工具是按会话 cwd 解析的**，所以打开它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）；'
   + '编辑后用 mode:\'file\' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——'
   + '报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。'
 
-export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:\'file\' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
+export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>, **relative to the project root**); member file tools resolve paths against the SESSION CWD, so open it via the ABSOLUTE `receipt.scriptAbs`, or join `receipt.cwd` with `receipt.scriptPath` (both are in the receipt); after editing, re-run it with mode:\'file\' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
 
 // Round-6 (A): honesty about SUBSTITUTIONS. An alternative that weakens exactness or conclusion
 // strength must be declared, and the conclusion must never read as if the requested (exact) result
@@ -288,14 +289,39 @@ function fail(code, engine, message, extra) {
   // round-7 (live-session fix): the probe diagnostic must survive into the response, otherwise
   // "存在但不可用" is opaque (a real session showed exactly that).
   if (extra && extra.probe) out.probe = jsonSafeDiag(extra.probe)
+  // round-9 (F7): the version-constraint policy travels with failures too (no silent drop).
+  if (extra && extra.versionPolicy) out.versionPolicy = extra.versionPolicy
+  if (extra && extra.constraintsNotEnforced) out.constraintsNotEnforced = extra.constraintsNotEnforced
   return out
 }
 
-function userInstallNext(engine) {
+// round-9 (real-engine finding): the suggested install command may not be runnable on this machine
+// (e.g. `winget` is absent), and handing a user a command that cannot run is misleading. So the
+// command is emitted ONLY when its package manager is actually resolvable; otherwise we return the
+// official vendor/download pointer plus an explicit note. Async because resolution goes through the host.
+async function userInstallNext(H, engine) {
   const d = MATH_ENGINES[engine] || {}
   const per = d.userInstall || {}
   const platform = process && process.platform === 'win32' ? 'windows' : (process && process.platform === 'darwin' ? 'macos' : 'linux')
-  return next('user-install', { engine: engine, perOs: per, command: per[platform] || '', platform: platform })
+  const raw = per[platform] || ''
+  const mgr = (function () { const m = /^\s*(winget|brew|apt-get|apt|choco|scoop|dnf|pacman|zypper)\b/.exec(String(raw)); return m ? m[1] : null })()
+  let available = true
+  if (mgr) {
+    try { available = !!(await H.resolveExecutable(mgr)) } catch (e) { available = false }
+  }
+  return next('user-install', {
+    engine: engine,
+    perOs: per,
+    command: (mgr && !available) ? '' : raw,
+    suggestedCommand: raw,
+    platform: platform,
+    packageManager: mgr,
+    packageManagerAvailable: mgr ? available : null,
+    vendorUrl: d.vendor || null,
+    note: (mgr && !available)
+      ? ('本机没有检测到包管理器 ' + mgr + '：建议命令无法运行，请按上面的官方地址手动安装（或先自行安装一个包管理器）。')
+      : null,
+  })
 }
 
 // ── host adaptation ─────────────────────────────────────────────────────────────────────────────
@@ -353,6 +379,42 @@ export async function probeMathEngines(host, opts) {
   return result
 }
 
+// round-9 (real-engine finding): an engine can be INSTALLED yet invisible, because discovery only
+// looked at the server process's PATH (R 4.6.1 landed in C:\Program Files\R\R-4.6.1\bin and was NOT
+// added to PATH). Add the known per-OS INSTALL locations, globbed by version, still AFTER PATH and
+// after the bundled runtime; existence is always proven by LISTING, never assumed.
+async function knownInstallCandidates(H, engineName) {
+  if (typeof H.listDirAbs !== 'function') return []
+  const cands = mathEngineCandidates(engineName)
+  if (!cands) return []
+  const env = (typeof process !== 'undefined' && process.env) || {}
+  const win = !!(typeof process !== 'undefined' && process.platform === 'win32')
+  const exts = win ? ['', '.exe', '.cmd'] : ['']
+  const out = []
+  const listDirs = async (dir) => { try { return ((await H.listDirAbs(dir)) || []).filter((e) => e && e.type === 'directory').map((e) => e.name) } catch (e) { return [] } }
+  const listFiles = async (dir) => { try { return ((await H.listDirAbs(dir)) || []).filter((e) => e && e.type === 'file').map((e) => e.name) } catch (e) { return [] } }
+  const match = async (dir) => {
+    const files = await listFiles(dir)
+    for (const c of cands) for (const x of exts) if (files.indexOf(c + x) !== -1) out.push(dir + '/' + c + x)
+  }
+  if (engineName === 'r') {
+    const roots = win
+      ? [String(env.ProgramFiles || 'C:/Program Files') + '/R', String(env['ProgramFiles(x86)'] || 'C:/Program Files (x86)') + '/R', env.LOCALAPPDATA ? String(env.LOCALAPPDATA) + '/Programs/R' : null]
+      : ['/usr/lib/R', '/Library/Frameworks/R.framework/Resources', '/usr/local/lib/R', '/opt/R', '/usr/lib64/R']
+    for (const root of roots) {
+      if (!root) continue
+      for (const d of await listDirs(root)) await match(root + '/' + d + '/bin') // windows versioned dirs
+      await match(root + '/bin')                                                 // unix / framework layout
+    }
+  } else if (engineName === 'python' && win) {
+    const local = env.LOCALAPPDATA ? String(env.LOCALAPPDATA) + '/Programs/Python' : null
+    for (const d of (local ? await listDirs(local) : [])) await match(local + '/' + d)
+    const pf = String(env.ProgramFiles || 'C:/Program Files')
+    for (const d of await listDirs(pf)) if (/^Python[0-9]/i.test(d)) await match(pf + '/' + d)
+  }
+  return Array.from(new Set(out))
+}
+
 async function resolveCandidate(H, d) {
   const cands = mathEngineCandidates(d.name)
   if (!cands) return null
@@ -362,9 +424,13 @@ async function resolveCandidate(H, d) {
       if (typeof p === 'string' && p) return p
     } catch (e) { /* not this one */ }
   }
-  // round-7 (fix 2): DSH ships its own runtimes; PATH always wins, so this is the LAST resort. The
+  // round-7 (fix 2): DSH ships its own runtimes; PATH always wins, so this is a LAST resort. The
   // tree name is globbed (never hard-coded) and executable names come from the descriptor candidates.
   for (const p of await dshRuntimeCandidates(H, d.name)) {
+    if (typeof p === 'string' && p) return p
+  }
+  // round-9: then the known per-OS install locations (an engine installed without touching PATH).
+  for (const p of await knownInstallCandidates(H, d.name)) {
     if (typeof p === 'string' && p) return p
   }
   return null
@@ -513,7 +579,7 @@ async function resolveEngine(H, requested, params, args) {
       if (params.mathMode !== 'typed+shell') return fail('MATH_REFUSED', name, 'cli 被策略禁用（mathMode=' + params.mathMode + '）', { next: next('reason', { reason: 'policy' }) })
       let exe = null
       try { exe = await H.resolveExecutable(args.cli.command) } catch (e) { exe = null }
-      if (!exe) return fail('MATH_ENGINE_NOT_FOUND', name, 'cli 命令无法解析：' + args.cli.command, { next: userInstallNext('cli') })
+      if (!exe) return fail('MATH_ENGINE_NOT_FOUND', name, 'cli 命令无法解析：' + args.cli.command, { next: await userInstallNext(H, 'cli') })
       // round-7 (finding 5): report the REAL version when the command's family is recognisable (the
       // descriptor for that family carries the version probe); unknown commands stay 'unknown'.
       let cliVersion = 'unknown'
@@ -548,7 +614,7 @@ async function resolveEngine(H, requested, params, args) {
     return { ok: true, name: name, desc: d, exe: hit, version: v.version }
   }
   const first = requested === 'auto' ? (params.mathEngines[0] || 'python') : requested
-  return fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（试过：' + names.join(', ') + '）', { next: userInstallNext(first) })
+  return fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（试过：' + names.join(', ') + '）', { next: await userInstallNext(H, first) })
 }
 
 // ── package probe ───────────────────────────────────────────────────────────────────────────────
@@ -810,7 +876,7 @@ async function opProbe(H, args, params) {
   }
   if (!probe.available && !(chosen && chosen.ok)) {
     const first = requested || params.mathEngines[0] || 'python'
-    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（请求：' + first + '）', { next: userInstallNext(first), engines: [], available: false, packages: packages })
+    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（请求：' + first + '）', { next: await userInstallNext(H, first), engines: [], available: false, packages: packages })
     out.op = 'probe'
     return out
   }
@@ -821,10 +887,22 @@ async function opProbe(H, args, params) {
     engines.push({ name: chosen.name, path: chosen.exe, version: chosen.version, license: (MATH_ENGINES[chosen.name] || {}).license })
   }
   const engineInfo = (chosen && chosen.ok) ? { name: chosen.name, path: chosen.exe, version: chosen.version } : null
+  // round-9 (F3): the availability line must never be silently partial - name the CONFIGURED engines
+  // that were not found (and why), instead of just listing the ones that happened to resolve.
+  const foundNames = engines.map((e) => e.name)
+  // Per-engine absence explanation. The key is `why` (NOT the reserved machine-readable vocabulary
+  // key), so the parity guard's exhaustive `next.reason` set stays exactly the refusal vocabulary.
+  const absent = params.mathEngines.filter((e) => foundNames.indexOf(e) === -1).map((e) => {
+    if (MATH_ENGINES[e] && MATH_ENGINES[e].resolveFrom === 'cli.command') return { engine: e, why: 'needs-a-caller-supplied-command' }
+    return { engine: e, why: 'not-found-on-this-machine' }
+  })
   return {
     ok: true, op: 'probe', engine: engineInfo ? engineInfo.name : null, engineInfo: engineInfo,
     engines: engines, available: true, packages: packages,
-    message: '可用引擎：' + engines.map((e) => e.name + ' ' + e.version).join('、') + (engineInfo ? '（请求 ' + engineInfo.name + '：' + engineInfo.version + '）' : ''),
+    configured: params.mathEngines.slice(), absent: absent,
+    message: '可用引擎：' + engines.map((e) => e.name + ' ' + e.version).join('、')
+      + (engineInfo ? '（请求 ' + engineInfo.name + '：' + engineInfo.version + '）' : '')
+      + (absent.length ? '；已配置但本机未发现：' + absent.map((a) => a.engine).join('、') : '；已配置的引擎都在'),
   }
 }
 
@@ -851,6 +929,9 @@ async function opRun(H, args, params) {
   const engineLabel = det.name === 'cli' ? ('cli:' + cliCommand) : det.name
 
   const want = (args.packages && args.packages.length) ? args.packages : params.mathPackages
+  // round-9 (F7): version constraints are NOT enforced - we only check existence by base name.
+  const pinnedSpecs = want.filter((sp) => parsePackageSpec(sp).pinned)
+  const versionPolicy = 'version-constraints-are-existence-only: 只按 base name 检查是否存在，约束本身从不校验（版本求解交给包管理器）' + (pinnedSpecs.length ? '；本次未校验的约束：' + pinnedSpecs.join(', ') : '；本次没有版本约束')
   // round-7 (finding 3): for cli the precheck runs against the FAMILY of `cli.command` (same
   // discovery-shaped logic); an unrecognisable command SKIPS the precheck instead of reporting a
   // false "missing" that would block the escape hatch.
@@ -865,6 +946,7 @@ async function opRun(H, args, params) {
       missing: missing,
       next: next('agent-install', { engine: det.name, packages: missing, specs: want.slice(), dryRun: true }),
       packages: pk,
+      versionPolicy: versionPolicy, constraintsNotEnforced: pinnedSpecs.slice(),
     })
   }
 
@@ -953,6 +1035,9 @@ async function opRun(H, args, params) {
     engine: { name: engineLabel, path: det.exe, version: det.version, source: det.name === 'cli' ? 'cli' : 'path' },
     script: { path: scriptRel, sha256: scriptHash, bytes: Buffer.byteLength(scriptText, 'utf8') },
     scriptPath: scriptRel, scriptHash: scriptHash,
+    // round-8 (P0/D3): member file tools are session-cwd relative, so the ABSOLUTE locations must be
+    // in the receipt: `scriptAbs` is directly openable, `cwd` is the project root to join with.
+    scriptAbs: scriptAbs, cwd: root,
     sourceFile: fileRel || null,
     sourceHashBefore: sourceHashBefore, sourceHashAfter: sourceHashAfter,
     scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
@@ -979,9 +1064,11 @@ async function opRun(H, args, params) {
 
   const shell = {
     ok: true, op: 'run', engine: engineLabel, mode: mode,
+    versionPolicy: versionPolicy, constraintsNotEnforced: pinnedSpecs.slice(),
     engineInfo: receipt.engine,
     argv: assembled.argv.slice(),
     scriptPath: scriptRel, scriptHash: scriptHash,
+    scriptAbs: scriptAbs, cwd: root,
     attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
     scriptChanged: scriptChanged, scriptChangedDuringRun: scriptChangedDuringRun,
     sourceFile: fileRel || null,
@@ -994,8 +1081,12 @@ async function opRun(H, args, params) {
     warnings: warnings,
   }
   if (receipt.timedOut) {
-    return Object.assign(fail('MATH_TIMEOUT', engineLabel, '执行超时（' + timeoutMs + 'ms）已被终止', { argv: assembled.argv.slice(), receipt: receiptRef }),
-      archiveFields(), { ms: receipt.ms, timedOut: true })
+    // round-9 (F5): failure EVIDENCE must be uniform - a timeout carries the SAME fields a non-zero
+    // exit does (exit + stderr), plus timedOut:true.
+    const out = fail('MATH_TIMEOUT', engineLabel, '执行超时（' + timeoutMs + 'ms）已被终止', { argv: assembled.argv.slice(), receipt: receiptRef })
+    out.exit = null
+    out.stderr = String(fullErr).slice(0, MATH_CAPS.stderr)
+    return Object.assign(out, archiveFields(), { ms: receipt.ms, timedOut: true })
   }
   if (r.exit !== 0) {
     const blob = fullErr + '\n' + fullOut

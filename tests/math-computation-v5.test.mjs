@@ -297,8 +297,18 @@ section('2 op=probe reports availability, and a missing engine comes with the gu
 {
   // round-7: with bundled-runtime discovery a "no engine anywhere" fixture must also isolate the
   // runtime trees, so DSH_HOME is pinned to an empty dir for this miss case (and restored after).
+  // round-9: engine discovery ALSO scans the known per-OS INSTALL dirs (real python/R now live in
+  // %ProgramFiles%/%LOCALAPPDATA% on this machine), so those roots are pinned to empty dirs too -
+  // otherwise this "no engine" fixture would legitimately FIND the installed engines.
   const prevDshHome = process.env.DSH_HOME
-  process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'vibe-v5-nodsh-'))
+  const prevPf = process.env.ProgramFiles
+  const prevPf86 = process.env['ProgramFiles(x86)']
+  const prevLocal = process.env.LOCALAPPDATA
+  const emptyRoot = mkdtempSync(join(tmpdir(), 'vibe-v5-nodsh-'))
+  process.env.DSH_HOME = emptyRoot
+  process.env.ProgramFiles = emptyRoot
+  process.env['ProgramFiles(x86)'] = emptyRoot
+  process.env.LOCALAPPDATA = emptyRoot
   const miss = makeHost(makeSeam({ installed: {} }))
   const r0 = await miss.callMath({ op: 'probe' })
   assert(r0.ok === false && r0.code === 'MATH_ENGINE_NOT_FOUND' && r0.next && r0.next.kind === 'user-install',
@@ -306,6 +316,9 @@ section('2 op=probe reports availability, and a missing engine comes with the gu
   assert(!!(r0.next && r0.next.perOs && r0.next.perOs.windows && r0.next.perOs.linux),
     'the guide carries per-OS install commands')
   if (prevDshHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevDshHome
+  if (prevPf === undefined) delete process.env.ProgramFiles; else process.env.ProgramFiles = prevPf
+  if (prevPf86 === undefined) delete process.env['ProgramFiles(x86)']; else process.env['ProgramFiles(x86)'] = prevPf86
+  if (prevLocal === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = prevLocal
   const hit = makeHost(makeSeam({ installed: { python: true } }))
   const r1 = await hit.callMath({ op: 'probe' })
   assert(r1.ok === true && r1.engines.some((e) => e.name === 'python' && /3\.11/.test(e.version)),

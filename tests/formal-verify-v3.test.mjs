@@ -1577,6 +1577,39 @@ async function driveSiteV3(rw, opts, qid) {
   await callTool('vibe_math_abort', {}, rvv)
 }
 
+// ===============================================================
+// 5c. round-2 D4: ONE vote-count source — a mid-verification verifierCount change must not re-derive
+//     the in-flight task's quorum from live params (the audit's "same count, different code" bug).
+// ===============================================================
+section('5c D4 vote count: quorum comes from the task snapshot, not from live params')
+{
+  const RD4 = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'd4-votecount' }, RD4)
+  await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { verifierCount: 2 }), RD4)
+  await callTool('vibe_math_add_proposition', { id: 'p-d4', 概述: 'D4 票数单一来源', 概率: 0.6, 分类: '数论' }, RD4)
+  await callTool('vibe_math_start', {}, RD4)
+  const reD4 = verifyRe('p-d4')
+  assert(await drive(RD4, () => unfiredVerifiers(RD4, reD4).length >= 2, 'two verifiers for p-d4'), 'two verifiers were dispatched for p-d4 (the creation-time snapshot)')
+  // Mid-verification: the office asks for MORE verifiers. Intent-wise that is a NEW requirement for
+  // FUTURE objects; this task's participant set was frozen when it was created.
+  await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { verifierCount: 4 }), RD4)
+  await sleep(300)
+  // Count PER EXACT rId: the proposition may legitimately have several candidate rIds
+  // (r-p-d4, r-p-d4-pf0, …); only the in-flight task for one rId must stay pinned.
+  const labels = spawnOf(RD4, 'verifier:').map((x) => x.label)
+  const exact = {}
+  for (const l of labels) { const m = /^verifier:(r-p-d4):(\d+)$/.exec(l); if (m) exact[m[1]] = (exact[m[1]] || 0) + 1 }
+  const inFlight = exact['r-p-d4'] || 0
+  assert(inFlight === 2, '★ [D4] raising verifierCount mid-verification does NOT re-staff the in-flight task (participant set = the snapshot；实测 ' + JSON.stringify({ inFlight: inFlight, labels: labels }) + '）')
+  // Both dispatched votes satisfy the quorum ⇒ the object must conclude. A view that re-derived its
+  // quorum from the live params would demand 4 votes and stall here forever.
+  await runVerifyRound(RD4, 'p-d4', [1, 1])
+  const cardOf = () => readIf(join(projRoot('d4-votecount'), 'Propos', '数论', 'p-d4.md'))
+  const concluded = await drive(RD4, () => { const c = cardOf(); return /-\s*概率:\s*1(\D|$)/.test(c) || /状态:\s*已验证/.test(c) }, 'p-d4 concludes with the two votes it has', 15000)
+  assert(concluded, '★★★ [D4] the two dispatched votes still satisfy the quorum and the object concludes (no view may re-derive its quorum from live params；card=' + JSON.stringify(cardOf().slice(0, 220)) + '）')
+  await callTool('vibe_math_abort', {}, RD4)
+}
+
 section('10 the captured prompt corpus is written for human review')
 {
   mkdirSync(CORPUS_DIR, { recursive: true })

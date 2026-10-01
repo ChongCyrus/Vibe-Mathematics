@@ -44,6 +44,12 @@ function ok(cond, label, detail) {
 }
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 
+// round-8: the persona rule lines must be VERBATIM copies of the shared module constants, so a module
+// wording change can never silently leave one preset behind. Import the module once (ESM top level).
+const MATH_MODULE = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+const ARCHIVE_RULE_ZH = MATH_MODULE.MATH_ARCHIVE_WORKFLOW_LINE
+const ARCHIVE_RULE_EN = MATH_MODULE.MATH_ARCHIVE_WORKFLOW_LINE_EN
+
 function block(src, startMarker, endMarker) {
   const i = src.indexOf(startMarker)
   if (i === -1) return ''
@@ -181,6 +187,34 @@ for (const P of PRESETS) {
   // 4d. round-7 (fix 2): every preset must wire the bundled-runtime discovery seam, otherwise a
   // machine whose only interpreter is DSH's own runtime still reports MATH_ENGINE_NOT_FOUND.
   ok(js.indexOf('runtimeRoots') !== -1 && js.indexOf('listDirAbs') !== -1, tag + 'wires runtimeRoots + listDirAbs (DSH bundled-runtime discovery)')
+
+  // 4e. round-8 (P0/D3): every persona block mentioning the archived scriptPath must ALSO say how to
+  // open it (absolute `receipt.scriptAbs` / join with `receipt.cwd`): member file tools resolve
+  // against the SESSION CWD, while scriptPath is project-root relative.
+  const scriptBlocks = blocks.filter((b) => b.indexOf('scriptPath') !== -1)
+  const openableBlocks = scriptBlocks.filter((b) => /receipt\.scriptAbs/.test(b))
+  ok(scriptBlocks.length >= 2, tag + 'both persona blocks mention the archived scriptPath', 'blocks: ' + scriptBlocks.length)
+  ok(openableBlocks.length === scriptBlocks.length && openableBlocks.length >= 2, tag + '★ every scriptPath mention also gives the ABSOLUTE path receipt.scriptAbs', 'openable: ' + openableBlocks.length + '/' + scriptBlocks.length)
+
+  // 4e-ter. VERBATIM-from-constant guard: the archive-workflow rule must appear in BOTH persona
+  // blocks exactly as the shared module constant defines it (a wording change in the module that is
+  // not re-synced into a preset is a silent drift - this assertion reports the found count).
+  const zhRule = String(ARCHIVE_RULE_ZH).trim()
+  const enRule = String(ARCHIVE_RULE_EN).trim()
+  const zhFound = blocks.filter((b) => b.indexOf(zhRule) !== -1).length
+  ok(zhFound >= 2, tag + 'the zh archive-workflow rule appears VERBATIM in BOTH persona blocks', 'found ' + zhFound)
+  if (P.dir === 'vibe-math-v4' || P.dir === 'vibe-math-v5') {
+    const enFound = blocks.filter((b) => b.indexOf(enRule) !== -1).length
+    ok(enFound >= 2, tag + 'the en archive-workflow rule appears VERBATIM in BOTH persona blocks', 'found ' + enFound)
+  }
+}
+// 4e-bis. the SHARED module's rule text must carry the same instruction (zh + en), and the receipt
+// fields it points at must exist in the module.
+{
+  const mod = read('vibe-math-v2/math-computation.js')
+  ok(/receipt\.scriptAbs/.test(mod), 'the shared module rule mentions receipt.scriptAbs')
+  ok(/会话 cwd/.test(mod) && /SESSION CWD/.test(mod), 'the shared module rule states the session-cwd fact in BOTH languages')
+  ok(/scriptAbs: scriptAbs, cwd: root/.test(mod), 'the shared module WRITES scriptAbs + cwd into the receipt')
 }
 
 // 5. README (both languages) document the six parameters
@@ -194,7 +228,15 @@ for (const f of ['README.md', 'README.en.md']) {
 {
   const doc = existsSync(join(ROOT, 'docs/math-computation.md')) ? read('docs/math-computation.md') : ''
   ok(doc.indexOf('字符串级') !== -1 && doc.indexOf('不解析符号链接') !== -1, 'docs §6 states the path guard is string-level and does not resolve links/junctions')
-  ok(doc.indexOf('只通过假 subprocess seam 验证') !== -1, 'docs §6 states engine execution is verified only through the fake subprocess seam')
+  // round-9 (F0): the boundary paragraph must pin the CORRECTED truth - real engines were verified on
+  // this machine, AND the still-unverified set is named. (The old claim "only through the fake
+  // subprocess seam" is stale and must not be pinned any more.)
+  ok(doc.indexOf('假 subprocess seam') !== -1 && doc.indexOf('不再') !== -1, 'docs §6 keeps the fake-subprocess seam but states it is no longer the only evidence')
+  ok(doc.indexOf('python 3.12.10') !== -1 && doc.indexOf('R 4.6.1') !== -1, 'docs §6 names the real engines/versions verified on this machine')
+  ok(doc.indexOf('scriptHash') !== -1 && doc.indexOf('native') !== -1, 'docs §6 states the native-vs-cli parity (same numbers + same scriptHash)')
+  ok(doc.indexOf('MATH_TIMEOUT') !== -1 && doc.indexOf('MATH_NONZERO_EXIT') !== -1 && doc.indexOf('MATH_MISSING_PACKAGES') !== -1, 'docs §6 states the real-engine edge codes that were confirmed')
+  ok(doc.indexOf('Octave / Julia 未安装') !== -1 && doc.indexOf('VERIFY') !== -1 && doc.indexOf('无法强制禁网') !== -1, 'docs §6 keeps the still-unverified set (no Octave/Julia, commercial VERIFY, no network/write enforcement)')
+  ok(doc.indexOf('只通过假 subprocess seam 验证') === -1, 'docs §6 no longer claims engine execution was verified ONLY through the fake seam (stale claim removed)')
   ok(doc.indexOf('串行') !== -1 && doc.indexOf('跨进程') !== -1, 'docs §6 states the in-process serialisation and the cross-process limitation')
 }
 

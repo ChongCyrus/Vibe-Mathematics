@@ -1309,7 +1309,22 @@ export function apply(ctx) {
     // 并发计数由 agentRegistry 推导，无需手工 +1。
     await saveAll()
   }
-  async function interruptChild(childId) { try { subagents.interrupt(childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) {} }
+  /**
+   * 中断一个**在册**子代理。审计 D1：旧实现 `try{…}catch(e){}` 把"没有这个 child / 宿主拒绝中断"
+   * 都吞成静默成功（调用方拿到 undefined，还以为已经中断）。现在：空/未知 id ⇒ `code` +
+   * `next{tool,hint}`，宿主抛错 ⇒ 保留错误文本并给替代出口；只有真的发出中断才 `ok:true`。
+   */
+  async function interruptChild(childId) {
+    const id = String(childId == null ? '' : childId).trim()
+    if (!id) return { ok: false, code: 'VIBE_MATH_INVALID_ARGUMENT', message: 'interruptChild 失败：childId 为空——无法确定要中断哪个子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 列出本会话在册子代理的 id，再带 childId 调用。' } }
+    if (!Object.prototype.hasOwnProperty.call(agentRegistry, id)) return { ok: false, code: 'VIBE_MATH_CHILD_NOT_FOUND', message: 'interruptChild 失败：' + id + ' 不在本会话的在册子代理里（在册 ' + Object.keys(agentRegistry).length + ' 个）——可能已经结束，或不是本会话的子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 取当前在册 id；要停整个会话用 vibe_math_abort。' } }
+    try {
+      await subagents.interrupt(id, { kind: 'ancestor', agent: rootAgent })
+      return { ok: true, childId: id }
+    } catch (e) {
+      return { ok: false, code: 'VIBE_MATH_INTERRUPT_FAILED', message: 'interruptChild 失败：宿主拒绝中断 ' + id + '（' + String((e && e.message) || e) + '）。', next: { kind: 'reason', tool: 'vibe_math_abort', hint: '宿主不接受单点中断时，用 vibe_math_abort 终止整个会话的子代理。' } }
+    }
+  }
 
   // ================= prompts =================
   function personaText(key) { return params[key] ? (String(params[key]) + '\n\n') : '' }
@@ -1625,7 +1640,10 @@ export function apply(ctx) {
     }
     return {}
   }
-  async function resolveDecision(id, resolution) { const d = decisionQueue.find(function (x) { return x.id === id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
+  async function resolveDecision(id, resolution) {
+    const d = decisionQueue.find(function (x) { return x.id === id })
+    if (!d) return { ok: false, code: 'VIBE_MATH_DECISION_NOT_FOUND', message: 'decision not found：' + String(id == null ? '' : id) + ' 不在人工决策队列里（队列现有 ' + decisionQueue.length + ' 个' + (decisionQueue.length ? ('：' + decisionQueue.map(function (x) { return x.id }).join(', ')) : '') + '）——可能已被 vibe_math_decide 结清，或被 start/resume/abort/换项目作废（作废是终态，不会回到 pending）。', next: { kind: 'reason', tool: 'vibe_math_list_decisions', hint: '先用 vibe_math_list_decisions 取当前 pending 的 id；若期望它还在，检查是否发生过 start/resume/abort/换项目。' } }
+    if (d.status !== 'pending') return { ok: false, code: 'VIBE_MATH_DECISION_ALREADY_RESOLVED', message: 'decision already resolved：' + String(id) + ' 当前状态是 ' + String(d.status) + '——每次决策只生效一次。', next: { kind: 'reason', tool: 'vibe_math_list_decisions', hint: '用 vibe_math_list_decisions 看还有哪些 pending；要重新决策请等框架发起新的决策项。' } }; d.status = 'resolved'; d.resolution = resolution; if (scheduler.gate && scheduler.gate.decisionId === id) scheduler.gate = null; logActivity('decide', id + ' resolved: ' + resolution.action + (resolution.verdict !== undefined ? ' ' + resolution.verdict : '')); await saveAll(); scheduleTick(); return { ok: true, message: 'decision resolved' } }
 
   // ================= scheduler core =================
   function scheduleTick() { tick().catch(function (e) { console.error('vibe-math-v3 tick error: ' + String((e && e.stack) || e)) }) }
@@ -1877,7 +1895,7 @@ export function apply(ctx) {
     return true
   }
   async function backfillVerifiers(t) {
-    while (t.children.length < t.expectedCount) {
+    while (t.children.length < voteCount(t).expected) {
       if (activeCount() >= params.maxParallelThreshold) break
       const index = t.children.length
       const childId = await spawnChild('verifier:' + t.rId + ':' + index, verifierReviewPrompt(t.r), { role: 'verifier', rId: t.rId, round: 1, index: index })
@@ -1891,7 +1909,7 @@ export function apply(ctx) {
       const t = tasks[ids[i]]
       if (t.type !== 'verify') continue
       if (t.status === 'paused') {
-        const allReported = t.children.length > 0 && t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === t.round })
+        const allReported = voteCount(t, t.round).quorum
         if (allReported) { t.status = 'debating'; await advanceVerification(t, t.round); continue }
       }
       if (t.status !== 'spawning') continue
@@ -3756,15 +3774,35 @@ export function apply(ctx) {
    * 下限取 max(2, expectedCount)：verifierCount=1 不是"允许单票"，只是"至少 2 个独立验证器"
    * （与 createVerifyTask 的 `Math.max(2, ...)` 一致）。
    */
-  function minVotes(t) { return Math.max(2, Number(t && t.expectedCount) || 0, Number(params.verifierCount) || 0) }
-  function haveEnoughVotes(t) { return Object.keys(t.childResults).length >= minVotes(t) }
+  /**
+   * 票数/参与集的**单一来源**（审计 D4）。一个 verify 任务的参与集与"需要几票"只由**创建时的快照**
+   * `t.expectedCount`（createVerifyTask 写入）与当前 round 决定——**绝不**读实时 `params.verifierCount`
+   * 或实时名册：否则同一个计数会在 quorum 判据 / 裁决聚合 / 任务簿记之间给出不同答案，中途调参会让
+   * 已经在进行中的表决永远凑不够票数而卡死（守卫见 formal-verify-v3 §5c）。
+   */
+  function voteCount(t, round) {
+    const tt = t || {}
+    const expected = Math.max(2, Number(tt.expectedCount) || 0)
+    const r = Number((round === undefined || round === null) ? (tt.round || 1) : round) || 1
+    const participants = Array.isArray(tt.children) ? tt.children.slice() : []
+    const results = tt.childResults || {}
+    const reportedIds = Object.keys(results)
+    const thisRoundIds = participants.filter(function (cid) { const x = results[cid]; return x && Number(x.round) === r })
+    return {
+      round: r, expected: expected, participants: participants,
+      dispatched: participants.length, reported: reportedIds.length, reportedIds: reportedIds,
+      reportedThisRound: thisRoundIds.length,
+      quorum: participants.length > 0 && participants.length >= expected && thisRoundIds.length === participants.length,
+    }
+  }
+  function minVotes(t) { return voteCount(t).expected } // 快照值；**故意**不读实时 params.verifierCount
+  function haveEnoughVotes(t) { const v = voteCount(t); return v.reported >= minVotes(t) } // 单一来源：minVotes 也只读快照
   /** 所有已派出的验证器都报了本轮的票，**且**票数达到下限——否则不得推进/裁决。 */
   function allReportedWithQuorum(t, round) {
-    if (!t || !Array.isArray(t.children) || t.children.length === 0) return false
-    if (t.children.length < Math.max(2, Number(t.expectedCount) || 0)) return false
-    return t.children.every(function (cid) { const r = t.childResults[cid]; return r && r.round === round })
+    const v = voteCount(t, round)
+    return v.dispatched > 0 && v.dispatched >= v.expected && v.quorum
   }
-  function consensus(t) { const vs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
+  function consensus(t) { const vs = voteCount(t).reportedIds.map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
   async function handleVerifier(childId, meta, output, stopReason) {
     const rId = meta.rId
@@ -3838,7 +3876,7 @@ export function apply(ctx) {
   }
   // 近共识 + forced/flat 裁决（修复 v2 flat 高置信分歧误判：全部同侧且均值≥0.85/≤0.15 取均值）
   function finalVerdict(t) {
-    const rs = Object.keys(t.childResults).map(function (cid) { return t.childResults[cid] })
+    const rs = voteCount(t).reportedIds.map(function (cid) { return t.childResults[cid] })
     if (rs.length === 0) return 0.5
     if (rs.every(function (r) { return r.Result === 1 })) return 1
     if (rs.every(function (r) { return r.Result === 0 })) return 0
@@ -4696,10 +4734,10 @@ export function apply(ctx) {
   registerTool('vibe_math_set_project', TOOL_DESC.vibe_math_set_project, objParams({ name: { type: 'string' } }, ['name']), async function (args) { const slug = slugify(args.name); return await setProject(slug, false) })
   registerTool('vibe_math_list_projects', TOOL_DESC.vibe_math_list_projects, objParams({}), async function () { return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') } })
   registerTool('vibe_math_list_decisions', TOOL_DESC.vibe_math_list_decisions, objParams({}), async function () { return { ok: true, decisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }) } })
-  registerTool('vibe_math_decide', TOOL_DESC.vibe_math_decide, objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); if (!d) return { ok: false, message: 'decision not found' }; if (d.status !== 'pending') return { ok: false, message: 'decision already resolved' }; const resolution = { action: args.action, verdict: args.verdict }; const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
+  registerTool('vibe_math_decide', TOOL_DESC.vibe_math_decide, objParams({ id: { type: 'string' }, action: { type: 'string', enum: ['approve', 'reject', 'override'] }, verdict: { type: 'number' } }, ['id', 'action']), async function (args) { const d = decisionQueue.find(function (x) { return x.id === args.id }); const resolution = { action: args.action, verdict: args.verdict }; if (!d || d.status !== 'pending') return await resolveDecision(args.id, resolution); const applied = await applyDecision(d.node, d.data, resolution); const r = await resolveDecision(args.id, resolution); return Object.assign({ ok: true, applied: applied }, r) })
   registerTool('vibe_math_list_agents', TOOL_DESC.vibe_math_list_agents, objParams({}), async function () { const out = []; const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) { const m = agentRegistry[ids[i]]; out.push({ childId: ids[i], role: m.role, qid: m.qid, direction: m.direction, round: m.round, rId: m.rId }) } return { ok: true, agents: out, count: out.length } })
   registerTool('vibe_math_message_agent', TOOL_DESC.vibe_math_message_agent, objParams({ childId: { type: 'string' }, message: { type: 'string' } }, ['childId', 'message']), async function (args) { if (!agentRegistry[args.childId]) return { ok: false, message: 'unknown childId' }; await followupChild(args.childId, args.message); return { ok: true, message: 'message delivered' } })
-  registerTool('vibe_math_interrupt_agent', TOOL_DESC.vibe_math_interrupt_agent, objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { await interruptChild(args.childId); return { ok: true, message: 'interrupt requested' } })
+  registerTool('vibe_math_interrupt_agent', TOOL_DESC.vibe_math_interrupt_agent, objParams({ childId: { type: 'string' } }, ['childId']), async function (args) { const r = await interruptChild(args.childId); return Object.assign({}, r, { ok: !!(r && r.ok) }) })
   registerTool('vibe_math_plan', TOOL_DESC.vibe_math_plan, objParams({ force: { type: 'boolean' } }), async function (args) { if (args && args.force && scheduler.running && !scheduler.gate) { await callPlanner(); return { ok: true, message: 'planning triggered', queued: planQueue.length } } return { ok: true, queued: planQueue, lastPlan: lastPlanSummary } })
   registerTool('vibe_math_index', TOOL_DESC.vibe_math_index, objParams({}), async function () { await loadKnowledgeBase(); const r = await rebuildIndex(); return { ok: true, index: r, project: currentProject } })
   registerTool('vibe_math_method_add', TOOL_DESC.vibe_math_method_add, objParams({ id: { type: 'string' }, 标题: { type: 'string' }, 类型: { type: 'string' }, 核心内容: { type: 'string' }, 适用场景: { type: 'string' } }, ['id', '标题']), async function (args) { const id = idSafe(args.id); if (methods.has(id)) return { ok: false, message: 'method id already exists' }; const m = { id: id, 标题: args.标题, 类型: args.类型 || '方法', 状态: '经验', 可信断言: [], 上级体系: [], 子方法: [], 相关: [], 适用场景: args.适用场景 || '', 核心内容: args.核心内容 || '', 定义与记号: '', applications: [], improvements: [], 来源: 'user' }; methods.set(m.id, m); await saveMethod(m, false); await rebuildIndex(); return { ok: true, method: m, file: methodRel(m, false) } })
