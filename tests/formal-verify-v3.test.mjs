@@ -22,10 +22,14 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// V3_PLUGIN may be a REPO-RELATIVE path or an ABSOLUTE one (a mutant copy outside the repo, e.g. a
+// temp dir). The previous `new URL('file:///' + path)` form only worked for drive-qualified Windows
+// paths and made out-of-repo variants impossible; this is the same isAbsolute-aware resolution the
+// `math-computation-v*` suites use. Default behaviour (env var unset) is unchanged.
 const PLUGIN = process.env.V3_PLUGIN
-  ? new URL('file:///' + String(process.env.V3_PLUGIN).replace(/\\/g, '/'))
+  ? pathToFileURL(isAbsolute(process.env.V3_PLUGIN) ? process.env.V3_PLUGIN : join(dirname(fileURLToPath(import.meta.url)), '..', process.env.V3_PLUGIN))
   : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
 const HERE = dirname(fileURLToPath(import.meta.url))
 // AUDIT-CHECKLIST §2.4: the suite must also keep the INTERACTION TEXT it drove, so a human can

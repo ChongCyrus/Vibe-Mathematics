@@ -31,10 +31,14 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync, statSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// V2_PLUGIN may be a REPO-RELATIVE path or an ABSOLUTE one (a mutant copy outside the repo, e.g. a
+// temp dir). The previous `new URL('file:///' + path)` form only worked for drive-qualified Windows
+// paths and made out-of-repo variants impossible; this is the same isAbsolute-aware resolution the
+// `math-computation-v*` suites use. Default behaviour (env var unset) is unchanged.
 const PLUGIN = process.env.V2_PLUGIN
-  ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
+  ? pathToFileURL(isAbsolute(process.env.V2_PLUGIN) ? process.env.V2_PLUGIN : join(dirname(fileURLToPath(import.meta.url)), '..', process.env.V2_PLUGIN))
   : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
 // 纯函数测试面（__testHelpers）：参数归一化/搜索路径计划/哈希/指纹都从这里守卫。
 const MOD = await import(PLUGIN.href)
