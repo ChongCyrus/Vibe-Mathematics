@@ -99,7 +99,11 @@ for (const f of MODULES) {
 
 // ---- 5. descriptor invariants ----
 {
-  const E = await import(new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
+  // MATH_ENGINES_MODULE points this section at a MUTATED descriptor copy (round-6 mutants must be
+  // able to delete a dispatch manager or a scope reason without touching the repository).
+  const E = await import(process.env.MATH_ENGINES_MODULE
+    ? new URL('file:///' + String(process.env.MATH_ENGINES_MODULE).replace(/\\/g, '/')).href
+    : new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
   const order = E.MATH_ENGINE_ORDER
   ok(JSON.stringify(order) === JSON.stringify(['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']), 'MATH_ENGINE_ORDER is exactly the P1 set')
   ok(E.MATH_ENGINES.cli.defaultOn === true, 'cli is flagged defaultOn')
@@ -114,6 +118,31 @@ for (const f of MODULES) {
   }
   ok(!!E.MATH_P2_ENGINES.sage && E.MATH_P2_ENGINES.sage.phase === 'P2', 'sage is kept as the P2 descriptor')
   ok(E.mathEngineCandidates('cli') === null, 'cli has no detection candidates')
+
+  // round-6 (B): python must ship the manager DISPATCH table, and each manager must carry both the
+  // install and the matching uninstall template (the audit is only honest if the uninstall matches).
+  const pm = E.MATH_ENGINES.python.install && E.MATH_ENGINES.python.install.managers
+  ok(!!pm, 'python install declares a managers{conda,mamba,uv,pip} dispatch table')
+  for (const mgr of ['conda', 'mamba', 'uv', 'pip']) {
+    ok(!!(pm && pm[mgr]), 'python dispatch has the ' + mgr + ' manager')
+    if (pm && pm[mgr]) {
+      // The user template is either the manager's own or (for the pip fallback) the engine-level one;
+      // that precedence is what opInstall implements (`mgrTmpl.userArgv || d.install.userArgv`).
+      const userTemplate = pm[mgr].userArgv || (mgr === 'pip' ? E.MATH_ENGINES.python.install.userArgv : null)
+      ok(Array.isArray(userTemplate) && userTemplate.length > 0, mgr + ' has a user-scope install template (own or the engine-level fallback)')
+      ok(Array.isArray(pm[mgr].uninstallArgv) && pm[mgr].uninstallArgv.length > 0, mgr + ' ships the MATCHING uninstall template')
+    }
+  }
+  ok(pm && /-c/.test(pm.conda.userArgv.join(' ')) && /conda-forge/.test(pm.conda.userArgv.join(' ')), 'conda installs from -c conda-forge')
+  ok(pm && pm.pip.systemArgv && pm.pip.systemArgv.length > 0, 'pip keeps a real system-scope template')
+  ok(!!(pm && pm.uv && pm.conda && pm.mamba) && !pm.uv.systemArgv && !pm.conda.systemArgv && !pm.mamba.systemArgv, 'uv/conda/mamba have NO system template (user-only by design)')
+
+  // round-6 (C): every user-only engine states WHY in the descriptor (the refusal message quotes it).
+  for (const name of ['r', 'octave', 'julia']) {
+    ok(!!(E.MATH_ENGINES[name].install && E.MATH_ENGINES[name].install.systemUnsupportedReason), name + ' explains why system scope is unsupported')
+    ok(!E.MATH_ENGINES[name].install.systemArgv, name + ' ships no system template (user-only by design)')
+  }
+  ok(!!pm.uv.systemUnsupportedReason && !!pm.conda.systemUnsupportedReason, 'conda/uv managers explain why system scope is unsupported')
 }
 
 // ── 6. round-3 item 3: the machine-readable refusal vocabulary cannot drift ──────────────────────

@@ -27,10 +27,12 @@
 // ============================================================
 import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, isAbsolute, basename } from 'node:path'
+import { join, dirname, isAbsolute, basename, resolve as pathResolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+// V4_PERSONA_YML points the persona assertions at a MUTATED persona file (sensitivity probe).
+const PERSONA_YML = process.env.V4_PERSONA_YML ? pathResolve(process.env.V4_PERSONA_YML) : join(HERE, '..', 'vibe-math-v4', 'agent.cordis.yml')
 const PLUGIN = process.env.V4_PLUGIN
   ? pathToFileURL(isAbsolute(process.env.V4_PLUGIN) ? process.env.V4_PLUGIN : join(HERE, '..', process.env.V4_PLUGIN))
   : pathToFileURL(join(HERE, '..', 'vibe-math-v4', 'vibe-math-v4.js'))
@@ -536,7 +538,7 @@ section('13 prompt surface: zh + en availability lines, typed drops the shell fa
 // ===============================================================
 section('14 persona: both text blocks carry the frozen tool line (byte-identical)')
 {
-  const yml = readIf(join(HERE, '..', 'vibe-math-v4', 'agent.cordis.yml'))
+  const yml = readIf(PERSONA_YML)
   const line = MODULE.MATH_PERSONA_TOOL_LINE
   const hits = yml.split(line).length - 1
   assert(hits === 2, '★ MATH_PERSONA_TOOL_LINE appears verbatim in BOTH persona blocks (found ' + hits + ')')
@@ -575,7 +577,7 @@ section('15 P2a: scriptPath/scriptHash, the archive→edit→re-run workflow, an
   assert(rec2.previousReceipt && String(rec2.previousReceipt.scriptHash) === String(firstHash) && rec2.previousReceipt.attempt === 1 && !!rec2.previousReceipt.runId, '★ the attempt-2 receipt records previousReceipt{runId,attempt,scriptHash} pointing at attempt 1 (the old evidence is explicitly superseded)')
   assert(existsSync(join(h.projectRoot, firstDir, 'receipt.json')) && existsSync(join(h.projectRoot, f2.receipt.dir, 'receipt.json')), '★ BOTH receipts stay on disk (the old one is not deleted or rewritten)')
   // ③ the persona rule is in BOTH blocks, in both languages
-  const yml = readIf(join(HERE, '..', 'vibe-math-v4', 'agent.cordis.yml'))
+  const yml = readIf(PERSONA_YML)
   for (const [name, line] of [['zh', MODULE.MATH_ARCHIVE_WORKFLOW_LINE], ['en', MODULE.MATH_ARCHIVE_WORKFLOW_LINE_EN]]) {
     const hits = yml.split(line).length - 1
     assert(hits === 2, '★ the ' + name + ' archive-workflow rule appears verbatim in BOTH persona blocks (found ' + hits + ')')
@@ -661,6 +663,27 @@ section('20 round-3: the archive DIRECTORIES really exist on disk (host creates 
   const r2 = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
   assert(r2.attempt === 2 && existsSync(abs(r2.attemptDir)) && statSync(abs(r2.attemptDir)).isDirectory(), '★ the second attempt creates Computation/<runId>/attempts/2/ as a DIRECTORY (parents included)')
   assert(existsSync(abs(r.attemptDir)), 'the first attempt directory is untouched')
+  h.cleanup()
+}
+
+
+
+// ===============================================================
+section('21 round-6 A: substitution-honesty rule in BOTH persona blocks AND in the injected line')
+{
+  const yml = readIf(PERSONA_YML)
+  const zh = MODULE.MATH_SUBSTITUTION_RULE_LINE
+  const en = MODULE.MATH_SUBSTITUTION_RULE_LINE_EN
+  assert(!!zh && !!en, 'the shared module exports MATH_SUBSTITUTION_RULE_LINE and _EN')
+  for (const [lang, line] of [['zh', zh], ['en', en]]) {
+    const hits = yml.split(line).length - 1
+    assert(hits === 2, '★ the ' + lang + ' substitution rule appears verbatim in BOTH persona blocks (found ' + hits + ')')
+  }
+  assert(/替代必须声明（诚实性）/.test(yml) && /Declare substitutions \(honesty\)/.test(yml), 'the rule is present in both languages in the persona')
+  const h = await live({ installed: ['python3', 'python'] })
+  const prompt = await h.prompts('normal', 'r-1')
+  assert(prompt.indexOf(String(zh).trim()) !== -1, '★ the injected availability line carries the ZH substitution rule')
+  assert(prompt.indexOf(String(en).trim()) !== -1, '★ the injected availability line carries the EN substitution rule')
   h.cleanup()
 }
 

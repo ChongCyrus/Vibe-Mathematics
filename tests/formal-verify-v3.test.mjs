@@ -1495,6 +1495,84 @@ section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性
 // 10. interaction corpus (AUDIT-CHECKLIST §2.4) — a HUMAN must be able to re-read
 //     every prompt the framework emitted, not just the assertions about them.
 // ===============================================================
+// ===============================================================
+// 5b. round-2 lens-1 RUNTIME: the initiative axis at EVERY v3 site
+// ===============================================================
+// Four sites: the three formalDailySection() call sites (explorer / rederive / solver) plus the
+// INLINE formalWorkLine() site inside methodKeeperPrompt. (1) formalVerify:'off' + leanInitiative:
+// 'eager' must carry the daily line at that site; (2) leanInitiative:'off' must drop it there while
+// the verification phase still follows formalVerify. Names carry the site so a single-site
+// regression names itself.
+const SITE_DAILY = /三条筛选判据/
+const SITE_VERIFY = /【Lean 形式化验证（/
+async function driveSiteV3(rw, opts, qid) {
+  const q = qid
+  await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { methodKeepEvery: 1, maxExplorerRetries: 5 }, opts), rw)
+  await callTool('vibe_math_add_problem', { id: q, 陈述: '站点级运行时用例' }, rw)
+  await callTool('vibe_math_start', {}, rw)
+  const exs = () => spawnOf(rw, 'explorer:' + q)
+  await drive(rw, () => exs().length >= 1, 'explorer site ' + q)
+  const out = { explorer: (exs()[0] || {}).prompt || '' }
+  // answer explorers with directions until the solver appears (v3's fallback scheduler re-derives)
+  fireEnd(exs()[0].childId, { meta: { kind: 'directions', qid: q, directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: '', feasibility: 0.8 }] } })
+  for (let guard = 0; guard < 30 && !lastSpawn(rw, 'solver:' + q + ':d1'); guard++) {
+    const pend = exs().filter((s) => !firedChildren.has(s.childId)).slice(-1)[0]
+    if (pend) { firedChildren.add(pend.childId); fireEnd(pend.childId, { meta: { kind: 'directions', qid: q, directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: '', feasibility: 0.8 }] } }) }
+    await pump(rw); await sleep(80)
+  }
+  const so = lastSpawn(rw, 'solver:' + q + ':d1')
+  out.solver = (so && so.prompt) || ''
+  // dead-end + a pending invention: the direction is exhausted (⇒ re-derive) AND the method keeper fires
+  if (so) fireEnd(so.childId, { status: 'dead-end', survival_probability: 0.2, dead_end_reason: '站点用例：不可行', new_inventions: [{ 类型: '工具', 标题: '站点工具', 内容描述: 'x', 是否已入库: false }] })
+  await drive(rw, () => exs().length >= 2, 'rederive site ' + q)
+  out.rederive = (exs()[1] || {}).prompt || ''
+  out.distinct = !!out.explorer && !!out.rederive && out.explorer !== out.rederive
+  await drive(rw, () => !!lastSpawn(rw, 'method-keeper'), 'method-keeper site ' + q)
+  out.methodKeeper = (lastSpawn(rw, 'method-keeper') || {}).prompt || ''
+  await callTool('vibe_math_abort', {}, rw)
+  return out
+}
+{
+  const re = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'site-eager-off' }, re)
+  const A = await driveSiteV3(re, { formalVerify: 'off', leanInitiative: 'eager' }, 'qS')
+  assert(SITE_DAILY.test(A.explorer), '★ [explorer site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(SITE_DAILY.test(A.solver), '★ [solver site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(SITE_DAILY.test(A.rederive), '★ [rederive site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(SITE_DAILY.test(A.methodKeeper), '★ [methodKeeper site] formalVerify:off + leanInitiative:eager injects the daily line (inline site)')
+  assert(A.explorer.indexOf('【Lean 形式化验证（') === -1 && A.solver.indexOf('【Lean 形式化验证（') === -1 && A.rederive.indexOf('【Lean 形式化验证（') === -1 && A.methodKeeper.indexOf('【Lean 形式化验证（') === -1, '★ [all sites] formalVerify:off keeps the verification-phase block closed while eager still injects the daily line')
+
+  const ro = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'site-init-off' }, ro)
+  const B = await driveSiteV3(ro, { formalVerify: 'encourage', leanInitiative: 'off' }, 'qO')
+  assert(!SITE_DAILY.test(B.explorer) && !/【顺手形式化/.test(B.explorer), '★ [explorer site] leanInitiative:off drops the daily line')
+  assert(!SITE_DAILY.test(B.solver) && !/【顺手形式化/.test(B.solver), '★ [solver site] leanInitiative:off drops the daily line')
+  assert(!SITE_DAILY.test(B.rederive) && !/【顺手形式化/.test(B.rederive), '★ [rederive site] leanInitiative:off drops the daily line')
+  assert(!SITE_DAILY.test(B.methodKeeper) && !/【顺手形式化/.test(B.methodKeeper), '★ [methodKeeper site] leanInitiative:off drops the daily line (inline site)')
+
+  // verification phase still follows formalVerify under leanInitiative:'off'
+  const rvv = makeRoot()
+  await callTool('vibe_math_new_project', { name: 'site-init-off-verify' }, rvv)
+  await callTool('vibe_math_set_params', Object.assign({}, VPARAMS, { formalVerify: 'encourage', leanInitiative: 'off' }), rvv)
+  await callTool('vibe_math_add_problem', { id: 'qV', 陈述: '验证段仍在' }, rvv)
+  await callTool('vibe_math_start', {}, rvv)
+  await drive(rvv, () => !!lastSpawn(rvv, 'explorer:qV'), 'explorer qV')
+  const exv = lastSpawn(rvv, 'explorer:qV')
+  assert(!!exv && !SITE_DAILY.test(exv.prompt || ''), '★ [explorer site] 第二个 root：initiative off 时 explorer 仍无日线')
+  if (exv) fireEnd(exv.childId, { meta: { kind: 'directions', qid: 'qV', directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: '', feasibility: 0.8 }] } })
+  for (let guard = 0; guard < 30 && !lastSpawn(rvv, 'solver:qV:d1'); guard++) {
+    const pend = spawnOf(rvv, 'explorer:qV').filter((s) => !firedChildren.has(s.childId)).slice(-1)[0]
+    if (pend) { firedChildren.add(pend.childId); fireEnd(pend.childId, { meta: { kind: 'directions', qid: 'qV', directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: '', feasibility: 0.8 }] } }) }
+    await pump(rvv); await sleep(80)
+  }
+  const sovv = lastSpawn(rvv, 'solver:qV:d1')
+  if (sovv) fireEnd(sovv.childId, { status: 'success', solution: 'complete solution', survival_probability: 0.9 })
+  await drive(rvv, () => spawnOf(rvv, 'verifier:').length >= 1, 'verifier qV')
+  const vsp = spawnOf(rvv, 'verifier:')[0]
+  assert(!!vsp && SITE_VERIFY.test(vsp.prompt || ''), '★ leanInitiative:off 时验证段仍按 formalVerify 注入（verifier 提示词含【Lean 形式化验证（）')
+  await callTool('vibe_math_abort', {}, rvv)
+}
+
 section('10 the captured prompt corpus is written for human review')
 {
   mkdirSync(CORPUS_DIR, { recursive: true })

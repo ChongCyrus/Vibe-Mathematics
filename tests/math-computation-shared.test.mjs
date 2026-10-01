@@ -498,6 +498,77 @@ console.log('-- math_computation shared contract --')
   }
 }
 
+// ── 18. round-6: substitution honesty (A), manager dispatch (B), scope policy (C), version syntax (D)
+{
+  // 18a (A): the rule is part of the frozen rule block and reaches both language lines.
+  ok(M.MATH_RULE_LINES.join('\n').indexOf(M.MATH_SUBSTITUTION_RULE_LINE) !== -1, 'MATH_RULE_LINES carries the substitution-honesty rule (zh)')
+  ok(M.MATH_RULE_LINES_EN.join('\n').indexOf(M.MATH_SUBSTITUTION_RULE_LINE_EN) !== -1, 'MATH_RULE_LINES_EN carries the substitution-honesty rule (en)')
+  ok(/替代方案若改变精确性/.test(String(M.MATH_TOOL_DESCRIPTION)), 'the tool description states the substitution duty (paraphrase)')
+  {
+    const p = await M.probeMathEngines(makeFakeHost({ installed: ['python3'] }).host)
+    const zh = M.mathAvailabilityLine(p, 'zh', 'typed+shell')
+    const en = M.mathAvailabilityLine(p, 'en', 'typed+shell')
+    ok(zh.indexOf('替代必须声明') !== -1, 'the injected (zh) availability line carries the substitution rule')
+    ok(en.indexOf('Declare substitutions') !== -1, 'the injected (en) availability line carries the substitution rule')
+  }
+
+  // 18b (B): python dispatch follows the DETECTED environment, never a guess.
+  {
+    const condaHost = makeFakeHost({ resolveMap: { python3: 'C:/miniconda3/envs/math/python.exe', conda: 'C:/miniconda3/Scripts/conda.exe' } })
+    M.registerMathComputation(condaHost.host)
+    const c = await condaHost.call({ op: 'install', engine: 'python', packages: ['numpy'] })
+    ok(c.ok === true && c.plan.manager === 'conda' && c.plan.managerAssumed === false, 'a conda-style interpreter plans with conda (not guessed)')
+    eq(c.plan.commands[0].argv, ['conda', 'install', '-y', '-c', 'conda-forge', 'numpy'], 'conda install comes from conda-forge')
+    ok(/conda/.test(String(c.message)), 'the plan message names the manager')
+
+    const uvHost = makeFakeHost({ resolveMap: { python3: '/venv/bin/python3', uv: '/venv/bin/uv' } })
+    M.registerMathComputation(uvHost.host)
+    const u = await uvHost.call({ op: 'install', engine: 'python', packages: ['numpy'] })
+    ok(u.ok === true && u.plan.manager === 'uv', 'a uv next to the interpreter plans with uv')
+    eq(u.plan.commands[0].argv, ['uv', 'pip', 'install', 'numpy'], 'uv install uses `uv pip install`')
+
+    const pipHost = makeFakeHost({ resolveMap: { python3: '/usr/bin/python3' } })
+    M.registerMathComputation(pipHost.host)
+    const d = await pipHost.call({ op: 'install', engine: 'python', packages: ['numpy'] })
+    ok(d.ok === true && d.plan.manager === 'pip' && d.plan.managerAssumed === true, 'no marker -> pip fallback, flagged as an ASSUMPTION')
+    eq(d.plan.commands[0].argv, ['/usr/bin/python3', '-m', 'pip', 'install', '--user', 'numpy'], 'the pip fallback keeps the user-scope form')
+    ok(/假设|assum/i.test(String(d.message)), 'the message says the manager is an assumption')
+  }
+
+  // 18c (C): R/Octave/Julia refuse system scope WITH a per-engine reason; conda too.
+  {
+    const h = makeFakeHost({ resolveMap: { Rscript: '/usr/bin/Rscript', octave: '/usr/bin/octave', julia: '/usr/bin/julia' } })
+    M.registerMathComputation(h.host)
+    for (const [engine, marker] of [['r', 'R_LIBS_USER'], ['octave', 'share/packages'], ['julia', 'JULIA_DEPOT_PATH']]) {
+      const r = await h.call({ op: 'install', engine: engine, packages: ['x'], scope: 'system' })
+      ok(r.ok === false && r.code === 'MATH_REFUSED' && r.next && r.next.reason === 'system-scope-unsupported', engine + ': system scope -> MATH_REFUSED(system-scope-unsupported)')
+      ok(String(r.message).indexOf(marker) !== -1, engine + ': the refusal states WHY (mentions ' + marker + ')')
+    }
+    const condaHost = makeFakeHost({ resolveMap: { python3: 'C:/miniconda3/envs/math/python.exe', conda: 'C:/miniconda3/Scripts/conda.exe' } })
+    M.registerMathComputation(condaHost.host)
+    const cs = await condaHost.call({ op: 'install', engine: 'python', packages: ['numpy'], scope: 'system' })
+    ok(cs.ok === false && cs.next.reason === 'system-scope-unsupported' && /conda/.test(String(cs.message)), 'conda has no system scope and says so')
+  }
+
+  // 18d (D): version syntax is passed through where the manager understands it, refused otherwise.
+  {
+    ok(M.validateMathArgs({ op: 'run', mode: 'code', code: 'x', packages: ['numpy==1.2'] }, {}).ok === true, 'pkg==1.2 is accepted (pass-through)')
+    ok(M.validateMathArgs({ op: 'run', mode: 'code', code: 'x', packages: ['numpy=1.2'] }, {}).ok === true, 'pkg=1.2 (conda form) is accepted')
+    ok(M.validateMathArgs({ op: 'run', mode: 'code', code: 'x', packages: ['numpy[extra]>=1.2'] }, {}).ok === true, 'extras + comparator are accepted')
+    const badSpec = M.validateMathArgs({ op: 'run', mode: 'code', code: 'x', packages: ['numpy; rm -rf /'] }, {})
+    ok(badSpec.ok === false && badSpec.code === 'MATH_INVALID_ARGUMENT' && badSpec.next && badSpec.next.reason === 'unsupported-version-syntax', 'a shell-ish spec is refused with unsupported-version-syntax')
+
+    const ph = makeFakeHost({ packages: { sympy: 'present' } })
+    M.registerMathComputation(ph.host)
+    await ph.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n', packages: ['sympy==1.12'] })
+    const pkgSpawns = ph.spawns.filter((s) => s.argv.join(' ').indexOf('sympy') !== -1)
+    ok(pkgSpawns.length > 0 && pkgSpawns.every((s) => s.argv.join(' ').indexOf('sympy==1.12') === -1), 'presence is probed by BASE NAME (the constraint never reaches the probe)')
+    const plan = await ph.call({ op: 'install', engine: 'python', packages: ['sympy==1.12'] })
+    ok(plan.ok === true && plan.plan.commands[0].argv[plan.plan.commands[0].argv.length - 1] === 'sympy==1.12', 'the install plan passes the spec through verbatim')
+    ok(!!plan.plan.versionPolicy, 'the plan states the version policy (solving belongs to the manager)')
+  }
+}
+
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

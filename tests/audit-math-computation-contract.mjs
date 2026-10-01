@@ -167,6 +167,15 @@ for (const P of PRESETS) {
   const wf = blocks.filter((b) => b.indexOf('scriptChanged') !== -1 && b.indexOf("mode:'file'") !== -1).length
   ok(wf >= 2, tag + 'both persona blocks carry the archive->edit->re-run rule (scriptChanged + mode:file)', 'blocks with the rule: ' + wf)
   ok(js.indexOf('MATH_ARCHIVE_WORKFLOW_LINE') !== -1, tag + 'references MATH_ARCHIVE_WORKFLOW_LINE (zh persona text source)')
+
+  // 4c. round-6 (A): both blocks must carry the substitution-honesty rule (zh, plus en on v4/v5).
+  const subZh = blocks.filter((b) => b.indexOf('替代必须声明') !== -1).length
+  ok(subZh >= 2, tag + 'both persona blocks carry the substitution-honesty rule (zh)', 'blocks with the rule: ' + subZh)
+  if (P.dir === 'vibe-math-v4' || P.dir === 'vibe-math-v5') {
+    const subEn = blocks.filter((b) => b.indexOf('Declare substitutions') !== -1).length
+    ok(subEn >= 2, tag + 'both persona blocks carry the substitution-honesty rule (en)', 'blocks with the rule: ' + subEn)
+  }
+  ok(js.indexOf('MATH_SUBSTITUTION_RULE_LINE') !== -1, tag + 'references MATH_SUBSTITUTION_RULE_LINE (zh persona text source)')
   if (P.dir === 'vibe-math-v4' || P.dir === 'vibe-math-v5') ok(js.indexOf('MATH_ARCHIVE_WORKFLOW_LINE_EN') !== -1, tag + 'references MATH_ARCHIVE_WORKFLOW_LINE_EN (en persona text source)')
 }
 

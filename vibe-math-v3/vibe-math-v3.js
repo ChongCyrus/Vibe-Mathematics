@@ -49,6 +49,7 @@ import {
   MATH_TOOL_DESCRIPTION,
   MATH_TOOL_SCHEMA,
   MATH_ARCHIVE_WORKFLOW_LINE,
+  MATH_SUBSTITUTION_RULE_LINE,
   MATH_PERSONA_TOOL_LINE,
   MATH_RULE_LINES,
   normalizeMathParams,
@@ -544,7 +545,15 @@ export function apply(ctx) {
   async function refreshMathProbe(force) {
     if (params.mathComputation === 'off') { mathProbe = null; mathProbeAt = 0; return null }
     if (!mathTool) return null
-    try { mathProbe = await mathTool.probe(force ? { refresh: true } : undefined); mathProbeAt = now() } catch (e) { mathProbe = null }
+    try {
+      mathProbe = await mathTool.probe(force ? { refresh: true } : undefined)
+      mathProbeAt = now()
+      // 规则漂移自检（A 项）：可用性行必须带"替代必须声明（诚实性）"。引用**常量**而非比对文本：
+      // 模块改措辞不会误报，只有整条规则消失才会响。
+      if (mathProbe && mathAvailabilityLine(mathProbe, 'zh', params.mathMode).indexOf(MATH_SUBSTITUTION_RULE_LINE) === -1) {
+        console.error('vibe-math-v3: 可用性行缺少替代声明规则（MATH_SUBSTITUTION_RULE_LINE）')
+      }
+    } catch (e) { mathProbe = null }
     return mathProbe
   }
   /** 心跳里的 TTL 刷新（每拍一次布尔判断）。 */
@@ -4967,6 +4976,8 @@ export function apply(ctx) {
     mathProbe: function () { return mathProbe },
     // P2a：persona 两个文本块必须含的「归档→编辑→重跑」规则（文本取自共享模块常量，persona 不手抄）。
     mathArchiveWorkflowLine: MATH_ARCHIVE_WORKFLOW_LINE,
+    // A 项：替代声明规则（文本由共享模块给出；persona 两块与每轮可用性行都必须带它）。
+    mathSubstitutionRuleLine: MATH_SUBSTITUTION_RULE_LINE,
     // childOwner 裁剪用（审计 L1）：这个会话当前仍"可能再发 subagent/end"的 child
     // = 在册子代理 + 任何任务正在等的那几个。
     referencedChildIds: function () {

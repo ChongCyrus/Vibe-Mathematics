@@ -76,6 +76,9 @@ export function makeFakeHost(opts = {}) {
       if (opts.resolveThrows) throw new Error('resolve failed: ' + cmd)
       const raw = String(cmd)
       const base = raw.split(/[\\/]/).pop()
+      // round-6 (B): an explicit path map lets a test place the interpreter in a conda-style
+      // directory or next to a `uv` binary - the manager dispatch reads those facts.
+      if (opts.resolveMap && Object.prototype.hasOwnProperty.call(opts.resolveMap, base)) return opts.resolveMap[base]
       // A caller-supplied path (engine='cli') is accepted as-is: that is the whole point of the
       // escape hatch - the tool only has to resolve the command, not know the engine.
       if (raw.indexOf('/') !== -1 || raw.indexOf('\\') !== -1) return raw

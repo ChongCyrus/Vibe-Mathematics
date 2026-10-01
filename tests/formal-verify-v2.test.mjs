@@ -1568,6 +1568,70 @@ section('15d Lean 增量 + 异步（spec §1–§4 + 修订 §1–§5）：参�
   await wOffEager.call('vibe_math_pause', {})
 }
 
+// ---------- 15e. round-2 lens-1 RUNTIME: the initiative axis is injected at EVERY site ----------
+// Three injection sites with three different shapes (explorer / rederive / solver). The static [sites]
+// check can only see that the producer call is not textually gated; THIS section proves the actual
+// prompt text of each site: (1) formalVerify:'off' + leanInitiative:'eager' must carry the daily line
+// at that site (and keep the verification block closed), (2) leanInitiative:'off' must drop it there
+// while the verification phase still follows formalVerify. Assertion names carry the site name, so a
+// single-site regression names itself instead of hiding behind a sibling site's coverage.
+const SITE_DAILY = /三条筛选判据/
+const SITE_VERIFY = /【Lean 形式化验证（/
+const FENCE = '`'.repeat(3)
+const jsonReply = (obj) => FENCE + 'json\n' + JSON.stringify(obj) + '\n' + FENCE
+/** Drive one problem through explorer -> solver(dead-end) -> re-derive and collect each site's prompt. */
+async function driveSites(h, opts, qid) {
+  const q = qid || 'qSite'
+  await h.call('vibe_math_set_params', Object.assign({ tickIntervalMs: 200, verifierCount: 2, leanAsync: false, maxExplorerRetries: 5, maxParallelThreshold: 4 }, opts))
+  await h.call('vibe_math_add_problem', { id: q, description: '站点级运行时用例' })
+  await startScheduler(h)
+  const label = (n) => h.spawns.filter((s) => s.label.startsWith(n + ':' + q))
+  const ex1 = await waitFor(() => label('explorer')[0], 80, 200)
+  const out = { explorer: (ex1 && ex1.prompt) || '' }
+  if (ex1) h.fireEnd({ id: ex1.childId, runId: 'rS1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: jsonReply({ directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: 'c', feasibility: 0.8 }] }) }] })
+  const so = await waitFor(() => label('solver')[0], 80, 200)
+  out.solver = (so && so.prompt) || ''
+  if (so) h.fireEnd({ id: so.childId, runId: 'rS2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: jsonReply({ status: 'dead-end', dead_end_reason: '站点用例：本方向不可行', solution: '', solution_probability: 0.1, lemmas: [], routes: [], lessons: [], survival_probability: 0.2, sub_questions: [], new_inventions: [{ 类型: '工具', 标题: '站点工具', 内容描述: 'x', 是否已入库: false }] }) }] })
+  // every direction is now dead-end ⇒ the NEXT explorer for this problem is built by rederivePrompt
+  await waitFor(() => label('explorer').length >= 2 && label('explorer')[1], 80, 200)
+  const exs = label('explorer')
+  out.rederive = (exs[1] && exs[1].prompt) || ''
+  out.distinct = !!out.explorer && !!out.rederive && out.explorer !== out.rederive
+  await h.call('vibe_math_abort', {})
+  return out
+}
+{
+  // (1) eager 在 formalVerify:'off' 下也必须在**每一个**站点注入日线
+  const he = await makeCase('site-eager-off')
+  const A = await driveSites(he, { formalVerify: 'off', leanInitiative: 'eager' })
+  assert(SITE_DAILY.test(A.explorer), '★ [explorer site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(SITE_DAILY.test(A.solver), '★ [solver site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(SITE_DAILY.test(A.rederive), '★ [rederive site] formalVerify:off + leanInitiative:eager injects the daily line')
+  assert(A.distinct, '★ [rederive site] the re-explore prompt really is the rederive builder (differs from the first explorer wave)')
+  assert(A.explorer.indexOf('【Lean 形式化验证（') === -1 && A.solver.indexOf('【Lean 形式化验证（') === -1 && A.rederive.indexOf('【Lean 形式化验证（') === -1, '★ [all sites] formalVerify:off keeps the verification-phase block closed while eager still injects the daily line')
+
+  // (2) leanInitiative:'off' ⇒ 每个站点都没有日线（同一驱动）
+  const ho = await makeCase('site-init-off')
+  const B = await driveSites(ho, { formalVerify: 'encourage', leanInitiative: 'off' }, 'qSiteOff')
+  assert(!SITE_DAILY.test(B.explorer) && !/【顺手形式化/.test(B.explorer), '★ [explorer site] leanInitiative:off drops the daily line')
+  assert(!SITE_DAILY.test(B.solver) && !/【顺手形式化/.test(B.solver), '★ [solver site] leanInitiative:off drops the daily line')
+  assert(!SITE_DAILY.test(B.rederive) && !/【顺手形式化/.test(B.rederive), '★ [rederive site] leanInitiative:off drops the daily line')
+
+  // (2b) …而验证段仍按 formalVerify 出现（同一参数下的另一个 root，驱动到 verifier）
+  const hv = await makeCase('site-init-off-verify')
+  await hv.call('vibe_math_set_params', { tickIntervalMs: 200, verifierCount: 2, leanAsync: false, formalVerify: 'encourage', leanInitiative: 'off' })
+  await hv.call('vibe_math_add_problem', { id: 'qV', description: '验证段仍在' })
+  await startScheduler(hv)
+  const exv = await waitFor(() => hv.spawns.find((s) => s.label.startsWith('explorer:qV')), 80, 200)
+  assert(!!exv && !SITE_DAILY.test(exv.prompt || ''), '★ [explorer site] 第二个 root：initiative off 时 explorer 仍无日线')
+  if (exv) hv.fireEnd({ id: exv.childId, runId: 'rV1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: jsonReply({ directions: [{ id: 'd1', title: 'D', method: 'm', core_assumption: 'c', feasibility: 0.8 }] }) }] })
+  const sov = await waitFor(() => hv.spawns.find((s) => s.label.startsWith('solver:qV')), 80, 200)
+  if (sov) hv.fireEnd({ id: sov.childId, runId: 'rV2', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: jsonReply({ status: 'success', solution: 'complete solution', solution_probability: 0.9, lemmas: [], routes: [], lessons: [], survival_probability: 0.9, dead_end_reason: null, sub_questions: [] }) }] })
+  const vv = await waitFor(() => hv.spawns.find((s) => /^verifier:/.test(s.label)), 100, 250)
+  assert(!!vv && SITE_VERIFY.test(vv.prompt || ''), '★ leanInitiative:off 时验证段仍按 formalVerify 注入（verifier 提示词含【Lean 形式化验证（）')
+  await hv.call('vibe_math_abort', {})
+}
+
 section('16 the captured prompt corpus is written for human review')
 {
   // Freeze the scheduler in every case FIRST: a still-running tick loop could emit one more

@@ -47,8 +47,8 @@ math_computation {
 - **机读词汇表（穷举；权威副本在 `_oneoff/mc-P1-ready/tool-schema.json#refusalVocabulary`，由 parity 守卫盯着，改名即红）**：
   - `code`（11 个）：`MATH_NOT_AVAILABLE` `MATH_ENGINE_NOT_FOUND` `MATH_ENGINE_LICENSE_REQUIRED` `MATH_ENGINE_UNUSABLE` `MATH_MISSING_PACKAGES` `MATH_TIMEOUT` `MATH_NONZERO_EXIT` `MATH_ENGINE_BAD_ARGV` `MATH_REFUSED` `MATH_INVALID_ARGUMENT` `MATH_NO_SUBPROCESS`；
   - `next.kind`（7 个）：`user-install`（用户自装指引）、`agent-install`（代装计划/计划就绪）、`vendor`（商业引擎厂商指引）、`enable`（`mathComputation:'off'` 的启用建议）、`engine-override`（bad-argv ⇒ 用 `mathEngineOverride` 覆盖模板）、`reason`（机读拒绝原因）、`note`（补充说明，如无 subprocess）；
-  - `next.reason`（12 个，仅当 `next.kind==='reason'`）：`policy`、`engine-not-allowed`、`missing-cli-command`、`expr-not-supported`、`mode-not-supported`、`path-outside-project`、`file-not-found`、`system-scope-unsupported`、`plan-token-mismatch`、`archive-missing`、`receipt-unparsable`、`no-subprocess`。
-  调用方**不必解析文案**：按 `code` + `next.kind`（必要时 `next.reason`）分支即可；新增或改名必须同时更新这里与 `tool-schema.json`，否则守卫变红。
+  - `next.reason`（**13** 个，仅当 `next.kind==='reason'`）：`policy`、`engine-not-allowed`、`missing-cli-command`、`expr-not-supported`、`mode-not-supported`、`path-outside-project`、`file-not-found`、`system-scope-unsupported`、`plan-token-mismatch`、`archive-missing`、`receipt-unparsable`、`no-subprocess`、**`unsupported-version-syntax`**（包规格写法不被支持：版本求解交给包管理器，见 §5）。
+  调用方**不必解析文案**：按 `code` + `next.kind`（必要时 `next.reason`）分支即可；新增或改名必须同时更新这里与 `tool-schema.json`，否则守卫变红（守卫还会校验每个 `reason:` 取值都是**字符串字面量**，避免以常量绕开"穷举"检查）。
 
 ## 4. 回执：可复核的支撑材料
 
@@ -91,6 +91,35 @@ math_computation {
 
 **诚实的回滚说明**：包安装**没有通用回滚**。工具保证的是——记下确切命令与 before/after 版本（卸载**可验证**）、默认 user 作用域限制影响面、提供各管理器的卸载模板；**不做**自动回滚。
 
+### 5.1 Python 的管理器分派（检测，不猜）
+
+`python` 的安装计划按**解释器自身环境**选择包管理器，而不是固定 pip：
+
+| 检测到的环境 | 计划里的命令 | 依据 / 说明 |
+|---|---|---|
+| conda 环境（解释器路径含 `/envs/`、`/conda`、`/miniconda*`、`/anaconda*`、`/mambaforge`、`/miniforge`）且 `conda` 可解析 | `conda install -y -c conda-forge <pkg>`（卸载 `conda remove -y <pkg>`） | 路径标记 + 可解析确认 |
+| 同上但只有 `mamba` | `mamba install -y -c conda-forge <pkg>`（卸载 `mamba remove -y <pkg>`） | 同上 |
+| `uv` 与解释器**同目录**（uv 管理的 venv） | `uv pip install <pkg>`（卸载 `uv pip uninstall <pkg>`） | 同目录才算，PATH 上别处的 uv 不算 |
+| 其它 | `python -m pip install --user <pkg>`（卸载 `python -m pip uninstall -y <pkg>`） | **文档化回退**，且计划里标 `managerAssumed:true` |
+
+计划、返回消息与审计 JSON 都带 `manager` / `managerAssumed` / `managerWhy`——**歧义时回退 pip 并明说"计划假设用 pip"**，绝不猜。
+
+### 5.2 R / Octave / Julia：只做用户级（并说明为什么）
+
+这三个引擎**没有系统级模板**，`scope:'system'` 一律返回 `MATH_REFUSED` + `next.reason='system-scope-unsupported'`，消息里带**每引擎的理由**：
+
+- **R**：用户库是 `R_LIBS_USER`；系统级要写发行版包目录（需 root 或发行版包管理器）。
+- **Octave**：`pkg install` 装进用户包目录；系统级要写 Octave 的 `share/packages`（需 root）。
+- **Julia**：`Pkg.add` 装进当前活动环境 / 用户 depot（`JULIA_DEPOT_PATH`）；"系统级"不是 Julia 的概念。
+
+python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba/uv **没有**系统模板，各自带理由。
+
+### 5.3 版本约束：交给包管理器，工具只查存在
+
+- **策略**：**版本求解由包管理器负责**，本工具**只检查包是否存在**（按 **base name** 探测与报缺），安装时把规格**原样透传**。计划里带 `versionPolicy` 说明。
+- **接受的写法**：`名称`、`名称[extras]`、`名称<op>版本`，其中 `<op>` ∈ `==` `>=` `<=` `~=` `!=` `>` `<` `=`（例如 pip 的 `numpy==1.2`、conda 的 `numpy=1.2`）。
+- **拒绝的写法**：空格、`;`、`|`、`&`、`$`、反引号、`@`、括号等 shell 危险或管理器不认识的语法 ⇒ `MATH_INVALID_ARGUMENT` + `next.reason='unsupported-version-syntax'`（**不会**把可疑字符串丢给 shell）。
+
 ## 6. 插件**能**与**不能**强制的东西
 
 **能强制**：入参 schema（闭合；未知键拒绝）、**词法级**项目内路径守卫（见下）、cwd、超时并终止进程、输出上限、回执落盘、插件自身的写域（只写 `Computation/`）、安装两步与作用域默认、同一 archive id 的**串行分配**（并发运行不会共用 attempt 目录）。
@@ -99,6 +128,7 @@ math_computation {
 - **路径守卫是字符串级的**：`projectRel` 只做词法规范化（拒绝绝对路径、盘符、`..` 越界），**不做 realpath、不解析符号链接/junction/硬链接**。项目内一个指向外部的链接可以绕过该守卫拿到 `mode:'file'` 的读取与执行；真正的容器化由宿主 `ctx.fs` 后端负责（`resolve`/`contains`），插件不重复实现。审计 A 的用例把这一**限制**钉成了断言（`tests/math-computation-shared.test.mjs` §16c）。
 - 脚本内部的网络访问与文件访问——宿主 `subprocess.spawn` **没有 policy 槽**（`env` 层只做凭据/`DSH_*` 清洗与显式合并，不能限制网络或写盘；参见 `dsh-subprocess-local` 的 `runner-launch-*.js` 与 `vibe-math-v5.js` 中 audit M8 注释），任何被执行的计算进程都在宿主 fs 策略之外；
 - `mathMode` 只是提示词策略：**模型仍可能直接调用宿主 shell**，插件无法阻止，也无法为 shell 路径生成回执。因此默认策略要求：走 shell 得出的结论必须标注"**未经工具归档（shell 路径）**"，**只有工具路径的计算才算可复核支撑材料**；
+- **替代必须声明（提示词规则，同样不是强制）**：当替代方案改变了**精确性或结论强度**（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。规则行由 `MATH_SUBSTITUTION_RULE_LINE`/`_EN` 提供（已并入 `MATH_RULE_LINES`/`_EN` 与四套 persona 两个文本块），但**能否照做取决于模型**——插件只能要求，不能验证。
 - 商业引擎的 CLI 模板随版本变化（Maple 尤甚）：描述符带 `VERIFY` 标记，**每次运行都回显实际 argv**；若引擎以用法/选项错退出，返回 `MATH_ENGINE_BAD_ARGV` + `next.kind='engine-override'`（指向 `mathEngineOverride` 覆盖模板），而不是裸 `MATH_NONZERO_EXIT`。有许可的机器应验证这三个模板。
 - 真强制（禁网/限权）需要宿主 sandbox/policy 支持——**列为待上游需求**，不在本轮范围。
 

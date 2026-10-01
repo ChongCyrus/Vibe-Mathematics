@@ -554,6 +554,25 @@ section('14 prompt + persona surfaces')
   const yml = readFileSync(join(PRESET_DIR, 'agent.cordis.yml'), 'utf8')
   const occurrences = yml.split(math.MATH_PERSONA_TOOL_LINE).length - 1
   assert(occurrences === 2, '★ the persona carries MATH_PERSONA_TOOL_LINE in BOTH blocks (found ' + occurrences + ')')
+  // Round-6 (A): substitution honesty. The INJECTED availability line must carry the rule, and
+  // the persona must carry it in both blocks and both languages.
+  assert(math.MATH_SUBSTITUTION_RULE_LINE && shellish.indexOf(math.MATH_SUBSTITUTION_RULE_LINE) !== -1,
+    '★ the injected availability line carries MATH_SUBSTITUTION_RULE_LINE (' + JSON.stringify(String(shellish).slice(-200)) + ')')
+  const subZh = yml.split(math.MATH_SUBSTITUTION_RULE_LINE).length - 1
+  const subEn = yml.split(math.MATH_SUBSTITUTION_RULE_LINE_EN).length - 1
+  assert(subZh === 2 && subEn === 2,
+    '★ the persona carries the substitution-honesty rule in BOTH blocks, zh+en (zh×' + subZh + ', en×' + subEn + ')')
+  // The module itself must compose the rule into BOTH language lines (a stale/absent copy of the
+  // shared module would otherwise silently drop the rule from every prompt).
+  const probeLine = math.mathAvailabilityLine({ engines: [] }, 'zh', 'typed+shell')
+  const probeLineEn = math.mathAvailabilityLine({ engines: [] }, 'en', 'typed+shell')
+  assert(probeLine.indexOf(math.MATH_SUBSTITUTION_RULE_LINE) !== -1 && probeLineEn.indexOf(math.MATH_SUBSTITUTION_RULE_LINE_EN) !== -1,
+    'the shared module composes the substitution rule into both the zh and the en line')
+  // …and the plugin's own drift self-check must cover BOTH languages (dropping one check would
+  // let a future module edit drop a rule silently).
+  const psrc = readFileSync(PLUGIN_PATH, 'utf8')
+  assert(psrc.indexOf('mathLineZh.indexOf(MATH_SUBSTITUTION_RULE_LINE)') !== -1 && psrc.indexOf('mathLineEn.indexOf(MATH_SUBSTITUTION_RULE_LINE_EN)') !== -1,
+    '★ the plugin self-checks the substitution rule in BOTH languages (drift guard)')
   // P1 decision: no new /v5 subcommand ⇒ hint/usage stay untouched.
   const cmd = h.commandRegs.find((c) => c.name === 'v5')
   assert(cmd && !/math/i.test(String((cmd.input && cmd.input.hint) || '')), 'the /v5 hint was NOT touched by P1 (' + (cmd && cmd.input && cmd.input.hint) + ')')

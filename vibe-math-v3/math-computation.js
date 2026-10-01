@@ -62,7 +62,9 @@ export const MATH_TOOL_DESCRIPTION = '数学计算：先用 op:\'probe\' 预检�
   + '且结论必须标注未经工具归档））。每次执行都会归档成可复核回执（Computation/<id>/），回执里含 scriptPath/scriptHash 与**实际 argv**；'
   + '脚本原件就在那个归档目录里，你可以用普通文件工具打开/编辑它，编辑后用 mode:\'file\' 重跑会得到一份**新回执**——'
   + '**不得**拿旧回执当作修改后代码的证据。缺引擎/缺包只报告并给"用户自装指引"或"代理代装计划"（先计划、再确认）；'
-  + '商业引擎只给厂商指引；引擎选项报错时会回显 argv 并提示用 mathEngineOverride。计算结果是经验证据，不是证明。'
+  + '商业引擎只给厂商指引；引擎选项报错时会回显 argv 并提示用 mathEngineOverride。'
+  + '替代方案若改变精确性或结论强度（精确解→数值近似、闭式解→采样/求积、改精度/容差/假设、换算法类）**必须在结论里声明**，不得读起来像得到了原本的结果。'
+  + '计算结果是经验证据，不是证明。'
 
 export const MATH_PERSONA_TOOL_LINE = '- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — '
   + '先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。'
@@ -76,12 +78,21 @@ export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'c
 
 export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>) and you may open/edit it with your normal file tools; after editing, re-run it with mode:\'file\' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
 
+// Round-6 (A): honesty about SUBSTITUTIONS. An alternative that weakens exactness or conclusion
+// strength must be declared, and the conclusion must never read as if the requested (exact) result
+// had been obtained. Injected through mathAvailabilityLine (rule block) AND appended to both persona
+// blocks by the presets - same mechanism as the archive-workflow line.
+export const MATH_SUBSTITUTION_RULE_LINE = '- 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。'
+
+export const MATH_SUBSTITUTION_RULE_LINE_EN = '- Declare substitutions (honesty): when an alternative changes EXACTNESS or conclusion strength (exact symbolic solution -> numerical approximation, closed form -> sampling/quadrature, changed precision/tolerances/assumptions, a different algorithm class), the conclusion MUST say so explicitly and must not read as if the original (exact/requested) result had been obtained; if the exact result is unavailable, say so plainly.'
+
 export const MATH_RULE_LINES = Object.freeze([
   '- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。',
   '- 复核他人的数值结论时用 op:\'receipt\'（或 op:\'run\', mode:\'file\' 指向同一脚本）重跑，并把回执路径写进报告。',
   '- 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。',
   '- 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）——没把握的先别入库。',
   '- 不得把计算结果当成"已证明"：对象是否已验证仍只由本预设既有的验证/共识路径给出。',
+  MATH_SUBSTITUTION_RULE_LINE,
 ])
 
 // The shell-fallback sentence is deliberately NOT part of MATH_RULE_LINES: it is only advertised
@@ -96,6 +107,7 @@ export const MATH_RULE_LINES_EN = Object.freeze([
   '- Archive means cite: put Computation/<id>/receipt.json in your report - that is what "supporting material" means.',
   '- Criteria: (1) valuable or likely reusable; (2) important or necessary; (3) you are confident in it - do not archive what you are unsure about.',
   '- Never treat a computation result as "proved": whether an object is verified is still decided only by this preset\'s existing verification/consensus path.',
+  MATH_SUBSTITUTION_RULE_LINE_EN,
 ])
 
 export const MATH_SHELL_RULE_LINE_EN = '- Shell fallback: if the tool cannot run you may use the host shell, but mark the conclusion "not tool-archived (shell path)" - shell runs have no receipt and no timeout/output guarantees; only tool-routed computations count as reproducible supporting material.'
@@ -210,7 +222,14 @@ export function validateMathArgs(args, params) {
     if (typeof args.engine !== 'string') return bad('engine must be a string')
     if (args.engine !== 'auto' && !MATH_ENGINES[args.engine]) return bad('unknown engine: ' + args.engine)
   }
-  if (args.packages !== undefined && (!Array.isArray(args.packages) || args.packages.some((x) => typeof x !== 'string'))) return bad('packages must be a string[]')
+  if (args.packages !== undefined) {
+    if (!Array.isArray(args.packages) || args.packages.some((x) => typeof x !== 'string')) return bad('packages must be a string[]')
+    // round-6 (D): accept the manager-understood pass-through forms; refuse anything else explicitly.
+    for (const spec of args.packages) {
+      const parsed = parsePackageSpec(spec)
+      if (!parsed.ok) return bad(parsed.problem, 'MATH_INVALID_ARGUMENT', next('reason', { reason: 'unsupported-version-syntax' }))
+    }
+  }
   if (args.captureFiles !== undefined && (!Array.isArray(args.captureFiles) || args.captureFiles.some((x) => typeof x !== 'string'))) return bad('captureFiles must be a string[]')
   if (args.timeoutMs !== undefined) {
     const n = Number(args.timeoutMs)
@@ -401,10 +420,14 @@ function buildProbeArgv(d, pkgs) {
 }
 
 async function probePackages(H, det, pkgs) {
+  // round-6 (D): presence is probed by BASE NAME (a version constraint is the manager's business);
+  // the full spec is what the install plan passes through.
+  const names = []
+  for (const s of pkgs) { const n = parsePackageSpec(s).name || String(s); if (names.indexOf(n) === -1) names.push(n) }
   const found = {}
-  for (const p of pkgs) found[p] = null
-  if (!pkgs.length || !det.desc.packageProbe) return { requested: pkgs.slice(), found: found }
-  const r = await H.spawn({ argv: [det.exe].concat(buildProbeArgv(det.desc, pkgs)), cwd: await H.projectRoot(), timeoutMs: 15000, stdoutCap: 16384, stderrCap: 16384 })
+  for (const p of names) found[p] = null
+  if (!names.length || !det.desc.packageProbe) return { requested: names, found: found }
+  const r = await H.spawn({ argv: [det.exe].concat(buildProbeArgv(det.desc, names)), cwd: await H.projectRoot(), timeoutMs: 15000, stdoutCap: 16384, stderrCap: 16384 })
   if (r && !r.timedOut) {
     if (det.desc.packageProbe.parse === 'lines') {
       const text = String(r.stdout || '')
@@ -589,11 +612,13 @@ async function opRun(H, args, params) {
 
   const want = (args.packages && args.packages.length) ? args.packages : params.mathPackages
   const pk = await probePackages(H, det2, want)
-  const missing = want.filter((p) => Object.prototype.hasOwnProperty.call(pk.found, p) && !pk.found[p])
+  // Presence is keyed by BASE NAME (round-6 D); the plan keeps the original specs so the manager
+  // receives the version constraint verbatim.
+  const missing = want.map((s) => parsePackageSpec(s).name || s).filter((p) => Object.prototype.hasOwnProperty.call(pk.found, p) && !pk.found[p])
   if (missing.length) {
-    return fail('MATH_MISSING_PACKAGES', det.name, '需要的包未安装：' + missing.join(', '), {
+    return fail('MATH_MISSING_PACKAGES', det.name, '需要的包未安装：' + missing.join(', ') + '（只检查是否存在；版本求解交给包管理器）', {
       missing: missing,
-      next: next('agent-install', { engine: det.name, packages: missing, dryRun: true }),
+      next: next('agent-install', { engine: det.name, packages: missing, specs: want.slice(), dryRun: true }),
       packages: pk,
     })
   }
@@ -832,15 +857,44 @@ async function opInstall(H, args, params) {
     })
   }
   const scope = args.scope || params.mathInstallScope || 'user' // per-call only; never persisted anywhere
-  const tmpl = scope === 'system' ? d.install.systemArgv : d.install.userArgv
-  if (!tmpl) return fail('MATH_REFUSED', engineName, engineName + ' 不支持 system 作用域（只提供用户级安装）', { next: next('reason', { reason: 'system-scope-unsupported' }) })
+  // round-6 (B): resolve the interpreter the SAME way the run path does (the descriptor's candidate
+  // list, in order) so the plan targets the interpreter that will actually run - and so the manager
+  // detection sees that interpreter's REAL path (a conda `python3` is not a bare `python`).
   let exe = engineName
-  try { exe = (await H.resolveExecutable(engineName === 'r' ? 'Rscript' : engineName)) || engineName } catch (e) { exe = engineName }
+  {
+    const cands = mathEngineCandidates(engineName) || [engineName === 'r' ? 'Rscript' : engineName]
+    for (const c of cands) {
+      try { const hit = await H.resolveExecutable(c); if (hit) { exe = hit; break } } catch (e) { /* try the next candidate */ }
+    }
+  }
+  // round-6 (B): python dispatches on the DETECTED environment; every other engine keeps its own
+  // single template. The chosen manager (and whether it is only an assumption) is part of the plan.
+  let managerInfo = null
+  let mgrTmpl = null
+  if (d.install.managers) {
+    managerInfo = await detectPythonManager(H, exe)
+    mgrTmpl = d.install.managers[managerInfo.manager] || null
+  }
+  const activeManager = managerInfo ? managerInfo.manager : d.install.manager
+  const userTmpl = (mgrTmpl && mgrTmpl.userArgv) || d.install.userArgv
+  const systemTmpl = (mgrTmpl && mgrTmpl.systemArgv) || (mgrTmpl ? null : d.install.systemArgv)
+  const tmpl = scope === 'system' ? systemTmpl : userTmpl
+  if (!tmpl) {
+    // round-6 (C): the refusal says WHY per engine (or per detected manager) instead of a generic line.
+    const why = (mgrTmpl && mgrTmpl.systemUnsupportedReason) || d.install.systemUnsupportedReason || '该引擎只提供用户级安装'
+    return fail('MATH_REFUSED', engineName, engineName + ' 不支持 system 作用域：' + why, { next: next('reason', { reason: 'system-scope-unsupported' }) })
+  }
+  const uninstallTmpl = (mgrTmpl && mgrTmpl.uninstallArgv) || d.install.uninstallArgv
   const commands = args.packages.map((p) => ({ argv: substInstall(tmpl, engineName, exe, p), why: '缺少 ' + p }))
-  const plan = { engine: engineName, scope: scope, manager: d.install.manager, commands: commands, note: scope === 'user' ? '将安装到用户级目录' : '仅本次系统作用域（不会被记住）' }
+  const plan = {
+    engine: engineName, scope: scope, manager: activeManager, commands: commands,
+    managerAssumed: !!(managerInfo && managerInfo.assumed), managerWhy: managerInfo ? managerInfo.why : '',
+    versionPolicy: '版本求解交给包管理器（本工具只检查是否已安装，并把 pkg<op>version 原样透传）',
+    note: scope === 'user' ? '将安装到用户级目录' : '仅本次系统作用域（不会被记住）',
+  }
   const planToken = sha256(JSON.stringify({ engine: engineName, packages: args.packages, scope: scope, commands: commands }) + '|planVersion=1').slice(0, 32)
   if (!args.confirm) {
-    return { ok: true, op: 'install', engine: engineName, plan: plan, planToken: planToken, next: next('agent-install', { dryRun: true }), message: '安装计划（尚未执行）：' + commands.map((c) => c.argv.join(' ')).join(' ; ') }
+    return { ok: true, op: 'install', engine: engineName, plan: plan, planToken: planToken, next: next('agent-install', { dryRun: true, manager: activeManager, managerAssumed: !!plan.managerAssumed }), message: '安装计划（尚未执行，管理器=' + activeManager + (plan.managerAssumed ? '（假设：' + plan.managerWhy + '）' : '') + '）：' + commands.map((c) => c.argv.join(' ')).join(' ; ') }
   }
   if (args.confirm !== planToken) {
     return fail('MATH_REFUSED', engineName, 'planToken 不匹配（计划可能已变），请重新出计划', { next: next('reason', { reason: 'plan-token-mismatch' }) })
@@ -851,7 +905,7 @@ async function opInstall(H, args, params) {
     const r = await H.spawn({ argv: c.argv, cwd: await H.projectRoot(), timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
     results.push({ argv: c.argv, exit: r ? r.exit : null, timedOut: !!(r && r.timedOut), ms: r ? r.ms : 0, stdoutTail: String((r && r.stdout) || '').slice(-2000), stderrTail: String((r && r.stderr) || '').slice(-2000) })
     if (!r || r.timedOut || r.exit !== 0) {
-      const audit0 = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: d.install.manager, commands: commands, results: results, exit: r ? r.exit : null, timedOut: !!(r && r.timedOut), installed: args.packages, rollback: rollbackFor(d, exe, args.packages), network: 'not-enforced-by-plugin' }
+      const audit0 = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: activeManager, commands: commands, results: results, exit: r ? r.exit : null, timedOut: !!(r && r.timedOut), installed: args.packages, rollback: rollbackFor(d, exe, args.packages, uninstallTmpl), network: 'not-enforced-by-plugin' }
       await H.writeText('Computation/installs/' + planToken + '.json', JSON.stringify(audit0, null, 2))
       const code = (r && r.timedOut) ? 'MATH_TIMEOUT' : 'MATH_NONZERO_EXIT'
       const out = fail(code, engineName, '安装失败（' + c.argv.join(' ') + '）：' + (r ? ('exit=' + r.exit) : 'no subprocess'), { next: next('note', { audit: 'Computation/installs/' + planToken + '.json' }) })
@@ -859,13 +913,54 @@ async function opInstall(H, args, params) {
       return out
     }
   }
-  const audit = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: d.install.manager, commands: commands, results: results, exit: 0, timedOut: false, installed: args.packages, before: {}, after: {}, rollback: rollbackFor(d, exe, args.packages), network: 'not-enforced-by-plugin' }
+  const audit = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: activeManager, commands: commands, results: results, exit: 0, timedOut: false, installed: args.packages, before: {}, after: {}, rollback: rollbackFor(d, exe, args.packages, uninstallTmpl), network: 'not-enforced-by-plugin' }
   await H.writeText('Computation/installs/' + planToken + '.json', JSON.stringify(audit, null, 2))
   return { ok: true, op: 'install', engine: engineName, executed: true, scope: scope, audit: 'Computation/installs/' + planToken + '.json', message: '已安装：' + args.packages.join(', ') + '（审计：Computation/installs/' + planToken + '.json）' }
 }
 
-function rollbackFor(d, exe, packages) {
-  const tmpl = d.install && d.install.uninstallArgv
+// ── round-6 (B/D): package specs + Python package-manager dispatch ──────────────────────────────
+// Version SOLVING is delegated to the package manager: the tool only checks presence (by base name)
+// and passes the spec through. The accepted grammar is small and manager-understood; anything else
+// (spaces, `;`, `|`, `&`, `$`, backticks, `@`, parentheses, empty) is refused with an explicit
+// reason instead of being handed to a shell.
+const PKG_SPEC_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?(?:(?:==|>=|<=|~=|!=|>|<|=)[A-Za-z0-9._*+!-]+)?$/
+export function parsePackageSpec(spec) {
+  const raw = String(spec == null ? '' : spec).trim()
+  if (!raw) return { ok: false, problem: 'empty package spec' }
+  if (!PKG_SPEC_RE.test(raw)) {
+    return { ok: false, problem: 'unsupported version syntax: "' + raw + '"（版本求解交给包管理器：请用它能理解的形式，例如 pip 的 pkg==1.2 或 conda 的 pkg=1.2；本工具只检查是否已安装）' }
+  }
+  const name = raw.replace(/(?:==|>=|<=|~=|!=|>|<|=).*$/, '').replace(/\[.*$/, '')
+  return { ok: true, name: name, spec: raw, pinned: raw !== name }
+}
+
+// Detect WHICH python package manager the interpreter's own environment implies - detect, don't
+// guess. conda/mamba markers live in the interpreter path (…/envs/<name>/… or …/miniconda3/…) and
+// must be confirmed by resolving the manager; uv counts only when it sits NEXT TO the interpreter
+// (a uv-managed venv). Anything ambiguous falls back to pip, and `assumed: true` travels into the
+// plan/message so the operator is told which manager the plan assumes.
+async function detectPythonManager(H, exe) {
+  const p = String(exe || '').replace(/\\/g, '/').toLowerCase()
+  if (/\/envs\/|\/conda|\/miniconda|\/anaconda|\/mambaforge|\/miniforge/.test(p)) {
+    for (const mgr of ['conda', 'mamba']) {
+      try {
+        const found = await H.resolveExecutable(mgr)
+        if (found) return { manager: mgr, assumed: false, why: '解释器路径看起来像 ' + mgr + ' 环境（' + p.split('/').slice(-3).join('/') + '）' }
+      } catch (e) { /* try the next candidate */ }
+    }
+  }
+  try {
+    const uv = await H.resolveExecutable('uv')
+    if (uv) {
+      const dirOf = (x) => String(x).replace(/\\/g, '/').replace(/\/[^/]*$/, '')
+      if (dirOf(uv) === dirOf(exe)) return { manager: 'uv', assumed: false, why: 'uv 与解释器同目录（uv 管理的虚拟环境）' }
+    }
+  } catch (e) { /* fall through to pip */ }
+  return { manager: 'pip', assumed: true, why: '未检测到 conda/mamba 标记，也没有与解释器同目录的 uv ⇒ 按文档回退到 pip（计划中的管理器是**假设**）' }
+}
+
+function rollbackFor(d, exe, packages, uninstallTmpl) {
+  const tmpl = uninstallTmpl || (d.install && d.install.uninstallArgv)
   if (!tmpl) return { supported: 'partial', commands: [], note: '该管理器未提供卸载模板；本工具不做自动回滚' }
   return { supported: 'partial', commands: packages.map((p) => substInstall(tmpl, d.name, exe, p)), note: '包管理器各自支持卸载；本工具不做自动回滚' }
 }

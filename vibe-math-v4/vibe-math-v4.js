@@ -32,6 +32,8 @@ import {
   MATH_RULE_LINES_EN,
   MATH_ARCHIVE_WORKFLOW_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE_EN,
+  MATH_SUBSTITUTION_RULE_LINE,
+  MATH_SUBSTITUTION_RULE_LINE_EN,
   MATH_PARAM_DEFAULTS,
   MATH_PARAM_NAMES,
   normalizeMathParams,
@@ -1095,6 +1097,11 @@ export function apply(ctx) {
         // both persona blocks by this preset — this is the drift check for the former.
         if(mathAvailZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE.trim())===-1||mathAvailEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN.trim())===-1){
           logActivity('math','警告：mathAvailabilityLine 未附带归档工作流规则（MATH_ARCHIVE_WORKFLOW_LINE/_EN）')
+        // round-6 A: substitution honesty is part of the same contract (an alternative that weakens
+        // exactness must be declared). It is appended to the availability line by the module.
+        if(mathAvailZh.indexOf(MATH_SUBSTITUTION_RULE_LINE.trim())===-1||mathAvailEn.indexOf(MATH_SUBSTITUTION_RULE_LINE_EN.trim())===-1){
+          logActivity('math','警告：mathAvailabilityLine 未附带替代诚实性规则（MATH_SUBSTITUTION_RULE_LINE/_EN）')
+        }
         }
       } catch(e){ /* a probe failure must never break a prompt; keep the last known line */ }
       finally { mathAvailBusy=false }

@@ -67,6 +67,8 @@ import {
   MATH_RULE_LINES_EN,
   MATH_ARCHIVE_WORKFLOW_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE_EN,
+  MATH_SUBSTITUTION_RULE_LINE,
+  MATH_SUBSTITUTION_RULE_LINE_EN,
   normalizeMathParams,
   probeMathEngines,
   registerMathComputation,
@@ -2923,6 +2925,10 @@ export function apply(ctx) {
         // `scriptChanged` actionable for a member).
         if (mathLineZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) === -1) console.error('vibe-math-v5: the math availability line lost the archive workflow rule')
         if (mathLineEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN) === -1) console.error('vibe-math-v5: the EN math availability line lost the archive workflow rule')
+        // Round-6 (A): an undeclared SUBSTITUTION must never read like the exact result — the
+        // honesty rule has to reach the prompt in both languages.
+        if (mathLineZh.indexOf(MATH_SUBSTITUTION_RULE_LINE) === -1) console.error('vibe-math-v5: the math availability line lost the substitution-honesty rule')
+        if (mathLineEn.indexOf(MATH_SUBSTITUTION_RULE_LINE_EN) === -1) console.error('vibe-math-v5: the EN math availability line lost the substitution-honesty rule')
         return mathLineZh
       } catch (e) {
         // A probe failure must never break prompt construction: keep whatever we had.
@@ -2935,11 +2941,12 @@ export function apply(ctx) {
       const line = lang === 'en' ? mathLineEn : mathLineZh
       if (line) return '\n' + line
       // Fallback: when the dynamic line could not be built, the member still needs to know the
-      // tool exists, how to cite it, and (P2a) that an edited script needs a NEW receipt.
+      // tool exists, how to cite it, that an edited script needs a NEW receipt, and (round 6) that
+      // a substitution weakening exactness must be declared.
       if (String(params.mathComputation) === 'off') return ''
       return lang === 'en'
-        ? '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN
-        : '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE
+        ? '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN + '\n' + MATH_SUBSTITUTION_RULE_LINE_EN
+        : '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE + '\n' + MATH_SUBSTITUTION_RULE_LINE
     }
     // Push the tool section into a prompt under construction (a no-op in the 'off' mode, which
     // is the "off means zero mention" discipline).

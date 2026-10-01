@@ -30,6 +30,34 @@ export const MATH_ENGINES = {
       userArgv: ['<exe>', '-m', 'pip', 'install', '--user', '<pkg>'],
       systemArgv: ['<exe>', '-m', 'pip', 'install', '<pkg>'],
       uninstallArgv: ['<exe>', '-m', 'pip', 'uninstall', '-y', '<pkg>'],
+      // Round-6 (B): DISPATCH by the detected interpreter environment. `pip` is the documented
+      // fallback; the module picks conda/mamba/uv only when the interpreter's OWN environment says so
+      // (detect, don't guess) and the plan states which manager it assumed.
+      managers: {
+        conda: {
+          detect: 'conda-markers',
+          userArgv: ['conda', 'install', '-y', '-c', 'conda-forge', '<pkg>'],
+          uninstallArgv: ['conda', 'remove', '-y', '<pkg>'],
+          systemUnsupportedReason: 'conda 环境是用户级的；系统级安装不在 conda 的概念里（本工具只出用户级计划）',
+        },
+        mamba: {
+          detect: 'conda-markers',
+          userArgv: ['mamba', 'install', '-y', '-c', 'conda-forge', '<pkg>'],
+          uninstallArgv: ['mamba', 'remove', '-y', '<pkg>'],
+          systemUnsupportedReason: 'mamba 环境是用户级的；系统级安装不在 mamba 的概念里（本工具只出用户级计划）',
+        },
+        uv: {
+          detect: 'uv-next-to-interpreter',
+          userArgv: ['uv', 'pip', 'install', '<pkg>'],
+          uninstallArgv: ['uv', 'pip', 'uninstall', '<pkg>'],
+          systemUnsupportedReason: 'uv 装进当前虚拟环境（用户级）；系统级需要发行版包管理器，本工具只出用户级计划',
+        },
+        pip: {
+          detect: 'fallback',
+          systemArgv: ['<exe>', '-m', 'pip', 'install', '<pkg>'],
+          uninstallArgv: ['<exe>', '-m', 'pip', 'uninstall', '-y', '<pkg>'],
+        },
+      },
     },
     userInstall: { windows: 'winget install --id Python.Python.3.12', macos: 'brew install python', linux: 'apt install python3' },
   },
@@ -45,6 +73,8 @@ export const MATH_ENGINES = {
       manager: 'r',
       userArgv: ['<exe>', '-e', "install.packages('__PKG__',lib=Sys.getenv('R_LIBS_USER'),repos='https://cloud.r-project.org')"],
       uninstallArgv: ['<exe>', '-e', "remove.packages('__PKG__',lib=Sys.getenv('R_LIBS_USER'))"],
+      // Round-6 (C): user-only BY DESIGN, and the refusal now says why per engine.
+      systemUnsupportedReason: 'R 的用户库是 R_LIBS_USER；系统级安装要写发行版的包目录（需 root 或发行版包管理器），本工具只出用户级计划',
     },
     userInstall: { windows: 'winget install --id RProject.R', macos: 'brew install r', linux: 'apt install r-base' },
   },
@@ -61,6 +91,7 @@ export const MATH_ENGINES = {
       manager: 'octave-pkg',
       userArgv: ['<exe>', '--no-gui', '--quiet', '--eval', "pkg install -forge __PKG__"],
       uninstallArgv: ['<exe>', '--no-gui', '--quiet', '--eval', 'pkg uninstall __PKG__'],
+      systemUnsupportedReason: 'Octave 的 pkg install 装进用户包目录；系统级要写 Octave 的 share/packages（需 root），本工具只出用户级计划',
     },
     userInstall: { windows: 'winget install --id GNU.Octave', macos: 'brew install octave', linux: 'apt install octave' },
   },
@@ -76,6 +107,7 @@ export const MATH_ENGINES = {
       manager: 'julia-pkg',
       userArgv: ['<exe>', '-e', 'using Pkg; Pkg.add("__PKG__")'],
       uninstallArgv: ['<exe>', '-e', 'using Pkg; Pkg.rm("__PKG__")'],
+      systemUnsupportedReason: 'Julia 的 Pkg.add 装进当前活动环境 / 用户 depot（JULIA_DEPOT_PATH）；系统级不是 Julia 的概念，本工具只出用户级计划',
     },
     userInstall: { windows: 'winget install --id Julialang.Julia', macos: 'brew install julia', linux: 'apt install julia' },
   },

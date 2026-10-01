@@ -24,6 +24,7 @@ import {
   MATH_TOOL_DESCRIPTION,
   MATH_PERSONA_TOOL_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE,
+  MATH_SUBSTITUTION_RULE_LINE,
 } from '../vibe-math-v2/math-computation.js'
 // 引擎表在姊妹模块里（模块自己 import 它；测试为了拼 argv 模板也直接读一次，只读不写）。
 import { MATH_ENGINES } from '../vibe-math-v2/math-engines.js'
@@ -492,6 +493,9 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   assert(/math_computation/.test(shellMode), '★ 工作提示词里出现 math_computation 可用性行')
   assert(/先 probe 再 run/.test(shellMode), '★★ 可用性行含"先 probe 再 run"')
   assert(/未经工具归档/.test(shellMode), '★★ typed+shell 档含 shell 兜底标注（未经工具归档）')
+  assert(shellMode.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1, '★★★ A 项：注入的可用性行含「替代必须声明」规则（工作提示词里逐字可见）')
+  const toolDesc = String((specOf('math_computation') || {}).description || '')
+  assert(toolDesc.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1 || /替代方案若改变精确性|替代必须声明/.test(toolDesc), '★★★ A 项：工具描述写明「替代改变精确性/强度必须声明」（逐字或同义重述，实测片段：' + JSON.stringify(toolDesc.slice(Math.max(0, toolDesc.indexOf('替代')), toolDesc.indexOf('替代') + 46)) + '）')
   // typed：不得出现 shell 兜底句
   H.spawns.length = 0
   await call('vibe_math_set_params', { mathMode: 'typed' })
@@ -525,6 +529,10 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   const wfBlocks = yml.split(/\n\s*(?:prefix|text):\s*\|/).filter((b) => b.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) !== -1).length
   assert(wfBlocks >= 2, '★★★ P2a：persona 两个文本块都含 MATH_ARCHIVE_WORKFLOW_LINE（命中 ' + wfBlocks + ' 块）')
   assert((yml.match(/scriptChanged/g) || []).length >= 2 && (yml.match(/mode:'file'|mode: 'file'/g) || []).length >= 2, '★★ P2a：yml 里 scriptChanged 与 mode:file 各出现两次（两个块各一次）')
+  // A 项：替代必须声明（诚实性）。**追加**语义：含这条规则的块里，原有工具行与归档工作流行都必须在。
+  const subBlocks = blocks.filter((b) => b.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1)
+  assert(subBlocks.length >= 2, '★★★ A 项：persona 两个文本块都含「替代必须声明」规则（命中 ' + subBlocks.length + ' 块）')
+  assert(subBlocks.every((b) => b.indexOf(MATH_PERSONA_TOOL_LINE) !== -1 && b.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) !== -1), '★★★ A 项：是**追加**不是替换——含新规则的块里原有工具行/归档工作流行都还在')
 }
 
 // ── §16 ensureDirs 含 Computation ────────────────────────────────────────────────────────────

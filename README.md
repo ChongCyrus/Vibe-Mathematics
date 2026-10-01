@@ -509,6 +509,10 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
 
 > **归档即证据**：每次计算都写出 `Computation/<id>/`，回执含 `scriptPath` 与 `scriptHash`；脚本原件可以打开/编辑，编辑后必须用 `mode:'file'` **重跑**得到新回执——**旧回执不代表修改后的代码**（`scriptChanged` / `scriptChangedDuringRun` 会显式告警）。归档只追加不覆盖，超上限只告警不删除。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
+
+> **替代必须声明**：当替代方案改变**精确性或结论强度**（精确解→数值近似、闭式解→采样/求积、改精度/容差/假设、换算法类）时，结论**必须写明**，不得像得到了原本的结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`，已注入四套 persona 与提示词）。
+
+> **安装与版本**：`op:'install'` 按**检测到的 python 环境**分派 conda/mamba（`-c conda-forge`）、uv（`uv pip …`）或 pip 回退（歧义时标 `managerAssumed`）；R/Octave/Julia **只做用户级**（`system` ⇒ `MATH_REFUSED` + 每引擎理由）。**版本求解交给包管理器**：本工具只按 base name 查存在、把 `pkg==1.2`（conda `pkg=1.2`）原样透传，危险或不认识的写法 ⇒ `unsupported-version-syntax`。详见 [`docs/math-computation.md`](docs/math-computation.md) §5.1–5.3。
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |

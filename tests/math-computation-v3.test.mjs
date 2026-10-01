@@ -24,6 +24,7 @@ import {
   MATH_TOOL_DESCRIPTION,
   MATH_PERSONA_TOOL_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE,
+  MATH_SUBSTITUTION_RULE_LINE,
 } from '../vibe-math-v3/math-computation.js'
 // 引擎表在姊妹模块里（模块自己 import 它；测试为了拼 argv 模板也直接读一次，只读不写）。
 import { MATH_ENGINES } from '../vibe-math-v3/math-engines.js'
@@ -492,6 +493,9 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   assert(/math_computation/.test(shellMode), '★ 工作提示词里出现 math_computation 可用性行')
   assert(/先 probe 再 run/.test(shellMode), '★★ 可用性行含"先 probe 再 run"')
   assert(/未经工具归档/.test(shellMode), '★★ typed+shell 档含 shell 兜底标注（未经工具归档）')
+  assert(shellMode.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1, '★★★ A 项：注入的可用性行含「替代必须声明」规则（工作提示词里逐字可见）')
+  const toolDesc = String((specOf('math_computation') || {}).description || '')
+  assert(toolDesc.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1 || /替代方案若改变精确性|替代必须声明/.test(toolDesc), '★★★ A 项：工具描述写明「替代改变精确性/强度必须声明」（逐字或同义重述，实测片段：' + JSON.stringify(toolDesc.slice(Math.max(0, toolDesc.indexOf('替代')), toolDesc.indexOf('替代') + 46)) + '）')
   // typed：不得出现 shell 兜底句
   H.spawns.length = 0
   await call('vibe_math_set_params', { mathMode: 'typed' })
@@ -525,6 +529,10 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   const wfBlocks = yml.split(/\n\s*(?:prefix|text):\s*\|/).filter((b) => b.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) !== -1).length
   assert(wfBlocks >= 2, '★★★ P2a：persona 两个文本块都含 MATH_ARCHIVE_WORKFLOW_LINE（命中 ' + wfBlocks + ' 块）')
   assert((yml.match(/scriptChanged/g) || []).length >= 2 && (yml.match(/mode:'file'|mode: 'file'/g) || []).length >= 2, '★★ P2a：yml 里 scriptChanged 与 mode:file 各出现两次（两个块各一次）')
+  // A 项：替代必须声明（诚实性）。**追加**语义：含这条规则的块里，原有工具行与归档工作流行都必须在。
+  const subBlocks = blocks.filter((b) => b.indexOf(MATH_SUBSTITUTION_RULE_LINE) !== -1)
+  assert(subBlocks.length >= 2, '★★★ A 项：persona 两个文本块都含「替代必须声明」规则（命中 ' + subBlocks.length + ' 块）')
+  assert(subBlocks.every((b) => b.indexOf(MATH_PERSONA_TOOL_LINE) !== -1 && b.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) !== -1), '★★★ A 项：是**追加**不是替换——含新规则的块里原有工具行/归档工作流行都还在')
 }
 
 // ── §16 ensureDirs 含 Computation ────────────────────────────────────────────────────────────
@@ -619,28 +627,30 @@ section('§18 可选 host 回调：listDir（保留上限只告警）与 hasSubp
 }
 
 // ── 19. round-2 lens-1: EVERY daily-line injection site is pinned, not just one ─────────────────
-// v3 has FOUR sites: three through `formalDailySection()` (explorer / rederive / solver) and one
-// INLINE `formalWorkLine()` in the method-keeper prompt, where a `formalOn()` legitimately gates only
-// the trailing Lean-archive note - so there the producer must appear BEFORE the first `formalOn()`.
+// v3 shape: three `formalDailySection()` call sites PLUS the inline `formalWorkLine()` site in
+// methodKeeperPrompt (the one that is easiest to miss after the helper was extracted). The static
+// check is "the producer call must not sit behind a formalOn() gate": if `formalOn()` appears
+// BEFORE the producer on the same line, that site is gated and the initiative axis is broken.
 {
   const src = readFileSync(fileURLToPath(PLUGIN), 'utf8')
   const lines = src.split(/\r?\n/)
-  const daily = []
-  const inline = []
+  const sites = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    if (line.indexOf('function formalDailySection') !== -1 || line.indexOf('function formalWorkLine') !== -1) continue
-    if (line.indexOf('formalDailySection()') !== -1) daily.push({ n: i + 1, gated: line.indexOf('formalOn()') !== -1 })
-    else if (line.indexOf('formalWorkLine()') !== -1) {
-      const p = line.indexOf('formalWorkLine()')
-      const g = line.indexOf('formalOn()')
-      inline.push({ n: i + 1, ok: g === -1 || p < g })
-    }
+    if (line.indexOf('function formalDailySection') !== -1 || line.indexOf('function formalWorkLine') !== -1) continue // definitions
+    if (/^\s*const line = formalWorkLine\(\)/.test(line)) continue // inside formalDailySection itself
+    const at = line.indexOf('formalDailySection()') !== -1 ? line.indexOf('formalDailySection()') : line.indexOf('formalWorkLine()')
+    if (at === -1) continue
+    const gated = line.indexOf('formalOn()') !== -1 && line.indexOf('formalOn()') < at
+    sites.push({ n: i + 1, gated: gated, kind: line.indexOf('formalDailySection()') !== -1 ? 'helper' : 'inline' })
   }
-  assert(daily.length >= 3, '★★★ [sites 1-3] the three formalDailySection() injection sites are present (found ' + daily.length + ')')
-  for (const s of daily) assert(!s.gated, '★★★ [site @line ' + s.n + '] formalDailySection() is NOT behind a formalOn() gate')
-  assert(inline.length >= 1, '★★★ [site 4] the inline formalWorkLine() site (method-keeper) is present (found ' + inline.length + ')')
-  for (const s of inline) assert(s.ok, '★★★ [site @line ' + s.n + '] the inline daily producer precedes any formalOn() gate (only the trailing note may be gated)')
+  const helper = sites.filter((s) => s.kind === 'helper').length
+  const inline = sites.filter((s) => s.kind === 'inline').length
+  assert(helper >= 3, '★★★ [sites] all three formalDailySection() call sites are present (found ' + helper + ')')
+  assert(inline >= 1, '★★★ [sites] the inline daily-line site (methodKeeperPrompt) is present (found ' + inline + ')')
+  for (const s of sites) {
+    assert(!s.gated, '★★★ [site @line ' + s.n + '] the daily-line producer is NOT behind a formalOn() gate (initiative is an independent axis)')
+  }
 }
 
 console.log('\n=== MATH COMPUTATION V3: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -509,6 +509,10 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `mathInstallScope` | `user` | all four | Install scope; `system` must be given **explicitly on every call and is never remembered** (most managers have no system template, in which case the request is refused) |
 
 > **Archive = evidence**: every run writes `Computation/<id>/` and the receipt carries `scriptPath` + `scriptHash`; the script original may be opened/edited, but after editing you MUST re-run it with `mode:'file'` to get a NEW receipt - **an old receipt does not represent edited code** (`scriptChanged` / `scriptChangedDuringRun` warn explicitly). Archives are append-only and over-cap behaviour is warn-only, never delete. See [`docs/math-computation.md`](docs/math-computation.md) §4.1.
+
+> **Declare substitutions**: when an alternative changes **exactness or conclusion strength** (exact solution -> numerical approximation, closed form -> sampling/quadrature, changed precision/tolerances/assumptions, a different algorithm class), the conclusion MUST say so and must not read as if the original result had been obtained; if the exact result is unavailable, say so plainly (rule line `MATH_SUBSTITUTION_RULE_LINE`, injected into all four personas and prompts).
+
+> **Install and versions**: `op:'install'` dispatches on the **detected python environment** - conda/mamba (`-c conda-forge`), uv (`uv pip …`) or the documented pip fallback (ambiguous cases carry `managerAssumed`); R/Octave/Julia are **user-scope only** (`system` => `MATH_REFUSED` with a per-engine reason). **Version solving belongs to the package manager**: the tool only checks presence by base name and passes `pkg==1.2` (conda `pkg=1.2`) through verbatim; unsafe or unknown syntax => `unsupported-version-syntax`. See [`docs/math-computation.md`](docs/math-computation.md) §5.1-5.3.
 | `tickIntervalMs` | 2000 | v2·v3 | Scheduler heartbeat interval (milliseconds) |
 | `activityLogCap` | 100 | v2·v3 | Number of activity log entries retained (the report displays at most 30) |
 | `maxExplorerRetries` | 3 | v2·v3 | Upper limit on re-dispatching after an explorer fails to split directions |
