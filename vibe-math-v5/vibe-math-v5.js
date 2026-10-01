@@ -928,6 +928,69 @@ export function apply(ctx) {
       const cap = Math.max(1, Math.floor(Number(params.quorumCap) || 3))
       return Math.max(1, Math.min(cap, voterCount()))
     }
+    // DEFECT 2 (v5 self-test §18): before `start` there are no voters, yet the reported quorum
+    // was `m=1` with `voters=0` — it read like "a quorum of 1 is already there". The REPORTED
+    // quorum is therefore coherent and explicit: `started:false`, `m:0`, `voterCount:0` and the
+    // next step. `quorumM()` itself stays >=1 so the consensus arithmetic is unchanged, and
+    // `judgeVerdict` refuses to conclude at all when there are no voters.
+    function quorumView() {
+      const vc = voterCount()
+      const started = vc > 0
+      const view = {
+        m: started ? quorumM() : 0,
+        mode: params.quorumMode,
+        voters: voters().map((m) => m.id),
+        voterCount: vc,
+        started: started,
+        phase: started ? 'voting' : 'not-started',
+      }
+      if (!started) {
+        view.next = {
+          kind: 'start', tool: 'vibe_v5_start',
+          hint: '研究所尚未启动：有表决权者 0 人，因此 m 记为 0（不是"已满足 1 票门槛"）。先 vibe_v5_start（或 /v5 start）建立名册，m 才有意义。',
+        }
+      }
+      return view
+    }
+    // DEFECT 1 (v5 self-test §18): a member-scoped tool called before the institute exists — or
+    // by nobody identifiable — answered a BARE `V5_MEMBER_NOT_FOUND`, so an operator (or the
+    // model) could not tell WHY it failed or WHAT TO DO FIRST. The error CODE is unchanged (all
+    // existing gates keep matching on it); the answer now names the state and the next step, in
+    // the same `next`-hint shape the `math_computation` tool uses.
+    function memberDiagnosis(what, memberId) {
+      const total = (inst().members || []).length
+      const active = activeMembers().length
+      const who = String(memberId || '')
+      if (active === 0 && !running) {
+        return {
+          ok: false, code: 'V5_MEMBER_NOT_FOUND',
+          message: what + '失败：研究所尚未启动（在册 ' + total + ' 名、有表决权者 0 人），没有可归属的成员身份。',
+          next: {
+            kind: 'start', tool: 'vibe_v5_start',
+            hint: '先启动研究所（vibe_v5_start 或 /v5 start）让框架派出常驻成员，再由**成员子代理**调用该工具；所办（会话根）本身不是成员。',
+          },
+        }
+      }
+      if (active === 0) {
+        return {
+          ok: false, code: 'V5_MEMBER_NOT_FOUND',
+          message: what + '失败：研究所当前没有在册（active）成员。',
+          next: { kind: 'staff', tool: 'vibe_v5_add_researcher', hint: '先用 vibe_v5_add_researcher / vibe_v5_hire 补充成员，再调用该工具。' },
+        }
+      }
+      if (!who) {
+        return {
+          ok: false, code: 'V5_MEMBER_NOT_FOUND',
+          message: what + '失败：无法识别调用者（这是成员工具，所办/会话根没有成员身份）。',
+          next: { kind: 'member-call', tool: 'vibe_v5_members', hint: '请由成员子代理调用；所办可用 vibe_v5_message 转达，或直接用所办工具（vibe_v5_report / vibe_v5_status）。' },
+        }
+      }
+      return {
+        ok: false, code: 'V5_MEMBER_NOT_FOUND',
+        message: what + '失败：名册中没有成员 "' + who + '"（可能已被解雇或尚未就位）。',
+        next: { kind: 'roster', tool: 'vibe_v5_members', hint: '先用 vibe_v5_members 查看当前名册与阶段（active / provisioning / dismissed）。' },
+      }
+    }
     function byChild(childId) { return inst().members.find((m) => m.childId === childId) }
     // The live academician's id, or '' when the office founded the institute with
     // `academician: false`. Every piece of charter text that talks about "the leader"
@@ -1303,7 +1366,7 @@ export function apply(ctx) {
       const ms = activeMembers()
       const b = []
       b.push('[状态] 你是 ' + member.id + '（' + kindLabel(member.kind) + '）｜轮次 ' + (rounds.get(member.id) || 0) +
-        '｜法定票数 m=' + quorumM() + '｜有表决权者 ' + voterCount() + ' 人')
+        '｜法定票数 m=' + (voterCount() > 0 ? quorumM() : '未启动') + '｜有表决权者 ' + voterCount() + ' 人')
       b.push('[在册] ' + (ms.length ? ms.map((x) => x.id).join('、') : '（无）'))
       // Members that are on the books but NOT on the floor. Silently omitting them made a
       // failed provision invisible to the whole institute.
@@ -3377,7 +3440,7 @@ export function apply(ctx) {
       return n
     }
     async function publishProgress(memberId, text) {
-      if (!memberId || !memberById(memberId)) return { ok: false, code: 'V5_MEMBER_NOT_FOUND' }
+      if (!memberId || !memberById(memberId)) return memberDiagnosis('记录研究进度（vibe_v5_record_progress）', memberId)
       if (!String(text || '').trim()) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'empty progress' }
       const rel = 'Members/' + memberId + '/Progress/progress.md'
       const prev = (await readTextRel(rel)) || ''
@@ -3390,7 +3453,7 @@ export function apply(ctx) {
     // hard requirements. Missing fields are refused rather than silently defaulted,
     // so the libraries keep their meaning.
     async function recordCard(memberId, kind, o) {
-      if (!memberId || !memberById(memberId)) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no such member' }
+      if (!memberId || !memberById(memberId)) return memberDiagnosis('记录成果卡片（vibe_v5_record_proposition/method/subproblem）', memberId)
       const args = o || {}
       const missing = []
       if (args.value === undefined || args.value === null) missing.push('value（价值程度）')
@@ -3553,7 +3616,7 @@ export function apply(ctx) {
       // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
       // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
       // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
-      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
+      if (!memberId) return memberDiagnosis('修改任务（vibe_v5_task_update）', memberId)
       const args = o || {}
       const id = String(args.task_id || args.taskId || '')
       const task = inst().tasks.find((x) => x.id === id)
@@ -3650,7 +3713,7 @@ export function apply(ctx) {
     // it can never make any statement true, and the assignee may object with reasons
     // (the objection is broadcast, not silently swallowed).
     async function taskAssign(memberId, o) {
-      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
+      if (!memberId) return memberDiagnosis('分派任务（vibe_v5_assign）', memberId)
       if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can assign tasks' }
       }
@@ -3694,7 +3757,7 @@ export function apply(ctx) {
       return { ok: true, task: taskView(withMeta) }
     }
     async function taskPrioritize(memberId, o) {
-      if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
+      if (!memberId) return memberDiagnosis('设置任务优先级（vibe_v5_task_prioritize）', memberId)
       if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can set priorities' }
       }
@@ -3746,7 +3809,7 @@ export function apply(ctx) {
       const s = inst()
       const lines = ['# 研究所编制表（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
         '> 权威状态在 State/<研究所>.v5state.json 里；本文件只是快照，勿手改。', '']
-      lines.push('- 求真门槛：m = ' + quorumM() + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
+      lines.push('- 求真门槛：' + (voterCount() > 0 ? 'm = ' + quorumM() : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
       lines.push('- 阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
       lines.push('')
       lines.push('| 代号 | 职位 | 状态 | 雇主 | 方向/用途 | 轮次 | 上下文% |')
@@ -3873,6 +3936,9 @@ export function apply(ctx) {
       }
       const mean = all.length ? all.reduce((a, x) => a + x, 0) / all.length : 0.5
       const base = { m, P, bTrue, bFalse, abstain, mean, votedCount: all.length, voters: E }
+      // DEFECT 2 hardening: with NO voters there is nothing to conclude — every `>= m` test
+      // below would be trivially satisfiable if m were ever 0. Consensus needs voters.
+      if (P === 0) return Object.assign(base, { outcome: 'undecided', reason: 'no voters: the institute has no voting members yet' })
       if (params.quorumMode === 'all-unanimous') {
         const allVoted = E.length > 0 && E.every((id) => votes[id])
         if (!allVoted) return Object.assign(base, { outcome: 'undecided', reason: 'not every voter has voted' })
@@ -4219,7 +4285,7 @@ export function apply(ctx) {
     // Record one vote and, when every voter has answered, settle the round.
     async function castVerdict(memberId, target, verdict, reason) {
       const member = memberById(memberId)
-      if (!member) return { ok: false, code: 'V5_MEMBER_NOT_FOUND' }
+      if (!member) return memberDiagnosis('投票（vibe_v5_verdict）', memberId)
       if (member.kind === 'temp') {
         // Temp workers have no vote — but their judgement still matters, so it is
         // relayed to the group instead of being silently dropped.
@@ -5508,7 +5574,7 @@ export function apply(ctx) {
       return { ok: true, dismissed: id, reclaimedTasks: reclaimed, reason }
     }
     async function nudge(callerId, o) {
-      if (!callerId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
+      if (!callerId) return memberDiagnosis('督办（vibe_v5_nudge）', callerId)
       if (!isOffice(callerId) && !(isAcademician(callerId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can nudge members' }
       }
@@ -6103,7 +6169,7 @@ export function apply(ctx) {
         memberMayRejectAssign: params.memberMayRejectAssign,
         researcherCount: params.researcherCount,
         quorumCap: params.quorumCap, quorumMode: params.quorumMode,
-        m: quorumM(), voterCount: voterCount(),
+        m: quorumView().m, voterCount: voterCount(), started: voterCount() > 0,
         verdictMaxRounds: params.verdictMaxRounds,
         maxTempPerMember: params.maxTempPerMember, maxTempTotal: params.maxTempTotal,
         compactThreshold: params.compactThreshold, compactAfterRounds: params.compactAfterRounds,
@@ -6419,7 +6485,7 @@ export function apply(ctx) {
         // failure modes that silently drop state were invisible in the operator's view.
         diagnostics: s.diagnostics || [],
         debug: Object.assign({ scheduling, reschedule }, dbg),
-        quorum: { m: quorumM(), mode: params.quorumMode, voters: voters().map((m) => m.id), voterCount: voterCount() },
+        quorum: quorumView(),
         members: s.members.map((m) => ({
           id: m.id, kind: m.kind, phase: m.phase, direction: m.direction, hiredBy: m.hiredBy,
           rounds: rounds.get(m.id) || 0, busy: busy.has(m.id), contextPct: contextPct.get(m.id) || 0,
@@ -6461,7 +6527,7 @@ export function apply(ctx) {
       L.push('')
       L.push('- 项目：' + project + '｜阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
       L.push('- 研究对象：' + (s.problem.statement ? s.problem.statement.slice(0, 200) : '（未设定）'))
-      L.push('- 求真门槛：m = ' + quorumM() + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
+      L.push('- 求真门槛：' + (voterCount() > 0 ? 'm = ' + quorumM() : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
       L.push('')
       L.push('## 编制')
       if (!s.members.length) L.push('（暂无成员）')
@@ -6606,6 +6672,8 @@ export function apply(ctx) {
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
+      // diagnosis helpers (defects 1/2 of the architecture self-test)
+      memberDiagnosis, quorumM, quorumView, voterCount,
     }
   }
 
@@ -6800,7 +6868,7 @@ export function apply(ctx) {
   // ── member-facing controls ────────────────────────────────────────────────
   registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
     const from = s.memberIdOfAgent(x)
-    if (!from) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member' }
+    if (!from) return s.memberDiagnosis('发言（vibe_v5_say）', from)
     const to = a.to || 'all'
     return s.say(from, { to, text: a.text, kind: to === 'voters' ? 'voters' : (a.to ? 'dm' : 'chat') })
   })

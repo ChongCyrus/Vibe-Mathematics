@@ -1865,6 +1865,48 @@ console.log('\n[42] every Lean prompt site obeys the leanInitiative gate in both
   assert(s3on.indexOf(DAILY) === -1, 'S3 verifyPrompt: …and the daily line is still absent there')
 }
 
+// ---------- 43. pre-start diagnosis + coherent quorum (architecture self-test defects 1/2) -------
+// The self-test (§18 of _oneoff/method3-scripted-driving.md) found that before `start`:
+//   (1) record_progress / record_proposition / verdict answered a BARE `V5_MEMBER_NOT_FOUND`
+//       with no hint about why or what to do first;
+//   (2) `vibe_v5_status` reported `quorum.m=1` with `voters=0` — reading like a satisfied quorum.
+// Both are asserted here, INCLUDING the actionable `next` step, and the normal (post-start) path
+// is exercised in the same section so a follow-up self-test can see a non-error path.
+console.log('\n[43] pre-start tools explain themselves; the quorum is coherent before and after start')
+{
+  const h = makeHost({ pluginModule })
+  const pre = async (name, args) => await h.callTool(name, args, h.ROOT)
+  const rProg = await pre('vibe_v5_record_progress', { content: '自我测试' })
+  assert(rProg.ok === false && rProg.code === 'V5_MEMBER_NOT_FOUND' && /尚未启动/.test(String(rProg.message || '')) &&
+    rProg.next && rProg.next.kind === 'start' && rProg.next.tool === 'vibe_v5_start',
+    '★ pre-start record_progress: the code is unchanged but the answer names the state + the next step (' + JSON.stringify(rProg).slice(0, 200) + ')')
+  const rProp = await pre('vibe_v5_record_proposition', { statement: 's', value: 1, motive: 'm', p: 0.5 })
+  assert(rProp.ok === false && rProp.code === 'V5_MEMBER_NOT_FOUND' && /尚未启动/.test(String(rProp.message || '')) && rProp.next && rProp.next.kind === 'start',
+    '★ pre-start record_proposition: same actionable diagnosis (' + JSON.stringify(rProp).slice(0, 160) + ')')
+  const rVer = await pre('vibe_v5_verdict', { target: 'p-x', verdict: 1 })
+  assert(rVer.ok === false && rVer.code === 'V5_MEMBER_NOT_FOUND' && /尚未启动/.test(String(rVer.message || '')) && rVer.next && rVer.next.kind === 'start',
+    '★ pre-start verdict: same actionable diagnosis (' + JSON.stringify(rVer).slice(0, 160) + ')')
+  const st0 = await pre('vibe_v5_status', {})
+  assert(st0.quorum && st0.quorum.started === false && st0.quorum.m === 0 && st0.quorum.voterCount === 0 && st0.quorum.phase === 'not-started',
+    '★ pre-start quorum is COHERENT: started=false, m=0, voters=0 (' + JSON.stringify(st0.quorum) + ')')
+  assert(st0.quorum.next && st0.quorum.next.kind === 'start' && st0.quorum.next.tool === 'vibe_v5_start',
+    '★ …and it says what to do first (' + JSON.stringify(st0.quorum.next) + ')')
+  assert(st0.params && st0.params.m === 0 && st0.params.started === false,
+    'the params view agrees: m=0, started=false (' + JSON.stringify({ m: st0.params && st0.params.m, started: st0.params && st0.params.started }) + ')')
+  assert(st0.quorum.m !== 1 || st0.quorum.voterCount !== 0,
+    'the old inconsistent `m=1 with voters=0` reading is gone')
+  // ── the NORMAL path: after start, quorum is defined and the member tools work ──
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const st1 = await h.callTool('vibe_v5_status', {})
+  assert(st1.quorum && st1.quorum.started === true && st1.quorum.m >= 1 && st1.quorum.voterCount >= 1 && st1.quorum.voters.length === st1.quorum.voterCount,
+    '★ after start the quorum is real: started=true, m>=1, voters listed (' + JSON.stringify(st1.quorum) + ')')
+  const member = h.childAgent(h.childOf('r-1'))
+  const okProg = await h.callTool('vibe_v5_record_progress', { content: '启动后写进度' }, member)
+  assert(okProg.ok === true && /Members\/r-1\/Progress/.test(String(okProg.file || '')),
+    '★ after start the SAME tool succeeds for a member (normal path reachable) (' + JSON.stringify(okProg).slice(0, 120) + ')')
+}
+
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
