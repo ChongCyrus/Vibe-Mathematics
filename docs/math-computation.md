@@ -71,7 +71,8 @@ math_computation {
    - `scriptChanged:true`：该文件当前哈希与**上一份回执**记录的 `scriptHash` 不一致（旧回执不再代表当前代码）；
    - `scriptChangedDuringRun:true`：文件在**本次运行期间**被改动（典型是另一个成员同时在编辑）——运行前后各取一次哈希才可能发现；
    - 两者都同时进入 `warnings[]`（`SCRIPT_CHANGED_SINCE_LAST_RECEIPT` / `SCRIPT_CHANGED_DURING_RUN`）与 `receipt.md`，**绝不静默**。
-4. `op:'receipt'` 会重新核对归档脚本的当前哈希与回执记录，返回 `scriptChanged` / `currentScriptHash`；它**只读**返回既有数据，仅补写**缺失**的 `receipt.md`，从不改写已有回执文件。
+4. `op:'receipt'` 会重新核对归档脚本的当前哈希与回执记录，返回 `scriptChanged` / `currentScriptHash`；它**只读**返回既有数据，仅补写**缺失**的 `receipt.md`，从不改写已有回执文件。**归档目录不存在**时返回 `MATH_REFUSED` + `next:{kind:'reason', reason:'archive-missing'}`（显式拒绝，不是"参数错误"）；`receipt.json` 存在但**无法解析**时仍是 `MATH_INVALID_ARGUMENT`（`reason:'receipt-unparsable'`，那确实是坏掉的产物）。
+   - **哈希的能力边界（按设计，不是缺陷）**：`scriptHash`/`scriptChanged` 是**内容**哈希——"内容相同但换了 inode/mtime（删了重建、复制覆盖）"与"改了又改回原样"**无法区分**，因此也不会被告警；需要区分"文件被动过"请用宿主的版本守卫（`ctx.fs` 的 `expected.version`）。**每会话模块实例的生命周期**跟随该会话对象（v4 原有生命周期，非本轮引入）。
 5. **归档是追加式的**：同一 id 的**首次**运行落在 `Computation/<id>/`，之后每次运行落在 `Computation/<id>/attempts/<n>/`（n 从 2 开始，取第一个空位）；已有文件**永不覆盖**。**并发**下同一 id 的两个运行由模块按 id 串行分配，因此一定分别拿到 attempt 1 / attempt 2，不会共用目录（跨进程并发见 §6 的限制说明）。
 6. **失败关闭（fail-closed）**：源文件在运行**期间消失** ⇒ `scriptChangedDuringRun:true`；`op:'receipt'` 读不到归档脚本（被删/移走）⇒ `scriptChanged:true` + `currentScriptHash:null`。任何"读不到/对不上"都按"旧回执不可用"处理，绝不静默当真。
 7. **保留上限**：每个 id 最多 `MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN`=20 个 attempt、每个项目最多 `MATH_ARCHIVE_MAX_RUNS`=200 个 run 目录（后者仅在宿主提供可选 `listDir` 时检查）。**超过只告警**（`ARCHIVE_RETENTION_EXCEEDED`），**永不自动删除**。

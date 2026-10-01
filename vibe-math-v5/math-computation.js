@@ -779,9 +779,12 @@ async function opReceipt(H, args) {
     json = await H.readText(d + '/receipt.json')
     if (json !== undefined) { dir = d; break }
   }
-  if (json === undefined) return fail('MATH_INVALID_ARGUMENT', null, '没有找到回执：Computation/' + runId, { next: next('reason', { reason: 'no-such-receipt' }) })
+  // Round-2 lens-1 fix: a MISSING archive directory is a refusal with an explicit reason (a
+  // fail-closed state, not a malformed call). A receipt whose JSON cannot be parsed stays
+  // MATH_INVALID_ARGUMENT (that IS a malformed artifact).
+  if (json === undefined) return fail('MATH_REFUSED', null, '没有找到回执归档：Computation/' + runId + '（目录或 receipt.json 不存在）', { next: next('reason', { reason: 'archive-missing' }) })
   let parsed
-  try { parsed = JSON.parse(json) } catch (e) { return fail('MATH_INVALID_ARGUMENT', null, '回执无法解析：' + dir) }
+  try { parsed = JSON.parse(json) } catch (e) { return fail('MATH_INVALID_ARGUMENT', null, '回执无法解析：' + dir, { next: next('reason', { reason: 'receipt-unparsable' }) }) }
   const recordedHash = parsed.scriptHash || (parsed.script && parsed.script.sha256) || null
   const scriptRel = parsed.scriptPath || (parsed.script && parsed.script.path) || (dir + '/script')
   const currentText = await H.readText(scriptRel)

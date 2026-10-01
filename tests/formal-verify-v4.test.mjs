@@ -1450,6 +1450,36 @@ section('17 leanInitiative=eager injects the daily line even with formalVerify=o
 }
 
 // ===============================================================
+// 18. audit R2 HIGH: the independence rule must hold at EVERY daily-line injection site, not just
+//     the ordinary work round. A single-site regression to `formalOn()`-only must be catchable, so
+//     each site is asserted separately under BOTH decisive states (eager+off, and initiative=off).
+// ===============================================================
+section('18 every daily-line injection site (coreRules/normal/heartbeat) obeys the independence rule')
+{
+  const N = await establish()
+  const SITES = [
+    ['coreRules', 'coreRulesBrief', () => N.prompts('coreRules')],
+    ['normal', 'normalPrompt', () => N.prompts('normal', 'r-1')],
+    ['heartbeat', 'heartbeatPrompt', () => N.prompts('heartbeat', 'r-1')],
+  ]
+  await N.callTool('vibe_v4_set', { formalVerify: 'off', leanInitiative: 'eager' })
+  for (const [which, who, read] of SITES) {
+    const text = await read()
+    assert(/【顺手形式化（主动（leanInitiative=eager））】/.test(text), '★ [' + which + '] eager + formalVerify=off injects the daily line at this site (' + who + ')')
+    assert(/判断标准：① 有价值或可能复用/.test(text) && /先 vibe_v4_lean_lib 查已有库/.test(text), '★ [' + which + '] …with the three criteria and the look-up-first rule (' + who + ')')
+  }
+  const vOff = await N.prompts('verify', 'r-1', { target: 'p-site-off', stage: 'independent' })
+  assert(!/顺手形式化/.test(vOff) && !/【Lean 形式化验证/.test(vOff), '★ [all sites] the verification prompt stays a no-op under formalVerify=off')
+  await N.callTool('vibe_v4_set', { formalVerify: 'encourage', leanInitiative: 'off' })
+  for (const [which, who, read] of SITES) {
+    const text = await read()
+    assert(!/顺手形式化/.test(text), '★ [' + which + '] leanInitiative=off removes the daily line at this site (' + who + ')')
+  }
+  assert(/【Lean 形式化验证（鼓励模式）】/.test(await N.prompts('verify', 'r-1', { target: 'p-site-off', stage: 'independent' })), '★ [all sites] …while verification still follows formalVerify (encourage)')
+  await N.callTool('vibe_v4_set', { formalVerify: 'off', leanInitiative: 'normal' })
+}
+
+// ===============================================================
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

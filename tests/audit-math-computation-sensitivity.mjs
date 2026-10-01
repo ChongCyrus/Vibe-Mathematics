@@ -163,6 +163,13 @@ const PROBES = [
     expect: 'mathEngineOverride is ACCEPTED (previously rejected as an unknown argument)',
   },
   {
+    name: 'archive-missing-not-refused',
+    file: 'math-computation.js',
+    from: "  if (json === undefined) return fail('MATH_REFUSED', null, '没有找到回执归档：",
+    to: "  if (json === undefined) return fail('MATH_INVALID_ARGUMENT', null, '没有找到回执归档：",
+    expect: 'op=receipt on a missing archive -> MATH_REFUSED',
+  },
+  {
     name: 'shell-line-in-all-tiers',
     file: 'math-computation.js',
     from: "  const shell = mode === 'typed+shell' ? '\\n' + MATH_SHELL_RULE_LINE : ''",

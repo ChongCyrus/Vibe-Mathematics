@@ -56,6 +56,9 @@ function freshFake() {
     packages: {},             // { numpy: 'ok', sympy: null }
     run: 'ok',                // ok | hang | fail3 | argerr | big
     spawnDelayMs: 0,          // 每次 spawn 的人为延迟（跨会话交错用例用）
+    noSubprocess: false,      // true ⇒ ctx.get('subprocess') 返回 undefined（hasSubprocess:false 用例）
+    fsListDirAccess: 0,       // 假 fs 的 listDir 属性被读取的次数（能力门闩）
+    fsListDirCalls: 0,        // 假 fs 的 listDir 被真正调用（列目录）的次数
     cliCommands: {},          // { echo: '/fake/cli/echo' }
     spawns: [], terminated: 0,
   }
@@ -149,7 +152,7 @@ function makeHost() {
   const spawns = []
   const ctx = {
     get(name) {
-      if (name === 'subprocess') return subprocess
+      if (name === 'subprocess') return (fake && fake.noSubprocess) ? undefined : subprocess
       if (name === 'sandboxPolicy') return { resolve: () => ({ workspaceRoot: WS }), workspaceRoot: WS }
       return undefined
     },
@@ -180,7 +183,21 @@ function makeHost() {
     },
     agents: { roots() { return [] } },
   }
-  return { ctx, toolRegs, cmdRegs, spawns, listeners }
+  // fs 服务外面包一层计数器：`listDir` 的"读属性"（能力门闩）与"真调用"（列目录）分开计，
+  // 这样 §18 才能证明"宿主没有 listDir 时预设一次都没查过"，而不是只看结果。
+  const fsBase = ctx.fs
+  ctx.fs = new Proxy(fsBase, {
+    get(t, p) {
+      if (p === 'listDir') {
+        fake.fsListDirAccess = (fake.fsListDirAccess || 0) + 1
+        const v = t.listDir
+        if (typeof v !== 'function') return v
+        return function () { fake.fsListDirCalls = (fake.fsListDirCalls || 0) + 1; return v.apply(t, arguments) }
+      }
+      return t[p]
+    },
+  })
+  return { ctx, toolRegs, cmdRegs, spawns, listeners, fs: fsBase }
 }
 function makeRoot(id) { return { id, options: { provider: 'mock', model: 'mock' }, session: { id, header: { cwd: WS, parentSession: undefined } }, followup() {} } }
 
@@ -550,6 +567,80 @@ section('§17 跨会话隔离：两个会话并发调用 math_computation（各�
   assert(recA.engine && recA.engine.name === 'python' && recB.engine && recB.engine.name === 'r', '★★★ 回执里的 engine 分别是 python / r（A 的回执没有写进 B 的引擎）')
   assert(String(recA.cwd).replace(/\\/g, '/').toLowerCase() === projA.replace(/\\/g, '/').toLowerCase() && String(recB.cwd).replace(/\\/g, '/').toLowerCase() === projB.replace(/\\/g, '/').toLowerCase(), '★★★ 两次调用的 cwd 各是自己的项目根（' + JSON.stringify({ a: recA.cwd, b: recB.cwd }) + '）')
   assert(recA.engine.name !== recB.engine.name, '★ 参数确实不同（否则本用例不能证伪单槽污染）')
+}
+
+// ── §18 可选 host 回调（FREEZE §4）：listDir 与 hasSubprocess 的预设接线 ────────────────────────
+// 这两个字段是**可选**的，最容易被"接一半"而没人发现：模块在缺它们时会静默降级，
+// 套件若只看结果就永远是绿的。这里对每一侧都做可观测断言（列目录调用计数 / 短路返回码）。
+section('§18 可选 host 回调：listDir（保留上限只告警）与 hasSubprocess（no-subprocess 短路）')
+{
+  // (a) 宿主有 listDir 且 Computation/ 下 >200 个 run 目录 ⇒ ARCHIVE_RETENTION_EXCEEDED 告警，且**不删任何东西**
+  fake = freshFake()
+  fake.installed = { python: '3.11.4' }
+  await call('vibe_math_new_project', { name: PROJECT })
+  for (let i = 0; i < 201; i++) mkdirSync(join(projRoot(), 'Computation', 'run-' + i), { recursive: true })
+  const runsBefore = readdirSync(join(projRoot(), 'Computation')).filter((n) => n.startsWith('run-')).length
+  fake.fsListDirCalls = 0
+  const ra = await call('math_computation', { op: 'run', mode: 'code', code: 'print("retention")' })
+  assert(ra.ok === true, '★ (a) 归档数超限只告警、不影响计算（' + JSON.stringify({ ok: ra.ok, code: ra.code }) + '）')
+  assert(fake.fsListDirCalls >= 1, '★★★ (a) 宿主提供 listDir ⇒ 模块真的去列了 Computation/（listDir 调用 ' + fake.fsListDirCalls + ' 次）')
+  assert((ra.warnings || []).some((w) => w.code === 'ARCHIVE_RETENTION_EXCEEDED'), '★★★ (a) >200 个 run 目录 ⇒ 返回体 warnings 含 ARCHIVE_RETENTION_EXCEEDED（实测 ' + JSON.stringify((ra.warnings || []).map((w) => w.code)) + '）')
+  const runsAfter = readdirSync(join(projRoot(), 'Computation')).filter((n) => n.startsWith('run-')).length
+  assert(runsBefore === 201 && runsAfter === 201, '★★★ (a) 保留上限**只告警、永不删除**（run 目录数 ' + runsBefore + ' → ' + runsAfter + '）')
+
+  // (b) 宿主**没有** listDir ⇒ 预设不声明该回调：一次都不查、也不告警
+  const savedListDir = H.fs.listDir
+  H.fs.listDir = undefined
+  fake = freshFake()
+  fake.installed = { python: '3.11.4' }
+  const RB = makeRoot('sess-nolistdir')
+  const projB = join(WS, 'VibeMath', 'Projects', 'nolistdir')
+  await call('vibe_math_new_project', { name: 'nolistdir' }, RB)   // 这句建成 RB 的会话：能力门闩在此刻读 fs.listDir
+  mkdirSync(join(projB, 'Computation'), { recursive: true })
+  // 判定只看 calls：别的预设代码（如 refreshProject）也会读这个属性，access 只作参考。
+  fake.fsListDirCalls = 0
+
+  const rb = await call('math_computation', { op: 'run', mode: 'code', code: 'print("no-listdir")' }, RB)
+  H.fs.listDir = savedListDir
+  assert(rb.ok === true, '★ (b) 宿主没有 listDir 仍能正常计算（' + JSON.stringify({ ok: rb.ok, code: rb.code, message: String(rb.message || '').slice(0, 80) }) + '）')
+  assert(fake.fsListDirCalls === 0, '★★★ (b) 没有 listDir ⇒ 预设不声明该回调：运行期**零次**列目录调用（calls=' + fake.fsListDirCalls + '；access=' + fake.fsListDirAccess + ' 只作参考）')
+  assert(!(rb.warnings || []).some((w) => w.code === 'ARCHIVE_RETENTION_EXCEEDED'), '★★ (b) 因此也不会出现 ARCHIVE_RETENTION_EXCEEDED（不误报）')
+
+  // (c) hasSubprocess:false ⇒ op=probe 与 op=run **都**短路成 MATH_NO_SUBPROCESS（不是 ENGINE_NOT_FOUND）
+  fake = freshFake()
+  fake.noSubprocess = true
+  fake.spawns.length = 0
+  const pc = await call('math_computation', { op: 'probe' })
+  const rc = await call('math_computation', { op: 'run', mode: 'code', code: 'print(1)' })
+  assert(pc.ok === false && pc.code === 'MATH_NO_SUBPROCESS', '★★★ (c) op=probe ⇒ MATH_NO_SUBPROCESS（实测 ' + pc.code + '，不许退化成 MATH_ENGINE_NOT_FOUND）')
+  assert(rc.ok === false && rc.code === 'MATH_NO_SUBPROCESS', '★★★ (c) op=run ⇒ MATH_NO_SUBPROCESS（实测 ' + rc.code + '）')
+  assert(fake.spawns.length === 0, '★★ (c) 短路发生在引擎探测之前：零次 spawn 尝试（实测 ' + fake.spawns.length + '）')
+  fake.noSubprocess = false
+}
+
+// ── 19. round-2 lens-1: EVERY daily-line injection site is pinned, not just one ─────────────────
+// v3 has FOUR sites: three through `formalDailySection()` (explorer / rederive / solver) and one
+// INLINE `formalWorkLine()` in the method-keeper prompt, where a `formalOn()` legitimately gates only
+// the trailing Lean-archive note - so there the producer must appear BEFORE the first `formalOn()`.
+{
+  const src = readFileSync(fileURLToPath(PLUGIN), 'utf8')
+  const lines = src.split(/\r?\n/)
+  const daily = []
+  const inline = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.indexOf('function formalDailySection') !== -1 || line.indexOf('function formalWorkLine') !== -1) continue
+    if (line.indexOf('formalDailySection()') !== -1) daily.push({ n: i + 1, gated: line.indexOf('formalOn()') !== -1 })
+    else if (line.indexOf('formalWorkLine()') !== -1) {
+      const p = line.indexOf('formalWorkLine()')
+      const g = line.indexOf('formalOn()')
+      inline.push({ n: i + 1, ok: g === -1 || p < g })
+    }
+  }
+  assert(daily.length >= 3, '★★★ [sites 1-3] the three formalDailySection() injection sites are present (found ' + daily.length + ')')
+  for (const s of daily) assert(!s.gated, '★★★ [site @line ' + s.n + '] formalDailySection() is NOT behind a formalOn() gate')
+  assert(inline.length >= 1, '★★★ [site 4] the inline formalWorkLine() site (method-keeper) is present (found ' + inline.length + ')')
+  for (const s of inline) assert(s.ok, '★★★ [site @line ' + s.n + '] the inline daily producer precedes any formalOn() gate (only the trailing note may be gated)')
 }
 
 console.log('\n=== MATH COMPUTATION V3: ' + passed + ' passed, ' + failed + ' failed ===')

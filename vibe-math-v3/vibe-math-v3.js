@@ -501,6 +501,14 @@ export function apply(ctx) {
   async function mathExists(rel) {
     try { const t = await fsTarget(rel); const s = await fs.stat(t); return s !== undefined } catch (e) { return false }
   }
+  /**
+   * host.listDir（**可选**，FREEZE §4）：模块用它数 `Computation/` 下的 run 目录数（>200 只告警、永不删除）。
+   * 必须原样返回 DSH `fs.listDir` 的条目（{name,type}）——模块按 `type === 'directory'` 计数。
+   * 宿主 fs 没有该能力时整个回调都不声明（见 mathHost 的条件字段）。
+   */
+  async function mathListDir(rel) {
+    try { const t = await fsTarget(rel); const ents = await fs.listDir(t); return Array.isArray(ents) ? ents : [] } catch (e) { return [] }
+  }
   /** 会话级 host：参数是**活引用**（函数），回执里写 designator='vibe-math-v3'。 */
   const mathHost = {
     // 模块注册时只**交回** handler/description/parameters；真正的挂载是下面两条**字面量** registerTool
@@ -513,6 +521,9 @@ export function apply(ctx) {
     designator: 'vibe-math-v3',
     // 宿主明知没有 subprocess 服务时可以直接说 false ⇒ 模块立即返回 MATH_NO_SUBPROCESS（不再逐个探引擎）。
     hasSubprocess: function () { const sub = subprocessOf(); return !!(sub && typeof sub.spawn === 'function') },
+    // **可选能力，按宿主实际情况声明**：宿主 fs 没有 listDir 就不给这个回调（模块据此跳过
+    // "每项目 run 目录数 >200" 的保留检查，而不是每次运行都白问一次）。
+    listDir: (typeof fs.listDir === 'function') ? mathListDir : undefined,
     writeText: async function (rel, text) { return await writeText(rel, text) },
     readText: async function (rel) { return await readText(rel) },
     exists: mathExists,

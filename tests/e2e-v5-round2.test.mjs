@@ -198,7 +198,25 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  // Any member's next prompt matching a predicate — used to capture the CHECKPOINT heartbeat,
+  // whose recipient is whichever member the scheduler picked.
+  async function peekWakeWhere(pred, maxWaitMs) {
+    const t0 = Date.now()
+    while (Date.now() - t0 < (maxWaitMs || 3000)) {
+      const i = wakes.findIndex(w => pred((w.blocks && w.blocks[0] && w.blocks[0].text) || ''))
+      if (i !== -1) {
+        const w = wakes.splice(i, 1)[0]
+        return { childId: w.childId, text: (w.blocks && w.blocks[0] && w.blocks[0].text) || '' }
+      }
+      if (wakes.length) {
+        const w = wakes.shift()
+        fireEnd(w.childId, { progress: '其他成员推进中', solved: false, contextPct: 10 })
+      }
+      await sleep(20)
+    }
+    return null
+  }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -1704,6 +1722,140 @@ console.log('\n[41] leanInitiative gates the daily Lean reminders; the async rul
   const vtxt = vw ? vw.text : ''
   assert(/形式化只写你有把握的版本/.test(vtxt) && /不得\*\*在它落地前声称已通过/.test(vtxt),
     '★ the verify block carries the confidence + async-honesty lines (' + JSON.stringify(vtxt.slice(-260)) + ')')
+}
+
+// ---------- 42. per-injection-site gate: every Lean prompt site, both directions ----------
+// Lens-1 (HIGH coverage gap): the gate `leanInitiative !== 'off' && (formalOn() || eager)` is
+// correct, but a static scan found ZERO assertions naming `eager` per SITE. v5 has exactly two
+// DAILY-line sites (normalPrompt, checkpointPrompt) plus two mode-gated Lean sites (briefBlock's
+// `[形式化]` state line and verifyPrompt's formalPromptBlock). Each site below is asserted in BOTH
+// directions: (1) formalVerify=off + leanInitiative=eager ⇒ that site HAS the daily line (with the
+// `**主动**` mark) while the VERIFY block stays absent; (2) leanInitiative=off ⇒ that site has NO
+// daily line while the mode/verify text still follows formalVerify.
+console.log('\n[42] every Lean prompt site obeys the leanInitiative gate in both directions')
+{
+  const DAILY = '【顺手形式化'
+  const EAGER = '**主动**'
+  // The verify-phase BLOCK header (its mode suffix distinguishes it from the normal prompt's
+  // reply contract, which also *mentions* 【Lean 形式化验证】).
+  const VERIFY_BLOCK = '【Lean 形式化验证（'
+  const STATE = '[形式化]'
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const setAndAssert = async (plan) => {
+    const r = await h.callTool('vibe_v5_set', plan)
+    assert(r.ok === true, 'precondition: vibe_v5_set applied ' + JSON.stringify(plan) + ' (' + JSON.stringify(r).slice(0, 120) + ')')
+    return r.params
+  }
+  // Pending turns must be ANSWERED, never dropped: a discarded wake leaves its member busy
+  // forever, so the scheduler would have no idle member left to send a heartbeat to.
+  const flushWakes = async (rounds) => {
+    for (let i = 0; i < (rounds || 8); i++) {
+      const w = h.wakes.shift()
+      if (!w) return
+      h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+      await sleep(10)
+    }
+  }
+  const normalFor = async (member) => {
+    await h.callTool('vibe_v5_say', { to: member, text: '请继续推进。' }, h.childAgent(h.childOf('acad')))
+    const w = await h.peekWakeOf(member, 3000)
+    if (!w) return ''
+    h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+    await sleep(25)
+    return w.text
+  }
+  // ── SITE 1: normalPrompt ────────────────────────────────────────────────────
+  const pA = await setAndAssert({ formalVerify: 'off', leanInitiative: 'eager' })
+  assert(pA.formalVerify === 'off' && pA.leanInitiative === 'eager', 'precondition: formalVerify=off + leanInitiative=eager is live')
+  await flushWakes()
+  const s1eager = await normalFor('r-1')
+  assert(s1eager.indexOf(DAILY) !== -1 && s1eager.indexOf(EAGER) !== -1,
+    'S1 normalPrompt: formalVerify=off + leanInitiative=eager ⇒ the daily line IS injected (with **主动**)')
+  assert(s1eager.indexOf(VERIFY_BLOCK) === -1 && s1eager.indexOf(STATE) === -1,
+    'S1 normalPrompt: …while the VERIFY block and the [形式化] state line stay ABSENT (formalVerify=off)')
+  const pB = await setAndAssert({ formalVerify: 'encourage', leanInitiative: 'off' })
+  assert(pB.formalVerify === 'encourage' && pB.leanInitiative === 'off', 'precondition: formalVerify=encourage + leanInitiative=off is live')
+  await sleep(30)              // let prompts built with the previous params drain
+  await flushWakes()
+  const s1off = await normalFor('r-1')
+  assert(s1off.indexOf(DAILY) === -1, 'S1 normalPrompt: leanInitiative=off ⇒ NO daily line')
+  assert(s1off.indexOf(VERIFY_BLOCK) === -1 && s1off.indexOf(STATE) !== -1,
+    'S1 normalPrompt: …but the mode-gated [形式化] state line still follows formalVerify=encourage (stateIdx=' + s1off.indexOf(STATE) + ')')
+  // ── SITE 2: checkpointPrompt (the heartbeat) ────────────────────────────────
+  // Delivered to the longest-idle member that owns no in-progress task, so the queue is answered
+  // FIFO (a live institute keeps working) until a 【心跳检查】 turn shows up.
+  const checkpointFor = async (plan) => {
+    await setAndAssert(plan)
+    await flushWakes()
+    const seen = []
+    for (let i = 0; i < 30; i++) {
+      // A tuning call drives one scheduling pass, exactly like a real institute where events keep
+      // arriving; the heartbeat branch then picks the longest-idle member.
+      await h.callTool('vibe_v5_set', { maxParallel: i % 2 === 0 ? 3 : 4 })
+      const w = await h.peekWakeWhere(() => true, 300)
+      if (!w) continue
+      seen.push(w.text.slice(0, 20))
+      const isCheckpoint = w.text.indexOf('【心跳检查') !== -1
+      h.fireEnd(w.childId, { progress: '继续推进。', solved: false, contextPct: 10 })
+      await sleep(15)
+      if (isCheckpoint) return { text: w.text, seen }
+    }
+    return { text: '', seen }
+  }
+  await h.callTool('vibe_v5_set', { activityTimeoutMs: 40, chatDigestMs: 600000, stallAutoMeetingMs: 600000 })
+  const s2a = await checkpointFor({ formalVerify: 'off', leanInitiative: 'eager' })
+  const s2st = await h.callTool('vibe_v5_status', {})
+  assert(s2a.text !== '' && s2a.text.indexOf(DAILY) !== -1 && s2a.text.indexOf(EAGER) !== -1,
+    'S2 checkpointPrompt (heartbeat): formalVerify=off + leanInitiative=eager ⇒ the daily line IS injected (seen=' + JSON.stringify(s2a.seen) + ' status=' + JSON.stringify({ verify: s2st.verify && s2st.verify.target, meeting: s2st.meeting, paper: s2st.paper && s2st.paper.stage, busy: (s2st.members || []).filter((m) => m.busy).map((m) => m.id), undecided: s2st.undecided }) + ')')
+  assert(s2a.text.indexOf(VERIFY_BLOCK) === -1, 'S2 checkpointPrompt: the VERIFY block stays absent with formalVerify=off')
+  const s2b = await checkpointFor({ formalVerify: 'encourage', leanInitiative: 'off' })
+  assert(s2b.text !== '' && s2b.text.indexOf(DAILY) === -1,
+    'S2 checkpointPrompt: leanInitiative=off ⇒ NO daily line (seen=' + JSON.stringify(s2b.seen) + ')')
+  assert(s2b.text.indexOf(STATE) !== -1, 'S2 checkpointPrompt: …while the [形式化] state line still follows formalVerify=encourage')
+  // ── SITE 3: verifyPrompt's formalPromptBlock ────────────────────────────────
+  // Finish any verification that is already in flight (answering every voter turn) so that the
+  // NEXT verify wake is necessarily built with the params we set afterwards.
+  const drainVerify = async () => {
+    for (let i = 0; i < 25; i++) {
+      const st = await h.callTool('vibe_v5_status', {})
+      if (!st.verify) return true
+      await h.callTool('vibe_v5_set', { maxParallel: i % 2 === 0 ? 3 : 4 })
+      const w = await h.peekWakeWhere((p) => p.indexOf('【求真表决') !== -1, 250)
+      if (w) {
+        const tm = /"target"\s*:\s*"([^"]+)"/.exec(w.text)
+        h.fireEnd(w.childId, { verdict: { target: tm ? tm[1] : st.verify.target, verdict: 0.5, reason: '存疑' }, contextPct: 20 })
+      }
+      await sleep(20)
+    }
+    return false
+  }
+  const verifyFor = async (plan) => {
+    await drainVerify()
+    await setAndAssert(plan)
+    const id = 'p-site-' + Math.random().toString(36).slice(2, 8)
+    await h.callTool('vibe_v5_record_proposition', { id, statement: '站点门控', value: 0.6, motive: 'm', p: 0.9 }, h.childAgent(h.childOf('r-1')))
+    await h.callTool('vibe_v5_propose_verify', { target: id, kind: 'proposition', reason: 'x' }, h.childAgent(h.childOf('r-1')))
+    for (let i = 0; i < 25; i++) {
+      await h.callTool('vibe_v5_set', { maxParallel: i % 2 === 0 ? 3 : 4 })
+      const w = await h.peekWakeWhere((p) => p.indexOf('【求真表决') !== -1, 300)
+      if (!w) continue
+      const tm = /"target"\s*:\s*"([^"]+)"/.exec(w.text)
+      h.fireEnd(w.childId, { verdict: { target: tm ? tm[1] : id, verdict: 0.5, reason: '存疑' }, contextPct: 20 })
+      await sleep(25)
+      return w.text
+    }
+    return ''
+  }
+  const s3off = await verifyFor({ formalVerify: 'off', leanInitiative: 'eager' })
+  assert(s3off.indexOf('【求真表决') !== -1 && s3off.indexOf(VERIFY_BLOCK) === -1,
+    'S3 verifyPrompt: formalVerify=off ⇒ NO verify-phase Lean block even when leanInitiative=eager')
+  assert(s3off.indexOf(DAILY) === -1, 'S3 verifyPrompt: the daily line is never injected into the verify prompt')
+  const s3on = await verifyFor({ formalVerify: 'encourage', leanInitiative: 'off' })
+  assert(s3on.indexOf('【求真表决') !== -1 && s3on.indexOf(VERIFY_BLOCK) !== -1,
+    'S3 verifyPrompt: formalVerify=encourage ⇒ the verify-phase block appears even with leanInitiative=off')
+  assert(s3on.indexOf(DAILY) === -1, 'S3 verifyPrompt: …and the daily line is still absent there')
 }
 
 console.log('')

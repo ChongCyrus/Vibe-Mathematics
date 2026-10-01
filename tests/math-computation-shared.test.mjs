@@ -252,7 +252,17 @@ console.log('-- math_computation shared contract --')
     ok(again.ok === true, 'op=receipt re-renders an existing receipt')
     ok(state.file(r.receipt.md) === before, 're-render is idempotent (same bytes)')
     const miss = await state.call({ op: 'receipt', file: 'Computation/nope' })
-    ok(miss.ok === false && miss.code === 'MATH_INVALID_ARGUMENT', 'missing receipt reported')
+    // Round-2 lens-1: a DELETED/missing archive is an explicit refusal, not a malformed call.
+    ok(miss.ok === false && miss.code === 'MATH_REFUSED', 'op=receipt on a missing archive -> MATH_REFUSED')
+    ok(miss.next && miss.next.kind === 'reason' && miss.next.reason === 'archive-missing', 'the refusal carries next.reason=archive-missing')
+    // A corrupt receipt.json is still a malformed artifact (different code, different reason).
+    await state.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)' })
+    const dirs = [...state.files.keys()].filter((k) => /^Computation\/[^/]+\/receipt\.json$/.test(k))
+    if (dirs.length) {
+      state.files.set(dirs[0], '{not json')
+      const corrupt = await state.call({ op: 'receipt', file: dirs[0].replace('/receipt.json', '') })
+      ok(corrupt.ok === false && corrupt.code === 'MATH_INVALID_ARGUMENT' && corrupt.next.reason === 'receipt-unparsable', 'a corrupt receipt.json stays MATH_INVALID_ARGUMENT (receipt-unparsable)')
+    }
   })
 }
 

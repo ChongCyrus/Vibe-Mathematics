@@ -175,6 +175,12 @@ function makeHost(opts = {}) {
     argError: opts.argError || null,
     subprocessAvailable: opts.subprocessAvailable !== false,
     resolveOnly: !!opts.resolveOnly,
+    // audit-R2 lens-2 §19: these three WERE being passed by the test but dropped here, so the
+    // fixture never reached `fs.listDir` and the retention assertion could not fire. A state
+    // whitelist silently swallowing a fixture field is exactly the "test that cannot fail" trap.
+    listDirEntries: opts.listDirEntries || null,
+    noListDir: !!opts.noListDir,
+    listDirCalls: [],
     spawns: [], terminated: [], runs: [], shellCalls: [], holdFirstRun: !!opts.holdFirstRun, heldRuns: 0, releaseFirst: null,
   }
   const subprocess = makeSubprocess(state)
@@ -203,7 +209,9 @@ function makeHost(opts = {}) {
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
       async readText(t) { return readFileSync(t.targetKey, 'utf8') },
       async writeText(t, c) { mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
-      async listDir(t) { return existsSync(t.targetKey) ? [] : [] },
+      // `noListDir` removes the METHOD (not merely its result), so the plugin's conditional
+      // pass-through can be exercised: the module must then never be given a listDir at all.
+      ...(opts.noListDir ? {} : { async listDir(t) { state.listDirCalls.push(t && t.targetKey); if (state.listDirEntries) return state.listDirEntries; return [] } }),
     },
   }
   const projectRoot = join(WS, 'VibeMath', 'Projects', 'default')
@@ -612,6 +620,26 @@ section('16 audit C #2: per-session module instances — two sessions are fully 
   const cliA = await h.callTool('math_computation', { op: 'run', engine: 'cli', mode: 'code', code: '1\n', cli: { command: 'node', argv: [] } }, h.ROOT)
   assert(cliA.code !== 'MATH_REFUSED' || !/typed/.test(String(cliA.message || '')), '★ session A is NOT in B\'s typed mode (cli refusal is not inherited)')
   h.cleanup()
+}
+
+
+// ===============================================================
+section('19 audit R2 lens-2: listDir wiring (per-project retention) + no-listDir skip')
+{
+  const h = await live({ installed: ['python3', 'python'], listDirEntries: Array.from({ length: 201 }, (_, i) => ({ name: 'vibe-math-v4-proj-' + i, type: 'directory' })) })
+  const r = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  assert(r.ok === true, 'the run still succeeds with listDir wired')
+  assert(Array.isArray(r.warnings) && r.warnings.some(w => w.code === 'ARCHIVE_RETENTION_EXCEEDED'), '★ >200 run dirs under Computation/ ⇒ ARCHIVE_RETENTION_EXCEEDED (the per-project retention warning is reachable in v4)')
+  const rec = JSON.parse(readIf(join(h.projectRoot, r.receipt.dir, 'receipt.json')))
+  assert(Array.isArray(rec.warnings) && rec.warnings.some(w => w.code === 'ARCHIVE_RETENTION_EXCEEDED'), '★ …and it is recorded in the receipt')
+  h.cleanup()
+  const h2 = await live({ installed: ['python3', 'python'], noListDir: true })
+  const r2 = await h2.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(2)\n' })
+  assert(r2.ok === true && !(r2.warnings || []).some(w => w.code === 'ARCHIVE_RETENTION_EXCEEDED'), '★ with NO listDir the per-project check is skipped entirely (no warning)')
+  // The field must be ABSENT, not merely empty-returning: the module only calls it when present.
+  assert(h2.state.listDirCalls.length === 0, '★ with NO listDir the module never queries the host at all (0 listDir calls)')
+  assert(h.state.listDirCalls.length >= 1, 'with listDir wired the retention check does query the host (>=1 call)')
+  h2.cleanup()
 }
 
 // ===============================================================

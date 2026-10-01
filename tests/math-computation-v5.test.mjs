@@ -28,7 +28,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PRESET_DIR = process.env.V5_PRESET_DIR || join(HERE, '..', 'vibe-math-v5')
 // The module files sit NEXT TO the plugin, so both URLs are derived from the plugin path.
-const PLUGIN_URL = pathToFileURL(process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(PRESET_DIR, 'vibe-math-v5.js')).href
+const PLUGIN_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(PRESET_DIR, 'vibe-math-v5.js')
+const PLUGIN_URL = pathToFileURL(PLUGIN_PATH).href
 const PRESET_URL = new URL('./', PLUGIN_URL).href
 
 const pluginModule = await import(PLUGIN_URL)
@@ -144,8 +145,10 @@ function makeSeam(opts) {
 }
 
 // ── minimal v5 host ─────────────────────────────────────────────────────────────────────────────
-function makeHost(seam) {
-  const WS = mkdtempSync(join(tmpdir(), 'vibe-v5mc-'))
+function makeHost(seam, opts) {
+  const o = opts || {}
+  // `ws` opens a SECOND plugin instance over an EXISTING workspace — what a reload looks like.
+  const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-v5mc-'))
   const toolRegs = []
   const commandRegs = []
   const spawns = []
@@ -196,9 +199,9 @@ function makeHost(seam) {
   const instOf = (agent) => join(agent.session.header.cwd, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
   // A SECOND root over its OWN workspace = a second institute/session on the SAME plugin
   // instance (the cross-session isolation case).
-  function addRoot() {
-    const ws = mkdtempSync(join(tmpdir(), 'vibe-v5mc2-'))
-    const agent = { id: 'sess-mc-' + (roots.length + 1), options: {}, session: { header: { cwd: ws }, id: 'sess-' + (roots.length + 1) } }
+  function addRoot(ws) {
+    const dir = ws || mkdtempSync(join(tmpdir(), 'vibe-v5mc2-'))
+    const agent = { id: 'sess-mc-' + (roots.length + 1), options: {}, session: { header: { cwd: dir }, id: 'sess-' + (roots.length + 1) } }
     roots.push(agent)
     return agent
   }
@@ -626,6 +629,88 @@ section('16 two sessions on one plugin instance never share params/root (audit C
     '★ A\'s receipt landed under A\'s institute (and not under B\'s)')
   assert(!!rb.receipt && existsSync(join(h.instOf(rootB), rb.receipt.dir, 'receipt.json')),
     'B\'s receipt landed under B\'s institute')
+}
+
+// ---------- 17. restored params are normalised (state-file load must not bypass normalizeParams) --
+section('17 a foreign-shaped state file is normalised on restore')
+{
+  const h = makeHost(makeSeam({ installed: {} }))
+  await h.callTool('vibe_v5_set', { mathMode: 'typed' })      // creates the state file
+  const stateDir = join(INST(h), 'State')
+  const statePath = join(stateDir, readdirSync(stateDir).find((f) => /\.v5state\.json$/.test(f)))
+  const OFF_SHAPE = {
+    mathEngines: 'python, r',        // a STRING where an array belongs
+    mathPackages: 'numpy',           // ditto
+    mathMode: 'nonsense',            // a bogus enum
+    mathInstallScope: 'bogus',       // a bogus enum
+    mathComputation: 'off',          // a LEGITIMATE value that must survive
+    mathTimeoutMs: 5,                // below the documented floor
+    formalVerify: 'bogus',           // the same normaliser must cover the non-math params too
+  }
+  const patchState = () => {
+    const raw = JSON.parse(readFileSync(statePath, 'utf8'))
+    // Patch EVERY institute entry: the snapshot may carry more than one key and only one of them
+    // is the one this workspace's session reads.
+    for (const key of Object.keys(raw.institutes || {})) {
+      raw.institutes[key].params = Object.assign({}, raw.institutes[key].params || {}, OFF_SHAPE)
+    }
+    writeFileSync(statePath, JSON.stringify(raw, null, 2), 'utf8')
+    return raw.institutes
+  }
+  // The first session owns a deferred write chain: patch, let a pending flush land, then patch
+  // again so the foreign shape is provably what is on disk.
+  patchState()
+  await sleep(80)
+  const onDisk = patchState()
+  const entry = onDisk[Object.keys(onDisk)[0]] || {}
+  assert(entry.params && entry.params.mathEngines === 'python, r',
+    'precondition: the off-shape params are on disk under ' + Object.keys(onDisk).join(',') + ' (' + JSON.stringify(entry.params && entry.params.mathEngines) + ') entryKeys=' + JSON.stringify(Object.keys(entry)) + ' topKeys=' + JSON.stringify(Object.keys(JSON.parse(readFileSync(statePath, 'utf8')))))
+  // A SECOND root over the SAME workspace is a reload: it builds a new session whose params come
+  // from the state file on disk. NOTE: this minimal harness's second session does not re-read the
+  // file (the e2e suite's `makeRoot(ws)` reload is the behavioural evidence for state
+  // persistence), so the RESTORE sites themselves are guarded statically below — every
+  // `Object.assign({}, DEFAULT_PARAMS, …cur.params…)` site must route through normalizeParams.
+  const src = readFileSync(PLUGIN_PATH, 'utf8')
+  const restores = (src.match(/Object\.assign\(\{\}, DEFAULT_PARAMS,[^\n]*cur\.params[^\n]*\n/g) || [])
+  assert(restores.length === 2 && restores.every((l) => l.indexOf('normalizeParams(') !== -1),
+    '★ BOTH param-restore sites normalise the persisted params (' + JSON.stringify(restores.map((l) => l.trim())) + ')')
+  // The normaliser the restore sites call is the SAME one exercised behaviourally above: every
+  // off-shape the state file could contain is covered in section 1 / section 12.
+  const p1 = await h.callTool('vibe_v5_set', { mathEngines: 7, mathPackages: ' numpy , sympy ' })
+  assert(Array.isArray(p1.params.mathEngines) && JSON.stringify(p1.params.mathEngines) === JSON.stringify(math.MATH_PARAM_DEFAULTS.mathEngines),
+    'a non-array mathEngines falls back to the default list (' + JSON.stringify(p1.params.mathEngines).slice(0, 60) + ')')
+  assert(JSON.stringify(p1.params.mathPackages) === JSON.stringify(['numpy', 'sympy']),
+    'a padded comma-string mathPackages normalises to a trimmed array (' + JSON.stringify(p1.params.mathPackages) + ')')
+}
+
+// ---------- 18. optional host seams: hasSubprocess + listDir wiring -------------
+section('18 the optional host callbacks are really wired (hasSubprocess / listDir)')
+{
+  // (c) hasSubprocess:false ⇒ BOTH run and probe short-circuit to MATH_NO_SUBPROCESS. A seam
+  // without a `spawn` function is exactly what "no subprocess service" looks like.
+  const bare = { calls: [], state: { terminated: 0 }, async resolveExecutable(c) { return 'C:/fake/' + c } }
+  const h = makeHost(bare)
+  const rRun = await h.callMath({ op: 'run', engine: 'python', mode: 'code', code: 'x=1\n' })
+  assert(rRun.ok === false && rRun.code === 'MATH_NO_SUBPROCESS',
+    '★ hasSubprocess=false short-circuits op=run to MATH_NO_SUBPROCESS (' + JSON.stringify(rRun).slice(0, 110) + ')')
+  const rProbe = await h.callMath({ op: 'probe' })
+  assert(rProbe.ok === false && rProbe.code === 'MATH_NO_SUBPROCESS',
+    '★ …and op=probe too (' + JSON.stringify(rProbe).slice(0, 110) + ')')
+  // (a)/(b) listDir: the retention cap is only observable when the host exposes it. >200 run
+  // directories must raise ARCHIVE_RETENTION_EXCEEDED as a WARNING (never a deletion).
+  const h2 = makeHost(makeSeam({ installed: { python: true } }))
+  const compDir = join(INST(h2), 'Computation')
+  for (let i = 0; i < 201; i++) mkdirSync(join(compDir, 'old-run-' + i), { recursive: true })
+  const r = await h2.callMath({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  assert(r.ok === true && (r.warnings || []).some((w) => w.code === 'ARCHIVE_RETENTION_EXCEEDED'),
+    '★ >200 run directories ⇒ ARCHIVE_RETENTION_EXCEEDED warning via the wired listDir (' + JSON.stringify((r.warnings || []).map((w) => w.code)) + ')')
+  assert(readdirSync(compDir).filter((n) => n.startsWith('old-run-')).length === 201,
+    'the cap only WARNS: nothing was deleted')
+  const h3 = makeHost(makeSeam({ installed: { python: true } }))
+  for (let i = 0; i < 5; i++) mkdirSync(join(INST(h3), 'Computation', 'old-run-' + i), { recursive: true })
+  const r3 = await h3.callMath({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
+  assert(r3.ok === true && !(r3.warnings || []).some((w) => w.code === 'ARCHIVE_RETENTION_EXCEEDED'),
+    'below the cap there is no retention warning')
 }
 
 console.log('')

@@ -886,7 +886,12 @@ export function apply(ctx) {
       const cur = stateCache.institutes[key]
       if (cur) {
         phase = cur.phase || phase
-        params = Object.assign({}, DEFAULT_PARAMS, cur.params || {})
+        // Restored params must go through the SAME normalisation as `vibe_v5_set`: a hand-edited
+        // or foreign-shaped state file (e.g. mathEngines as a comma STRING, a bogus enum, a
+        // sub-1000 timeout) would otherwise reach `visibleParams()` and v5's own
+        // `String(params.mathComputation/mathMode)` reads verbatim — the tool path is protected
+        // by the module's `effectiveMathParams`, the operator surface was not.
+        params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params || {}))
         project = cur.project || project
         instituteName = cur.institute || instituteName
       }
@@ -5536,7 +5541,9 @@ export function apply(ctx) {
     // activity wait, which costs no tokens while the institute is genuinely idle.
     function syncParamsFromState() {
       const cur = inst()
-      if (cur && cur.params) params = Object.assign({}, DEFAULT_PARAMS, cur.params)
+      // Same rule as the load path above: never adopt a persisted value without normalising it
+      // (a foreign-shaped state file must not leak straight into the runtime params).
+      if (cur && cur.params) params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params))
       if (cur && cur.project) project = cur.project
       if (cur && cur.institute) instituteName = cur.institute
       if (cur) phase = cur.phase || phase
@@ -6606,7 +6613,7 @@ export function apply(ctx) {
   // four presets), and `projectRoot()` is the INSTITUTE root, so receipts land in
   // <institute>/Computation/<runId>/.
   let mathToolMeta = null              // { name, description, parameters } — the frozen face
-  const mathSessionHandlers = new Map() // session API object -> that session's module handler
+  const mathSessionHandlers = new WeakMap() // session API object -> that session's module handler
   // The metadata instance: its callbacks are never invoked (its handler is never called), it
   // exists only so the module can hand us the frozen tool face exactly once.
   const mathMetaHost = {

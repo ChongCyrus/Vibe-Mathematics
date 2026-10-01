@@ -180,6 +180,11 @@ export function apply(ctx) {
       writeText: (rel,text)=>writeText(rel,text),
       readText: (rel)=>readText(rel),
       exists: async (rel)=>{ try { const t=await fsTarget(rel); return (await fs.stat(t))!==undefined } catch(e){ return false } },
+      // P2a/audit-R2: the module's per-project retention check (MATH_ARCHIVE_MAX_RUNS) only runs
+      // when the host exposes listDir. Root ('', '.') means the project root. The field is attached
+      // ONLY when the fs surface actually has the method, so "no listDir" stays expressible (a
+      // never-absent function would make the module's `typeof H.listDir === 'function'` vacuous).
+      ...(typeof fs.listDir === 'function' ? { listDir: async (rel)=>{ try { const t=await fsTarget(rel===''||rel==='.'?'':rel); return (await fs.listDir(t))||[] } catch(e){ return [] } } } : {}),
       resolveExecutable: async (cmd)=>{
         const sub=subprocessOf()
         if(sub===undefined||typeof sub.resolveExecutable!=='function') throw new Error('NO_SUBPROCESS')
@@ -3973,6 +3978,9 @@ export function apply(ctx) {
       writeText: (rel, text)=>hostObj.writeText(rel, text),
       readText: (rel)=>hostObj.readText(rel),
       exists: (rel)=>hostObj.exists(rel),
+      // audit-R2 lens-2: attached ONLY when the session surface really has it, so a surface without
+      // listDir reaches the module as an ABSENT field (the module's optional-callback contract).
+      ...(typeof hostObj.listDir === 'function' ? { listDir: (rel)=>hostObj.listDir(rel) } : {}),
       resolveExecutable: (cmd)=>hostObj.resolveExecutable(cmd),
       spawn: (o)=>hostObj.spawn(o),
       // Optional capability flag: a host that KNOWS it has no subprocess service reports
