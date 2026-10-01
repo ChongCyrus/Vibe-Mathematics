@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -139,7 +139,12 @@
     "tests/audit-preset-rows.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
-    "docs/release-notes/RELEASE-NOTES-2.7.1.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
+    "docs/release-notes/TEMPLATE.md",
+    "docs/release-notes/README.md",
+    "docs/release-notes/README.en.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.2.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.2.en.md"
   ],
   "license": "MIT",
   "keywords": [
