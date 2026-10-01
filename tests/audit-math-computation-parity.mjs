@@ -130,6 +130,21 @@ for (const f of MODULES) {
   const kinds = new Set(); for (const m of src.matchAll(/next\('([a-z-]+)'/g)) kinds.add(m[1])
   const reasons = new Set(); for (const m of src.matchAll(/reason:\s*'([a-z-]+)'/g)) reasons.add(m[1])
   const codes = new Set(); for (const m of src.matchAll(/fail\('(MATH_[A-Z_]+)'/g)) codes.add(m[1])
+  // round-4 item 1: the "exhaustive" check above is only sound while the vocabulary is written as
+  // STRING LITERALS. `next('reason', { reason: SOME_CONST })` would emit a value the extractor cannot
+  // see while the exhaustive assertion stayed green. Pin the machine-extractability itself:
+  //   - every `next(...)` first argument must be a string literal;
+  //   - every `reason:` field must be a string literal.
+  // A non-literal form makes this red (and then the vocabulary lists must be updated to match).
+  // Exclude the two helper DEFINITIONS (`function next(kind, extra)`, and `bad(reason, …)`'s
+  // `reason: reason` pass-through): those are plumbing, not emitted vocabulary.
+  const callSites = src.split(/\r?\n/).filter((l) => !/^\s*(async\s+)?function\s+(next|bad)\s*\(/.test(l)).join('\n')
+  const nextFirst = [...callSites.matchAll(/\bnext\(\s*([^,)]*)/g)].map((m) => m[1].trim())
+  const nonLiteralKinds = nextFirst.filter((a) => !/^'[a-z-]+'$/.test(a))
+  ok(nonLiteralKinds.length === 0, 'every next(kind, …) kind is a STRING LITERAL (machine-extractable vocabulary)', 'non-literal: ' + JSON.stringify(nonLiteralKinds.slice(0, 3)))
+  const reasonFields = [...callSites.matchAll(/\breason:\s*([^,}\n]*)/g)].map((m) => m[1].trim())
+  const nonLiteralReasons = reasonFields.filter((v) => !/^'[a-z-]+'$/.test(v))
+  ok(nonLiteralReasons.length === 0, 'every reason: value is a STRING LITERAL (the exhaustive list cannot be evaded)', 'non-literal: ' + JSON.stringify(nonLiteralReasons.slice(0, 3)))
   const schemaPath = [join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json'), resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')].find((p) => existsSync(p))
   const schema = schemaPath ? JSON.parse(rf(schemaPath, 'utf8')) : null
   const RV = schema && schema.refusalVocabulary

@@ -891,7 +891,9 @@ export function apply(ctx) {
         // sub-1000 timeout) would otherwise reach `visibleParams()` and v5's own
         // `String(params.mathComputation/mathMode)` reads verbatim — the tool path is protected
         // by the module's `effectiveMathParams`, the operator surface was not.
-        params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params || {}))
+        const droppedLoad = []
+        params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params || {}, droppedLoad))
+        reportDroppedStateKeys(cur, droppedLoad, 'restore-load')
         project = cur.project || project
         instituteName = cur.institute || instituteName
       }
@@ -5543,7 +5545,11 @@ export function apply(ctx) {
       const cur = inst()
       // Same rule as the load path above: never adopt a persisted value without normalising it
       // (a foreign-shaped state file must not leak straight into the runtime params).
-      if (cur && cur.params) params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params))
+      if (cur && cur.params) {
+        const droppedSync = []
+        params = Object.assign({}, DEFAULT_PARAMS, normalizeParams(cur.params, droppedSync))
+        reportDroppedStateKeys(cur, droppedSync, 'restore-sync')
+      }
       if (cur && cur.project) project = cur.project
       if (cur && cur.institute) instituteName = cur.institute
       if (cur) phase = cur.phase || phase
@@ -5948,7 +5954,7 @@ export function apply(ctx) {
     }
 
     // ---- control plane -----------------------------------------------------
-    function normalizeParams(input) {
+    function normalizeParams(input, dropped) {
       const out = {}
       // NOTE: new INT params go BEFORE the last two entries. The cross-preset
       // prompt-invariants self-probe mutates the exact TAIL of this array (dropping
@@ -6035,10 +6041,35 @@ export function apply(ctx) {
       if (out.compactThreshold !== undefined && !(out.compactThreshold > 0)) delete out.compactThreshold
       if (out.chatDigestMax !== undefined && out.chatDigestMax < 1) out.chatDigestMax = 1
       if (out.verdictMaxRounds !== undefined && out.verdictMaxRounds < 1) out.verdictMaxRounds = 1
+      // round-4 item 2: an unknown key used to vanish with NO report (hand-edited state files).
+      // Never lose information silently: collect the accepted-key set's complement and hand it to
+      // the caller's collector (the restore/set sites turn it into a diagnostic + a warning).
+      if (dropped) {
+        const known = new Set(ints.concat(bools, strs, arrs))
+        for (const k of Object.keys(input || {})) if (!known.has(k)) dropped.push(k)
+      }
       return out
     }
+    // round-4 item 2: report keys a state file (or a caller) carried but the whitelist rejected.
+    // `stateObj` is the state the drop belongs to (the load site has it in hand); falls back to the
+    // live institute. Deduplicated so a repeated sync cannot spam the diagnostics.
+    function reportDroppedStateKeys(stateObj, dropped, where) {
+      const keys = Array.isArray(dropped) ? dropped.slice().sort() : []
+      if (!keys.length) return keys
+      const target = (stateObj && Array.isArray(stateObj.diagnostics)) ? stateObj : (inst() || null)
+      if (target && Array.isArray(target.diagnostics)) {
+        const last = target.diagnostics[target.diagnostics.length - 1]
+        if (!last || last.kind !== 'state-dropped-keys' || JSON.stringify(last.keys) !== JSON.stringify(keys)) {
+          target.diagnostics.push({ kind: 'state-dropped-keys', where: where, keys: keys })
+        }
+      }
+      console.warn('vibe-math-v5: 忽略未知参数键（不静默丢失，已记入 diagnostics）：' + keys.join(', ') + '（来源：' + where + '）')
+      return keys
+    }
     async function setParams(input) {
-      const patch = normalizeParams(input || {})
+      const droppedSet = []
+      const patch = normalizeParams(input || {}, droppedSet)
+      reportDroppedStateKeys(inst(), droppedSet, 'set')
       const merged = Object.assign({}, params, patch)
       await patchInstitute({ params: merged })
       params = Object.assign({}, DEFAULT_PARAMS, merged)

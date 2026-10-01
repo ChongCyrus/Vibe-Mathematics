@@ -681,6 +681,19 @@ section('17 a foreign-shaped state file is normalised on restore')
     'a non-array mathEngines falls back to the default list (' + JSON.stringify(p1.params.mathEngines).slice(0, 60) + ')')
   assert(JSON.stringify(p1.params.mathPackages) === JSON.stringify(['numpy', 'sympy']),
     'a padded comma-string mathPackages normalises to a trimmed array (' + JSON.stringify(p1.params.mathPackages) + ')')
+
+  // round-4 item 2: unknown keys are dropped AND REPORTED (a hand-edited state file must not lose
+  // information silently). The same normaliser serves the restore sites and `vibe_v5_set`, so the
+  // behaviour is drivable here; the two restore sites are additionally pinned statically.
+  const p2 = await h.callTool('vibe_v5_set', { maxParallel: 4, bogusParam: 1, anotherUnknown: 'x' })
+  assert(p2.ok === true && p2.params.maxParallel === 4, 'a known key still applies alongside unknown ones')
+  assert(p2.params.bogusParam === undefined && p2.params.anotherUnknown === undefined, 'unknown keys never reach params')
+  const st2 = await h.callTool('vibe_v5_status', {})
+  const diag = (st2.diagnostics || []).filter((d) => d && d.kind === 'state-dropped-keys')
+  assert(diag.length >= 1 && diag.some((d) => (d.keys || []).indexOf('bogusParam') !== -1 && (d.keys || []).indexOf('anotherUnknown') !== -1),
+    '★ dropped keys are REPORTED in status().diagnostics (no silent loss) — ' + JSON.stringify(diag.slice(-1)))
+  assert((src.match(/reportDroppedStateKeys\(/g) || []).length >= 3,
+    '★ every drop site reports (restore-load + restore-sync + set)')
 }
 
 // ---------- 18. optional host seams: hasSubprocess + listDir wiring -------------

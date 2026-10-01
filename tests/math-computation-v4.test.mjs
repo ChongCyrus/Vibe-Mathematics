@@ -652,6 +652,10 @@ section('20 round-3: the archive DIRECTORIES really exist on disk (host creates 
   const r = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
   assert(r.ok === true, 'the run succeeds')
   const abs = (rel) => join(h.projectRoot, ...String(rel).split('/'))
+  // round-4 item 3: `abs('')` is the project root, which would satisfy a bare existsSync+isDirectory
+  // check - so pin the SHAPE first (a real archive path, and the same dir the receipt reference uses).
+  assert(r.attemptDir.indexOf('Computation/') !== -1, '★ attemptDir is a real archive path (contains Computation/)')
+  assert(r.attemptDir === r.receipt.dir, '★ attemptDir === receipt.dir (directory and receipt reference agree)')
   assert(existsSync(abs(r.attemptDir)) && statSync(abs(r.attemptDir)).isDirectory(), '★ Computation/<runId>/ exists as a DIRECTORY after the run')
   assert(existsSync(abs(r.scriptPath)) && statSync(abs(r.scriptPath)).isFile(), '★ the archived script exists on disk')
   const r2 = await h.math({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
