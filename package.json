@@ -63,6 +63,7 @@
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",
+    "tests/audit-math-computation-contract.mutants.mjs",
     "tests/audit-math-computation-sensitivity.mjs",
     "tests/math-computation-shared.test.mjs",
     "tests/helpers/math-computation-fake-seam.mjs",

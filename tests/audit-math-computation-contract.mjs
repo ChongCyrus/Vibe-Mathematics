@@ -108,21 +108,20 @@ for (const P of PRESETS) {
     ? "registerTool('vibe_math_set_params'"
     : (P.dir === 'vibe-math-v4' ? "registerTool('vibe_v4_set'" : "registerTool('vibe_v5_set'")
   {
-    const i = js.indexOf(SET_TOOL)
-    const callText = i === -1 ? '' : js.slice(i, js.indexOf('registerTool(', i + 1) === -1 ? i + 4000 : js.indexOf('registerTool(', i + 1))
-    const oi = callText.lastIndexOf('objParams(')
-    const setSchema = oi === -1 ? '' : callText.slice(oi)
-    // F-B (docs/parameter-schema.md): the schema argument has two shapes —
-    //   objParams({ ...literal... })        the historical hand-written table
-    //   objParams(paramProps())             derived from the SINGLE source PARAM_SCHEMA; the machine key set
-    //                                       is pinned by PARAM_PROPS_KEYS (+ PARAM_PROPS_EXTRA)
-    // The derived form has NO `{` after `objParams(`, so the old slice grabbed unrelated text and reported a
-    // 331-char fragment. Resolve the derived form to the single-source key list, searched FILE-WIDE (that
-    // table is module scope and sits before the registration).
-    const at = oi === -1 ? -1 : oi + 'objParams('.length
-    const open = at === -1 ? -1 : callText.indexOf('{', at)
-    const close = at === -1 ? -1 : callText.indexOf(')', at)
-    const literalForm = open !== -1 && (close === -1 || open < close)
+    // §9.7 ㉓/㉜: EVERY registration site is checked, not just the first. This preset class is defined by
+    // having TWO independent registration layers (session `makeSession` + `apply`, each with its own
+    // `objParams`), so an audit that inspects only the first cannot see the second diverge — the F-B defect
+    // class. If a site ever legitimately carries a narrower schema, record that difference ON THAT SITE
+    // explicitly instead of narrowing the loop back to "first site only".
+    const sites = []
+    for (let at = js.indexOf(SET_TOOL); at !== -1; at = js.indexOf(SET_TOOL, at + 1)) sites.push(at)
+    ok(sites.length >= 1, tag + 'the set tool is registered', 'sites=' + sites.length)
+    // F-B (docs/parameter-schema.md): a schema argument has two shapes —
+    //   objParams({ ...literal... })   the historical hand-written table
+    //   objParams(paramProps())        derived from the SINGLE source PARAM_SCHEMA; the machine key set is
+    //                                  pinned by PARAM_PROPS_KEYS (+ PARAM_PROPS_EXTRA)
+    // The derived form has NO `{` after `objParams(`, so a naive slice grabbed unrelated text (331-char
+    // fragment). Resolve it to the single-source key list, searched FILE-WIDE (that table is module scope).
     const derivedKeys = (() => {
       const km = /const PARAM_PROPS_KEYS = \[([^\]]*)\]/.exec(js)
       if (!km) return null
@@ -131,18 +130,26 @@ for (const P of PRESETS) {
       const extra = em ? [...em[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*:/gm)].map((m) => m[1]) : []
       return [...new Set(keys.concat(extra))]
     })()
-    ok(literalForm ? setSchema.length > 0 : !!derivedKeys,
-      tag + 'set tool takes an objParams(...) schema argument (literal table or single-source derivation)',
-      literalForm ? 'schema len ' + setSchema.length : 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
-    if (literalForm) {
+    sites.forEach((idx, n) => {
+      const next = js.indexOf('registerTool(', idx + 1)
+      const callText = js.slice(idx, next === -1 ? idx + 4000 : next)
+      const oi = callText.lastIndexOf('objParams(')
+      const setSchema = oi === -1 ? '' : callText.slice(oi)
+      const at = oi === -1 ? -1 : oi + 'objParams('.length
+      const open = at === -1 ? -1 : callText.indexOf('{', at)
+      const close = at === -1 ? -1 : callText.indexOf(')', at)
+      const literalForm = open !== -1 && (close === -1 || open < close)
+      ok(literalForm ? setSchema.length > 0 : !!derivedKeys,
+        tag + 'site#' + n + ' takes an objParams(...) schema argument (literal table or single-source derivation)',
+        literalForm ? 'schema len ' + setSchema.length : 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
       for (const k of SIX) {
-        ok(new RegExp('(^|[{,\\s])' + k + '\\s*:').test(setSchema), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'schema len ' + setSchema.length)
+        const present = literalForm
+          ? new RegExp('(^|[{,\\s])' + k + '\\s*:').test(setSchema)
+          : !!derivedKeys && derivedKeys.includes(k)
+        ok(present, tag + 'site#' + n + ' set schema has the property ' + k + ' (property-level, not prose)',
+          literalForm ? 'schema len ' + setSchema.length : 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
       }
-    } else {
-      for (const k of SIX) {
-        ok(!!derivedKeys && derivedKeys.includes(k), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
-      }
-    }
+    })
   }
   if (P.dir === 'vibe-math-v2' || P.dir === 'vibe-math-v3') {
     const schema = arrayBlock(js, 'const PARAM_SCHEMA')
