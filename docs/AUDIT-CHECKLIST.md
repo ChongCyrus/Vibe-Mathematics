@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **60** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **93 项作业（job count）= 44 套件 + 49 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **61** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **94 项作业（job count）= 44 套件 + 50 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -535,7 +535,8 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | `_oneoff/auditR2/cli-policy-proof.mjs`（4/4）+ 敏感度探针 `cli-policy-ignored` （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | `_oneoff/auditR2/verify-provenance-proof.mjs`（2/2） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | `tests/audit-math-computation-parity.mjs` §7 / §8 | 描述符不得用未知占位符、每个占位符都有实现；cli 策略"声明一次 + 被消费"；僵尸字段（`winPrefix`/`stdinArgv`/`defaultOn`）不得回归 | `descriptor-sweep-proof.mjs`、`cli-policy-proof.mjs` |
-| `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d` | `_oneoff/auditR2/installer-mutants.mjs`（2/2） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言 + **A7 结构化断言**） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d`；**版本与 source 断言在 `detectDshVersion` 的结构化返回值上**（不是"日志里出现过这个版本串"或"出现过 source 这个词"），日志只保留一条**行形状**检查 | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A7-version ⇒ compat 74/3、A7-source ⇒ 75/2）。早先的 `_oneoff/auditR2/installer-mutants.mjs` 已被它取代（**仅开发检出**，历史） |
+| `tests/audit-installer-policy.test.mjs`（**A8 + 动作/语言约定**） | ① 措辞类断言换成**报告级**：`failedLog(logs).length === 0`（不是"日志里没有『备份失败』四个字"）；② **一个动作一行**：restore / cleanup 各**恰好一次**（`EXACTLY ONCE`）；③ **一个动作一种语言**：任何面向用户的日志**标签**（`[dsh-vibe-math] ` 之后、首个 `：`/`:` 之前）**不得是纯 ASCII**（英文领域词夹在中文标签里、如 `preset 声明方式`，是合规的）——**源码扫描 + 运行期捕获日志两侧都查**；只保留**一条**明确标注的 `[wording smoke check — the ONE allowed]` | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A8-failure ⇒ policy 86/9、DL-label ⇒ 93/2、DL-duplicate ⇒ 94/1） |
 | `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 
@@ -709,7 +710,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 93`（44 套件 + 49 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 60（**文件计数**：17 个套件 + 43 个探针/脚本）。
+- **计数（实测）**：`TOTAL 94`（44 套件 + 50 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 61（**文件计数**：17 个套件 + 44 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

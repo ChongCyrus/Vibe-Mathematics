@@ -172,7 +172,10 @@ console.log('=== 4. a deleted file at the SAME version: restored, nothing backed
   // Guard-sync: the installer's user-visible stream is Chinese by convention (one language, see the
   // comment at the cleanup line), so these assert the FACT (an action keyword + the count) rather than
   // an English word.
-  ok(logs.some((l) => /\u8fd8\u539f\u4e86\s*\d+\s*\u4e2a\u7f3a\u5931\u7684\u9884\u8bbe\u6587\u4ef6/.test(l)), 'the restore is reported')
+  // "one action, one line": the restore must be reported, and reported EXACTLY ONCE (a second report of the
+  // same action is the defect the duplicate-log review was about).
+  const restoreLines = logs.filter((l) => /\u8fd8\u539f\u4e86\s*\d+\s*\u4e2a\u7f3a\u5931\u7684\u9884\u8bbe\u6587\u4ef6/.test(l))
+  ok(restoreLines.length === 1, '★ the restore is reported EXACTLY ONCE (one action, one line)', JSON.stringify(restoreLines.map((l) => l.slice(0, 60))))
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 
@@ -190,7 +193,8 @@ console.log('=== 5. a preset this bundle no longer ships ===')
   ok(!existsSync(join(presetRoot, 'vibe-math-v1', 'legacy.js')), 'a package-owned file of a dropped preset is removed')
   ok(!existsSync(join(presetRoot, 'vibe-math-v1')), 'the dropped preset directory is removed once empty')
   ok(existsSync(join(presetRoot, 'vibe-math-v0', 'mine.js')), 'a file recorded as user-owned in a dropped preset is kept')
-  ok(logs.some((l) => /\u9884\u8bbe\u6e05\u7406/.test(l) && /\u5220\u9664\s*\d+\s*\u4e2a\u6587\u4ef6/.test(l)), 'the cleanup is reported')
+  const cleanupLines = logs.filter((l) => /\u9884\u8bbe\u6e05\u7406/.test(l) && /\u5220\u9664\s*\d+\s*\u4e2a\u6587\u4ef6/.test(l))
+  ok(cleanupLines.length === 1, '★ the cleanup is reported EXACTLY ONCE (one action, one line)', JSON.stringify(cleanupLines.map((l) => l.slice(0, 60))))
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 
@@ -486,6 +490,25 @@ console.log('=== 16b. a stale file whose BACKUP FAILS is kept, not deleted unbac
     "...and the log reports the failed backup as a skipped delete (not as 'the original was lost')",
     logs.filter((l) => l.includes('备份失败')).join(' | ').slice(0, 220))
   rmSync(join(H.root, '.vibe-math-backup'), { force: true })
+}
+
+console.log('=== 16. one action, one language: no user-facing line carries an English-only label ===')
+{
+  // The convention (docs/AUDIT-CHECKLIST.md): installer user-facing output is Chinese; an English-only
+  // LABEL is a defect (an English domain word inside a Chinese label, like `preset 声明方式`, is fine).
+  // This is a CONVENTION sweep, not a wording pin: any CJK-bearing label passes.
+  const src = readFileSync(INSTALLER_SRC, 'utf8')
+  const labelOf = (l) => { const m = /\[dsh-vibe-math\]\s*([^:：]*)/.exec(l); return m ? m[1].trim() : '' }
+  const asciiOnly = (lab) => lab.length > 0 && /^[\x20-\x7e]+$/.test(lab)
+  const sites = src.split(/\r?\n/).filter((l) => /logger\?\.(info|warn|error)\?\.\(/.test(l))
+  ok(sites.length > 0, 'the installer has user-facing log sites to sweep (found ' + sites.length + ')')
+  const badSites = sites.filter((l) => asciiOnly(labelOf(l)))
+  ok(badSites.length === 0, '★ no user-facing log SITE carries an English-only label (installer output is Chinese)',
+    JSON.stringify(badSites.map((l) => l.trim().slice(0, 70))))
+  const runtimeLogs = await applyFrom(pkgB, home, [])
+  const badRuntime = runtimeLogs.filter((l) => asciiOnly(labelOf(l)))
+  ok(badRuntime.length === 0, '★ ...and no CAPTURED line does either (code and convention agree at runtime)',
+    JSON.stringify(badRuntime.slice(0, 2)))
 }
 
 rmSync(tmp, { recursive: true, force: true })
