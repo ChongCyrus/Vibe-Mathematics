@@ -501,10 +501,6 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `mathTimeoutMs` | `60000` | 四套 | 单次计算上限（毫秒，最小 1000）；超时后主动终止进程 |
 | `mathPackages` | `[]` | 四套 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
 | `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
-
-> **归档即证据**：每次计算写 `Computation/<id>/`（回执含 `scriptPath`+`scriptHash`）；脚本改后必须用 `mode:'file'` 重跑取新回执（`scriptChanged`/`scriptChangedDuringRun` 会告警，旧回执不代表改后代码）；归档只追加不覆盖。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
-
-> **替代必须声明**：替代改变精确性或结论强度时必须写明，不得读作原结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`）。
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |
@@ -530,6 +526,10 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `paperCompilePdf` | `true` | 四套 | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
 | `paperLatexCommand` | `''` | 四套 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
 | `paperEditor` | v4 `office`；v5 `academician` | v4·v5 | 定稿代表。v4：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明）；v5：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
+
+> **归档即证据**：每次计算写 `Computation/<id>/`（回执含 `scriptPath`+`scriptHash`）；脚本改后必须用 `mode:'file'` 重跑取新回执（`scriptChanged`/`scriptChangedDuringRun` 会告警，旧回执不代表改后代码）；归档只追加不覆盖。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
+
+> **替代必须声明**：替代改变精确性或结论强度时必须写明，不得读作原结果；拿不到精确结果就直说（规则行 `MATH_SUBSTITUTION_RULE_LINE`）。
 
 - **安装与版本**：`op:'install'` 分派 conda/mamba、uv 或 pip 回退；R/Octave/Julia 默认只做用户级（`system` ⇒ `MATH_REFUSED`）；版本求解交给包管理器——只按 base name 查存在，`pkg==1.2` 原样透传，危险/未知写法 ⇒ `unsupported-version-syntax`；引擎发现与 `engine:'cli'` 细节见 [`docs/math-computation.md`](docs/math-computation.md) §5.1–5.4。
 - **Lean 异步**：`leanAsync=true`（默认）编译走后台队列，`lean_run`/`lean_archive{run:true}` 立即返回；**只有** `settled` 且 exit 0、编译期间内容哈希与构建上下文未变的作业才置 `passed` 并写 `Verified/Lean/<id>.lean`，其余停在 `attempted`。

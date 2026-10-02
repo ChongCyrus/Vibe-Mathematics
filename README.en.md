@@ -501,10 +501,6 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `mathTimeoutMs` | `60000` | all four | Per-run budget in milliseconds (minimum 1000); on timeout the process is terminated |
 | `mathPackages` | `[]` | all four | Packages/toolboxes required by default; a missing one is reported with an install plan - it is **never installed automatically** |
 | `mathInstallScope` | `user` | all four | Install scope; `system` must be given **explicitly on every call and is never remembered** (most managers have no system template, in which case the request is refused) |
-
-> **Archive = evidence**: every run writes `Computation/<id>/` (receipt carries `scriptPath` + `scriptHash`); after editing a script you MUST re-run it with `mode:'file'` for a NEW receipt (`scriptChanged` / `scriptChangedDuringRun` warn; an old receipt does not represent edited code); archives are append-only. See [`docs/math-computation.md`](docs/math-computation.md) §4.1.
-
-> **Declare substitutions**: when an alternative changes exactness or conclusion strength, the conclusion MUST say so and must not read as the original result; if no exact result is available, say so plainly (rule line `MATH_SUBSTITUTION_RULE_LINE`).
 | `tickIntervalMs` | 2000 | v2·v3 | Scheduler heartbeat interval (milliseconds) |
 | `activityLogCap` | 100 | v2·v3 | Number of activity log entries retained (the report displays at most 30) |
 | `maxExplorerRetries` | 3 | v2·v3 | Upper limit on re-dispatching after an explorer fails to split directions |
@@ -530,6 +526,10 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `paperCompilePdf` | `true` | all four | Compile `paper.pdf` when a LaTeX engine is detected; with no engine or a failed compile, tex+md are still delivered and a warning is logged |
 | `paperLatexCommand` | `''` | all four | Force one LaTeX engine executable (empty = auto-detect per language: xelatex→latexmk→pdflatex→lualatex→tectonic) |
 | `paperEditor` | v4 `office`; v5 `academician` | v4·v5 | Who finalises. v4: `office` (the session root / human side, default) or `resident:<id>` (if that resident has left, it degrades to office and the meta/log say so); v5: `academician` (default, the only editor an unattended run can reach) or `office` (manual `/v5 paper editor=office` only, and only after consulting the whole institute) |
+
+> **Archive = evidence**: every run writes `Computation/<id>/` (receipt carries `scriptPath` + `scriptHash`); after editing a script you MUST re-run it with `mode:'file'` for a NEW receipt (`scriptChanged` / `scriptChangedDuringRun` warn; an old receipt does not represent edited code); archives are append-only. See [`docs/math-computation.md`](docs/math-computation.md) §4.1.
+
+> **Declare substitutions**: when an alternative changes exactness or conclusion strength, the conclusion MUST say so and must not read as the original result; if no exact result is available, say so plainly (rule line `MATH_SUBSTITUTION_RULE_LINE`).
 
 - **Install and versions**: `op:'install'` dispatches to conda/mamba, uv, or the pip fallback; R/Octave/Julia default to user scope (`system` => `MATH_REFUSED`); version solving is delegated to the package manager — existence only by base name, `pkg==1.2` passed through verbatim, unsafe/unknown syntax => `unsupported-version-syntax`; engine discovery and `engine:'cli'` details are in [`docs/math-computation.md`](docs/math-computation.md) §5.1-5.4.
 - **Lean async**: `leanAsync=true` (default) queues compiles so `lean_run`/`lean_archive{run:true}` return immediately; **only** a `settled` job with exit 0 and an unchanged content hash and build context sets `passed` and writes `Verified/Lean/<id>.lean` — everything else stays `attempted`.
