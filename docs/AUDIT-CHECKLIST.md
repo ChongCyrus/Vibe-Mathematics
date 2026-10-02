@@ -672,6 +672,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **默认 180 s/套件**（`GATE_SUITE_TIMEOUT_MS` 可覆盖）：超时会**杀死子进程**并报**具名失败** —— `FAILED: <file> [suite|probe] (TIMEOUT after 180s)`，失败行下面照常打印该子进程捕获的 stdout/stderr 尾部；**挂起绝不能被当成"还在跑"**。
 - **为什么是 180 s（两个实测数字，未来读者据此区分"慢但诚实"与"卡死"）**：整门禁墙钟 **~200 s**；最慢的诚实套件 **135–144 s**（`audit-math-computation-sensitivity`）。180 s 能兜住偶发挂起，又不会误杀诚实套件。
 - **命名覆盖（诚实但慢的套件，不是卡死）**：`run-tests.mjs` 的 `TIMEOUT_OVERRIDES` 给 `v2-fix-probes.mutants.mjs` 与 `v3-fix-probes.mutants.mjs` 各 **900 s**，理由是**实测**：v2 **≈43.1 s/族 × 10 族 ≈ 430 s**、v3 **≈23.5 s/族 × 11 族 ≈ 260 s**（两者内部已把**每个子进程封顶 120 s**，并报 `hangs=[]`，即"慢但诚实"）。**默认仍是 180 s**，普通挂起照旧被快速抓住；只有这两个具名套件被放宽。
+- **v5 家族的覆盖（门禁亲自抓到的校准缺口）**：`v5-institute-fixes.mutants.mjs` 实测**墙钟 201.9 s**（`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`）⇒ **超过 180 s 默认**，因此在 `TIMEOUT_OVERRIDES` 里给它同样的 **900 s**。对照：`formal-verify-v4.mutants.mjs` 实测 **70.9 s**，**无需**覆盖（余量充足）。**记录一次"写入方声明为假、被门禁抓住"的事故**：曾有声明称该 v5 家族已落在其覆盖之内，实际并未；门禁以具名失败 `FAILED: v5-institute-fixes.mutants.mjs [probe] (TIMEOUT after 180s)` 抓住了它 —— 这正是具名超时机制存在的意义（挂起≠还在跑）。
 - **改限的规矩**：抬高**默认值或任何覆盖值**都必须**同时更新本行的全部实测数字并在提交信息里说明**；不许为了让门禁变绿而悄悄改（上面三条覆盖用例正是为了让这条规矩可验证）。
 - **禁止**为了让门禁变绿而**悄悄抬高**这个值；确有套件变慢，请**同时**更新这里的两个数字与理由。
 - **怎么让它红一次（in-repo，两个方向）**：① `node tests/run-tests.mjs --self-check` 有一条**真实路径**用例 —— 合成 sleep 作业、`timeoutMs=1000`、走同一个 `runSuite`/`failedLine`，断言 `timedOut=true, exit=null` 且失败行 `FAILED: (synthetic-sleeper) [probe] (TIMEOUT after 1s)`；② 随包的 `tests/run-tests.mutants.mjs` 用 `GATE_SUITE_TIMEOUT_MS=1000` 对**真实套件**做**正例**（具名 TIMEOUT + 非零退出）与**反例**（默认限制下同一套件不报 TIMEOUT、exit 0），因此该判据被双向校验（§9.7 ㉗）。
@@ -698,3 +699,12 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **计数（实测）**：`TOTAL 86`（44 套件 + 42 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 53（**文件计数**：17 个套件 + 36 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
+
+
+### F-5 沙箱围栏根（guard row，实测于 `6e32157`）
+
+- **实现**：v4 侧 `policyRootCandidatesOf()`（把解析出的策略对象映射为**候选围栏根**，数组/字符串两种形状都收）、`fenceRootDriftNote()`（把"宿主根 vs 会话根"的差异做成**一次性具名告警**）、`warnedFenceDrift`（**one-shot** 标志，防刷屏）。行为要点：**包含关系**判定（会话根必须落在宿主根内）、**数组**策略逐个取候选、**不可解释的策略 ⇒ no-op**（不是死分支）；`resolve({})` 的**回退调用被排除**在漂移比较之外；折叠仅在 **win32** 生效。
+- **断言锚点**：`tests/formal-verify-v4.test.mjs:1929` 的 `section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming both roots')`；用例命名见 `:1936` 的 NOTE（**case (0) = 宿主根本没有 `sandboxPolicy` 服务**；**case 1b = 服务存在但解析出的根不可解释（`{allow,deny}`）**）、`:1941`（F-5/i：无服务 ⇒ 策略路径从不运行、无告警）、`:1949`（F-5/1b：不可解释 ⇒ **no-op 且无告警**，属**文档化的**边界而非死分支），以及同节的 case ii/iii/iv（漂移比较被调用、包含判定、一次性命名两个根）。
+- **怎么让它红一次（in-repo，随包）**：`node tests/formal-verify-v4.mutants.mjs` —— **6/6 族**按名变红：`F-5/1b: treat \`allow\` as a fence root`、`F-5/ii: the drift comparison is never called`、`F-5/iii+iv: the containment predicate is disabled (always warn)`、`F-5/ii: the one-shot is dropped`、`N15/4: the compaction-failure warning is silenced`、**`F-5/1c: an unknown session cwd is warned about`**；输出 `hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`。**实测墙钟 67.2 s**（各族 12.5–15.0 s；早先记录的 ~58 s 是同一族在更早 revision 的读数），本仓的 `TIMEOUT_OVERRIDES` 无需为它放宽（< 180 s 默认）。
+- **两条文档化边界（有意行为，不是缺陷）**：① **策略里没有根字段 ⇒ no-op**（没有可比的东西，不告警）；② **会话 cwd 未知 ⇒ 构造性相等 ⇒ 静默**（把"未知"当相等，避免用猜测刷告警）——**现在是断言而非仅文档**：`tests/formal-verify-v4.test.mjs:1981`（`* F-5/1c an UNKNOWN session cwd stays SILENT`）与 `:1982`（`* F-5/1c LIVENESS: the helper really ran with an unknown cwd (resolve calls=…, policy queries=…)`）；随包家族的**第六条**即 `F-5/1c: an unknown session cwd is warned about`（**6/6** 族变红）。两者都必须在断言里保持为"**no warning**"，改动它们等于改契约。
+- **历史注记**：`docs/COMPAT-AUDIT-ROUND2.md` 的 §F-5 保留了 `2649a47` 的用例命名更正（case 1 / case 1b），那里是**历史**记录；本行是**可复核的守卫索引**。

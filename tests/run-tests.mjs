@@ -77,6 +77,13 @@ const SUITE_TIMEOUT_MS = Math.max(1000, Number(process.env.GATE_SUITE_TIMEOUT_MS
 const TIMEOUT_OVERRIDES = {
   'v2-fix-probes.mutants.mjs': 900000,
   'v3-fix-probes.mutants.mjs': 900000,
+  // v5-institute-fixes.mutants.mjs: MEASURED 201.9 s wall (hangs=[], skipped=[], ALL MUTANTS RED
+  // AS REQUIRED) - i.e. OVER the 180 s default, so it gets the same 900 s as the v2/v3 families.
+  // History worth keeping: a writer CLAIMED this family fitted its override when it did not, and the
+  // gate caught it as "FAILED: v5-institute-fixes.mutants.mjs [probe] (TIMEOUT after 180s)" - the
+  // named-timeout mechanism doing its job. For contrast, formal-verify-v4.mutants.mjs MEASURED
+  // 70.9 s wall, i.e. ample headroom, so it needs no override.
+  'v5-institute-fixes.mutants.mjs': 900000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then the default. */
 function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
@@ -151,7 +158,10 @@ if (process.argv.includes('--self-check')) {
   console.log((namedTimeout ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': the failure line names the timeout: ' + line.trim())
   // OVERRIDE case (real path): the named override must actually EXTEND the limit. A job that sleeps
   // 1.5 s would be killed by 1 s, so it must survive under the override and report its own seconds.
-  const overrideOk = jobLimit({ file: 'v2-fix-probes.mutants.mjs' }) === 900000 && jobLimit({ file: 'anything-else.mjs' }) === SUITE_TIMEOUT_MS
+  const NAMED_OVERRIDES = ['v2-fix-probes.mutants.mjs', 'v3-fix-probes.mutants.mjs', 'v5-institute-fixes.mutants.mjs']
+  const overrideOk = NAMED_OVERRIDES.every((f) => jobLimit({ file: f }) === 900000)
+    && jobLimit({ file: 'anything-else.mjs' }) === SUITE_TIMEOUT_MS
+    && jobLimit({ file: 'formal-verify-v4.mutants.mjs' }) === SUITE_TIMEOUT_MS   // measured 70.9 s: no override needed
   const survived = await runSuite({ file: '(synthetic-ok)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 1500)', timeoutMs: 900000 })
   const extended = survived.timedOut === false && survived.code === 0
   const overrideLine = failedLine({ job: { file: 'v2-fix-probes.mutants.mjs', args: [], kind: 'probe', expectExit: 0 }, code: null, timedOut: true })

@@ -115,6 +115,14 @@ const FAMILIES = [
     to: '} catch(e){ if(false){ warnedCompaction=true;',
     expect: /N15\/4 realCompact: a failed compaction is NAMED exactly once/,
   },
+  {
+    // F-5/1c: the `.` clause of the guard is dropped, so an UNKNOWN session cwd (workspaceRoot() ===
+    // ".") is reported as drift even though it is constructively unknown, not drifted.
+    name: 'F-5/1c: an unknown session cwd is warned about',
+    from: "    if(!session || session === '.') return",
+    to: '    if(!session) return',
+    expect: /F-5\/1c an UNKNOWN session cwd stays SILENT/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

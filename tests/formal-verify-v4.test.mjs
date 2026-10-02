@@ -133,6 +133,7 @@ let shellDeletesFiles = true
 let shellMkdirExit = 0
 let sandboxDriftRoot = null   // F-5: when set, the mock policy resolves THIS root (drift/containment harness)
 let sandboxNoRoot = false     // F-5: when set, the mock policy exposes NO interpretable root (no-op path)
+let sandboxUnknownCwd = false   // F-5/1c: the captured root agent has NO cwd (unknown => `.` guard)
 let compactionFails = false   // F-6 site 4: expose a THROWING compaction service + resolve child agents        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
 const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
@@ -199,10 +200,14 @@ function makeHost() {
   const WS = mkdtempSync(join(tmpdir(), 'vibe-v4-lean-'))
   const listeners = {}, toolRegs = [], spawns = [], followups = [], cmdRegs = []
   const subprocess = makeSubprocess()
+let sandboxPolicyQueries = 0   // F-5/1c: how many times the policy service was queried
+let sandboxResolveCalls = 0     // F-5/1c: resolve({session}) calls = fenceRootDriftNote invocations
   let ROOT
   const ctx = {
     get(name) {
       if (name === 'subprocess' && subprocessAvailable) return subprocess
+      if (name === 'sandboxPolicy') sandboxPolicyQueries += 1   // F-5/1c liveness: the policy path really ran
+      if (name === 'sandboxPolicy' && sandboxUnknownCwd) return { resolve: () => { sandboxResolveCalls += 1; return { workspaceRoot: WS + '/fenced-elsewhere' } } }   // NO top-level root: workspaceRoot() falls back to '.'
       if (name === 'sandboxPolicy' && (sandboxDriftRoot || sandboxNoRoot)) return sandboxNoRoot ? { allow: ['x'], deny: [], resolve: () => ({ allow: ['x'], deny: [] }) } : { workspaceRoot: sandboxDriftRoot, resolve: () => ({ workspaceRoot: sandboxDriftRoot }) }
       if (name === 'compaction' && compactionFails) return {
         async compactIfNeeded() { throw new Error('COMPACTION_FAIL (injected)') },
@@ -236,11 +241,15 @@ function makeHost() {
     },
   }
   ROOT = { id: 'sess-A', options: { provider: 'mock', model: 'm' }, session: { id: 'sess-A', header: { cwd: WS, parentSession: undefined } }, followup() {}, ctx: undefined }
+if (sandboxUnknownCwd) ROOT.session.header.cwd = ''   // F-5/1c: unknown session cwd
   const projectRoot = join(WS, 'VibeMath', 'Projects', 'default')
   const vibeRoot = join(WS, 'VibeMath')
   let consumed = 0
   const h = {
     WS, ctx, toolRegs, spawns, followups, ROOT, projectRoot, vibeRoot, cmdRegs,
+policyQueries: () => sandboxPolicyQueries,
+resolveCalls: () => sandboxResolveCalls,
+resetResolveCalls: () => { sandboxResolveCalls = 0 },
     /** Drive the registered `/v4` slash command — the OTHER parameter surface the spec §B names. */
     async cmd(rawInput) { const c = cmdRegs.find(x => x.name === 'v4'); if (!c) throw new Error('no /v4 command'); return await c.handler({ agent: ROOT, rawInput }) },
     async callTool(n, a, agent) {
@@ -1949,6 +1958,28 @@ section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming 
     assert(drift().length === 0, '* F-5/1b an UNINTERPRETABLE resolved policy ({allow,deny}) produces NO warning (documented no-op, not a dead branch) (' + drift().length + ')')
     const w1b = await h.callTool('vibe_v4_status', {})
     assert(r1b && r1b.ok !== false && !!w1b, '* F-5/1b getPolicy() still RESOLVES for that shape (the write succeeds, no throw path)')
+    // F-5/1c: the session cwd is UNKNOWN (no cwd on the captured root agent) and the policy exposes no
+    // top-level root, so workspaceRoot() is `'.'`; resolve({session}) still yields a root. The `.` clause
+    // of the product guard is the ONLY reason this stays silent - a mutant that warns on an unknown cwd
+    // reddens here by name.
+    sandboxNoRoot = false
+    sandboxDriftRoot = null
+    sandboxUnknownCwd = true
+    const seenC = []
+    const realErrC = console.error
+    console.error = (...a) => { seenC.push(a.map(String).join(' ')); realErrC(...a) }
+    let hc = null
+    try {
+      // FOUNDING under an unknown cwd: the founding writes go through writeTextAbs -> getPolicy(),
+      // so the window below both reaches the helper and proves it stayed silent
+      hc = await mount()
+      hc.resetResolveCalls()
+      await hc.callTool('vibe_v4_start', { problem: 'F-5 case 1c', residentCount: 1 })
+      await sleep(80)
+    } finally { console.error = realErrC; sandboxUnknownCwd = false }
+    const driftC = seenC.filter(l => /fence root does not CONTAIN this session workspace/.test(l))
+    assert(driftC.length === 0, '* F-5/1c an UNKNOWN session cwd stays SILENT (the `.` guard: drift=' + driftC.length + ')')
+    assert(hc.resolveCalls() >= 1, '* F-5/1c LIVENESS: the helper really ran with an unknown cwd (resolve calls=' + hc.resolveCalls() + ', policy queries=' + hc.policyQueries() + '), so the silence is not an unreached branch')
     sandboxNoRoot = false
     // (iv) agreeing roots => silence (anti-vacuity)
     seen.length = 0   // F-5: observe ONLY this case's window

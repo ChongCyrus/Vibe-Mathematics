@@ -422,6 +422,16 @@ console.log('\n[1] the hardened JSON backend (host with no session services at a
     const parsed = JSON.parse(readFileSync(stFile, 'utf8'))
     const inst = parsed.institutes['default::institute']
     assert(!!inst && inst.members.length === 3, 'the persisted state holds 1 academician + 2 researchers (got ' + (inst ? inst.members.length : 'none') + ')')
+// A5: the COUNT is only a lead - assert the semantic unit too. The persisted roster must be
+// exactly {acad, r-1, r-2} by ID and {academician:1, researcher:2} by KIND, so a founding that
+// minted a duplicate id (the allocator returning the same value twice), founded a researcher with
+// the academician kind, or dropped/added a member while still totalling 3 now FAILS.
+const ids = inst.members.map((m) => String(m.id)).sort()
+assert(ids.join(',') === ['acad', 'r-1', 'r-2'].sort().join(','), '* A5 the founded ID SET is exactly {acad, r-1, r-2} (got ' + JSON.stringify(ids) + ')')
+const kinds = {}
+for (const m of inst.members) kinds[String(m.kind)] = (kinds[String(m.kind)] || 0) + 1
+const kindList = Object.keys(kinds).sort().map((k) => k + ':' + kinds[k])
+assert(JSON.stringify(kindList) === JSON.stringify(['academician:1', 'researcher:2']), '* A5 the founded KIND MULTISET is exactly {academician:1, researcher:2} (got ' + JSON.stringify(kinds) + ')')
   }
   assert(h.ROOT_SESSION._events.length === 0, 'the whole founding wrote NOTHING to the host session log (' + h.ROOT_SESSION._events.length + ' events)')
 }
