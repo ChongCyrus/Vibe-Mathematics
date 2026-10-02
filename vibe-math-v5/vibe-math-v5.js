@@ -3704,7 +3704,7 @@ export function apply(ctx) {
         // Dedupe (§5.3): the object is already `passed` AND the work file still holds EXACTLY
         // this content ⇒ the compile result is already known: skip rewrite + recompile.
         if (prev.status === 'passed' && (await leanHashFile(workRel)) === sha) {
-          return { ok: true, deduped: true, kind, target, file: workRel, sha256: sha, proof: prev.proof || ('Verified/Lean/' + target + '.lean'), note: '内容与已归档版本一致，跳过重写与重编译' }
+          return { ok: true, deduped: true, kind, target, file: workRel, sha256: sha, proof: prev.proof || ('Verified/Lean/' + target + '.lean'), fidelity: prev.fidelity || null, abstainedCount: Number((prev.fidelity || {}).abstainedCount || 0), note: '内容与已归档版本一致，跳过重写与重编译' }
         }
         if (!await writeTextRel(workRel, body)) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + workRel }
         if (params.leanAsync !== false) {
@@ -3729,7 +3729,7 @@ export function apply(ctx) {
             await rebuildLeanLibIndexes()
             await saveChatLine('【形式化】' + memberId + ' 为 ' + target + ' 归档形式化证明 ' + workRel
               + '（已入队后台编译；落地为“通过”之前**不会**写 Verified/Lean/、也不会转为忠实性审查）')
-            return { ok: true, kind, target, file: workRel, sha256: sha, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId, status: rec0.status, note: '已入队后台编译；只有作业落地为“通过”才会写 Verified/Lean/ 并转为忠实性审查' }
+            return { ok: true, kind, target, file: workRel, sha256: sha, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId, status: rec0.status, fidelity: rec0.fidelity || prev.fidelity || null, abstainedCount: Number(((rec0.fidelity || prev.fidelity) || {}).abstainedCount || 0), note: '已入队后台编译；只有作业落地为“通过”才会写 Verified/Lean/ 并转为忠实性审查' }
           }
           // No toolchain: fall through to the synchronous path (honest NO_SUBPROCESS record).
         }
@@ -3755,7 +3755,7 @@ export function apply(ctx) {
         await rebuildLeanLibIndexes()
         await saveChatLine('【形式化】' + memberId + ' 为 ' + target + ' 归档形式化证明 ' + workRel
           + '（运行 ' + (passed ? '**通过**，已归档到 ' + rec.proof + '，验证转为忠实性审查' : '**未通过**：' + tail(run.stderr || run.message, 160)) + '）')
-        return { ok: true, kind, target, file: workRel, sha256: sha, proof: rec.proof, passed, run, status: rec.status, async: null }
+        return { ok: true, kind, target, file: workRel, sha256: sha, proof: rec.proof, passed, run, status: rec.status, async: null, fidelity: rec.fidelity || prev.fidelity || null, abstainedCount: Number(((rec.fidelity || prev.fidelity) || {}).abstainedCount || 0) }
       }
       if (kind === 'blocked') {
         const target = idSafe(String(args.target || ''))
@@ -6354,10 +6354,13 @@ export function apply(ctx) {
       // ignored — no notice, no enforced abstention, and the same reply's `1` counted (exactly the
       // hole L2 closed). The array form is now SUPPORTED entry by entry; a non-object entry is
       // refused loudly instead of being dropped in silence.
-      // NOTE: the gate keeps the EXACT `formalOn() && p.formal` shape on purpose — `audit-prompt-
-      // invariants` I8 pins it TEXTUALLY ("off must be a TRUE no-op"), and the first version of this
-      // fix (a ternary on `formalOn()`) broke that invariant while behaving identically. The array
+      // NOTE: the gate below keeps its literal two-term shape on purpose — `audit-prompt-invariants`
+      // I8 matches that EXACT source text ("off must be a TRUE no-op"), and the first version of this
+      // fix (a ternary on `formalOn()`) broke the invariant while behaving identically. The array
       // normalisation therefore lives INSIDE the guarded block, after the gate.
+      // (This comment deliberately does NOT spell the pattern out: I8 reads the RAW source, so a
+      // comment quoting the gate would satisfy the invariant even with the gate removed — the mutant
+      // `M1` in `tests/audit-v5-lean-abstention.mutants.mjs` is what keeps this honest.)
       if (formalOn() && p.formal) {
         const formalEntries = Array.isArray(p.formal) ? p.formal : (typeof p.formal === 'object' ? [p.formal] : [])
         for (const f of formalEntries) {

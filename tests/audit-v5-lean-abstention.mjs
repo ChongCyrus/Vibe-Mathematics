@@ -375,9 +375,12 @@ section('[S9] observability — the marker is on status(), lean_lib and report()
   const libObj = ((lib.objects || [])[0]) || {}
   const rp = String((await call('report')).report || '')
   const line = (rp.split('\n').find((l) => l.includes('框架强制弃权')) || '').trim()
-  console.log('  status.fidelity=' + JSON.stringify(a.fidelity && a.fidelity.voteAbstainedByFramework) + ' lib.count=' + JSON.stringify(libObj.abstainedCount) + ' report=' + line.slice(0, 120))
+  // fourth surface: the member-facing archive receipt (dedupe path returns the stored record)
+  const arch = await tool('vibe_v5_lean_archive', { kind: 'proof', target: TARGET_A, content: existsSync(join(instRootOf(WS), 'Formal', TARGET_A + '.lean')) ? readFileSync(join(instRootOf(WS), 'Formal', TARGET_A + '.lean'), 'utf8') : 'theorem p_a : True := trivial\n', run: false })
+  console.log('  status.fidelity=' + JSON.stringify(a.fidelity && a.fidelity.voteAbstainedByFramework) + ' lib.count=' + JSON.stringify(libObj.abstainedCount) + ' archive.count=' + JSON.stringify(arch.abstainedCount) + ' report=' + line.slice(0, 110))
   assert(!!(a.fidelity && Array.isArray(a.fidelity.voteAbstainedByFramework) && a.fidelity.voteAbstainedByFramework.length === 1), '★ S9: status().formal.objects[].fidelity exposes the marker array')
   assert(libObj.abstainedCount === 1, '★ S9: vibe_v5_lean_lib.objects exposes abstainedCount')
+  assert(arch.abstainedCount === 1 && !!(arch.fidelity && arch.fidelity.voteAbstainedByFramework), '★ S9: vibe_v5_lean_archive returns the marker on its receipt')
   assert(/框架强制弃权/.test(line), '★ S9: report() has a 框架强制弃权 line naming the object and the member')
   clean(WS)
 }

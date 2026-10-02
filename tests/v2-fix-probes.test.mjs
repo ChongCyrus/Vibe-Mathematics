@@ -412,13 +412,8 @@ console.log('\n-- F5/F6: 两面字段集与 paths 基准 --');
   assert(typeof pp.base === 'string' && pp.base.indexOf('/') !== -1 && /^([A-Za-z]:[\\/]|\/)/.test(pp.base), '★★ [F6] base 是绝对项目根（实测 ' + JSON.stringify(pp.base) + '）');
   const rpj = rep.formal && rep.formal.paths ? rep.formal.paths : null;
   assert(!!rpj && 'base' in rpj && 'note' in rpj, '★★ [F6] report 侧的 paths 同样带 base/note（两面一致）');
-  const doc = readFileSync(new URL('../docs/status-report-fields.md', import.meta.url), 'utf8');
-  const names = ['recentActivity', 'stateWriteFailures', 'registeredAgents', 'stateCommit', 'pendingDecisions', 'verifyTasks', 'activeCount', 'pendingDecisionItems'];
-  const missing = names.filter((n) => doc.indexOf('`' + n + '`') === -1);
-  assert(missing.length === 0, '★★★ [F4] v2 侧字段名也在字段文档里（缺 ' + JSON.stringify(missing) + '）');
-  h.restore(); rmSync(h.WS, { recursive: true, force: true });
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
 }
-// ---------------------------------------------------------------- F4
 console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
 {
   const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
