@@ -43,6 +43,7 @@ function pluginUrl() {
   return pathToFileURL(fileURLToPath(new URL('file:///' + s.replace(/\\/g, '/'))))
 }
 const PLUGIN = pluginUrl()
+function PLUGIN_SRC() { return readFileSync(process.env.V4_PLUGIN ? String(process.env.V4_PLUGIN) : fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8') }   // protocol 搂9: ONE seam-aware resolution for source-text guards
 // docs §10 item 10: the Lean prompt corpus is shipped under prompt-corpus-v4/ so a HUMAN can read
 // the exact text the framework sends. V4_CORPUS_DIR overrides the destination (same convention v3
 // and v5 use for V3_CORPUS_DIR / V5_CORPUS_DIR).
@@ -590,8 +591,8 @@ assert(existsSync(join(provedPath, 'sq_odd.lean')), 'the lemma exists under Vibe
 assert(/ZMod5/.test(readIf(join(libPath, 'Index.md'))), 'Lib/Index.md lists the new definition')
 assert(/sq_odd/.test(readIf(join(provedPath, 'Index.md'))), 'Proved/Index.md lists the new lemma')
 // `from` copies an existing workspace .lean file instead of inline content
-writeFileSync(join(D.projectRoot, 'Formal', 'src.lean'), 'def copied := 7\n', 'utf8')
-const fromRes = await D.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'Copied', from: 'Formal/src.lean' }, r1)
+writeFileSync(join(D.projectRoot, 'Formal', 'PLUGIN_SRC().lean'), 'def copied := 7\n', 'utf8')
+const fromRes = await D.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'Copied', from: 'Formal/PLUGIN_SRC().lean' }, r1)
 assert(fromRes.ok === true && readIf(join(libPath, 'Copied.lean')) === 'def copied := 7\n', "kind='def' accepts from=<existing .lean file>")
 const fromEsc = await D.callTool('vibe_v4_lean_archive', { kind: 'def', name: 'Evil', from: '../../../../etc/passwd' }, r1)
 assert(fromEsc.ok === false && fromEsc.code === 'V4_INVALID_ARGUMENT', "★ kind='def' refuses a `from` outside the VibeMath root")
@@ -1725,8 +1726,18 @@ section('N7 delivered prompts carry no labelled-but-empty slot (proposer/agenda/
   assert(txt.length > 100 && /verifying object p-nopowner/.test(txt), '* the delivered verify prompt is non-trivial and names the target (non-vacuity: an empty prompt must not pass below)')
   assert(!/\u63d0\u51fa\u8005\s*\uff09/.test(txt), '* no labelled-but-empty proposer slot in the delivered frame (\u63d0\u51fa\u8005 + ) )')
   assert(!/agenda:\s*[)\uff09]/.test(txt), '* no labelled-but-empty agenda slot in the delivered frame')
-  const src = readFileSync(process.env.V4_PLUGIN ? String(process.env.V4_PLUGIN) : fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')   // F2: same V4_PLUGIN seam as N5/N6
-  assert(/String\(vs\.targetOwner\|\|''\)\.trim\(\)\?/.test(src), '* the proposer segment is assembled ONLY when a value exists (source-level: the office is never invented)')
+  // protocol 搂9 (path-alias family): resolve the plugin ONCE from the loader's own URL, read THAT, and
+  // assert the read path equals the V4_PLUGIN seam when it is set - a guard must never print one path
+  // and read another.
+  const _pu = pluginUrl()                                   // the loader's own resolution (seam-aware)
+  const _href = typeof _pu === 'string' ? _pu : String(_pu && _pu.href ? _pu.href : _pu)
+  const _loaderPath = _href.indexOf('file:') === 0 ? fileURLToPath(new URL(_href.split('?')[0])) : String(_href).split('?')[0]
+  if (process.env.V4_PLUGIN) {
+    const _a = _loaderPath.replace(/\\/g, '/').toLowerCase()
+    const _b = String(process.env.V4_PLUGIN).replace(/\\/g, '/').toLowerCase()
+    assert(_a === _b, '* N10 reads the SAME file the loader imports (readPath === V4_PLUGIN seam): ' + _a + ' vs ' + _b)
+  }
+  assert(/String\(vs\.targetOwner\|\|''\)\.trim\(\)\?/.test(PLUGIN_SRC()), '* the proposer segment is assembled ONLY when a value exists (source-level: the office is never invented)')
 }
 section('N8 the meeting frame\'s relay claim matches reality (no promise of speeches that do not exist)')
 {
@@ -1735,9 +1746,8 @@ section('N8 the meeting frame\'s relay claim matches reality (no promise of spee
   assert(noPrior.length > 100 && /A meeting is in progress/.test(noPrior), '* the meeting frame is non-trivial (non-vacuity)')
   assert(!/\u4e0b\u9762\u5df2\u6709\u4eba\u53d1\u8a00/.test(noPrior), '* with NO prior statements the frame does not claim that others have spoken (\u4e0b\u9762\u5df2\u6709\u4eba\u53d1\u8a00)')
   assert(/\u5e76\u884c\u72ec\u7acb\u53d1\u8a00/.test(noPrior), '* …instead it states the real semantics: this round is parallel independent statements')
-  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
-  assert(/\(prior\?'\\n\u8fd9\u662f\u4e00\u573a\u771f\u5b9e\u8ba8\u8bba/.test(src), '* the relay claim is gated on prior existing (source-level)')
-  assert(/\(prior\?\(\'\\n\\n### \u5df2\u6709\u53d1\u8a00/.test(src), '* the forwarded-speech block is still delivered whenever prior exists')
+  assert(/\(prior\?'\\n\u8fd9\u662f\u4e00\u573a\u771f\u5b9e\u8ba8\u8bba/.test(PLUGIN_SRC()), '* the relay claim is gated on prior existing (source-level)')
+  assert(/\(prior\?\(\'\\n\\n### \u5df2\u6709\u53d1\u8a00/.test(PLUGIN_SRC()), '* the forwarded-speech block is still delivered whenever prior exists')
 }
 section('N9 behavioural: a write to the DOCUMENTED path is counted by countArtifacts (auto-meeting basis)')
 {
@@ -1755,19 +1765,18 @@ section('N10 G-7 class guard: agent-facing compaction takes the AGENT-LOCAL inst
 {
   const { readFileSync } = await import('node:fs')
   const { fileURLToPath } = await import('node:url')
-  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
-  assert(/function compactionForAgent\(/.test(src), '* v4 defines compactionForAgent (the agent-local accessor)')
+  assert(/function compactionForAgent\(/.test(PLUGIN_SRC()), '* v4 defines compactionForAgent (the agent-local accessor)')
   // F2 (HIGH): a named, BOUNDED anchor. The old window ran to the next two-space function (109,191 chars)
   // and swallowed unrelated code, which is why a line-located mutant escaped unnoticed.
   const CALL = 'const compaction = compactionForAgent(agent)'
-  const at = src.indexOf(CALL)
+  const at = PLUGIN_SRC().indexOf(CALL)
   assert(at > 0, '* the agent-facing compaction call exists verbatim (anchor: ' + CALL + ')')
-  const _ls = src.lastIndexOf('\n', at)
-  const _le = src.indexOf('\n', at)
-  const win = src.slice(_ls, _le > 0 ? _le : at + 200)
+  const _ls = PLUGIN_SRC().lastIndexOf('\n', at)
+  const _le = PLUGIN_SRC().indexOf('\n', at)
+  const win = PLUGIN_SRC().slice(_ls, _le > 0 ? _le : at + 200)
   assert(win.length <= 400, '* the inspected window is BOUNDED (the call line only; got ' + win.length + ')')
   assert(win.indexOf(CALL) !== -1, '* the window really contains the agent-facing call')
-  if (process.env.V4_DEBUG) console.log('  [N10-diag] seam=' + String(process.env.V4_PLUGIN || '(none)') + ' | loaderUrl=' + (typeof pluginUrl === 'function' ? pluginUrl().href : 'n/a') + ' | win=' + win.length + ' | first=' + win.trim().slice(0, 70))
+  if (process.env.V4_DEBUG) { const _lp = (function(){ try { const u = pluginUrl(); const h = typeof u === 'string' ? u : String(u && u.href ? u.href : u); return h.indexOf('file:') === 0 ? fileURLToPath(new URL(h.split('?')[0])) : h.split('?')[0] } catch (e) { return 'ERR:' + e.message } })(); console.log('  [N10-diag] read=' + _lp + ' | seam=' + String(process.env.V4_PLUGIN || '(none)') + ' | srcHasAnchor=' + (PLUGIN_SRC().indexOf(CALL) !== -1) + ' | win=' + win.length) }
   assert(!/compactionOf\(\)/.test(win), '* the agent-facing path does NOT call the host-root compactionOf() (a realm never falls back)')
 }
 console.log('')
