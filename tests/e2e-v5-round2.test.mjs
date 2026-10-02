@@ -1928,11 +1928,16 @@ console.log('\n[44] paths stay inside the project root; every quorum view agrees
   const brief = h.spawns.map((sp) => JSON.stringify(sp.request || {})).join('\n')
   assert(brief.indexOf('VibeMath/Projects/default/Institutes/institute/Members/') !== -1,
     '★ the member brief carries the CWD-relative library root (' + (brief.match(/Members\/[^"\\]{0,40}/) || [''])[0] + ')')
-  // A bare `Members/…` NOT preceded by a path separator is an institute-relative path: a member
-  // copying it into its own file tool would write it against the session cwd (defect A).
-  const bareLib = (brief.match(/(^|[^A-Za-z0-9/_.-])Members\//g) || [])
-  assert(bareLib.length === 0,
-    'no member-facing path is left institute-relative (bare ' + JSON.stringify(bareLib) + ')')
+  // The contract is ROOT-QUALIFIED declarations: the brief names the CWD-relative root (A1 above)
+  // AND every library declaration it offers carries the member root (`Members/<你>/<section>/…`), so a
+  // member copying one composes a path inside `Members/<id>/`. The legacy institute-relative shapes
+  // (`Progress/<你>/…` and friends) must be gone - those used to send the write outside the member tree.
+  const decls = (brief.match(/Members\/<[^>]*>\/(?:Progress|Propos|Methods|Subproblems)\//g) || [])
+  assert(decls.length >= 4,
+    '* every member-facing library declaration is root-qualified (Members/<你>/<section>/…) (found ' + decls.length + ')')
+  const legacy = (brief.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<你>\//g) || [])
+  assert(legacy.length === 0,
+    'no member-facing declaration is left in the legacy institute-relative shape (' + JSON.stringify(legacy) + ')')
   await h.settleSpawns()
   // (A2) a member card write must not add anything at the workspace TOP level.
   const topBefore = readdirSync(h.WS).sort().join(',')

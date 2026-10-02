@@ -56,6 +56,7 @@
       - vibe_math_index — rebuild State/index.json from the Markdown knowledge base.
       - vibe_math_method_add / vibe_math_method_list — manually add / list method cards (Methods/ + global).
       - vibe_math_lock_status — project lock occupancy (the lock is a renewed lease: while a session is running it never expires; taking it over needs override=true, or happens automatically once the owner's lease has clearly expired after a crash).
+      - vibe_math_claim_write / vibe_math_release_write — (member) 写共用 Markdown（含 Progress/<qid>/<dirId>.md）前先取该文件的写锁、写完立刻释放；锁被别的成员持有时报出持有者，不要硬写。
         Only ONE session may run a project: a second session is refused with PROJECT_LOCKED instead of silently writing the same knowledge base in parallel.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -69,7 +70,7 @@
 
       - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
       - 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。
-      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以打开它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
@@ -148,6 +149,7 @@
       - vibe_math_index — rebuild State/index.json from the Markdown knowledge base.
       - vibe_math_method_add / vibe_math_method_list — manually add / list method cards (Methods/ + global).
       - vibe_math_lock_status — project lock occupancy (the lock is a renewed lease: while a session is running it never expires; taking it over needs override=true, or happens automatically once the owner's lease has clearly expired after a crash).
+      - vibe_math_claim_write / vibe_math_release_write — (member) 写共用 Markdown（含 Progress/<qid>/<dirId>.md）前先取该文件的写锁、写完立刻释放；锁被别的成员持有时报出持有者，不要硬写。
         Only ONE session may run a project: a second session is refused with PROJECT_LOCKED instead of silently writing the same knowledge base in parallel.
       - vibe_math_new_project / vibe_math_set_project / vibe_math_list_projects — per-project folders.
       - vibe_math_list_decisions / vibe_math_decide {id, action: approve|reject|override, verdict?} — resolve manual decisions.
@@ -161,7 +163,7 @@
 
       - math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。
       - 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。
-      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以打开它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）；编辑后用 mode:'file' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+      - 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 
       A /vibe slash command mirrors the main controls (/vibe start [override]|resume [override]|pause|abort|status|report|mode
       <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|methods|index|plan|lock|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).

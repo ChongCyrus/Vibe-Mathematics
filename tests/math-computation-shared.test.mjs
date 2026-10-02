@@ -826,15 +826,43 @@ console.log('-- math_computation shared contract --')
 // R 4.6.1 went to `C:\Program Files\R\R-4.6.1\bin` without touching PATH, so `probe` used to say R
 // was missing even though it was installed.
 {
+  // round-B (F4): the candidate roots are INJECTED through the host seam, so this fixture cannot depend
+  // on the ambient machine's ProgramFiles/LOCALAPPDATA (which made it a false red on other layouts).
+  const RROOT = 'X:/installs/R'
   const absTree = {
-    'C:/Program Files/R': [{ name: 'R-4.6.1', type: 'directory' }],
-    'C:/Program Files/R/R-4.6.1/bin': [{ name: 'Rscript.exe', type: 'file' }, { name: 'R.exe', type: 'file' }],
+    [RROOT]: [{ name: 'R-4.6.1', type: 'directory' }],
+    [RROOT + '/R-4.6.1/bin']: [{ name: 'Rscript.exe', type: 'file' }, { name: 'R.exe', type: 'file' }],
   }
-  const h = makeFakeHost({ installed: [], absTree: absTree, runtimeRoots: [] })
+  const h = makeFakeHost({ installed: [], absTree: absTree, runtimeRoots: [], installRoots: { r: [RROOT] } })
   M.registerMathComputation(h.host)
   const p = await h.call({ op: 'probe', engine: 'r' })
   ok(p.ok === true && p.engine === 'r', '★ a Rscript that exists ONLY in the default install dir is discovered (not on PATH)')
-  ok(!!p.engineInfo && /Program Files\/R\/R-4\.6\.1\/bin\/Rscript/.test(String(p.engineInfo.path)), 'the discovered path is the versioned install dir (' + String(p.engineInfo && p.engineInfo.path).slice(0, 60) + ')')
+  ok(!!p.engineInfo && /installs\/R\/R-4\.6\.1\/bin\/Rscript/.test(String(p.engineInfo.path)), 'the discovered path is the versioned install dir (' + String(p.engineInfo && p.engineInfo.path).slice(0, 60) + ')')
+}
+// ── 23b. round-B (F3): the SAME walker covers Octave and Julia default dirs (both layout shapes)
+{
+  const OROOT = 'X:/installs/GNU Octave'
+  const JROOT = 'X:/home/.juliaup/bin'
+  const absTree = {
+    [OROOT]: [{ name: 'Octave-9.2.0', type: 'directory' }],
+    [OROOT + '/Octave-9.2.0']: [{ name: 'mingw64', type: 'directory' }],
+    [OROOT + '/Octave-9.2.0/mingw64/bin']: [{ name: 'octave-cli.exe', type: 'file' }],
+    [JROOT]: [{ name: 'julia.exe', type: 'file' }],
+  }
+  const h = makeFakeHost({ installed: [], absTree: absTree, runtimeRoots: [], installRoots: { octave: [OROOT], julia: [JROOT] } })
+  M.registerMathComputation(h.host)
+  const po = await h.call({ op: 'probe', engine: 'octave' })
+  ok(po.ok === true && /Octave-9\.2\.0\/mingw64\/bin\/octave-cli/.test(String(po.engineInfo && po.engineInfo.path)), '★ an Octave installed in its default dir (no PATH) is discovered (versioned + mingw64/bin layout)')
+  const pj = await h.call({ op: 'probe', engine: 'julia' })
+  ok(pj.ok === true && /\.juliaup\/bin\/julia/.test(String(pj.engineInfo && pj.engineInfo.path)), '★ a juliaup-managed Julia (flat bin dir, no PATH) is discovered by the same walker')
+  const pr = await h.call({ op: 'probe' })
+  ok((pr.absent || []).some((a) => a.engine === 'r' && a.why === 'not-found-on-this-machine'), 'an engine with no injected roots and no PATH entry is still honestly listed as absent')
+  // F3: the per-engine default roots are part of the contract (the release notes claim "installed but not
+  // on PATH is found"), so their coverage is asserted directly - not only via an injected fixture.
+  for (const e of ['r', 'python', 'octave', 'julia', 'matlab']) {
+    ok(typeof M.mathInstallRoots === 'function' && M.mathInstallRoots(e, {}, true).length > 0 && M.mathInstallRoots(e, {}, false).length > 0,
+      '★ every engine with a well-defined default install dir declares per-OS roots: ' + e)
+  }
 }
 // ── 24. round-9 (real-engine): never suggest an install command that cannot run on this machine
 {
@@ -894,6 +922,9 @@ console.log('-- math_computation shared contract --')
   ok(r1.ok === true && r1.attempt === 1 && r1.scriptChanged === false, 'first run of a source file: attempt 1, no change')
   const rj1 = JSON.parse(h.files.get(String(r1.receipt.json).replace(/\\/g, '/')))
   ok(typeof r1.runId === 'string' && rj1.runId === r1.runId, '★ the run response exposes its archive id (matches the durable receipt.runId) - needed to check "same archive id"')
+  // round-B (F6): the DURABLE receipt must record the constraint policy too (not just the response).
+  ok(typeof rj1.versionPolicy === 'string' && /existence-only/.test(rj1.versionPolicy) && Array.isArray(rj1.constraintsNotEnforced),
+    '★ the durable receipt records versionPolicy + constraintsNotEnforced (the promise is auditable evidence)')
   h.files.set('Problems/x.py', 'print(2)\n')
   const r2 = await h.call({ op: 'run', engine: 'python', mode: 'file', file: 'Problems/x.py' })
   ok(r2.ok === true && r2.runId === r1.runId, '★ editing the ORIGINAL source and re-running lands on the SAME archive id')
@@ -913,6 +944,18 @@ console.log('-- math_computation shared contract --')
   ok(r3.scriptChanged === false, '★ …and reports scriptChanged:false (no history FOR THIS id)')
   ok(r3.previousReceipt === null || r3.previousReceipt === undefined, '★ …and has no previousReceipt (expected, not broken change detection)')
   ok(h.files.get(String(r1.scriptPath).replace(/\\/g, '/')) === 'print(1)\n', 'the earlier attempt is still untouched after that run')
+  // Review round A (F1/F2): the ARCHIVED copy is REACHABLE (projectRel() is purely lexical - it rejects
+  // absolute paths and escaping `..` only). The shipped guidance must therefore say the truth: pointing
+  // mode:'file' at the archived copy yields a NEW archive (new id, attempt 1, no history), flagged by
+  // fileIsArchivedScript + ARCHIVED_SCRIPT_RERUN - it is NOT "a new attempt of the same archive".
+  const archivedPath = String(r1.scriptPath).replace(/\\/g, '/')
+  const r4 = await h.call({ op: 'run', engine: 'python', mode: 'file', file: archivedPath })
+  ok(r4.ok === true, '★ pointing mode:file at the ARCHIVED copy succeeds (the guard is lexical, it does not refuse Computation/)')
+  ok(r4.fileIsArchivedScript === true, '★ the response flags fileIsArchivedScript for an archived source')
+  ok((r4.warnings || []).some((w) => w.code === 'ARCHIVED_SCRIPT_RERUN'), '★ the response warns ARCHIVED_SCRIPT_RERUN (so it cannot read as broken change detection)')
+  ok(r4.runId !== r1.runId && r4.attempt === 1 && r4.scriptChanged === false && (r4.previousReceipt === null || r4.previousReceipt === undefined),
+    '★ …and it really is a NEW archive (new id, attempt 1, no history) - NOT a new attempt of the same archive')
+  ok(h.files.get(archivedPath) === 'print(1)\n', 'the archived original is still byte-identical after that run')
 }
 // ── 27. round-9 (N2): a TIMEOUT carries its partial output in BOTH the response and the receipt
 {

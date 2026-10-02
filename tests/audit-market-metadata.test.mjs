@@ -71,6 +71,11 @@ ok(existsSync(join(HERE, String((pkg.dsh.bundle || {}).patch || 'cordis.patch.ym
   const unshipped = notes.filter((rel) => !(pkg.files || []).includes(rel))
   ok(unshipped.length === 0, 'both current-version release notes are listed in package.json#files',
     'not in files[]: ' + unshipped.join(', '))
+  // round-B (F7): `compatNote` is user-facing manifest text and used to keep describing the PREVIOUS
+  // release after a version bump (nothing checked it). It must name the current version.
+  const compatNote = String((pkg.dsh || {}).compatNote || '')
+  ok(compatNote.indexOf(ver) !== -1, 'dsh.compatNote mentions the current version ' + ver,
+    'compatNote starts: ' + compatNote.slice(0, 60))
 }
 
 // ---------------------------------------------------------------------------------------------

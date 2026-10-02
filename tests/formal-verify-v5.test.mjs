@@ -277,7 +277,7 @@ console.log('-- V5 Lean formal verification --')
 section("1 'off' (default) is a true no-op")
 const RA = makeRoot()
 const st0 = await foundInstitute(RA, '形式化开关默认关闭测试')
-assert(st0.params.formalVerify === 'off', "the default is 'off' (got " + st0.params.formalVerify + ')')
+assert((st0.params||{}).formalVerify === 'off', "the default is 'off' (got " + (st0.params||{}).formalVerify + ')')
 
 // ★ The persistence contract (the DSH 0.2.0 audit fix). v5 used to keep the institute in a
 // host-only session projection: it appended `vibe5/*` events to the user's OWN session log, and
@@ -294,8 +294,9 @@ assert(st0.params.formalVerify === 'off', "the default is 'off' (got " + st0.par
   const before = await callTool('vibe_v5_status', {}, RA)
   const RA2 = makeRoot(wsOf(RA))   // fresh root, fresh backend, same workspace = a reload
   const after = await callTool('vibe_v5_status', {}, RA2)
-  assert(after.members.length === before.members.length && after.params.formalVerify === before.params.formalVerify,
-    '★ a reload reads the roster and the parameters back out of the JSON file (' + after.members.length + ' members, formalVerify=' + after.params.formalVerify + ')')
+  assert(before.params && after.params && typeof before.params === 'object' && typeof after.params === 'object', 'non-vacuous: BOTH reload views must EXPOSE params before they are compared (undefined === undefined is not a pass)')
+  assert(after.members.length === before.members.length && (after.params||{}).formalVerify === (before.params||{}).formalVerify,
+    '★ a reload reads the roster and the parameters back out of the JSON file (' + after.members.length + ' members, formalVerify=' + (after.params||{}).formalVerify + ')')
   assert(RA2.session._events.length === 0, '★ the reloading root appends nothing to its session log either')
 }
 {
@@ -360,16 +361,16 @@ section('2 parameter validation and runtime switching')
 const RB = makeRoot()
 await foundInstitute(RB, '形式化参数校验测试')
 const bad = await callTool('vibe_v5_set', { formalVerify: 'banana' }, RB)
-assert(bad.params.formalVerify === 'off', "an unknown mode degrades to 'off', never to a stronger mode (got " + bad.params.formalVerify + ')')
+assert((bad.params||{}).formalVerify === 'off', "an unknown mode degrades to 'off', never to a stronger mode (got " + (bad.params||{}).formalVerify + ')')
 const enc = await callTool('vibe_v5_set', { formalVerify: 'encourage' }, RB)
-assert(enc.params.formalVerify === 'encourage', "'encourage' is accepted")
+assert((enc.params||{}).formalVerify === 'encourage', "'encourage' is accepted")
 const req = await callTool('vibe_v5_set', { formalVerify: 'require', leanTimeoutMs: -5, leanCommand: '   ' }, RB)
-assert(req.params.formalVerify === 'require', "'require' is accepted")
-assert(req.params.leanTimeoutMs === 120000, 'a non-positive leanTimeoutMs falls back to the default (' + req.params.leanTimeoutMs + ')')
-assert(req.params.leanCommand === 'lean', 'a blank leanCommand falls back to "lean"')
+assert((req.params||{}).formalVerify === 'require', "'require' is accepted")
+assert((req.params||{}).leanTimeoutMs === 120000, 'a non-positive leanTimeoutMs falls back to the default (' + (req.params||{}).leanTimeoutMs + ')')
+assert((req.params||{}).leanCommand === 'lean', 'a blank leanCommand falls back to "lean"')
 await callTool('vibe_v5_set', { leanCommand: 'lake', leanArgs: ['env', 'lean'] }, RB)
 const stL = await callTool('vibe_v5_status', {}, RB)
-assert(stL.params.leanCommand === 'lake' && stL.params.leanArgs.join(' ') === 'env lean', 'leanCommand/leanArgs are settable (lake env lean)')
+assert((stL.params||{}).leanCommand === 'lake' && ((stL.params||{}).leanArgs||[]).join(' ') === 'env lean', 'leanCommand/leanArgs are settable (lake env lean)')
 
 // ---------- 3. 'encourage' injection ----------
 section("3 'encourage' injects the Lean section into the right prompts")
@@ -717,6 +718,64 @@ assert(stDef.undecided.indexOf('p-def') !== -1, '★ it is recorded as 未定论
 assert(!existsSync(join(instG, 'Verified', '命题', 'p-def.md')), 'no Verified card is written for it')
 assert(/p-def/.test(readIf(join(instG, 'Formal', 'TODO.md'))), 'it is on the formalisation TODO list')
 
+
+// ===============================================================
+// N. v5 LIB_SPEC path basis (D3 class): every member-visible library declaration must carry the
+//    SAME root the code's readers/writers use (Members/<id>/Progress/progress.md etc.), otherwise a
+//    compliant member writes a file nobody reads (the vm-selftest3 symptom).
+// ===============================================================
+section('N v5 LIB_SPEC declares the same path basis the code reads/writes (D3 class)')
+{
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(PLUGIN, 'utf8')
+  const start = src.indexOf('const LIB_SPEC = [')
+  assert(start > 0, 'the charter LIB_SPEC block exists')
+  const spec = src.slice(start, src.indexOf("].join('\\n')", start))
+  for (const d of ['Progress/progress.md', 'Propos/<id>.md', 'Methods/<id>.md', 'Subproblems/<id>.md']) {
+    assert(spec.includes('Members/<你>/' + d), '★ LIB_SPEC declares ' + d + ' under the member root (Members/<你>/' + d + ') - the root the readers/writers use')
+  }
+  assert(!/·\s+(?:Progress|Propos|Methods|Subproblems)\/<你>\//.test(spec), '★ no LIB_SPEC declaration keeps the legacy bare Progress/<你>/ shape (a member copying it writes outside Members/<id>/)')
+  assert(src.includes("const rel = 'Members/' + memberId + '/Progress/progress.md'"), '★ the code writer path shares that root (Members/<id>/Progress/progress.md)')
+}
+// ===============================================================
+// N2. v5 assign/prioritize/nudge: the tool DESCRIPTION's allowed-caller set must match the GATE.
+//     All three share one gate (office always; academician only when academicianLeads), while the
+//     descriptions used to claim academician-only - so a reader (or a model) would never call them
+//     from the office, which the prompt explicitly allows.
+// ===============================================================
+section('N2 v5 assign/prioritize/nudge descriptions match their shared gate')
+{
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(PLUGIN, 'utf8')
+  const gate = 'if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {'
+  const gates = src.split(gate).length - 1
+  assert(gates >= 2, '* assign + prioritize share the office-or-academician gate condition (found ' + gates + ')')
+  assert(/async function nudge[\s\S]{0,900}isOffice\((?:memberId|callerId)\)/.test(src), '* the nudge gate also admits the office (isOffice, whatever the caller parameter is named)')
+  for (const tool of ['vibe_v5_assign', 'vibe_v5_prioritize', 'vibe_v5_nudge']) {
+    const at = src.indexOf("registerTool('" + tool + "', '")
+    assert(at > 0, '* ' + tool + ' is registered')
+    const dstart = at + ("registerTool('" + tool + "', '").length
+    const desc = src.slice(dstart, src.indexOf("',", dstart))
+    assert(/\(office/.test(desc) && /academician/.test(desc), '* ' + tool + ' description names BOTH allowed callers (office + academician), matching its gate')
+    assert(!desc.includes("'(academician)"), '* ' + tool + ' description does not claim academician-only while the gate allows the office')
+  }
+}
+// ===============================================================
+// N3. DEFECT-1 contract for EVERY refusal: a caller that cannot be identified must still get a
+//     next{tool,hint}, not just a code+message (the office/session root and stale children hit
+//     these 'no calling member' returns).
+// ===============================================================
+section('N3 every "no calling member" refusal carries a next{tool,hint}')
+{
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(PLUGIN, 'utf8')
+  const msgs = [...src.matchAll(/message: 'no calling member:[\s\S]*?'/g)]
+  assert(msgs.length >= 6, '* the member-scoped writing tools refuse an unidentified caller (' + msgs.length + ' sites)')
+  for (const m of msgs) {
+    const after = src.slice(m.index + m[0].length, m.index + m[0].length + 260)
+    assert(/next:\s*\{\s*kind:/.test(after), '* refusal "' + m[0].slice(0, 60) + '..." carries next{tool,hint} (not a bare code+message)')
+  }
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

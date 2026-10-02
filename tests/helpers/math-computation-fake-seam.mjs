@@ -88,6 +88,10 @@ export function makeFakeHost(opts = {}) {
     // `absTree` maps an absolute directory to its entries, so a test can fake DSH's layout
     // (`<root>/dsh-runtimes/<tree>/dependencies/python/python.exe`).
     runtimeRoots: ('runtimeRoots' in opts) ? (async () => (opts.runtimeRoots || [])) : undefined,
+    // round-B (F4): OPTIONAL per-engine install roots. When supplied, the module uses THESE instead of
+    // this process's environment, so a test never depends on the ambient machine's %ProgramFiles% /
+    // %LOCALAPPDATA% (or on which engines the developer happens to have installed).
+    installRoots: opts.installRoots ? (async (engine) => (opts.installRoots[engine] || [])) : undefined,
     listDirAbs: opts.absTree ? (async (abs) => (opts.absTree[String(abs).replace(/\\/g, '/')] || [])) : undefined,
     resolveExecutable: async (cmd) => {
       if (opts.resolveThrows) throw new Error('resolve failed: ' + cmd)

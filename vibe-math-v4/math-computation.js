@@ -73,11 +73,12 @@ export const MATH_PERSONA_TOOL_LINE = '- math_computation {op: probe|run|receipt
 // to both persona blocks) so an agent cannot miss that (a) the script is archived, (b) it may edit
 // it, and (c) re-running is what produces evidence for the edited code.
 export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；'
-  + '**成员的文件工具是按会话 cwd 解析的**，所以打开它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）；'
-  + '编辑后用 mode:\'file\' 指向它重跑，会写出一份**新回执/新 attempt**（含新的 scriptHash）。**旧回执对修改后的代码无效**——'
-  + '报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。'
+  + '**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。'
+  + '要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:\'file\' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。'
+  + '**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。'
+  + '**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。'
 
-export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>, **relative to the project root**); member file tools resolve paths against the SESSION CWD, so open it via the ABSOLUTE `receipt.scriptAbs`, or join `receipt.cwd` with `receipt.scriptPath` (both are in the receipt); after editing, re-run it with mode:\'file\' to write a NEW receipt/attempt with a NEW scriptHash. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
+export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>, **relative to the project root**); member file tools resolve paths against the SESSION CWD, so READ it via the ABSOLUTE `receipt.scriptAbs`, or join `receipt.cwd` with `receipt.scriptPath` (both are in the receipt). To produce evidence for EDITED code, edit the SOURCE FILE you originally ran and re-run mode:\'file\' pointing at THAT SAME PATH: the archive id is keyed by the SOURCE PATH, so this lands on the SAME archive as attempt >= 2, with `scriptChanged:true` and `previousReceipt` pointing at the previous attempt. Pointing mode:\'file\' at the ARCHIVED COPY itself (the `receipt.scriptAbs` path) is a DIFFERENT archive BY DESIGN - a new id, attempt 1, no `previousReceipt`, `scriptChanged:false`: the earlier attempt is never overwritten, but it is NOT "a new attempt of the same archive", and the tool says so via `fileIsArchivedScript` and the `ARCHIVED_SCRIPT_RERUN` warning. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
 
 // Round-6 (A): honesty about SUBSTITUTIONS. An alternative that weakens exactness or conclusion
 // strength must be declared, and the conclusion must never read as if the requested (exact) result
@@ -345,6 +346,9 @@ function adaptHost(host) {
     // round-7 (fix 2): optional bundled-runtime discovery (absolute roots + absolute listing).
     runtimeRoots: typeof h.runtimeRoots === 'function' ? h.runtimeRoots : null,
     listDirAbs: typeof h.listDirAbs === 'function' ? h.listDirAbs : null,
+    // round-B (F4): an OPTIONAL host field - a host (or a test) that knows its own install layout can
+    // supply the per-engine candidate roots, so discovery never has to trust this process's environment.
+    installRoots: typeof h.installRoots === 'function' ? h.installRoots : null,
     log: typeof h.log === 'function' ? h.log : function () {},
   }
   adapted.__mathHost = true
@@ -383,34 +387,66 @@ export async function probeMathEngines(host, opts) {
 // looked at the server process's PATH (R 4.6.1 landed in C:\Program Files\R\R-4.6.1\bin and was NOT
 // added to PATH). Add the known per-OS INSTALL locations, globbed by version, still AFTER PATH and
 // after the bundled runtime; existence is always proven by LISTING, never assumed.
+// round-B (F4/F3): the candidate roots come from the HOST when it can supply them (`H.installRoots`),
+// and only otherwise from this process's environment - so a test (or a host with its own layout) never
+// depends on the ambient machine. ONE generic walker serves every engine: adding an engine is a table
+// entry (roots + descriptor candidates), never a new code path. Existence is always proven by LISTING.
+export function mathInstallRoots(engineName, env, win) {
+  const pf = String(env.ProgramFiles || 'C:/Program Files')
+  const pf86 = String(env['ProgramFiles(x86)'] || 'C:/Program Files (x86)')
+  const local = env.LOCALAPPDATA ? String(env.LOCALAPPDATA) : null
+  const home = env.USERPROFILE || env.HOME || null
+  const table = {
+    r: win
+      ? [pf + '/R', pf86 + '/R', local ? local + '/Programs/R' : null]
+      : ['/usr/lib/R', '/usr/lib64/R', '/Library/Frameworks/R.framework/Resources', '/usr/local/lib/R', '/opt/R'],
+    python: win
+      ? [local ? local + '/Programs/Python' : null, pf]
+      : ['/usr/local', '/usr', '/opt/python', '/opt/homebrew'],
+    octave: win
+      ? [pf + '/GNU Octave', local ? local + '/Programs/GNU Octave' : null]
+      : ['/usr/lib/octave', '/usr/local/octave', '/opt/octave', '/usr/share/octave'],
+    julia: win
+      ? [local ? local + '/Programs' : null, pf, home ? home + '/.juliaup/bin' : null]
+      : ['/opt', '/usr/local', home ? home + '/.juliaup/bin' : null],
+    matlab: win ? [pf + '/MATLAB'] : ['/usr/local/MATLAB', '/Applications'],
+  }
+  return (table[engineName] || []).filter((x) => typeof x === 'string' && x)
+}
+
 async function knownInstallCandidates(H, engineName) {
   if (typeof H.listDirAbs !== 'function') return []
   const cands = mathEngineCandidates(engineName)
   if (!cands) return []
   const env = (typeof process !== 'undefined' && process.env) || {}
   const win = !!(typeof process !== 'undefined' && process.platform === 'win32')
+  let injected = null
+  if (typeof H.installRoots === 'function') {
+    try {
+      const r = await H.installRoots(engineName)
+      if (Array.isArray(r)) injected = r.filter((x) => typeof x === 'string' && x)
+    } catch (e) { injected = null }
+  }
+  const roots = injected || mathInstallRoots(engineName, env, win)
   const exts = win ? ['', '.exe', '.cmd'] : ['']
   const out = []
-  const listDirs = async (dir) => { try { return ((await H.listDirAbs(dir)) || []).filter((e) => e && e.type === 'directory').map((e) => e.name) } catch (e) { return [] } }
-  const listFiles = async (dir) => { try { return ((await H.listDirAbs(dir)) || []).filter((e) => e && e.type === 'file').map((e) => e.name) } catch (e) { return [] } }
+  const listNames = async (dir, kind) => {
+    try { return ((await H.listDirAbs(dir)) || []).filter((e) => e && e.type === kind).map((e) => e.name) } catch (e) { return [] }
+  }
   const match = async (dir) => {
-    const files = await listFiles(dir)
+    const files = await listNames(dir, 'file')
     for (const c of cands) for (const x of exts) if (files.indexOf(c + x) !== -1) out.push(dir + '/' + c + x)
   }
-  if (engineName === 'r') {
-    const roots = win
-      ? [String(env.ProgramFiles || 'C:/Program Files') + '/R', String(env['ProgramFiles(x86)'] || 'C:/Program Files (x86)') + '/R', env.LOCALAPPDATA ? String(env.LOCALAPPDATA) + '/Programs/R' : null]
-      : ['/usr/lib/R', '/Library/Frameworks/R.framework/Resources', '/usr/local/lib/R', '/opt/R', '/usr/lib64/R']
-    for (const root of roots) {
-      if (!root) continue
-      for (const d of await listDirs(root)) await match(root + '/' + d + '/bin') // windows versioned dirs
-      await match(root + '/bin')                                                 // unix / framework layout
+  for (const root of roots) {
+    await match(root)                                                      // flat layout (juliaup, /usr/local)
+    await match(root + '/bin')                                             // unix / framework layout
+    for (const d of await listNames(root, 'directory')) {
+      await match(root + '/' + d)                                          // versioned flat (Python312, Julia-1.10)
+      await match(root + '/' + d + '/bin')                                 // versioned install (R-4.6.1/bin)
+      for (const s of await listNames(root + '/' + d, 'directory')) {
+        await match(root + '/' + d + '/' + s + '/bin')                     // nested layout (Octave-9.2.0/mingw64/bin)
+      }
     }
-  } else if (engineName === 'python' && win) {
-    const local = env.LOCALAPPDATA ? String(env.LOCALAPPDATA) + '/Programs/Python' : null
-    for (const d of (local ? await listDirs(local) : [])) await match(local + '/' + d)
-    const pf = String(env.ProgramFiles || 'C:/Program Files')
-    for (const d of await listDirs(pf)) if (/^Python[0-9]/i.test(d)) await match(pf + '/' + d)
   }
   return Array.from(new Set(out))
 }
@@ -1058,6 +1094,9 @@ async function opRun(H, args, params) {
     argv: assembled.argv.slice(),
     cwd: root,
     packages: { requested: want.slice(), found: pk.found },
+    // round-B (F6): the constraint policy is durable evidence too - a receipt read months later must
+    // show that constraints were existence-only and WHICH ones were not checked.
+    versionPolicy: versionPolicy, constraintsNotEnforced: pinnedSpecs.slice(),
     exit: r.timedOut ? null : (r.exit === undefined ? null : r.exit),
     timedOut: !!r.timedOut,
     ms: Number(r.ms || 0),

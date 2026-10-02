@@ -1063,7 +1063,7 @@ export function apply(ctx) {
       ].join('\n')
     }
     const LIB_SPEC = [
-      '  · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。',
+      '  · Members/<你>/Progress/progress.md —— **你的研究日志**（叙述体，可追加）。',
       '    主要内容是：尝试过的各方法、路线、历程、进度；当前研究进展/进度；将来的计划与打算；',
       '    及各路线、过程中遇到的障碍及其原因；对各路线、方法的看法、可行性评估；自己研究过程',
       '    中的一些有价值看法、感想、猜想、理解。以及其它各种你认为有价值的值得记录的事物、',
@@ -1077,20 +1077,20 @@ export function apply(ctx) {
       '    ▸ 写法建议：按时间追加，每次记一小节；把"结论/进展"与"理由/证据"分开写；',
       '      悬而未决的问题明确标出。',
       '',
-      '  · Propos/<你>/<id>.md —— **你的命题/引理**。格式：',
+      '  · Members/<你>/Propos/<id>.md —— **你的命题/引理**。格式：',
       '      - ID: p-<id>; - 状态: 未定论; - 概率: <0-1>; - 价值程度: <0-1>; - 动机用途计划: <为何重要/打算怎么用>',
       '      然后 ## 陈述 <完整陈述>；## 证明尝试；## 证伪尝试。',
-      '  · Methods/<你>/<id>.md —— **你的理论/方法/工具**。格式：',
+      '  · Members/<你>/Methods/<id>.md —— **你的理论/方法/工具**。格式：',
       '      - ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...',
       '      然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。',
-      '  · Subproblems/<你>/<id>.md —— **你的子问题**。格式：',
+      '  · Members/<你>/Subproblems/<id>.md —— **你的子问题**。格式：',
       '      - ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...',
       '      然后 ## 陈述；## 进度。',
       '',
       '  三条硬要求：',
       '   ① 凡入库必须写明 **价值程度 / 动机用途计划 / 你对该对象为真的概率估计**（缺一不可）；',
       '   ② **只写自己的库**；读别人的库是允许且被鼓励的；',
-      '   ③ 推荐**直接用 fs 写你自己的文件**；vibe_v5_record_* 只是便捷记录器，不是必需。',
+      '   ③ 推荐**直接用 fs 写你自己的文件**（路径必须带成员库根，见上：Members/<你>/…）；vibe_v5_record_* 只是便捷记录器，不是必需。',
     ].join('\n')
 
     // Computed per hire (a FUNCTION, not a frozen const): the text names the live
@@ -1259,8 +1259,8 @@ export function apply(ctx) {
       // ── 三、libraries ───────────────────────────────────────────────────
       L.push('【三、你的资料库、progress 与卡片格式】')
       L.push('  你的资料库根目录（**相对会话工作目录**）：' + instRel('Members/' + member.id + '/'))
-      L.push('  （以下路径都相对该目录。你**只写这里**，但可以读任何人的对应目录。）')
-      L.push('  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用上面这条完整路径；')
+      L.push('  （`<你>` = 你自己的成员 id：下面每条都已带完整库根，可直接照抄。你**只写自己的库**，但可以读任何人的对应目录。）')
+      L.push('  ⚠ 路径基准：你自己的文件工具的**相对路径以会话工作目录为基准**，所以直接读写文件时必须用**带库根的完整路径**（把下面每条里的 `Members/<你>/` 展开成你自己的 id，例如 Members/acad/Progress/progress.md）；')
       L.push('    若只想记录成果，直接用 vibe_v5_record_progress / vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem，框架会写到正确位置。')
       L.push('')
       L.push(LIB_SPEC)
@@ -6640,7 +6640,7 @@ export function apply(ctx) {
       L.push('')
       L.push('## 文件位置')
       L.push('- 根目录：' + instRoot())
-      L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
+      L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/（成员的库文件路径 = Members/<id>/Progress/progress.md 等；文件工具按会话 cwd 解析 ⇒ 请用完整路径）｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
@@ -6752,7 +6752,7 @@ export function apply(ctx) {
    */
   function withCaller(s, x, what, fn) {
     const caller = s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: ' + what + ' needs a resolved member id or the office (the session root)' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: ' + what + ' needs a resolved member id or the office (the session root)', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     return fn(caller)
   }
 
@@ -6860,30 +6860,30 @@ export function apply(ctx) {
     // not the office either — without this check ANY caller's text was delivered as the office
     // (audit L6 follow-up; the tool's own description says "from the office/human").
     const caller = s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: relaying a message as the office needs the office (the session root)' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: relaying a message as the office needs the office (the session root)', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     if (caller !== 'office') return { ok: false, code: 'V5_NOT_OFFICE', message: 'vibe_v5_message relays the OFFICE voice; a member speaks with vibe_v5_say' }
     const to = String(a.to || 'all')
     return s.say('office', { to, text: String(a.content), kind: to === 'all' || to === 'voters' ? 'office' : 'dm' })
   })
   registerTool('vibe_v5_meeting', 'Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight. kind picks the meeting type: "sync" = routine coordination (default), "division" = split the work, "verify-request" = ask the group to verify an object, "solve-vote" = put "is the original problem solved?" to a vote; target names the object for verify-request/solve-vote.', objParams({ agenda: S, kind: { type: 'string', enum: ['sync', 'division', 'verify-request', 'solve-vote'] }, target: S }, ['agenda']), (s, a, x) => {
     const caller = s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may convene/propose a meeting' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may convene/propose a meeting', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     return s.startMeeting(caller, a)
   })
   registerTool('vibe_v5_members', 'List the institute roster (office, employer, phase, direction, rounds).', objParams({}), (s) => ({ ok: true, members: s.status().members, quorum: s.status().quorum }))
   registerTool('vibe_v5_hire', 'Hire one temp worker (office; the academician and every permanent researcher may also hire their own). Requires purpose and initial_task. term (optional) is the task deadline/period text the worker is told at onboarding; direction (optional) states what it should work on.', objParams({ purpose: S, initial_task: S, direction: S, term: S, to: S }, ['purpose', 'initial_task']), (s, a, x) => {
     const caller = a.to ? String(a.to) : s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may hire' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may hire', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     return s.hire(caller, a)
   })
   registerTool('vibe_v5_fire', 'Dismiss a temp worker for real: cancel its turn, release its resident child, reclaim its tasks, drop its mail, and mark it dismissed (its id is never reused).', objParams({ id: S, reason: S }, ['id']), (s, a, x) => {
     const caller = s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or the employer may fire' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or the employer may fire', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     return s.fire(caller, a)
   })
   registerTool('vibe_v5_add_researcher', 'Office only: hire another PERMANENT researcher (members may only propose this).', objParams({ direction: S }), (s, a, x) => {
     const caller = s.officeCaller(x)
-    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: adding a permanent researcher is the office\'s decision (the session root)' }
+    if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: adding a permanent researcher is the office\'s decision (the session root)', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
     return s.addResearcher(caller, a && a.direction)
   })
   // "Office only" (the tool's own description) must be ENFORCED, not just documented: the handler
@@ -6975,9 +6975,9 @@ export function apply(ctx) {
     parts.push('- 距上次实质进展：' + Math.round(idleFor / 1000) + ' 秒')
     return { ok: true, overview: parts.join('\n') }
   })
-  registerTool('vibe_v5_assign', '(academician) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
-  registerTool('vibe_v5_prioritize', '(academician) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => withCaller(s, x, 'setting priorities', (caller) => s.taskPrioritize(caller, a)))
-  registerTool('vibe_v5_nudge', '(academician) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => withCaller(s, x, 'a nudge', (caller) => s.nudge(caller, a)))
+  registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
+  registerTool('vibe_v5_prioritize', '(office, or the academician when academicianLeads) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => withCaller(s, x, 'setting priorities', (caller) => s.taskPrioritize(caller, a)))
+  registerTool('vibe_v5_nudge', '(office, or the academician when academicianLeads) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => withCaller(s, x, 'a nudge', (caller) => s.nudge(caller, a)))
 
   // ── Lean formal verification (docs/formal-verification.md) ────────────────
   // These three tools are registered UNCONDITIONALLY: tool registration is static (a

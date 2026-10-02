@@ -26,7 +26,10 @@
  *      `text` must not receive a different tool surface from a new host that uses `prefix`;
  *   C. mentions ⊆ registered: every `vibe_*` token in the persona is a registered tool
  *      (a `name*` mention is allowed when some registered tool carries that prefix);
- *   D. registered \ mentioned equals an explicit, reviewed snapshot — so adding a tool
+ *   D. every registered tool is either MENTIONED in the persona or consciously ALLOW-LISTED, and the
+ *      allow-list is itself validated (real tools only, empty by default) — so adding a tool forcing a
+ *      decision: name it, or add it to the list with a reason. (Earlier this was a snapshot equality,
+ *      which went red whenever a legitimately newly-named tool emptied the "undocumented" set.)
  *      without documenting it (or deleting a tool the persona still advertises) fails
  *      loudly and forces the author to make a decision;
  *   E. the parameter surface of the Lean feature (the four names) and its semantics
@@ -36,7 +39,7 @@
  * the coordinator's persona?" — virtually all of them are `(member)` / `(academician)` /
  * `(resident)` tools that only subagents call.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -133,9 +136,12 @@ const PRESETS = [
     js: 'vibe-math-v2.js',
     prefix: 'vibe_math_',
     tools: 28,
-    // member-facing write-lock / scheduler-metadata tools; the v2 coordinator never
-    // writes Markdown itself, so they stay out of its persona.
-    undocumented: [],
+    // D. registered \ mentioned ⊆ allow-list: EVERY registered tool must be mentioned in the persona,
+    // unless its name is listed here as a conscious exception (the allow-list is empty by default, so a
+    // newly registered tool cannot slip in unnamed). An entry must be a REAL registered tool, and a
+    // preset may also pin names that must be mentioned (never allow-listed).
+    allowList: [],
+    required: [],
     lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
     // the shared math-computation tool (docs/math-computation.md) is prefix-less by
     // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
@@ -146,11 +152,11 @@ const PRESETS = [
     js: 'vibe-math-v3.js',
     prefix: 'vibe_math_',
     tools: 36,
-    // `vibe_math_sync_meta` is no longer undocumented: the promotion-contract line of the
-    // persona now names it as the place to report `lemmas[].价值/关键性` (v3 audit M1 —
-    // without a prompt-side source for that field the promotion main line is unreachable).
-    // The write-lock pair stays out: solver/method-keeper prompts carry it via kcWriteRules().
-    undocumented: ['vibe_math_claim_write', 'vibe_math_release_write'],
+    // `vibe_math_sync_meta` is named by the promotion-contract line, and the write-lock pair is now
+    // named too (the lock is described in the persona, so leaving the two tools unmentioned was the
+    // last hole). Both stay REQUIRED: they must be mentioned, never allow-listed.
+    allowList: [],
+    required: ['vibe_math_claim_write', 'vibe_math_release_write'],
     lean: { tools: ['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'], extra: [] },
     // the shared math-computation tool (docs/math-computation.md) is prefix-less by
     // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
@@ -161,15 +167,18 @@ const PRESETS = [
     js: 'vibe-math-v4.js',
     prefix: 'vibe_v4_',
     tools: 35,
-    // resident-facing tools (mail, library cards, task board, write lock). The
-    // coordinator drives residents through vibe_v4_message / _meeting / _add_member.
-    undocumented: [
+    // Member-facing tools (mail, library cards, task board, write lock) that the v4 persona describes
+    // GENERICALLY rather than naming one by one; the coordinator drives residents through
+    // vibe_v4_message / _meeting / _add_member. Allow-listed ON PURPOSE, so a NEWLY registered tool
+    // still has to be named (or added here consciously).
+    allowList: [
       'vibe_v4_send_message', 'vibe_v4_publish_progress', 'vibe_v4_record_proposition',
       'vibe_v4_record_method', 'vibe_v4_record_subproblem', 'vibe_v4_read_progress',
       'vibe_v4_list_residents', 'vibe_v4_propose_task', 'vibe_v4_claim_task',
       'vibe_v4_task_done', 'vibe_v4_list_tasks', 'vibe_v4_report_context',
       'vibe_v4_claim_write', 'vibe_v4_release_write',
     ],
+    required: [],
     lean: { tools: ['vibe_v4_lean_run', 'vibe_v4_lean_archive', 'vibe_v4_lean_lib', 'vibe_v4_lean_read', 'vibe_v4_lean_job'], extra: ['vibe_v4_formal_report'] },
     // the shared math-computation tool (docs/math-computation.md) is prefix-less by
     // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
@@ -180,17 +189,18 @@ const PRESETS = [
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
     tools: 40,
-    // member- and academician-facing tools; the office (main agent) holds only the
-    // institute-level controls plus the hiring authority. The final-paper pair is an
-    // OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper),
-    // so it must not appear in this snapshot.
-    undocumented: [
+    // Member- and academician-facing tools that the v5 persona describes GENERICALLY; the office (main
+    // agent) holds only the institute-level controls plus the hiring authority. The final-paper pair is
+    // an OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper), so it must
+    // NOT be allow-listed here. Allow-listed ON PURPOSE: a NEWLY registered tool still has to be named.
+    allowList: [
       'vibe_v5_wait', 'vibe_v5_record_progress', 'vibe_v5_record_proposition',
       'vibe_v5_record_method', 'vibe_v5_record_subproblem', 'vibe_v5_read_library',
       'vibe_v5_propose_verify', 'vibe_v5_verdict', 'vibe_v5_task_create',
       'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update',
       'vibe_v5_overview', 'vibe_v5_assign', 'vibe_v5_prioritize', 'vibe_v5_nudge',
     ],
+    required: [],
     lean: { tools: ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job'], extra: [] },
     // the shared math-computation tool (docs/math-computation.md) is prefix-less by
     // design (INTERFACE-FREEZE.md §3), so it is pinned explicitly here.
@@ -264,8 +274,21 @@ for (const P of PRESETS) {
     for (const w of wildcards) {
       ok([...registered].some((n) => n.startsWith(w)), `${P.dir} [${key}]: wildcard mention ${w}* matches no registered tool`)
     }
-    const undocumented = [...registered].filter((n) => !mentioned.has(n)).sort()
-    eq(undocumented, [...P.undocumented].sort(), `${P.dir} [${key}]: undocumented-tool snapshot changed`)
+    const unmentioned = [...registered].filter((n) => !mentioned.has(n)).sort()
+    // ALLOW-LIST design (replaces the old "equals a reviewed snapshot" equality): a registered tool may
+    // be absent from the persona ONLY if its name is consciously allow-listed for this preset. The
+    // allow-list is empty by default (v2/v3), so a newly registered tool turns this red until it is
+    // either mentioned in the persona or deliberately added to the list with a reason.
+    const allowed = new Set(P.allowList || [])
+    const illegal = unmentioned.filter((n) => !allowed.has(n))
+    ok(illegal.length === 0, `${P.dir} [${key}]: every registered tool is mentioned in the persona, or explicitly allow-listed`,
+      'unmentioned and not allow-listed: ' + JSON.stringify(illegal))
+    const staleAllowed = [...allowed].filter((n) => !registered.has(n)).sort()
+    ok(staleAllowed.length === 0, `${P.dir} [${key}]: every allow-list entry is a real registered tool`,
+      'allow-listed but not registered: ' + JSON.stringify(staleAllowed))
+    for (const must of (P.required || [])) {
+      ok(mentioned.has(must) && !allowed.has(must), `${P.dir} [${key}]: ${must} must be MENTIONED in the persona (never allow-listed)`)
+    }
   }
 
   // ---- F. the slash-command surface -------------------------------------
@@ -360,8 +383,18 @@ try {
         '### config.prefix', '', '```text', r.prefix, '```', '', '### config.text', '', '```text', r.text, '```', '')
     }
     mkdirSync(corpusDir, { recursive: true })
-    writeFileSync(join(corpusDir, 'persona-corpus.md'), md.join('\n'), 'utf8')
-    writeFileSync(join(corpusDir, 'persona-corpus.json'), JSON.stringify({ presets: rows }, null, 2) + '\n', 'utf8')
+    // CONCURRENCY FIX: `audit-persona-sensitivity` spawns this suite with PERSONA_ROOT, and those child
+    // runs READ these two shipped files while a parallel `run-tests` job may be WRITING them. A plain
+    // writeFileSync let a reader observe a half-written JSON (the flake: sensitivity red only under
+    // concurrency 4, SETUP-FAIL in its control run). Write a unique temp file in the same directory and
+    // rename it into place, so a reader sees either the old or the new file, never a partial one.
+    const writeAtomic = (target, data) => {
+      const tmp = target + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2)
+      writeFileSync(tmp, data, 'utf8')
+      renameSync(tmp, target)
+    }
+    writeAtomic(join(corpusDir, 'persona-corpus.md'), md.join('\n'))
+    writeAtomic(join(corpusDir, 'persona-corpus.json'), JSON.stringify({ presets: rows }, null, 2) + '\n')
   }
   // Round-trip check: the shipped corpus must name all four presets and carry line 0 of each block.
   // Skipped under PERSONA_ROOT: there `rows` describe the mutated copy while the corpus on disk

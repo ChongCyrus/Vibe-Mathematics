@@ -238,6 +238,28 @@ for (const f of ['README.md', 'README.en.md']) {
   ok(doc.indexOf('Octave / Julia 未安装') !== -1 && doc.indexOf('VERIFY') !== -1 && doc.indexOf('无法强制禁网') !== -1, 'docs §6 keeps the still-unverified set (no Octave/Julia, commercial VERIFY, no network/write enforcement)')
   ok(doc.indexOf('只通过假 subprocess seam 验证') === -1, 'docs §6 no longer claims engine execution was verified ONLY through the fake seam (stale claim removed)')
   ok(doc.indexOf('串行') !== -1 && doc.indexOf('跨进程') !== -1, 'docs §6 states the in-process serialisation and the cross-process limitation')
+  // ── P1/6.1: the v4 frozen participant set is documented as the ATOMIC triple, and the deprecated
+  // alias is described as an alias - both in the doc AND verifiable in the preset source.
+  {
+    const v4 = existsSync(join(ROOT, 'vibe-math-v4/vibe-math-v4.js')) ? read('vibe-math-v4/vibe-math-v4.js') : ''
+    const atomic = /frozen:\s*\(function\(sn\)\{\s*return \{version: sn\?sn\.rosterVersion:null, participants: sn\?sn\.rosterSnapshot:null, kind:/.test(v4)
+    ok(atomic, 'v4 exposes the frozen participant set as ONE atomic object {version, participants, kind}')
+    const alias = /frozenParticipants:\s*\(activeRosterSnapshot\(\)\|\|\{\}\)\.rosterSnapshot\|\|null/.test(v4) && /deprecated/.test(v4)
+    ok(alias, 'v4 keeps `frozenParticipants` only as a deprecated alias of frozen.participants')
+    ok(doc.indexOf('frozen') !== -1 && doc.indexOf('deprecated') !== -1 && doc.indexOf('原子') !== -1,
+      'docs document the atomic `frozen{version,participants,kind}` and mark the alias deprecated')
+  }
+  // ── P1/6.2: the evidence-field list cannot drift from the code again - every timeout evidence field
+  // the module produces must be named in the doc, and vice versa for the two receipt-only ones.
+  {
+    const mod = readFileSync(join(ROOT, 'vibe-math-v2/math-computation.js'), 'utf8')
+    const timeoutFields = ['partialStdout', 'partialStderr', 'stdout', 'stderr', 'exit', 'timedOut']
+    const docMissing = timeoutFields.filter((f) => doc.indexOf(f) === -1)
+    ok(docMissing.length === 0, 'docs name every MATH_TIMEOUT evidence field', 'missing in doc: ' + JSON.stringify(docMissing))
+    const codeMissing = ['partialStdout', 'partialStderr'].filter((f) => mod.indexOf(f) === -1)
+    ok(codeMissing.length === 0, 'the doc-sync check is anchored in the code too (partialStdout/partialStderr exist in the module)',
+      'missing in code: ' + JSON.stringify(codeMissing))
+  }
 }
 
 console.log('')

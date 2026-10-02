@@ -927,6 +927,24 @@ export function apply(ctx) {
       lines.push('')
     }
     await writeText('Progress/' + qid + '.md', lines.join('\n').trimEnd() + '\n')
+    // 兜底（审计 F1）：聚合索引在上面用 `**完整叙述**：见 Progress/<qid>/<d.id>.md` 指向**逐方向**
+    // 研究日志。设计上这些文件由**代理**写（见 applyAgentWrites 的 Progress/<qid>/ 分支），但代理没写
+    // 时索引就会指向不存在的文件。这里补一份**调度器维护**的版本：`ensureProgressDir` 建目录、
+    // `directionMdText` 生成内容；带 scheduler-managed 标记的文件每轮刷新，**代理写的文件绝不动**。
+    await ensureProgressDir(qid)
+    for (const d of dirs) {
+      const rel = 'Progress/' + qid + '/' + d.id + '.md'
+      // 归属判定：带 `<!-- scheduler-managed -->` 首行的文件由**调度器**维护（每轮刷新）；
+      // 其它文件视为**代理**所有、绝不触碰（契约：聚合索引不覆盖各方向文件）。
+      let exists = false, owned = false
+      try {
+        const txt = await readText(rel)
+        exists = txt !== undefined
+        owned = exists && String(txt).indexOf('<!-- scheduler-managed -->') === 0
+      } catch (e) { exists = false; owned = false }
+      if (exists && !owned) continue
+      await writeText(rel, '<!-- scheduler-managed -->\n' + directionMdText(qid, d, true))
+    }
   }
   // 代理直接写内容：模拟/落盘代理声称写的文件（__writes），真实环境代理用 write 工具自己写，此处为调度器兜底落盘
   async function applyAgentWrites(writes) {
@@ -1123,7 +1141,7 @@ export function apply(ctx) {
   function logActivity(event, detail) { activityLog.push({ at: now(), event: event, detail: String(detail || '') }); const cap = Number(params.activityLogCap) || 100; if (activityLog.length > cap) activityLog.shift(); reportDirty = true }
   async function buildReport() {
     return {
-      ok: true, at: now(), project: currentProject, frameworkRoot: frameworkRoot(),
+      ok: true, at: now(), project: currentProject, projectExists: await projectExistsOnDisk(), frameworkRoot: frameworkRoot(),
       running: scheduler.running, mode: params.mode,
       activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
@@ -4106,6 +4124,9 @@ export function apply(ctx) {
     for (const p of allProblems()) out.push(problemRel(p))
     for (const p of allPropos()) out.push(propositionRel(p))
     for (const m of methods.values()) out.push(methodRel(m, false))
+    // 审计 F2（v3 同型）：Reliable/ 是用户提供的可信参考层，材料证据索引必须收它，
+    // 否则被引用/被要求给出处的来源进不了论文材料。
+    for (const f of await listFiles('Reliable')) out.push('Reliable/' + f)
     const dirs = ['Verified/命题', 'Verified/问题', 'Logs/Verification', 'Logs/Plans', 'Progress'].concat(formalNow ? ['Verified/Lean', 'Formal'] : [])
     for (let i = 0; i < dirs.length; i++) { const files = await listFiles(dirs[i]); for (let j = 0; j < files.length; j++) out.push(dirs[i] + '/' + files[j]) }
     const seen = {}, uniq = []
@@ -4619,10 +4640,13 @@ export function apply(ctx) {
     }
     if (pending.length > 0) { scheduler.gate = null; logActivity('mode', 'switched to auto — auto-resolved ' + pending.length + ' pending decision(s)'); await saveAll(); scheduleTick() }
   }
+  /** 审计 F7（v3 同型）：`project` 是**当前会话**的项目名，`projects` 是磁盘上已存在的 slug 列表；
+   *  两者不闭合时（新会话 project='default' 而磁盘上没有该目录）语义必须显式，不能靠调用方猜。 */
+  async function projectExistsOnDisk() { return (await listDirsAt(vibeRoot(), 'Projects')).indexOf(currentProject) !== -1 }
   async function getStatus() {
     return {
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
-      project: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects'),
+      project: currentProject, projectExists: await projectExistsOnDisk(), projects: await listDirsAt(vibeRoot(), 'Projects'),
       mode: params.mode, activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       frameworkRoot: frameworkRoot(),
       problems: { total: problems.size, solved: allProblems().filter(function (q) { return q.状态 === '已解决' }).length },
@@ -5026,10 +5050,6 @@ export function apply(ctx) {
     mathProbeDue: mathProbeDue,
     refreshMathProbe: refreshMathProbe,
     mathProbe: function () { return mathProbe },
-    // P2a：persona 两个文本块必须含的「归档→编辑→重跑」规则（文本取自共享模块常量，persona 不手抄）。
-    mathArchiveWorkflowLine: MATH_ARCHIVE_WORKFLOW_LINE,
-    // A 项：替代声明规则（文本由共享模块给出；persona 两块与每轮可用性行都必须带它）。
-    mathSubstitutionRuleLine: MATH_SUBSTITUTION_RULE_LINE,
     // childOwner 裁剪用（审计 L1）：这个会话当前仍"可能再发 subagent/end"的 child
     // = 在册子代理 + 任何任务正在等的那几个。
     referencedChildIds: function () {

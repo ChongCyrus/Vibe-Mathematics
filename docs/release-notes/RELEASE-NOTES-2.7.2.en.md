@@ -4,7 +4,7 @@
 
 ## Overview
 
-- **More reliable discovery on real hosts**: discovery now runs PATH → runtimes shipped by the host → **the known per-OS install locations**, so an engine installed in its default directory but never added to `PATH` (R, for example) is found.
+- **More reliable discovery on real hosts**: discovery runs PATH → runtimes shipped by the host → **the known per-OS install locations**, so an engine installed in its default directory but never added to `PATH` (R, for example) is found. The engines with known default locations are **R / Octave / Julia / MATLAB** (plus Python on Windows); Maple and Wolfram have no stable default layout and are not covered. A host may also supply the candidate roots through the optional `installRoots` interface, so discovery no longer depends on the plugin process's environment variables.
 - **No more unrunnable install commands**: `MATH_ENGINE_NOT_FOUND` only offers an executable command when that package manager really exists on this machine; otherwise it gives the suggested command, the official location and the reason.
 - **`probe` no longer reports only the good news**: besides the engines that resolved, it names the **configured but not found** engines and why.
 - **Complete failure evidence**: `MATH_TIMEOUT` carries the same fields as `MATH_NONZERO_EXIT`, and a timeout's partial output is available in **both the response and the receipt**.
@@ -20,7 +20,7 @@
 - Constraint policy fields: both a successful response and a "missing packages" failure carry **`versionPolicy`** and **`constraintsNotEnforced`** (the constraints that were **not** checked, or an empty array).
 - `MATH_TIMEOUT` responses carry **`stdout`**/**`stderr`** (capped); the receipt JSON carries **`partialStdout`**/**`partialStderr`**.
 - `MATH_ENGINE_NOT_FOUND`'s `next` carries **`suggestedCommand`**, **`packageManager`**, **`packageManagerAvailable`** and **`note`** (plus `vendorUrl` where the engine has one).
-- The `run` response carries **`fileIsArchivedScript`**, and emits an **`ARCHIVED_SCRIPT_RERUN`** warning when `mode:'file'` targets an archived script.
+- The `run` response carries **`fileIsArchivedScript`**: when `mode:'file'` targets an **archived copy**, it also emits the **`ARCHIVED_SCRIPT_RERUN`** warning explaining that this is a **new archive by design** (new id, attempt 1, no history). To get a **new attempt of the same archive with change detection**, edit the **original source file** and re-run `mode:'file'` pointing at **that same source path**.
 - v4: `status()` carries **`rosterVersion`** and **`frozenParticipants`**; the `consensus` / `meeting` / `verify` views carry their own `rosterVersion`.
 - v4: the `paper` view carries **`dirProjected`** / **`dirSource`** / **`readSideEffect`**, saying whether the path is a projection or real state.
 - v2/v3: decision and sub-agent interrupt diagnostics carry **`code`** and **`next`** (for example `VIBE_MATH_DECISION_NOT_FOUND`, with the current queue state); v4 member-level calls carry **`V4_NO_SUCH_RESIDENT`** with the current roster and a next step.

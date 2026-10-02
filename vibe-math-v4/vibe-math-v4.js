@@ -1690,7 +1690,8 @@ export function apply(ctx) {
         +'**投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。\n'
         +'  · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。\n'
         +'  · 弃权会被如实统计：本轮没有人全票 → 对象**不会**停止验证，而是把全组的**平均概率**写回它在库中的卡片（`- 概率:`），带概率继续留在库里。\n'
-        +'  · 弃权的两种合法用途：① 你确实不确定（用 0.5 附近的值表达）；② 已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差，见下方形式化段）。\n'
+        +'  · 弃权的合法用途：你确实不确定（用 0.5 附近的值表达）。\n'
+        +(formalOn()?('  · 另一种弃权：已归档的机器检查证明与命题原文不一致、你**不能**用 0 表达"命题为假"（此时请用 `formal` 回执的 `decision:"defect"` 报告偏差）。\n'):'')
         +'判定规则：**仅当全体在册常驻都恰好给 1（都认为是真）、或都恰好给 0（都认为是假）**，才按「真/假」写入 Verified/ 并回写来源卡的「已验证·真/假」；否则**只按概率数值（一种程度）保留在库中**，附全组平均正确概率，不写成真/假。\n'
         +'请给出你**诚实独立的判断**'
         +(vs.stage==='debate'?'，并参考他人意见：\n':'。\n')
@@ -2228,7 +2229,8 @@ export function apply(ctx) {
       finalizeLock='verify'
       let doSchedule=false
       try {
-        const vs=verifyState; const expected=Array.from(residents.keys()).length
+        const vs=verifyState; // F4: the requirement set is the FROZEN snapshot (live map fallback), matching allVoted in the on-end path
+    const expected=(vs.rosterSnapshot||Array.from(residents.keys())).length
         const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
         const vals=Object.values(vs.verdicts)
         // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
@@ -3590,11 +3592,23 @@ export function apply(ctx) {
       if(verifyState && verifyState.lastVerdictAt) verifyState.lastVerdictAt=now()
       logActivity('resume','restarted'+(crossProcess?' (cross-process: re-spawned)':needRespawn?' (re-spawned)':'')); await saveAll(); await scheduleNext(); return {ok:true,message:'resumed',project:currentProject}
     }
+    /** Round A F1/F2: the roster version must never be observable as unchanged while the frozen
+     *  participant set changed, and a frozen set must always travel WITH its own version. Every
+     *  roster change calls this AFTER all snapshot mutations (meeting + verify prunes included), so
+     *  {snapshot.rosterVersion, snapshot.rosterSnapshot} is one atomic pair and the live counter
+     *  still strictly increases on hire/fire. */
+    function bumpRoster(){ rosterVersion++; if(meetingState&&Array.isArray(meetingState.rosterSnapshot)) meetingState.rosterVersion=rosterVersion; if(verifyState&&Array.isArray(verifyState.rosterSnapshot)) verifyState.rosterVersion=rosterVersion; return rosterVersion }
+    /** The frozen participant set an operator should read right now (verify wins while it is live). */
+    function activeRosterSnapshot(){ return (verifyState&&Array.isArray(verifyState.rosterSnapshot))?verifyState:((meetingState&&Array.isArray(meetingState.rosterSnapshot))?meetingState:null) }
     function status(){ return { ok:true, running, phase, autoDone, project:currentProject, residentCount:residents.size,
       // round-9 (P2): the roster VERSION travels with every status read, and an active verify/meeting
       // reports the participant set it froze (never a re-derivation from the live map).
       rosterVersion,
-      frozenParticipants: verifyState&&Array.isArray(verifyState.rosterSnapshot)?verifyState.rosterSnapshot:(meetingState&&Array.isArray(meetingState.rosterSnapshot)?meetingState.rosterSnapshot:null),
+rosterVersion, liveRosterVersion: rosterVersion,
+// Round A F1: the pair is ATOMIC - `frozen.version` is the version the SNAPSHOT recorded when it
+// was frozen (and re-stamped on every roster change), never the live counter beside a stale set.
+frozen: (function(sn){ return {version: sn?sn.rosterVersion:null, participants: sn?sn.rosterSnapshot:null, kind: sn?(sn===verifyState?'verify':'meeting'):null} })(activeRosterSnapshot()),
+frozenParticipants: (activeRosterSnapshot()||{}).rosterSnapshot||null,   // deprecated: use `frozen` (set + version together)
       residents:listResidents(), busy:[...busy], taskboard:taskboard.length,
       // Residents the host's live-child cap refused (maxActiveSubagents): queued, not lost. Without
       // this the only trace would be the one console line, and `residentCount` alone cannot tell a
@@ -3605,8 +3619,8 @@ export function apply(ctx) {
       // The coordination counters (`spoke k/N`, `voted k/N`, the verification round) used to live only
       // in `report()`: from `status()` alone an operator could not tell "the group is progressing"
       // from "the group is stuck at 2/4 votes", which is exactly how F1/F2/F7 stay invisible.
-      consensus: meetingState?{kind:'meeting',id:meetingState.id,agenda:meetingState.agenda,round:meetingState.round,spoke:Object.keys(meetingState.inputs).length,expected:(meetingState.rosterSnapshot||Array.from(residents.keys())).length,solvedVotes:Object.values(meetingState.inputs).filter(iv=>iv.voteSolved===true).length,rosterVersion:meetingState.rosterVersion}
-        :(verifyState?{kind:'verify',target:verifyState.targetId,targetType:verifyState.targetType,stage:verifyState.stage,round:verifyState.round,voted:Object.keys(verifyState.verdicts).length,expected:(verifyState.rosterSnapshot||Array.from(residents.keys())).length,rosterVersion:verifyState.rosterVersion}:null),
+      consensus: meetingState?{kind:'meeting',id:meetingState.id,agenda:meetingState.agenda,round:meetingState.round,rosterVersion:meetingState.rosterVersion,participants:meetingState.rosterSnapshot,spoke:Object.keys(meetingState.inputs).length,expected:(meetingState.rosterSnapshot||Array.from(residents.keys())).length,solvedVotes:Object.values(meetingState.inputs).filter(iv=>iv.voteSolved===true).length,rosterVersion:meetingState.rosterVersion}
+        :(verifyState?{kind:'verify',target:verifyState.targetId,targetType:verifyState.targetType,stage:verifyState.stage,round:verifyState.round,rosterVersion:verifyState.rosterVersion,participants:verifyState.rosterSnapshot,voted:Object.keys(verifyState.verdicts).length,expected:(verifyState.rosterSnapshot||Array.from(residents.keys())).length,rosterVersion:verifyState.rosterVersion}:null),
       artifactCount: artifactCount, artifactBaseline: artifactBaseline,
       paper: paperStatusSummary(),
       // The Lean knobs and the per-object formal records are part of the readable status: without
@@ -3648,15 +3662,16 @@ export function apply(ctx) {
       // residents) can never be true for the new member (not in the snapshot order) and the meeting is
       // only ever released by the stuck watchdog instead of finalizing with everyone's input.
       if(meetingState){ if(!Array.isArray(meetingState.order)) meetingState.order=Array.from(residents.keys()); if(!meetingState.order.includes(r.rId)) meetingState.order.push(r.rId) }
+    rosterVersion++   // additions never extend a frozen set: the live counter moves ahead (staleness stays visible)
       // P2: the roster CHANGED - bump the version so any frozen participant set is visibly stale.
-      rosterVersion++
+
       // Mid-verify additions are automatically asked to vote (continueVerifyRound recomputes ids from
       // the live residents map), so no extra handling is needed there.
       return {ok:true,id:r.rId,direction:r.direction} }
     async function removeMember(id){ const r=residents.get(id); if(!r) return noSuchResident(id,'vibe_v4_remove_member'); if(r.childId){ try{ subagents.interrupt(r.childId,{kind:'ancestor',agent:rootAgent}) }catch(e){} } residents.delete(id); busy.delete(id); mailboxes.delete(id); wakeKind.delete(id); if(currentResident===id) currentResident=''
       // P2: the roster CHANGED - bump the version (a frozen participant set stays readable, but is
       // now visibly stale; every view reports the same version it snapshotted).
-      rosterVersion++
+
       // Reconcile in-progress coordination so a removed member cannot hang consensus or crash a round:
       // drop its meeting speech / verify verdict and prune it from the meeting's speaking order so the
       // find() there never selects a ghost. Its QUEUED verify proposals are deliberately KEPT: a
@@ -3672,6 +3687,7 @@ export function apply(ctx) {
       // of freezing); the version bump above marks the set as changed.
       if(meetingState&&Array.isArray(meetingState.rosterSnapshot)) meetingState.rosterSnapshot=meetingState.rosterSnapshot.filter(x=>x!==id)
       if(verifyState&&Array.isArray(verifyState.rosterSnapshot)) verifyState.rosterSnapshot=verifyState.rosterSnapshot.filter(x=>x!==id)
+    bumpRoster()   // F2: AFTER every snapshot mutation - version and set stay one atomic pair
       await saveAll()
       // Re-drive the scheduler right away. If the removed member was the ONLY turn in flight (e.g. the
       // last unspoken meeting speaker / the last unvoted voter, interrupted mid-turn), NO subagent/end

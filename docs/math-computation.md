@@ -70,8 +70,8 @@ math_computation {
 回执与返回体都带 **`scriptPath`**（归档脚本周相对路径）与 **`scriptHash`**（脚本字节的 sha256），所以"这次跑的到底是哪份代码"是可查的：
 
 1. `mode:'code'` 把源码落成 `Computation/<id>/script.<ext>`；agent **可以用普通文件工具打开并编辑它**。
-2. 编辑后用 `mode:'file'` 指向该脚本重跑，会写出**一份新回执**（新 attempt、新 `scriptHash`）。
-3. **旧回执对修改后的代码无效**。`mode:'file'` 的回执按**路径**归属同一个 archive id（不是按内容），所以"同一文件编辑后重跑"落在同一 id 的**新 attempt**，并显式给出：
+2. 要拿到"改过代码"的证据，编辑**你最初运行的那个源文件**，再用 `mode:'file'` 指向**同一个源路径**重跑：归档 id 以**源路径**为键，所以这会写出**同一归档 id 的新 attempt**（新 `scriptHash`）；重跑**归档副本本身**（`receipt.scriptAbs` 那个路径）则是**另一份新归档**（新 id、attempt 1、无历史，见 §3.5 下方说明），**不会**给出"同一归档的新 attempt"。
+3. **旧回执对修改后的代码无效**。`mode:'file'` 的回执按**路径**归属 archive id（不是按内容），所以"同一文件编辑后重跑"落在同一 id 的**新 attempt**，并显式给出：
    - `scriptChanged:true`：该文件当前哈希与**上一份回执**记录的 `scriptHash` 不一致（旧回执不再代表当前代码）；
    - `scriptChangedDuringRun:true`：文件在**本次运行期间**被改动（典型是另一个成员同时在编辑）——运行前后各取一次哈希才可能发现；
    - 两者都同时进入 `warnings[]`（`SCRIPT_CHANGED_SINCE_LAST_RECEIPT` / `SCRIPT_CHANGED_DURING_RUN`）与 `receipt.md`，**绝不静默**。
@@ -121,11 +121,12 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **拒绝的写法**：空格、`;`、`|`、`&`、`$`、反引号、`@`、括号等 shell 危险或管理器不认识的语法 ⇒ `MATH_INVALID_ARGUMENT` + `next.reason='unsupported-version-syntax'`（**不会**把可疑字符串丢给 shell）。
 
 - **冻结参与集（freeze/prune）规则（v4，round-9 P2/D4 的设计决定）**：验证/会议开始时把当时的名册**快照**下来（`rosterSnapshot`）并记录 `rosterVersion`，所有视图（`status()` 的 `consensus`/`meeting`/`verify`、以及内部的 `allSpoke`/`allVoted` 判据）**一律读快照**，不再从活的 `residents` 重新推导。三条配套语义：① **移除成员时同时从冻结集里剔除它**（`removeMember`），否则在飞投票永远凑不齐、验证/会议会卡死——v4 既有契约是"移除即释放等待"（`e2e-v4-fixes` T26/T31 钉住这一点）；② **新增成员不进入已冻结的集合**（冻结的意义）；③ **成员集真的变化时 `rosterVersion` 递增**，让任何视图都能看出自己读到的是否已过期。**约定**：没有进行中的验证/会议时，`status().frozenParticipants` 为**显式 `null`**（不是空数组、也不是旧的活名册），`rosterVersion` 仍然给出当前值。
+  - **读法（推荐）**：`status().frozen` 是**原子**三元组 `{version, participants, kind}`——`participants` 是快照本身，`version` 是**冻结时记录、并在每次名册变动时重新盖章**的版本（绝不是"活计数器配旧集合"），`kind` ∈ `'verify'`/`'meeting'`（`vibe-math-v4.js:3609`；六条守卫见 `tests/formal-verify-v4.test.mjs:1582-1596`，其中包含"`frozen.version` 必须等于快照记录的版本"与"hire/fire 后活计数器严格递增"）。**`frozenParticipants` 已标注 deprecated**（`:3610`）：它是 `frozen.participants` 的别名，只为兼容旧读取者保留；新代码请读 `frozen`，不要把别名与 `status().rosterVersion`（活计数器）混用。
 - **N1：编辑脚本后的"变更检测"到底对什么生效**。归档 id **以源路径为键**（`mode:'file'` 用 `file:<项目内相对路径>`，`mode:'code'/'expr'` 用脚本文本）：
   - 编辑**同一个源文件**再跑 ⇒ **同一个归档 id**、`attempt ≥ 2`（落在 `Computation/<id>/attempts/<n>/`）、`scriptChanged:true`、`previousReceipt{runId,attempt,scriptHash}` 指向上一 attempt，且**上一 attempt 的脚本与回执绝不改写**。这是 P2a 承诺的核对流程，已在真机与共享套件里双向验证。
   - 指向**另一个源路径**（例如上一 attempt 的**副本**、或新写的文件）⇒ 按设计就是**新归档**：新 id、`attempt:1`、`scriptChanged:false`、`previousReceipt:null`，且 `sourceHashBefore == sourceHashAfter`（文件在跑之前就已经是编辑后的内容）。**这不是变更检测失效**，而是"该 id 从来没有历史回执"。
   - 运行响应现在**显式带 `runId` 与 `attempt`**（此前只有 `receipt.runId`，调用方根本无法核对"是不是同一个归档"）。
-  - `mode:'file'` 指向 `Computation/…` 的**归档脚本本身**目前会被路径守卫拒绝（源必须位于受允许的项目目录）；响应里的 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告是**防御性**的，用于将来放开该路径时如实解释"为何这里没有历史"。
+  - `mode:'file'` 指向 **`Computation/…` 的归档脚本副本**是**允许**的：`projectRel()` 只做词法归一（拒绝绝对路径与越出项目根的 `..`，**不限制目录名**），所以该路径会被正常读取并执行。但按设计那是**另一份新归档**：新 id、attempt 1、无 `previousReceipt`、`scriptChanged:false`，旧 attempt 不会被覆盖。响应会用 **`fileIsArchivedScript:true`** 与警告码 **`ARCHIVED_SCRIPT_RERUN`** 说明"这不是同一归档的新 attempt"，避免把"新归档无历史"误读成"变更检测失效"。
   - **关于 nonce**：归档 id **不含任何随机数**，给定 (engine, mode, 键, packages) 完全确定；若你在某个路径里看到 nonce 样的后缀，那是**调用方自己的工作目录命名**，不是模块产生的。
 - **N4：`project` 字段与 receipt 路径里的项目名是两个东西**。`project` 是**配置层的项目标识**（未配置项目时由工作区路径派生，所以会出现 `C-Users-…-vmself6` 这种 slug，它是**显示/配置值**）；而 receipt/归档路径一律用 `Projects/<当前项目名>`（默认 `default`）。两者不一致是**层次不同**，不是命名错误；改名会破坏既有状态与归档路径，故只在此说明。
 - **冻结视图的版本语义（v4 P2）**：冻结视图（`status().consensus`、`report().verify`）报的是**快照当时的 `rosterVersion`**，而 `status().rosterVersion` 是**当前活计数器**；成员集变化后两者**应当不同**——这个差值正是"你读到的是过期参与集"的信号。断言方式：两个冻结视图彼此相等，活计数器 ≥ 快照版本（`tests/formal-verify-v4.test.mjs` 的 D4 跨视图用例）。
@@ -140,9 +141,10 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **找到可用引擎就报它的真实版本**（`engineInfo.path` + `version`），**不再**给安装指引；**只有**一个可用引擎都找不到时，才按 OS 给安装指引——而且是对**请求的那个引擎**（不是"第一个允许的引擎"）。`op:'probe'` 的 `engine`/`engineInfo` 就是**请求的**引擎；请求的引擎缺失时，`code`/`message`/`next` 全部指向它（历史上这里会回显 `python`）。
 - **`mathEngineOverride` **不是**发现手段**：它只按引擎名覆盖 **argv 模板**（如 `{python:{versionArgv,scriptArgv,evalArgv,packageProbe}}`），**不能指定一个可执行文件**。所以 `MATH_ENGINE_NOT_FOUND` 的正解是：装上引擎、把解释器放进 PATH、让上面的 DSH 运行时被扫到，或用 `engine:'cli'` + `cli.command` 显式给命令。
 - **round-9 响应字段（真机发现后新增，文档与实现同步）**：
+  - 引擎发现顺序：PATH → 宿主自带的运行时（`runtimeRoots` + `listDirAbs`）→ **各操作系统的已知安装目录**（`mathInstallRoots(engine, env, win)`，覆盖 R / Octave / Julia / MATLAB 与 Windows 上的 Python；Maple / Wolfram 布局不固定，未纳入）。**存在性一律靠列目录证明**。宿主若提供可选的 **`installRoots(engine)`**，则**以它为准**（不再读模块进程的 `ProgramFiles`/`LOCALAPPDATA`），测试与自定义布局因此都不依赖机器环境。
   - `probe` 返回 `configured`（配置里启用的引擎全集）与 **`absent[]`**（每个缺席引擎带 **`why`**：`not-found-on-this-machine` / `needs-a-caller-supplied-command`），message 也会点名"已配置但本机未发现：…"——可用性行**不再静默地只报一部分**（F3）。
   - `run` 的成功响应与 `MATH_MISSING_PACKAGES` 失败**都**带 **`versionPolicy`** 与 **`constraintsNotEnforced:[…]`**：明确"版本约束只按 base name 查存在、从不校验"，并点名本次**未校验**的约束（无约束时为空数组）——杜绝"静默丢弃约束"（F7）。
-  - **`MATH_TIMEOUT` 与 `MATH_NONZERO_EXIT` 的证据字段一致**：都带 `argv`、`receipt`、`exit`（超时为 `null`）与 `stderr`（同样的截断上限），超时另有 `timedOut:true`（F5）。
+  - **`MATH_TIMEOUT` 与 `MATH_NONZERO_EXIT` 的证据字段一致**：都带 `argv`、`receipt`、`exit`（超时为 `null`）与 `stderr`（同样的截断上限），超时另有 `timedOut:true`（F5）。**超时的部分输出还进持久回执**：`receipt.json` 带 **`partialStdout`**/**`partialStderr`**（各取**最后 2000 字符**，`math-computation.js:1089-1090`；响应里的 `stdout`/`stderr` 走同一来源，`:1131-1132`），所以事后只看回执也能看到超时前产生了什么。
 - **`engine:'cli'` 的三条行为**：① **包预检按 `cli.command` 的族**执行（`python*`/`Rscript`/`octave`/`julia` 用对应描述符的探测）；命令族**不可识别** ⇒ **跳过**预检并给出 `PACKAGE_PRECHECK_SKIPPED` 警告（**不误报缺包、不阻塞**逃生口）。② `mode:'code'`/`'file'` 时归档脚本的**绝对路径会自动追加到 argv 末尾**（回执里 `cli.scriptAppended: true`；`cli.argv` 仍是调用方给的 argv）——否则会掉进 REPL、`exit=0` 而 stdout 为空，读起来像成功。**但若调用方 argv 自带程序槽（`-c`/`-m`/`-e`/`--eval`/`--command`），则调用方 argv 优先、不追加**（否则脚本会被当作多余参数，例如 `python -c 'print(1)' script.txt` 会把脚本喂给 `sys.argv[1]`）；此时回执给 `cli.scriptAppended:false` + `cli.scriptSkipped` 说明原因。③ `engineInfo.version` 取自**真实的版本探测**（族可识别时），不再是 `"unknown"`。
 - **真实宿主上的"空 spawn"与失败可见性（round-7 实测）**：真实会话里宿主的 `subprocess` 通路**在会话早期可能对一次 spawn 返回空**（`exit=null`）。因此：版本探测**最多尝试 3 次**（20s / 45s / 45s + 退避），且只在**看起来像冷启动/空返回**（`timedOut`、`exit===null`、`spawned=false`）时重试——确定性失败（非零退出、输出无法解析）**不重试**。仍然失败时返回 `MATH_ENGINE_UNUSABLE` 并携带**机读诊断** `probe: {argv, exit, timedOut, ms, spawned, stderrTail, attempts, retried, retryDiag}`；**引擎已找到就绝不再给"去装引擎"的指引**（那会误导），改为 `next.kind:'note'`。包预检同样重试；若预检**始终跑不起来**，**不判缺包、不阻塞**，给出 `PACKAGE_PRECHECK_UNKNOWN` 警告（附 attempts/argv）——"探测失败"永远不会被读成"包没装"。
 - **包存在性探测的 argv 形态**：python 的探针代码遍历 `sys.argv[1:]`，所以包名按**每个一个 argv 项**传入（`<pkgs...>`）；R/Julia/Octave 的模板把逗号串插进代码（`<pkgs>`/`__PKGS__`）。真机上曾经把 `numpy,pandas` 当成**一个**包名，导致"已装的包也报缺"。

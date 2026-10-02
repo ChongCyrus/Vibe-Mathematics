@@ -4,7 +4,7 @@
 
 ## 概述
 
-- **真实引擎发现更可靠**：引擎发现顺序为 PATH → 宿主自带运行时 → **各操作系统的已知安装目录**，因此在默认目录安装、但没有加进 PATH 的引擎（例如 R）也能被发现。
+- **真实引擎发现更可靠**：引擎发现顺序为 PATH → 宿主自带运行时 → **各操作系统的已知安装目录**，因此在默认目录安装、但没有加进 PATH 的引擎（例如 R）也能被发现。当前纳入已知目录的引擎为 **R / Octave / Julia / MATLAB**（以及 Windows 上的 Python）；Maple / Wolfram 的安装目录布局不固定，未纳入。宿主也可以用可选的 `installRoots` 接口自行提供候选根，发现逻辑不再依赖插件进程的环境变量。
 - **不再给出跑不了的安装命令**：`MATH_ENGINE_NOT_FOUND` 只在本机的包管理器**确实存在**时才给出可执行命令，否则给出建议命令与官方地址，并说明原因。
 - **`probe` 不再"报喜不报忧"**：除了可用引擎，还会列出**已配置但本机未发现**的引擎及原因。
 - **失败证据完整**：`MATH_TIMEOUT` 与 `MATH_NONZERO_EXIT` 携带同样的证据字段，超时的部分输出在**响应与回执**里都能拿到。
@@ -20,7 +20,7 @@
 - 新增约束口径字段：成功响应与"缺包"失败都带 **`versionPolicy`** 与 **`constraintsNotEnforced`**（本次**未校验**的约束逐条列出；没有约束时为空数组）。
 - `MATH_TIMEOUT` 响应新增 **`stdout`**/**`stderr`**（按上限截断）；回执 JSON 新增 **`partialStdout`**/**`partialStderr`**。
 - `MATH_ENGINE_NOT_FOUND` 的 `next` 新增 **`suggestedCommand`**、**`packageManager`**、**`packageManagerAvailable`**、**`note`**（`vendorUrl` 视引擎而定）。
-- `run` 响应新增 **`fileIsArchivedScript`**，并在 `mode:'file'` 指向归档脚本时给出 **`ARCHIVED_SCRIPT_RERUN`** 警告。
+- `run` 响应新增 **`fileIsArchivedScript`**：当 `mode:'file'` 指向的是**归档副本**时，同时给出 **`ARCHIVED_SCRIPT_RERUN`** 警告，明确说明按设计那是一次**新归档**（新 id、attempt 1、没有历史回执）——要拿到"同一归档的新 attempt + 变更检测"，请编辑**原来的源文件**并用 `mode:'file'` 指向**同一源路径**重跑。
 - v4：`status()` 新增 **`rosterVersion`** 与 **`frozenParticipants`**；`consensus` / `meeting` / `verify` 视图带各自的 `rosterVersion`。
 - v4：`paper` 视图新增 **`dirProjected`** / **`dirSource`** / **`readSideEffect`**，明确该路径是投影还是真实状态。
 - v2/v3：决策与子代理中断诊断新增 **`code`** 与 **`next`**（例如 `VIBE_MATH_DECISION_NOT_FOUND`，并说明队列现状）；v4 的成员级调用新增 **`V4_NO_SUCH_RESIDENT`**（带当前编制与下一步建议）。

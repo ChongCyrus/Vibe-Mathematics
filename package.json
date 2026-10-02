@@ -174,7 +174,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.7.1 补丁版：① 诚实性与安装口径（替代方案改变精确性/结论强度必须声明；python 安装按检测到的环境分派 conda/mamba/uv/pip；R/Octave/Julia 的 system 作用域给出每引擎理由；版本求解交给包管理器，只按 base name 查存在，规格原样透传）＋ ② 七个真机缺陷修复（probe 回显请求的引擎、发现 DSH 自带运行时、cli 包预检用 cli.command 的解释器、mode:code 真的传脚本且调用方 argv 优先、版本报真值、探针 argv 无 shell 元字符、探测 cwd 不再依赖项目目录已存在）＋ 两条永久守卫（响应必须可 JSON 序列化；fresh-root 仿真）。既有参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移。",
+    "compatNote": "v2.7.2 补丁版：只含修复与附加响应字段，既有行为契约不变。① 真实引擎发现：顺序为 PATH → 宿主自带运行时 → 各操作系统的已知安装目录（覆盖 R / Octave / Julia / MATLAB 与 Windows 上的 Python；Maple / Wolfram 的目录布局不固定，未纳入），且可由宿主通过 installRoots 注入；装了却没进 PATH 的引擎现在能被发现。② 不再给出本机跑不了的安装命令（仅在包管理器确实存在时给出命令，否则给官方地址与说明）。③ probe 报告 configured 与 absent[]（每个缺席引擎带 why）。④ MATH_TIMEOUT 与 MATH_NONZERO_EXIT 证据一致，超时的部分 stdout/stderr 同时进入响应与回执。⑤ 版本约束口径明说（versionPolicy/constraintsNotEnforced，响应与持久回执都有），绝不静默丢弃。⑥ run 响应带 runId/attempt；指向归档副本重跑会明确标注 fileIsArchivedScript + ARCHIVED_SCRIPT_RERUN（那是新归档，不是同一归档的新 attempt）。⑦ v4 名册快照 + rosterVersion + 冻结/修剪规则；v4 paper 字段标注投影。⑧ 成员可见材料补齐「文件工具按会话 cwd 解析、相对路径需绝对前缀、计算产物用 receipt.scriptAbs」指引；v2/v3 决策与中断诊断给出 code + next。参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",

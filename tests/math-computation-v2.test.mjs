@@ -690,6 +690,9 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
 {
   const cmd = H.cmdRegs[0]
   const paperPrompts = async () => {
+    // 审计 F2：先在项目里放一份 Reliable/ 参考文献——提示词要求"引用 Reliable/ 要给出处"，
+    // 材料证据索引必须把它收进来（否则被要求引用的那一层永远进不了论文材料）。
+    writeFileSync(join(projRoot(), 'Reliable', 'ref.md'), '# 可信参考\n\n已被引用的外部结论。\n', 'utf8')
     await cmd.handler({ agent: ROOT, rawInput: 'paper' })
     for (let i = 0; i < 60; i++) { if (H.spawns.some((s) => String(s.label).indexOf('paper-writer:') === 0)) break; await sleep(100) }
     return H.spawns.filter((s) => String(s.label).indexOf('paper-writer:') === 0)
@@ -697,9 +700,26 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
   }
   const produced = await paperPrompts()
   assert(produced.length > 0, '对照：paper-writer 子代理确实被派出（产出文本非空，' + produced.length + ' 字符）')
+  assert(produced.indexOf('Reliable/ref.md') !== -1, '★★ [F2] 被要求引用的 Reliable/ 可信来源真的进了论文材料证据索引（文本层断言，实测片段 ' + JSON.stringify(produced.slice(Math.max(0, produced.indexOf('Reliable')), produced.indexOf('Reliable') + 40)) + '）')
   assert(produced.indexOf('会话 cwd') !== -1 && produced.indexOf('绝对前缀') !== -1, '★★ [P0] 产出材料写着：文件工具按**会话 cwd** 解析相对路径 ⇒ 列出的相对路径需先拼**项目根的绝对前缀**（文本层断言）')
   assert(produced.indexOf('receipt.scriptAbs') !== -1 || produced.indexOf('receipt.cwd') !== -1, '★★ [P0] 计算产物指向回执里的**绝对**字段（receipt.scriptAbs / receipt.cwd+receipt.scriptPath）')
   await call('vibe_math_abort', {})
+}
+
+// ── §21 审计 F7：status/report 的 project 语义（当前会话项目 vs 磁盘上已存在的项目）────────────
+section('§21 审计 F7：project / projectExists / projects 三者语义不歧义')
+{
+  const fresh = makeRoot('sess-f7-fresh')
+  const st0 = await call('vibe_math_status', {}, fresh)
+  assert(st0.project === 'default' && st0.projects.indexOf('default') === -1 && st0.projectExists === false,
+    '★★ [F7] 尚未建项目时：project=default、projects 不含它、projectExists=false（不再靠调用方猜；实测 ' + JSON.stringify({ project: st0.project, projects: st0.projects, projectExists: st0.projectExists }) + '）')
+  await call('vibe_math_new_project', { name: PROJECT }, fresh)
+  const st1 = await call('vibe_math_status', {}, fresh)
+  assert(st1.projectExists === true && st1.projects.indexOf(PROJECT) !== -1,
+    '★★ [F7] new_project 之后 projectExists=true 且 projects 含该 slug（实测 ' + JSON.stringify({ project: st1.project, projectExists: st1.projectExists, projects: st1.projects }) + '）')
+  const rp = await call('vibe_math_report', {}, fresh)
+  assert(rp.projectExists === true && rp.project === st1.project,
+    '★★ [F7] report 与 status 两个视图语义一致（同一来源；实测 report=' + JSON.stringify({ project: rp.project, projectExists: rp.projectExists }) + '）')
 }
 
 console.log('\n=== MATH COMPUTATION V2: ' + passed + ' passed, ' + failed + ' failed ===')

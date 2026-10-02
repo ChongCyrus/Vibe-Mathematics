@@ -177,6 +177,12 @@ fireEnd({ id: explorer.childId, runId: 'e1', provider: 'spawn', local: true, sto
 assert(await waitFor('progress journal written', () => existsSync(join(WS, 'VibeMath', 'Projects', 'projv3', 'Progress', 'q1.md'))), 'Progress/q1.md journal created')
 const jmd = readFileSync(join(WS, 'VibeMath', 'Projects', 'projv3', 'Progress', 'q1.md'), 'utf8')
 assert(jmd.includes('## 方向 d1') && jmd.includes('Niven 积分法'), 'journal contains direction d1')
+// 审计 F1：聚合索引在 `**完整叙述**` 行里指向逐方向文件 Progress/<qid>/<d.id>.md；该文件必须真的存在
+// （代理写则保留代理版本，否则由调度器落一份带 scheduler-managed 标记的版本）。
+const dmdPath = join(WS, 'VibeMath', 'Projects', 'projv3', 'Progress', 'q1', 'd1.md')
+assert(await waitFor('per-direction journal file', () => existsSync(dmdPath)), '★ [F1] 方向完成后真的产出聚合索引所指的 Progress/q1/d1.md')
+const dmd1 = readFileSync(dmdPath, 'utf8')
+assert(dmd1.includes('# 研究方向日志') && dmd1.includes('- 方向: Niven 积分法') && /- 存活率: .*；状态: /.test(dmd1), '★ [F1] 该文件是 directionMdText 的产物（标题/方向/存活率+状态齐全）')
 const m1after = readFileSync(join(WS, 'VibeMath', 'Projects', 'projv3', 'Methods', 'm1.md'), 'utf8')
 assert(m1after.includes('## 应用记录') && m1after.includes('直接复用 Niven 范式'), 'methods_used appended application record to m1.md')
 
@@ -203,6 +209,10 @@ assert(await waitFor('solution written to q1', () => {
 }), 'solution added to Problems/q1.md (解法 1, 概率 0.9)')
 const jmd2 = readFileSync(join(WS, 'VibeMath', 'Projects', 'projv3', 'Progress', 'q1.md'), 'utf8')
 assert(jmd2.includes('第 1 轮') && jmd2.includes('第 2 轮'), 'journal has round 1 and round 2 narratives')
+// 审计 F1（续）：调度器维护的逐方向文件必须随轮次**刷新**（不能只写一次就停在第一轮）；
+// 若代理自己写了该文件（无 scheduler-managed 标记），则不要求它被调度器改写。
+const dmd2 = readFileSync(dmdPath, 'utf8')
+assert(dmd2.indexOf('<!-- scheduler-managed -->') !== 0 || (dmd2.includes('第 1 轮') && dmd2.includes('第 2 轮')), '★ [F1] 调度器维护的逐方向日志随轮次刷新（第 1/2 轮都在）')
 
 // ================= Scenario C: method keeper via plan =================
 console.log('\n-- Scenario C: method keeper distills theory library --')

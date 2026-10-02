@@ -1210,6 +1210,26 @@ section('15 the require gate also covers the judge-problem transfer')
   assert(!existsSync(join(proj, 'Verified', '数论_Verified.json')), 'no Verified card for the source proposition')
 }
 
+// ---------- 15g. P2 #7: the accuracy-sample caps are documented AND announced ----------
+// The caps (8 samples per object, 32 objects) are deliberate bounded retention, but they used to
+// evict SILENTLY — the H4 accuracy statistic then drifted with the object count and nothing said so.
+// This case drives a long debate (2 verifiers × several rounds ⇒ > 8 samples for one object) and
+// requires the eviction to show up in the activity log.
+section('15g P2 #7: accuracy-sample cap eviction is announced, not silent')
+{
+  const h = await makeCase('score-cap-warn')
+  // 一轮就凑够样本：10 个验证器 ⇒ 同一对象一次记 10 条（> 每对象上限 8），无需多轮辩论。
+  await h.call('vibe_math_set_params', { verifierCount: 10, maxParallelThreshold: 20, debateMaxRounds: 1, verdictMode: 'flat' })
+  await h.call('vibe_math_add_proposition', { id: 'p-cap', 概述: '计分上限告警', 概率: 0.6, 分类: '数论' })
+  await startScheduler(h)
+  const cand = await waitFor(() => { const x = verifiersOf(h, 'r-p-cap'); return x.length >= 10 ? x : undefined }, 80, 250)
+  assert(!!cand, '对照：10 个验证器都被派出（实测 verifier spawns=' + h.spawns.filter((s) => s.label.indexOf('verifier') === 0).length + '）')
+  if (cand) { fireVerdicts(h, cand, 0.5); await sleep(400); await tick() }
+  const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+  assert(/评审计分样本达上限/.test(acts), '★★ [P2#7] 超过每对象 8 条待计分样本时**写告警**，不再静默丢弃（verifier spawns=' + h.spawns.filter((s) => s.label.indexOf('verifier') === 0).length + ' verifiers=' + verifiersOf(h, 'r-p-cap').length + ' followups=' + h.followups.length + ' acts=' + JSON.stringify(acts.slice(-260)) + '）')
+  await h.call('vibe_math_abort', {})
+}
+
 // ---------- 16. the prompt corpus (contract §10.10) ----------
 // A HUMAN must be able to re-read every prompt the framework emitted, not just the assertions
 // about them. Paths are normalised so the dump is deterministic, diffable and machine-free.
@@ -1671,6 +1691,11 @@ section('15f P2-v2 D4: both views read ONE participant set (snapshot + round)')
     '★★★ [D4-v2] 中途调高 verifierCount **不改变**在飞轮次的参与集/需求票数（快照仍是 2；实测 ' + JSON.stringify(after) + '）')
   assert(JSON.stringify(after) === JSON.stringify(afterR),
     '★★ [D4-v2] 调参后两个视图仍然逐字段相同（实测 ' + JSON.stringify({ status: after, report: afterR }) + '）')
+  // 6.5：两条路径（buildReport / getStatus）都必须走同一个 verifyTasksView()，整数组逐字段相同。
+  const stAll = (await h.call('vibe_math_status', {})).verifyTasks || []
+  const rpAll = (await h.call('vibe_math_report', {})).verifyTasks || []
+  assert(stAll.length >= 1 && JSON.stringify(stAll) === JSON.stringify(rpAll),
+    '★★★★ [6.5] status/report 的 verifyTasks 由同一个 verifyTasksView() 产出、逐字段相同（实测 ' + JSON.stringify({ status: stAll, report: rpAll }) + '）')
   await h.call('vibe_math_abort', {})
 }
 

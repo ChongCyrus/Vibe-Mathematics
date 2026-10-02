@@ -336,7 +336,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['assignment objections are broadcast', 'if (p.reject_assign && typeof p.reject_assign === \'object\' && params.memberMayRejectAssign)'],
     ['the academician has no extra vote weight', 'const E = voters().map((m) => m.id)'],
     ['members may reject an assignment', "memberMayRejectAssign: true,"],
-    ['the charter states the progress definition', "'  · Progress/<你>/progress.md —— **你的研究日志**（叙述体，可追加）。'"],
+    ['the charter states the progress definition', "'  · Members/<你>/Progress/progress.md —— **你的研究日志**（叙述体，可追加）。'"],
     ['the charter describes the academician as organizer', "'  【四、你的组织职责与边界（院士）】'"],
     ['the framework never assigns on its own', "agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？'"],
 

@@ -1549,6 +1549,7 @@ section('D4 cross-view: one frozen participant set, seen identically by every vi
   assert(st2.rosterVersion > c0.rosterVersion, 'hiring mid-verify bumps rosterVersion (' + c0.rosterVersion + ' -> ' + st2.rosterVersion + ')')
   assert(st2.consensus.expected === st2.frozenParticipants.length && st2.consensus.expected === c0.expected,
     '★ after a mid-verify HIRE the frozen set is UNCHANGED and both views still agree (newcomer did not join)')
+  assert(typeof rv2.rosterVersion === 'number' && typeof st2.consensus.rosterVersion === 'number', 'non-vacuous: both frozen views EXPOSE a numeric rosterVersion (a relative === passes when both are absent)')
   assert(rv2.rosterVersion === st2.consensus.rosterVersion,
     '★ after the HIRE the two FROZEN views (status().consensus + report().verify) still report the SAME rosterVersion')
   assert(st2.rosterVersion > rv2.rosterVersion,
@@ -1566,7 +1567,51 @@ section('D4 cross-view: one frozen participant set, seen identically by every vi
   assert(st4.verifyInProgress === false, '★ the mid-verify hire/fire did NOT prevent the verification from concluding')
 }
 
+
+
 // ===============================================================
+// 24. round A F2 (design-preserving): a HIRE never extends the frozen set, so the live counter may
+//     drift ahead of it (that drift IS the staleness signal). A FIRE prunes the frozen set, so the
+//     snapshot must be re-stamped — otherwise the same version would denote two different sets.
+// ===============================================================
+section('24 round A F2: hire keeps the snapshot stale-able; fire re-stamps it (version ≡ set)')
+{
+  const N = await establish()
+  await N.callTool('vibe_v4_meeting', { agenda: 'round A 快照一致性' })
+  const s1 = await N.callTool('vibe_v4_status', {})
+  assert(!!s1.frozen && Array.isArray(s1.frozen.participants) && s1.frozen.participants.length >= 1, '★ an active consensus exposes frozen{version,participants} (additive)')
+  assert(s1.frozen.version === s1.rosterVersion, 'at freeze time the snapshot version equals the live counter')
+  assert(typeof s1.consensus.rosterVersion === 'number' && Array.isArray(s1.consensus.participants) && s1.consensus.rosterVersion === s1.frozen.version, '\u2605 F3 (absolute first, unguarded): status().consensus EXPOSES rosterVersion + participants and it equals the frozen snapshot version')
+  const v1 = s1.rosterVersion
+  await N.callTool('vibe_v4_add_member', { direction: 'round A 新增成员' })
+  const s2 = await N.callTool('vibe_v4_status', {})
+  assert(s2.rosterVersion > v1, 'hiring bumps the numeric rosterVersion (monotone)')
+  assert(s2.frozen.version === v1, '★ a HIRE leaves the frozen snapshot version untouched (its set did not change)')
+  assert(s2.frozen.participants.length === s1.frozen.participants.length, '★ …and the frozen requirement set is unchanged (frozen means frozen)')
+  assert(s2.rosterVersion > s2.frozen.version, '★ the live-vs-frozen drift remains the visible staleness signal')
+  const removed = s1.frozen.participants[0]
+  await N.callTool('vibe_v4_remove_member', { id: removed })
+  const s3 = await N.callTool('vibe_v4_status', {})
+  assert(s3.frozen.participants.indexOf(removed) === -1, '★ a FIRE prunes the frozen set (the wait is released)')
+  assert(s3.frozen.version === s3.rosterVersion && s3.frozen.version > v1, '★ F2: the pruned set carries a NEW version — no window where a changed set keeps the old version')
+}
+// ===============================================================
+// ===============================================================
+// N4. F-PROMPT: a documented 'true no-op' must be asserted on the DELIVERED prompt, not on the
+//     config path. Under formalVerify:'off' the verify prompt must carry NO formalization clause
+//     and NO forward reference to a segment that is not delivered.
+// ===============================================================
+section('N4 off: the DELIVERED verify prompt has no formalization content or dangling pointer')
+{
+  const P = await establish()
+  const off = await P.prompts('verify', 'r-1', { target: 'p-fprompt', stage: 'independent' })
+  assert(off.length > 100 && /\u9a8c\u8bc1/.test(off), '* the delivered verify prompt is non-trivial (non-vacuity: a missing/empty prompt must not pass the negations below)')
+  assert(!/\u5f62\u5f0f\u5316\u6bb5/.test(off), '* the off-mode verify prompt contains no forward reference to the formalization segment (\u5f62\u5f0f\u5316\u6bb5)')
+  assert(!/formal/.test(off), '* and no formalization content at all (no `formal` receipt clause) - the documented true no-op')
+  await P.callTool('vibe_v4_set', { formalVerify: 'encourage' })
+  const enc = await P.prompts('verify', 'r-1', { target: 'p-fprompt', stage: 'independent' })
+  assert(/Lean|formal/.test(enc), '* under encourage the delivered prompt DOES carry the formalization block (the gate is a gate, not a deletion)')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

@@ -2025,13 +2025,6 @@ export function apply(ctx) {
     await writeJson(proposFile(cat), list)
     return cat
   }
-  async function deleteProposition(p) {
-    const cat = p._category || categoryOf(p)
-    const list = await readProposCategory(cat)
-    const next = list.filter(function (x) { return x.id !== p.id })
-    await writeJson(proposFile(cat), next)
-  }
-
   // ================= data layer: Verified / Reliable =================
   async function readVerifiedCategory(cat) { const a = await readJson('Verified/' + String(cat) + '_Verified.json'); return Array.isArray(a) ? a : [] }
   async function reliableFiles() { return await listFiles('Reliable') }
@@ -2042,7 +2035,7 @@ export function apply(ctx) {
     const qs = await getQs()
     const propos = await getPropos()
     return {
-      ok: true, at: now(), project: currentProject, frameworkRoot: frameworkRoot(),
+      ok: true, at: now(), project: currentProject, projectExists: await projectExistsOnDisk(), frameworkRoot: frameworkRoot(),
       running: scheduler.running, mode: params.mode,
       activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
@@ -2050,7 +2043,7 @@ export function apply(ctx) {
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
       // D4 审计面：每个在飞验证任务的参与集/票数都由 voteCount 投影出来（两个视图可对照）。
-      verifyTasks: Object.keys(tasks).filter(function (k) { return tasks[k] && tasks[k].type === 'verify' }).map(function (k) { const t = tasks[k]; const v = voteCount(t); return { rId: t.rId, status: t.status, round: v.round, expected: v.expected, dispatched: v.dispatched, reported: v.reportedThisRound, quorum: v.quorum } }),
+      verifyTasks: verifyTasksView(tasks),
       recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)),
       // Lean 形式化：可调档位与开关同处可读参数表（契约 §1），并附当前形式化记录概况。
       formal: {
@@ -2993,6 +2986,20 @@ export function apply(ctx) {
       quorum: participants.length > 0 && participants.length >= expected && thisRoundIds.length === participants.length,
     }
   }
+/**
+ * 待验证任务视图（v2 唯一的"在飞验证任务清单"入口）。**单一来源**：`status` 与 `report` 两条
+ * 路径都必须调它——审计 6.5 之前这段投影被内联复制了两份，任何一边改字段就会让两个视图分叉
+ * （与 D4 的教训同型）。字段语义：expected = 创建时快照票数，dispatched = 本轮派出的评审数，
+ * reported = 本轮已报票数，quorum = 本轮是否齐票。
+ */
+function verifyTasksView(tasks) {
+  return Object.keys(tasks || {}).filter(function (k) { return tasks[k] && tasks[k].type === 'verify' })
+    .map(function (k) {
+      const t = tasks[k]
+      const v = voteCount(t)
+      return { rId: t.rId, status: t.status, round: v.round, expected: v.expected, dispatched: v.dispatched, reported: v.reportedThisRound, quorum: v.quorum }
+    })
+}
   // 一票不算共识：≥MIN_REVIEWERS 份独立评审才可能达成/否决共识（审计 M11；与 v3 的最小票数同型）。
   function consensus(t) { const v = voteCount(t); if (v.reportedIds.length < MIN_REVIEWERS) return false; const vs = v.reportedIds.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (x) { return x === 1 }) || vs.every(function (x) { return x === 0 }) }
   function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
@@ -3005,7 +3012,11 @@ export function apply(ctx) {
    * 由 spawnChild 写进 agentRegistry 的 meta，再随每次投票进入 childResults。
    */
   function verifierIdentityKey() { const o = childAgentOptions(); return 'm:' + String(o.provider || '-') + '/' + String(o.model || '-') }
-  const PENDING_SCORE_MAX_OBJECTS = 32
+  const PENDING_SCORE_MAX_OBJECTS = 32   // 全局最多保留多少个对象的待计分样本（FIFO 丢弃，见 recordReviewForScoring）
+  const PENDING_SCORE_CAP_PER_OBJECT = 8 // 每个对象最多保留多少条待计分样本
+  const PENDING_SCORE_WARN_INTERVAL_MS = 5 * 60 * 1000 // 全局丢弃告警的最小间隔（避免每票刷屏）
+  const scoreCapWarned = new Set()
+  let scoreGlobalWarnedAt = 0
   /** 记下本轮各评审的投票，等**这个对象后来**取得布尔定论时再回溯计分（见 scorePendingReviews）。 */
   function recordReviewForScoring(objectId, key, result) {
     const id = String(objectId || '')
@@ -3013,9 +3024,26 @@ export function apply(ctx) {
     let list = pendingReviewScores[id]
     if (!list) { list = []; pendingReviewScores[id] = list }
     list.push({ key: String(key || 'm:unknown'), result: clamp01(result) })
-    if (list.length > 8) list.shift()
+    // 有界保留（**故意**的截断，已文档化）：每对象最多 PENDING_SCORE_CAP_PER_OBJECT 条待计分样本、
+    // 全局最多 PENDING_SCORE_MAX_OBJECTS 个对象；超限丢弃**最旧**的（FIFO）。丢弃会写活动日志，
+    // 避免"verifierAccuracy 随对象数悄悄漂移"而无人知晓（已累计的准确率不受影响）。
+    if (list.length > PENDING_SCORE_CAP_PER_OBJECT) {
+      list.shift()
+      if (!scoreCapWarned.has(id)) {
+        scoreCapWarned.add(id)
+        if (scoreCapWarned.size > 64) scoreCapWarned.clear()
+        logActivity('verify', '评审计分样本达上限（每对象 ' + PENDING_SCORE_CAP_PER_OBJECT + ' 条）：' + id + ' 丢弃最旧一条（故意保留上限；已累计 verifierAccuracy 不受影响）')
+      }
+    }
     const ids = Object.keys(pendingReviewScores)
-    while (ids.length > PENDING_SCORE_MAX_OBJECTS) delete pendingReviewScores[ids.shift()]
+    if (ids.length > PENDING_SCORE_MAX_OBJECTS) {
+      let dropped = 0
+      while (ids.length > PENDING_SCORE_MAX_OBJECTS) { delete pendingReviewScores[ids.shift()]; dropped++ }
+      if (now() - scoreGlobalWarnedAt > PENDING_SCORE_WARN_INTERVAL_MS) {
+        scoreGlobalWarnedAt = now()
+        logActivity('verify', '评审计分样本的对象数达上限（' + PENDING_SCORE_MAX_OBJECTS + '）：丢弃最旧的 ' + dropped + ' 个对象的待计分样本（故意保留上限；已累计 verifierAccuracy 不受影响）')
+      }
+    }
   }
   /** 对象取得布尔定论（1/0）时，用它给**此前**那些还没被检验过的评审打分。绝不拿聚合值给同一批打分。 */
   async function scorePendingReviews(objectId, truth) {
@@ -3518,6 +3546,9 @@ export function apply(ctx) {
     for (const f of await listFiles('Propos')) out.push('Propos/' + f)
     for (const f of await listFiles('Verified')) out.push('Verified/' + f)
     if (formalNow) for (const f of await listFiles('Verified/Lean')) out.push('Verified/Lean/' + f)
+    // 审计 F2：提示词要求「引用 Reliable/ 里的可信来源时要给出处」，材料证据索引也必须收它，
+    // 否则被要求引用的那一层永远进不了论文材料（reliableFiles() 因此从死代码变成活代码）。
+    for (const f of await reliableFiles()) out.push('Reliable/' + f)
     const dirs = ['Verification_logs', 'Progress_Logs'].concat(formalNow ? ['Formal'] : [])
     for (let i = 0; i < dirs.length; i++) { const files = await listFiles(dirs[i]); for (let j = 0; j < files.length; j++) out.push(dirs[i] + '/' + files[j]) }
     out.push(PAPER_PATH_NOTE)
@@ -3988,11 +4019,14 @@ export function apply(ctx) {
     }
     if (pending.length > 0) { scheduler.gate = null; logActivity('mode', 'switched to auto — auto-resolved ' + pending.length + ' pending decision(s)'); await saveAll(); scheduleTick() }
   }
+  /** 审计 F7：`project` 是**当前会话**的项目名，`projects` 是磁盘上已存在的 slug 列表；
+   *  两者不闭合时（新会话 project='default' 而磁盘上没有该目录）语义必须显式，不能靠调用方猜。 */
+  async function projectExistsOnDisk() { return (await listDirsAt(vibeRoot(), 'Projects')).indexOf(currentProject) !== -1 }
   async function getStatus() {
     const qs = await getQs(); const propos = await getPropos()
     return {
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
-      project: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects'),
+      project: currentProject, projectExists: await projectExistsOnDisk(), projects: await listDirsAt(vibeRoot(), 'Projects'),
       mode: params.mode, activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       frameworkRoot: frameworkRoot(),
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
@@ -4000,7 +4034,7 @@ export function apply(ctx) {
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       registeredAgents: Object.keys(agentRegistry).length,
       // D4 审计面：每个在飞验证任务的参与集/票数都由 voteCount 投影出来（两个视图可对照）。
-      verifyTasks: Object.keys(tasks).filter(function (k) { return tasks[k] && tasks[k].type === 'verify' }).map(function (k) { const t = tasks[k]; const v = voteCount(t); return { rId: t.rId, status: t.status, round: v.round, expected: v.expected, dispatched: v.dispatched, reported: v.reportedThisRound, quorum: v.quorum } }),
+      verifyTasks: verifyTasksView(tasks),
       recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)), params: params,
       formal: {
         mode: formalMode(), required: formalRequired(),
@@ -4150,10 +4184,6 @@ export function apply(ctx) {
     mathProbeDue: mathProbeDue,
     refreshMathProbe: refreshMathProbe,
     mathProbe: function () { return mathProbe },
-    // P2a：persona 两个文本块必须含的「归档→编辑→重跑」规则（文本取自共享模块常量，persona 不手抄）。
-    mathArchiveWorkflowLine: MATH_ARCHIVE_WORKFLOW_LINE,
-    // A 项：替代声明规则（文本由共享模块给出；persona 两块与每轮可用性行都必须带它）。
-    mathSubstitutionRuleLine: MATH_SUBSTITUTION_RULE_LINE,
     leanQueueSize: function () { return leanQueue.length },
     leanJobsPublic: function () { const out = []; for (const j of leanJobs.values()) out.push(leanJobPublic(j)); return out },
     // childOwner 裁剪用：这个会话当前仍"可能再发 subagent/end"的 child（在册的 + 任务正在等的）。

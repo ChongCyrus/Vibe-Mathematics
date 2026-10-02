@@ -65,6 +65,20 @@ function runSuite(root) {
 
 // A sanity gate first: the UNMUTATED copy must be GREEN through the override, otherwise
 // every probe below would "detect" the override itself rather than the mutation (trap 2).
+//
+// CONCURRENCY FIX: under run-tests this suite shares the machine with a plain
+// `audit-persona-surface` job, which WRITES the shipped corpus (`prompt-corpus-persona/*`) while the
+// children below READ it - and under PERSONA_ROOT the surface suite asserts those files EXIST. In a
+// tree where the corpus has not been generated yet (or is being regenerated), a child could observe the
+// directory without the files and fail, which showed up as "sensitivity red only under concurrency 4".
+// So: generate the corpus ONCE here first (parent run, no PERSONA_ROOT), then run the control. The
+// surface suite's own write is atomic (temp file + rename), so concurrent writers cannot tear the files.
+{
+  const warm = spawnSync(process.execPath, [SUITE], { env: process.env, encoding: 'utf8', cwd: REPO })
+  const warmOut = String(warm.stdout || '') + String(warm.stderr || '')
+  console.log('  ok   - corpus warmed by a plain parent run (exit=' + warm.status + ')' + (warm.status === 0 ? '' : ' [warning: plain run not green]'))
+  if (warm.status !== 0) console.error(warmOut.split('\n').filter((l) => l.includes('FAIL')).slice(0, 4).join('\n'))
+}
 const sanityRoot = prepareRoot()
 {
   const r = runSuite(sanityRoot)
