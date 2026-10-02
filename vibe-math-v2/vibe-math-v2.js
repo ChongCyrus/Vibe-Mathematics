@@ -2085,7 +2085,9 @@ export function apply(ctx) {
     const rec = formalGateRecord(t)
     if (formalGateOk(rec)) return false
     const own = formalOf(t)
-    const reason = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + (rec.status || 'none') + '）' + (why ? '｜' + why : '')
+    const statusZh = ({ none: '未尝试', attempted: '已尝试未通过', blocked: '已记录阻塞', passed: '已通过' })[String(rec.status || 'none')] || String(rec.status || 'none')
+    const reason = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + statusZh + '；代码 formal-required）' + (why ? '｜' + why : '') +
+      '；下一步：把该对象形式化到 Lean 通过（vibe_math_lean_archive，kind=proof/lemma），或写入显式阻塞记录（kind=blocked）后重新提议该对象，即可再次表决'
     const list = formalTodo().filter(function (x) { return x.id !== t })
     list.push({ id: t, at: now(), why: reason })
     // 不改动对象的既有权重/概率字段：只补一条 formal 记录（status 保持 none/attempted）。
@@ -2212,7 +2214,7 @@ export function apply(ctx) {
       const text = '[Vibe Math V2] 进度更新：当前项目 "' + currentProject + '" 运行中=' + report.running +
         '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
         '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '。' +
-        '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
+        '请调用 vibe_math_report 汇总当前进展，再用人话简要汇报（不打断用户，简短即可）。'
       // 来源 kind 必须是**已声明**的：`MessageSourceMap` 是 merge-extensible 的联合，但没有共享的
       // catch-all `plugin` kind（dsh-llm message.d.ts），{kind:'plugin'} 是契约外形状。role 本来就是
       // 'user'，正文也自带 "[Vibe Math V2] 进度更新" 的真署名，所以用核心声明的 {kind:'user'}。

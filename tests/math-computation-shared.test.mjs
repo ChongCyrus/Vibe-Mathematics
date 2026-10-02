@@ -1032,6 +1032,19 @@ console.log('-- math_computation shared contract --')
     '★ the not-found guidance also says why the commercial template needs confirmation', JSON.stringify(pm.next && pm.next.verifyReason))
 }
 
+// ── 31. S3 symmetry: EVERY failure kind surfaces partial stdout AND stderr (like the timeout)
+{
+  const h1 = makeFakeHost({ installed: ['python3'], exit: 2, stdoutBytes: 16 })
+  M.registerMathComputation(h1.host)
+  const r1 = await h1.call({ op: 'run', engine: 'python', mode: 'code', code: 'x=1\n' })
+  ok(r1.ok === false && r1.code === 'MATH_NONZERO_EXIT', 'a non-zero exit reports MATH_NONZERO_EXIT')
+  ok('stdout' in r1 && 'stderr' in r1, '★ S3 symmetry: MATH_NONZERO_EXIT carries BOTH partial stdout and stderr', JSON.stringify({ so: 'stdout' in r1, se: 'stderr' in r1 }))
+  const h2 = makeFakeHost({ installed: ['python3'], argError: 'unknown option', stdoutBytes: 16 })
+  M.registerMathComputation(h2.host)
+  const r2 = await h2.call({ op: 'run', engine: 'python', mode: 'code', code: 'x=1\n' })
+  ok(r2.ok === false && r2.code === 'MATH_ENGINE_BAD_ARGV', 'a usage error reports MATH_ENGINE_BAD_ARGV')
+  ok('stdout' in r2 && 'stderr' in r2, '★ S3 symmetry: MATH_ENGINE_BAD_ARGV carries BOTH partial stdout and stderr')
+}
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

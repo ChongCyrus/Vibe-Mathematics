@@ -1322,6 +1322,8 @@ section('15c the framework push report and the gate notice are captured')
   }
   assert(!!gline && /require 模式搁置/.test(gline), '★★ the require-gate withholding reaches the human-readable channel (captured verbatim)')
   assert(!!gline && /Formal\/TODO\.md/.test(gline), 'and the notice says where the withholding was recorded')
+  assert(/下一步：/.test(String(gline)) && /代码 formal-required/.test(String(gline)) && !/（当前状态 none）/.test(String(gline)),
+    '★★ [A5] require-gate 反馈行给出**下一步**且状态已本地化（代码 token 保留），实测 ' + JSON.stringify(gline))
   g.feedbackLine = gline || ''
   await g.call('vibe_math_pause', {})
 }
@@ -1723,7 +1725,7 @@ section('16 the captured prompt corpus is written for human review')
       .split(ws).join('<WS>')
       // Epoch-ms in a verification-log FILE NAME is run metadata: the final-paper material embeds the
       // evidence index verbatim, so it must be normalised or the shipped corpus changes every run.
-      .replace(/_[0-9]{10,16}\.json/g, '_<TIME>.json')
+      .replace(/_[0-9]{10,16}(_[0-9a-f]{8})?\.json/g, '_<TIME>.json')
   }
   const entries = []
   for (const h of hosts) {

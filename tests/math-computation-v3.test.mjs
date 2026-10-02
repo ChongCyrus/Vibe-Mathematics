@@ -37,6 +37,9 @@ const PLUGIN = process.env.MC_V3_PLUGIN
 let passed = 0
 let failed = 0
 const failures = []
+const skips = [] // A1：显式跳过清单（任何 skip 都会出现在摘要里，不再冒充通过）
+const skip = (why) => { skips.push(String(why)); console.log('  skip - ' + why) }
+let mgrBranchExercised = false // A1：证明「管理器存在 ⇒ 可执行命令」这半契约真的跑过
 function assert(cond, msg) {
   if (cond) { passed++; console.log('  ok - ' + msg) } else { failed++; failures.push(msg); console.error('  FAIL - ' + msg) }
 }
@@ -274,14 +277,23 @@ section('§3 op=probe：命中与未命中')
   assert(!!miss.next && (miss.next.packageManagerAvailable === false ? miss.next.command === '' : typeof miss.next.command === 'string'), '★★★ 包管理器不可用时**绝不**给出跑不了的命令（command 必须是空串），可用时才是字符串（实测 ' + JSON.stringify(miss.next && { mgr: miss.next.packageManager, avail: miss.next.packageManagerAvailable, command: miss.next.command }) + '）')
   assert(!miss.next || miss.next.packageManagerAvailable !== false || (String(miss.next.note || '').length > 0 && String(miss.next.suggestedCommand || '').length > 0), '★★ 命令被撤下时必须给出替代出口：note + perOs 里的官方命令（vendorUrl 只有商业引擎才有，可为 null；实测 ' + JSON.stringify(miss.next && { note: String(miss.next.note || '').slice(0, 40), suggested: miss.next.suggestedCommand }) + '）')
   // 另一半：包管理器**存在**时给出可执行命令（command === suggestedCommand）
-  if (miss.next && miss.next.packageManager) {
-    fake.cliCommands = {}
-    fake.cliCommands[miss.next.packageManager] = '/fake/' + miss.next.packageManager + '.exe'
-    const withMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
-    assert(!!withMgr.next && withMgr.next.packageManagerAvailable === true && typeof withMgr.next.command === 'string' && withMgr.next.command.length > 0 && withMgr.next.command === withMgr.next.suggestedCommand, '★★★ 包管理器存在时给出**可执行**命令（command === suggestedCommand，实测 ' + JSON.stringify(withMgr.next && { mgr: withMgr.next.packageManager, avail: withMgr.next.packageManagerAvailable, command: withMgr.next.command }) + '）')
-  } else {
-    assert(true, '（本平台 userInstall 模板无包管理器前缀：跳过「管理器存在」分支）')
-  }
+  // A1：旧写法在「本平台模板无包管理器前缀」时 `assert(true, …跳过…)` 会给 passed +1 却什么都没验。
+  // 这里把被探测引擎钉到 python（其 userInstall 模板三平台都带管理器前缀 winget/brew/apt）⇒
+  // **强制**走完「管理器存在 ⇒ 给出可执行命令」这一半契约（平台差异不再能吃掉断言）。
+  await call('vibe_math_set_params', { mathEngines: ['python'] })
+  const missMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
+  const mgrName = missMgr.next && missMgr.next.packageManager
+  assert(!!mgrName, '★★★ A1：python 的 userInstall 模板在三平台都带包管理器前缀（实测 ' + JSON.stringify(mgrName) + '）')
+  fake.cliCommands = {}
+  if (mgrName) fake.cliCommands[mgrName] = '/fake/' + mgrName + '.exe'
+  const withMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
+  assert(!!withMgr.next && withMgr.next.packageManagerAvailable === true && typeof withMgr.next.command === 'string' && withMgr.next.command.length > 0 && withMgr.next.command === withMgr.next.suggestedCommand, '★★★ 包管理器存在时给出**可执行**命令（command === suggestedCommand，实测 ' + JSON.stringify(withMgr.next && { mgr: withMgr.next.packageManager, avail: withMgr.next.packageManagerAvailable, command: withMgr.next.command }) + '）')
+  mgrBranchExercised = true
+  // 另一半：没有管理器前缀的模板（vendor 下载）仍必须给官方命令、且不得谎称可运行
+  await call('vibe_math_set_params', { mathEngines: ['wolfram'] })
+  const vendor = await call('math_computation', { op: 'probe', packages: ['refresh'] })
+  assert(!!vendor.next && vendor.next.packageManager === null && typeof vendor.next.suggestedCommand === 'string' && vendor.next.suggestedCommand.length > 0, '★★ A1：无管理器前缀的模板 packageManager=null 且仍给官方命令（platform=' + (vendor.next && vendor.next.platform) + '）')
+  await call('vibe_math_set_params', { mathEngines: ['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli'] })
 }
 
 // ── §4 缺包：只报告、不执行 ──────────────────────────────────────────────────────────────────
@@ -709,6 +721,7 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
   assert(produced.indexOf('Reliable/ref.md') !== -1, '★★ [F2] 被要求引用的 Reliable/ 可信来源真的进了论文材料证据索引（文本层断言，实测片段 ' + JSON.stringify(produced.slice(Math.max(0, produced.indexOf('Reliable')), produced.indexOf('Reliable') + 40)) + '）')
   assert(produced.indexOf('会话 cwd') !== -1 && produced.indexOf('绝对前缀') !== -1, '★★ [P0] 产出材料写着：文件工具按**会话 cwd** 解析相对路径 ⇒ 列出的相对路径需先拼**项目根的绝对前缀**（文本层断言）')
   assert(produced.indexOf('receipt.scriptAbs') !== -1 || produced.indexOf('receipt.cwd') !== -1, '★★ [P0] 计算产物指向回执里的**绝对**字段（receipt.scriptAbs / receipt.cwd+receipt.scriptPath）')
+
   await call('vibe_math_abort', {})
 }
 
@@ -728,7 +741,9 @@ section('§21 审计 F7：project / projectExists / projects 三者语义不歧�
     '★★ [F7] report 与 status 两个视图语义一致（同一来源；实测 report=' + JSON.stringify({ project: rp.project, projectExists: rp.projectExists }) + '）')
 }
 
-console.log('\n=== MATH COMPUTATION V3: ' + passed + ' passed, ' + failed + ' failed ===')
+assert(mgrBranchExercised === true, '★★★ A1：「包管理器存在 ⇒ 可执行命令」这半契约必须真的跑过（不允许平台条件静默吃掉断言）')
+assert(skips.length === 0, '★★ A1：本次运行没有静默跳过（实测 skips=' + JSON.stringify(skips) + '）')
+console.log('\n=== MATH COMPUTATION V3: ' + passed + ' passed, ' + failed + ' failed, ' + skips.length + ' skipped ===')
 rmSync(WS, { recursive: true, force: true })
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')

@@ -1166,16 +1166,27 @@ section('13 full-corpus sweep over every prompt ever sent')
   // A single prompt must not deliver the same message twice. The inbox used to be
   // prepended AND re-emitted from the [状态] block, so a member read every new message
   // twice in one prompt.
+  // A3 (assertion-quality review): this used to end with a vacuous `assert(true, …)` and to
+  // `break` after the FIRST duplicate frame, so (a) a property nobody checked was attributed to an
+  // assertion that asserted nothing, and (b) only one duplicate per prompt was ever reported.
+  // The loop now COLLECTS every duplicate frame and reports the count, and the summary assertion
+  // states exactly what was checked.
+  const duplicateFrames = []
+  let inboxOffenders = 0
   for (const c of corpus) {
     const bodies = c.prompt.match(/【[^】]*】[^\n]{20,}/g) || []
     for (const frame of new Set(bodies)) {
       const n = bodies.filter(b => b === frame).length
-      if (n > 1) { assert(false, 'message delivered ' + n + '× in one prompt (' + c.kind + '/' + c.owner + '): ' + frame.slice(0, 60)); break }
+      if (n > 1) duplicateFrames.push({ kind: c.kind, owner: c.owner, n, frame: frame.slice(0, 60) })
     }
     const inboxHeads = (c.prompt.match(/\[新到的消息/g) || []).length
+    if (inboxHeads > 1) inboxOffenders += 1
     assert(inboxHeads <= 1, c.kind + '/' + c.owner + ': at most one inbox section per prompt (found ' + inboxHeads + ')')
   }
-  assert(true, 'no prompt delivers the same framed message twice, and no prompt has two inbox sections')
+  assert(duplicateFrames.length === 0,
+    'no prompt delivers the same framed message twice (duplicate frames found: ' + duplicateFrames.length
+      + (duplicateFrames.length ? ' — ' + duplicateFrames.slice(0, 5).map(d => d.kind + '/' + d.owner + ' ' + d.n + '× ' + d.frame).join(' | ') : '')
+      + '); prompts with two inbox sections: ' + inboxOffenders)
   // The identity claim inside a prompt must agree with the persona shipped alongside it.
   for (const c of corpus) {
     if (!c.persona) continue

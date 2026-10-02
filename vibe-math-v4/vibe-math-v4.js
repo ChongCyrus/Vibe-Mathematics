@@ -908,7 +908,7 @@ export function apply(ctx) {
           }
         }
       }
-      if(queued+redriven+stale+completed){ await writeLeanLibIndexesSafe() ; if(leanQueue.length) armHeartbeat() }
+      if(queued+redriven+stale+completed){ await writeLeanLibIndexesSafe() ; if(leanQueue.length){ await runLeanQueue() ; armHeartbeat() } }   // cold-recovery drain: the heartbeat alone did not drain while the run was not yet live (verified by the §20 tripwire)
       return {scanned:(files||[]).length,queued,redriven,stale,completed}
     }
     async function writeLeanLibIndexesSafe(){ try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ } }

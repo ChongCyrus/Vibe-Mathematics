@@ -1680,14 +1680,16 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
   function plannerPrompt(brief) {
     return personaText('plannerPersona') + 'You are the SCHEDULING PLANNER of a multi-agent mathematical research system. Your job: autonomously choose the OPTIMAL schedule — you may lay out the NEXT ' + params.planningHorizon + ' agent-task calls in one plan (they will be executed in order, beyond-capacity ones queued for later ticks).\n\n' +
       'CURRENT STATE BRIEF (JSON):\n' + JSON.stringify(brief, null, 2) + '\n\n' +
-      'ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):\n' +
+      'ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):\n' +
       '- {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).\n' +
       '- {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.\n' +
       '- {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.\n' +
       '- {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.\n' +
       '- {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).\n' +
       '- {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.\n' +
-      '- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.\n' +
+      '- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.\n' +
+      '- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.\n' +
+      '- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.\n' +
       '\nHARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most ' + params.planningHorizon + ' actions.\n' +
       'Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:\n' +
       '{"summary":"one-line plan rationale","plan":[{"action":"...","role":"...","target":"...","direction":"...","childId":"...","reason":"..."}]}'
@@ -1702,7 +1704,7 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
       mathWorkLine() +
       (formalWorkLine() + (formalOn() ? '\n【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind=\'def\'），已成立的引理归档到 Proved/（kind=\'lemma\'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。\n' : '')) +
       'OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.\n' +
-      'CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:\n' +
+      'CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` — the `<m-id>` in the FILE NAME must be EXACTLY the id you list in `created`（调度器按 `created` 里的 id 去 `Methods/<id>.md` 找卡；不一致会被当成"已沉淀"而实际没有卡）(`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:\n' +
       '{"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}\n' +
       'CHANNEL B (your file tools are unavailable): put the method-card content into __writes and carry the same meta:\n' +
       '{"__writes":[{"path":"Methods/<m-id>.md","content":"<# 方法｜标题 + 锚点 + ## 核心内容... 完整卡面>"}],"meta":{"kind":"methods","used":[...],"created":["m-xxx"],"improvements":[...]}}'

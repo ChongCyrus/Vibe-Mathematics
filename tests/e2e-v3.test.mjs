@@ -129,6 +129,12 @@ console.log('tool registrations:', toolRegs.length)
 // （vibe_math_lean_read / _lean_job）；五个都无条件注册，两条注册路径都有。
 // 36 = 35 + math_computation（docs/math-computation.md，静态无条件注册，不随会话增加）。
 assert(toolRegs.length === 36, '36 tools registered once (not per session)')
+
+// A6：只断言"个数"时，同数改名会照样通过。这里把**名字集合**钉住（身份校验，不只计数）。
+const EXPECTED_TOOLS = ["math_computation","vibe_math_abort","vibe_math_add_problem","vibe_math_add_proposition","vibe_math_claim_write","vibe_math_decide","vibe_math_index","vibe_math_interrupt_agent","vibe_math_lean_archive","vibe_math_lean_job","vibe_math_lean_lib","vibe_math_lean_read","vibe_math_lean_run","vibe_math_list_agents","vibe_math_list_decisions","vibe_math_list_projects","vibe_math_list_propositions","vibe_math_lock_status","vibe_math_message_agent","vibe_math_method_add","vibe_math_method_list","vibe_math_new_project","vibe_math_pause","vibe_math_plan","vibe_math_release_write","vibe_math_report","vibe_math_resume","vibe_math_save_settings","vibe_math_set_mode","vibe_math_set_params","vibe_math_set_project","vibe_math_setup","vibe_math_start","vibe_math_status","vibe_math_sync_meta","vibe_math_template"]
+const actualToolNames = [...new Set(toolRegs.map((t) => t.name))].sort()
+assert(JSON.stringify(actualToolNames) === JSON.stringify(EXPECTED_TOOLS),
+  '★★ A6：注册的工具**名字集合**与快照逐个匹配（同数改名也会红；多出=' + JSON.stringify(actualToolNames.filter((n) => EXPECTED_TOOLS.indexOf(n) === -1)) + ' 缺少=' + JSON.stringify(EXPECTED_TOOLS.filter((n) => actualToolNames.indexOf(n) === -1)) + '）')
 assert(['vibe_math_lean_read', 'vibe_math_lean_job', 'math_computation'].every(n => toolRegs.some(t => t.name === n)),
   'the two new read-only Lean tools AND math_computation are registered unconditionally')
 assert(cmdRegs.length === 1, 'one /vibe command registered once')

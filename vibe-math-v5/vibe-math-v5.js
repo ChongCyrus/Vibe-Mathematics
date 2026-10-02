@@ -949,6 +949,28 @@ export function apply(ctx) {
       }
       return true
     }
+    // LEAN CLASS GUARD (L1 of the Lean deep review, same spirit as `memberPathContractOk`): the path
+    // the Lean prompts tell a member to write must be RESOLVABLE BY THE TOOL THAT CONSUMES IT.
+    // `leanAbsPath` is called long after this point, so it is looked up lazily via the closure (it is
+    // a function declaration inside this scope, hence hoisted) and the comparison is between the
+    // COMPOSITIONS on both sides — never two hand-copied strings.
+    function leanPathContractOk() {
+      const probe = 'Formal/__probe__.lean'
+      const expected = normalizeAbsPath(instRoot() + '/' + probe)
+      // The EXACT composition the prompt prints (`formalRootRel()`), plus the two spellings a member
+      // may pass to a tool. All three must name the file the framework uses.
+      const printedProbe = formalRootRel().replace(/\/+$/, '') + '/__probe__.lean'
+      const viaPrinted = leanAbsPath(printedProbe)
+      const viaDocumented = leanAbsPath(instRel(probe))   // what the prompt advertises (cwd-relative)
+      const viaShort = leanAbsPath(probe)                 // the tools' short form (institute-relative)
+      if (viaPrinted !== expected || viaDocumented !== expected || viaShort !== expected) {
+        console.error('vibe-math-v5: Lean path contract BROKEN — printed "' + printedProbe
+          + '" resolves to ' + String(viaPrinted) + ', documented "' + instRel(probe) + '" to '
+          + String(viaDocumented) + ', short form to ' + String(viaShort) + ', but the framework uses ' + expected)
+        return false
+      }
+      return true
+    }
 
     function getPolicy() {
       const sp = sandboxPolicyOf()
@@ -1022,6 +1044,7 @@ export function apply(ctx) {
       // A broken contract is recorded in `diagnostics` so `report()` shows it instead of leaving a
       // silent "members write where nothing reads" state.
       try { if (!memberPathContractOk()) noteLoadProblem('member library path contract broken (documented root != framework root)') } catch (e) { /* never break ready() */ }
+      try { if (!leanPathContractOk()) noteLoadProblem('Lean path contract broken (a documented Lean path is not resolvable by the tool that consumes it)') } catch (e) { /* never break ready() */ }
       return true
     }
     // Load the CURRENT state path before its first read. `state()` is synchronous by design
@@ -2476,6 +2499,11 @@ export function apply(ctx) {
     const leanInitiative = () => (['off', 'normal', 'eager'].indexOf(String(params.leanInitiative)) !== -1 ? String(params.leanInitiative) : 'normal')
     const leanDailyOn = () => leanInitiative() !== 'off' && (formalOn() || leanInitiative() === 'eager')
     const formalRoot = () => instRoot() + '/Formal'
+    // L1 (deep-review 5): the CWD-RELATIVE spelling of the institute's Lean work directory — the
+    // one a member can actually produce with their own file tools (which resolve against the
+    // session cwd). The prompts advertise THIS, and `leanAbsPath` accepts it as well as the
+    // institute-relative short form (`Formal/x.lean`).
+    const formalRootRel = () => instRootRel() + '/Formal'
     const formalLibRoot = () => vibeRoot() + '/Formal/Lib'
     const formalProvedRoot = () => vibeRoot() + '/Formal/Proved'
     const verifiedLeanRoot = () => instRoot() + '/Verified/Lean'
@@ -2520,7 +2548,14 @@ export function apply(ctx) {
     function leanAbsPath(rel) {
       const raw = String(rel == null ? '' : rel).trim()
       if (!raw) return null
-      const abs = (raw.charAt(0) === '/' || /^[a-z]:/i.test(raw)) ? raw : instRoot() + '/' + raw.replace(/^\.\//, '')
+      // L1 (deep-review 5): BOTH accepted spellings must name the SAME file, because the member
+      // text documents the CWD-relative complete path (what a member's own file tools produce)
+      // while the tools' own short form is institute-relative. Stripping the documented prefix here
+      // is what makes the prompt's path resolvable by the tool that consumes it.
+      const documentedPrefix = instRootRel() + '/'
+      let body = raw.replace(/^\.\//, '')
+      if (body.indexOf(documentedPrefix) === 0) body = body.slice(documentedPrefix.length)
+      const abs = (body.charAt(0) === '/' || /^[a-z]:/i.test(body)) ? body : instRoot() + '/' + body
       const norm = normalizeAbsPath(abs)
       const root = normalizeAbsPath(vibeRoot())
       if (norm !== root && norm.indexOf(root + '/') !== 0) return null
@@ -2922,6 +2957,10 @@ export function apply(ctx) {
           file: job.rel,
           proof: settledOk ? 'Verified/Lean/' + target + '.lean' : '',
           decision: 'used',
+          // L7 (deep-review 5): `decision:'used'` is written by BOTH the member's reply and this
+          // settle path; `decisionSource` says which one, so an audit can tell "the member said they
+          // used the formalization" from "this record is the job landing".
+          decisionSource: 'job-settle',
           note: (String(prev.note || '') + stale).trim(),
           run: job.run, async: asyncRec, updatedAt: now(),
         })
@@ -2965,6 +3004,14 @@ export function apply(ctx) {
     // (the "announcement point is the next prompt" discipline).
     function takeLeanNoticesFor(memberId) {
       if (!leanNotices.length) return []
+      // L8 (deep-review 5): a notice whose member is no longer active can NEVER be delivered — it
+      // used to sit in the 20-slot queue until a newer result evicted it. Prune those first; their
+      // content stays reachable through `status().leanNotices`, `Formal/Jobs/<jobId>.json` and
+      // `vibe_v5_lean_job {jobId}` (see L4), so nothing is lost, only the slot is freed.
+      for (let i = leanNotices.length - 1; i >= 0; i--) {
+        const m = memberById(leanNotices[i].member)
+        if (!m || m.phase !== 'active') leanNotices.splice(i, 1)
+      }
       const mine = leanNotices.filter((n) => n.member === memberId)
       if (!mine.length) return []
       for (const n of mine) { const i = leanNotices.indexOf(n); if (i !== -1) leanNotices.splice(i, 1) }
@@ -3356,7 +3403,12 @@ export function apply(ctx) {
         L.push('  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。')
         L.push('  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。')
         L.push('  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）')
-        L.push('  · 工作目录：Formal/（相对研究所根）；可复用定义放 ' + formalLibRoot().replace(/\\/g, '/') + '/，')
+        // L1 (deep-review 5): the work directory is documented as the CWD-RELATIVE complete path
+        // (what the member's own file tools produce), and the tools accept it as well as the short
+        // `Formal/…` form — the two name the same file (`leanAbsPath` strips the prefix).
+        L.push('  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：' + formalRootRel() + '/')
+        L.push('    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）')
+        L.push('    可复用定义放 ' + formalLibRoot().replace(/\\/g, '/') + '/，')
         L.push('    已证引理放 ' + formalProvedRoot().replace(/\\/g, '/') + '/；写之前先 vibe_v5_lean_lib 查重。')
         L.push('  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与')
         L.push('    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。')
@@ -3491,7 +3543,9 @@ export function apply(ctx) {
         return {
           ok: true, async: { jobId: job.jobId, state: 'queued' }, jobId: job.jobId,
           file: pre.rel, target: target || undefined,
-          message: '已入队后台编译；你可以继续工作。结果会写入 Formal/ 与索引，并在下一轮提示里公告；也可用 vibe_v5_lean_lib 的 jobs 字段随时查看。',
+          message: '已入队后台编译；你可以继续工作。结果会写入 Formal/ 与索引，并在**你**下一轮提示里公告一次；'
+            + '长期查询用 vibe_v5_lean_job {jobId} 或 Formal/Jobs/<jobId>.json（vibe_v5_lean_lib 的 jobs 字段也会列出）。'
+            + '注意：公告只投给发起者、且重启后不再补发，所以别的成员（或重启后的你）请用上面两条长期路径查看。',
         }
       }
       const run = await leanRunFile(rel, args.timeout_ms)
@@ -6193,6 +6247,10 @@ export function apply(ctx) {
     // one path and silently dropped on another.
     async function handleReply(member, parsed, kind) {
       const p = parsed || {}
+      // L2 option A (user decision): objects for which THIS reply recorded a fidelity defect. The
+      // ballot for such an object counts as an abstention (see the verdict branch below). Scoped to
+      // one reply on purpose — no cross-round state.
+      const defectTargetsThisReply = new Set()
       postmark(member, p)
       // (1) speech  (named `speech`, not `s`: `s` is the session API in this scope)
       const speech = p.say
@@ -6257,6 +6315,19 @@ export function apply(ctx) {
             else if (decision === 'defect') {
               const r = await recordFidelityDefect(member.id, target, note)
               if (r.ok === false) await notice(member.id, '记录忠实性缺陷失败（' + (r.code || '') + '）：' + (r.message || ''))
+              else {
+                // L2 option A (user decision): a reply that RECORDS a fidelity defect for an object
+                // must not also assert that object true in the same round. The framework therefore
+                // counts THIS member's verdict for THIS object as an ABSTENTION (the verdict branch
+                // below reads `defectTargetsThisReply`). Only the declaring member and only this
+                // round are affected: no cross-round state, no gate change, other ballots untouched.
+                defectTargetsThisReply.add(target)
+                // Observable note (the member must not be silently overridden): member notice + a
+                // durable marker in the formal record, which `lean_lib`/`report()` surface via `note`.
+                await notice(member.id, '框架规则：同一条回复里记录了忠实性缺陷（对象 ' + target + '），'
+                  + '你**对该对象的 verdict 已按弃权计入**（不投真也不投假）；缺陷本身照常撤回证明。'
+                  + '若你确认命题为假，请在**下一轮**用独立理由投 0。')
+              }
             } else {
               const r = await leanArchive(member.id, { kind: 'blocked', target, note })
               if (r.ok === false) await notice(member.id, '记录形式化阻塞失败（' + (r.code || '') + '）：' + (r.message || ''))
@@ -6266,7 +6337,7 @@ export function apply(ctx) {
             const prev = formalOf(target)
             await putFormal(target, Object.assign({}, prev, {
               status: prev.status === 'passed' || prev.status === 'blocked' ? prev.status : 'attempted',
-              file, decision: 'used', note: String(f.note || prev.note || ''), updatedAt: now(),
+              file, decision: 'used', decisionSource: 'member-reply', note: String(f.note || prev.note || ''), updatedAt: now(),
             }))
             await writeFormalIndex()
           } else if (decision) {
@@ -6282,10 +6353,27 @@ export function apply(ctx) {
         }
       }
       if (p.verdict && typeof p.verdict === 'object') {
-        const n = normVerdictNumber(p.verdict.verdict)
-        if (n === undefined) await notice(member.id, 'verdict 必须是 0-1 的数值；本轮的票未被记录。')
+        const declared = normVerdictNumber(p.verdict.verdict)
+        if (declared === undefined) await notice(member.id, 'verdict 必须是 0-1 的数值；本轮的票未被记录。')
         else {
-          const r = await castVerdict(member.id, String(p.verdict.target || ''), n, p.verdict.reason)
+          const vTarget = idSafe(String(p.verdict.target || ''))
+          // L2 option A: the same reply declared a fidelity defect for this object ⇒ this member's
+          // ballot counts as an ABSTENTION (0.5) instead of a boolean assertion. A value that is
+          // ALREADY a proper abstention stays exactly as sent (no double counting); the durable
+          // note is attached to the formal record so the override is visible in the receipt.
+          const enforced = defectTargetsThisReply.has(vTarget) && (declared === 0 || declared === 1)
+          const n = enforced ? 0.5 : declared
+          if (enforced) {
+            try {
+              await putFormal(vTarget, (prev0) => Object.assign({}, prev0 || { status: 'none' }, {
+                fidelity: Object.assign({}, (prev0 && prev0.fidelity) || {}, {
+                  voteAbstainedByFramework: { at: now(), by: member.id, declared },
+                }),
+                note: (String((prev0 && prev0.note) || '') + '；本轮同回复的 verdict=' + declared + ' 已由框架按弃权计入').trim(),
+              }))
+            } catch (e) { /* the vote still counts as an abstention even if the note cannot be stored */ }
+          }
+          const r = await castVerdict(member.id, vTarget, n, p.verdict.reason)
           if (r && r.ok === false) await notice(member.id, '本轮的票未被记录（' + (r.code || '') + '）：' + (r.message || ''))
         }
       }
@@ -6911,6 +6999,11 @@ export function apply(ctx) {
         ok: true,
         institute: instituteName, project, key, phase,
         running, autoDone, runId: s.runId,
+        // L4 (deep-review 5): the `【形式化结果】` announcements are delivered ONCE, to the job's
+        // initiator, and live in memory — so a fired initiator or a restart left them invisible.
+        // They are now part of `status()` (and therefore of the operator's view), which is the
+        // durable-ish path beside `Formal/Jobs/<jobId>.json` and `vibe_v5_lean_job {jobId}`.
+        leanNotices: leanNotices.map((n) => ({ member: n.member, jobId: n.jobId, line: n.line })),
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two
         // failure modes that silently drop state were invisible in the operator's view.
@@ -7116,6 +7209,9 @@ export function apply(ctx) {
       taskCreate, taskList: listTasks, getTask, taskUpdate, taskAssign, taskPrioritize,
       // libraries
       publishProgress, recordCard, readLibrary,
+      // path helpers: the tool face advertises the CWD-relative spellings (L1), so they must be
+      // reachable from the registration block too.
+      instRel, instRootRel, formalRootRel,
       // Lean formal verification (docs/formal-verification.md)
       formalMode, formalOn, formalRecords, formalTodo, formalOf, rebuildLeanLibIndexes,
       leanArchive, leanRunTool, writeFormalIndex, writeFormalTodo, recordFidelityDefect,
@@ -7402,8 +7498,8 @@ export function apply(ctx) {
   // dynamic registration would depend on a runtime knob and break the effect discipline),
   // while the MODE only decides whether the framework TELLS members about them. In 'off'
   // mode they still work if a human or agent calls them deliberately.
-  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; inspect it via vibe_v5_lean_lib.jobs or wait for the next round\'s 【形式化结果】 line. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. Pass target=<object id> to also record the run against that object. The framework appends `--search-path <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
-  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Parameters: file (required; `Formal/x.lean` or the full CWD-relative path — both name the same file), target (optional object id to record the run against), timeout_ms (optional per-run budget). There is NO run/run=false switch here — run-vs-archive are separate tools; use vibe_v5_lean_archive {run:false} to archive WITHOUT compiling. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; the result is durable at Formal/Jobs/<jobId>.json (vibe_v5_lean_job {jobId} reads it), is listed by vibe_v5_lean_lib.jobs, and the initiator also gets ONE 【形式化结果】 announcement in its next round. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. The framework appends `--search-path <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
+  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required). Optional `run` (default true): whether to COMPILE after writing — `run:false` archives the text only (useful when this host has no toolchain; the object then stays `attempted`/unset until something compiles it).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
   registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
     const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
     const st = s.status()
@@ -7411,8 +7507,18 @@ export function apply(ctx) {
       ok: true, mode: s.formalMode(), rebuilt: !(a && a.refresh === false),
       counts: r, todo: s.formalTodo(), jobs: s.leanJobsView(),
       objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
-      paths: { project: 'Formal/（相对研究所根）', lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/', proofs: 'Verified/Lean/', searchPath: s.leanSearchRootView() },
-      hint: '复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>，或用 vibe_v5_lean_read {name} 取原文逐字复制。同内容重复归档会自动去重。',
+      // L1/L5/L6 (deep-review 5): ONE basis for every entry (cwd-relative, i.e. what a member's own
+      // file tools resolve), an explicit `toolShortForm` for the institute-relative spelling the
+      // tools also accept, and the bare `Lib/` hint replaced by the real library root.
+      paths: {
+        basis: 'all paths below are relative to the SESSION CWD (what your own file tools use)',
+        project: s.instRel('Formal') + '/', toolShortForm: 'Formal/',
+        lib: 'VibeMath/Formal/Lib/', proved: 'VibeMath/Formal/Proved/',
+        proofs: s.instRel('Verified/Lean') + '/', searchPath: s.leanSearchRootView(),
+      },
+      hint: '复用优先：先在 ' + s.instRel('Formal/Lib') + '/ 里找现成定义（vibe_v5_lean_read {name} 取原文）；'
+        + '新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。'
+        + '复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>。同内容重复归档会自动去重。',
       verify: st.verify ? st.verify.target : null,
     }
   })

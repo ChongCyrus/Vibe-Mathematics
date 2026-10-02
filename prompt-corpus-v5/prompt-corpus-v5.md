@@ -4023,7 +4023,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4083,7 +4085,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4143,7 +4147,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4374,7 +4380,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4438,7 +4446,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4502,7 +4512,9 @@ r-2：初始见解。
   · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。
   · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。
   · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）
-  · 工作目录：Formal/（相对研究所根）；可复用定义放 <VIBEMATH>/Formal/Lib/，
+  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：VibeMath/Projects/default/Institutes/institute/Formal/
+    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）
+    可复用定义放 <VIBEMATH>/Formal/Lib/，
     已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。
   · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与
     命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。
@@ -4552,7 +4564,7 @@ r-2：初始见解。
 [新到的消息]
   【研究所·私信 from acad】再继续。
 
-【第 2 轮 —— 常驻研究员 r-1】
+【第 3 轮 —— 常驻研究员 r-1】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
@@ -4573,7 +4585,7 @@ r-2：初始见解。
 - 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。
 
 ------------
-[状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
+[状态] 你是 r-1（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
 [形式化] 鼓励 Lean｜已通过 0｜已记录阻塞 0｜形式化待办 1 项（见 Formal/TODO.md）
 ------------
@@ -4624,7 +4636,7 @@ vibe_v5_lean_run hint (red): 未通过。请按上面的编译器输出修复后
 vibe_v5_lean_run on a missing file: V5_NOT_FOUND｜no such file: Formal/no-such-file.lean
 vibe_v5_lean_archive without a name: V5_INVALID_ARGUMENT｜name is required for a reusable definition/lemma
 vibe_v5_lean_archive blocked without a note: V5_INVALID_ARGUMENT｜阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计
-vibe_v5_lean_lib hint: 复用优先：先在 Lib/ 里找现成定义；新定义用 vibe_v5_lean_archive kind='def' 归档，已证引理用 kind='lemma'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>，或用 vibe_v5_lean_read {name} 取原文逐字复制。同内容重复归档会自动去重。
+vibe_v5_lean_lib hint: 复用优先：先在 VibeMath/Projects/default/Institutes/institute/Formal/Lib/ 里找现成定义（vibe_v5_lean_read {name} 取原文）；新定义用 vibe_v5_lean_archive kind='def' 归档，已证引理用 kind='lemma'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>。同内容重复归档会自动去重。
 ```
 
 ---

@@ -133,7 +133,7 @@ const scrub = (s) => canonBrief(String(s == null ? '' : s)
   // Epoch-ms in a verification-log FILE NAME (`Logs/Verification/<rId>_<Date.now()>.json`) is run
   // metadata too: the final-paper material embeds the evidence index verbatim, so without this the
   // shipped corpus changed on every run (contract §10 item 10 demands byte determinism).
-  .replace(/_[0-9]{10,16}\.json/g, '_<TIME>.json')
+  .replace(/_[0-9]{10,16}(_[0-9a-f]{8})?\.json/g, '_<TIME>.json')
 
 // A fake Lean: a file PASSES unless it still contains `sorry` or the marker `-- FAIL`.
 // `-- HANG` simulates a toolchain that never returns (the timeout path).

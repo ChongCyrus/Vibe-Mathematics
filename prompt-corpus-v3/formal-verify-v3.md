@@ -26,14 +26,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -186,7 +188,7 @@ PROJECT: lean-off
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-off_1790913874209_555a1396.json
+- Logs/Verification/r-p-off_<TIME>.json
 - Propos/数论/p-off.md
 - State/index.json
 - Verified/命题/p-off.md
@@ -212,14 +214,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -405,14 +409,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -500,14 +506,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -760,7 +768,7 @@ For each pending invention decide: create a NEW method card, or fold it into an 
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_math_lean_job（可 waitMs 等结果）或下一轮提示里的【形式化结果】行看结果。**在作业落地为通过之前，不得把该对象当成已通过。**
 【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind='def'），已成立的引理归档到 Proved/（kind='lemma'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。
 OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.
-CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
+CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` — the `<m-id>` in the FILE NAME must be EXACTLY the id you list in `created`（调度器按 `created` 里的 id 去 `Methods/<id>.md` 找卡；不一致会被当成"已沉淀"而实际没有卡）(`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
 {"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}
 CHANNEL B (your file tools are unavailable): put the method-card content into __writes and carry the same meta:
 {"__writes":[{"path":"Methods/<m-id>.md","content":"<# 方法｜标题 + 锚点 + ## 核心内容... 完整卡面>"}],"meta":{"kind":"methods","used":[...],"created":["m-xxx"],"improvements":[...]}}
@@ -786,14 +794,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -1114,14 +1124,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -1176,7 +1188,7 @@ PROJECT: lean-verify
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-enc_1790913877270_d2f69954.json
+- Logs/Verification/r-p-enc_<TIME>.json
 - Propos/数论/p-enc.md
 - State/formal.json
 - State/index.json
@@ -1203,14 +1215,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -1383,14 +1397,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -1563,14 +1579,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -1889,14 +1907,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -2211,14 +2231,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -2517,14 +2539,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -2726,7 +2750,7 @@ PROJECT: lean-reply
 [EVIDENCE INDEX] (only files that exist)
 - Formal/Index.md
 - Formal/TODO.md
-- Logs/Verification/r-p-reply_1790913882802_9a3cd099.json
+- Logs/Verification/r-p-reply_<TIME>.json
 - Propos/数论/p-reply.md
 - State/formal.json
 - State/index.json
@@ -2752,14 +2776,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -2932,14 +2958,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -3112,14 +3140,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -3288,14 +3318,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -3495,7 +3527,7 @@ PROJECT: lean-defect-nonote
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nonote-defect.lean
-- Logs/Verification/r-p-nonote-defect_1790913886679_053a561b.json
+- Logs/Verification/r-p-nonote-defect_<TIME>.json
 - Propos/数论/p-nonote-defect.md
 - State/formal.json
 - State/index.json
@@ -3523,14 +3555,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -3683,14 +3717,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -3889,7 +3925,7 @@ PROJECT: lean-defect-nodelete
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nodelete.lean
-- Logs/Verification/r-p-nodelete_1790913888874_cc034b30.json
+- Logs/Verification/r-p-nodelete_<TIME>.json
 - Propos/数论/p-nodelete.md
 - State/formal.json
 - State/index.json
@@ -3916,14 +3952,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -4123,7 +4161,7 @@ PROJECT: lean-stale-card
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-stale.lean
-- Logs/Verification/r-p-stale_1790913889711_9f3079d9.json
+- Logs/Verification/r-p-stale_<TIME>.json
 - Propos/数论/p-stale.md
 - State/formal.json
 - State/index.json
@@ -4151,14 +4189,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -4368,14 +4408,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -4494,14 +4536,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -4814,14 +4858,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -4990,14 +5036,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5211,14 +5259,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5306,14 +5356,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5395,14 +5447,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5489,14 +5543,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5583,14 +5639,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5708,14 +5766,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -5842,7 +5902,7 @@ For each pending invention decide: create a NEW method card, or fold it into an 
   · **先 vibe_math_lean_lib 查再决定是否重写**：vibe_math_lean_lib 列出现成定义/引理，vibe_math_lean_read 可取回归档原文逐字复用；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VIBEMATH>，框架已把它加进编译搜索路径）。
   · **没把握就记 blocked**（vibe_math_lean_archive kind='blocked' note=…，或回执 formal 的 blocked）：把难点写清楚，别用形式化掩盖不确定。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_math_lean_job（可 waitMs 等结果）或下一轮提示里的【形式化结果】行看结果。**在作业落地为通过之前，不得把该对象当成已通过。**OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.
-CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
+CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` — the `<m-id>` in the FILE NAME must be EXACTLY the id you list in `created`（调度器按 `created` 里的 id 去 `Methods/<id>.md` 找卡；不一致会被当成"已沉淀"而实际没有卡）(`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
 {"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}
 CHANNEL B (your file tools are unavailable): put the method-card content into __writes and carry the same meta:
 {"__writes":[{"path":"Methods/<m-id>.md","content":"<# 方法｜标题 + 锚点 + ## 核心内容... 完整卡面>"}],"meta":{"kind":"methods","used":[...],"created":["m-xxx"],"improvements":[...]}}
@@ -5923,14 +5983,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -6043,14 +6105,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -6169,7 +6233,7 @@ For each pending invention decide: create a NEW method card, or fold it into an 
 
 【方法沉淀 × Lean 形式化】除了方法卡，你沉淀的每个可复用对象 / 定义 / 假设都应当归档到全局 Lean 库（vibe_math_lean_archive kind='def'），已成立的引理归档到 Proved/（kind='lemma'）；归档时**连同定义与陈述一起写清**，方便后续直接 import。
 OUTPUT CONTRACT — pick ONE channel. Write method cards into Markdown; only the created IDs, which cards were used, and improvements cross the machine reply.
-CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` (`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
+CHANNEL A (recommended, you can write files): write each method card into `Methods/<m-id>.md` — the `<m-id>` in the FILE NAME must be EXACTLY the id you list in `created`（调度器按 `created` 里的 id 去 `Methods/<id>.md` 找卡；不一致会被当成"已沉淀"而实际没有卡）(`# 方法｜标题` + `- 标题/ID/类型/状态/可信断言/适用场景` + `## 核心内容`/`## 应用记录`/`## 改进历史`), then reply ONLY this metadata:
 {"meta":{"kind":"methods","used":[{"id":"m-...","效果":"...","建议":"..."}],"created":["m-xxx"],"improvements":[{"id":"m-...","改进内容":"...","原因":"..."}]}}
 CHANNEL B (your file tools are unavailable): put the method-card content into __writes and carry the same meta:
 {"__writes":[{"path":"Methods/<m-id>.md","content":"<# 方法｜标题 + 锚点 + ## 核心内容... 完整卡面>"}],"meta":{"kind":"methods","used":[...],"created":["m-xxx"],"improvements":[...]}}
@@ -6250,14 +6314,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -6370,14 +6436,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -6612,14 +6680,16 @@ CURRENT STATE BRIEF (JSON):
   "recent_events": "<RECENT_EVENTS>"
 }
 
-ACTION VOCABULARY (code validates every action against hard invariants; invalid actions are dropped):
+ACTION VOCABULARY — the code ACCEPTS exactly these 6 actions: spawn / interrupt / promote are HARD-VALIDATED (invalid ones are dropped), while wait / continue / stop are ADVISORY ONLY (they are logged and have NO scheduling effect):
 - {"action":"spawn","role":"explorer","target":"<qid>","reason":"..."} — problem has no directions yet or all dead (re-derive).
 - {"action":"spawn","role":"solver","target":"<qid>","direction":"<dirId>","reason":"..."} — active direction, needs a solving round.
 - {"action":"spawn","role":"verifier","target":"<rId>","reason":"..."} — verify candidate (from verify_candidates); keep solving AND verifying balanced.
 - {"action":"spawn","role":"method-keeper","reason":"..."} — distill pending inventions / maintain the theory library.
 - {"action":"interrupt","childId":"<childId>","reason":"..."} — stop a running child (direction dead, superseded...).
 - {"action":"promote","target":"<pId>","reason":"..."} — high-value unresolved proposition → judge problem.
-- {"action":"wait","target":"<id>","reason":"..."} — advisory: wait for a dependency.
+- {"action":"wait","target":"<id>","reason":"..."} — advisory only (logged; no scheduling effect): you are waiting for a dependency.
+- {"action":"continue","childId":"<childId>","reason":"..."} — advisory only (logged): continuation of an in-flight child is code-driven; this never re-dispatches anything.
+- {"action":"stop","childId":"<childId>","reason":"..."} — advisory only (logged; it does NOT stop anyone). To actually stop a child use `interrupt` with a live childId.
 
 HARD RULES: never re-schedule verified objects; problems with 依赖未就绪 (依赖就绪=false) should wait unless you explicitly accept a temporary assumption; respect capacity (brief.free_slots); PREFER problems whose dependencies are ready and whose directions have the highest survival; DO NOT forget verification — unresolved solutions/proofs/refutations (verify_candidates) will never be checked unless you schedule a verifier; DO NOT assume a direction is already being worked just because it is shown "active" in a problem — check brief.problems[].running_solver_dirs and brief.active_agents: schedule a solver for a direction ONLY if that direction is NOT in running_solver_dirs (an "active" direction absent from running_solver_dirs is WAITING to be dispatched, not being worked); schedule at most 3 actions.
 Respond with ONLY a single JSON object wrapped in a ```json code fence — no prose:
@@ -6772,7 +6842,7 @@ PROJECT: d4-votecount
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-d4_1790913913714_6bbd590c.json
+- Logs/Verification/r-p-d4_<TIME>.json
 - Propos/数论/p-d4.md
 - State/index.json
 - Verified/命题/p-d4.md

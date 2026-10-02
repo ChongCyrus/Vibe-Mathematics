@@ -1180,11 +1180,13 @@ async function opRun(H, args, params) {
         next: next('engine-override', { engine: det.name, argv: assembled.argv.slice(), hint: MATH_BAD_ARGV_HINT }),
       })
       out.exit = r.exit
+      out.stdout = fullOut.slice(0, MATH_CAPS.stdout)
       out.stderr = fullErr.slice(0, MATH_CAPS.stderr)
       return Object.assign(out, archiveFields())
     }
     const out = fail('MATH_NONZERO_EXIT', engineLabel, '引擎以非零退出码结束：' + r.exit, { argv: assembled.argv.slice(), receipt: receiptRef })
     out.exit = r.exit
+    out.stdout = fullOut.slice(0, MATH_CAPS.stdout)
     out.stderr = fullErr.slice(0, MATH_CAPS.stderr)
     return Object.assign(out, archiveFields())
   }

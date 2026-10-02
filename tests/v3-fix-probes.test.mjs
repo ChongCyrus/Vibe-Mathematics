@@ -648,6 +648,38 @@ console.log('\n-- P5–P8 (v3): 状态完整性码形 --');
   assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src), '★★ [P7] 裁决日志名带 shortId 后缀');
   assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src), '★★ [P8] 框架分配命题 id 走 shortIdUnique');
 }
+// ================= Frame contracts: planner vocabulary / method-keeper id =================
+console.log('\n-- Frame F1/F2: planner vocabulary == the code\'s accepted actions --');
+{
+  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const allowed = /const allowed = \{([^}]*)\}/.exec(src);
+  assert(!!allowed, 'F1: the plan validator allow-list is readable');
+  const codeActions = (allowed ? (allowed[1].match(/([a-z]+)\s*:\s*1/g) || []) : []).map((x) => x.split(':')[0].trim()).sort();
+  const block2 = src.slice(src.indexOf('ACTION VOCABULARY'), src.indexOf('HARD RULES'));
+  const docActions = [...new Set((block2.match(/"action":"([a-z]+)"/g) || []).map((x) => /"action":"([a-z]+)"/.exec(x)[1]))].sort();
+  assert(codeActions.join(',') === docActions.join(','), '★★ [F1] 帧列出的动作集合 == 代码 allowed 集合（doc=' + docActions.join(',') + ' / code=' + codeActions.join(',') + '）');
+  const advisory = (block2.match(/advisory only/g) || []).length;
+  assert(advisory >= 3 && /does NOT stop anyone/.test(block2), '★★ [F1] wait/continue/stop 三个 advisory 动作都被点名且写明无调度效果（实测 advisory only ×' + advisory + '）');
+  assert(block2.indexOf('HARD-VALIDATED') !== -1 && block2.indexOf('code validates every action against hard invariants') === -1, '★★ [F2] 帧点明哪些动作被硬校验、哪些只是 advisory（不再声称每个动作都被校验）');
+}
+console.log('\n-- Frame F3: method-keeper card-id contract --');
+{
+  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  assert(/in the FILE NAME must be EXACTLY the id you list in `created`/.test(src), '★★ [F3] 帧写明「卡文件名里的 id 必须与 created 的 id 逐字相同」（与引理处的分类一致性同型）');
+  assert(/调度器按 `created` 里的 id 去/.test(src), '★★ [F3] 帧解释了为什么要一致（调度器按 created 的 id 去找卡）');
+  await call('vibe_math_sync_meta', { meta: { kind: 'methods', created: ['m-probeF3'], used: [], improvements: [] } });
+  const walkFor = (d, name) => {
+    let hit = false;
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) { if (walkFor(p, name)) hit = true; }
+      else if (e.name === name) hit = true;
+      if (hit) break;
+    }
+    return hit;
+  };
+  assert(walkFor(WS, 'm-probeF3.md'), '★★ [F3] created 里的 id 一定落成一张卡（框架兜底写标准卡，不留悬空引用；探针在整个工作树里找 m-probeF3.md）');
+}
 // ================= D2: file write locks are leases (renewed while the holder lives) =================
 // The old defect: the refusal window was the literal 60000 and NOTHING ever renewed `at`, so a member
 // writing a big file for >60 s lost exclusivity (another member could legally take the lock).

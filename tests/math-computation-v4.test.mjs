@@ -273,6 +273,7 @@ section('1 the tool is registered ONCE, with the shared module\'s description/sc
   for (const k of MODULE.MATH_PARAM_NAMES) assert(st.paramsKeys.indexOf(k) !== -1, '★ status().paramsKeys exposes ' + k)
   // round-9 (F2): in a fresh workspace there is no paper state, so `paper.dir` is a PROJECTION - the
   // response must say so (reading status touches no fs and creates no directory).
+  assert(!!st.paper, '* status.paper exists (the gate below must NOT silently skip its own assertions)')
   if (st.paper) {
     assert(st.paper.dirProjected === true && st.paper.dirSource === 'projection', '★ a fresh status labels paper.dir as a PROJECTION (not a real directory)')
     assert(st.paper.readSideEffect === false, '★ the paper view declares it has no read side effects')
@@ -281,6 +282,7 @@ section('1 the tool is registered ONCE, with the shared module\'s description/sc
   // round-9 (P2/D4): the roster is single-sourced - `status` exposes a version that BUMPS whenever the
   // roster really changes (mid-flight add/remove is possible: removeMember reconciles in-flight work,
   // addMember has no verify/meeting gate), and the participant set is reported as a FROZEN snapshot.
+  assert(typeof st.rosterVersion === 'number', '* status.rosterVersion is a number (the gate below must NOT silently skip its own assertions)')
   if (typeof st.rosterVersion === 'number') {
     assert(st.rosterVersion >= 0 && 'frozenParticipants' in st, '★ status exposes rosterVersion + the frozen participant set')
     const v0 = st.rosterVersion

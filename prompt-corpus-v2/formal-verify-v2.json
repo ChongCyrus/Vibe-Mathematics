@@ -748,7 +748,7 @@
       "kind": "push",
       "case": "push-report",
       "label": "main-agent",
-      "prompt": "[Vibe Math V2] 进度更新：当前项目 \"proj\" 运行中=true，问题 0/0 已解决，命题 0/0 已定论，活跃代理轮数=0，待人工决策=0。请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。"
+      "prompt": "[Vibe Math V2] 进度更新：当前项目 \"proj\" 运行中=true，问题 0/0 已解决，命题 0/0 已定论，活跃代理轮数=0，待人工决策=0。请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理（id/角色/目标）状态，再用人话简要汇报（不打断用户，简短即可）。"
     },
     {
       "kind": "spawn",
@@ -766,7 +766,7 @@
       "kind": "feedback",
       "case": "gate-feedback",
       "label": "activity-log",
-      "prompt": "formal-gate: 【形式化】r-pFeed 的裁定被 require 模式搁置：formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 none）｜裁定 真（已记入 Formal/TODO.md）"
+      "prompt": "formal-gate: 【形式化】r-pFeed 的裁定被 require 模式搁置：formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 未尝试；代码 formal-required）｜裁定 真；下一步：把该对象形式化到 Lean 通过（vibe_math_lean_archive，kind=proof/lemma），或写入显式阻塞记录（kind=blocked）后重新提议该对象，即可再次表决（已记入 Formal/TODO.md）"
     },
     {
       "kind": "spawn",

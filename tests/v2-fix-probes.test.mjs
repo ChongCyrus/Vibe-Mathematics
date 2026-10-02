@@ -373,6 +373,14 @@ console.log('\n-- P5–P8: 状态完整性（日志回读 / 论文排队 / 日�
   h.restore(); rmSync(h.WS, { recursive: true, force: true })
 }
 
+// ---------------------------------------------------------------- F4
+console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
+{
+  const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
+  assert(/请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理/.test(src), '★★ [F4] push 帧点名 vibe_math_list_agents（report 只给计数，逐代理状态在那个工具里）')
+  assert(/下一步：把该对象形式化到 Lean 通过/.test(src), '★★ [A5] require-gate 反馈行携带下一步（与 formal-verify-v2 的行为断言同源）')
+}
+
 // ---------------------------------------------------------------- M15
 console.log('\n-- M15: status and report share one recentActivity bound (30) --')
 {

@@ -1324,12 +1324,22 @@ section('20 crash recovery: queued re-driven, changed content never verified, se
   await N.callTool('vibe_v4_start', { problem: '恢复扫描', residentCount: 1 })
   const a = await N.callTool('vibe_v4_lean_job', { jobId: 'p-rec-aaaaaaaaaaaa' })
   const b = await N.callTool('vibe_v4_lean_job', { jobId: 'p-stale-bbbbbbbbbbbb' })
-  assert(a.state === 'queued' || a.state === 'running' || a.state === 'settled', '★ recovery re-drives a `running` job whose content still matches (state=' + a.state + ')')
+  assert(a.attempts >= 2 && (a.state === 'queued' || a.state === 'running' || a.state === 'settled'), '* a hash-matching interrupted job is RE-DRIVEN (never adopted): attempts 1 -> ' + a.attempts + ', state=' + a.state)
+  // (cold-state liveness, code path recoverLeanJobs:911): with NO explicit followup the armed heartbeat
+  // must drain the re-queued job on a later tick - poll with the diagnostic triple in the message.
+  {
+    const t0 = Date.now()
+    let cur = a, tries = 0
+    while (tries < 60 && cur.state === 'queued') { tries++; await new Promise((r) => setTimeout(r, 100)); cur = await N.callTool('vibe_v4_lean_job', { jobId: 'p-rec-aaaaaaaaaaaa' }) }
+    assert(cur.state !== 'queued', '* the next tick DRAINS the re-queued job without any explicit followup (state=' + cur.state + ', window=6000ms, waited=' + (Date.now() - t0) + 'ms, attempts=' + tries + ')')
+    const stLive = await N.callTool('vibe_v4_status', {})
+    assert(stLive.running === true, '* the institute clock keeps running after a stale-only recovery: recoverLeanJobs:911 arms ONE idle pass even when nothing is drainable (documented behaviour - if a future change stops arming on stale-only, THIS reddens)')
+  }
   assert(b.state === 'interrupted', '★ a `running` job whose file CHANGED is interrupted, not verified (state=' + b.state + ')')
   const st = await N.callTool('vibe_v4_status', {})
   assert(!st.formal.passed.includes('p-stale'), '★ the changed-content job never reaches `passed`')
   assert(!st.formal.passed.includes('p-done') && !existsSync(join(N.projectRoot, 'Verified', 'Lean', 'p-done.lean')), '★ a fresh run does NOT adopt a previous run’s `settled` record (no stale passed, no minted proof)')
-  assert(N.followups.map(promptOf).join('\n').length >= 0, 'recovery ran without throwing')
+  assert(N.followups.length === 0, '* the stale-job recovery path wakes NO new resident (followups=' + N.followups.length + ') - the wake decision belongs to the watchdog; this line is falsifiable, so a future change of that contract reddens HERE')
 }
 
 // ===============================================================
