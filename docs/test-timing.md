@@ -63,7 +63,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/audit-v3-registration-parity.mjs`（+ `--self-probe`） | ≈ 0.3 s | — | 自探针**成功 = exit 1**（变异后守卫必须变红） |
 | `tests/prompt-v5-integrity.test.mjs` | ≈ 2.2 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定；**stdout 里的会议成员顺序仍是运行间随机的**，只有落盘语料是逐字节确定的） |
 | `tests/e2e-v5-round2.test.mjs` | **≈ 16.3 s**（`167b52d` 实测，395 条断言 ALL GREEN） | — | v5 e2e：邮箱/唤醒、轮次计数（§[47] 失败唤醒仍 pending、§[51] 重建后仍 `轮次 2`）、预置快照不被覆盖、命名研究所、失败轮次等；**早先此处记 ≈3.2 s 是旧口径**，正文小节也已随轮次更新 |
-| `tests/v5-institute-fixes.mutants.mjs`（**变异族**） | — | **族自报 `TOTAL WALL TIME`：261016 ms（另一同修订读数 264063 ms）** | 9/9 族具名变红、`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`；900 s 覆盖（见 `docs/AUDIT-CHECKLIST.md` 的跑测超时行） |
+| `tests/v5-institute-fixes.mutants.mjs`（**变异族**） | — | **族自报 `TOTAL WALL TIME` ≈300 s**（本轮 298959 ms；复核方 299649 / 295216 ms —— ~1.5% 机器差异，**不要合成单点数字**） | 11/11 族具名变红、`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`；900 s 覆盖（见 `docs/AUDIT-CHECKLIST.md` 的跑测超时行） |
 | `tests/host-failure-paths.test.mjs` | ≈ 6.3 s | — | 真实宿主的失败路径（`kind:'error'`、`/v4 set` 键校验、失败轮次不算进展） |
 | `tests/v4-mailbox-stall.test.mjs` | ≈ 7.1 s | — | `sendMessage` 拒绝后必须重投并唤醒（control + treatment 各一个 host） |
 | `tests/v2-fix-probes.test.mjs` | ≈ 8.6 s | — | v2 的 flat 等权均值 / ≥2 名验证者 / runShell 失败分支（26 条） |
