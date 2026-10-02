@@ -421,6 +421,17 @@ const t1 = await callTool('vibe_v5_task_create', { subject: '整理已知特例'
 assert(t1.ok === true && t1.task.revision === 1, 'a member can open a task (revision 1)')
 const stale = await callTool('vibe_v5_task_update', { task_id: t1.task.id, expected_revision: 99, action: 'claim' }, childAgent(childOf('r-3')))
 assert(stale.ok === false && stale.code === 'V5_TASK_STALE_REVISION', 'a stale revision is refused (compare-and-set)')
+// V5-A4 (CAS semantic unit): the refusal must leave the task UNCHANGED. The assertions above (here,
+// in e2e-v5-round2 and in prompt-v5-integrity) only check the RETURN VALUE, so a mutant that refuses
+// but still writes - or writes first and checks afterwards - would pass all of them. Read the task
+// back and compare the observable triple.
+const t1AfterStale = await callTool('vibe_v5_task_get', { task_id: t1.task.id }, childAgent(childOf('r-3')))
+const taskOf = (r) => (r && r.task) ? r.task : (r && r.id ? r : null)
+const t1Before = taskOf(t1) || {}
+const t1Now = taskOf(t1AfterStale) || {}
+const tupleOf = (t) => [t.revision, t.ownerId || '', t.status || ''].join('|')
+assert(!!t1Now.revision, '* V5-A4 the task is readable back after the refusal (got ' + JSON.stringify(t1AfterStale).slice(0, 120) + ')')
+assert(tupleOf(t1Now) === tupleOf(t1Before), '* V5-A4 a REFUSED stale CAS leaves the task UNCHANGED (before=' + tupleOf(t1Before) + ' after=' + tupleOf(t1Now) + ')')
 const claimed = await callTool('vibe_v5_task_update', { task_id: t1.task.id, expected_revision: 1, action: 'claim' }, childAgent(childOf('r-3')))
 assert(claimed.ok === true && claimed.task.ownerId === 'r-3', 'claiming sets the owner')
 const blocked = await callTool('vibe_v5_task_create', { subject: '依赖前一个', description: 'd', blocked_by: [t1.task.id] }, childAgent(childOf('r-3')))

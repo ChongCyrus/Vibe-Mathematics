@@ -97,6 +97,14 @@ const FAMILIES = [
     to: "const extra = ''",
     expect: /V5-A3 the staff persona reaches the member persona\/prompts/,
   },
+  {
+    // ④ CAS: the stale-revision guard is disabled, so a stale update lands (the return-value
+    // assertions AND the new "unchanged after refusal" assertion redden).
+    name: 'V5-A4: the stale-revision guard is disabled (a stale CAS lands)',
+    from: 'if (expected !== task.revision) {',
+    to: 'if (false) {',
+    expect: /V5-A4 a REFUSED stale CAS leaves the task UNCHANGED|a stale revision is refused/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
