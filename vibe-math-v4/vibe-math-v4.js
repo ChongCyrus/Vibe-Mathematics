@@ -2260,10 +2260,14 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       finalizeLock='verify'
       let doSchedule=false
       try {
-        const vs=verifyState; // F4: the requirement set is the FROZEN snapshot (live map fallback), matching allVoted in the on-end path
-    const expected=(vs.rosterSnapshot||Array.from(residents.keys())).length
-        const allVoted = expected>0 && Object.keys(vs.verdicts).length>=expected
-        const vals=Object.values(vs.verdicts)
+    const vs=verifyState; // F1: the requirement set is the FROZEN snapshot (live map fallback) - the ONE
+    // predicate is MEMBERSHIP, exactly like the on-end path at :2247. A count-only check could be
+    // satisfied by a ballot from someone NOT in the frozen set (a member added after the freeze, or a
+    // late reply from a removed one), which would promote 真/假 while a frozen voter is still silent.
+    const ids=(vs.rosterSnapshot||Array.from(residents.keys())).slice()
+    const expected=ids.length
+    const allVoted = ids.length>0 && ids.every(id=>vs.verdicts[id]!==undefined)
+    const vals=ids.filter(id=>vs.verdicts[id]!==undefined).map(id=>vs.verdicts[id])
         // verdict is a PURE 0-1 probability; only ALL=1 (true) or ALL=0 (false) is a binary verdict.
         const allTrue = allVoted && vals.every(x=>Number(x.prob)===1)
         const allFalse = allVoted && vals.every(x=>Number(x.prob)===0)
@@ -2771,7 +2775,15 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
         else if(typeof v.verdict==='string' && v.verdict.trim()!=='' && Number.isFinite(Number(v.verdict))){ p=clamp01(Number(v.verdict)) }
         else { p=clamp01(Number(v.confidence)) }
         // verdict is a PURE 0-1 probability (a degree); no binary TRUE/FALSE classification.
-        verifyState.verdicts[r.rId]={prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
+        // F1: a ballot from a member who is NOT in the frozen participant set must NOT be recorded -
+        // otherwise a late reply from a removed member re-creates its key and the count predicate can
+        // reach `expected` while a frozen voter has no verdict. v5 states the same rule explicitly.
+        const _inRoster = !Array.isArray(verifyState.rosterSnapshot) || verifyState.rosterSnapshot.indexOf(r.rId)!==-1
+        if(!_inRoster){ logActivity('verify', r.rId+' 的表决未计入（不在本次验证的冻结名单中）') }
+        else {
+          verifyState.verdicts[r.rId]={prob:p,confidence:p,reason:String(v.reason||parsed.summary||'')}
+          verifyState.lastVerdictAt=now()
+        }
         verifyState.lastVerdictAt=now()
         await saveAll()
         if(!running || autoDone) return   // pause: freeze (resume refreshes the clocks and re-drives)
@@ -3390,6 +3402,7 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       ps.compile=await paperCompile(ps,composed,ev)
       if(ps.compile&&ps.compile.result==='ok') ps.files.push('paper.pdf')
       ps.finalizedAt=now(); ps.status='done'
+      await paperWriteMeta(); await paperWriteLog()
       await paperWriteMeta(); await paperWriteLog()
       // v2 §A1: the paper phase was entered from INSIDE the closing branch, BEFORE the completion
       // flags — so the run only becomes "done" here, once the paper exists (or has degraded safely).

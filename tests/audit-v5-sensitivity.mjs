@@ -221,8 +221,11 @@ const probes = [
     name: 'inbox-message-delivered-twice',
     ref: 'prompt-v5-integrity.test.mjs',
     guarantee: '㉑ one prompt must not deliver the same message twice',
-    from: "      if (pending.length) await ackPending(pending)\n      const base = typeof baseFn === 'function' ? baseFn() : baseFn",
-    to: "      const base = typeof baseFn === 'function' ? baseFn() : baseFn\n      if (pending.length) await ackPending(pending)",
+    // G1 moved the ack AFTER the wake, so the duplicate can no longer be produced by the ack order:
+    // it now comes from prepending the inbox while `briefBlock` ALSO embeds the same pending mail.
+    // Suppressing the base block while a block IS prepended is what keeps exactly one inbox section.
+    from: "      const pending = inboxSuppressed.has(member.id) ? [] : pendingFor(member.id)",
+    to: "      const pending = pendingFor(member.id)",
   },
   {
     name: 'charter-rewritten-on-resume',

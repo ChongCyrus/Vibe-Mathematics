@@ -909,6 +909,15 @@ export function apply(ctx) {
     const roundsSinceCompact = new Map()
     const contextPct = new Map()
     const needReanchor = new Set()
+    // G1 (mailbox): ids already PREPENDED to a prompt for this member but not yet acked. The prompt can
+    // legitimately be built more than once before the wake (that was the v4 §24 duplicate-read defect),
+    // so the injection mark keeps "at most one inbox section per prompt" while the messages stay pending
+    // until the send actually succeeds. Cleared on every concluded wake attempt.
+    const inboxInjected = new Map()
+    // G1: members whose mail `promptFor` is prepending IN THIS BUILD — `briefBlock` must then omit its
+    // own `[新到的消息/通知]` block, or the same messages appear twice in one prompt (the duplicate-read
+    // defect the prompt-v5-integrity suite pins). Only set while a block is actually being prepended.
+    const inboxSuppressed = new Set()
     const seeds = new Map()           // memberId -> condensed self-summary seed
     const lastActiveAt = new Map()
     let currentMember = ''
@@ -1733,7 +1742,7 @@ export function apply(ctx) {
           if (t.description) b.push('    ' + String(t.description).split('\n')[0])
         }
       }
-      const pending = pendingFor(member.id)
+      const pending = inboxSuppressed.has(member.id) ? [] : pendingFor(member.id)
       if (pending.length) {
         b.push('[新到的消息/通知]')
         for (const p of pending) b.push('  ' + p.line)
@@ -2153,8 +2162,11 @@ export function apply(ctx) {
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
       lastActiveAt.set(member.id, now())
-      rounds.set(member.id, (rounds.get(member.id) || 0) + 1)
-      roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
+      // G2 (F10, ported from v4:1930-1931 — "a failed send must not consume a round"): the two counters
+      // are applied AFTER the successful send (below), not here. The values the soft-compact comparison
+      // would have seen under the old ordering are computed here so the trigger boundary is unchanged.
+      const nextRound = (rounds.get(member.id) || 0) + 1
+      const nextRoundsSinceCompact = (roundsSinceCompact.get(member.id) || 0) + 1
       // Context directives. TWO distinct needs, and confusing them is what made
       // '[核心规则重申]+[CONTEXT COMPACT]' repeat at the head of nearly every prompt
       // (v4 §24.1-③):
@@ -2171,16 +2183,17 @@ export function apply(ctx) {
       // are excluded because their replies are a different shape, and a directive there
       // could never be acknowledged.
       const wake = kind || 'normal'
+      let softInjected = false
       if (wake === 'normal' || wake === 'checkpoint') {
         const soft = (contextPct.get(member.id) || 0) >= Number(params.compactThreshold) ||
-          (roundsSinceCompact.get(member.id) || 0) >= Number(params.compactAfterRounds)
+          nextRoundsSinceCompact >= Number(params.compactAfterRounds)
         if (soft) {
           prompt = coreRules() + '\n[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。\n' +
             '请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），' +
             '然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]\n\n' + prompt
-          // Reset the counter WITH the injection so the directive cannot repeat on the
-          // very next round even if the member forgets to report `compacted`.
-          roundsSinceCompact.set(member.id, 0)
+          // G2: the reset is applied only AFTER the send succeeds (below). A directive that never
+          // reached the member must not clear the trigger it was asking the member to answer.
+          softInjected = true
         }
       }
       if (needReanchor.has(member.id)) {
@@ -2190,6 +2203,11 @@ export function apply(ctx) {
       try {
         if (typeof subagents.sendMessage !== 'function') throw new Error('no subagents.sendMessage continuation API')
         await subagents.sendMessage(rootAgent, member.childId, [textBlock(prompt)], { signal: makeSignal(params.activityTimeoutMs) })
+        // G2 (F10): the turn is really in flight NOW — only count it here, so a failed/invalid send
+        // leaves both counters untouched (the old code counted before the send AND cleared the
+        // soft-compact trigger on a send that never happened).
+        rounds.set(member.id, nextRound)
+        roundsSinceCompact.set(member.id, softInjected ? 0 : nextRoundsSinceCompact)
         return true
       } catch (e) {
         console.error('vibe-math-v5: wake ' + member.id + ' failed: ' + String((e && e.message) || e))
@@ -4039,7 +4057,10 @@ export function apply(ctx) {
       if (!t) throw v5err('V5_TASK_NOT_FOUND', 'task ' + id + ' not found')
       return taskView(t)
     }
-    async function taskUpdate(memberId, o) {
+    // `meta` is an INTERNAL positional argument (not part of the tool's `args`, so the advertised key
+    // surface of `vibe_v5_task_update` is unchanged): it lets an in-product caller fold extra fields into
+    // the SAME compare-and-set write instead of issuing a second, unprotected one.
+    async function taskUpdate(memberId, o, meta) {
       // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
       // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
       // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
@@ -4130,6 +4151,15 @@ export function apply(ctx) {
       } catch (e) {
         return { ok: false, code: e.code || 'V5_INVALID_ARGUMENT', message: String((e && e.message) || e) }
       }
+      // G4: assignment metadata travels INSIDE this CAS-protected write. The old shape wrote the task a
+      // second time afterwards (`putTask(withMeta)`), reusing the revision it had just read and never
+      // bumping it — a concurrent `task_update` landing in that window was silently swallowed and left no
+      // revision trace. Gated to `reassign` so no other action can be given out-of-band fields.
+      if (meta && action === 'reassign') {
+        if (meta.assignedBy !== undefined) next.assignedBy = String(meta.assignedBy)
+        if (meta.why !== undefined) next.why = String(meta.why)
+        if (meta.acceptance !== undefined) next.acceptance = String(meta.acceptance)
+      }
       next.revision = task.revision + 1
       next.updatedAt = now()
       await putTask(next)
@@ -4170,12 +4200,12 @@ export function apply(ctx) {
       if (cur && (cur.blockedBy || []).length && !taskReady(cur)) {
         return { ok: false, code: 'V5_TASK_BLOCKED', message: 'task ' + taskId + ' still has incomplete blockers' }
       }
-      const r = await taskUpdate(memberId, { task_id: taskId, expected_revision: (cur ? cur.revision : 1), action: 'reassign', owner: to })
+      const r = await taskUpdate(memberId, { task_id: taskId, expected_revision: (cur ? cur.revision : 1), action: 'reassign', owner: to },
+        { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance })
       if (!r.ok) return r
-      const after = inst().tasks.find((t) => t.id === taskId)
-      const withMeta = Object.assign({}, after, { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance })
-      await putTask(withMeta)
-      await writeTaskboardMirror()
+      // G4: NO second write here — the metadata went into the CAS write above (one task commit, so an
+      // interleaved task_update can neither be swallowed nor silently lose its revision).
+      const withMeta = inst().tasks.find((t) => t.id === taskId) || cur
       const assignerIsOffice = isOffice(memberId)
       await say(assignerIsOffice ? 'office' : memberId, {
         to, kind: 'assign',
@@ -6133,13 +6163,36 @@ export function apply(ctx) {
     // prepended inbox block and once inside its own [状态] block.
     async function promptFor(member, baseFn) {
       const pending = pendingFor(member.id)
-      const inbox = pending.length ? composeInbox(pending) : ''
-      if (pending.length) await ackPending(pending)
-      const base = typeof baseFn === 'function' ? baseFn() : baseFn
-      return (inbox ? inbox + '\n\n' : '') + base
+      // G1: only NEWLY pending messages are prepended. A second build before the wake must not repeat the
+      // inbox block (the duplicate-read defect), and the mark is what makes that true while the ack is
+      // deferred to the wake.
+      const seen = inboxInjected.get(member.id) || new Set()
+      const fresh = pending.filter((p) => !seen.has(p.id))
+      const inbox = fresh.length ? composeInbox(fresh) : ''
+      if (fresh.length) { for (const p of fresh) seen.add(p.id); inboxInjected.set(member.id, seen) }
+      // While a block IS being prepended, the base build must not embed the same mail a second time
+      // (briefBlock's `[新到的消息/通知]`). When nothing is prepended the base block still shows whatever
+      // is pending — so a member reads each message exactly once either way.
+      if (inbox) inboxSuppressed.add(member.id)
+      let base
+      try { base = typeof baseFn === 'function' ? baseFn() : baseFn }
+      finally { inboxSuppressed.delete(member.id) }
+      // G1 (mailbox): the pending list is RETURNED, not acked here — the ack moved to wakeWithInbox,
+      // after the send actually succeeded. Acking at prompt-build time removed the messages from
+      // `messages` (EV.delivered) BEFORE the send, so a failed/invalid wake lost them silently.
+      return { text: (inbox ? inbox + '\n\n' : '') + base, pending }
     }
     async function wakeWithInbox(member, baseFn, kind) {
-      return await wakeMember(member, await promptFor(member, baseFn), kind)
+      // G1 (mailbox) invariant: "not acked => still redeliverable". `wakeMember` returns false when it
+      // never sent (no childId / member not active) or when `sendMessage` threw, so acking only on
+      // `ok` keeps the message in the durable queue for the next successful wake.
+      const prompt = await promptFor(member, baseFn)
+      const ok = await wakeMember(member, prompt.text, kind)
+      // The attempt is concluded either way: drop the injection mark so the NEXT attempt re-prepends
+      // whatever is still pending (a failed wake must not leave the message suppressed for ever).
+      inboxInjected.delete(member.id)
+      if (ok && prompt.pending.length) await ackPending(prompt.pending)
+      return ok
     }
 
     // ---- scheduling / graded keep-alive (ported and upgraded from v4 §25) ---

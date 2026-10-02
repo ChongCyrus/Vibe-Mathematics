@@ -71,7 +71,14 @@ function makeSession(id, parentSession) {
 function makeHost(opts) {
   const o = opts || {}
   const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-v5r2-'))
-  const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = []
+  const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = [], sendAttempts = []
+  // Successful sends that SURVIVE consumption: `peekWakeOf` splices items out of `wakes`, so a probe that
+  // must compare "rounds" against "successful wakes" needs a counter that is never drained.
+  let wakeSends = 0
+  // G1 seam: force every `subagents.sendMessage` to throw (a real host failure / a member whose
+  // continuation is gone). `sendAttempts` records that the wake was TRIED, so a probe can tell
+  // "the wake failed" apart from "no wake was scheduled at all".
+  let failSend = !!o.failSendMessage
   // Every effect disposer, so a test can simulate a plugin UNLOAD (the Lean queue's disposer is
   // registered first: it terminates in-flight compiles and marks them interrupted).
   const effectDisposers = []
@@ -117,7 +124,12 @@ function makeHost(opts) {
         spawns.push({ label, request, childId: id, persona: request && request.persona, ended: false })
         return { childId: id, messageId: 'm' + spawns.length }
       },
-      async sendMessage(parent, childId, blocks) { wakes.push({ childId, blocks }); return 'w' + wakes.length },
+      async sendMessage(parent, childId, blocks) {
+        sendAttempts.push(childId)
+        if (failSend) throw new Error('mock sendMessage failure (G1 seam)')
+        wakeSends += 1
+        wakes.push({ childId, blocks }); return 'w' + wakes.length
+      },
       interrupt(childId) { interrupts.push(childId) },
       async drainContinuableChildren(parent, ids) { drains.push(...ids); for (const i of ids) liveAgents.delete(i) },
     },
@@ -228,7 +240,7 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, setFailSend(v) { failSend = !!v }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -2086,6 +2098,118 @@ console.log('\n[46] memberDiagnosis: per-branch kind + exact next.tool')
     assert(n === 1, '* F6 kind ' + kind + ' is declared exactly ONCE (mutually exclusive branches, no duplicate/typo kind) - found ' + n)
   }
   assert((body.match(/next: \{/g) || []).length >= 4, '* F6 the four branches are exhaustive: every refusal path carries its own next{}')
+}
+// ---------- 47. G1: a FAILED wake must not consume the mailbox (ack only after a successful send) ----
+console.log('\n[47] G1: a failed wake leaves the message PENDING (no ack before the send)')
+{
+  const h = makeHost({ pluginModule, failSendMessage: true })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  // Every wake is forced to fail while the dm is queued, so this message can never be delivered yet.
+  const attemptsBefore = h.sendAttempts.length
+  const said = await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G1 未送达的消息' }, h.childAgent(h.childOf('acad')))
+  assert(said.ok === true && said.delivered === 1,
+    'precondition: the dm was accepted for exactly one recipient (' + JSON.stringify(said).slice(0, 120) + ')')
+  // `say` to an addressed recipient kicks a scheduling pass; wait until a wake is ATTEMPTED.
+  for (let i = 0; i < 60 && h.sendAttempts.length === attemptsBefore; i++) await sleep(25)
+  assert(h.sendAttempts.length > attemptsBefore,
+    '★ the wake was attempted while every send fails (attempts ' + attemptsBefore + ' -> ' + h.sendAttempts.length + ')')
+  assert(h.wakes.length === 0, 'no wake was queued while sendMessage throws (got ' + h.wakes.length + ')')
+  // Heal the host, then trigger a wake DETERMINISTICALLY: a second dm kicks a scheduling pass
+  // (v5 `say` -> scheduleNext), so we do not depend on the heartbeat timing. The prompt must carry
+  // BOTH messages — the first one is the assertion (a failed wake must not consume it), the second
+  // is the positive control that a wake really happened.
+  h.setFailSend(false)
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G1 正控消息' }, h.childAgent(h.childOf('acad')))
+  let prompt = ''
+  for (let i = 0; i < 4 && prompt.indexOf('G1 正控消息') === -1; i++) {
+    const w = await h.peekWakeOf('r-1', 4000)
+    if (w && w.text) prompt = w.text
+  }
+  assert(prompt.indexOf('G1 正控消息') !== -1,
+    '★ positive control: the second dm did wake r-1 (prompt=' + JSON.stringify(prompt.slice(0, 160)) + ')')
+  assert(prompt.indexOf('G1 未送达的消息') !== -1,
+    '★★★ [G1] a message whose wake FAILED is still pending on the next successful wake (prompt=' + JSON.stringify(prompt.slice(0, 220)) + ')')
+  // Two-sided: a SUCCESSFUL wake acks both once — neither may be delivered again.
+  h.fireEnd(h.childOf('r-1'), { progress: '收到', solved: false, contextPct: 20 })
+  await sleep(40)
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G1 第三条' }, h.childAgent(h.childOf('acad')))
+  let after = ''
+  for (let i = 0; i < 4 && after.indexOf('G1 第三条') === -1; i++) {
+    const w = await h.peekWakeOf('r-1', 4000)
+    if (w && w.text) after = w.text
+  }
+  assert(after.indexOf('G1 第三条') !== -1,
+    '★ positive control: the third dm woke r-1 again (prompt=' + JSON.stringify(after.slice(0, 160)) + ')')
+  assert(after.indexOf('G1 未送达的消息') === -1 && after.indexOf('G1 正控消息') === -1,
+    '★★ [G1] after a successful wake the message is ACKED exactly once (not redelivered; prompt=' + JSON.stringify(after.slice(0, 220)) + ')')
+}
+// ---------- 48. G2: a FAILED send must not consume a round (counters after the send) ----------------
+console.log('\n[48] G2: a failed wake does not consume a round (rounds == successful sends)')
+{
+  const h = makeHost({ pluginModule, failSendMessage: true })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const r1 = h.childOf('r-1')
+  // Addressed mail wakes r-1; while the host is broken every such wake FAILS.
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G2 失败唤醒' }, h.childAgent(h.childOf('acad')))
+  for (let i = 0; i < 60 && h.sendAttempts.filter(c => c === r1).length === 0; i++) await sleep(25)
+  const failedAttempts = h.sendAttempts.filter(c => c === r1).length
+  assert(failedAttempts >= 1, 'precondition: at least one wake for r-1 was attempted and failed (' + failedAttempts + ')')
+  assert(h.wakes.filter(w => w.childId === r1).length === 0, 'precondition: no wake for r-1 succeeded yet')
+  // Heal the host and wake r-1 for real.
+  h.setFailSend(false)
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G2 成功唤醒' }, h.childAgent(h.childOf('acad')))
+  let prompt = ''
+  for (let i = 0; i < 4 && prompt.indexOf('G2 成功唤醒') === -1; i++) {
+    const w = await h.peekWakeOf('r-1', 4000)
+    if (w && w.text) prompt = w.text
+  }
+  assert(prompt.indexOf('G2 成功唤醒') !== -1, '★ positive control: the healed host woke r-1 (' + JSON.stringify(prompt.slice(0, 140)) + ')')
+  // `wakeSends` survives `peekWakeOf`'s splice; the status line is built BEFORE the send, so the round it
+  // shows is the one being started: it must equal the number of successes (not attempts).
+  const succeeded = h.wakeSends
+  const mm = /轮次 (\d+)/.exec(prompt)
+  const shown = mm ? Number(mm[1]) : -1
+  assert(succeeded >= 1 && failedAttempts >= 1,
+    'precondition: at least one success and one failure for r-1 (successes=' + succeeded + ', failures=' + failedAttempts + ')')
+  assert(shown === succeeded,
+    '★★★ [G2] a failed send must not consume a round: 轮次=' + shown + ' vs 成功发送=' + succeeded +
+    ' (失败尝试=' + failedAttempts + ') — attempts must not count')
+}
+// ---------- 49. G4: assignment metadata travels INSIDE the CAS write (no second task write) ---------
+console.log('\n[49] G4: the assign writes the task exactly once, and a stale CAS is refused')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 2 })
+  await h.settleSpawns()
+  const created = await h.callTool('vibe_v5_assign', { subject: 'G4 任务', to: 'r-1', why: 'G4 理由', acceptance: 'G4 验收' })
+  assert(created.ok === true && created.task && created.task.id, 'the office can assign a task (' + JSON.stringify(created).slice(0, 140) + ')')
+  const got = await h.callTool('vibe_v5_task_get', { task_id: created.task.id })
+  const t = (got && got.task) || got
+  assert(t && t.assignedBy === 'office' && t.why === 'G4 理由' && t.acceptance === 'G4 验收',
+    '★ the metadata is part of the SAME task value (' + JSON.stringify([t && t.assignedBy, t && t.why, t && t.acceptance]) + ')')
+  assert(t && t.status === 'in_progress' && t.ownerId === 'r-1' && t.revision === 2,
+    '★ the reassign landed as exactly one revision step (revision=' + (t && t.revision) + ', owner=' + (t && t.ownerId) + ', status=' + (t && t.status) + ')')
+  // The compare-and-set token really is compared: the PRE-assign revision must be refused.
+  const stale = await h.callTool('vibe_v5_task_update', { task_id: created.task.id, expected_revision: 1, action: 'release' }, h.childAgent(h.childOf('acad')))
+  assert(stale.ok === false && stale.code === 'V5_TASK_STALE_REVISION',
+    '★★ a stale expected_revision is refused with V5_TASK_STALE_REVISION (' + JSON.stringify(stale).slice(0, 150) + ')')
+  // …and the reason the lost-update window existed: a second, unprotected write in the assign path.
+  // The source MUST be read through the SAME seam the plugin was loaded from (`PLUGIN`), or a mutant
+  // copy would be invisible here and this assertion would pass against the unmutated repo file.
+  const { readFileSync: rf } = await import('node:fs')
+  const { fileURLToPath: fp } = await import('node:url')
+  const src = rf(fp(PLUGIN), 'utf8')
+  const s0 = src.indexOf('async function taskAssign(')
+  const s1 = src.indexOf('\n    async function ', s0 + 10)
+  const body = src.slice(s0, s1 > 0 ? s1 : s0 + 4000)
+  const writes = (body.match(/putTask\(/g) || []).length
+  assert(writes === 0,
+    '★★★ [G4] the assign path issues NO second, unprotected task write (found ' + writes + ' putTask( in taskAssign) — ' +
+    'a second write reusing the just-read revision is the lost-update window')
+  assert(/assignedBy: isOffice\(memberId\)/.test(body),
+    '★ the metadata goes through the CAS call itself (assignedBy/why/acceptance passed as the internal meta argument)')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
