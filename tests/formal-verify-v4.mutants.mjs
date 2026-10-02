@@ -129,6 +129,8 @@ for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
 console.log('')
 console.log('mutant families reddening the v4 formal-verify suite by name: ' + red + '/' + FAMILIES.length)
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
+const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
+console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
 if (red !== FAMILIES.length || skipped.length || hangs.length) process.exit(1)

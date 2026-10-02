@@ -75,6 +75,24 @@ function runFamily(f) {
   rmSync(dest, { recursive: true, force: true })
   return ok
 }
+// MEASURED BOUNDARY (V3-G2): at this revision NO strictly count-preserving mutant exists for the
+// re-eligible-SLOT-set assertion. Reason (measured in-product): a re-verification creates a FRESH
+// task with `children: []` and `round: 1` (vibe-math-v3.js:2164) and the slot index comes from
+// `const index = t.children.length` (:2172), so any fixed index offset shifts round one too and the
+// two slot sets stay equal. The only mutant that reddens it therefore also changes the COUNT - it is
+// labelled NOT COUNT-PRESERVING below, and it is landed because the assertion itself is the semantic
+// unit (a re-verification that re-armed different slots satisfies the old count).
+//
+// TWO CANDIDATE MUTANTS WERE THEN MEASURED - BOTH REJECTED (so no V3-G2 family is shipped):
+//   (i) the ruled shape (children: [] inherits the previous children) is INERT: the concluded verify
+//       task is already deleted when the new one is built, so `tasks['verify:'+rId]` is undefined and
+//       the expression degrades to `[]` => the suite ran to exit 0 with NO named red (a mutant that
+//       changes nothing proves nothing);
+//  (ii) the broad form (verifier backfill disabled entirely) made the suite exceed the 300 s child
+//       cap => classified as a HANG, which is not a valid red either.
+// => RECORDED BOUNDARY: at this revision the re-eligible-SLOT-set assertion ships WITHOUT a
+//    discriminating mutant (measured, not assumed). The assertion itself is landed and green.
+
 const FAMILIES = [
   {
     // V3-G1: every verifier spawn for one object is stamped with the SAME slot index, so two "independent

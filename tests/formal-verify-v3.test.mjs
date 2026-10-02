@@ -51,6 +51,8 @@ const WS = mkdtempSync(join(tmpdir(), 'vibe-v3-lean-'))
 const VIBE = join(WS, 'VibeMath')
 const projRoot = (slug) => join(VIBE, 'Projects', slug)
 const readIf = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
+/** A missing directory lists as [] (a mutant cascade must surface as a NAMED red, not an ENOENT crash). */
+const listDirIf = (p) => (existsSync(p) ? readdirSync(p) : [])
 const reEsc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const verifyRe = (target) => new RegExp('^verifier:r-' + reEsc(target) + '(?:-\\w+)?:\\d+$')
 
@@ -321,6 +323,10 @@ async function runVerifyRound(root, target, results, timeoutMs) {
 /** V3-G1: `unfiredVerifiers(...).length` is a COUNT - the semantic unit is that the fired reviews are
  *  DISTINCT slots (the `:<index>` suffix), i.e. two genuinely independent reviews of the same object.
  *  A founding that spawns the same slot twice keeps the count at 2 and used to pass. */
+/** The slot indices (`:<index>`) of a fired/eligible verifier round. */
+function slotsOf(round) { return (round || []).map((x) => String(x.label).split(':').pop()) }
+let gateSlots1 = null   // V3-G2: round-one slots (module scope: the require round lives in a block)
+
 function assertDistinctSlots(round, tag) {
   assert(Array.isArray(round) && round.length > 0, tag + ': verifiers were fired')
   const idx = round.map((x) => String(x.label).split(':').pop())
@@ -730,6 +736,7 @@ const gateProj = projRoot('lean-gate')
 await callTool('vibe_math_start', {}, RF)
 {
   const batch = await runVerifyRound(RF, 'p-gate', [1, 1])
+gateSlots1 = slotsOf(batch)   // V3-G2: measured ["0","1"]
   assert(batch !== null, 'require: the review round was asked')
   if (batch) {
     const vp = batch.map((s) => s.prompt).join('\n')
@@ -760,7 +767,7 @@ assert(!existsSync(join(gateProj, 'Verified', '命题', 'p-gate.md')), 'no Verif
   const st = await callTool('vibe_math_status', {}, RF)
   assert(st.formal.todo.some((t) => t.id === 'p-gate'), 'status lists the deferred object')
   assert(/formal-required/.test(st.recentActivity.map((e) => e.detail).join('\n')), 'the activity feed shows the formal-required deferral')
-  const voteLog = readdirSync(join(gateProj, 'Logs', 'Verification')).filter((f) => /^r-p-gate_/.test(f))
+  const voteLog = listDirIf(join(gateProj, 'Logs', 'Verification')).filter((f) => /^r-p-gate_/.test(f))
   assert(voteLog.length >= 1, 'the votes themselves are still recorded in Logs/Verification (nothing is lost)')
 }
 // runtime switch: the mode is read when the prompt is CONSTRUCTED, so a fresh round reflects it
@@ -796,6 +803,15 @@ await callTool('vibe_math_set_params', { formalVerify: 'require' }, RF)
 }
 await restart(RF)
 assert(await drive(RF, () => unfiredVerifiers(RF, verifyRe('p-gate')).length >= 2, 'p-gate re-eligible after passing'), '★ once the formal record satisfies the gate, the object becomes eligible for verification again')
+{
+  // V3-G2: `.length >= 2` is a COUNT - the semantic unit is that the RE-ELIGIBLE reviews are the
+  // SAME slots that fired in round one (a re-verification that re-armed different slots would
+  // still satisfy the count). Measured round-one slots: ["0","1"].
+  const un = unfiredVerifiers(RF, verifyRe('p-gate'))
+  const slots = slotsOf(un)
+  assert(slots.slice().sort().join(',') === gateSlots1.slice().sort().join(','), '* V3-G2 the re-eligible reviews are the SAME slots that fired in round one (before=' + JSON.stringify(gateSlots1) + ' after=' + JSON.stringify(slots) + ')')
+  assert(new Set(slots).size === slots.length, '* V3-G2 and they are still DISTINCT slots (the V3-G1 clause restated at this site)')
+}
 {
   const batch = await runVerifyRound(RF, 'p-gate', [1, 1])
   assert(batch !== null, 'the re-verification round was asked')

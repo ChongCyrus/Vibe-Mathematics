@@ -126,12 +126,32 @@ const FAMILIES = [
     to: "id: '', kind: kind === 'researcher' ? 'temp' : kind,",
     expect: /A5 the founded KIND MULTISET is exactly/,
   },
+  {
+    // spawnMember (G2-class): counting the founding round BEFORE `startContinuable`, so a host-cap
+    // failure consumes a round and the retried founder is told 轮次 2.
+    name: 'spawnMember: the founding round is counted BEFORE the start again',
+    from: 'const startRound = (rounds.get(member.id) || 0) + 1',
+    to: 'rounds.set(member.id, (rounds.get(member.id) || 0) + 1); const startRound = (rounds.get(member.id) || 0) + 1',
+    expect: /\[spawnMember\] a FAILED start must not consume a round/,
+  },
+  {
+    // spawnMember: dropping the explicit next-round argument, so the founding prompt's status block
+    // falls back to the stored counter (still 0 at that point) and announces 轮次 0.
+    name: 'spawnMember: the founding prompt is built without the explicit round',
+    from: 'const prompt = initialPrompt(member, initialTask, mode, startRound)',
+    to: 'const prompt = initialPrompt(member, initialTask, mode)',
+    expect: /\[spawnMember\]|the founding prompt never displays 轮次 0|the FOUNDING prompt announces the round/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
+const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
 console.log('')
 console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + FAMILIES.length)
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
+// R15: the audit-checklist row says EVERY family prints this line, and override decisions must quote it
+// rather than an external estimate. Same shape as tests/formal-verify-v3.mutants.mjs.
+console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
 if (red !== FAMILIES.length || skipped.length || hangs.length) process.exit(1)

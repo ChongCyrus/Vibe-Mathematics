@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url'
 // A timeout is reported as HANG, counts as a failure for that family, and is listed in hangs=[].
 const CHILD_TIMEOUT_MS = Number(process.env.MUTANT_CHILD_TIMEOUT_MS || 120000)
 const TIMES = []
+// R15: whole-process wall time, printed at the end (the timeout row quotes this line).
+const START_MS = Date.now()
 const hangs = []
 let lastHang = false
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -92,6 +94,7 @@ console.log('')
 console.log('mutant families reddening the v2 probe by name: ' + red + '/' + FAMILIES.length)
 console.log('skipped=[' + skipped.join(' | ') + ']')
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
+console.log('TOTAL WALL TIME (all families + setup): ' + (Date.now() - START_MS) + 'ms (' + Math.round((Date.now() - START_MS) / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 if (red !== FAMILIES.length || skipped.length || hangs.length) process.exit(1)
 console.log('ALL MUTANTS RED AS REQUIRED')
