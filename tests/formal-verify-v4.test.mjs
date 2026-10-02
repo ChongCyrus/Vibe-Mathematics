@@ -30,6 +30,14 @@
 //                             attempted (run every other rebuild caller first, then arm): the settle
 //                             path's index write was still never reached (measured failed=0) -
 //                             caller-discriminating injection attempted, still not reached.
+//                             AUTHOR-MEASURED, NOT INDEPENDENTLY REPRODUCED: R17 could not reproduce the
+//                             `armed=3 failed=1` / `failed=0` instrumentation numbers (it marked them
+//                             still-unsure). It DID verify the STRUCTURE this boundary rests on: the
+//                             single-line best-effort wrapper, all six callers (settleLeanJob,
+//                             writeLeanLibIndexesSafe, the three leanArchive paths, the lean_lib tool)
+//                             now covered by the one-shot naming inside rebuildLeanLibIndexes, and every
+//                             later rebuild rewriting the index => self-healing. The boundary stands on
+//                             that structural evidence; the two raw numbers above are author-measured only.
 //   site 4 realCompact      - SURFACED (section N15): the mock resolves the child agent and exposes a
 //                             THROWING compaction service only under an injection switch, so a completed
 //                             resident turn reaches realCompact and its catch is asserted to NAME the

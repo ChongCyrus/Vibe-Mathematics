@@ -190,6 +190,8 @@ const VARIANTS = [
   // The invariant scanner's own falsifiability check: it exits 0 only when every injected
   // mutation really made a run go RED (and the unmutated control stayed green).
   { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'] },
+  // The participant-set proof, shipped: the guard's own predicates against broken strings.
+  { file: 'audit-participant-set-parity.mjs', args: ['--self-probe'] },
   // The two-registration-paths probe, inverted: it applies a real description mutation and
   // REQUIRES the parity check to exit 1 (exit 2 means the mutation no longer applies = drift).
   {

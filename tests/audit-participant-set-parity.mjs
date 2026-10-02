@@ -46,6 +46,41 @@ function body(src, name) {
   return src.slice(i)
 }
 
+// ---- `--self-probe`: the SAME predicates against deliberately broken source strings -----------
+// Shipped form of the load-bearing proof (was `_oneoff/auditR2/participant-set-proof.mjs`): six cases,
+// each GREEN on the real source and RED on the mutated string. No repo mutation, no fixtures.
+// The predicates mirror the numbered assertions below — update them together.
+function selfProbe() {
+  const v2s = read('vibe-math-v2/vibe-math-v2.js')
+  const v3s = read('vibe-math-v3/vibe-math-v3.js')
+  const v4s = read('vibe-math-v4/vibe-math-v4.js')
+  const v5s = read('vibe-math-v5/vibe-math-v5.js')
+  const ATOMIC = /frozen:\s*\(function\(sn\)\{\s*return \{version: sn\?sn\.rosterVersion:null, participants: sn\?sn\.rosterSnapshot:null, kind:/
+  const cases = [
+    ['v2 produces allParticipantsReported',
+      /allParticipantsReported: participants\.length > 0 && thisRoundIds\.length === participants\.length/.test(v2s),
+      /allParticipantsReported: participants\.length > 0 && thisRoundIds\.length === participants\.length/.test(v2s.replace(/allParticipantsReported:/g, 'renamedField:'))],
+    ['v3 deliberately LACKS the field', !/allParticipantsReported/.test(v3s),
+      !/allParticipantsReported/.test(v3s.replace('function voteCount(t, round) {', 'function voteCount(t, round) { const allParticipantsReported = 1;'))],
+    ['v4 frozen is atomic', ATOMIC.test(v4s),
+      ATOMIC.test(v4s.replace(/frozen:\s*\(function\(sn\)\{\s*return \{version: sn\?sn\.rosterVersion:null, participants: sn\?sn\.rosterSnapshot:null, kind:/, 'frozen: {version: rosterVersion, participants: null, kind: null}, x: (function(sn){ return {version: sn?sn.rosterVersion:null, participants: sn?sn.rosterSnapshot:null, kind:'))],
+    ['v4 removal prunes both frozen sets', occurrences(v4s.slice(v4s.indexOf('function removeMember')), /rosterSnapshot\.filter\(x=>x!==id\)/g) >= 2,
+      occurrences(v4s.slice(v4s.indexOf('function removeMember')).replace(/rosterSnapshot\.filter\(x=>x!==id\)/g, 'noop()'), /rosterSnapshot\.filter\(x=>x!==id\)/g) >= 2],
+    ['v5 quorumView surfaces rosterVersion', /\brosterVersion:/.test(v5s.slice(v5s.indexOf('function quorumView'), v5s.indexOf('function quorumView') + 900)),
+      /\brosterVersion:/.test(v5s.slice(v5s.indexOf('function quorumView'), v5s.indexOf('function quorumView') + 900).replace(/rosterVersion:/g, 'ver:'))],
+    ['exactly ONE v2 producer', occurrences(v2s, /function voteCount\(t, round\)/g) === 1,
+      occurrences(v2s + '\n  function voteCount(t, round) { return null }\n', /function voteCount\(t, round\)/g) === 1],
+  ]
+  let bad = 0
+  for (const [name, greenNow, redWhenBroken] of cases) {
+    const good = greenNow === true && redWhenBroken === false
+    if (!good) bad++
+    console.log((good ? '  ok   ' : '  FAIL ') + name + ' :: green-now=' + greenNow + ' broken-goes-red=' + !redWhenBroken)
+  }
+  console.log('=== PARTICIPANT-SET SELF-PROBE: ' + (cases.length - bad) + '/' + cases.length + ' as required ===')
+  return bad === 0
+}
+if (process.argv.includes('--self-probe')) process.exit(selfProbe() ? 0 : 1)
 const v2 = read('vibe-math-v2/vibe-math-v2.js')
 const v3 = read('vibe-math-v3/vibe-math-v3.js')
 const v4 = read('vibe-math-v4/vibe-math-v4.js')

@@ -431,7 +431,13 @@ const t1 = await callTool('vibe_v5_task_create', { subject: '整理已知特例'
 assert(t1.ok === true && t1.task.revision === 1, 'a member can open a task (revision 1)')
 const stale = await callTool('vibe_v5_task_update', { task_id: t1.task.id, expected_revision: 99, action: 'claim' }, childAgent(childOf('r-3')))
 assert(stale.ok === false && stale.code === 'V5_TASK_STALE_REVISION', 'a stale revision is refused (compare-and-set)')
-// V5-A4 (CAS semantic unit): the refusal must leave the task UNCHANGED. The assertions above (here,
+// V5-A4 (CAS semantic unit) - R17 scope refinement: the assertion detects any refused-but-written
+// change VISIBLE IN THE OBSERVABLE TRIPLE (revision|ownerId|status). Measured by R17: a
+// `task.status='done'` write inside the refusal branch => V5-A4 RED (`before=1||pending after=1||done`);
+// a write OUTSIDE the triple (e.g. `task.notes`) => V5-A4 green and remains a MEASURED BOUNDARY (the
+// harness cannot see it). The earlier, broader phrasing ("cannot be the sole discriminator") is
+// superseded by this scope statement.
+// The assertions above (here,
 // in e2e-v5-round2 and in prompt-v5-integrity) only check the RETURN VALUE, so a mutant that refuses
 // but still writes - or writes first and checks afterwards - would pass all of them. Read the task
 // back and compare the observable triple.

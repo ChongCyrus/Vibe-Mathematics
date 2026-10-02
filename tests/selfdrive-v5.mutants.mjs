@@ -100,6 +100,11 @@ const FAMILIES = [
   {
     // ④ CAS: the stale-revision guard is disabled, so a stale update lands (the return-value
     // assertions AND the new "unchanged after refusal" assertion redden).
+    // R17 scope refinement for V5-A4: it detects any refused-but-written change VISIBLE IN THE
+    // OBSERVABLE TRIPLE (revision|ownerId|status) - measured: an in-branch `task.status='done'`
+    // makes it RED (`before=1||pending after=1||done`), while a write OUTSIDE the triple (e.g.
+    // `task.notes`) keeps it green and remains a MEASURED BOUNDARY (invisible to the harness).
+    // assertions AND the new "unchanged after refusal" assertion redden).
     name: 'V5-A4: the stale-revision guard is disabled (a stale CAS lands)',
     from: 'if (expected !== task.revision) {',
     to: 'if (false) {',
