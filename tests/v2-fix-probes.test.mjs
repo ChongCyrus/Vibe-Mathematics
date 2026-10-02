@@ -392,6 +392,10 @@ console.log('\n-- F1: pendingDecisions 在 status/report 同形 --');
     '★★★ [F1] pendingDecisions 两面同形（都是数字；实测 status=' + typeof st.pendingDecisions + ' report=' + typeof rep.pendingDecisions + '）');
   assert(Array.isArray(rep.pendingDecisionItems) && rep.pendingDecisionItems.length === rep.pendingDecisions,
     '★★ [F1] 明细用独立键名 pendingDecisionItems，且长度与计数一致（实测 ' + JSON.stringify(rep.pendingDecisionItems && rep.pendingDecisionItems.length) + '）');
+  assert(st.pendingDecisions === rep.pendingDecisions, '★★★ [F-A] 两面数字一致（合同）：status=' + st.pendingDecisions + ' report=' + rep.pendingDecisions);
+  assert(st.pendingDecisionItems === undefined, '★★★ [F-A] status **不得**携带明细——有意拆分：数字是合同、明细只进 report（实测 ' + JSON.stringify(st.pendingDecisionItems) + '）');
+  const srcA = readFileSync(PLUGIN_URL, 'utf8');
+  assert(/F-A（有意拆分）/.test(srcA), '★★ [F-A] 设计句在代码里（拆分理由可判定，不靠口头约定）');
   h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');

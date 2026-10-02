@@ -72,6 +72,15 @@ DISCLOSURES (existing behaviour, not rules to follow):
   - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
     (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
     boundary; it is a report, not a new instruction.
+  - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+    itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+    auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
 
 Configuration highlights (all tunable via vibe_math_set_params / the settings file):
 `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
@@ -172,6 +181,15 @@ DISCLOSURES (existing behaviour, not rules to follow):
   - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
     (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
     boundary; it is a report, not a new instruction.
+  - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+    itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+    auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
 
 Configuration highlights (all tunable via vibe_math_set_params / the settings file):
 `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
@@ -327,6 +345,19 @@ DISCLOSURES (existing behaviour, not rules to follow):
   - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
     (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
     boundary; it is a report, not a new instruction.
+  - DISCLOSURE (existing behaviour): a second session can TAKE OVER the project lock
+    (the activity log records "project lock taken over from session …") — another office may
+    resume the same project while you are away; the state file stays authoritative and is not
+    merged.
+  - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+    itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+    auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
 ```
 
 ### config.text
@@ -442,6 +473,19 @@ DISCLOSURES (existing behaviour, not rules to follow):
   - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
     (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
     boundary; it is a report, not a new instruction.
+  - DISCLOSURE (existing behaviour): a second session can TAKE OVER the project lock
+    (the activity log records "project lock taken over from session …") — another office may
+    resume the same project while you are away; the state file stays authoritative and is not
+    merged.
+  - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+    itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+    auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
 
 ```
 
@@ -570,6 +614,17 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     never judges fidelity for you.
 
 When the user asks about progress, call vibe_v4_report and summarize in plain language.
+
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
+  - DISCLOSURE (existing behaviour): after a real context compaction the framework injects
+    a short core-rules recap ("[核心规则重申] …") into your next round — it is the framework
+    re-anchoring the rules, not a new instruction from the office.
 ```
 
 ### config.text
@@ -692,6 +747,17 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     never judges fidelity for you.
 
 When the user asks about progress, call vibe_v4_report and summarize in plain language.
+
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+    (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+  - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+    not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+    fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+    for preflight package installs (missing packages are reported with an install plan only).
+  - DISCLOSURE (existing behaviour): after a real context compaction the framework injects
+    a short core-rules recap ("[核心规则重申] …") into your next round — it is the framework
+    re-anchoring the rules, not a new instruction from the office.
 
 ```
 

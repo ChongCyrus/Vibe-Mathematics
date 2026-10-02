@@ -2192,7 +2192,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
       activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
-      // F1：与 status() 同形（数字）；明细挪到独立键名 pendingDecisionItems，读者不会把两者读混。
+// F-A（有意拆分）：pendingDecisions 是**合同**（两面同形的数字）；pendingDecisionItems 是**诊断**（明细），只出现在 report——status 面向代理自省、report 面向文件快照。改动此处需同步 docs/status-report-fields.md（该文档租约在共享层 owner）。
       pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
       pendingDecisionItems: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,

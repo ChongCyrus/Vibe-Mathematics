@@ -124,6 +124,19 @@
         - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
           (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
           boundary; it is a report, not a new instruction.
+        - DISCLOSURE (existing behaviour): a second session can TAKE OVER the project lock
+          (the activity log records "project lock taken over from session …") — another office may
+          resume the same project while you are away; the state file stays authoritative and is not
+          merged.
+        - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+          itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+          auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+        - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+          (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+        - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+          not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+          fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+          for preflight package installs (missing packages are reported with an install plan only).
     suffix: Your working directory is {{cwd}}.
     text: |-
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
@@ -236,6 +249,19 @@
         - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
           (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
           boundary; it is a report, not a new instruction.
+        - DISCLOSURE (existing behaviour): a second session can TAKE OVER the project lock
+          (the activity log records "project lock taken over from session …") — another office may
+          resume the same project while you are away; the state file stays authoritative and is not
+          merged.
+        - DISCLOSURE (existing behaviour): the framework can adjust problem/proposition priorities
+          itself (priorityAdjust / proposPriorityAdjust) — the activity log records "priorities
+          auto-adjusted (…)"; a problem you deprioritised can come back on its own.
+        - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+          (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+        - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+          not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+          fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+          for preflight package installs (missing packages are reported with an install plan only).
 
 # ── agent-instructions ──────────────────────────────────────────────────────
 

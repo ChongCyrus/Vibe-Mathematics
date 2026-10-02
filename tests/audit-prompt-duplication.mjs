@@ -30,20 +30,23 @@ const PATH_CLAUSES = [
 ]
 // Clause expectations are CODE-TRUTH-DRIVEN, not global: a DISCLOSURE is required only in presets
 // whose code actually implements that behaviour, and the guard checks BOTH directions (prompt
-// declares it ⇔ the JS carries the behaviour marker, re-measured every run). Asserting all three
-// disclosures for v4 would be a WRONG invariant — v4 implements none of them (it only has the
-// post-compaction recap, which is a follow-up window) — so the expectation is parameterised, not
-// silently weakened.
+// declares it ⇔ the JS carries the behaviour marker, re-measured every run). Each entry is
+// [name, prompt regex, code marker regex, which presets the code justifies]. A preset whose JS lacks
+// the marker must NOT declare the clause (`must NOT be declared here`) — declaring a behaviour that
+// does not exist is worse than the undisclosed-behaviour gap it was meant to close.
 const DISCLOSURES = [
-  ['V2-1 paper force-finalise / reaping disclosure', /DISCLOSURE \(existing behaviour\): the FINAL PAPER/, /reapedThisRun|forcedAfterCap/],
-  ['V2-1 auto-resolve disclosure', /DISCLOSURE \(existing behaviour\): switching the mode to `auto`/, /auto-resolved/],
-  ['V2-1 progress-push disclosure', /DISCLOSURE \(existing behaviour\): the framework itself pushes a progress/, /\u8fdb\u5ea6\u66f4\u65b0\uff1a/],
+  // window 1 (V2-1 ①–③)
+  ['V2-1 paper force-finalise / reaping disclosure', /DISCLOSURE \(existing behaviour\): the FINAL PAPER/, /reapedThisRun|forcedAfterCap/, ['v2', 'v3']],
+  ['V2-1 auto-resolve disclosure', /DISCLOSURE \(existing behaviour\): switching the mode to `auto`/, /auto-resolved/, ['v2', 'v3']],
+  ['V2-1 progress-push disclosure', /DISCLOSURE \(existing behaviour\): the framework itself pushes a progress/, /\u8fdb\u5ea6\u66f4\u65b0\uff1a/, ['v2', 'v3']],
+  // window 2 (V2-1 ④–⑦)
+  ['V2-1 project-lock takeover disclosure', /DISCLOSURE \(existing behaviour\): a second session can TAKE OVER/, /lock taken over/, ['v3']],
+  ['V2-1 auto-reprioritisation disclosure', /DISCLOSURE \(existing behaviour\): the framework can adjust problem\/proposition priorities/, /priorities auto-adjusted/, ['v2', 'v3']],
+  ['V2-1 math-policy refusal disclosure', /DISCLOSURE \(existing behaviour\): when mathMode is `typed`/, /mathMode|typed\+shell/, ['v2', 'v3', 'v4']],
+  ['V2-3e math-policy line', /math_computation policy: mathComputation/, /mathComputation/, ['v2', 'v3', 'v4']],
+  ['V2-1 post-compaction recap disclosure', /DISCLOSURE \(existing behaviour\): after a real context compaction the framework injects/, /\u6838\u5fc3\u89c4\u5219\u91cd\u7533|CONTEXT COMPACT/, ['v4']],
 ]
-const EXPECTED = {
-  'vibe-math-v2': [true, true, true],
-  'vibe-math-v3': [true, true, true],
-  'vibe-math-v4': [false, false, false],
-}
+const PRESET_KEY = { 'vibe-math-v2': 'v2', 'vibe-math-v3': 'v3', 'vibe-math-v4': 'v4' }
 const normLine = (l) => l.replace(/\s+/g, ' ').replace(/\{\{cwd\}\}|\{\{model\}\}/g, '<T>').trim()
 const SCAFFOLD = /^(-|#|\s*$)|^(suffix|text|priority|config|name|id|content|role):|^You are a coding agent powered by/
 
@@ -87,8 +90,8 @@ for (const preset of PRESETS) {
     const jsAbs = join(REPO, preset, preset + '.js')
     const js = existsSync(jsAbs) ? readFileSync(jsAbs, 'utf8') : ''
     check(!!js, preset + ': the JS source is readable for the code-truth check')
-    DISCLOSURES.forEach(([name, promptRe, codeRe], i) => {
-      const expected = EXPECTED[preset][i]
+    DISCLOSURES.forEach(([name, promptRe, codeRe, applies]) => {
+      const expected = applies.indexOf(PRESET_KEY[preset]) !== -1
       const inCode = codeRe.test(js)
       check(inCode === expected, preset + ': code-truth for "' + name + '" (expected=' + expected + ', code marker present=' + inCode + ')')
       if (expected) check(promptRe.test(shared), preset + ': ' + name + ' present in BOTH copies (inside the shared prefix)')

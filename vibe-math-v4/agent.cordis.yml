@@ -134,6 +134,17 @@
           never judges fidelity for you.
 
       When the user asks about progress, call vibe_v4_report and summarize in plain language.
+
+      DISCLOSURES (existing behaviour, not rules to follow):
+        - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+          (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+        - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+          not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+          fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+          for preflight package installs (missing packages are reported with an install plan only).
+        - DISCLOSURE (existing behaviour): after a real context compaction the framework injects
+          a short core-rules recap ("[核心规则重申] …") into your next round — it is the framework
+          re-anchoring the rules, not a new instruction from the office.
     suffix: Your working directory is {{cwd}}.
     text: |-
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
@@ -253,6 +264,17 @@
           never judges fidelity for you.
 
       When the user asks about progress, call vibe_v4_report and summarize in plain language.
+
+      DISCLOSURES (existing behaviour, not rules to follow):
+        - DISCLOSURE (existing behaviour): when mathMode is `typed`, the shell fallback is refused
+          (the math tool returns REFUSED with reason=policy) instead of silently falling back.
+        - math_computation policy: mathComputation = off | auto | on (off = the math surface is
+          not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
+          fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
+          for preflight package installs (missing packages are reported with an install plan only).
+        - DISCLOSURE (existing behaviour): after a real context compaction the framework injects
+          a short core-rules recap ("[核心规则重申] …") into your next round — it is the framework
+          re-anchoring the rules, not a new instruction from the office.
 
 # ── agent-instructions ──────────────────────────────────────────────────────
 
