@@ -37,6 +37,101 @@ function ok(cond, label, detail) {
 const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
 const read = (rel) => readFileSync(join(REPO, rel), 'utf8')
 
+// ---- extracted predicates (shared by the checks below AND by --self-probe) -----------------------
+// §7/§8 used to compute these inline; extracting them is what lets the self-probe feed the SAME
+// predicates deliberately broken strings. Keep the two users in sync by construction: both call these.
+const SUPPORTED_PLACEHOLDERS = {
+  '<script>': "split('<script>').join(",
+  '<expr>': "split('<expr>').join(",
+  '<pkgs>': "a === '<pkgs>'",
+  '<pkgs...>': "a === '<pkgs...>'",
+  '<probeCode>': "a === '<probeCode>'",
+  '<exe>': ".replace(/<exe>/g, exe)",
+  '<pkg>': ".replace(/<pkg>/g, pkg)",
+  '__PKGS__': ".replace(/__PKGS__/g, plain)",
+  '__QPKGS__': ".replace(/__QPKGS__/g, quoted)",
+  '__PKG__': ".replace(/__PKG__/g, pkg)",
+}
+const stringsOfDescriptor = (d) => [].concat(
+  Object.values(d.scriptArgv || {}).filter((x) => typeof x === 'string'),
+  Object.values(d.evalArgv || {}).filter((x) => typeof x === 'string'),
+  ((d.packageProbe && d.packageProbe.argv) || []).filter((x) => typeof x === 'string'),
+  typeof d.probeCode === 'string' ? [d.probeCode] : [],
+  (d.install ? [].concat(d.install.userArgv || [], d.install.systemArgv || [], d.install.uninstallArgv || []) : []).filter((x) => typeof x === 'string'),
+)
+/** Placeholders used by descriptors that the module does not KNOW about. Unit: placeholder occurrences. */
+function unknownPlaceholders(src, all) {
+  const out = []
+  for (const name of Object.keys(all)) {
+    for (const str of stringsOfDescriptor(all[name])) {
+      for (const m of (str.match(/<[a-z.]+>|__[A-Z]+__/g) || [])) if (!(m in SUPPORTED_PLACEHOLDERS)) out.push(name + ':' + m)
+    }
+  }
+  return out
+}
+/** Known placeholders whose implementation is missing from the module. Unit: placeholder occurrences. */
+function unimplementedPlaceholders(src, all) {
+  const out = []
+  for (const name of Object.keys(all)) {
+    for (const str of stringsOfDescriptor(all[name])) {
+      for (const m of (str.match(/<[a-z.]+>|__[A-Z]+__/g) || [])) {
+        if ((m in SUPPORTED_PLACEHOLDERS) && SUPPORTED_PLACEHOLDERS[m] && src.indexOf(SUPPORTED_PLACEHOLDERS[m]) === -1) out.push(name + ':' + m)
+      }
+    }
+  }
+  return out
+}
+/** The substitution must be STRING-level so embedded forms (matlab run('<script>')) are covered. */
+const stringLevelSubstitution = (src) => /String\(a\)\.split\('<script>'\)\.join\(/.test(src) && /String\(a\)\.split\('<expr>'\)\.join\(/.test(src)
+/** §8: the descriptor declares the policy / the module consumes it / nothing is hard-coded. */
+const cliDeclaresPolicy = (eng) => /policy:\s*\{\s*requiresMathMode:\s*'typed\+shell',\s*requiresEngineInList:\s*true\s*\}/.test(eng)
+const cliConsumesPolicy = (mod) => (mod.match(/CLI_POLICY\.requiresMathMode/g) || []).length >= 2 && (mod.match(/CLI_POLICY\.requiresEngineInList/g) || []).length >= 1
+const cliNoHardCoded = (mod) => !/mathMode !== 'typed\+shell'/.test(mod)
+/** §8: the shared refusal shape must surface the descriptor value (the OLD literal had only reason). */
+const refusalSurfacesPolicy = (n) => !!n && n.reason === 'policy' && n.requiresMathMode === 'typed+shell'
+
+// ---- `--self-probe`: the SAME predicates against deliberately broken inputs (shipped form of the
+// was-dev-only proofs `descriptor-sweep-proof.mjs` + `cli-policy-proof.mjs`). No repo mutation.
+async function selfProbe() {
+  const mod = read('vibe-math-v2/math-computation.js')
+  const eng = read('vibe-math-v2/math-engines.js')
+  const { MATH_ENGINES, MATH_P2_ENGINES } = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
+  const all = Object.assign({}, MATH_ENGINES, MATH_P2_ENGINES)
+  const LIT = /<script>/
+  const matlabTemplate = ['-batch', "run('<script>')"]
+  const preFix = (tmpl, abs) => tmpl.map((a) => (a === '<script>' ? abs : a))
+  const postFix = (tmpl, abs) => tmpl.map((a) => String(a).split('<script>').join(abs))
+  const cases = [
+    ['§7 substitution is STRING-level (matlab embedding covered)', stringLevelSubstitution(mod),
+      stringLevelSubstitution(mod.replace("String(a).split('<script>').join(payload.scriptAbs)", "a === '<script>' ? payload.scriptAbs : a"))],
+    ['§7 descriptors use only KNOWN placeholders', unknownPlaceholders(mod, all).length === 0,
+      unknownPlaceholders(mod, Object.assign({}, all, { probe: { scriptArgv: { x: '<mysterySlot>' } } })).length > 0],
+    ['§7 known placeholders are IMPLEMENTED in the module', unimplementedPlaceholders(mod, all).length === 0,
+      unimplementedPlaceholders('/* no implementation */', all).length === 0],
+    ['§7 the guard predicate catches what the OLD substitution produced', postFix(matlabTemplate, 'ABS').every((a) => !LIT.test(a)),
+      preFix(matlabTemplate, 'ABS').every((a) => !LIT.test(a))],
+    ['§8 the module CONSUMES the descriptor policy', cliConsumesPolicy(mod),
+      cliConsumesPolicy(mod.replace(/CLI_POLICY\./g, 'HARDCODED.'))],
+    ['§8 no hard-coded policy comparison remains', cliNoHardCoded(mod),
+      cliNoHardCoded(mod + "\\n  if (params.mathMode !== 'typed+shell') { /* hard-coded revert */ }")],
+    ['§8 descriptor DECLARES the policy', cliDeclaresPolicy(eng),
+      cliDeclaresPolicy(eng.replace("policy: { requiresMathMode: 'typed+shell', requiresEngineInList: true }", 'policy: null'))],
+    ['§8 the shared refusal surfaces the descriptor value (OLD literal caught)',
+      refusalSurfacesPolicy({ reason: 'policy', requiresMathMode: 'typed+shell' }),
+      refusalSurfacesPolicy({ reason: 'policy' })],
+  ]
+  let bad = 0
+  for (const [name, greenNow, redWhenBroken] of cases) {
+    const good = greenNow === true && redWhenBroken === false
+    if (!good) bad++
+    console.log((good ? '  ok   ' : '  FAIL ') + name + ' :: green-now=' + greenNow + ' broken-goes-red=' + !redWhenBroken)
+  }
+  console.log('=== MATH PARITY SELF-PROBE: ' + (cases.length - bad) + '/' + cases.length + ' as required ===')
+  return bad === 0
+}
+if (process.argv.includes('--self-probe')) process.exit(await selfProbe() ? 0 : 1)
+
+
 console.log('-- math_computation parity --')
 
 // ---- 1/2. the four copies are identical, and match the canonical source ----
@@ -205,39 +300,10 @@ for (const f of MODULES) {
   const E = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
   const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
   const src = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
-  const SUPPORTED = {
-    '<script>': "split('<script>').join(",
-    '<expr>': "split('<expr>').join(",
-    '<pkgs>': "a === '<pkgs>'",
-    '<pkgs...>': "a === '<pkgs...>'",
-    '<probeCode>': "a === '<probeCode>'",
-    '<exe>': ".replace(/<exe>/g, exe)",
-    '<pkg>': ".replace(/<pkg>/g, pkg)",
-    '__PKGS__': ".replace(/__PKGS__/g, plain)",
-    '__QPKGS__': ".replace(/__QPKGS__/g, quoted)",
-    '__PKG__': ".replace(/__PKG__/g, pkg)",
-  }
-  const stringsOf = (d) => [].concat(
-    Object.values(d.scriptArgv || {}).filter((x) => typeof x === 'string'),
-    Object.values(d.evalArgv || {}).filter((x) => typeof x === 'string'),
-    ((d.packageProbe && d.packageProbe.argv) || []).filter((x) => typeof x === 'string'),
-    typeof d.probeCode === 'string' ? [d.probeCode] : [],
-    (d.install ? [].concat(d.install.userArgv || [], d.install.systemArgv || [], d.install.uninstallArgv || []) : []).filter((x) => typeof x === 'string'),
-  )
   const all = Object.assign({}, E.MATH_ENGINES, E.MATH_P2_ENGINES)
-  const unknown = []
-  const unimplemented = []
-  for (const name of Object.keys(all)) {
-    for (const s of stringsOf(all[name])) {
-      for (const m of (s.match(/<[a-z.]+>|__[A-Z]+__/g) || [])) {
-        if (!(m in SUPPORTED)) unknown.push(name + ':' + m)
-        else if (SUPPORTED[m] && src.indexOf(SUPPORTED[m]) === -1) unimplemented.push(name + ':' + m)
-      }
-    }
-  }
-  ok(unknown.length === 0, 'no descriptor uses an UNKNOWN argv placeholder', JSON.stringify([...new Set(unknown)]))
-  ok(unimplemented.length === 0, 'every descriptor placeholder has an implementation in the module (no literal placeholder can reach an engine)', JSON.stringify([...new Set(unimplemented)]))
-  ok(/String\(a\)\.split\('<script>'\)\.join\(/.test(src) && /String\(a\)\.split\('<expr>'\)\.join\(/.test(src),
+  const unknown = unknownPlaceholders(src, all)
+  const unimplemented = unimplementedPlaceholders(src, all)
+  ok(stringLevelSubstitution(src),
     'substitution is STRING-level for <script>/<expr> (embedded forms like matlab run(\'<script>\') are covered)')
 }
 
@@ -250,11 +316,11 @@ for (const f of MODULES) {
   const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
   const eng = existsSync(engPath) ? readFileSync(engPath, 'utf8') : ''
   const mod = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
-  ok(/policy:\s*\{\s*requiresMathMode:\s*'typed\+shell',\s*requiresEngineInList:\s*true\s*\}/.test(eng),
+  ok(cliDeclaresPolicy(eng),
     'the cli descriptor DECLARES its policy (requiresMathMode + requiresEngineInList)')
-  ok((mod.match(/CLI_POLICY\.requiresMathMode/g) || []).length >= 2 && (mod.match(/CLI_POLICY\.requiresEngineInList/g) || []).length >= 1,
+  ok(cliConsumesPolicy(mod),
     'the module CONSUMES the descriptor policy (both refusal sites read CLI_POLICY)')
-  ok(!/mathMode !== 'typed\+shell'/.test(mod),
+  ok(cliNoHardCoded(mod),
     'no hard-coded policy comparison is left in the module (the rule lives only in the descriptor)')
 }
 

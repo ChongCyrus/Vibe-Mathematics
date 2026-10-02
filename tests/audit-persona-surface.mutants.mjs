@@ -52,6 +52,17 @@ else {
   ok(mut.status !== 0 && named, '★ a newly registered, unmentioned tool reddens the guard by name (unit: registered tool names)', mut.sum.slice(0, 80))
   if (!named) for (const l of mut.failLines.slice(0, 4)) console.log('        ' + l.trim().slice(0, 140))
 }
+// Stronger seam evidence than "green on the copy" (R17): DELETE a preset dir from a FRESH copy and the
+// guard must fail with ENOENT naming the COPIED path — that proves the seam is actually READ, rather than
+// the guard silently falling back to the real tree (which would make the mutation case above meaningless).
+const root2 = mkdtempSync(join(tmpdir(), 'persona-surface-seam-'))
+for (const dir of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v5']) cpSync(join(REPO, dir), join(root2, dir), { recursive: true })
+const missing = runGuard({ PERSONA_ROOT: root2 })
+const namesCopiedPath = missing.out.indexOf(root2) !== -1 && /ENOENT/.test(missing.out)
+ok(missing.status !== 0 && namesCopiedPath,
+  '★ seam is READ: removing a preset from the copy makes the guard fail with ENOENT on the COPIED path (unit: ENOENT paths)',
+  'exit=' + missing.status + ' namesCopied=' + namesCopiedPath)
+rmSync(root2, { recursive: true, force: true })
 rmSync(root, { recursive: true, force: true })
 console.log('')
 console.log('=== PERSONA SURFACE MUTANTS: ' + passed + ' passed, ' + failed + ' failed ===')

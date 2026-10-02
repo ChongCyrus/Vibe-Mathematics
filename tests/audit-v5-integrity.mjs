@@ -22,6 +22,11 @@ const HERE = new URL('../', import.meta.url)
  * from OUTSIDE — a verifier no longer has to copy this audit and rewrite its URLs to point it at a
  * mutated copy (R16's request). Same shape as `audit-prompt-invariants.mjs` and the
  * `math-computation-shared --self-probe` pattern.
+ *
+ * SEAM COVERAGE (R17 measured, both directions): the seam reaches a **plugin** path (a plugin mutation
+ * produces 1 finding) AND the **corpus** path (a corpus mutation produces 2 findings) — i.e. it is not
+ * limited to the plugin file, and a corpus-only drift is observable from outside too. The corpus is read
+ * through the same `readRaw()`, so any new corpus check inherits the seam.
  */
 const MUT = process.env.V5_INTEGRITY_MUTATE
 function readRaw(rel) {

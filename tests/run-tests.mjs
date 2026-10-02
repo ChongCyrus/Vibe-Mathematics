@@ -192,6 +192,8 @@ const VARIANTS = [
   { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'] },
   // The participant-set proof, shipped: the guard's own predicates against broken strings.
   { file: 'audit-participant-set-parity.mjs', args: ['--self-probe'] },
+  // §7/§8 predicates, shipped: same functions fed broken strings.
+  { file: 'audit-math-computation-parity.mjs', args: ['--self-probe'] },
   // The two-registration-paths probe, inverted: it applies a real description mutation and
   // REQUIRES the parity check to exit 1 (exit 2 means the mutation no longer applies = drift).
   {
