@@ -261,7 +261,17 @@ console.log('-- V5 self-drive --')
 // single-site mutant that drops `params.staffPersona` (`const extra = ''`) is caught by NO current
 // suite (audit-participant-set-parity ok, audit-persona-sensitivity ok, audit-persona-surface 276/0).
 await callTool('vibe_v5_set', { staffPersona: 'STAFF-MARKER-X' })
-const started = await callTool('vibe_v5_start', { problem: '证明：不存在整数解 x^n + y^n = z^n（n>2）的初等情形', researcherCount: 3 })
+// V5-A5 (path contract, docs-vs-code class): `memberPathContractOk()` (vibe-math-v5.js:993) compares
+// the DOCUMENTED member root with the root the framework actually writes; a divergence logs a NAMED
+// error and folds into noteLoadProblem. MEASURED: no suite referenced it before this assertion.
+const pathErrs = []
+const realErrA5 = console.error
+console.error = (...a) => { const line = a.map(String).join(' '); if (/member library path contract BROKEN/.test(line)) pathErrs.push(line); realErrA5(...a) }
+let started
+try {
+  started = await callTool('vibe_v5_start', { problem: '证明：不存在整数解 x^n + y^n = z^n（n>2）的初等情形', researcherCount: 3 })
+} finally { console.error = realErrA5 }
+assert(pathErrs.length === 0, '* V5-A5 the documented member root equals the root the framework writes (no path-contract divergence; got ' + JSON.stringify(pathErrs.slice(0, 1)) + ')')
 assert(started.ok === true, 'vibe_v5_start ok (' + JSON.stringify(started).slice(0, 150) + ')')
 assert(spawns.length === 4, 'founded 1 academician + 3 researchers (got ' + spawns.length + ')')
 assert(!!spawnOf('acad'), 'academician acad exists')

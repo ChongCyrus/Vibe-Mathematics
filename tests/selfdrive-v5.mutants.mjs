@@ -105,6 +105,14 @@ const FAMILIES = [
     to: 'if (false) {',
     expect: /V5-A4 a REFUSED stale CAS leaves the task UNCHANGED|a stale revision is refused/,
   },
+  {
+    // ⑤ path contract: ONLY the documented composition moves (instRootRel), while the framework
+    // keeps writing through instRoot() - exactly the v4 58fff7f defect class this guard exists for.
+    name: 'V5-A5: the documented member root diverges from the written root',
+    from: "const instRootRel = () => 'VibeMath/Projects/' + project + '/Institutes/' + instituteName",
+    to: "const instRootRel = () => 'VibeMath/Projects/' + project + '/Institutes/' + instituteName + 'X'",
+    expect: /V5-A5 the documented member root equals the root the framework writes/
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
