@@ -118,3 +118,9 @@ English (`RELEASE-NOTES-<version>.en.md`):
    a history whose earlier entries are Chinese-only. 每个版本同时更新 `README.en.md`（英文历史索引）。
 6. **Historical files are frozen**: older notes are not reformatted retroactively; the template applies from
    the next release onward. 历史文件不改写；模板自下一版本起生效。
+
+
+## 可追溯性要求（写新发布说明时必须遵守）
+
+- 每条"修复/变更"条目**必须点名钉住它的守卫**（具体 `tests/*.mjs` 路径或套件名）；没有守卫的条目要写明"未加守卫，原因：…"。
+- 这样未来的发布说明不会重演历史缺口：守卫索引是权威的可追溯性来源，发布说明只是入口。

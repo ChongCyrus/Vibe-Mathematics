@@ -344,6 +344,7 @@ export function apply(ctx) {
     // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
     // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
     let warnedNoPolicy = false
+let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
     function psQuote(p){ return "'"+String(p).replace(/'/g,"''")+"'" }
@@ -445,7 +446,18 @@ export function apply(ctx) {
       // project tree, NOT inside it: cross-project reuse is the whole point (spec §3). It is
       // created here so the first `lean_archive kind='def'` never has to invent its parent.
       const globalDirs=['Formal/Lib','Formal/Proved']
-      return await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)).concat(globalDirs.map(d=>vibeRoot()+'/'+d))))
+      const res = await runShell(mkdirCmd([vibeRoot()+'/Projects'].concat(dirs.map(d=>base+'/'+d)).concat(globalDirs.map(d=>vibeRoot()+'/'+d))))
+      // F-4c: ensureDirs() returns the shell result and never throws, so a failed mkdir used to surface only
+      // later and as a DISTORTED diagnosis ('write failed' instead of 'mkdir failed, and where'). Name it here,
+      // once, through the same channel as warnNoPolicyOnce() (deferred/distorted diagnosis -> named warning).
+      try {
+        const _code = res && (res.exitCode !== undefined ? res.exitCode : res.code)
+        if (_code !== undefined && Number(_code) !== 0 && !warnedMkdir) {
+          warnedMkdir = true
+          console.error('vibe-math-v4: ensureDirs: mkdir failed (exit ' + _code + ') under ' + vibeRoot() + ' - later writes into a missing directory will fail; check the shell/policy')
+        }
+      } catch(e) { /* best effort: the warning must never break ensureDirs */ }
+      return res
     }
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }

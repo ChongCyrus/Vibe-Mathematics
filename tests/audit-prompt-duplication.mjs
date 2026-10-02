@@ -47,6 +47,20 @@ const DISCLOSURES = [
   ['V2-1 post-compaction recap disclosure', /DISCLOSURE \(existing behaviour\): after a real context compaction the framework injects/, /\u6838\u5fc3\u89c4\u5219\u91cd\u7533|CONTEXT COMPACT/, ['v4']],
 ]
 const PRESET_KEY = { 'vibe-math-v2': 'v2', 'vibe-math-v3': 'v3', 'vibe-math-v4': 'v4' }
+// Declaration-syntax scanner (§9.7⑨): anchored on the SHAPE of a declaration, not on a substring.
+const NAME_RE = '[a-zA-Z][A-Za-z0-9]*'
+const DECL_BULLET = new RegExp('^\\s*-\\s+`?(' + NAME_RE + ')`?\\s*=\\s*\\S')
+const DECL_LIST = new RegExp('^\\s*(?:' + NAME_RE + '\\s*=\\s*[^,\\n]{1,40})(?:\\s*[,，]\\s*' + NAME_RE + '\\s*=\\s*[^,\\n]{1,40})+\\s*$')
+function declarations(rawLines) {
+  const out = []
+  rawLines.forEach((raw, i) => {
+    const line = raw.replace(/\r$/, '')
+    const m1 = DECL_BULLET.exec(line)
+    if (m1) { out.push({ name: m1[1], line: i + 1 }); return }
+    if (DECL_LIST.test(line)) for (const m of line.matchAll(new RegExp('\\b(' + NAME_RE + ')\\s*=\\s*', 'g'))) out.push({ name: m[1], line: i + 1 })
+  })
+  return out
+}
 const normLine = (l) => l.replace(/\s+/g, ' ').replace(/\{\{cwd\}\}|\{\{model\}\}/g, '<T>').trim()
 const SCAFFOLD = /^(-|#|\s*$)|^(suffix|text|priority|config|name|id|content|role):|^You are a coding agent powered by/
 
@@ -97,14 +111,32 @@ for (const preset of PRESETS) {
       if (expected) check(promptRe.test(shared), preset + ': ' + name + ' present in BOTH copies (inside the shared prefix)')
       else check(!promptRe.test(shared), preset + ': ' + name + ' must NOT be declared here (the code does not implement it)')
     })
+    // ── declaration-syntax scanner (§9.7⑨) ────────────────────────────────────────────────
+    // A parameter the prompt PRESENTS AS A DECLARATION must be readable as `params.<name>` in that
+    // preset's JS, and must be declared in BOTH copies. The scan anchors on the declaration's
+    // SYNTAX (a bullet starting with `- <name> = …`, or a pure `name = value, name2 = value2`
+    // list), never on a substring: a mention inside a disclosure sentence must not count as a
+    // declaration. On today's prompts this scan is EMPTY by construction (vacuous-by-construction);
+    // the mutant driver injects a declaration line into ONE copy to prove the scan bites.
+    const declA = declarations(lines.slice(heads[0], heads[1]))
+    const declB = declarations(lines.slice(heads[1]))
+    const namesA = [...new Set(declA.map((d) => d.name))]
+    const namesB = new Set(declB.map((d) => d.name))
+    for (const name of namesA) {
+      check(namesB.has(name), preset + ': parameter "' + name + '" declared in copy 1 (L' + declA.find((d) => d.name === name).line + ' of its slice) must also be declared in copy 2')
+      check(new RegExp('params\\.' + name + '\\b').test(js), preset + ': parameter "' + name + '" is presented as a declaration but the JS never reads params.' + name)
+    }
+    for (const d of declB) {
+      if (!namesA.includes(d.name)) check(false, preset + ': parameter "' + d.name + '" is declared in copy 2 only (L' + d.line + ' of its slice) — both copies must agree')
+    }
+    report.push({ preset, copies: 2, sharedLines: common, ratio: Number(ratio.toFixed(3)), declarations: namesA.length })
   }
-  report.push({ preset, copies: 2, sharedLines: common, ratio: Number(ratio.toFixed(3)) })
 }
 
 if (process.argv.includes('--json')) console.log(JSON.stringify({ passed, failed: failures.length, failures, report }))
 else {
   console.log('v2/v3/v4 prompt duplication audit')
-  for (const r of report) console.log('  ' + r.preset + ': copies=' + r.copies + ' sharedLines=' + r.sharedLines + ' ratio=' + r.ratio)
+  for (const r of report) console.log('  ' + r.preset + ': copies=' + (r.copies || 2) + ' sharedLines=' + r.sharedLines + ' ratio=' + r.ratio + ' declaredParams=' + (r.declarations === undefined ? '-' : r.declarations))
   for (const f of failures) console.log('  FAIL - ' + f)
   console.log((failures.length ? 'FAILED' : 'ALL GREEN') + ' — passed=' + passed + ' failed=' + failures.length)
 }
