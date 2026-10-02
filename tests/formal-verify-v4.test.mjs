@@ -1907,6 +1907,22 @@ section('N15 F-6 site 4: a failed compaction is NAMED exactly once (realCompact 
   } finally { console.error = realErr; compactionFails = false }
 }
 
+section('N14 F2 compaction policy: policy verb only, re-anchor only after a REAL compaction (source level)')
+{
+  const srcC = PLUGIN_SRC()
+  const aC = srcC.indexOf('async function realCompact(')
+  assert(aC > 0, '* F2/a realCompact is found through the seam')
+  let dC = 0, eC = aC
+  for (let i = aC; i < srcC.length; i++) { const ch = srcC[i]; if (ch === '{') dC++; else if (ch === '}') { dC--; if (dC === 0) { eC = i; break } } }
+  const bodyC = srcC.slice(aC, eC + 1)
+  assert(bodyC.length > 100 && bodyC.length < 4000, '* F2/a the inspected window is BOUNDED (' + bodyC.length + ' chars) - a runaway window is itself a failure')
+  assert(bodyC.indexOf('compactIfNeeded(agent, ') !== -1, '* F2/a realCompact calls the POLICY verb compactIfNeeded (threshold-driven)')
+  assert(bodyC.indexOf('compactNow(') === -1, '* F2/a realCompact contains NO compactNow( call: a host offering the forcing verb must NOT be forced (user ruling)')
+  assert(!/const force\s*=/.test(bodyC), '* F2/a the capability-based forcing branch is GONE, not merely deprioritised')
+  assert(/const didCompact\s*=/.test(bodyC), '* F2/a the re-anchor is gated on didCompact (evidence that the policy call ACTUALLY compacted)')
+  assert(/if\(didCompact\)\{/.test(bodyC), '* F2/a and the gate is the if(didCompact){ branch (mutant: if(true){ => this reddens)')
+}
+
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')

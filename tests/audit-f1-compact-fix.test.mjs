@@ -127,9 +127,17 @@ function makeCtx(opts = {}) {
   };
 }
 
-const mod = await import(
-  pathToFileURL(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url))).href
-);
+// V4_PLUGIN seam (same convention as the v5 harness's V5_PLUGIN): lets a verifier point this audit
+// at a MUTATED plugin copy without copying the suite (measured need: R7 had to copy it). Accepts a
+// plain filesystem path or a file:// URL and never touches the value otherwise.
+function auditPluginUrl() {
+  const raw = process.env.V4_PLUGIN
+  if (!raw || !String(raw).trim()) return new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+  const v = String(raw).trim()
+  if (/^file:/i.test(v)) return new URL(v)
+  return pathToFileURL(fileURLToPath(new URL('file:///' + v.replace(/\\/g, '/'))))
+}
+const mod = await import(auditPluginUrl().href);
 
 console.log('=== F-1: v4 real /compact reaches compactIfNeeded ===');
 console.log('  (mock tears the child down BEFORE subagent/end, exactly as the host does)');
