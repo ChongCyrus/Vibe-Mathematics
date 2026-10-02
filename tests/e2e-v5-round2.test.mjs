@@ -84,6 +84,11 @@ function makeHost(opts) {
   // "no start was attempted".
   let failStart = !!o.failStartContinuable
   const startAttempts = []
+  // F6 seam: refuse writes whose resolved path matches (the v4 paper suite's G3 seam, same shape), and —
+  // optionally — whose CONTENT matches as well. Every PROVIDED predicate must match, so a probe can target
+  // the FINALIZE-time append to paper.log.md without touching the ~15 log writes the flow makes earlier.
+  let failWriteOn = o.failWriteOn || null
+  let failWriteContent = o.failWriteContent || null
   // Every effect disposer, so a test can simulate a plugin UNLOAD (the Lean queue's disposer is
   // registered first: it terminates in-flight compiles and marks them interrupted).
   const effectDisposers = []
@@ -155,7 +160,15 @@ function makeHost(opts) {
       },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
       async readText(t) { return readFileSync(t.targetKey, 'utf8') },
-      async writeText(t, c) { mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
+      async writeText(t, c) {
+        // F6 seam: a REAL fs refusal (sandbox denial) rejects, which `writeTextAbs` catches and reports as
+        // "not written" — the exact shape a failed required artifact write has in production.
+        const refuse = (failWriteOn || failWriteContent) &&
+          (!failWriteOn || failWriteOn.test(String(t.targetKey))) &&
+          (!failWriteContent || failWriteContent.test(String(c)))
+        if (refuse) throw new Error('F6_WRITE_FAIL (injected): ' + t.targetKey)
+        mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8')
+      },
       async listDir(t) { if (!existsSync(t.targetKey)) return []; return readdirSync(t.targetKey, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })) },
     },
   }
@@ -253,7 +266,7 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, startAttempts, setFailSend(v) { failSend = !!v }, setFailStart(v) { failStart = !!v }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, startAttempts, setFailSend(v) { failSend = !!v }, setFailStart(v) { failStart = !!v }, setFailWriteOn(v) { failWriteOn = v || null }, setFailWriteContent(v) { failWriteContent = v || null }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -2310,6 +2323,72 @@ console.log('\n[51] spawnMember: a failed resume keeps the existing round number
     '★★★ [spawnMember] a FAILED resume must not move the round number backwards: the rebuilt prompt says 轮次 ' +
     roundOf(resumed) + ', expected 轮次 2 (the existing count must survive the failed attempt)')
   assert(!/轮次 1/.test(resumed), '★★ the existing count was not restarted — no 轮次 1 on the resumed prompt')
+}
+// ---------- 52. F6: a failed REQUIRED artifact write is NAMED (once), and `files` stays honest ------
+console.log('\n[52] F6: a refused required write is named exactly once; a successful one is silent')
+{
+  const settle = async (h) => {
+    await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+    await h.settleSpawns()
+    await h.callTool('vibe_v5_paper', {})
+    await drivePaper(h)
+  }
+  // (a) ANTI-VACUITY: a healthy finalisation writes meta and says NOTHING about write failures.
+  const okHost = makeHost({ pluginModule })
+  await settle(okHost)
+  const okSt = await okHost.callTool('vibe_v5_status', {})
+  const okDir = paperDirOf(okHost, 'institute')
+  assert(existsSync(join(okDir, 'paper.meta.json')), 'precondition: the healthy run wrote paper.meta.json')
+  const okWarn = (okSt.paper && okSt.paper.warnings) || []
+  assert(!okWarn.some((w) => /产物写入失败/.test(w)),
+    '★ anti-vacuity: a SUCCESSFUL required write produces no failure warning (' + JSON.stringify(okWarn) + ')')
+  assert((okSt.paper.artifacts || []).indexOf('paper.meta.json') !== -1,
+    '★ the healthy run lists paper.meta.json among its artifacts (' + JSON.stringify(okSt.paper.artifacts) + ')')
+  // (b) THE REFUSAL: paper.meta.json cannot be written.
+  const h = makeHost({ pluginModule, failWriteOn: /paper\.meta\.json$/ })
+  await settle(h)
+  const st = await h.callTool('vibe_v5_status', {})
+  const dir = paperDirOf(h, 'institute')
+  assert(!existsSync(join(dir, 'paper.meta.json')), 'precondition: the injected refusal really prevented the write')
+  const warns = (st.paper && st.paper.warnings) || []
+  const named = warns.filter((w) => /产物写入失败/.test(w) && /paper\.meta\.json/.test(w))
+  assert(named.length === 1,
+    '★★★ [F6] a failed REQUIRED write is named EXACTLY once, by artifact (' + JSON.stringify(warns) + ')')
+  assert(/refillPaperArtifacts|补写/.test(named[0]),
+    '★ the warning names the recovery path, not just the symptom (' + JSON.stringify(named[0].slice(0, 160)) + ')')
+  assert((st.paper.artifacts || []).indexOf('paper.meta.json') === -1,
+    '★ `files` stays HONEST — the artifact that did not land is absent from the list (' + JSON.stringify(st.paper.artifacts) + ')')
+  assert(existsSync(join(dir, 'paper.md')), 'the other artifacts still landed (only the refused one is missing)')
+  // …and the idempotent refill is what repairs it once the host allows writes again.
+  h.setFailWriteOn(null)
+  const refill = await h.callTool('vibe_v5_paper', {})
+  assert(refill.ok === true && existsSync(join(dir, 'paper.meta.json')),
+    '★ the documented recovery path refills the missing artifact (' + JSON.stringify(refill.refill || refill).slice(0, 140) + ')')
+  const st2 = await h.callTool('vibe_v5_status', {})
+  const named2 = ((st2.paper && st2.paper.warnings) || []).filter((w) => /产物写入失败/.test(w) && /paper\.meta\.json/.test(w))
+  assert(named2.length === 1, '★★ the read-only refill does NOT multiply the warning (still exactly one): ' + JSON.stringify(named2))
+  // (c) THE FLOW LOG, scoped to the FINALIZE-time append only (path + content): the ~15 earlier log writes
+  // must still land, so `paper.log.md` exists but lacks the 定稿 section. The content predicate is NOT
+  // anchored — an append carries the whole earlier log in front of the new section.
+  const hl = makeHost({ pluginModule, failWriteOn: /paper\.log\.md$/, failWriteContent: /## 定稿（/ })
+  await settle(hl)
+  const ldir = paperDirOf(hl, 'institute')
+  const logPath = join(ldir, 'paper.log.md')
+  assert(existsSync(logPath), 'precondition: the earlier paper.log.md writes landed (only the final append is refused)')
+  const logText = readFileSync(logPath, 'utf8')
+  assert(logText.indexOf('## 定稿（') === -1, 'precondition: the refused append really did not reach the log')
+  assert(logText.indexOf('## ') !== -1, 'precondition: the log still carries the flow entries written before finalisation')
+  const lst = await hl.callTool('vibe_v5_status', {})
+  const lwarn = ((lst.paper && lst.paper.warnings) || []).filter((w) => /产物写入失败/.test(w) && /paper\.log\.md/.test(w))
+  assert(lwarn.length === 1, '★★ [F6] a failed FINALIZE-time log write is named exactly once (' + JSON.stringify(lst.paper && lst.paper.warnings) + ')')
+  assert(/refillPaperArtifacts|补写/.test(lwarn[0]), '★ the log warning names the recovery path too')
+  const lmeta = existsSync(join(ldir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(ldir, 'paper.meta.json'), 'utf8')) : null
+  assert(!!lmeta && (lmeta.warnings || []).some((w) => /产物写入失败/.test(w) && /paper\.log\.md/.test(w)),
+    '★★ the DURABLE meta is re-written so it also names the missing log (' + JSON.stringify(lmeta && lmeta.warnings) + ')')
+  assert((lst.paper.artifacts || []).indexOf('paper.meta.json') !== -1, 'the meta still landed and stays in the artifact list')
+  // Anti-vacuity for (c): the healthy run's log DOES contain the 定稿 section.
+  const okLog = existsSync(join(okDir, 'paper.log.md')) ? readFileSync(join(okDir, 'paper.log.md'), 'utf8') : ''
+  assert(okLog.indexOf('## 定稿（') !== -1, '★ anti-vacuity: the healthy run\'s log carries the 定稿 section (the seam is what removed it)')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

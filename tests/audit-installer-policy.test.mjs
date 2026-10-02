@@ -156,7 +156,9 @@ let userJsBytes = null
   const state = JSON.parse(readFileSync(stateFile, 'utf8'))
   ok(state.version === '2.0.0', 'the state records the new version', String(state.version))
   ok(logs.some((l) => l.includes('.vibe-math-backup')), 'the log names the backup location')
-  ok(logs.some((l) => l.includes('复制一份')), 'the log tells the user how to customize a preset properly')
+  // A8: the FACT (a version change backs up the user's edit) is asserted structurally above (backup path
+  // + byte equality). What remains is guidance wording, so this is the ONE labelled wording smoke check.
+  ok(logs.some((l) => /复制一份/.test(l)), '[wording smoke check — the ONE allowed] the log tells the user how to customize a preset properly')
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 
@@ -230,7 +232,9 @@ console.log('=== 7. an unreadable package manifest replaces nothing (and self-he
   ok(readFileSync(at(PRESETS[1], 'preset.yml')).equals(readFileSync(shipped(PRESETS[1], 'preset.yml', pkgC))),
     'the next readable run replaces the drift as a normal version change')
   ok(readFileSync(earlier, 'utf8') === 'EARLIER COPY\n', 'a backup that already exists for that version is kept byte-for-byte (the earliest copy wins)')
-  ok(logs2.every((l) => !l.includes('备份失败')), 'a pre-existing backup for the same version is NOT reported as a failure')
+  // A8: report-level, not wording-level - a pre-existing backup must not be counted as a failure by the
+  // guard's own failure-line helper (which matches the localised failure label, either spelling).
+  ok(failedLog(logs2).length === 0, '★ a pre-existing backup for the same version is NOT reported as a failure (report-level check, not a wording check)', failedLog(logs2)[0])
   ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '3.0.0', 'the state records the new version')
 
   // the backup directory must never be readable as a preset: DSH only accepts [a-z0-9][a-z0-9-]* ids

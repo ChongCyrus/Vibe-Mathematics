@@ -196,9 +196,18 @@ console.log('=== 4. a pluginManager that never answers must not hold the row ===
   // the timeout must NOT replace a working probe: a prompt service still supplies the version
   const quick = run({ listBundles: async () => [{ name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }] })
   await mod.apply(quick.ctx)
-  ok(quick.logs.some((l) => l.includes('0.2.0-rc.2')),
-    'a prompt listBundles() still supplies the version (the timeout is a fallback, not a replacement)',
-    quick.logs.filter((l) => l.includes('source')).join(' | ').slice(0, 160))
+  // A7 (assertion quality): the version+source claim is asserted on the STRUCTURED result - a bare
+  // `logs.some(l => l.includes('0.2.0-rc.2'))` would also pass if the string appeared anywhere for any
+  // reason, and `l.includes('source')` would pass on the English word alone. The log keeps ONE
+  // shape-anchored check.
+  const probeQuick = (await import(pathToFileURL(INSTALLER_SRC).href + '?t=' + Date.now())).detectDshVersion || detectDshVersion
+  const detQuick = await probeQuick(quick.ctx)
+  ok(detQuick && detQuick.version === '0.2.0-rc.2',
+    '★ a prompt listBundles() still supplies the version (STRUCTURED field: version)', JSON.stringify(detQuick && { version: detQuick.version, source: detQuick.source }))
+  ok(!!detQuick && typeof detQuick.source === 'string' && detQuick.source.indexOf('pluginManager') === 0,
+    '★ ...and the winning SOURCE is a structured field naming the service (not the word "source" in a log line)', JSON.stringify(detQuick && detQuick.source))
+  ok(quick.logs.some((l) => /v?0\.2\.0-rc\.2/.test(l)),
+    '...and a log line SHAPE carries that version (shape-anchored, not a bare substring)')
   rmSync(tmp, { recursive: true, force: true })
 }
 

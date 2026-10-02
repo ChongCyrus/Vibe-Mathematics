@@ -325,6 +325,110 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   }
   notes.push('plan §16 parameter rows: ' + paramRows.size)
 
+  // F3 (docs-vs-behaviour sweep): `status()`'s machine surface. The plan's §14.9 states the rule
+  // ("status() 暴露的机器面字段必须在这里有对应物"). The docs owner is completing that table, so THIS gate
+  // pins the CODE side now: the extracted key set is frozen below, and any addition/removal must be an
+  // explicit decision here (and in §14.9). The table half is deliberately NOT enabled yet — and says so,
+  // so the missing half can never be mistaken for coverage.
+  const stIdx = raw.indexOf('function status() {')
+  const statusKeys = []
+  if (stIdx === -1) findings.push('could not locate status() — the machine-surface extraction has no anchor')
+  else {
+    const open = raw.indexOf('return {', stIdx)
+    const close = raw.indexOf('\n      }', open)
+    // Tokenise the returned literal: every key directly inside it — including SHORTHAND keys that share a
+    // line (`institute: instituteName, project, key, phase,`) — while SKIPPING each value (so an
+    // identifier used as a value can never be mistaken for a key).
+    const body = open === -1 ? '' : raw.slice(open + 'return {'.length, close === -1 ? open + 9000 : close)
+    // Comments must be skipped IN PLACE: the payload's comments contain prose with apostrophes, parens and
+    // commas (`…delivered ONCE…`, `phase:'failed'`, `(installer review)`), which otherwise corrupt both the
+    // depth tracking and the value skipping.
+    const skipComment = (s, at) => {
+      if (s[at + 1] === '/') { let j = at + 2; while (j < s.length && s[j] !== '\n') j += 1; return j }
+      if (s[at + 1] === '*') { const j = s.indexOf('*/', at + 2); return j === -1 ? s.length : j + 2 }
+      return -1
+    }
+    let i = 0, depth = 0
+    while (i < body.length) {
+      const ch = body[i]
+      if (ch === '/') { const j = skipComment(body, i); if (j !== -1) { i = j; continue } }
+      if (ch === '"' || ch === "'") { const q = ch; i += 1; while (i < body.length && body[i] !== q) { if (body[i] === '\\') i += 1; i += 1 } i += 1; continue }
+      if (ch === '{' || ch === '[' || ch === '(') { depth += 1; i += 1; continue }
+      if (ch === '}' || ch === ']' || ch === ')') { if (depth === 0) break; depth -= 1; i += 1; continue }
+      if (depth === 0 && /[A-Za-z_$]/.test(ch)) {
+        const m = /^[A-Za-z_$][\w$]*/.exec(body.slice(i))
+        const after = body.slice(i + m[0].length).replace(/^[\s]+/, '')
+        if (after[0] === ':') {
+          statusKeys.push(m[0])
+          i += m[0].length
+          let d = 0
+          while (i < body.length) {                       // skip the VALUE up to the next top-level comma
+            const c = body[i]
+            if (c === '/') { const j = skipComment(body, i); if (j !== -1) { i = j; continue } }
+            if (c === '"' || c === "'") { const q = c; i += 1; while (i < body.length && body[i] !== q) { if (body[i] === '\\') i += 1; i += 1 } i += 1; continue }
+            if (c === '{' || c === '[' || c === '(') { d += 1; i += 1; continue }
+            if (c === '}' || c === ']' || c === ')') { if (d === 0) break; d -= 1; i += 1; continue }
+            if (c === ',' && d === 0) { i += 1; break }
+            i += 1
+          }
+          continue
+        }
+        if (after[0] === ',') { statusKeys.push(m[0]); i += m[0].length; continue }
+        i += m[0].length; continue
+      }
+      i += 1
+    }
+  }
+  notes.push('status() top-level keys captured: ' + statusKeys.length)
+  if (statusKeys.length < 30) findings.push('status() key extraction captured only ' + statusKeys.length + ' keys (anchor or payload broke — this check must never pass vacuously)')
+  for (const must of ['phase', 'members', 'quorum', 'chat', 'persistence']) {
+    if (statusKeys.indexOf(must) === -1) findings.push('status() no longer exposes `' + must + '` (either the extraction anchor or the payload broke)')
+  }
+  const EXPECTED_STATUS_KEYS = ['ok', 'institute', 'project', 'key', 'phase', 'running', 'autoDone', 'runId', 'leanNotices', 'leanNoticesScope', 'fieldScopes', 'backend', 'diagnostics', 'debug', 'quorum', 'members', 'tasks', 'failedMembers', 'failedMembersNote', 'pendingSpawns', 'pendingSpawnsNote', 'chat', 'chatScope', 'officeRequests', 'officeRequestsShown', 'officeRequestsCap', 'officeRequestsDropped', 'officeRequestsTruncated', 'persistence', 'meeting', 'parkedMeeting', 'verify', 'verifyQueue', 'verified', 'verifiedTrue', 'concludedFalse', 'verifiedNote', 'undecided', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params']
+  const statusMissing = EXPECTED_STATUS_KEYS.filter((k) => statusKeys.indexOf(k) === -1)
+  const statusAdded = statusKeys.filter((k) => EXPECTED_STATUS_KEYS.indexOf(k) === -1)
+  if (statusMissing.length || statusAdded.length) {
+    findings.push('status() field surface changed — missing=' + JSON.stringify(statusMissing) + ' added=' + JSON.stringify(statusAdded) +
+      ': record the decision in this freeze AND add/update the row in the plan §14.9 table')
+  }
+  notes.push('§14.9 doc-table reconciliation: NOT enabled yet (the docs owner is completing the table); the code-side freeze above is the active half')
+
+  // F1 (docs-vs-behaviour): the README's TWO-CASE `resume` claim must stay paired with the behavioural
+  // anchor that pins the in-instance case (the two CODE anchors are gates in the GATES table below). Only
+  // the prose side is checked here, and every side reports how much it matched, so this cannot pass vacuously.
+  {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    const suite = readFileSync(new URL('./e2e-v5-round2.test.mjs', import.meta.url), 'utf8')
+    const readmeClaims = [
+      ['the two-case framing', /`resume`\s*后轮次计数的两种情形/],
+      ['case 1 = a cross-process reload counts from 1', /跨进程重载[^\n]*从\s*\*\*1\*\*\s*重新计/],
+      ['case 2 = an in-instance rebuild CONTINUES the numbering (轮次 2)', /同实例重建[^\n]*继续[^\n]*轮次 2/],
+      ['a failed/invalid start no longer erases the existing count', /失败\/无效的启动\*\*不再抹掉\*\*已有计数/],
+      ['the claim is pinned to a revision', /口径复核于\s*`?[0-9a-f]{7,40}`?/],
+    ]
+    let readmeHits = 0
+    for (const [label, re] of readmeClaims) {
+      if (re.test(readme)) readmeHits += 1
+      else findings.push('README resume-claim side missing: ' + label)
+    }
+    const suiteClaims = [
+      ['the in-instance rebuild is asserted as 轮次 2', /a FAILED resume must not move the round number backwards/],
+      ['the founding round is asserted as 轮次 1', /the founding prompt starts the member at 轮次 1/],
+    ]
+    let suiteHits = 0
+    for (const [label, re] of suiteClaims) {
+      if (re.test(suite)) suiteHits += 1
+      else findings.push('README resume-claim has no behavioural anchor: ' + label)
+    }
+    // The README cites exact code/test lines PINNED to a revision ("口径复核于 <sha>"). Those drift by
+    // design, so the drift is a measured NOTE carrying the current lines — never a failure.
+    const lineOf = (needle) => { const at = raw.indexOf(needle); return at === -1 ? -1 : raw.slice(0, at).split('\n').length }
+    const startLine = lineOf('const startRound = (rounds.get(member.id) || 0) + 1')
+    const applyLine = lineOf('rounds.set(member.id, startRound)')
+    if (startLine === -1 || applyLine === -1) findings.push('the spawnMember round-count anchors are gone (startRound=' + startLine + ', applied=' + applyLine + ')')
+    notes.push('F1 resume-claim pairing: README ' + readmeHits + '/' + readmeClaims.length + ' claims, behavioural anchors ' + suiteHits + '/' + suiteClaims.length + '; cited-line drift (README pins a revision): startRound now :' + startLine + ', applied now :' + applyLine)
+  }
+
   // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
   // still exist so a future edit cannot quietly drop a guard.
   const GATES = [
@@ -341,6 +445,9 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['the framework never assigns on its own', "agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？'"],
 
     // ── PROMPT / INTERACTION CORRECTNESS GATES ─────────────────────────────
+    // F1 (README two-case resume claim): the two code anchors the prose cites.
+    ['the founding round is computed from the stored count (never reset)', 'const startRound = (rounds.get(member.id) || 0) + 1'],
+    ['the founding round is applied only AFTER a successful start', 'rounds.set(member.id, startRound)'],
     // The 2026-09 field test shipped a framework whose every member brief named the WRONG
     // member. These gates keep the structural fixes in place, and the companion
     // prompt-v5-integrity.test.mjs asserts the TEXT those fixes produce.
@@ -355,6 +462,13 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['no charter invents a leader when there is none', "本所当前**没有在册院士**"],
     ['the office resolves as the office, never as a guessed member', "try { if (rootOf(agent) === agent) return 'office' } catch (e) { /* fall through */ }"],
     ['the mailbox is acked only AFTER the wake actually succeeded', "if (ok && prompt.pending.length) await ackPending(prompt.pending)"],
+    // F2: the three REAL mailbox invariants, each at its own source anchor. `inFlightMessages` is a DSH
+    // mailbox internal that v5 does NOT have (dedupe is `delivered` + the per-round injection marks), so
+    // no gate may reference it.
+    ['the acknowledgement is gated by the wake result AND a non-empty pending list', 'const ok = await wakeMember(member, prompt.text, kind)'],
+    ['the delivered ledger is CAPPED (oldest evicted, never unbounded)', 'const capped = delivered.length > DELIVERED_CAP ? delivered.slice(delivered.length - DELIVERED_CAP) : delivered'],
+    ['a prompt prepends only messages not already prepended in this round', 'const fresh = pending.filter((p) => !seen.has(p.id))'],
+    ['the per-round injection mark is cleared with every concluded attempt', 'inboxInjected.delete(member.id)'],
     ['a prepended inbox suppresses the base block (exactly one inbox section per prompt)', "const pending = inboxSuppressed.has(member.id) ? [] : pendingFor(member.id)"],
     ['framework feedback has its own sender (never a self-message)', "return await say('framework', { to: memberId, kind: 'notice', text: String(text) })"],
     ['an assignment is framed by its true origin', "if (m.kind === 'assign') return (m.from === 'office' ? '【所办分派】' : '【院士分派】') + m.text"],

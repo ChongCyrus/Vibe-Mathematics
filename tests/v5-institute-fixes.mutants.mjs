@@ -150,6 +150,22 @@ const FAMILIES = [
     to: 'const prompt = initialPrompt(member, initialTask, mode)',
     expect: /\[spawnMember\]|the founding prompt never displays 轮次 0|the FOUNDING prompt announces the round/,
   },
+  {
+    // F6: quietly dropping a failed REQUIRED artifact write again (the v4-G3 shape): the meta write is
+    // still checked for `files`, but the failure is no longer NAMED in `warnings`.
+    name: 'F6: a failed paper.meta.json write is silently dropped from warnings again',
+    from: "      else warnings.push(paperWriteFailureWarning(['paper.meta.json']))",
+    to: "      else { /* F6 mutant: the failure is silent again */ }",
+    expect: /\[F6\] a failed REQUIRED write is named EXACTLY once/,
+  },
+  {
+    // F6 (log half): discarding the FINALIZE-time log write result again — the log artifact can then go
+    // missing with no warning at all, and the durable meta is not re-written to name it.
+    name: 'F6: the finalize-time paper.log.md write result is discarded again',
+    from: '      if (!logRes.ok) {',
+    to: '      if (false) {',
+    expect: /\[F6\] a failed FINALIZE-time log write is named exactly once/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

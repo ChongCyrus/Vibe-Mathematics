@@ -5125,13 +5125,23 @@ export function apply(ctx) {
       await patchInstitute({ paper: (cur) => { const next = fn(cur === undefined ? null : cur); return next === undefined ? (cur === undefined ? null : cur) : next } })
       return paper()
     }
+    // F6 (v4-G3's v5 cousin): ONE named warning per failed REQUIRED artifact write. `files` stays the
+    // honest list of what actually landed, and the recovery path is the idempotent refill
+    // (`refillPaperArtifacts`, reached by re-triggering the paper) which only writes what is missing.
+    function paperWriteFailureWarning(names) {
+      return '产物写入失败（未落盘）：' + names.join('、') + ' —— 它们不在本次定稿的 files 产物清单里；' +
+        '重跑同一篇论文（/v5 paper，幂等）会由 refillPaperArtifacts 只补写缺失产物。'
+    }
     async function paperLog(title, body) {
       const p = paper()
       const id = (p && p.id) || paperIdFromState()
       const rel = PAPER_FILE(id, 'paper.log.md')
       const prev = (await readTextRel(rel)) || ('# 最终论文流程日志｜' + id + '\n\n')
-      await writeTextRel(rel, prev + '## ' + title + '\n\n' + String(body || '') + '\n\n')
-      return rel
+      // F6: the outcome is RETURNED so the finalisation can turn a failure into a named warning. It used
+      // to be discarded, which is how a "finalized" paper could be announced without its log and with no
+      // trace in `warnings`. No caller read the old `rel` return value.
+      const ok = await writeTextRel(rel, prev + '## ' + title + '\n\n' + String(body || '') + '\n\n')
+      return { rel, ok }
     }
     function paperAskEvery() { return posMs(params.activityTimeoutMs, 120000) }
     function paperNextStep(p) {
@@ -5950,13 +5960,18 @@ export function apply(ctx) {
       const finalizedAt = now()
       const S = paperSections(p, active, skipped, ev, { final: p.final, conclusionText })
       const files = []
+      // F6: every REQUIRED artifact write is checked. A failure does NOT block finalisation (the paper
+      // is still delivered from whatever landed) but it must be NAMED, not silently dropped from `files`.
+      const writeFailures = []
       if (p.format !== 'tex') {
         if (await writeTextRel(PAPER_FILE(id, 'paper.md'), renderPaperMd(p, S))) files.push('paper.md')
+        else writeFailures.push('paper.md')
       }
       let tex = ''
       if (p.format !== 'md') {
         tex = renderPaperTex(p, S)
         if (await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)) files.push('paper.tex')
+        else writeFailures.push('paper.tex')
       }
       // `paperFormat=md` with `paperCompilePdf=true` must NOT warn about a missing tex: no tex
       // was produced, so compilation is skipped silently (docs/final-paper.md §8).
@@ -5972,11 +5987,17 @@ export function apply(ctx) {
       const warnings = (p.warnings || []).slice()
       if (compile.status === 'failed') warnings.push('LaTeX 编译失败（已保留 paper.tex 与 paper.md，不阻塞定稿）：' + (compile.attempts || []).map((a) => a.engine + '/' + a.label + ' exit=' + a.exitCode + (a.message ? '(' + a.message + ')' : '')).join('；'))
       if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。')
+      // F6: the failed REQUIRED writes are named ONCE (for this finalisation), before the meta is built,
+      // so the warning lands in `meta.warnings`, in the flow log, in the state and in the return value.
+      if (writeFailures.length) warnings.push(paperWriteFailureWarning(writeFailures))
       const meta = paperMeta(Object.assign({}, p, { finalizedAt, compile: compile.status, engine: compile.engine || '' }), {
         finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', attempts: compile.attempts || [] }, files,
       })
       if (await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(meta, null, 2) + '\n')) files.push('paper.meta.json')
-      await paperLog('定稿（' + reason + '）', [
+      // `meta.warnings` is the SAME array, so a meta write failure still reaches the state, the log and
+      // the tool's return value even though the file that should have carried it is the one missing.
+      else warnings.push(paperWriteFailureWarning(['paper.meta.json']))
+      const logRes = await paperLog('定稿（' + reason + '）', [
         '- 目录：Paper/' + id + '/',
         '- 产物：' + files.join('、'),
         '- 编译：' + compile.status + (compile.engine ? '（' + compile.engine + '）' : '') + '｜尝试 ' + (compile.attempts || []).length + ' 次',
@@ -5985,6 +6006,14 @@ export function apply(ctx) {
         (p.final && p.final.note ? '- 定稿说明：' + p.final.note : ''),
         (warnings.length ? '- 警告：\n  - ' + warnings.join('\n  - ') : ''),
       ].filter(Boolean).join('\n'))
+      // F6: a failed flow-log write is named too — the log is a required artifact of the paper flow. The
+      // meta is REWRITTEN here because it was serialised BEFORE this attempt: without the rewrite the
+      // durable meta would be the one artifact whose `warnings` does not mention the missing log. (If the
+      // meta path is refused as well the rewrite fails silently — its own warning is already recorded.)
+      if (!logRes.ok) {
+        warnings.push(paperWriteFailureWarning(['paper.log.md']))
+        await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(meta, null, 2) + '\n')
+      }
       await mutatePaper((cur) => (cur ? Object.assign({}, cur, {
         status: 'finalized', stage: 'finalized', finalizedAt, compile: compile.status,
         engine: compile.engine || '', warnings, artifacts: files, updatedAt: now(),
