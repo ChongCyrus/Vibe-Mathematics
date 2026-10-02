@@ -648,6 +648,25 @@ console.log('\n-- P5–P8 (v3): 状态完整性码形 --');
   assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src), '★★ [P7] 裁决日志名带 shortId 后缀');
   assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src), '★★ [P8] 框架分配命题 id 走 shortIdUnique');
 }
+console.log('\n-- F2cap: status/report 的 recentActivity 共用同一上限 --');
+{
+  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const m = /const ACTIVITY_REPORT_MAX = (\d+)/.exec(src);
+  assert(!!m, '★★★ [F2cap] 存在命名上限常量 ACTIVITY_REPORT_MAX');
+  const cap = Number(m ? m[1] : 0);
+  const uses = (src.match(/recentActivity: activityLog\.slice\(-Math\.min\(ACTIVITY_REPORT_MAX,/g) || []).length;
+  assert(uses === 2, '★★★ [F2cap] status 与 report 两处都走同一常量（实测 ' + uses + ' 处；硬编码字面量会在此变红）');
+  const entry = /\{ name: 'activityLogCap'[^]*?suggestion: 100 \},/.exec(src);
+  assert(!!entry && /ACTIVITY_REPORT_MAX/.test(entry[0]) && /条）/.test(entry[0]) && !/最多显示 30/.test(entry[0]),
+    '★★★ [F2cap] 参数描述**引用**该常量（而非写死字面量）——doc↔code 交叉来源（cap=' + cap + '，entry=' + JSON.stringify(entry && entry[0].slice(-90)) + '）');
+  await call('vibe_math_set_params', { activityLogCap: 2 });
+  const st = await call('vibe_math_status', {});
+  const rep = await call('vibe_math_report', {});
+  const a = Array.isArray(st.recentActivity) ? st.recentActivity.length : -1;
+  const b = Array.isArray(rep.recentActivity) ? rep.recentActivity.length : -1;
+  assert(a >= 0 && a === b && a <= 2, '★★ [F2cap] 调小 activityLogCap 后两视图同步跟随（status=' + a + ' report=' + b + '）');
+  await call('vibe_math_set_params', { activityLogCap: 100 });
+}
 // ================= Frame contracts: planner vocabulary / method-keeper id =================
 console.log('\n-- Frame F1/F2: planner vocabulary == the code\'s accepted actions --');
 {
@@ -679,6 +698,59 @@ console.log('\n-- Frame F3: method-keeper card-id contract --');
     return hit;
   };
   assert(walkFor(WS, 'm-probeF3.md'), '★★ [F3] created 里的 id 一定落成一张卡（框架兜底写标准卡，不留悬空引用；探针在整个工作树里找 m-probeF3.md）');
+}
+console.log('\n-- F1: pendingDecisions 在 status/report 同形 --');
+{
+  const st = await call('vibe_math_status', {});
+  const rep = await call('vibe_math_report', {});
+  assert(typeof st.pendingDecisions === 'number' && typeof rep.pendingDecisions === 'number',
+    '★★★ [F1] pendingDecisions 两面同形（都是数字；实测 status=' + typeof st.pendingDecisions + ' report=' + typeof rep.pendingDecisions + '）');
+  assert(Array.isArray(rep.pendingDecisionItems) && rep.pendingDecisionItems.length === rep.pendingDecisions,
+    '★★ [F1] 明细用独立键名 pendingDecisionItems，且长度与计数一致（实测 ' + JSON.stringify(rep.pendingDecisionItems && rep.pendingDecisionItems.length) + '）');
+}
+console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
+{
+  const st = await call('vibe_math_status', {});
+  const sc = st.fieldScopes;
+  assert(sc && Array.isArray(sc.session) && Array.isArray(sc.durable) && typeof sc.note === 'string' && sc.note.length > 0, '★★★ [F3] status 带 fieldScopes（session/durable/note 齐备）');
+  const getPath = (p) => p.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), st);
+  const missing = (sc ? sc.session.concat(sc.durable) : []).filter((p) => getPath(p) === undefined);
+  assert(missing.length === 0, '★★★ [F3] fieldScopes 列的每个字段在载荷里真实存在（列出不存在的名字会在此变红；缺 ' + JSON.stringify(missing) + '）');
+  assert(sc && sc.session.indexOf('stateWriteFailures') !== -1 && sc.session.indexOf('registeredAgents') !== -1 && sc.durable.indexOf('formal') !== -1 && sc.durable.indexOf('stateWriteFailures') === -1, '★★ [F3] 语义抽查：stateWriteFailures/registeredAgents 属会话、formal 属耐久，两组互斥');
+}
+console.log('\n-- F4/F5/F7/F8: 字段文档、两面字段集、人读报告本地化 --');
+{
+  const doc = readFileSync(new URL('../docs/status-report-fields.md', import.meta.url), 'utf8');
+  const names = ['recentActivity', 'stateWriteFailures', 'registeredAgents', 'queuedPlanActions', 'plannerFails', 'verifyPending', 'stateCommit', 'pendingDecisions', 'verifyTasks', 'activeCount'];
+  const missing = names.filter((n) => doc.indexOf('`' + n + '`') === -1);
+  assert(missing.length === 0, '★★★ [F4] 字段文档覆盖审查列出的十个字段名（缺 ' + JSON.stringify(missing) + '）');
+  const st = await call('vibe_math_status', {});
+  const sc = st.fieldScopes || { session: [], durable: [] };
+  const undoc = sc.session.concat(sc.durable).filter((p) => doc.indexOf('`' + p.split('.')[0] + '`') === -1);
+  assert(undoc.length === 0, '★★★ [F4] 代码 fieldScopes 里的字段都在文档里有行（文档↔代码交叉来源；缺 ' + JSON.stringify(undoc) + '）');
+  assert(/未构造出/.test(doc) && /已解决/.test(doc), '★★ [F8] 文档写明 problems.solved 的 v2/v3 口径差异且标注未证明漂移');
+  const rep = await call('vibe_math_report', {});
+  assert('paper' in st && 'paper' in rep && 'at' in st && 'at' in rep, '★★★ [F5] paper/at 两面都有（status 与 report 字段集已对齐）');
+  const src3 = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  assert(/请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理/.test(src3), '★★ [F4v3] v3 推送行也点名 vibe_math_list_agents（report 只给计数）');
+  const onlyStatus = Object.keys(st).filter((k) => !(k in rep)).sort();
+  const decl = /\*\*`status` 独有\*\*[^\n]*/.exec(doc);
+  const declared = ((decl ? decl[0] : '').match(/`([A-Za-z][A-Za-z0-9_]*)`/g) || []).map((x) => x.replace(/`/g, '')).filter((x) => x !== 'status').sort();
+  assert(declared.join(',') === onlyStatus.join(','), '★★★ [F5] status 独有字段 == 文档声明的差异清单（文档↔载荷交叉来源；载荷=' + JSON.stringify(onlyStatus) + ' 文档=' + JSON.stringify(declared) + '）');
+  // F7 行为面：report 工具会编译人读报告 Logs/报告.md
+  const findFile = (d, name) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) { const hit = findFile(p, name); if (hit) return hit; }
+      else if (e.name === name) return p;
+    }
+    return null;
+  };
+  const rp = findFile(WS, '报告.md');
+  assert(!!rp, '★★★ [F7] report 工具产出人读报告（Logs/报告.md）');
+  const txt = rp ? readFileSync(rp, 'utf8') : '';
+  assert(/运行中：(是|否)/.test(txt) && !/运行中：true|运行中：false/.test(txt), '★★★ [F7] 人读报告把裸布尔中文化（实测 ' + JSON.stringify((txt.match(/运行中：[^；]*/) || [''])[0]) + '）');
+  assert(/（方向：/.test(txt) ? /（方向：[^）]*\((active|dead-end|success|queued)\)/.test(txt) : true, '★★ [F7] 方向状态中文化并把代码 token 放括号里备查');
 }
 // ================= D2: file write locks are leases (renewed while the holder lives) =================
 // The old defect: the refusal window was the literal 60000 and NOTHING ever renewed `at`, so a member

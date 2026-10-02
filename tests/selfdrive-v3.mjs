@@ -19,7 +19,7 @@ let step = 0
 const MAX_STEPS = 60
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 function log(rec){ LOG.push(Object.assign({ t: Date.now(), step }, rec)) }
-function waitFor(pred, t=2500){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },40) }) }
+function waitFor(pred, t=2500){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);{ console.error('  [waitFor] TIMED OUT after ' + (Date.now() - s) + 'ms'); res(false) }} },40) }) }
 function byLabel(p){ for(let i=spawns.length-1;i>=0;i--) if(spawns[i].label.startsWith(p)) return spawns[i] }
 function countLabel(p){ return spawns.filter(s=>s.label.startsWith(p)).length }
 function readState(name){ try { return JSON.parse(readFileSync(join(WS,'VibeMath','Projects','sd','State',name),'utf8')) } catch(e){ return undefined } }

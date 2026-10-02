@@ -83,7 +83,8 @@ function harness(opts) {
   return { WS, listeners, toolRegs, cmdRegs, spawns, errors, latexRuns, ctx, ROOT, restore() { console.error = realError }, project: join(WS, 'VibeMath', 'Projects', 'p') }
 }
 async function load(h) {
-  const mod = await import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href + '?t=' + Date.now() + Math.random())
+  if (!globalThis.__v2PluginPromise) globalThis.__v2PluginPromise = import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href)
+  const mod = await globalThis.__v2PluginPromise   // ONE module instance per process (no ?t= cache-buster): the per-block re-import raced the previous block's pending async work
   ;(mod.default || mod).apply(h.ctx)
   h.call = async (n, a) => JSON.parse(await (h.toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: h.ROOT }))
   h.fireEnd = (info) => { for (const fn of (h.listeners['subagent/end'] || [])) fn(info) }
@@ -151,7 +152,7 @@ console.log('\n-- H3: a proof judged 0 must not fabricate "the proposition is fa
   assert(!!after && after.证明列表[0].已验 === true, 'the invalid proof itself is recorded as 已验')
   const cards = existsSync(join(h.project, 'Verified', '数论_Verified.json')) ? JSON.parse(readFileSync(join(h.project, 'Verified', '数论_Verified.json'), 'utf8')) : []
   assert(!cards.some((c) => c.id === 'pProof'), 'no Verified card was written for the proposition')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- H4 + M12 + M13
@@ -183,7 +184,7 @@ console.log('\n-- H4/M12/M13: mid-range is not an absolute verdict; accuracy is 
   assert(keys.length === 1 && keys[0] === 'm:mock/mock', 'accuracy is keyed by the STABLE provider/model identity (keys=' + JSON.stringify(keys) + ')')
   assert(!!acc1['m:mock/mock'] && acc1['m:mock/mock'].total === 2 && acc1['m:mock/mock'].correct === 0,
     'only the earlier round was scored against the later boolean truth (got ' + JSON.stringify(acc1['m:mock/mock']) + '), never the round grading itself')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- M10
@@ -204,7 +205,7 @@ console.log('\n-- M10: leaving a gated run abandons (does not strand) the pendin
   const queue = JSON.parse(readFileSync(join(h.project, 'VibeMath_State', 'decision_queue.json'), 'utf8'))
   const resolved = queue.find((d) => d.id === gatedId && d.resolution && d.resolution.action === 'abandoned')
   assert(!!resolved, 'it is recorded as resolved with action=abandoned (an auditable terminal state)')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- M11
@@ -223,7 +224,7 @@ console.log('\n-- M11: one surviving reviewer cannot produce a verdict --')
   const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
   assert(/有效评审不足 2 份/.test(acts), 'the shortfall is announced on the activity log (why no verdict was written)')
   assert(!existsSync(join(h.project, 'Verified', '问题_Verified.json')), 'no Verified card exists for it')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- D4
@@ -252,7 +253,7 @@ console.log('\n-- D4: the debate prompt asks for "changed" AND the framework kee
     return (j.transcript || '').indexOf('[changed:') !== -1 ? j : undefined
   })
   assert(!!got, '★ [D4] 裁决落库的辩论 transcript 里保留了评审的改判理由（changed）')
-  await h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  await h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- P1
@@ -271,7 +272,7 @@ console.log('\n-- P1: add_proposition 拒绝覆盖已有 id（与自动路径同
   assert(kept && kept.概述 === '第一版陈述', '★★ [P1] 已有卡内容未被覆盖（实测 概述=' + JSON.stringify(kept && kept.概述) + '）')
   const a3 = await h.call('vibe_math_add_proposition', { id: 'pP1b', 概述: '新卡', 布尔估计: 0.5 })
   assert(a3.ok === true, '对照：换一个新 id 仍可正常新建')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- P2
@@ -294,7 +295,7 @@ console.log('\n-- P2: 状态提交有完整性标记，撕裂提交可检测 --'
   const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
   assert(acts.indexOf('上一次状态提交不完整') !== -1,
     '★★ [P2] 撕裂提交被明确报出（活动日志：' + JSON.stringify(acts.slice(-200)) + '）')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- P3
@@ -323,7 +324,7 @@ console.log('\n-- P3: 待计分评审样本必须落盘（崩溃不再静默丢�
   const after = JSON.parse(readFileSync(join(h.project, rel), 'utf8'))
   assert(Object.keys(after).some((k) => k.indexOf('pP3') !== -1),
     '★★ [P3] 恢复后样本仍在（loadState 回读，不是被清空重来）')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- P4
@@ -345,7 +346,7 @@ console.log('\n-- P4: 被拒绝/失败的落盘必须可见 --')
   assert(rep.stateWriteFailures && Number(rep.stateWriteFailures.count) >= 1, '★★ [P4] report 同样暴露该诊断（不只 status）')
   const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
   assert(/拒绝写入/.test(acts), '★★ [P4] 活动日志有"拒绝写入"留痕（实测 ' + JSON.stringify(acts.slice(-140)) + '）')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- P5–P8
@@ -370,9 +371,53 @@ console.log('\n-- P5–P8: 状态完整性（日志回读 / 论文排队 / 日�
     '★★ [P7] 裁决日志名带 shortId 后缀（同一毫秒的两次裁决不再互相覆盖）')
   assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src),
     '★★ [P8] 框架分配命题 id 走 shortIdUnique（分配前查重，不再靠概率）')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
+console.log('\n-- F1: pendingDecisions 在 status/report 同形 --');
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'pf1' })
+  const st = await h.call('vibe_math_status', {});
+  const rep = await h.call('vibe_math_report', {});
+  assert(typeof st.pendingDecisions === 'number' && typeof rep.pendingDecisions === 'number',
+    '★★★ [F1] pendingDecisions 两面同形（都是数字；实测 status=' + typeof st.pendingDecisions + ' report=' + typeof rep.pendingDecisions + '）');
+  assert(Array.isArray(rep.pendingDecisionItems) && rep.pendingDecisionItems.length === rep.pendingDecisions,
+    '★★ [F1] 明细用独立键名 pendingDecisionItems，且长度与计数一致（实测 ' + JSON.stringify(rep.pendingDecisionItems && rep.pendingDecisionItems.length) + '）');
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
+}
+console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
+{
+const h = harness(); await load(h)
+await h.call('vibe_math_new_project', { name: 'pf3' })
+  const st = await h.call('vibe_math_status', {});
+  const sc = st.fieldScopes;
+  assert(sc && Array.isArray(sc.session) && Array.isArray(sc.durable) && typeof sc.note === 'string' && sc.note.length > 0, '★★★ [F3] status 带 fieldScopes（session/durable/note 齐备）');
+  const getPath = (p) => p.split('.').reduce((o, k) => (o === undefined || o === null ? undefined : o[k]), st);
+  const missing = (sc ? sc.session.concat(sc.durable) : []).filter((p) => getPath(p) === undefined);
+  assert(missing.length === 0, '★★★ [F3] fieldScopes 列的每个字段在载荷里真实存在（列出不存在的名字会在此变红；缺 ' + JSON.stringify(missing) + '）');
+  assert(sc && sc.session.indexOf('stateWriteFailures') !== -1 && sc.session.indexOf('registeredAgents') !== -1 && sc.durable.indexOf('formal') !== -1 && sc.durable.indexOf('stateWriteFailures') === -1, '★★ [F3] 语义抽查：stateWriteFailures/registeredAgents 属会话、formal 属耐久，两组互斥');
+h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
+}
+console.log('\n-- F5/F6: 两面字段集与 paths 基准 --');
+{
+  const h = harness(); await load(h);
+  await h.call('vibe_math_new_project', { name: 'pf56' });
+  const st = await h.call('vibe_math_status', {});
+  const rep = await h.call('vibe_math_report', {});
+  assert('paper' in st && 'paper' in rep && 'at' in st && 'at' in rep, '★★★ [F5] paper/at 两面都有（v2 status/report 字段集对齐）');
+  const need = ['base', 'project', 'proofs', 'lib', 'proved', 'note'];
+  assert(st.formal && st.formal.paths && need.every((k) => k in st.formal.paths), '★★★ [F6] status.formal.paths 带 base + note（缺 ' + JSON.stringify(need.filter((k) => !st.formal.paths || !(k in st.formal.paths))) + '）');
+  const pp = st.formal.paths || {};
+  assert(typeof pp.base === 'string' && pp.base.indexOf('/') !== -1 && /^([A-Za-z]:[\\/]|\/)/.test(pp.base), '★★ [F6] base 是绝对项目根（实测 ' + JSON.stringify(pp.base) + '）');
+  const rpj = rep.formal && rep.formal.paths ? rep.formal.paths : null;
+  assert(!!rpj && 'base' in rpj && 'note' in rpj, '★★ [F6] report 侧的 paths 同样带 base/note（两面一致）');
+  const doc = readFileSync(new URL('../docs/status-report-fields.md', import.meta.url), 'utf8');
+  const names = ['recentActivity', 'stateWriteFailures', 'registeredAgents', 'stateCommit', 'pendingDecisions', 'verifyTasks', 'activeCount', 'pendingDecisionItems'];
+  const missing = names.filter((n) => doc.indexOf('`' + n + '`') === -1);
+  assert(missing.length === 0, '★★★ [F4] v2 侧字段名也在字段文档里（缺 ' + JSON.stringify(missing) + '）');
+  h.restore(); rmSync(h.WS, { recursive: true, force: true });
+}
 // ---------------------------------------------------------------- F4
 console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
 {
@@ -392,7 +437,7 @@ console.log('\n-- M15: status and report share one recentActivity bound (30) --'
   assert(st.recentActivity.length > 10, 'status shows more than the old hardcoded 10 entries (' + st.recentActivity.length + ')')
   assert(st.recentActivity.length === rep.recentActivity.length, 'status and report show the SAME number of entries (' + st.recentActivity.length + ' vs ' + rep.recentActivity.length + ')')
   assert(st.recentActivity.length <= 30, 'and never more than the documented 30 (' + st.recentActivity.length + ')')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- H5
@@ -407,7 +452,7 @@ console.log('\n-- H5: a host without subprocess reports the failure instead of d
   const joined = h.errors.join('\n')
   assert(/ensureDirs/.test(joined) && /no-subprocess/.test(joined), 'the failed mkdir is logged WITH its reason (ensureDirs ... no-subprocess)')
   assert(/removeFile\(VibeMath_State\/params\.json\)/.test(joined) && /no-subprocess/.test(joined), 'the degraded delete is logged with its reason too')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- L20
@@ -435,7 +480,7 @@ console.log('\n-- L20: a verdict the require gate withheld is reported as NOT ap
     const todo = existsSync(join(h.project, 'Formal', 'TODO.md')) ? readFileSync(join(h.project, 'Formal', 'TODO.md'), 'utf8') : ''
     assert(/pDefer/.test(todo) && /formal-required/.test(todo), 'and the deferral is on the formalization TODO')
   }
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ---------------------------------------------------------------- L19
@@ -480,7 +525,7 @@ console.log('\n-- L19: the string fallback must not read `r-pAmb-s1` as the same
     assert(!!after['pAmb-s1'] && after['pAmb-s1'].decision === 'defect', '★★ a defect named by r-pAmb-s1 reached its REAL owner pAmb-s1 through the string fallback (got ' + JSON.stringify(Object.keys(after).map((k) => k + ':' + after[k].decision)) + ')')
     assert(!after['pAmb'] || after['pAmb'].decision !== 'defect', '★★ and the same-prefix neighbour pAmb was NOT downgraded (its own passed proof survives)')
   }
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 // ================================================================ final paper (spec §6)
@@ -525,7 +570,7 @@ console.log('\n-- PAPER §6.1: params — defaults, schema presence, coercion, r
   const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
   assert((src.match(/paperCompilePdf: \{ type: 'boolean' \}/g) || []).length === 2, '★★ BOTH v2 set_params tables were updated (spec v2 §B: 5–6 coordinated sites)')
   assert(/paper \[lang=zh\|en\] \[format=both\|md\|tex\] \[force\]/.test(src), 'the /vibe hint and usage advertise `paper`')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §6.2/§6.3: closure trigger, idempotence, 9-section content, evidence index --')
@@ -603,7 +648,7 @@ console.log('\n-- PAPER §6.2/§6.3: closure trigger, idempotence, 9-section con
   firePaper(h)
   const meta2 = await h.find(() => { const x = readMeta(h, 'p'); return x.finalizedAt !== beforeForce ? x : undefined }, 40)
   assert(!!meta2, '★ the forced run replaced the finalized paper (finalizedAt changed)')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §6.2b: finalPaper=false → the AUTO trigger does not fire (manual still does) --')
@@ -618,7 +663,7 @@ console.log('\n-- PAPER §6.2b: finalPaper=false → the AUTO trigger does not f
   assert(!!st.paper && st.paper.autoFinalPaper === false, 'status reports the automatic paper trigger as disabled')
   const man = JSON.parse((await h.cmd('paper')).text)
   assert(man.dispatched === true && man.autoDisabled === true, 'the manual command still works and says the automatic trigger is off')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §6.4: compile branches (success / repaired / persistent failure / no LaTeX) --')
@@ -718,7 +763,7 @@ console.log('\n-- PAPER §6.5/§6.6: path confinement, id normalisation, command
   assert(!!m2 && m2.params.paperFormat === 'md' && m2.params.paperLanguage === 'en', '★ the override is recorded in meta (md/en)')
   assert(!!m2 && m2.compile === 'skipped', '★★ paperFormat=md skips compilation entirely (§E: no "missing tex" warning)')
   assert(readFileSync(join(h.paperDir('p'), 'paper.log.md'), 'utf8').indexOf('缺少') === -1, 'no misleading compile warning for md-only runs')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §A2: ACTIVATION_LIMIT_REACHED → queue + retry + visible warning --')
@@ -738,7 +783,7 @@ console.log('\n-- PAPER §A2: ACTIVATION_LIMIT_REACHED → queue + retry + visib
   firePaper(h)
   const m = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
   assert(!!m, 'the retried writer still finalized the paper')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §1: a hung writer can never wedge the paper (force refuses early, reaps after the window) --')
@@ -780,7 +825,7 @@ console.log('\n-- PAPER §1: a hung writer can never wedge the paper (force refu
   firePaper(h)
   const meta = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
   assert(!!meta, '★★ after reap+force the paper is produced — a dead writer can no longer wedge it')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §1b: the heartbeat reaps a stalled writer and re-dispatches automatically --')
@@ -802,7 +847,7 @@ console.log('\n-- PAPER §1b: the heartbeat reaps a stalled writer and re-dispat
   firePaper(h)
   const meta = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
   assert(!!meta, 'the auto-recovered writer finalized the paper (no permanent wedge even without /vibe paper force)')
-  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }
 
 console.log('\n-- PAPER §2: a pre-existing paper.pdf is never deleted or overwritten --')

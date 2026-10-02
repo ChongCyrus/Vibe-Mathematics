@@ -93,6 +93,11 @@ export function apply(ctx) {
   // automatic parent creation). Reading on demand removes that dependency on mount order.
   const subprocessOf = () => { try { return ctx.get('subprocess') } catch(e){ return undefined } }
   const sandboxPolicyOf = () => { try { return ctx.get('sandboxPolicy') } catch(e){ return undefined } }
+ // G-7 invariant (class guard): AGENT-FACING compaction MUST take the agent-local instance via
+ // `compactionForAgent(agent)` - this preset mounts its compaction row inside the preset's `compaction`
+ // isolate realm, and a realm NEVER falls back to the host-root instance. Only NON-agent sites may use
+ // `compactionOf()`. Guarded by the text-level assertion in tests/formal-verify-v4.test.mjs.
+
   const compactionOf = () => { try { return ctx.get('compaction') } catch(e){ return undefined } }
 
   const sessions = new Map()      // rootAgentId -> Session
@@ -856,6 +861,9 @@ export function apply(ctx) {
      * §2.6 crash/restart recovery: scan `<project>/Formal/Jobs/*.json` AFTER the project dirs exist.
      * It NEVER mints a `passed` anything unless the job record itself says exitCode===0 AND the file
      * on disk still hashes to the enqueued content.
+ * INVARIANT (F2): after redriving, the recovery DRAINS the queue itself (`await runLeanQueue()`) and only
+ * then arms one heartbeat - it must NOT rely on an already-armed heartbeat. Deleting that drain silently
+ * restores the cold-recovery stall (see the §20 tripwire in tests/formal-verify-v4.test.mjs).
      */
     async function recoverLeanJobs(opts){
       const o=opts||{}

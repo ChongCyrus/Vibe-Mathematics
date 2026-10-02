@@ -27,6 +27,7 @@ After installing this plugin package (or manually copying the presets), **four**
 - **Positioning, flow and division of labour of the four** → [Architecture Diagrams](#-architecture-diagrams-v2--v3--v4--v5) · [Architecture and division of labour](#-architecture-and-division-of-labour-all-four-in-parallel)
 - **New: the final paper (produced at closure)** → [Features](#-features) · [full contract](docs/final-paper.md)
 - **Lean formal verification** → [Lean formal verification](#-lean-formal-verification-shared-by-the-four-architectures-adjustable-switch) · [full contract](docs/formal-verification.md)
+- **Observability (`status()` / `report()` fields and their scopes)** → [complete field table](docs/status-report-fields.md)
 - **What is in the directories** → [Directory structure](#-directory-structure)
 - **Tuning parameters** → [Parameter quick reference](#-parameter-quick-reference)
 - **Checkpoint resume / mid-run intervention** → [Checkpoint resume & manual intervention](#-checkpoint-resume--manual-intervention-two-hard-requirements)

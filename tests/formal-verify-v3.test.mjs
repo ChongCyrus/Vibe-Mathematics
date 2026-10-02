@@ -133,6 +133,10 @@ const scrub = (s) => canonBrief(String(s == null ? '' : s)
   // Epoch-ms in a verification-log FILE NAME (`Logs/Verification/<rId>_<Date.now()>.json`) is run
   // metadata too: the final-paper material embeds the evidence index verbatim, so without this the
   // shipped corpus changed on every run (contract §10 item 10 demands byte determinism).
+      // 为什么必须保留可选短 id 组（不要"简化"掉）：P7 把裁决日志名改成了
+      // `<rId>_<epochMs>_<shortId>.json`，旧的 `_[0-9]{10,16}\.json` 因此不再匹配，
+      // 于是每次跑动都把自己那次的 时间戳+shortId 写进 shipped 语料（语料非确定性）。
+      // 去掉 `(_[0-9a-f]{8})?` 这个组会静默地重新引入"每次跑都不同"的语料。
   .replace(/_[0-9]{10,16}(_[0-9a-f]{8})?\.json/g, '_<TIME>.json')
 
 // A fake Lean: a file PASSES unless it still contains `sorry` or the marker `-- FAIL`.

@@ -14,7 +14,7 @@ const listeners = {}, toolRegs = [], spawns = [], followups = []
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; console.error('  FAIL - ' + m) } }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-async function waitFor(pred, t=6000){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },60) }) }
+async function waitFor(pred, t=6000){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);{ console.error('  [waitFor] TIMED OUT after ' + (Date.now() - s) + 'ms'); res(false) }} },60) }) }
 const ctx = {
   get(name){
     if(name==='subprocess') return { async spawn({argv}){ const script=argv[argv.length-1]||''; const fm=await import('node:fs'); const pm=await import('node:path'); if(/New-Item/.test(script)){ const m=script.match(/-Path\s+(?:'((?:[^']|'')*)'|"((?:[^"]|"")*)")/); const raw=(m&&(m[1]||m[2]))||''; for(const p of raw.split(',').map(x=>x.replace(/''/g,"'"))) if(p) fm.mkdirSync(p,{recursive:true}) } else if(/Move-Item/.test(script)){ const m=script.match(/-LiteralPath\s+'((?:[^']|'')*)'\s+-Destination\s+'((?:[^']|'')*)'/); if(m){ fm.mkdirSync(pm.dirname(m[2].replace(/''/g,"'")),{recursive:true}); fm.renameSync(m[1].replace(/''/g,"'"),m[2].replace(/''/g,"'")) } } else if(/Remove-Item/.test(script)){ const m=script.match(/-LiteralPath\s+'((?:[^']|'')*)'/); if(m) fm.rmSync(m[1].replace(/''/g,"'"),{force:true,recursive:true}) } return {done:Promise.resolve({exitCode:0})} } }

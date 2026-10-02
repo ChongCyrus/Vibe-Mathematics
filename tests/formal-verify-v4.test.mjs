@@ -1751,6 +1751,18 @@ section('N9 behavioural: a write to the DOCUMENTED path is counted by countArtif
   const files = P.host && P.host.fsWrites ? P.host.fsWrites.map((w) => String(w.path || '')).join(',') : ''
   assert(files.indexOf('Members/') === -1, '* no write landed under Members/ (the shape nothing scans) - writes: ' + files.slice(0, 160))
 }
+section('N10 G-7 class guard: agent-facing compaction takes the AGENT-LOCAL instance')
+{
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  assert(/function compactionForAgent\(/.test(src), '* v4 defines compactionForAgent (the agent-local accessor)')
+  const bodyOf = (fn) => { const a = src.indexOf('function ' + fn); if (a < 0) return null; const b = src.slice(a + 10).search(/\n {2}(?:async )?function /); if (b < 0) return null; return src.slice(a, a + 10 + b) }
+  const rc = bodyOf('realCompact')
+  assert(rc !== null, '* the agent-facing compact path (realCompact) is found with a strictly bounded window')
+  assert(/compactionForAgent\(agent\)/.test(rc || ''), '* the agent-facing compact path uses the AGENT-LOCAL instance')
+  assert(!/compactionOf\(\)/.test(rc || ''), '* and it does NOT call the host-root compactionOf() directly (a realm never falls back)')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

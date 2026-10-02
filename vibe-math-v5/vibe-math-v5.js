@@ -340,6 +340,13 @@ export function apply(ctx) {
       lastProgressAt: now(),
       artifactCount: 0,
       diagnostics: [],
+      // F6 (status/report review): the durable marker of a meeting that STARTED but never
+      // FINALIZED. The meeting index entry is appended at `beginMeeting`, so before this marker a
+      // restart made an unfinished meeting look like ordinary history (minutes never written).
+      meetingOpen: null,
+      // F4 (status/report review): how many office-addressed requests the fold had to drop because
+      // of `OFFICE_REQUEST_CAP`. Without a counter the truncation was invisible in status/report.
+      officeRequestsDropped: 0,
       // The final-paper flow (stage machine + its artifacts state). Durable like everything
       // else, so a restart resumes the same stage instead of writing a second paper.
       paper: null,
@@ -426,6 +433,9 @@ export function apply(ctx) {
           if (patch.runId !== undefined) n.runId = String(patch.runId)
           if (patch.lastProgressAt !== undefined) n.lastProgressAt = Number(patch.lastProgressAt) || 0
           if (patch.artifactCount !== undefined) n.artifactCount = Number(patch.artifactCount) || 0
+          // F6 / F4 (status/report review): two durable markers the published surfaces read.
+          if (patch.meetingOpen !== undefined) n.meetingOpen = patch.meetingOpen === null ? null : Object.assign({}, patch.meetingOpen)
+          if (patch.officeRequestsDropped !== undefined) n.officeRequestsDropped = Number(patch.officeRequestsDropped) || 0
           // The final-paper state. A FUNCTION is a MUTATION applied inside the fold (the same
           // trick the verify queue uses): the paper stage, its parts and its office-consultation
           // counters are updated from several places (member replies, office messages, meetings),
@@ -499,12 +509,19 @@ export function apply(ctx) {
           // inbox drain — so they are capped here, newest kept, oldest dropped. Without that cap
           // `messages` would grow for the whole run.
           let self = messages
+          let dropped = 0
           const officeMsgs = self.filter((m) => m.to === OFFICE_INBOX)
           if (officeMsgs.length > OFFICE_REQUEST_CAP) {
             const drop = new Set(officeMsgs.slice(0, officeMsgs.length - OFFICE_REQUEST_CAP).map((m) => m.id))
             self = self.filter((m) => !drop.has(m.id))
+            dropped = drop.size
           }
-          const out = Object.assign({}, inst, { messages: self })
+          // F4 (status/report review): the truncation is COUNTED, so `status()`/`report()` can say
+          // "显示最新 N / 累计丢弃 K" instead of presenting a truncated list as complete.
+          const out = Object.assign({}, inst, {
+            messages: self,
+            officeRequestsDropped: Number(inst.officeRequestsDropped || 0) + dropped,
+          })
           if (alloc) out.counters = alloc.counters()
           return out
         })
@@ -1097,12 +1114,21 @@ export function apply(ctx) {
     // S2: the ACTIONABLE reason a state file that exists was rejected (empty while everything is
     // fine). Surfaced by `status()`/`report()` on the read path, not only after a refused write.
     let lastLoadProblem = ''
+    // F1 (status/report review): a SESSION-LEVEL log of load/write problems. `drainLoadNotes` used to
+    // write them into `stateCache` only — which the very next `state()` read replaced with the
+    // backend's `mem` — so they could vanish between commits and, worse, they were never the array
+    // `report()` printed (`report()` read the INSTITUTE-level diagnostics). Keeping a session log is
+    // what lets the diagnostics section show the sources its heading advertises.
+    let loadProblemLog = []
     function noteWriteProblem(p) {
       stateWriteFailures += 1
       noteLoadProblem('state write FAILED (the file is STALE): ' + String(p || '?'))
     }
     function drainLoadNotes() {
-      if (!pendingLoadNotes.length || !stateCache) return
+      if (!pendingLoadNotes.length) return
+      loadProblemLog = loadProblemLog.concat(pendingLoadNotes.map((t) => ({ at: now(), type: 'vibe5/load', error: t })))
+      if (loadProblemLog.length > 10) loadProblemLog = loadProblemLog.slice(-10)
+      if (!stateCache) { pendingLoadNotes = []; return }
       const list = (stateCache.diagnostics || []).concat(pendingLoadNotes.map((t) => ({ at: now(), type: 'vibe5/load', error: t })))
       pendingLoadNotes = []
       stateCache = Object.assign({}, stateCache, { diagnostics: list.slice(-50) })
@@ -2719,9 +2745,14 @@ export function apply(ctx) {
       // `formalTodo()`, pushed and wrote the array back, so a concurrent writer for another
       // target lost an entry).
       const proofRel = String(formalOf(t).proof || ('Verified/Lean/' + t + '.lean'))
+      // Adv-verify S3 (found by `tests/audit-v5-lean-abstention.mjs`): this used to REPLACE the
+      // whole `fidelity` object, so a SECOND member reporting a defect in the same round wiped the
+      // first member's enforced-abstention marker (the audit's "marker length 2" assertion caught
+      // it). The defect fields are updated, the marker history is preserved.
       await putFormal(t, (prev0) => Object.assign({}, prev0 || { status: 'none' }, {
         status: 'attempted', proof: '', decision: 'defect', note: why,
-        fidelity: { at: now(), by: String(memberId || ''), note: why }, updatedAt: now(),
+        fidelity: Object.assign({}, (prev0 && prev0.fidelity) || {}, { at: now(), by: String(memberId || ''), note: why }),
+        updatedAt: now(),
       }), (todo0) => {
         const list = (todo0 || []).filter((x) => x.id !== t)
         list.push({ id: t, at: now(), why: '形式化不合格（忠实性缺陷）：' + why })
@@ -2958,8 +2989,10 @@ export function apply(ctx) {
           proof: settledOk ? 'Verified/Lean/' + target + '.lean' : '',
           decision: 'used',
           // L7 (deep-review 5): `decision:'used'` is written by BOTH the member's reply and this
-          // settle path; `decisionSource` says which one, so an audit can tell "the member said they
-          // used the formalization" from "this record is the job landing".
+          // settle path; `decisionSource` says which one. Fallout #4 (F1d): it used to be
+          // WRITE-ONLY — nothing read or asserted it — so it is now part of the readable surfaces
+          // (`status().formal.objects[]`, `vibe_v5_lean_lib.objects`, the report's 形式化决定 line)
+          // and it is asserted by `_oneoff/decision-source.mjs`.
           decisionSource: 'job-settle',
           note: (String(prev.note || '') + stale).trim(),
           run: job.run, async: asyncRec, updatedAt: now(),
@@ -4174,7 +4207,7 @@ export function apply(ctx) {
       const lines = ['# 研究所编制表（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
         '> 权威状态在 State/<研究所>.v5state.json 里；本文件只是快照，勿手改。', '']
       lines.push('- 求真门槛：' + (voterCount() > 0 ? 'm = ' + quorumM() : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + voterCount() + ' 人')
-      lines.push('- 阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
+      lines.push('- ' + phaseFactLine())
       lines.push('')
       lines.push('| 代号 | 职位 | 状态 | 雇主 | 方向/用途 | 轮次 | 上下文% |')
       lines.push('|---|---|---|---|---|---|---|')
@@ -4763,6 +4796,12 @@ export function apply(ctx) {
       }
       return await beginMeeting({ agenda, kind, target: String(o.target || ''), by: office ? 'office' : callerId })
     }
+    // F13 (status/report review): ONE composition for the phase/running/concluded facts, used by
+    // both `report()` and `State/README.md` (`writeStateReadme`) — the two documents used to print
+    // the same three facts with different wording, so a reader had to compare them by hand.
+    function phaseFactLine() {
+      return '阶段：' + phase + '｜运行中：' + (running ? '是' : '否') + '｜已结题：' + (autoDone ? '是' : '否')
+    }
     async function beginMeeting(opts) {
       const order = activeMembers().map((m) => m.id)
       // Rotate who speaks first: with a fixed order the same member always speaks
@@ -4783,6 +4822,10 @@ export function apply(ctx) {
         id, agenda: opts.agenda, kind: opts.kind || 'sync', target: opts.target || '',
         by: opts.by || 'office', order, inputs: {}, extras: {}, lastInputAt: now(), startedAt: now(),
       }
+      // F6 (status/report review): mark the meeting OPEN durably. `finalizeMeeting` clears it, so a
+      // meeting that never finished (crash/restart/stop) stays visible as "未收束" instead of
+      // silently counting as history with no minutes.
+      await patchInstitute({ meetingOpen: { id, at: now(), agenda: meeting.agenda } })
       // HIGH 3: a NEW solve question starts with an empty DURABLE tally (a clear has to be
       // persisted too, otherwise a reload would resurrect the previous question's answers).
       await putSolve({ clear: true })
@@ -4869,6 +4912,8 @@ export function apply(ctx) {
     }
     async function finalizeMeeting(mn) {
       meeting = null
+      // F6: the meeting is closed ⇒ clear the durable OPEN marker (see `beginMeeting`).
+      try { await patchInstitute({ meetingOpen: null }) } catch (e) { /* the minutes below matter more */ }
       const lines = []
       for (const id of mn.order) {
         const text = mn.inputs[id]
@@ -6304,11 +6349,29 @@ export function apply(ctx) {
       // `formalOn()` gates it: off mode is a TRUE no-op, and the field is not even offered in the
       // reply contract there, so a stray / stale / hallucinated reply must not create Lean state.
       // (The TOOLS stay usable in off mode on purpose — a tool call is deliberate.)
-      if (formalOn() && p.formal && typeof p.formal === 'object') {
-        const f = p.formal
-        const target = idSafe(String(f.target || ''))
-        if (target) {
-          const decision = String(f.decision || '').trim()
+      // Adv-verify F2 (LOW): `formal` may be an ARRAY of entries (a member recording defects for two
+      // objects in one reply). The old code read `p.formal.target` only, so an array was silently
+      // ignored — no notice, no enforced abstention, and the same reply's `1` counted (exactly the
+      // hole L2 closed). The array form is now SUPPORTED entry by entry; a non-object entry is
+      // refused loudly instead of being dropped in silence.
+      // NOTE: the gate keeps the EXACT `formalOn() && p.formal` shape on purpose — `audit-prompt-
+      // invariants` I8 pins it TEXTUALLY ("off must be a TRUE no-op"), and the first version of this
+      // fix (a ternary on `formalOn()`) broke that invariant while behaving identically. The array
+      // normalisation therefore lives INSIDE the guarded block, after the gate.
+      if (formalOn() && p.formal) {
+        const formalEntries = Array.isArray(p.formal) ? p.formal : (typeof p.formal === 'object' ? [p.formal] : [])
+        for (const f of formalEntries) {
+          if (!f || typeof f !== 'object') {
+            await notice(member.id, 'formal 的每个条目都必须是对象（收到 ' + JSON.stringify(f) + '）——本条已忽略。')
+            continue
+          }
+          const target = idSafe(String(f.target || ''))
+          if (!target) {
+            await notice(member.id, 'formal 条目缺少 target（对象 id）——本条已忽略。')
+            continue
+          }
+          {
+            const decision = String(f.decision || '').trim()
           const note = String(f.note || '').trim()
           if (decision === 'blocked' || decision === 'defect') {
             if (!note) await notice(member.id, "formal.decision='" + decision + "' 必须写明 note（难度判断/阻塞原因/具体偏差）——本次未记录。")
@@ -6345,6 +6408,7 @@ export function apply(ctx) {
           }
         }
       }
+      }
       if (p.propose_verify) {
         const pv = typeof p.propose_verify === 'string' ? { target: p.propose_verify } : p.propose_verify
         if (pv && pv.target) {
@@ -6361,16 +6425,31 @@ export function apply(ctx) {
           // ballot counts as an ABSTENTION (0.5) instead of a boolean assertion. A value that is
           // ALREADY a proper abstention stays exactly as sent (no double counting); the durable
           // note is attached to the formal record so the override is visible in the receipt.
-          const enforced = defectTargetsThisReply.has(vTarget) && (declared === 0 || declared === 1)
+          // Adv-verify S7: only an ACTUAL voter has a boolean ballot to abstain from — a temp
+          // worker's opinion is relayed, never counted, so it must NOT get an "abstention" marker
+          // (that would claim the framework changed a vote that never existed).
+          const isVoterHere = voters().some((m) => m.id === member.id)
+          const enforced = isVoterHere && defectTargetsThisReply.has(vTarget) && (declared === 0 || declared === 1)
           const n = enforced ? 0.5 : declared
           if (enforced) {
             try {
-              await putFormal(vTarget, (prev0) => Object.assign({}, prev0 || { status: 'none' }, {
-                fidelity: Object.assign({}, (prev0 && prev0.fidelity) || {}, {
-                  voteAbstainedByFramework: { at: now(), by: member.id, declared },
-                }),
-                note: (String((prev0 && prev0.note) || '') + '；本轮同回复的 verdict=' + declared + ' 已由框架按弃权计入').trim(),
-              }))
+              await putFormal(vTarget, (prev0) => {
+                const fid = Object.assign({}, (prev0 && prev0.fidelity) || {})
+                // Adv-verify F1 (MED): the marker used to be a SINGLE value, so two members
+                // recording a defect in the same round overwrote each other and only the last was
+                // auditable. It is an ARRAY now (old object-shaped records are folded in), with a
+                // matching `abstainedCount`.
+                const prevList = Array.isArray(fid.voteAbstainedByFramework)
+                  ? fid.voteAbstainedByFramework
+                  : (fid.voteAbstainedByFramework ? [fid.voteAbstainedByFramework] : [])
+                const list = prevList.concat([{ at: now(), by: member.id, declared }])
+                fid.voteAbstainedByFramework = list
+                fid.abstainedCount = list.length
+                return Object.assign({}, prev0 || { status: 'none' }, {
+                  fidelity: fid,
+                  note: (String((prev0 && prev0.note) || '') + '；本轮同回复的 verdict=' + declared + ' 已由框架按弃权计入').trim(),
+                })
+              })
             } catch (e) { /* the vote still counts as an abstention even if the note cannot be stored */ }
           }
           const r = await castVerdict(member.id, vTarget, n, p.verdict.reason)
@@ -6636,7 +6715,15 @@ export function apply(ctx) {
         // round-4 item 4: only a NEWLY recorded entry warns, and the record goes through the same
         // retention as every other diagnostics writer in this preset (slice(-50)).
         if (duplicate) return keys
-        target.diagnostics.push({ kind: 'state-dropped-keys', where: where, keys: keys })
+        // F1 (status/report review): the entry carries the SAME field names as every other
+        // diagnostics record (`at`/`type`/`error`) plus its own `kind`/`where`/`keys`. It used to be
+        // `{kind, where, keys}` only, so `report()` printed `undefined｜undefined` for a record it
+        // was supposed to explain.
+        target.diagnostics.push({
+          at: now(), type: 'vibe5/dropped-keys',
+          error: '忽略未知参数键（未写入状态）：' + keys.join(', ') + '（来源：' + where + '）',
+          kind: 'state-dropped-keys', where: where, keys: keys,
+        })
         while (target.diagnostics.length > 50) target.diagnostics.shift()
       }
       console.warn('vibe-math-v5: 忽略未知参数键（不静默丢失，已记入 diagnostics）：' + keys.join(', ') + '（来源：' + where + '）')
@@ -6703,6 +6790,7 @@ export function apply(ctx) {
         return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'cannot reconfigure while the institute is running (pause/stop first; use vibe_v5_set to tune params)' }
       }
       const patch = {}
+      let identitySwitched = false
       if (a.project !== undefined && String(a.project).trim()) patch.project = String(a.project).trim()
       if (a.institute !== undefined && String(a.institute).trim()) patch.institute = String(a.institute).trim()
       if (a.problem !== undefined) patch.problem = { id: slugify(String(a.problem).slice(0, 40)) || 'problem', statement: String(a.problem) }
@@ -6733,18 +6821,29 @@ export function apply(ctx) {
             instituteName = ni
             patch.project = np
             patch.institute = ni
+            identitySwitched = true
           } else if (!inst().members.length) {
             key = nkey
             project = np
             instituteName = ni
             patch.project = np
             patch.institute = ni
+            identitySwitched = true
           } else {
             return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'this session already holds an institute; use a new session to found another' }
           }
         }
       }
-      patch.phase = 'idle'
+      // F5 (status/report review, S1 class): `phase='idle'` belongs to FOUNDING THE SETUP, not to
+      // every configure. A partial configure (`problem`-only / `params`-only / institute-only with
+      // the SAME name) may still apply its patch, but it must never rewrite the phase of an
+      // institute that already has a life of its own — that is what made a concluded institute read
+      // "阶段：idle｜已结题：false". The phase is reset only when this call is actually (re)founding:
+      // a REAL identity switch (`nkey !== key`), or a session that holds no institute yet.
+      // (`institute-only` with an unchanged name is therefore also a no-phase-change: `patch.institute`
+      // being present is not the same as the identity having moved.)
+      const holdsInstitute = inst().members.length > 0 || String(inst().phase || '') !== 'idle'
+      if (identitySwitched || !holdsInstitute) patch.phase = 'idle'
       await patchInstitute(patch)
       syncParamsFromState()
       await mkdirs()
@@ -7000,10 +7099,18 @@ export function apply(ctx) {
         institute: instituteName, project, key, phase,
         running, autoDone, runId: s.runId,
         // L4 (deep-review 5): the `【形式化结果】` announcements are delivered ONCE, to the job's
-        // initiator, and live in memory — so a fired initiator or a restart left them invisible.
-        // They are now part of `status()` (and therefore of the operator's view), which is the
-        // durable-ish path beside `Formal/Jobs/<jobId>.json` and `vibe_v5_lean_job {jobId}`.
+        // initiator, and live in memory. F2 (status/report review): the field is therefore labelled
+        // as SESSION-scoped, because after a restart it is empty although the durable per-job
+        // records in Formal/Jobs/<jobId>.json are still there.
         leanNotices: leanNotices.map((n) => ({ member: n.member, jobId: n.jobId, line: n.line })),
+        leanNoticesScope: 'session-memory（重启后为空；耐久事实在 Formal/Jobs/<jobId>.json 与 vibe_v5_lean_job）',
+        // F2/F3 (status/report review): one place that names the SESSION-scoped fields inside this
+        // payload, so a reader (or an operator comparing two sessions) cannot mistake them for
+        // durable state. Durable = derived from the state file; session = rebuilt on load.
+        fieldScopes: {
+          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem'],
+          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'tasks', 'failedMembers', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'undecided', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
+        },
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two
         // failure modes that silently drop state were invisible in the operator's view.
@@ -7022,20 +7129,37 @@ export function apply(ctx) {
         // being a silent, permanent `phase:'failed'` row an operator has to notice by luck.
         failedMembers: s.members.filter((m) => m.phase === 'failed').map((m) => ({ id: m.id, kind: m.kind, error: String(m.error || '').slice(0, 200) })),
         failedMembersNote: 'resume 只重试「live-child 上限」类失败；其它 provisioning 失败请由所办重新招聘（新 id，旧 id 永不复用）',
+        // F8 (status/report review): the two counts have different scopes — `pending` is the
+        // INSTITUTE-WIDE number of not-yet-acknowledged messages (not "my unread"), and `delivered`
+        // is a CAPPED acknowledgement ledger. Both are named accordingly here.
         chat: { pending: s.messages.length, delivered: s.delivered.length },
+        chatScope: 'pending = 全所未确认投递的消息数（非"我的未读"）；delivered = 封顶账本（DELIVERED_CAP，到顶后不再增长）',
         // MEDIUM 4 (deep review): the requests only the OFFICE can approve. `to:'voters'` never
         // reaches the office (it is not a member), so an unapproved proposal used to be invisible
         // to the one actor able to act on it.
         officeRequests: s.messages.filter((m) => m.to === OFFICE_INBOX).map((m) => ({ id: m.id, from: m.from, text: String(m.text || ''), at: m.at })),
+        // F4 (status/report review): the list above is truncated at OFFICE_REQUEST_CAP, so the
+        // truncation is published instead of pretending the list is complete.
+        officeRequestsShown: s.messages.filter((m) => m.to === OFFICE_INBOX).length,
+        officeRequestsCap: OFFICE_REQUEST_CAP,
+        officeRequestsDropped: Number(s.officeRequestsDropped || 0),
+        officeRequestsTruncated: s.messages.filter((m) => m.to === OFFICE_INBOX).length >= OFFICE_REQUEST_CAP,
         // MEDIUM 7/8 (deep review): persistence health is part of the status. `stateWriteFailures`
         // > 0 means the in-memory state is AHEAD of the file; `prematureReads` > 0 means some
         // consumer read state before the first load settled (see the note on `state()`).
-        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem },
+        // F2/F9 (status/report review): both counters are SESSION-scoped (a restart resets them), so
+        // the scope is stated here too, not only in the report line.
+        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem, scope: 'session（重启后归零）' },
         meeting: meeting ? { id: meeting.id, agenda: meeting.agenda, kind: meeting.kind, spoke: Object.keys(meeting.inputs), order: meeting.order } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
         verifyQueue: s.queue.map((q) => q.target),
+        // F7 (status/report review): the old `verified` meant "concluded (真 OR 假)" while its name
+        // said "verified". It is kept for compatibility but the honest split is published next to it.
         verified: Object.keys(s.verdicts).filter((k) => s.verdicts[k] && s.verdicts[k].closed && s.verdicts[k].outcome !== 'undecided'),
+        verifiedTrue: Object.keys(s.verdicts).filter((k) => { const v = s.verdicts[k]; return v && v.closed && v.outcome === 'true' }),
+        concludedFalse: Object.keys(s.verdicts).filter((k) => { const v = s.verdicts[k]; return v && v.closed && v.outcome === 'false' }),
+        verifiedNote: 'verified = 已定论（真或假，历史名，保留兼容）；请用 verifiedTrue / concludedFalse / undecided 三个精确字段',
         undecided: Object.keys(s.verdicts).filter((k) => { const v = s.verdicts[k]; return v && v.closed && v.outcome === 'undecided' }),
         solveVotes: solveVotesList(),
         // Lean formal verification: mode + per-object status + the formalization TODO. This
@@ -7044,7 +7168,12 @@ export function apply(ctx) {
           mode: formalMode(),
           objects: Object.keys(formalRecords()).map((k) => {
             const r = formalRecords()[k] || {}
-            return { target: k, status: r.status, file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null, async: r.async || null }
+            // F1d (fallout #4): `decision`/`decisionSource` are READ here (member-reply vs
+            // job-settle) instead of being a write-only field justified by a comment.
+            // Adv-verify F3: `fidelity` (the defect record + the enforced-abstention marker) is
+            // exposed too — before this it lived only in the state file, so a tool-surface audit
+            // could not see WHY a ballot was counted as an abstention.
+            return { target: k, status: r.status, decision: r.decision || '', decisionSource: r.decisionSource || '', fidelity: r.fidelity || null, abstainedCount: Number((r.fidelity || {}).abstainedCount || 0) || (Array.isArray((r.fidelity || {}).voteAbstainedByFramework) ? (r.fidelity.voteAbstainedByFramework.length) : ((r.fidelity || {}).voteAbstainedByFramework ? 1 : 0)), file: r.file || '', proof: r.proof || '', note: r.note || '', run: r.run ? { ok: r.run.ok, exitCode: r.run.exitCode, ms: r.run.ms } : null, async: r.async || null }
           }),
           passed: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'passed'),
           blocked: Object.keys(formalRecords()).filter((k) => (formalRecords()[k] || {}).status === 'blocked'),
@@ -7066,9 +7195,9 @@ export function apply(ctx) {
       const L = []
       L.push('# 「' + instituteName + '」研究所汇报')
       L.push('')
-      L.push('- 项目：' + project + '｜阶段：' + phase + '｜运行中：' + running + '｜已结题：' + autoDone)
+      L.push('- 项目：' + project + '｜' + phaseFactLine())
       L.push('- 研究对象：' + (s.problem.statement ? s.problem.statement.slice(0, 200) : '（未设定）'))
-      L.push('- 求真门槛：' + (qv.started ? 'm = ' + qv.m : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + qv.voterCount + ' 人｜rosterVersion ' + qv.rosterVersion)
+      L.push('- 求真门槛：' + (qv.started ? 'm = ' + qv.m : '未启动（有表决权者 0 人，m 未定义）') + '（模式 ' + params.quorumMode + '）｜有表决权者 ' + qv.voterCount + ' 人｜rosterVersion（名册版本，多个视图不一致时用它判断谁过期）' + qv.rosterVersion)
       L.push('')
       L.push('## 编制')
       if (!s.members.length) L.push('（暂无成员）')
@@ -7076,7 +7205,7 @@ export function apply(ctx) {
         L.push('- ' + m.id + '｜' + kindLabel(m.kind) + '｜' + m.phase +
           (m.hiredBy ? '｜雇主 ' + m.hiredBy : '') +
           (m.direction ? '｜方向：' + m.direction : '') +
-          '｜轮次 ' + (rounds.get(m.id) || 0) +
+          '｜轮次 ' + (rounds.get(m.id) || 0) + '（本会话计数，重启归零）' +
           (m.error ? '｜⚠ ' + m.error : ''))
       }
       L.push('')
@@ -7098,24 +7227,55 @@ export function apply(ctx) {
           '｜平均概率 ' + Number(v.mean || 0).toFixed(2) + '｜' + (v.reason || '') + '）')
       }
       const cv = currentVerify()
-      if (cv) L.push('- 进行中：' + cv.target + '｜' + cv.stage + ' 第 ' + cv.round + ' 轮｜已投 ' + Object.keys(cv.votes).join('、'))
+      if (cv) L.push('- 进行中：' + cv.target + '｜' + cv.stage + ' 第 ' + cv.round + ' 轮' + (Object.keys(cv.votes).length ? '｜已投 ' + Object.keys(cv.votes).join('、') : '｜尚无人投票'))
       if (s.queue.length) L.push('- 队列：' + s.queue.map((q) => q.target).join('、'))
       L.push('')
       L.push('## 群聊 / 会议')
-      L.push('- 未读消息：' + s.messages.length + '｜已投递：' + s.delivered.length)
-      // MEDIUM 4: the office's own inbox — requests that only the office can approve.
+      L.push('- 未投递消息（全所）：' + s.messages.length + '｜已确认投递（封顶账本）：' + s.delivered.length)
+      // MEDIUM 4 + F4: the office's own inbox — requests that only the office can approve, with the
+      // truncation published (the list is capped at OFFICE_REQUEST_CAP).
       {
         const reqs = s.messages.filter((m) => m.to === OFFICE_INBOX)
-        L.push('- 待所办裁定：' + (reqs.length ? reqs.length + ' 条（最新：' + String(reqs[reqs.length - 1].text || '').slice(0, 120) + '）' : '（无）'))
+        const dropped = Number(s.officeRequestsDropped || 0)
+        L.push('- 待所办裁定：' + (reqs.length
+          ? '显示最新 ' + reqs.length + ' 条' + (dropped ? '（上限 ' + OFFICE_REQUEST_CAP + '，累计已丢弃最旧 ' + dropped + ' 条）' : '') + '；最新：' + String(reqs[reqs.length - 1].text || '').slice(0, 120)
+          : '（无）'))
       }
-      if (meeting) L.push('- 进行中会议：' + meeting.id + '｜' + meeting.agenda + '｜已发言 ' + Object.keys(meeting.inputs).join('、'))
+      if (meeting) L.push('- 进行中会议：' + meeting.id + '｜' + meeting.agenda + (Object.keys(meeting.inputs).length ? '｜已发言 ' + Object.keys(meeting.inputs).join('、') : '｜尚无人发言'))
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
-      L.push('- 历史会议：' + s.meetings.length + ' 次｜辩论录：' + s.debates.length + ' 份')
+      // F6 (status/report review): a meeting whose index entry exists but which never FINALIZED is
+      // not history. `meetingOpen` is durable (set in `beginMeeting`, cleared in `finalizeMeeting`),
+      // so a restart cannot silently drop the minutes while the count still looks normal.
+      {
+        const open = s.meetingOpen || null
+        const finalized = (s.meetings || []).filter((x) => !open || x.id !== open.id)
+        L.push('- 历史会议：' + finalized.length + ' 次｜辩论录：' + s.debates.length + ' 份'
+          + (open ? '｜⚠ 有 1 场会议未收束：' + open.id + '（开始于 ' + fmtTime(open.at) + '；本会话未恢复它的发言，纪要可能缺失）' : ''))
+      }
       L.push('- 解决票：' + (solveVotesList().length ? solveVotesList().join('、') : '（无）'))
-      if ((s.diagnostics || []).length) {
-        L.push('')
-        L.push('## ⚠ 状态诊断（被跳过的事件 / 状态文件读取问题）')
-        for (const d of s.diagnostics.slice(-10)) L.push('- ' + fmtTime(d.at) + '｜' + d.type + '｜' + d.error)
+      // F1 (status/report review, HIGH): the section must read the sources its heading advertises —
+      // (a) skipped/malformed EVENTS (top-level `state.diagnostics`, written by `applyV5Event`'s
+      // catch), (b) state-FILE problems (the session log `loadProblemLog` / `lastLoadProblem`), and
+      // (c) ignored keys (institute-level `s.diagnostics`, written by `reportDroppedStateKeys`).
+      // Every field is printed with an explicit fallback, so the literal `undefined` can never
+      // appear. The section is omitted entirely when there is nothing to report (the
+      // "assemble only when a value exists" rule).
+      const topDiag = (() => { try { return (state().diagnostics || []) } catch (e) { return [] } })()
+      const droppedDiag = (s.diagnostics || []).filter((d) => d && d.kind === 'state-dropped-keys')
+      const eventDiag = topDiag.filter((d) => d && d.type !== 'vibe5/load')
+      const loadDiag = topDiag.filter((d) => d && d.type === 'vibe5/load').concat(loadProblemLog)
+      {
+        const fmtDiag = (d) => fmtTime(d.at) + '｜' + String(d.type || '(无 type)') + '｜' + String(d.error || '(无 error)')
+        const lines = []
+        for (const d of eventDiag.slice(-10)) lines.push('- [被跳过的事件] ' + fmtDiag(d))
+        for (const d of loadDiag.slice(-10)) lines.push('- [状态文件] ' + fmtDiag(d))
+        for (const d of droppedDiag.slice(-10)) lines.push('- [忽略的键] ' + fmtDiag(d))
+        if (lastLoadProblem && !loadDiag.some((d) => String(d.error || '') === lastLoadProblem)) lines.push('- [状态文件] ' + lastLoadProblem)
+        if (lines.length) {
+          L.push('')
+          L.push('## ⚠ 状态诊断（被跳过的事件 / 状态文件读取问题 / 忽略的键）')
+          for (const ln of lines) L.push(ln)
+        }
       }
       L.push('')
       L.push('## Lean 形式化')
@@ -7125,6 +7285,23 @@ export function apply(ctx) {
         L.push('- 已通过：' + (Object.keys(s.formal || {}).filter((k) => (s.formal || {})[k].status === 'passed').join('、') || '（无）'))
         L.push('- 已记录阻塞：' + (Object.keys(s.formal || {}).filter((k) => (s.formal || {})[k].status === 'blocked').join('、') || '（无）'))
         L.push('- 形式化待办：' + ((s.todo || []).map((t) => t.id).join('、') || '（无）'))
+        // F1d (fallout #4): the member-reported vs job-settled distinction, readable.
+        {
+          const dec = Object.keys(s.formal || {}).filter((k) => (s.formal[k] || {}).decision).map((k) => k + '=' + s.formal[k].decision + '(' + (s.formal[k].decisionSource || '来源未记录') + ')')
+          if (dec.length) L.push('- 形式化决定：' + dec.join('、') + '（来源 member-reply=成员自述，job-settle=后台作业落地）')
+          // Adv-verify F3: the enforced-abstention marker is readable here too (how many ballots the
+          // framework turned into abstentions because the same reply recorded a fidelity defect).
+          const enforced = Object.keys(s.formal || {}).filter((k) => {
+            const fid = (s.formal[k] || {}).fidelity || {}
+            return Number(fid.abstainedCount || 0) > 0 || (Array.isArray(fid.voteAbstainedByFramework) && fid.voteAbstainedByFramework.length) || fid.voteAbstainedByFramework
+          }).map((k) => {
+            const fid = (s.formal[k] || {}).fidelity || {}
+            const n = Number(fid.abstainedCount || 0) || (Array.isArray(fid.voteAbstainedByFramework) ? fid.voteAbstainedByFramework.length : 1)
+            const who = (Array.isArray(fid.voteAbstainedByFramework) ? fid.voteAbstainedByFramework : [fid.voteAbstainedByFramework]).filter(Boolean).map((x) => x.by || '?').join('/')
+            return k + '×' + n + (who ? '(' + who + ')' : '')
+          })
+          if (enforced.length) L.push('- 框架强制弃权：' + enforced.join('、') + '（同回复记录忠实性缺陷 ⇒ 该成员对该对象的布尔票按弃权计入）')
+        }
         L.push('- 可复用库：VibeMath/Formal/{Lib,Proved}/（跨项目）｜本所形式化：Formal/｜归档证明：Verified/Lean/')
       }
       L.push('')
@@ -7146,8 +7323,9 @@ export function apply(ctx) {
       L.push('## 文件位置')
       L.push('- 根目录：' + instRoot())
       L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/（成员的库文件路径 = Members/<id>/Progress/progress.md 等；文件工具按会话 cwd 解析 ⇒ 请用完整路径）｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
-      // MEDIUM 7/8: the two persistence facts an operator must not have to guess.
-      L.push('- 持久化：写失败 ' + stateWriteFailures + ' 次｜首次载入前被读取 ' + prematureReads + ' 次｜已载入 ' + loadSettled)
+      // MEDIUM 7/8 + F9: the two persistence facts an operator must not have to guess — with the
+      // SESSION scope stated (a restart resets both counters) and no raw boolean in the sentence.
+      L.push('- 持久化（本会话计数）：写失败 ' + stateWriteFailures + ' 次｜首次载入前被读取 ' + prematureReads + ' 次｜状态文件已载入：' + (loadSettled ? '是' : '否'))
       if (lastLoadProblem) L.push('- ⚠ 状态文件问题：' + lastLoadProblem)
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
@@ -7506,7 +7684,7 @@ export function apply(ctx) {
     return {
       ok: true, mode: s.formalMode(), rebuilt: !(a && a.refresh === false),
       counts: r, todo: s.formalTodo(), jobs: s.leanJobsView(),
-      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
+      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, decision: (s.formalRecords()[k] || {}).decision || '', decisionSource: (s.formalRecords()[k] || {}).decisionSource || '', fidelity: (s.formalRecords()[k] || {}).fidelity || null, abstainedCount: Number(((s.formalRecords()[k] || {}).fidelity || {}).abstainedCount || 0), file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
       // L1/L5/L6 (deep-review 5): ONE basis for every entry (cwd-relative, i.e. what a member's own
       // file tools resolve), an explicit `toolShortForm` for the institute-relative spelling the
       // tools also accept, and the bare `Lib/` hint replaced by the real library root.

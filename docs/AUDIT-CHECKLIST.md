@@ -568,3 +568,23 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | 10 | **环境依赖** | 只在某台机器/某次顺序下成立（真实引擎、临时目录、并发） | 夹具显式隔离环境；并发敏感的加并行压力证明 |
 
 **验收标准**：每条新守卫都要回答"我怎么让它红一次"；答不出来就不算守卫。
+
+
+## 守卫索引补遗（fallout #4）
+
+**图例（红一次的要求）**：每一行都必须回答"我怎么让它**红一次**"。标 **in-repo** 的 harness 随包发布（`tests/**.mutants.mjs` 或套件内的变异/行为段），**包内读者可复现**；标 **dev-only** 的只能在本仓库的开发检出里跑（不在 `files[]`），**包内读者无法复现** —— 它们应被逐步转成 in-repo 形式。目前**唯一**随包的变异 harness 是 `tests/audit-path-discipline.mutants.mjs`；其余 `_oneoff/auditR2/*` 引用**均为 dev-only**。
+
+| 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
+|---|---|---|
+| A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | **需新增 in-repo `*.mutants.mjs`**（当前仅有开发检出脚本） |
+| A6 name-set 快照 | 工具名集合变化必须被察觉 | **需新增 in-repo harness** |
+| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | **需新增 in-repo harness** |
+| F2 v3 id 契约 | id 形状/唯一性契约 | **需新增 in-repo harness** |
+| F3 v2 `list_agents` | 该工具必须存在且被提及 | **需新增 in-repo harness** |
+| F4 v2 require-gate 下一步 | 拒绝必须给出可执行的下一步 | **需新增 in-repo harness** |
+| A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | **需新增 in-repo harness** |
+| v5 L1 `leanPathContractOk` | Lean 路径契约（文档根 = 框架根） | **需新增 in-repo harness** |
+| v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **需新增 in-repo harness** |
+| v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
+
+**包边界核对（本轮实测）**：`package.json#files` 共 137 条，其中 `_oneoff` 条目 **0 条**；随包的 `*.mutants.mjs` 只有 ["tests/audit-path-discipline.mutants.mjs"]。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**，上表新增行凡标"需新增 in-repo harness"的，即尚未随包、也尚未在本轮补齐。

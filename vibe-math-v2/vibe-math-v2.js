@@ -2174,7 +2174,9 @@ export function apply(ctx) {
       activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
       propositions: { total: propos.length, resolved: propos.filter(function (p) { return p.布尔估计 === 1 || p.布尔估计 === 0 }).length },
-      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
+      // F1：与 status() 同形（数字）；明细挪到独立键名 pendingDecisionItems，读者不会把两者读混。
+      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
+      pendingDecisionItems: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
       // D4 审计面：每个在飞验证任务的参与集/票数都由 voteCount 投影出来（两个视图可对照）。
       verifyTasks: verifyTasksView(tasks),
@@ -2185,9 +2187,12 @@ export function apply(ctx) {
         leanCommand: params.leanCommand, leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         objects: Object.keys(formalRecords()).map(function (k) { const r = formalRecords()[k] || {}; return { target: k, status: r.status, file: r.file, proof: r.proof, note: r.note } }),
         todo: formalTodo(),
-        paths: { project: 'Formal/', lib: vibeRoot() + '/Formal/Lib/', proved: vibeRoot() + '/Formal/Proved/', proofs: 'Verified/Lean/' },
+        // F6：四项路径基准不同 ⇒ 必须点名 base（project/proofs 相对 base，lib/proved 已绝对）。
+        paths: { base: frameworkRoot() + '/', project: 'Formal/', proofs: 'Verified/Lean/', lib: vibeRoot() + '/Formal/Lib/', proved: vibeRoot() + '/Formal/Proved/', note: 'project/proofs 相对 base（项目根）；lib/proved 已含绝对前缀' },
       },
       params: params,
+      // F5：report/status 两面字段集对齐（旧实现只有 status 看得到论文/编译状态）。
+      paper: await paperStatusView(),
     }
   }
   async function maybeWriteReport(force) {
@@ -2213,8 +2218,8 @@ export function apply(ctx) {
       const report = await buildReport()
       const text = '[Vibe Math V2] 进度更新：当前项目 "' + currentProject + '" 运行中=' + report.running +
         '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
-        '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '。' +
-        '请调用 vibe_math_report 汇总当前进展，再用人话简要汇报（不打断用户，简短即可）。'
+        '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions + '。' +
+        '请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理（id/角色/目标）状态，再用人话简要汇报（不打断用户，简短即可）。'
       // 来源 kind 必须是**已声明**的：`MessageSourceMap` 是 merge-extensible 的联合，但没有共享的
       // catch-all `plugin` kind（dsh-llm message.d.ts），{kind:'plugin'} 是契约外形状。role 本来就是
       // 'user'，正文也自带 "[Vibe Math V2] 进度更新" 的真署名，所以用核心声明的 {kind:'user'}。
@@ -4171,6 +4176,7 @@ function verifyTasksView(tasks) {
   async function getStatus() {
     const qs = await getQs(); const propos = await getPropos()
     return {
+      at: now(),
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
       project: currentProject, projectExists: await projectExistsOnDisk(), projects: await listDirsAt(vibeRoot(), 'Projects'),
       stateCommit: stateCommit,
@@ -4189,9 +4195,17 @@ function verifyTasksView(tasks) {
         leanCommand: params.leanCommand, leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         objects: Object.keys(formalRecords()).map(function (k) { const r = formalRecords()[k] || {}; return { target: k, status: r.status, file: r.file, proof: r.proof, note: r.note } }),
         todo: formalTodo(),
-        paths: { project: 'Formal/', lib: vibeRoot() + '/Formal/Lib/', proved: vibeRoot() + '/Formal/Proved/', proofs: 'Verified/Lean/' },
+        // F6：四项路径基准不同 ⇒ 必须点名 base（project/proofs 相对 base，lib/proved 已绝对）。
+        paths: { base: frameworkRoot() + '/', project: 'Formal/', proofs: 'Verified/Lean/', lib: vibeRoot() + '/Formal/Lib/', proved: vibeRoot() + '/Formal/Proved/', note: 'project/proofs 相对 base（项目根）；lib/proved 已含绝对前缀' },
       },
       // 最终论文的可观测面（spec §2/§6）：自动开关、在途/排队、定稿时间、产物与编译结果。
+      // F3（对照 v5 的 leanNoticesScope/fieldScopes）：本面把**会话内存**与**耐久**字段并排放在同一层，
+      // 这里逐组标注来源，读者不必猜哪个重启会归零。
+      fieldScopes: {
+        durable: ['project', 'projects', 'problems', 'propositions', 'stateCommit', 'formal', 'paper.finalizedAt', 'paper.artifacts', 'paper.compile'],
+        session: ['stateWriteFailures', 'activeCount', 'pendingDecisions', 'registeredAgents', 'verifyTasks', 'recentActivity', 'paper.inFlight', 'paper.inFlightSince', 'paper.inFlightAgeMs', 'paper.reapedThisRun', 'paper.queued'],
+        note: 'session = 本进程内存，重启后归零（看着永远健康是假象）；durable = 落在项目树里（State/Formal/Progress/Verified 等），重启后仍在',
+      },
       paper: await paperStatusView(),
     }
   }

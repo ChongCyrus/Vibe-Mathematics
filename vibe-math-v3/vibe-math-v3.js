@@ -226,6 +226,9 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
   // 长跑进程里无界增长并整表落盘。它已经不再参与任何加权（见 finalVerdict 的 M8 说明），
   // 只是审计轨迹，所以按插入顺序保留最近 N 条即可。
   const VERIFIER_ACC_KEEP = 200
+// F2（对照 v2:221）：status 与 report 的 recentActivity **共用**这一上限；参数 activityLogCap
+// 只能把它调小、不能调大（旧实现 status 硬编码 10、report 硬编码 30，读者无从知道）。
+const ACTIVITY_REPORT_MAX = 30
   function pruneVerifierAccuracy() {
     const keys = Object.keys(verifierAccuracy)
     for (let i = 0; i < keys.length - VERIFIER_ACC_KEEP; i++) delete verifierAccuracy[keys[i]]
@@ -319,7 +322,7 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
     { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '问题优先级动态调整策略', suggestion: 'none' },
     { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整策略', suggestion: 'none' },
     { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）', suggestion: 2000 },
-    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数', suggestion: 100 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
     { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限', suggestion: 3 },
     { name: 'planningHorizon', type: 'integer', description: '规划代理一次计划的最多动作数（"接下来 n 次"）', suggestion: 3 },
     { name: 'plannerEnabled', type: 'boolean', description: 'false = 完全走内置启发式调度（规划代理禁用）', suggestion: true },
@@ -1270,13 +1273,17 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
       propositions: { total: propos.size, resolved: allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length },
       verifyPending: (await buildVerifyCandidates()).length,
       methods: { project: methods.size, global: globalMethods.size, pendingInventions: methodLog.pendingInventions.length },
-      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
+      // F1：与 status() 同形（数字）；明细挪到独立键名 pendingDecisionItems。
+      pendingDecisions: decisionQueue.filter(function (d) { return d.status === 'pending' }).length,
+      pendingDecisionItems: decisionQueue.filter(function (d) { return d.status === 'pending' }).map(function (d) { return { id: d.id, node: d.node, context: d.context } }),
       registeredAgents: Object.keys(agentRegistry).length,
       queuedPlanActions: planQueue.length,
-      recentActivity: activityLog.slice(-Math.min(30, Number(params.activityLogCap) || 100)),
+      recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)),
       // Lean 形式化：模式 + 每个对象的状态 + 形式化待办（可读参数表在 params 里）。
       formal: formalSummary(),
       params: params,
+      // F5：与 status 对齐，周期快照也能看到论文/编译状态。
+      paper: await paperStatusView(),
     }
   }
   async function maybeWriteReport(force) {
@@ -1293,7 +1300,7 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
     lines.push('# 项目进展报告｜' + currentProject + '｜' + fmtTime())
     lines.push('')
     lines.push('## 总览')
-    lines.push('- 运行中：' + scheduler.running + '；活跃子代理：' + activeCount() + '/' + params.maxParallelThreshold)
+    lines.push('- 运行中：' + (scheduler.running ? '是' : '否') + '；活跃子代理：' + activeCount() + '/' + params.maxParallelThreshold)
     lines.push('- 问题：' + allProblems().filter(function (q) { return q.状态 === '已解决' }).length + '/' + problems.size + ' 已解决；命题：' + allPropos().filter(function (p) { return p.概率 === 1 || p.概率 === 0 }).length + '/' + propos.size + ' 已定论')
     lines.push('- 方法库：项目 ' + methods.size + ' 条，全局 ' + globalMethods.size + ' 条，待沉淀发明 ' + methodLog.pendingInventions.length + ' 条')
     lines.push('- 待执行计划动作：' + planQueue.length + ' 条；待人工决策：' + decisionQueue.filter(function (d) { return d.status === 'pending' }).length + ' 条')
@@ -1301,7 +1308,9 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
     lines.push('## 问题状态')
     for (const q of allProblems()) {
       const dirs = getDirState(q.id)
-      const dirInfo = dirs.length ? '（方向：' + dirs.map(function (d) { return d.id + ':' + d.status }).join(', ') + '）' : ''
+      // F7：人读报告不把裸代码状态拼进中文；中文化后把代码放括号里备查。
+    const DIR_STATUS_ZH = { active: '进行中', 'dead-end': '死路', success: '已成功', queued: '排队中' }
+    const dirInfo = dirs.length ? '（方向：' + dirs.map(function (d) { return d.id + ':' + (DIR_STATUS_ZH[d.status] || d.status) + '(' + d.status + ')' }).join(', ') + '）' : ''
       lines.push('- **' + q.id + '**：' + q.状态 + '，优先级 ' + q.优先级 + '，解法 ' + (q.solutions || []).length + ' 条' + dirInfo)
     }
     lines.push('')
@@ -1331,10 +1340,10 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
     if (!rootAgent || typeof rootAgent.followup !== 'function') return
     try {
       const report = await buildReport()
-      const text = '[Vibe Math V3] 进度更新：项目 "' + currentProject + '" 运行中=' + report.running +
+      const text = '[Vibe Math V3] 进度更新：项目 "' + currentProject + '" 运行中=' + (report.running ? '是' : '否') +
         '，问题 ' + report.problems.solved + '/' + report.problems.total + ' 已解决，命题 ' + report.propositions.resolved + '/' + report.propositions.total + ' 已定论，' +
-        '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions.length + '，待执行计划=' + report.queuedPlanActions + '。' +
-        '请调用 vibe_math_report 汇总当前进展及各代理状态，并用人话简要汇报（不打断用户，简短即可）。'
+        '活跃代理轮数=' + report.activeCount + '，待人工决策=' + report.pendingDecisions + '，待执行计划=' + report.queuedPlanActions + '。' +
+        '请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理（id/角色/目标）状态，再用人话简要汇报（不打断用户，简短即可）。'
       // 来源 kind 必须是**已声明**的：`MessageSourceMap` 是 merge-extensible 联合，但没有共享的
       // catch-all `plugin` kind（审计 L5/dsh-llm message.d.ts），{kind:'plugin'} 是契约外形状。
       // role 本来就是 'user'，正文自带 "[Vibe Math V3] 进度更新" 的真署名，故用核心声明的 {kind:'user'}。
@@ -4784,6 +4793,7 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
   async function projectExistsOnDisk() { return (await listDirsAt(vibeRoot(), 'Projects')).indexOf(currentProject) !== -1 }
   async function getStatus() {
     return {
+      at: now(),
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
       project: currentProject, projectExists: await projectExistsOnDisk(), projects: await listDirsAt(vibeRoot(), 'Projects'),
       stateCommit: stateCommit,
@@ -4799,8 +4809,14 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
       queuedPlanActions: planQueue.length,
       plannerEnabled: params.plannerEnabled, plannerFails: plannerFails,
       formal: formalSummary(),
-      recentActivity: activityLog.slice(-Math.min(10, Number(params.activityLogCap) || 100)), params: params,
+      recentActivity: activityLog.slice(-Math.min(ACTIVITY_REPORT_MAX, Number(params.activityLogCap) || 100)), params: params,
       // 最终论文的可观测面（spec §2/§6）。
+      // F3（对照 v5 的 leanNoticesScope/fieldScopes）：逐组标注会话内存 vs 耐久来源。
+      fieldScopes: {
+        durable: ['project', 'projects', 'problems', 'propositions', 'stateCommit', 'formal', 'methods.project', 'methods.global', 'paper.finalizedAt', 'paper.artifacts', 'paper.compile'],
+        session: ['stateWriteFailures', 'activeCount', 'pendingDecisions', 'registeredAgents', 'verifyPending', 'queuedPlanActions', 'plannerFails', 'methods.pendingInventions', 'recentActivity', 'paper.inFlight', 'paper.inFlightSince', 'paper.inFlightAgeMs', 'paper.reapedThisRun', 'paper.queued'],
+        note: 'session = 本进程内存，重启后归零（看着永远健康是假象）；durable = 落在项目树里（State/Formal/Progress/Verified 等），重启后仍在',
+      },
       paper: await paperStatusView(),
     }
   }

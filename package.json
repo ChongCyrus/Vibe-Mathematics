@@ -36,6 +36,7 @@
     "docs/formal-verification.md",
     "docs/final-paper.md",
     "docs/math-computation.md",
+    "docs/status-report-fields.md",
     "tests/audit-math-computation-parity.mjs",
     "tests/audit-participant-set-parity.mjs",
         "tests/audit-readme-bilingual.test.mjs",
