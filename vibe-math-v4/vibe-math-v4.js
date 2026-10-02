@@ -344,6 +344,7 @@ export function apply(ctx) {
     // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
     // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
     let warnedNoPolicy = false
+let warnedWriteFormalTodo = false   // F-6 (1/4): name a swallowed verify-conclusion write once, WITH its consequence
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
@@ -2300,7 +2301,7 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       if(formalOn() && formalTodos.some(t=>t.id===target)){
         formalTodos=formalTodos.filter(t=>t.id!==target)
         await saveFormal()
-        try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+        try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ if(!warnedWriteFormalTodo){ warnedWriteFormalTodo=true; console.error('vibe-math-v4: closeVerify: writeFormalTodo/writeFormalIndex failed - the verify conclusion is NOT recorded on disk (best effort continues; it is lost on reload)') } /* best-effort */ }
       }
       logActivity('verify',target+' → Verified ('+(isTrue?'真':'假')+') by unanimous consensus'+(formalOn()?('｜形式化: '+formalStatusLine(target)):''))
       verifyState=null; wakeKind.clear(); await saveAll()
