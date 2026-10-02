@@ -12,7 +12,7 @@
 | 键 | 例外原因 |
 |---|---|
 | `solverToolAllow` `solverToolDeny` `verifierToolAllow` `verifierToolDeny` `leanArgs` `mathEngines` `mathPackages` | 现状为 `type: 'array'` + `items`；`PARAM_SCHEMA` 不建模数组类型，逐字沿用以免丢失 `items` |
-| `solverAllowNetwork` `verifierAllowNetwork` `solverAllowScripts` `verifierAllowScripts` | 现状为 `oneOf`（布尔或字符串）；源无 `oneOf` 概念，逐字沿用 |
+| `solverAllowNetwork` `verifierAllowNetwork` `solverAllowScripts` `verifierAllowScripts` | 现状为 `oneOf`（布尔或字符串）；源无 `oneOf` 概念，逐字沿用。**这 4 条只在 v2 存在**：v2 允许用字符串 `''` 表达“未设置”，而 v3 用普通 `boolean`（`{ type: 'boolean' }`）——所以“统一两预设”的清理若把 v2 改成 boolean，就是**尚未批准的 agent 面向契约变更** |
 
 ## v3（9 条例外）
 
