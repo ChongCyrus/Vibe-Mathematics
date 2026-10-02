@@ -27,7 +27,7 @@ const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else 
 // subagent/end (the mock has no ctx.timeout, so no scheduling is timer-bound), and the
 // old 40ms/4000ms pair meant every unsatisfied poll burned up to 4s. 10ms/900ms keeps a
 // generous ~90x margin over the observed settle time while cutting the tail drastically.
-async function waitFor(pred, t=900){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);res(false)} },10) }) }
+async function waitFor(pred, t=900){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);{ console.error('  FAIL - waitFor did not settle: window=' + t + 'ms, waited=' + (Date.now() - s) + 'ms, predicate=' + String(pred).slice(0, 60)); res(false) }} },10) }) }
 const IDLE_POLLS = Number(process.env.V4_IDLE_POLLS || 100)
 let quietPolls = 0
 // "The framework has stopped asking": reset on every answered followup, trip after a silence.

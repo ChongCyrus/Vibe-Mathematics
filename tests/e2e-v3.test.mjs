@@ -31,8 +31,15 @@ function assert(cond, msg) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 async function waitFor(label, pred, timeoutMs = 8000) {
-  const t0 = Date.now()
-  while (Date.now() - t0 < timeoutMs) { if (pred()) { console.log('  .. waited for ' + label) ; return true } await sleep(100) }
+  const t0 = Date.now(); let attempts = 0; let ok = false
+  while (Date.now() - t0 < timeoutMs) {
+    attempts++; ok = !!pred()
+    if (ok) { console.log('  .. waited for ' + label + ' (' + (Date.now() - t0) + 'ms, ' + attempts + ' attempts)'); return true }
+    await sleep(100)
+  }
+  // class A (protocol 搂6.4): the FALLBACK timeout must fail WITH A NAME and the diagnostic triple -
+  // trading wall-clock guessing for deterministic driving must not remove the failure mode.
+  console.error('  FAIL - waitFor did not settle: label=' + label + ', window=' + timeoutMs + 'ms, waited=' + (Date.now() - t0) + 'ms, attempts=' + attempts + ', lastPredFalse=' + (!ok))
   return false
 }
 

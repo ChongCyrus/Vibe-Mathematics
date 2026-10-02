@@ -60,7 +60,7 @@ function harness(opts) {
     tools: Object.assign({ register(s) { toolRegs.push(s) } }, o.toolSchemas ? { schemas: () => o.toolSchemas } : {}),
     commands: { register(s) { cmdRegs.push(s); return () => {} } },
     subagents: {
-      list() { return ['spawn'] },
+      list() { if (o.failSubagentsList) throw new Error('mock list failure'); return ['spawn'] },
       async startContinuable({ label, request }) {
         // 宿主激活上限报错文本与 0.2.0 宿主一致（ACTIVATION_LIMIT_REACHED / active child limit: N）
         attempts++
@@ -68,14 +68,14 @@ function harness(opts) {
         const childId = 'c' + (spawns.length + 1); spawns.push({ label, request, childId }); return { childId }
       },
       async sendMessage() {},
-      interrupt() {},
+      interrupt() { if (o.failInterrupt) throw new Error('mock interrupt failure') },
     },
     agents: { roots() { return [] }, get() { return undefined } },
     fs: {
       async resolve(rel, oc) { return pathResolve((oc && oc.cwd) || WS, ...String(rel).split('/')) },
       async stat(t) { return existsSync(t) ? { type: 'file' } : undefined },
       async readText(t) { return readFileSync(t, 'utf8') },
-      async writeText(t, c) { mkdirSync(dirname(t), { recursive: true }); writeFileSync(t, c, 'utf8') },
+      async writeText(t, c) { if (o.failWritePath && String(t).includes(o.failWritePath)) throw new Error('mock write failure: ' + o.failWritePath); mkdirSync(dirname(t), { recursive: true }); writeFileSync(t, c, 'utf8') },
       async listDir(t) { if (!existsSync(t)) return []; return readdirSync(t, { withFileTypes: true }).map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })) },
     },
   }
@@ -426,6 +426,41 @@ console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
   assert(/下一步：把该对象形式化到 Lean 通过/.test(src), '★★ [A5] require-gate 反馈行携带下一步（与 formal-verify-v2 的行为断言同源）')
 }
 
+// ---------------------------------------------------------------- F6a/F6b (silent-failure surfacing)
+console.log('\n-- F6a/F6b: 静默回退与中断失败必须留痕 --');
+{
+  const h1 = harness({ failSubagentsList: true });
+  await load(h1);
+  await h1.call('vibe_math_new_project', { name: 'p' });
+  await h1.call('vibe_math_add_problem', { id: 'qA6', description: 'x' });
+  await h1.call('vibe_math_start', {});
+  await h1.find(() => h1.spawns.length > 0);   // the tick spawns asynchronously (default 2s) — wait before reading stderr
+  const errs = h1.errors.join('\n');
+  assert(/pickProvider\(\) falling back to 'spawn'/.test(errs) && /subagents\.list\(\) failed/.test(errs), '★★★ [F6a] list() 失败的一次性告警可见（实测 ' + JSON.stringify((errs.split('\n').filter((x) => /pickProvider/.test(x))[0] || errs.slice(-120))) + '）');
+  h1.restore(); await wait(250); rmSync(h1.WS, { recursive: true, force: true });
+  const h2 = harness({ failInterrupt: true });
+  await load(h2);
+  await h2.call('vibe_math_new_project', { name: 'p' });
+  await h2.call('vibe_math_add_problem', { id: 'qA6', description: 'x' });
+  await h2.call('vibe_math_start', {});
+  await h2.find(() => h2.spawns.length > 0);
+  await h2.call('vibe_math_abort', {});
+  const st2 = await h2.call('vibe_math_status', {});
+  const acts = (st2.recentActivity || []).map((a) => String(a.event) + ' ' + String(a.detail)).join('\n');
+  assert(/中断失败/.test(acts), '★★★ [F6b] 中断失败进入活动日志（实测 ' + JSON.stringify((acts.split('\n').filter((x) => /中断/.test(x)).slice(-1)[0] || acts.slice(-140))) + '）');
+  h2.restore(); await wait(250); rmSync(h2.WS, { recursive: true, force: true });
+}
+// ---------------------------------------------------------------- F6c (project pointer must not fail silently)
+console.log('\n-- F6c: 项目指针写失败必须可观察 --');
+{
+  const h = harness({ failWritePath: 'current.' });
+  await load(h);
+  await h.call('vibe_math_new_project', { name: 'p' });
+  const st = await h.call('vibe_math_status', {});
+  const last = st.stateWriteFailures && st.stateWriteFailures.last;
+  assert(!!last && /current\./.test(JSON.stringify(last)), '★★★ [F6c] 项目指针写失败进入 status.stateWriteFailures（实测 ' + JSON.stringify(st.stateWriteFailures) + '）');
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
+}
 // ---------------------------------------------------------------- F2 (proactive tool-name intersection)
 console.log('\n-- F2: 候选工具名与宿主可见工具面求交（composedToolList）--');
 {

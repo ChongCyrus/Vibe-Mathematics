@@ -594,3 +594,20 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 - `checkHostCapabilities`（以及安装器自检）只证明**服务/API 的存在与形状**，**不证明运行时行为语义**；F-4c/F-5/F-6 一类的语义缺陷对它是**结构性不可见**的。
 - 因此**通过自检不得被读成兼容性结论**。安装器把这句话印在**用户可见的自检通过行**上（`installer.js` 的 `宿主自检通过（…）`），并由 `tests/audit-installer-compat.test.mjs` 的断言钉住（该行必须同时出现"形状"与"行为"）。
+
+
+### 跑测日志的可诊断性（"红必须点名断言"）
+
+- **约定**：**红必须点名断言**。`tests/run-tests.mjs` 在失败时把该套件的**具名失败行**（从 stdout+stderr 提取，无具名行时回退到最近 40 行原始输出）打印在**每条 `FAILED: <file> [suite|probe]` 行下面**，套件自身的最后一行的摘要不再是唯一线索；TOTAL 行在失败清单之前。
+- **已关闭的反向缺陷（假阳性）**：提取器按行的**自有前缀**、**行首锚定**判定（`^\s*(FAIL\b|FAILURES:|✗|✘)`、断言条目 `^\s*[-*]\s+\S`、行首中止标记 `^\s*(SyntaxError|TypeError|ReferenceError|Error):`），并**显式排除 `^\s*ok\b`** —— 因此一条**通过**行即使把字面量 `FAIL - ` 写进消息里，也不会被当成失败（v2/v3 owner 曾因此让一次全绿看起来变红）。
+- **怎么让它红一次（in-repo）**：`node tests/run-tests.mjs --self-check` 三个用例 —— ①失败子进程产出**具名**行；②**通过行内含 `FAIL - ` ⇒ 提取结果为空**；③真正的 `  FAIL - …` 行与 `TypeError:` 标记仍被提取；反向证明由随包的 `tests/run-tests.mutants.mjs` 给出（**2/2**：基线通过；把具名提取改成常量 ⇒ `--self-check` 变红）。
+
+
+### 补遗：v5 提示词双副本守卫 + 派生语料的规则
+
+| 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
+|---|---|---|
+| `tests/audit-v5-prompt-duplication.mjs`（**已随包**） | 提示词恰好两份副本、**归一化后完全相同**，且 P1/P2/P3 六条子句在**两份**里都在 | 随包的 `tests/audit-v5-prompt-duplication.mutants.mjs`：对**一份**副本做单点编辑 ⇒ 具名红（"the two prompt copies are IDENTICAL after normalisation …"、"P1 exception present in copy 1"、"P2 disclosure present in copy 1"） |
+| `tests/audit-v5-prompt-duplication.mutants.mjs`（**已随包**） | 上表的证明本身 | 它就是 harness；`node tests/run-tests.mjs` 自动发现两者（`tests/*.mjs` 枚举，非 `NEEDS_ARGS`） |
+
+**派生语料的规则（协议级）**：`prompt-corpus-persona/*` **不是**需要被"重定向"的随包语料，而是**人格/提示词源的派生产物**；因此当人格源发生编辑时，**随后的一次门禁运行合法地重新生成它**（本轮重生成的语料里正好含新的 P2 披露文本）。规则：**把重生成与它的源编辑一起提交**；绝不把一个脏的派生语料留过提交；并且在有人正在编辑人格/提示词源时**不要跑全量门禁**。

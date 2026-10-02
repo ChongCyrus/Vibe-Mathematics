@@ -390,11 +390,11 @@ export function apply(ctx) {
   async function writeTextAbs(path, content) { try { const t = await fs.resolve(path); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true } catch (e) { return false } }
   async function readCurrentProject() {
     // 按会话隔离的 current 文件（多会话并行时互不覆盖）；无则回退旧共享文件
-    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s !== undefined) { const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } } catch (e) {}
-    try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { return 'default' }
+try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s !== undefined) { const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } } catch (e) { noteStateWriteFailure('current.' + safeId(sessionId) + '.json', 'read failed: ' + ((e && e.message) || e)) }
+try { const t = await fs.resolve('current.json', { cwd: vibeRoot() }); const s = await fs.stat(t); if (s === undefined) return 'default'; const txt = await fs.readText(t); const j = safeJson(txt, null); const p = (j && j.project) ? String(j.project) : 'default'; return slugify(p) } catch (e) { noteStateWriteFailure('current.json', 'read failed: ' + ((e && e.message) || e)); return 'default' }
   }
   async function writeCurrentProject() {
-    try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) {}
+try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd: vibeRoot() }); await fs.writeText(t, JSON.stringify({ project: currentProject }), undefined, undefined, getPolicy()) } catch (e) { noteStateWriteFailure('current.' + safeId(sessionId) + '.json', (e && e.message) || e) }   // F-6c: 内存已切/磁盘未落必须可观察，否则重启丢失项目切换
   }
 
   // ================= subprocess =================
@@ -2231,7 +2231,14 @@ export function apply(ctx) {
   }
 
   // ================= child spawn / followup =================
-  function pickProvider() { try { const names = subagents.list ? subagents.list() : []; if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork' } catch (e) {} return 'spawn' }
+  // F-6a：宿主 list() 失败（或既无 spawn 也无 fork）时回退到假定值必须**留痕**，不能静默猜。
+  let providerFallbackWarned = false
+  function warnProviderFallback(why) {
+    if (providerFallbackWarned) return
+    providerFallbackWarned = true
+    console.error('vibe-math-v2: pickProvider() falling back to \'spawn\': ' + why)
+  }
+  function pickProvider() { let names = []; let listed = false; try { names = subagents.list ? subagents.list() : []; listed = true } catch (e) { warnProviderFallback('subagents.list() failed: ' + ((e && e.message) || e)) } if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork'; if (listed) warnProviderFallback('host exposes neither spawn nor fork (list=' + JSON.stringify(names) + ')'); return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
   /**
    * Drop filter names this host does not register. `known` comes from the host's
@@ -2304,6 +2311,12 @@ export function apply(ctx) {
    * 都吞成静默成功（调用方拿到 undefined，还以为已经中断）。现在：空/未知 id ⇒ `code` +
    * `next{tool,hint}`，宿主抛错 ⇒ 保留错误文本并给替代出口；只有真的发出中断才 `ok:true`。
    */
+  /** F-6b：中断失败必须留痕（调用点此前丢掉 {ok:false}，界面看起来一切正常）。 */
+  async function interruptTraced(cid, why) {
+    const r = await interruptChild(cid)
+    if (r && r.ok === false) logActivity('interrupt', '中断失败（' + why + '）：' + String(cid) + ' — ' + String(r.message || r.code || ''))
+    return r
+  }
   async function interruptChild(childId) {
     const id = String(childId == null ? '' : childId).trim()
     if (!id) return { ok: false, code: 'VIBE_MATH_INVALID_ARGUMENT', message: 'interruptChild 失败：childId 为空——无法确定要中断哪个子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 列出本会话在册子代理的 id，再带 childId 调用。' } }
@@ -3665,7 +3678,7 @@ function verifyTasksView(tasks) {
     const cid = paperInFlight
     paperInFlight = ''; paperInFlightAt = 0
     if (cid) {
-      try { await interruptChild(cid) } catch (e) { /* best effort */ }
+      try { await interruptTraced(cid, 'paper writer re-dispatch') } catch (e) { /* best effort */ }
       delete agentRegistry[cid]
       paperAbandoned[cid] = true
     }
@@ -4125,7 +4138,7 @@ function verifyTasksView(tasks) {
     const prevEpoch = await readJson('VibeMath_State/process_epoch.json')
     const stale = typeof prevEpoch === 'string' && prevEpoch !== processEpoch
     if (fresh || stale) {
-      if (fresh) { const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]) }
+      if (fresh) { const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptTraced(ids[i], 'batch clear (start/abort)') }
       if (Object.keys(agentRegistry).length > 0 || Object.keys(tasks).length > 0) {
         logActivity(fresh ? 'start' : 'resume', 'cleared ' + Object.keys(agentRegistry).length + ' agent(s) and ' + Object.keys(tasks).length + ' task(s) (' + (fresh ? 'restart' : 'stale from previous process') + ')')
         agentRegistry = {}; tasks = {}
@@ -4149,7 +4162,7 @@ function verifyTasksView(tasks) {
   async function startScheduler() { const r = await init(true); if (!r.ok) return r; abandonGatedDecision('scheduler restarted'); scheduler.running = true; scheduler.startedAt = now(); logActivity('start', 'scheduler started for project ' + currentProject); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler started', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function resumeScheduler() { const r = await init(false); if (!r.ok) return r; abandonGatedDecision('scheduler resumed (离开那次运行，挂起的节点不再等待)'); scheduler.running = true; logActivity('resume', 'scheduler resumed'); await saveAll(); await maybeWriteReport(true); scheduleTick(); return { ok: true, message: 'scheduler resumed', project: currentProject, frameworkRoot: frameworkRoot() } }
   async function pauseScheduler() { scheduler.running = false; logActivity('pause', 'scheduler paused'); await saveAll(); return { ok: true, message: 'scheduler paused' } }
-  async function abortScheduler() { scheduler.running = false; abandonGatedDecision('scheduler aborted'); const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptChild(ids[i]); agentRegistry = {}; paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
+  async function abortScheduler() { scheduler.running = false; abandonGatedDecision('scheduler aborted'); const ids = Object.keys(agentRegistry); for (let i = 0; i < ids.length; i++) await interruptTraced(ids[i], 'batch clear (start/abort)'); agentRegistry = {}; paperInFlight = ''; paperInFlightAt = 0; paperReaps = 0; paperPending = null; logActivity('abort', 'scheduler aborted, ' + ids.length + ' child(ren) interrupted'); await saveAll(); return { ok: true, message: 'scheduler aborted', interrupted: ids.length } }
   // auto 模式语义 = 无人值守自动通过关键节点：切回 auto 时把仍挂起的人工决策按自动策略放行
   async function autoResolvePending() {
     const pending = decisionQueue.filter(function (d) { return d.status === 'pending' })
