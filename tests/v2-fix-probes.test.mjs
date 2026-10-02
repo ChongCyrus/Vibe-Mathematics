@@ -481,8 +481,10 @@ console.log('\n-- F6a/F6b: 静默回退与中断失败必须留痕 --');
   await h2.find(() => h2.spawns.length > 0);
   await h2.call('vibe_math_abort', {});
   const st2 = await h2.call('vibe_math_status', {});
-  const acts = (st2.recentActivity || []).map((a) => String(a.event) + ' ' + String(a.detail)).join('\n');
-  assert(/中断失败/.test(acts), '★★★ [F6b] 中断失败进入活动日志（实测 ' + JSON.stringify((acts.split('\n').filter((x) => /中断/.test(x)).slice(-1)[0] || acts.slice(-140))) + '）');
+  // 收紧（round-4 守卫验证）：不能只看"日志里有『中断失败』"——必须点名**站点**（event + 子代理 id + why 标签）。
+  const abortedId = h2.spawns.length ? h2.spawns[0].childId : 'c1';
+  const hits2 = (st2.recentActivity || []).filter((a) => String(a.event) === 'interrupt' && String(a.detail).indexOf(abortedId) !== -1 && /batch clear \(start\/abort\)/.test(String(a.detail)) && /中断失败/.test(String(a.detail)));
+  assert(hits2.length === 1, '★★★ [F6b/v2] 中断失败进入活动日志并**点名站点**（event=interrupt + 子代理 id + why 标签 batch clear(start/abort)；实测 ' + JSON.stringify((st2.recentActivity || []).filter((a) => String(a.event) === 'interrupt').slice(-1)[0] || null) + '）');
   h2.restore(); await wait(250); rmSync(h2.WS, { recursive: true, force: true });
 }
 // ---------------------------------------------------------------- F6c (project pointer must not fail silently)

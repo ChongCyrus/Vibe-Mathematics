@@ -520,7 +520,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ## 本周期新增守卫索引（守卫/章节 → 它钉住的不变量 → 证明它会咬的变异）
 
-> 维护规则：只列**能在代码里指出来**的守卫；每行给出"不变量"与"变异"两列，变异脚本都在仓库外的 `_oneoff/auditR2/`。
+> 维护规则：只列**能在代码里指出来**的守卫；每行给出"不变量"与"变异"两列，变异脚本都在仓库外的 `_oneoff/auditR2/`。 （仅开发检出，不随包发布）
 
 | 守卫 / 章节 | 钉住的不变量 | 证明它会咬的变异 |
 |---|---|---|
@@ -528,16 +528,16 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-v5-sensitivity.mjs` | v5 提示词面/事件源的结构性变异必须让对应完整性守卫变红 | 该套件自身的"每变异一探针" |
 | `tests/audit-v3-registration-parity.mjs` | v3 的工具注册与声明面一致 | 该套件自身（`run-tests.mjs:87-90` 以显式 args 运行它） |
 | `tests/formal-verify-v4.test.mjs` §N5–§N9 | N5/N6 路径纪律；N9 行为证明：写到**文档化路径**的卡片必须被 `countArtifacts` 计入（自动会议基数） | 该套件自身的变异/行为断言（§N9 为真机行为证明） |
-| `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | `_oneoff/auditR2/participant-set-proof.mjs`（6/6） |
-| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 |
+| `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | `_oneoff/auditR2/participant-set-proof.mjs`（6/6） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | `roundA-mutants.mjs` a1/a2、`round9-mutants.mjs` |
-| 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | `_oneoff/auditR2/descriptor-sweep-proof.mjs`（3/3） |
-| 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | `_oneoff/auditR2/cli-policy-proof.mjs`（4/4）+ 敏感度探针 `cli-policy-ignored` |
-| 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | `_oneoff/auditR2/verify-provenance-proof.mjs`（2/2） |
+| 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | `_oneoff/auditR2/descriptor-sweep-proof.mjs`（3/3） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | `_oneoff/auditR2/cli-policy-proof.mjs`（4/4）+ 敏感度探针 `cli-policy-ignored` （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | `_oneoff/auditR2/verify-provenance-proof.mjs`（2/2） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | `tests/audit-math-computation-parity.mjs` §7 / §8 | 描述符不得用未知占位符、每个占位符都有实现；cli 策略"声明一次 + 被消费"；僵尸字段（`winPrefix`/`stdinArgv`/`defaultOn`）不得回归 | `descriptor-sweep-proof.mjs`、`cli-policy-proof.mjs` |
-| `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d` | `_oneoff/auditR2/installer-mutants.mjs`（2/2） |
-| `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） |
-| `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） |
+| `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d` | `_oneoff/auditR2/installer-mutants.mjs`（2/2） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 
 > **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
 
@@ -572,7 +572,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ## 守卫索引补遗（fallout #4）
 
-**图例（红一次的要求）**：每一行都必须回答"我怎么让它**红一次**"。标 **in-repo** 的 harness 随包发布（`tests/**.mutants.mjs` 或套件内的变异/行为段），**包内读者可复现**；标 **dev-only** 的只能在本仓库的开发检出里跑（不在 `files[]`），**包内读者无法复现** —— 它们应被逐步转成 in-repo 形式。目前**唯一**随包的变异 harness 是 `tests/audit-path-discipline.mutants.mjs`；其余 `_oneoff/auditR2/*` 引用**均为 dev-only**。
+**图例（红一次的要求）**：每一行都必须回答"我怎么让它**红一次**"。标 **in-repo** 的 harness 随包发布（`tests/**.mutants.mjs` 或套件内的变异/行为段），**包内读者可复现**；标 **dev-only** 的只能在本仓库的开发检出里跑（不在 `files[]`），**包内读者无法复现** —— 它们应被逐步转成 in-repo 形式。目前**唯一**随包的变异 harness 是 `tests/audit-path-discipline.mutants.mjs`；其余 `_oneoff/auditR2/*` 引用**均为 dev-only**。 （仅开发检出，不随包发布）
 
 | 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
 |---|---|---|
@@ -587,7 +587,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **需新增 in-repo harness** |
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
 
-**包边界核对（本轮实测）**：`package.json#files` 共 137 条，其中 `_oneoff` 条目 **0 条**；随包的 `*.mutants.mjs` 只有 ["tests/audit-path-discipline.mutants.mjs"]。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**，上表新增行凡标"需新增 in-repo harness"的，即尚未随包、也尚未在本轮补齐。
+**包边界核对（本轮实测）**：`package.json#files` 共 137 条，其中 `_oneoff` 条目 **0 条**；随包的 `*.mutants.mjs` 只有 ["tests/audit-path-discipline.mutants.mjs"]。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**，上表新增行凡标"需新增 in-repo harness"的，即尚未随包、也尚未在本轮补齐。 （仅开发检出，不随包发布）
 
 
 ### 自检的能力边界（"自检通过" ≠ "兼容"）
