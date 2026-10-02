@@ -79,7 +79,10 @@ async function applyFrom(pkgDir, home, logs) {
   return logs
 }
 const sha = (buf) => createHash('sha256').update(buf).digest('hex')
-const failedLog = (logs) => logs.filter((l) => l.includes('preset install/update failed'))
+// Label-tolerant on purpose: the installer's user-facing failure line is emitted by the logger helper
+// (not console.*) and its label is localised; the FACT asserted here is that a failure line exists.
+const FAILURE_LINE = /预设安装\/更新失败|preset install\/update failed/
+const failedLog = (logs) => logs.filter((l) => FAILURE_LINE.test(l))
 
 const tmp = mkdtempSync(join(tmpdir(), 'vibe-installer-policy-'))
 const home = join(tmp, 'dshhome')
@@ -258,7 +261,7 @@ console.log('=== 9. a recorded version NEWER than this package (a downgrade) say
   const backup = join(backupRoot, '3.0.0', PRESETS[0].dst, 'preset.yml')
   ok(existsSync(backup) && readFileSync(backup).equals(newerBytes), 'the replaced newer bytes are backed up under the version they came from')
   ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '2.0.0', 'the state records the version that is actually installed now')
-  ok(!logs.some((l) => l.includes('preset install/update failed')), 'apply() swallowed no failure')
+  ok(failedLog(logs).length === 0, 'apply() swallowed no failure')
 }
 
 // ============================================================================================
@@ -305,7 +308,7 @@ console.log('=== 10. preset writes are ATOMIC: a failed write cannot touch the d
   const logs = await applyFrom(pkgB, H.home, [])
   ok(readText(H.at(target.p, target.f)) === userBytes.toString(),
     'a failed preset write leaves the destination byte-for-byte intact (tmp+rename, never in place)')
-  ok(logs.some((l) => l.includes('preset install/update failed')),
+  ok(failedLog(logs).length > 0,
     '...and the failure is reported instead of being swallowed', logs.filter((l) => l.includes('failed')).join(' | ').slice(0, 200))
   ok((readJson(H.state) || {}).version === '1.0.0',
     'the state still describes the bytes that are actually on disk, so the next boot self-heals')
@@ -417,7 +420,7 @@ console.log('=== 15. a failed state write is reported (not swallowed), and does 
   const logs = await applyFrom(pkgA, H.home, [])
   ok(logs.some((l) => l.includes('状态文件写入失败')),
     'a failed state write is REPORTED (it used to fail silently)', logs.filter((l) => l.includes('写入失败')).join(' | ').slice(0, 160))
-  ok(!logs.some((l) => l.includes('preset install/update failed')), '...without aborting the preset step')
+  ok(failedLog(logs).length === 0, '...without aborting the preset step')
   ok((readJson(H.state) || {}).version === '1.0.0',
     'the previous state file is still parseable (tmp+rename left no half-written file)')
   rmSync(H.state + '.' + process.pid + '.0.tmp', { recursive: true, force: true })

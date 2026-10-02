@@ -658,3 +658,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **文本型断言（"在源码里 grep 某个门"）必须先 `stripComments` 再匹配**：一条**注释**里出现 `formalOn() && p.formal` 曾让 I8 在**真实门被删除**后仍然变绿（守卫看着在，实际上没在守）。
 - 反例证据是随包的：`tests/audit-prompt-invariants.mjs --self-probe` 的变异"v5: the formal gate is REMOVED but a comment still quotes it (I8 must read code, not comments)" ⇒ 具名红（`v5 I8: the reply channel is gated on formalOn()`）。
 - 同类检查（I1/I2 及 X5–X8 扫描器自身的守卫）也都在**去注释后的代码流**上运行；新增文本门请照此办理。
+
+
+### 约定：安装器面向用户的输出一律中文
+
+- **规则**：`installer.js` 面向**用户**的输出（`logger.info/warn` 的每一行）一律**中文**；出现英文标签就是**缺陷**，除非在同一行注明理由（例如必须保留厂商/命令原文）。代码与约定必须一致，后来者不得重新引入英文标签。
+- **依据**：R6 归因发现三条英文标签（`:764`/`:769`/`:791`）与一条信息行（`:787`）混在中文输出里；它们经 **logger 助手**（非 `console.*`）发出，所以按 `console.` grep 查不到 —— 排查时请按 `logger?.info?/warn?` 检索。
+- **连带风险（已实测）**：本地化这类标签会波及**测试助手**（`audit-installer-policy` 的 `failedLog()` 之前匹配旧英文标签 ⇒ 91/1）；改名/改文案必须**连带改守卫**，并把匹配收窄到"只证明失败"的证据（过宽的 alternation 曾把 `preset files:`/`preset baseline:` 当成失败 ⇒ 89/3）。

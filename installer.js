@@ -761,12 +761,12 @@ export async function apply(ctx) {
       : ''
 
     if (isUpgrade) {
-      logger?.info?.('[dsh-vibe-math] preset auto-update: version ' + fromVersion + ' → ' + pkgVersion +
+      logger?.info?.('[dsh-vibe-math] 预设自动更新：版本 ' + fromVersion + ' → ' + pkgVersion +
         ' — 新增 ' + installed + ' 个文件，更新 ' + updated + ' 个文件。' +
         editClause + unknownClause +
         '新版本 preset 将在新会话生效。')
     } else if (isBaseline) {
-      logger?.info?.('[dsh-vibe-math] preset baseline: refreshed ' + (installed + updated) + ' file(s) to v' + pkgVersion +
+      logger?.info?.('[dsh-vibe-math] 预设基线：已刷新 ' + (installed + updated) + ' file(s) to v' + pkgVersion +
         (replacedEdits.length > 0
           ? '，其中 ' + replacedEdits.length + ' 个原有文件与随包版本不同' +
             (backupFailures.length === 0 ? '，原文已备份在 ' + backupsDir
@@ -784,10 +784,10 @@ export async function apply(ctx) {
           (userEditedKept > 0 ? '，其中 ' + userEditedKept + ' 个是安装之后的改动（记为用户所有：弃用 preset 的清理不会删除它们）' : '') +
           '；下一次版本变更会先备份原文再替换')
       }
-      logger?.info?.('[dsh-vibe-math] preset files: ' + parts.join('；') + '。')
+      logger?.info?.('[dsh-vibe-math] 预设文件：' + parts.join('；') + '。')
     }
     /* the host self-check ran at the top of apply() — it also decides the preset mechanism */
   } catch (err) {
-    logger?.warn?.('[dsh-vibe-math] preset install/update failed: ' + String((err && err.message) || err))
+    logger?.warn?.('[dsh-vibe-math] 预设安装/更新失败：' + String((err && err.message) || err))
   }
 }
