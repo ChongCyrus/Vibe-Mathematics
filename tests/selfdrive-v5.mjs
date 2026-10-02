@@ -332,6 +332,13 @@ assert(!!sv.verify, 'verification of ' + target + ' is in flight right after pro
   JSON.stringify({ verify: sv.verify, queue: sv.verifyQueue, undecided: sv.undecided, running: sv.running, autoDone: sv.autoDone, phase: sv.phase, meeting: sv.meeting, parked: sv.parkedMeeting, tasks: sv.tasks.length }))
 if (sv.verify) {
   assert(sv.verify.m === 3 && sv.verify.P === 4, 'verification reports m=3 over P=4 voters')
+// V5-A1: P=4 is a COUNT - assert the semantic unit too. The voter set is the roster identity that
+// quorum is computed over, so a duplicate id (P unchanged) must not pass. Measured shape:
+// status.verify.voters is the id array (product: `voters: E` in the verdict payload).
+// V5-A1: the SHAPE was measured first - status.verify carries {target,kind,stage,round,voted,m,P} but
+// NO voter list (vibe-math-v5.js:7316); the voter IDS live in `status.quorum` (quorumView(), :7277/:1262).
+const voterIds = (sv.quorum && Array.isArray(sv.quorum.voters)) ? sv.quorum.voters.map(String).sort() : null
+assert(!!voterIds && voterIds.join(',') === ['acad', 'r-1', 'r-2', 'r-3'].sort().join(','), '* V5-A1 the voter id SET is exactly {acad, r-1, r-2, r-3} (P=4 keeps the count; got ' + JSON.stringify(voterIds) + ')')
 
   // Round: only ONE boolean vote (< m) must NOT verify.
   plannedVotes = new Map([['acad', 0.9], ['r-1', 1], ['r-2', 0.5], ['r-3', 0.7]])

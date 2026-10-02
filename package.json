@@ -63,6 +63,7 @@
     "tests/v5-institute-fixes.mutants.mjs",
     "tests/formal-verify-v4.mutants.mjs",
     "tests/formal-verify-v3.mutants.mjs",
+    "tests/selfdrive-v5.mutants.mjs",
     "tests/audit-readme-counts.mjs",
     "tests/audit-readme-counts.mutants.mjs",
     "tests/helpers/doc-counts-format.mjs",

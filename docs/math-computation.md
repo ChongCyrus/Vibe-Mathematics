@@ -1,6 +1,6 @@
 # 数学计算工具（`math_computation`）—— 契约与用法
 
-> 四个预设（v2/v3/v4/v5）共用同一个工具。规格与冻结件在开发检出里：`_oneoff/math-computation-spec-v3.md`（rev-3）、`_oneoff/mc-P1-ready/INTERFACE-FREEZE.md`、`mc-P1-ready/{engines.md,tool-schema.json,receipt.md,prompts.md,guards.md}`。
+> 四个预设（v2/v3/v4/v5）共用同一个工具。规格与冻结件**只在开发检出里**（`_oneoff/**` **不随包发布**，`files[]` 不含它；随包读者请看本文件正文的契约与穷举表）：`_oneoff/math-computation-spec-v3.md`（rev-3）、`_oneoff/mc-P1-ready/INTERFACE-FREEZE.md`、`mc-P1-ready/{engines.md,tool-schema.json,receipt.md,prompts.md,guards.md}`。
 > 本文件只讲**已实现的行为**与**明确不能保证的东西**，不含性能或效果承诺。
 
 ## 1. 它是什么
@@ -44,7 +44,7 @@ math_computation {
 **"没有 subprocess 服务"与"没有引擎"是两件事**（避免误导用户去装 python）：
 - 宿主若能声明自己没有 subprocess 服务（预设可选提供 `hasSubprocess:()=>false`），`run` 与 `probe` 一律返回 `MATH_NO_SUBPROCESS` + `next.kind:'note'`；
 - 宿主不提供该声明时：命令**解析不到** ⇒ `MATH_ENGINE_NOT_FOUND`（附逐 OS 安装指引）；能解析但 `spawn` 拿不到句柄（返回 `null`）⇒ `MATH_NO_SUBPROCESS`。
-- **机读词汇表（穷举；权威副本在 `_oneoff/mc-P1-ready/tool-schema.json#refusalVocabulary`，由 parity 守卫盯着，改名即红）**：
+- **机读词汇表（穷举；权威副本**只在开发检出**里：`_oneoff/mc-P1-ready/tool-schema.json#refusalVocabulary`（**不随包发布**），由 parity 守卫盯着，改名即红）**：
   - `code`（11 个）：`MATH_NOT_AVAILABLE` `MATH_ENGINE_NOT_FOUND` `MATH_ENGINE_LICENSE_REQUIRED` `MATH_ENGINE_UNUSABLE` `MATH_MISSING_PACKAGES` `MATH_TIMEOUT` `MATH_NONZERO_EXIT` `MATH_ENGINE_BAD_ARGV` `MATH_REFUSED` `MATH_INVALID_ARGUMENT` `MATH_NO_SUBPROCESS`；
   - `next.kind`（7 个）：`user-install`（用户自装指引）、`agent-install`（代装计划/计划就绪）、`vendor`（商业引擎厂商指引）、`enable`（`mathComputation:'off'` 的启用建议）、`engine-override`（bad-argv ⇒ 用 `mathEngineOverride` 覆盖模板）、`reason`（机读拒绝原因）、`note`（补充说明，如无 subprocess）；
   - `next.reason`（**13** 个，仅当 `next.kind==='reason'`）：`policy`、`engine-not-allowed`、`missing-cli-command`、`expr-not-supported`、`mode-not-supported`、`path-outside-project`、`file-not-found`、`system-scope-unsupported`、`plan-token-mismatch`、`archive-missing`、`receipt-unparsable`、`no-subprocess`、**`unsupported-version-syntax`**（包规格写法不被支持：版本求解交给包管理器，见 §5）。
