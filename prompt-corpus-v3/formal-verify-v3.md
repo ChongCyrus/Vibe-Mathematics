@@ -186,7 +186,7 @@ PROJECT: lean-off
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-off_1790912355300_b538d869.json
+- Logs/Verification/r-p-off_1790913874209_555a1396.json
 - Propos/数论/p-off.md
 - State/index.json
 - Verified/命题/p-off.md
@@ -1176,7 +1176,7 @@ PROJECT: lean-verify
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-enc_1790912358390_adb5febb.json
+- Logs/Verification/r-p-enc_1790913877270_d2f69954.json
 - Propos/数论/p-enc.md
 - State/formal.json
 - State/index.json
@@ -2726,7 +2726,7 @@ PROJECT: lean-reply
 [EVIDENCE INDEX] (only files that exist)
 - Formal/Index.md
 - Formal/TODO.md
-- Logs/Verification/r-p-reply_1790912363959_40883a26.json
+- Logs/Verification/r-p-reply_1790913882802_9a3cd099.json
 - Propos/数论/p-reply.md
 - State/formal.json
 - State/index.json
@@ -3495,7 +3495,7 @@ PROJECT: lean-defect-nonote
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nonote-defect.lean
-- Logs/Verification/r-p-nonote-defect_1790912367845_74fcbea1.json
+- Logs/Verification/r-p-nonote-defect_1790913886679_053a561b.json
 - Propos/数论/p-nonote-defect.md
 - State/formal.json
 - State/index.json
@@ -3889,7 +3889,7 @@ PROJECT: lean-defect-nodelete
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-nodelete.lean
-- Logs/Verification/r-p-nodelete_1790912370036_9773d65c.json
+- Logs/Verification/r-p-nodelete_1790913888874_cc034b30.json
 - Propos/数论/p-nodelete.md
 - State/formal.json
 - State/index.json
@@ -4123,7 +4123,7 @@ PROJECT: lean-stale-card
 - Formal/Index.md
 - Formal/TODO.md
 - Formal/p-stale.lean
-- Logs/Verification/r-p-stale_1790912370909_f0b8d5e2.json
+- Logs/Verification/r-p-stale_1790913889711_9f3079d9.json
 - Propos/数论/p-stale.md
 - State/formal.json
 - State/index.json
@@ -6772,7 +6772,7 @@ PROJECT: d4-votecount
 - (none — 所有对象均已定论)
 
 [EVIDENCE INDEX] (only files that exist)
-- Logs/Verification/r-p-d4_1790912394935_74a762f1.json
+- Logs/Verification/r-p-d4_1790913913714_6bbd590c.json
 - Propos/数论/p-d4.md
 - State/index.json
 - Verified/命题/p-d4.md

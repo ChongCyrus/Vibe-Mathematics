@@ -2354,6 +2354,14 @@ export function apply(ctx) {
     // 数学计算可用性行（prompts.md §2+§4）：与"顺手形式化"并列注入；off 档为空串。
     return '\n' + t + formalReplyNote() + notice + math + '\n'
   }
+  /**
+   * F7：机器回执的**键名大小写**是契约的一部分，必须显式写在提示词里。
+   * v2 各回执的对象类型不同（验证回执用 `Result`/`Reason` 首字母大写；计划/求解/方法卡回执用小写
+   * `directions`/`lemmas`/`status`/`solution`/`solution_probability`），历史上只在示例里体现大小写——
+   * 模型猜错键名会被解析器当成"缺字段"静默兜底（`Result` 缺失 ⇒ 0.5），所以这里统一说清：
+   * **解析器按大小写精确匹配、不接受别名**（`parsed.Result` / `parsed.directions` 都是原样取键）。
+   */
+  const REPLY_KEY_STYLE_LINE = '\nKEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).\n'
   function capabilitiesText(role) {
     const maxCalls = role === 'solver' ? params.solverMaxToolCalls : params.verifierMaxToolCalls
     const netOn = role === 'solver' ? params.solverAllowNetwork : params.verifierAllowNetwork
@@ -2369,6 +2377,7 @@ export function apply(ctx) {
     t += '- You may READ any file under Verified/ as a known, trusted dependency (resolved facts).\n'
     t += '- You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).\n'
     t += '- You must NOT write files directly: return structured JSON only — the scheduler is the single writer.\n'
+    t += REPLY_KEY_STYLE_LINE
     t += '\nHOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):\n'
     t += '- These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).\n'
     t += '- COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.\n'
@@ -3753,7 +3762,7 @@ function verifyTasksView(tasks) {
       PAPER_SKELETON.map(function (s, i) { return '    ' + (i + 1) + '. ' + s.key + ' — ' + s.spec }).join('\n') + '\n' +
       '- A section with no evidence must be exactly 「' + PAPER_NO_EVIDENCE + '」 (do not pad it).\n' +
       '- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.\n\n' +
-      'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' +
+      'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' + REPLY_KEY_STYLE_LINE +
       '{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}\n\n' +
       'MATERIAL (evidence only — do not add anything beyond it):\n' + digest
   }

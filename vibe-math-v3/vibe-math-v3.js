@@ -1222,6 +1222,8 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
     scheduler.lastCheckpoint = now()
     const files = [
       // P5：活动日志（有界）落盘；P6：论文排队/回收计数落盘
+      // 注：这里**没有** v2 的 pending_review_scores.json——v3 的"历史准确率"按稳定身份键直接累计、
+      // 没有"等对象后来取得布尔定论再回溯计分"的待计分表，因此它的缺席是**设计如此**，不是漏掉的产物。
       { rel: 'State/activity_log.json', obj: activityLog.slice(-ACTIVITY_PERSIST_MAX) },
       { rel: 'State/paper.json', obj: { pending: paperPending, reaps: paperReaps } },
       { rel: 'State/scheduler_state.json', obj: scheduler },

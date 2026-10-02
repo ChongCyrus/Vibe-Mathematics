@@ -524,6 +524,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 | 守卫 / 章节 | 钉住的不变量 | 证明它会咬的变异 |
 |---|---|---|
+| `tests/audit-path-discipline.mjs`（**probe，已随包发布**） | v4/v3 的成员可见文本不得声明 `Members/<x>/` 根；v5 必须带成员库根（两侧相反，是**有意**的） | harness = `tests/audit-path-discipline.mutants.mjs`：4 个族、`ALL FAMILIES BITE`（4/4） |
+| `tests/audit-v5-sensitivity.mjs` | v5 提示词面/事件源的结构性变异必须让对应完整性守卫变红 | 该套件自身的"每变异一探针" |
+| `tests/audit-v3-registration-parity.mjs` | v3 的工具注册与声明面一致 | 该套件自身（`run-tests.mjs:87-90` 以显式 args 运行它） |
+| `tests/formal-verify-v4.test.mjs` §N5–§N9 | N5/N6 路径纪律；N9 行为证明：写到**文档化路径**的卡片必须被 `countArtifacts` 计入（自动会议基数） | 该套件自身的变异/行为断言（§N9 为真机行为证明） |
 | `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | `_oneoff/auditR2/participant-set-proof.mjs`（6/6） |
 | `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 |
 | 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | `roundA-mutants.mjs` a1/a2、`round9-mutants.mjs` |
@@ -534,3 +538,14 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d` | `_oneoff/auditR2/installer-mutants.mjs`（2/2） |
 | `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） |
 | `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） |
+
+> **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
+
+
+## 什么随包发布、为什么（分割必须是**有意**的）
+
+- **规则（已批准）**：**守卫与其证明 harness 一起发布** —— `tests/audit-*.mjs` 及其 `*.mutants.mjs` 是**可外部复核的契约证据**；**`_oneoff/**` 与 `tests/.audit-mutants/**` 永不随包发布**（开发暂存物与变异工作区，安装树里没有它们的位置）。
+- **随包发布**：能在**已安装**的树里独立验证的守卫/审计 —— 全部 `tests/audit-*.mjs`（含 `audit-market-metadata`、`audit-readme-bilingual`、`audit-v3-registration-parity`、`audit-registration`、`audit-path-discipline` 及其 `audit-path-discipline.mutants.mjs`）、`math-computation-v{2,3,4}.test.mjs` 契约套件、`v2-fix-probes.test.mjs` / `v3-fix-probes.test.mjs`。
+- **不随包发布**：需要**开发宿主或活的 DSH 会话**才有意义的 —— `e2e-*`、`selfdrive-*`，以及任何需要启动宿主/会话或读取 `_oneoff/` 暂存物的套件（安装树里没有这些前提，跑起来只会给假红/假绿）。
+- **有意排除的例子（必须逐文件取证，不能从总数推断）**：`tests/audit-market-metadata.test.mjs` **不随包发布**——它检查的是**仓库里的图片产物**（`示例图/`），这些不在 tarball 内；随包会让**发布验证在解包后的包里失败**。该守卫**自己**就用一条断言钉住这个排除（"this repository-only guard is NOT listed in package.json files"）。
+- 维护规则：新增守卫时先回答"它在**已安装**的树里有意义吗？"；有意义就同时加进 `package.json#files`，否则写一行理由。

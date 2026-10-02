@@ -1562,7 +1562,7 @@ export function apply(ctx) {
         +'    然后 ## 陈述 <陈述>；## 证明尝试；## 证伪尝试。\n'
         +'  Methods/<你>/<id>.md —— 你的理论/方法/工具。格式：- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。\n'
         +'  Subproblems/<你>/<id>.md —— 你的子问题。格式：- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 陈述；## 进度。\n'
-        +'  ⚠ 你的文件工具（读/写）按**会话 cwd** 解析路径：上面列出的相对子路径都要先拼上**成员库根** '+base+'/ 再使用（例如 '+base+'/Members/r-1/Propos/p-1.md）；计算产物同理——请用回执里的**绝对**字段 receipt.scriptAbs，或把 receipt.cwd 与 receipt.scriptPath 拼起来，不要用相对路径。\n'
+        +'  ⚠ 你的文件工具（读/写）按**会话 cwd** 解析路径：上面列出的相对子路径都要先拼上**成员库根** '+base+'/ 再使用（例如 '+base+'/Propos/r-1/p-1.md）；计算产物同理——请用回执里的**绝对**字段 receipt.scriptAbs，或把 receipt.cwd 与 receipt.scriptPath 拼起来，不要用相对路径。\n'
     }
     function toolList(){
       return 'vibe_v4_send_message {to, content} —— 给某常驻发消息（to=all 广播）。\n'

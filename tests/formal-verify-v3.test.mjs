@@ -19,10 +19,19 @@
 //
 // Run: node tests/formal-verify-v3.test.mjs
 // ============================================================
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+// Concurrency isolation: the shipped corpus is read by other probes (audit-prompt-invariants) while
+// this suite runs under the gate, so the write must be atomic — a reader must never see a truncated file.
+function writeFileAtomic(target, text) {
+  const tmp = target + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2, 8)
+  writeFileSync(tmp, text, 'utf8')
+  renameSync(tmp, target)
+}
+
 
 // V3_PLUGIN may be a REPO-RELATIVE path or an ABSOLUTE one (a mutant copy outside the repo, e.g. a
 // temp dir). The previous `new URL('file:///' + path)` form only worked for drive-qualified Windows
@@ -34,7 +43,10 @@ const PLUGIN = process.env.V3_PLUGIN
 const HERE = dirname(fileURLToPath(import.meta.url))
 // AUDIT-CHECKLIST §2.4: the suite must also keep the INTERACTION TEXT it drove, so a human can
 // re-read the prompts the framework really emitted. V3_CORPUS_DIR overrides the destination.
-const CORPUS_DIR = process.env.V3_CORPUS_DIR ? pathResolve(process.env.V3_CORPUS_DIR) : join(HERE, '..', 'prompt-corpus-v3')
+const CORPUS_DIR = process.env.V3_CORPUS_DIR
+  ? pathResolve(process.env.V3_CORPUS_DIR)
+  // A MUTATED run (V3_PLUGIN set) must never rewrite the shipped corpus — same rule v2 and v4 already follow.
+  : (process.env.V3_PLUGIN ? join(tmpdir(), 'vibe-v3-prompt-corpus') : join(HERE, '..', 'prompt-corpus-v3'))
 const WS = mkdtempSync(join(tmpdir(), 'vibe-v3-lean-'))
 const VIBE = join(WS, 'VibeMath')
 const projRoot = (slug) => join(VIBE, 'Projects', slug)
@@ -1613,7 +1625,7 @@ section('5c D4 vote count: quorum comes from the task snapshot, not from live pa
 section('10 the captured prompt corpus is written for human review')
 {
   mkdirSync(CORPUS_DIR, { recursive: true })
-  writeFileSync(join(CORPUS_DIR, 'formal-verify-v3.json'), JSON.stringify({ entries: corpus }, null, 2), 'utf8')
+  writeFileAtomic(join(CORPUS_DIR, 'formal-verify-v3.json'), JSON.stringify({ entries: corpus }, null, 2))
   const md = ['# V3 形式化验证交互语料（prompt corpus）', '',
     '> 由 `formal-verify-v3.test.mjs` 落盘：框架**真正发出**的每一条提示词原文。路径归一化：工作区 → `<WS>`，',
     '> VibeMath 根 → `<VIBEMATH>`（两者都按正/反斜杠两种写法替换，因此语料是确定性的、可 diff 的、不泄露本机路径）。',
@@ -1629,7 +1641,7 @@ section('10 the captured prompt corpus is written for human review')
     md.push('```')
     md.push('')
   }
-  writeFileSync(join(CORPUS_DIR, 'formal-verify-v3.md'), md.join('\n'), 'utf8')
+  writeFileAtomic(join(CORPUS_DIR, 'formal-verify-v3.md'), md.join('\n'))
   assert(existsSync(join(CORPUS_DIR, 'formal-verify-v3.json')) && existsSync(join(CORPUS_DIR, 'formal-verify-v3.md')), 'the prompt corpus was written (JSON + Markdown)')
   assert(corpus.length >= 25, 'the corpus covers the whole run (' + corpus.length + ' prompts)')
   assert(corpus.some((c) => c.label.startsWith('explorer:')) && corpus.some((c) => c.label.startsWith('solver:')) && corpus.some((c) => c.label.startsWith('method-keeper')) && corpus.some((c) => c.label.startsWith('verifier:')), 'the corpus covers every interaction type this suite drives')

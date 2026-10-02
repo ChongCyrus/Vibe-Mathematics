@@ -15,7 +15,17 @@
 import { readFileSync } from 'node:fs'
 
 const R = new URL('../', import.meta.url)
-const rd = (p) => readFileSync(new URL(p, R), 'utf8')
+const ENV_OF = {
+  'vibe-math-v2/vibe-math-v2.js': 'V2_PLUGIN',
+  'vibe-math-v3/vibe-math-v3.js': 'V3_PLUGIN',
+  'vibe-math-v4/vibe-math-v4.js': 'V4_PLUGIN',
+  'vibe-math-v5/vibe-math-v5.js': 'V5_PLUGIN',
+}
+// a mutant harness (tests/audit-path-discipline.mutants.mjs) points these at scratch copies
+const rd = (p) => {
+  const e = ENV_OF[p] && process.env[ENV_OF[p]]
+  return e ? readFileSync(e, 'utf8') : readFileSync(new URL(p, R), 'utf8')
+}
 let passed = 0
 let failed = 0
 const fails = []
@@ -34,11 +44,11 @@ for (const [k, src] of [['v5', v5]]) {   // v5 pending vm-v5's re-verification o
   assert((src.match(LEGACY) || []).length === 0, k + ': no legacy project-root-relative member-library declaration')
 }
 // v4 (critical correction): writer/reader live at the PROJECT ROOT - a Members/<x>/... path is never scanned
-assert(!/Members\/<[^>]+>\//.test(v4), 'v4: no Members/<x>/ declaration (the framework never scans it)')
+assert(!/Members\//.test(v4), 'v4: no Members/ occurrence at all (widened predicate: literal ids escape the placeholder form) (the framework never scans it)')
 assert(/(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//.test(v4), 'v4: declarations use the project-root bases the writer/reader use')
 assert(/progress\.md/.test(v4), 'class guard: v4 documents/writes the Progress base it reads')
 
-assert(!/Members\/<[^>]+>\//.test(v3), 'v3: no Members/<x>/ declaration (applyAgentWrites would DISCARD such a write)')
+assert(!/Members\//.test(v3), 'v3: no Members/ occurrence at all (widened predicate: literal ids escape the placeholder form) (applyAgentWrites would DISCARD such a write)')
 assert(/applyAgentWrites[\s\S]{0,600}?(Problems|Progress|Propos|Methods|Notes)/.test(v3), 'class guard: v3 writer whitelists the sections its prompts name')
 
 // strictly bounded function-body window: never fall back to a fixed length

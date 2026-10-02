@@ -28,10 +28,19 @@
 //
 // Run: node tests/formal-verify-v2.test.mjs
 // ============================================================
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync, statSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync, statSync, mkdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+// Concurrency isolation: the shipped corpus is read by other probes (audit-prompt-invariants) while
+// this suite runs under the gate, so the write must be atomic — a reader must never see a truncated file.
+function writeFileAtomic(target, text) {
+  const tmp = target + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2, 8)
+  writeFileSync(tmp, text, 'utf8')
+  renameSync(tmp, target)
+}
+
 
 // V2_PLUGIN may be a REPO-RELATIVE path or an ABSOLUTE one (a mutant copy outside the repo, e.g. a
 // temp dir). The previous `new URL('file:///' + path)` form only worked for drive-qualified Windows
@@ -1731,8 +1740,16 @@ section('16 the captured prompt corpus is written for human review')
     // gate's withholding notice. It is captured once, in case 15c, for determinism.
     if (typeof h.feedbackLine === 'string' && h.feedbackLine) entries.push({ kind: 'feedback', case: h.label, label: 'activity-log', prompt: scrub(h, h.feedbackLine) })
   }
+  // F7：v2 各回执的对象类型不同（验证用 Result/Reason 大写；计划/求解/方法卡用小写键），历史上只在示例里
+  // 体现大小写。现在每一条**含 json 契约**的提示词都必须显式写明「键名大小写精确匹配、不接受别名」。
+  const jsonFenced = entries.filter((e) => e.prompt.indexOf('```json') !== -1 || /single JSON object/.test(e.prompt))
+  const missingCaseRule = jsonFenced.filter((e) => e.prompt.indexOf('KEY CASE IS PART OF THE REPLY CONTRACT') === -1)
+  assert(jsonFenced.length >= 4, 'F7: prompts carrying a json contract were captured (' + jsonFenced.length + ')')
+  assert(missingCaseRule.length === 0, '★★ [F7] every json-contract prompt states the canonical key-case rule (offenders=' + JSON.stringify(missingCaseRule.map((e) => e.label)) + ')')
+  const capitalised = entries.filter((e) => /"Result":/.test(e.prompt))
+  assert(capitalised.every((e) => e.prompt.indexOf('KEY CASE IS PART OF THE REPLY CONTRACT') !== -1), '★★ [F7] …including the capitalised Result/Reason contracts (' + capitalised.length + ')')
   mkdirSync(CORPUS_DIR, { recursive: true })
-  writeFileSync(join(CORPUS_DIR, 'formal-verify-v2.json'), JSON.stringify({ entries: entries }, null, 2), 'utf8')
+  writeFileAtomic(join(CORPUS_DIR, 'formal-verify-v2.json'), JSON.stringify({ entries: entries }, null, 2))
   const md = ['# V2 形式化验证交互语料（prompt corpus）', '',
     '> 由 `formal-verify-v2.test.mjs` 落盘：框架**真正发出**的每一条提示词原文。',
     '> 工作区路径归一化为 `<WS>`、VibeMath 根归一化为 `<VIBEMATH>`，因此可 diff、不泄露本机路径。',
@@ -1748,7 +1765,7 @@ section('16 the captured prompt corpus is written for human review')
     md.push('```')
     md.push('')
   }
-  writeFileSync(join(CORPUS_DIR, 'formal-verify-v2.md'), md.join('\n'), 'utf8')
+  writeFileAtomic(join(CORPUS_DIR, 'formal-verify-v2.md'), md.join('\n'))
   assert(existsSync(join(CORPUS_DIR, 'formal-verify-v2.json')) && existsSync(join(CORPUS_DIR, 'formal-verify-v2.md')), 'the prompt corpus was written (JSON + Markdown)')
   assert(entries.length >= 15, 'the corpus covers the whole run (' + entries.length + ' prompts)')
   assert(entries.some((e) => /【Lean 形式化验证（鼓励模式）】/.test(e.prompt)), 'the corpus contains the encourage verify prompt')

@@ -51,6 +51,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -121,6 +123,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -203,6 +207,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -261,6 +267,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -318,6 +326,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -388,6 +398,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -465,6 +477,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -544,6 +558,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -626,6 +642,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -707,6 +725,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -783,6 +803,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -858,6 +880,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -944,6 +968,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1029,6 +1055,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1098,6 +1126,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -1174,6 +1204,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -1254,6 +1286,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1333,6 +1367,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1404,6 +1440,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1474,6 +1512,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -1558,6 +1598,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1641,6 +1683,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1716,6 +1760,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1790,6 +1836,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -1872,6 +1920,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -1953,6 +2003,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2028,6 +2080,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2110,6 +2164,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2191,6 +2247,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2268,6 +2326,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2347,6 +2407,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2422,6 +2484,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2503,6 +2567,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2587,6 +2653,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2670,6 +2738,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2751,6 +2821,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -2826,6 +2898,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2904,6 +2978,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -2988,6 +3064,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3071,6 +3149,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3144,6 +3224,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3214,6 +3296,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -3291,6 +3375,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3345,6 +3431,8 @@ HARD RULES:
 - Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
 
 OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 {"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}
 
 MATERIAL (evidence only — do not add anything beyond it):
@@ -3415,6 +3503,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -3497,6 +3587,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3578,6 +3670,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3653,6 +3747,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -3735,6 +3831,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3816,6 +3914,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3892,6 +3992,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -3966,6 +4068,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4042,6 +4146,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4117,6 +4223,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4196,6 +4304,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4273,6 +4383,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4355,6 +4467,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4435,6 +4549,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4517,6 +4633,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4597,6 +4715,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4679,6 +4799,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4759,6 +4881,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -4845,6 +4969,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -4930,6 +5056,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5005,6 +5133,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -5084,6 +5214,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5162,6 +5294,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5237,6 +5371,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -5316,6 +5452,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5394,6 +5532,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5469,6 +5609,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -5548,6 +5690,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5625,6 +5769,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -5704,6 +5850,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5782,6 +5930,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5858,6 +6008,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -5933,6 +6085,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -6012,6 +6166,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6089,6 +6245,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -6168,6 +6326,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6246,6 +6406,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6322,6 +6484,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -6410,6 +6574,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6493,6 +6659,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6574,6 +6742,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6650,6 +6820,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6725,6 +6897,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -6807,6 +6981,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6888,6 +7064,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -6943,6 +7121,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7000,6 +7180,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7055,6 +7237,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7112,6 +7296,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7167,6 +7353,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7224,6 +7412,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7279,6 +7469,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7336,6 +7528,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7391,6 +7585,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7450,6 +7646,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7507,6 +7705,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7566,6 +7766,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7623,6 +7825,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7682,6 +7886,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7739,6 +7945,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7798,6 +8006,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7855,6 +8065,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -7914,6 +8126,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -7971,6 +8185,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8030,6 +8246,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8087,6 +8305,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8146,6 +8366,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8203,6 +8425,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8262,6 +8486,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8319,6 +8545,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8378,6 +8606,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8435,6 +8665,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8494,6 +8726,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8552,6 +8786,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8607,6 +8843,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8683,6 +8921,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8762,6 +9002,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8839,6 +9081,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -8922,6 +9166,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -8982,6 +9228,8 @@ HARD RULES:
 - Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
 
 OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 {"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}
 
 MATERIAL (evidence only — do not add anything beyond it):
@@ -9053,6 +9301,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9134,6 +9384,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9222,6 +9474,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9297,6 +9551,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9374,6 +9630,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9444,6 +9702,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9520,6 +9780,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9595,6 +9857,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9682,6 +9946,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9757,6 +10023,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9828,6 +10096,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -9911,6 +10181,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -9981,6 +10253,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -10053,6 +10327,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -10135,6 +10411,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
@@ -10219,6 +10497,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -10302,6 +10582,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -10373,6 +10655,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
 
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
+
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).
 - COARSE SCAN first: use a read/grep tool to extract ONLY the summary index (概述, 布尔估计, 优先级, titles) to locate which files / objects look relevant — do NOT load full proofs yet.
@@ -10428,6 +10712,8 @@ YOUR PERMISSIONS / CAPABILITIES:
 - You may READ any file under Verified/ as a known, trusted dependency (resolved facts).
 - You should BASE your reasoning on the existing knowledge under Propos/ (propositions with proofs/refutations and probabilities) and Reliable/ (trusted references).
 - You must NOT write files directly: return structured JSON only — the scheduler is the single writer.
+
+KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
 
 HOW TO READ EXISTING KNOWLEDGE (coarse scan → fine read):
 - These are JSON files. A conclusion object carries summary-index fields (概述 / 布尔估计 / 优先级) and the full detail (证明列表 / 证伪列表 / 完整过程 / progress).

@@ -343,7 +343,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | 工具 | 作用 |
 |---|---|
 | `vibe_math_add_problem` | 加题（id/description/priority/dependencies?；v3 生成 `Problems/<id>.md`） |
-| `vibe_math_add_proposition` / `vibe_math_list_propositions`（v2/v3） | 添加 / 列出命题库（id/概述/布尔估计/细类型/价值·关键性；v3 生成 `Propos/<分类>/<id>.md`） |
+| `vibe_math_add_proposition` / `vibe_math_list_propositions`（v2/v3） | 添加 / 列出命题库（id/概述/布尔估计/细类型/价值·关键性；v3 生成 `Propos/<分类>/<id>.md`；**add 只新建**：id 已存在会被拒绝并返回 `PROPOSITION_ID_EXISTS`，绝不覆盖已有卡） |
 | `vibe_math_start` / `vibe_math_resume` | 启动 / 断点恢复调度器 |
 | `vibe_math_pause` / `vibe_math_abort` | 暂停 / 终止（中断所有子代理） |
 | `vibe_math_status` / `vibe_math_report` | 查看状态 / 完整进度报告 |

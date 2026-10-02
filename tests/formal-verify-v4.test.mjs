@@ -1613,12 +1613,14 @@ section('N4 off: the DELIVERED verify prompt has no formalization content or dan
   assert(/Lean|formal/.test(enc), '* under encourage the delivered prompt DOES carry the formalization block (the gate is a gate, not a deletion)')
 }
 // ===============================================================
-// N5. v4 path basis (second instance of the recurring class): every member-visible library
-//     declaration must carry the MEMBER root (Members/<你>/...), exactly like the framework's
-//     readers/writers (Members/<id>/Progress/progress.md). The legacy project-root-relative shape
-//     (Progress/<你>/...) made fs-following residents write outside Members/<id>/.
+// N5. v4 path basis - CORRECTED CONTRACT (the earlier comment here pinned the OLD, WRONG shape:
+//     it demanded a member root. v4's writers/readers live at the PROJECT ROOT: publishProgress writes
+//     Progress/<rId>/progress.md, the record tools write Propos|Methods|Subproblems/<rId>/<id>.md, and
+//     countArtifacts() scans exactly those bases under frameworkRoot(). A Members/<placeholder>/... path
+//     is therefore a path nothing scans - the realistic documented example is base + '/Propos/r-1/p-1.md'.
+//     (Named in the report as the "comment pinning old behaviour" case.)
 // ===============================================================
-section('N5 v4 member-facing library declarations are root-qualified (members/<you>/...)')
+section('N5 v4 member-facing paths are PROJECT-ROOT (the shape the framework scans), and no Members/ shape')
 {
   const P = await establish()
   const text = (await P.prompts('brainstorm', 'r-1')) + '\n' + (await P.prompts('normal', 'r-1'))
