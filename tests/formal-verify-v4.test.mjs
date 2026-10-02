@@ -203,7 +203,7 @@ function makeHost() {
   const ctx = {
     get(name) {
       if (name === 'subprocess' && subprocessAvailable) return subprocess
-      if (name === 'sandboxPolicy' && (sandboxDriftRoot || sandboxNoRoot)) return sandboxNoRoot ? { allow: ['x'], deny: [] } : { workspaceRoot: sandboxDriftRoot, resolve: () => ({ workspaceRoot: sandboxDriftRoot }) }
+      if (name === 'sandboxPolicy' && (sandboxDriftRoot || sandboxNoRoot)) return sandboxNoRoot ? { allow: ['x'], deny: [], resolve: () => ({ allow: ['x'], deny: [] }) } : { workspaceRoot: sandboxDriftRoot, resolve: () => ({ workspaceRoot: sandboxDriftRoot }) }
       if (name === 'compaction' && compactionFails) return {
         async compactIfNeeded() { throw new Error('COMPACTION_FAIL (injected)') },
         async compactNow() { throw new Error('COMPACTION_FAIL (injected)') },
@@ -1933,23 +1933,37 @@ section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming 
   const realErr = console.error
   console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
   const drift = () => seen.filter(l => /fence root does not CONTAIN this session workspace/.test(l))
+  // NOTE: case (0) is 'no sandboxPolicy SERVICE'; case 1b is 'service present, root uninterpretable'.
   const ws = () => String(h.WS).replace(/\\/g, '/')
   try {
     const r1 = await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 1' }, h.resAgent(h.childOf('r-1')))
     await sleep(50)
     assert(drift().length === 0, '* F-5/i NO comparable root in the policy => NO warning (the no-op path is asserted, not silent) (' + drift().length + ')')
     assert(r1 && r1.ok !== false, '* F-5/i and getPolicy() still returns a usable policy (the write went through)')
+    // F-5/1b: a policy SERVICE that resolves to a shape with NO interpretable root ({allow,deny}) -
+    // the helper IS invoked and must stay silent (uninterpretable => no-op, today's behaviour).
+    seen.length = 0   // F-5: observe ONLY this case's window (no cascade from earlier cases)
+    sandboxNoRoot = true
+    const r1b = await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 1b' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    assert(drift().length === 0, '* F-5/1b an UNINTERPRETABLE resolved policy ({allow,deny}) produces NO warning (documented no-op, not a dead branch) (' + drift().length + ')')
+    const w1b = await h.callTool('vibe_v4_status', {})
+    assert(r1b && r1b.ok !== false && !!w1b, '* F-5/1b getPolicy() still RESOLVES for that shape (the write succeeds, no throw path)')
+    sandboxNoRoot = false
     // (iv) agreeing roots => silence (anti-vacuity)
+    seen.length = 0   // F-5: observe ONLY this case's window
     sandboxDriftRoot = ws()
     await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 4' }, h.resAgent(h.childOf('r-1')))
     await sleep(50)
     assert(drift().length === 0, '* F-5/iv an AGREEING resolved root produces NO warning (not vacuous)')
     // (iii) containment: an ANCESTOR root is legitimate => silence
+    seen.length = 0   // F-5: observe ONLY this case's window
     sandboxDriftRoot = ws().replace(/\/[^/]+$/, '')
     await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 3' }, h.resAgent(h.childOf('r-1')))
     await sleep(50)
     assert(drift().length === 0, '* F-5/iii a root that CONTAINS the session workspace is accepted (no per-session false alarm)')
     // (ii) real drift => exactly one named warning naming BOTH sides
+    seen.length = 0   // F-5: observe ONLY this case's window
     sandboxDriftRoot = ws() + '/somewhere-else'
     await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 2' }, h.resAgent(h.childOf('r-1')))
     await sleep(50)
