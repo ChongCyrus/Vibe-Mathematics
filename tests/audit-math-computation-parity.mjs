@@ -272,19 +272,10 @@ for (const f of MODULES) {
   ok(v2doc.indexOf('verifyTasksView') !== -1, 'the v2 design doc states the single-source status/report helper')
 }
 
-// ── 10. S4/S5: install failures are discriminated WITHOUT a new code (frozen interface).
-// NOTE (tightness finding): these read the SHIPPED copy, which parity already pins byte-identically
-// to the canonical source - so a canonical-only mutation cannot reach them. The mutant-provable
-// home for this claim is the shared suite (MATH_COMPUTATION_MODULE); relocation is queued.
-{
-  const mcSrc = readFileSync(join(REPO, 'vibe-math-v2', 'math-computation.js'), 'utf8')
-  ok(/out\.op = 'install'/.test(mcSrc), '★ S4/S5 install discrimination: a failed install sets op=install')
-  ok(/out\.timedOut = !!/.test(mcSrc), '★ S4/S5 install discrimination: a failed install carries timedOut')
-  ok(/out\.installedSoFar = results\.filter/.test(mcSrc), '★ S4/S5 install discrimination: a failed install reports what already succeeded (installedSoFar)')
-  ok(/installedSoFar: commands\.map/.test(mcSrc), 'the success path reports installedSoFar too (no special-casing by the caller)')
-  ok(mcSrc.indexOf('MATH_INSTALL_FAILED') === -1, 'no 12th failure code was added (MATH_FAILURE_CODES stays frozen)')
-}
-console.log('')
+// S4/S5 (install-failure discrimination) is asserted in tests/math-computation-shared.test.mjs §33, NOT
+// here: parity reads the shipped copy unconditionally, so a mutant cannot reach what it reads (the
+// assertion would exist but could never redden). What parity keeps is the canonical<->copy byte identity,
+// which makes a canonical-only change impossible to ship unnoticed - a stronger defence than a text grep.
 console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)

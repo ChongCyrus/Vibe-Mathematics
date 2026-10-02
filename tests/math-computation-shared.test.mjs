@@ -16,6 +16,7 @@
 // ============================================================================================
 import { makeFakeHost } from './helpers/math-computation-fake-seam.mjs'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 
 // The sensitivity probe (tests/audit-math-computation-sensitivity.mjs) points this at a MUTATED copy
 // of the module pair; the default is the shipped copy in vibe-math-v2/.
@@ -46,11 +47,33 @@ if (process.argv.includes('--self-probe')) {
   wf(join(dir, 'math-computation.js'), src.replace(whitelist, ''))
   const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir, 'math-computation.js') }) })
   const out = String(child.stdout || '') + String(child.stderr || '')
-  const named = out.indexOf('S2 absence evidence: the failure carries an absent[] list') !== -1
+  const failLines = out.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
+  const named = failLines.some((l) => l.indexOf('S2 absence evidence: the failure carries an absent[] list') !== -1)
   const sum = (out.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
-  rmSync(dir, { recursive: true, force: true })
   console.log((child.status !== 0 && named ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE fail() whitelist line reddens the named §32 assertion (' + sum + ')')
-      process.exit(child.status !== 0 && named ? 0 : 1)
+  if (!named) for (const l of failLines.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+  rmSync(dir, { recursive: true, force: true })
+  // case 2 (S4/S5): remove the single `out.installedSoFar = …` assignment and require the NAMED §33
+  // assertion in the child's FAIL line (a label found anywhere in the output is NOT a red).
+  const s45line = '      out.installedSoFar = results.filter((x) => x.exit === 0).map((x) => x.argv)\n'
+  const dir2 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe2-'))
+  const src2 = rf(modPath, 'utf8')
+  let ok2 = false
+  if (src2.indexOf(s45line) === -1) {
+    console.log('SELF-PROBE FAIL: the installedSoFar assignment was not found (cannot mutate what it cannot see)')
+  } else {
+    try { copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir2, 'math-engines.js')) } catch (e) { /* optional */ }
+    wf(join(dir2, 'math-computation.js'), src2.replace(s45line, ''))
+    const child2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir2, 'math-computation.js') }) })
+    const out2 = String(child2.stdout || '') + String(child2.stderr || '')
+    const failLines2 = out2.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
+    ok2 = child2.status !== 0 && failLines2.some((l) => l.indexOf('reports what already succeeded (installedSoFar)') !== -1)
+    const sum2 = (out2.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
+    console.log((ok2 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE installedSoFar assignment reddens the named §33 assertion (' + sum2 + ')')
+    if (!ok2) for (const l of failLines2.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+  }
+  rmSync(dir2, { recursive: true, force: true })
+  process.exit(child.status !== 0 && named && ok2 ? 0 : 1)
 }
 
 let passed = 0, failed = 0
@@ -1086,6 +1109,18 @@ console.log('-- math_computation shared contract --')
   ok(absent.every((a) => a && typeof a.why === 'string' && a.why.length > 0), 'every absent[] entry carries a why', JSON.stringify(absent))
 }
 console.log('')
+// ── 33. S4/S5: install failures are discriminated WITHOUT a new code (frozen interface). Reads the
+// ENV-RESOLVED module (MATH_COMPUTATION_MODULE), so the --self-probe case 2 above can reach exactly
+// what these assertions read (the parity-located version could not be reddened by any mutant).
+{
+  const src = readFileSync(fileURLToPath(new URL(MODULE)), 'utf8')
+  ok(src.indexOf("out.op = 'install'") !== -1, '★ S4/S5 install discrimination: a failed install sets op=install')
+  ok(/out\.timedOut = !!/.test(src), '★ S4/S5 install discrimination: a failed install carries timedOut')
+  ok(/out\.installedSoFar = results\.filter/.test(src), '★ S4/S5 install discrimination: a failed install reports what already succeeded (installedSoFar)')
+  ok(/installedSoFar: commands\.map/.test(src), 'the success path reports installedSoFar too (no special-casing by the caller)')
+  ok(src.indexOf('MATH_INSTALL_FAILED') === -1, 'no 12th failure code was added (MATH_FAILURE_CODES stays frozen)')
+}
+
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)

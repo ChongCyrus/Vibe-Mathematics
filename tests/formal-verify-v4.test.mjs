@@ -12,7 +12,17 @@
 //                             AFTER proposeAndVote() returns, so a deterministic assertion would need
 //                             a product-side fault hook (rejected: it would become a new
 //                             agent-settable parameter) or dedicated verify orchestration.
-//   site 2 deferForFormal   - same async-finalisation problem (require mode only).
+//   site 2 deferForFormal   - KNOWN COVERAGE HOLE (measured). Payload-anchored injection (fail the
+//                             Formal/TODO.md write whose payload mentions the target) is CONSUMED by an
+//                             earlier TODO write in require mode (recording the proposition also writes
+//                             that file and names the target), so the induced failure lands OUTSIDE
+//                             deferForFormal's try: the run is derailed (Formal/TODO.md never created,
+//                             section 9's own TODO assertions fail) and NO warning is emitted
+//                             (`matched=0 of 0`). Anchoring by State/formal.json as a precursor was also
+//                             measured imprecise (armed=9, failed=1, no warning). The warning itself
+//                             exists and is exercised by the F-2-style unit surface at
+//                             tests/audit-f1-compact-fix.test.mjs; only the in-suite capture is missing.
+//   site 2 (old note)       - same async-finalisation problem (require mode only).
 //   site 3 settleLeanJob    - the injected index-write failure is consumed by whichever
 //                             rebuildLeanLibIndexes() caller fires first (measured: armed=3,
 //                             failed=1, warning not emitted), so the mock cannot discriminate the
