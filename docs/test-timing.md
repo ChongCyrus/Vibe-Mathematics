@@ -38,7 +38,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
   `audit-installer-policy`、`audit-persona-surface`、`audit-preset-rows`、`e2e-v5-round2`、
   `formal-verify-v2`、`formal-verify-v3`、`formal-verify-v4`、`formal-verify-v5`、`prompt-v5-integrity`、
   `math-computation-shared`。
-- **仅仓库（不发）**：其余 33 个套件（v2/v3/v4 的 e2e、`selfdrive-v3`/`v4`、v2/v3 修复探针、
+- **仅仓库（不发）**：其余 **27** 个套件（v2/v3/v4 的 e2e、`selfdrive-v3`/`v4`、v2/v3 修复探针、
   `math-computation-v2|v3|v4|v5`、`audit-fuzz-helpers` 之外的若干 `audit-*`……）与 7 个脚本（`audit-fuzz-helpers`、
   `audit-registration`、`audit-roundtrip-idempotence`、`audit-tool-exec`、
   `audit-v3-registration-parity`、`selfdrive-v3`、`selfdrive-v4`）。
@@ -49,7 +49,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**65 项** = 44 套件 + 21 探针/变体） | ≈ 424 s | **≈ 121 s**（并发 4，speed-up x3.51） | `TOTAL 65  PASS 65  FAIL 0  (suites 44 · probes 21)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
+| `tests/run-tests.mjs`（**85 项** = 44 套件 + 41 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 83  PASS 83  FAIL 0  (suites 44 · probes 39)；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
@@ -75,7 +75,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/audit-math-computation-contract.mjs` | ≈ 0.2 s | — | 跨预设接线（含 set-schema **属性级**检查与 defaults 漂移检查） |
 | `tests/audit-math-computation-sensitivity.mjs` | ≈ 25 s | — | 21 个模块级变异，每条都要求具名断言变红（控制组必须绿） |
 
-> 上表 `run-tests` 的 `≈424 s / ≈121 s` 两列是 **65 项（44 套件 + 21 探针）** 时的实测（2026 年 math_computation
+> 上表 `run-tests` 的 `≈424 s / ≈121 s` 两列是 **当时的门禁规模**（44 个套件、21 个探针/变体） 时的实测（2026 年 math_computation
 > P1/P2a + 审计修复轮之后）。`audit-formal-sensitivity`（49 探针，实测 wall 260.7 s）与 `e2e-v4-fixes`（≈ 98 s）
 > 是两条最长的独立路径；两者都不在 `run-tests` 的默认集合里时，整轮 wall 由 `e2e-v4-fixes` 决定。
 > 数字**形状**（`TOTAL 65 … suites 44 · probes 21`）以 runner 每次运行的输出为准。

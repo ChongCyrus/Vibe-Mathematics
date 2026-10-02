@@ -220,6 +220,14 @@ if (only.length) suites = suites.filter((j) => only.some((o) => label(j).include
 if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
 if (!suites.length) { console.error('no suites matched'); process.exit(2) }
 
+// --counts: print the DERIVED suite/probe totals (the same job list the gate runs) as JSON, then
+// exit. Docs quote these numbers, so they must be derived and checked rather than typed by hand.
+if (process.argv.includes('--counts')) {
+  const suiteN = suites.filter((j) => j.kind === 'suite').length
+  console.log(JSON.stringify({ total: suites.length, suites: suiteN, probes: suites.length - suiteN }))
+  process.exit(0)
+}
+
 function runSuite(job) {
   return new Promise((resolve) => {
     const t0 = Date.now()
