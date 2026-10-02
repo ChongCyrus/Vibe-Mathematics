@@ -349,6 +349,7 @@ let warnedIndexRebuild = false   // F-6: name a swallowed settleLeanJob failure 
 let warnedCompaction = false   // F-6: name a swallowed realCompact failure once, WITH its consequence
 let warnedWriteFormalTodo = false   // F-6 (1/4): name a swallowed verify-conclusion write once, WITH its consequence
 let warnedContextProbe = false   // F-6 (:786): name a failed build-context comparison once (unknown != unchanged)
+let warnedPaperWrite = false   // G3: name a paper whose required artifact is missing after finalize (once)
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
@@ -3411,6 +3412,21 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
         wakeKind.clear(); meetingState=null; verifyState=null; pendingMeeting=null; pendingVerify=[]
         logActivity('stop','all residents agree: problem solved（一致性停止票；最终论文已产出）')
         await saveAll()
+      }
+      // G3: `done` is a CLAIM that the deliverable is complete. `final.md` is written unchecked and the
+      // meta/log results are discarded, so VERIFY THE ARTIFACTS EXIST instead of trusting return values.
+      // (readTextAbs returns undefined for a missing file and never throws on ENOENT.)
+      const _paperNeed=['final.md']
+      if(ps.cfg.format!=='tex') _paperNeed.push('paper.md')
+      if(ps.cfg.format!=='md') _paperNeed.push('paper.tex')
+      if(_paperNeed.indexOf('paper.md')===-1&&ps.files.indexOf('paper.md')!==-1) _paperNeed.push('paper.md')
+      if(_paperNeed.indexOf('paper.tex')===-1&&ps.files.indexOf('paper.tex')!==-1) _paperNeed.push('paper.tex')
+      _paperNeed.push('paper.meta.json','paper.log.md')
+      const _paperGone=[]
+      for(const _f of _paperNeed){ if((await readText(ps.dir+'/'+_f))===undefined) _paperGone.push(_f) }
+      if(_paperGone.length){
+        ps.status='failed'   // terminal, like a failed compile: no complete deliverable is claimed
+        if(!warnedPaperWrite){ warnedPaperWrite=true; console.error('vibe-math-v4: paperFinalize: required paper artifact(s) MISSING after finalize (' + _paperGone.join(', ') + ') - the paper is marked FAILED instead of done; the deliverable is incomplete and `files` never claims a missing artifact') }
       }
       const warn=[ps.warning,ps.compile&&ps.compile.result==='failed'?ps.compile.error:''].filter(Boolean).join('；')
       if(warn) logActivity('paper','最终论文完成（有警告）：'+ps.dir+'｜'+warn)
