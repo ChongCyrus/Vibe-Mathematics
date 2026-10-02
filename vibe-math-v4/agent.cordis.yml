@@ -108,8 +108,15 @@
           the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
           withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
           explicit, reasoned blocker record; the run is never wedged by it).
-        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+          printed at the end of this prompt; the project root is the `Data lives under …`
+          directory above):
+          institute work file `<project root>/Formal/<id>.lean`;
+          archived proof `<project root>/Verified/Lean/<id>.lean`;
+          reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+          proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+          short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+          `<project root>/Formal/<id>.lean`.
         - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
           definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
           (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
@@ -220,8 +227,15 @@
           the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
           withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
           explicit, reasoned blocker record; the run is never wedged by it).
-        - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-          definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+        - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+          printed at the end of this prompt; the project root is the `Data lives under …`
+          directory above):
+          institute work file `<project root>/Formal/<id>.lean`;
+          archived proof `<project root>/Verified/Lean/<id>.lean`;
+          reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+          proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+          short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+          `<project root>/Formal/<id>.lean`.
         - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
           definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
           (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).

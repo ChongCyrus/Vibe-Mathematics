@@ -61,6 +61,18 @@ after ≥2 independent verifier agents settle the object (one lone reviewer can 
 Verified/ is written by that same scheduler path — an agent's own self-reported 1 is never a conclusion.
 When the user asks about progress, call vibe_math_report and summarize in plain language.
 
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): the FINAL PAPER flow can finish without you — when it hits
+    its round/token cap the framework force-finalises the paper (`forcedAfterCap`) and reaps an
+    in-flight writer that never came back; the activity log says so. You do not lose the paper,
+    you lose the chance to keep iterating on it.
+  - DISCLOSURE (existing behaviour): switching the mode to `auto` immediately resolves EVERY
+    pending decision as auto-decided (the activity log records "auto-resolved N pending
+    decision(s)"). Anything you leave pending will not wait for you.
+  - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
+    (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
+    boundary; it is a report, not a new instruction.
+
 Configuration highlights (all tunable via vibe_math_set_params / the settings file):
 `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
 (empty = built-in full version); `explorerPersona` / `solverPersona` / `verifierPersona` prepend
@@ -79,8 +91,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
     recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the scheduler is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
     reported as LEAN_NOT_FOUND and still lets the code be written and archived.
@@ -142,6 +161,18 @@ after ≥2 independent verifier agents settle the object (one lone reviewer can 
 Verified/ is written by that same scheduler path — an agent's own self-reported 1 is never a conclusion.
 When the user asks about progress, call vibe_math_report and summarize in plain language.
 
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): the FINAL PAPER flow can finish without you — when it hits
+    its round/token cap the framework force-finalises the paper (`forcedAfterCap`) and reaps an
+    in-flight writer that never came back; the activity log says so. You do not lose the paper,
+    you lose the chance to keep iterating on it.
+  - DISCLOSURE (existing behaviour): switching the mode to `auto` immediately resolves EVERY
+    pending decision as auto-decided (the activity log records "auto-resolved N pending
+    decision(s)"). Anything you leave pending will not wait for you.
+  - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
+    (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
+    boundary; it is a report, not a new instruction.
+
 Configuration highlights (all tunable via vibe_math_set_params / the settings file):
 `knowledgeContext` overrides the shared data-model explanation injected into every child prompt
 (empty = built-in full version); `explorerPersona` / `solverPersona` / `verifierPersona` prepend
@@ -160,8 +191,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
     recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the scheduler is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
     reported as LEAN_NOT_FOUND and still lets the code be written and archived.
@@ -261,8 +299,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the scheduler is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
     reported as LEAN_NOT_FOUND and still lets the code be written and archived.
@@ -270,6 +315,18 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
     fidelity for you.
 When the user asks about progress, call vibe_math_report and summarize in plain language.
+
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): the FINAL PAPER flow can finish without you — when it hits
+    its round/token cap the framework force-finalises the paper (`forcedAfterCap`) and reaps an
+    in-flight writer that never came back; the activity log says so. You do not lose the paper,
+    you lose the chance to keep iterating on it.
+  - DISCLOSURE (existing behaviour): switching the mode to `auto` immediately resolves EVERY
+    pending decision as auto-decided (the activity log records "auto-resolved N pending
+    decision(s)"). Anything you leave pending will not wait for you.
+  - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
+    (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
+    boundary; it is a report, not a new instruction.
 ```
 
 ### config.text
@@ -357,8 +414,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     match the proposition as stated) | 'require' (same, plus a gate: a true/false verdict is
     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the scheduler is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - The toolchain knobs leanCommand / leanArgs / leanTimeoutMs / leanAsync / leanInitiative / leanSearchPaths / leanJobsMaxParallel are tunable as well
     (e.g. leanCommand='lake' with leanArgs=['env','lean']); a missing Lean binary is
     reported as LEAN_NOT_FOUND and still lets the code be written and archived.
@@ -366,6 +430,18 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
     fidelity for you.
 When the user asks about progress, call vibe_math_report and summarize in plain language.
+
+DISCLOSURES (existing behaviour, not rules to follow):
+  - DISCLOSURE (existing behaviour): the FINAL PAPER flow can finish without you — when it hits
+    its round/token cap the framework force-finalises the paper (`forcedAfterCap`) and reaps an
+    in-flight writer that never came back; the activity log says so. You do not lose the paper,
+    you lose the chance to keep iterating on it.
+  - DISCLOSURE (existing behaviour): switching the mode to `auto` immediately resolves EVERY
+    pending decision as auto-decided (the activity log records "auto-resolved N pending
+    decision(s)"). Anything you leave pending will not wait for you.
+  - DISCLOSURE (existing behaviour): the framework itself pushes a progress update to the office
+    (reportMode / reportIntervalMs) — a summary you did not ask for can arrive at a round
+    boundary; it is a report, not a new instruction.
 
 ```
 
@@ -468,8 +544,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the run is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
     definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
     (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
@@ -583,8 +666,15 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     the proposition as stated) | 'require' (same, plus a gate: a unanimous true/false verdict is
     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
     explicit, reasoned blocker record; the run is never wedged by it).
-  - Paths: work file Formal/<id>.lean; archived proof Verified/Lean/<id>.lean; reusable
-    definitions VibeMath/Formal/Lib/; proved lemmas VibeMath/Formal/Proved/.
+  - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
+    printed at the end of this prompt; the project root is the `Data lives under …`
+    directory above):
+    institute work file `<project root>/Formal/<id>.lean`;
+    archived proof `<project root>/Verified/Lean/<id>.lean`;
+    reusable definitions `VibeMath/Formal/Lib/` (workspace-root relative);
+    proved lemmas `VibeMath/Formal/Proved/` (workspace-root relative);
+    short form `Formal/<id>.lean` (project-root relative) names the SAME file as
+    `<project root>/Formal/<id>.lean`.
   - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
     definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
     (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).

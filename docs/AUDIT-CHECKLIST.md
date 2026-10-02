@@ -611,3 +611,25 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-v5-prompt-duplication.mutants.mjs`（**已随包**） | 上表的证明本身 | 它就是 harness；`node tests/run-tests.mjs` 自动发现两者（`tests/*.mjs` 枚举，非 `NEEDS_ARGS`） |
 
 **派生语料的规则（协议级）**：`prompt-corpus-persona/*` **不是**需要被"重定向"的随包语料，而是**人格/提示词源的派生产物**；因此当人格源发生编辑时，**随后的一次门禁运行合法地重新生成它**（本轮重生成的语料里正好含新的 P2 披露文本）。规则：**把重生成与它的源编辑一起提交**；绝不把一个脏的派生语料留过提交；并且在有人正在编辑人格/提示词源时**不要跑全量门禁**。
+
+
+### 派生规则与探针卫生（镜像协议 §9.6 / §9.6b / §9.7）
+
+**两个派生件，成对重生成（§9.6 / §9.6b）**
+- `cordis.patch.yml` 是 `scripts/build-preset-rows.mjs` 的**生成物**（不是手写文件）；任何一个 bundle 输入（如 `vibe-math-v*/agent.cordis.yml`）被编辑，就必须在**同一批**里重跑 `node scripts/build-preset-rows.mjs`。守卫的报错已经写明准确命令，保留这个措辞：
+  `cordis.patch.yml is exactly what scripts/build-preset-rows.mjs generates — hand-edited? regenerate with: node scripts/build-preset-rows.mjs`。
+- `prompt-corpus-persona/*` 是**人格/提示词源的派生语料**（不是需要被"重定向"的随包源）：人格源一改，随后一次门禁运行会**合法地重生成**它。
+- **共同规则**：源编辑与它的派生件**一起提交**；绝不把脏的派生件留过提交；**不要**在有人正编辑源时跑全量门禁（改完再跑，让重生成随提交落地）。
+
+**探针卫生两条（§9.7 ⑤ / ⑥）**
+- ⑤ **重新实例化的探针必须从"seam 解析出的路径"复制**（即夹具实际解析到的那份），不能从硬编码/临时路径复制 —— 从错路径复制会让探针**空过**（vacuous），它证明的是"副本里没这东西"，而不是"代码里没有"。
+- ⑥ **断言真正的契约**，不要断言"它出现在这一节里"：按小节 grep 只能证明**局部可见**，不能证明契约成立（同一条误判在本项目 5× 矩阵里被抓到过一次）。
+
+### 补遗二：参数化提示词双副本守卫（v2/v3/v4）
+
+| 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
+|---|---|---|
+| `tests/audit-prompt-duplication.mjs`（**已随包**，对 v2/v3/v4 参数化） | 每套恰好两份副本；两份共享一段**不短于较短者 60%** 的前缀（v2 0.957 / v3 0.965 / v4 0.97），且 copy 1 **多出的行只能是 YAML 脚手架/宿主后缀**，绝不是提示词正文；待落地的 V2-1/V2-3 子句必须出现在**共享前缀**里（**红先**：默认运行在 V2-1/V2-3 编辑落地前**预期为红**——当前 9 passed / 15 failed；编辑落地并重生成派生件后转绿。只看对照时用 `PROMPT_DUP_SKIP_CLAUSES=1` ⇒ 9/0。**不要**为了让门禁变绿而削弱本守卫） | 随包的 `tests/audit-prompt-duplication.mutants.mjs`：每套对**单份**副本做一次编辑 ⇒ **三条具名红**（`share a substantial common prefix (32/70=0.46)`、`(13/85=0.15)`、`(59/101=0.58)`） |
+| `tests/audit-prompt-duplication.mutants.mjs`（**已随包**） | 上表的证明本身 | 它即 harness；`run-tests.mjs` 的 `tests/*.mjs` 枚举自动发现两者（非 `NEEDS_ARGS`） |
+
+> 与 v5 版的关系：`tests/audit-v5-prompt-duplication*.mjs` 钉 v5 的两份副本；本文件把同一不变量**参数化到 v2/v3/v4**。两族的"红一次"都由随包的 `*.mutants.mjs` 给出（shipped guard + shipped harness）。

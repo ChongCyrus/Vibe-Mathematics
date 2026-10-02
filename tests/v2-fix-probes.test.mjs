@@ -53,6 +53,7 @@ function harness(opts) {
   const ctx = {
     get(n) {
       if (n === 'subprocess') return subprocess
+      if (n === 'sandboxPolicy' && o.policyRoot) return { resolve(req) { return Object.assign({}, req && req.session ? { session: true } : {}, { workspaceRoot: o.policyRoot }) } }
       return undefined
     },
     on(e, f) { (listeners[e] = listeners[e] || []).push(f) },
@@ -428,6 +429,20 @@ console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
   assert(/下一步：把该对象形式化到 Lean 通过/.test(src), '★★ [A5] require-gate 反馈行携带下一步（与 formal-verify-v2 的行为断言同源）')
 }
 
+// ---------------------------------------------------------------- F5 (fence-root drift)
+console.log('\n-- F5: 围栏根与会话工作区不一致必须一次性告警 --');
+{
+  const h5 = harness({ policyRoot: join(tmpdir(), 'not-this-session') });
+  await load(h5);
+  await h5.call('vibe_math_new_project', { name: 'p' });
+  await h5.call('vibe_math_add_problem', { id: 'qF5', description: 'x' });
+  await h5.call('vibe_math_start', {});
+  await h5.find(() => h5.spawns.length > 0);
+  const e5 = h5.errors.join('\n');
+  const hit5 = e5.split('\n').filter((l) => /sandbox fence root differs from this session workspace/.test(l));
+  assert(hit5.length === 1, '★★★ [F5] 围栏根漂移给一次性具名告警（实测 ' + JSON.stringify(hit5[0] || e5.slice(-160)) + '）');
+  h5.restore(); await wait(250); rmSync(h5.WS, { recursive: true, force: true });
+}
 // ---------------------------------------------------------------- F6a/F6b (silent-failure surfacing)
 console.log('\n-- F6a/F6b: 静默回退与中断失败必须留痕 --');
 {

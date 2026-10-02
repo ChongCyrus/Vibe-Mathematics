@@ -281,12 +281,30 @@ const ACTIVITY_REPORT_MAX = 30
    * 保证结果永不为 `.` / `..`、也不含分隔符。
    */
   let warnedNoPolicy = false
+  // F-5：围栏漂移检测（只告警不拒写）。边界：若解析结果**不暴露**任何 root 字段，本比对无法运行。
+  function policyRootOf(p) {
+    if (!p || typeof p !== 'object') return ''
+    const cand = p.workspaceRoot || p.root || p.cwd || (p.config && p.config.workspaceRoot) || ''
+    return String(cand || '').replace(/\\/g, '/').replace(/\/+$/, '')
+  }
+  let warnedFenceDrift = false
+  function warnFenceDriftOnce(actual, expected) {
+    if (warnedFenceDrift) return
+    warnedFenceDrift = true
+    console.error('vibe-math-v3' + ': sandbox fence root differs from this session workspace (resolved="' + actual + '", session="' + expected + '") — writes may be fenced to the host-configured root; boundary: when the policy object exposes no root field this comparison cannot run')
+  }
+  function checkFenceRoot(p) {
+    const actual = policyRootOf(p)
+    const expected = String(workspaceRoot() || '').replace(/\\/g, '/').replace(/\/+$/, '')
+    if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)
+    return p
+  }
   function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: sandboxPolicy unavailable; writes go out with no explicit policy') } }
   // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
   // deliberately reported (once): with no session it resolves the policy's CONFIGURED root
   // (dsh-sandbox-policy: resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())),
   // which is not necessarily this session's workspace — a silently different fence.
-  function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return sp.resolve({ session: rootAgent.session }) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch (e) { warnNoPolicyOnce() } return undefined }
+  function getPolicy() { const sp = sandboxPolicyOf(); if (!sp) { warnNoPolicyOnce(); return undefined } try { if (rootAgent && rootAgent.session) return checkFenceRoot(sp.resolve({ session: rootAgent.session })) } catch (e) { warnNoPolicyOnce() } try { const p = sp.resolve({}); if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return checkFenceRoot(p) } catch (e) { warnNoPolicyOnce() } return undefined }
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
 
   // ================= parameter schema =================
