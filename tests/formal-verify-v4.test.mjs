@@ -1,4 +1,27 @@
 // ============================================================
+// Defect class: F-6 (durability surfacing). A swallowed durable write / index rebuild / compaction
+// failure must be NAMED once, with its consequence, instead of disappearing silently.
+// Run: node tests/formal-verify-v4.test.mjs
+//
+// RECORDED BOUNDARY - all four product warnings EXIST (commit d02bdbf: warnedWriteFormalTodo,
+// warnedDeferFormalTodo, warnedIndexRebuild, warnedCompaction; each once-per-process and each stating
+// its consequence) but are NOT captured automatically by this suite. NOT REPRODUCED != NOT
+// IMPLEMENTED: the reasons below are measured on the mock host, not assumed.
+//   site 1 closeVerify      - guarded by `if(formalOn() && formalTodos.some(id===target))` (unreachable
+//                             in off mode); the close is finalised by finalizeVerify's ASYNC chain
+//                             AFTER proposeAndVote() returns, so a deterministic assertion would need
+//                             a product-side fault hook (rejected: it would become a new
+//                             agent-settable parameter) or dedicated verify orchestration.
+//   site 2 deferForFormal   - same async-finalisation problem (require mode only).
+//   site 3 settleLeanJob    - the injected index-write failure is consumed by whichever
+//                             rebuildLeanLibIndexes() caller fires first (measured: armed=3,
+//                             failed=1, warning not emitted), so the mock cannot discriminate the
+//                             caller that this site guards.
+//   site 4 realCompact      - realCompact returns early unless liveAgentOf(r.childId) resolves; this
+//                             mock's agents.get() maps only sess-A, so a resident turn never reaches
+//                             the compaction call (probe: the service is never invoked).
+// Sites 3/4 carry test-side injection switches in the F-6 work branch (_oneoff/tw-patch.mjs) which
+// can be re-landed together with a host-side caller discriminator.
 // V4 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
 // Asserts the whole contract of the `formalVerify` knob for the v4 preset:
