@@ -26,6 +26,7 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
+let g3WriteFail = null   // G3 test-side: RegExp matched against the fs targetKey; null = unchanged
 const PLUGIN = process.env.V4_PLUGIN
   ? new URL('file:///' + String(process.env.V4_PLUGIN).replace(/\\/g, '/'))
   : new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
@@ -102,7 +103,7 @@ function makeCtx() {
       async resolve(rel, opts) { const b = (opts && opts.cwd) || WS; return { targetKey: join(b, ...String(rel).split('/')), displayPath: 'x' } },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
       async readText(t) { return readFileSync(t.targetKey, 'utf8') },
-      async writeText(t, c) { mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
+      async writeText(t, c) { if (g3WriteFail && g3WriteFail.test(String(t.targetKey))) throw new Error('G3_WRITE_FAIL (injected): ' + t.targetKey); mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
       async listDir(t) { if (!existsSync(t.targetKey)) return []; return readdirSync(t.targetKey, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })) },
     },
   }
@@ -575,6 +576,27 @@ section('10 containment: a hostile problem id stays inside Paper/<id>/')
 }
 
 console.log('')
+section('G3 a paper whose REQUIRED artifact was not written is FAILED, never done')
+{
+  const m = makeCtx(); await newPlugin(m)
+  await startRun(m, 'G3 缺失产物测试')
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
+  try {
+    // only the two artifacts whose failure used to be invisible are made to fail
+    g3WriteFail = /paper\.(meta\.json|log\.md)$/
+    // expectPaper=false: the paper will NOT reach `done`, so closing must not wait for it
+    const st = await closeRun(m, {}, false)
+    const warned = seen.filter(l => /paperFinalize: required paper artifact\(s\) MISSING after finalize/.test(l))
+    assert(warned.length === 1, '* G3: the missing required artifact is NAMED exactly once (matched=' + warned.length + ' of ' + seen.length + ' stderr lines)')
+    assert(/paper\.meta\.json|paper\.log\.md/.test(warned[0] || ''), '* G3: the warning NAMES the missing artifact(s) (' + String(warned[0] || '').slice(0, 120) + ')')
+    assert(st.paper.status === 'failed', '* G3: the paper status is FAILED, never done (status=' + st.paper.status + ')')
+    assert((st.paper.files || []).indexOf('paper.meta.json') === -1 && (st.paper.files || []).indexOf('paper.log.md') === -1, '* G3: `files` never claims the artifacts that were not written (' + JSON.stringify(st.paper.files || []) + ')')
+  } finally { console.error = realErr; g3WriteFail = null }
+  await finish(m)
+}
+
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f) }
 if (failed) process.exit(1)
