@@ -69,9 +69,30 @@ const SELF = 'run-tests.mjs'
  * and suites that abort print `FAILURES:`/`Error:` markers), and fall back to the raw tail when a suite
  * names nothing.
  */
+/**
+ * A reporting line's OWN prefix decides whether it names a failure. Anchored at the start (after the
+ * reporter's indent) so a token appearing INSIDE a passing line (e.g. `  ok - FAIL - ★★★ message`) can
+ * never be extracted as a failure — that false positive made a green run look red.
+ *   own prefix: `FAIL`, `FAIL -`/`FAIL:`, `FAILURES:`; assertion bullets `- <name>` / `* <name>`; `✗`/`✘`.
+ *   line-anchored abort markers: `SyntaxError:`, `TypeError:`, `ReferenceError:`, `Error:`.
+ * `ok`-prefixed lines are excluded explicitly, so a passing bullet is never counted.
+ */
+function namedFailureLines(text) {
+  const out = []
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const l = raw.replace(/\s+$/, '')
+    if (!l.trim()) continue
+    if (/^\s*ok\b/.test(l)) continue                       // a PASSING line, whatever it contains
+    if (/^\s*(?:FAIL\b|FAILURES:|✗|✘)/.test(l)) { out.push(l); continue }
+    if (/^\s*(?:-|\*)\s+\S/.test(l)) { out.push(l); continue }
+    if (/^\s*(?:SyntaxError|TypeError|ReferenceError|Error):/.test(l)) { out.push(l); continue }
+  }
+  return out
+}
+
 function failureDetail(r) {
   const lines = (String(r.out || '') + '\n' + String(r.err || '')).split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean)
-  const named = lines.filter((l) => /^\s*(?:-|✗|✘)\s+\S/.test(l) || /(^|\s)FAIL[: -]/.test(l) || /^(FAILURES:|SyntaxError|TypeError|ReferenceError|Error:)/.test(l))
+  const named = namedFailureLines(String(r.out || '') + '\n' + String(r.err || ''))
   const chosen = (named.length ? named : lines).slice(-40)
   return chosen.length ? chosen : ['(no captured output)']
 }
@@ -84,7 +105,16 @@ if (process.argv.includes('--self-check')) {
   const detail = failureDetail({ out: synth.stdout, err: synth.stderr }).join('\n')
   const okSelf = detail.indexOf('synthetic assertion name XYZ') !== -1
   console.log((okSelf ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a failing child yields a NAMED assertion line (' + detail.trim().slice(0, 80) + ')')
-  process.exit(okSelf ? 0 : 1)
+  // FALSE-POSITIVE direction: a PASSING line whose message literally contains `FAIL - ` must extract
+  // NOTHING (the v2/v3 owner saw a green run look red this way).
+  const leaked = namedFailureLines('  ok - FAIL - ★★★ [F2cap] the assertion message mentions FAIL - inside it\n')
+  const okPassing = leaked.length === 0
+  console.log((okPassing ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a passing line containing "FAIL - " is NOT extracted as a failure (' + JSON.stringify(leaked) + ')')
+  // FALSE-NEGATIVE direction stays closed: a genuine FAIL line and a line-anchored abort marker extract.
+  const okReal = namedFailureLines('  FAIL - ★★★ real failure\n').length === 1
+  const okAbort = namedFailureLines('TypeError: boom\n').length === 1
+  console.log((okReal && okAbort ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a genuine FAIL line and an abort marker are still extracted')
+  process.exit(okSelf && okPassing && okReal && okAbort ? 0 : 1)
 }
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists

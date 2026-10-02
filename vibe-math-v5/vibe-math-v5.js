@@ -6212,6 +6212,11 @@ export function apply(ctx) {
     function isCapRefusedMember(m) {
       if (!m || m.phase !== 'failed') return false
       if (m.failReason === 'activation-limit') return true
+      // TEST SEAM (documented; NOT a product surface): with the text fallback disabled, ONLY the
+      // durable reason counts — running the same scenario with `V5_SPAWN_RETRY_STRICT=1` proves that
+      // every cap-refusal path records `failReason` and that no behaviour depends on error-string
+      // matching. Read per call so a suite can toggle it around one scenario.
+      if (String(process.env.V5_SPAWN_RETRY_STRICT || '') === '1') return false
       return /active child limit|maxActiveSubagents/.test(String(m.error || ''))
     }
     function pendingSpawnMembers() {
@@ -7044,7 +7049,11 @@ export function apply(ctx) {
           spawned.push(m.id)
         } catch (e) {
           if (isActivationLimitReached(e)) limitRefused = true
-          await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
+          // G-6b (installer follow-up): the founding catch RE-writes the record that `spawnMember`'s
+          // own catch already wrote — it must not drop the durable cap marker, otherwise the queue
+          // would depend on matching the error TEXT for this path (the exact divergence the shared
+          // predicate exists to prevent).
+          await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e), failReason: isActivationLimitReached(e) ? 'activation-limit' : 'other' }))
         }
       }
       for (let i = 0; i < params.researcherCount; i++) {
@@ -7055,7 +7064,7 @@ export function apply(ctx) {
           spawned.push(m.id)
         } catch (e) {
           if (isActivationLimitReached(e)) limitRefused = true
-          await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
+          await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e), failReason: isActivationLimitReached(e) ? 'activation-limit' : 'other' }))
         }
       }
       if (!spawned.length) {
@@ -7217,13 +7226,17 @@ export function apply(ctx) {
           id: m.id, kind: m.kind, phase: m.phase, direction: m.direction, hiredBy: m.hiredBy,
           rounds: rounds.get(m.id) || 0, busy: busy.has(m.id), contextPct: contextPct.get(m.id) || 0,
           childId: m.childId ? m.childId.slice(0, 12) : '', error: m.error || '',
+          // G-6b: the durable reason a failed member is deferred work (`activation-limit` = the host
+          // cap refused it, and the framework will retry it) — needed to audit the queue without
+          // re-deriving it from the error text.
+          failReason: m.failReason || '',
         })),
         tasks: listTasks(),
         // LOW (deep review): a member whose provisioning failed stays on the roster forever (ids
         // are never reused, so the entry must stay) — but `resume` only retries the ones refused by
         // the HOST's live-child cap. Everything else is surfaced here with the remedy, instead of
         // being a silent, permanent `phase:'failed'` row an operator has to notice by luck.
-        failedMembers: s.members.filter((m) => m.phase === 'failed').map((m) => ({ id: m.id, kind: m.kind, error: String(m.error || '').slice(0, 200) })),
+        failedMembers: s.members.filter((m) => m.phase === 'failed').map((m) => ({ id: m.id, kind: m.kind, failReason: m.failReason || '', error: String(m.error || '').slice(0, 200) })),
         failedMembersNote: 'resume 只重试「live-child 上限」类失败；其它 provisioning 失败请由所办重新招聘（新 id，旧 id 永不复用）',
         // G-6 (installer review): the DEFERRED spawns — refused by the host's live-child cap, queued
         // by construction (durable `phase:'failed'` + `failReason:'activation-limit'`) and retried on

@@ -57,7 +57,7 @@ function harness(opts) {
     on(e, f) { (listeners[e] = listeners[e] || []).push(f) },
     effect(f) { const d = f(); return () => { if (typeof d === 'function') d() } },
     logger: { info() {}, warn() {}, error() {} },
-    tools: { register(s) { toolRegs.push(s) } },
+    tools: Object.assign({ register(s) { toolRegs.push(s) } }, o.toolSchemas ? { schemas: () => o.toolSchemas } : {}),
     commands: { register(s) { cmdRegs.push(s); return () => {} } },
     subagents: {
       list() { return ['spawn'] },
@@ -83,8 +83,13 @@ function harness(opts) {
   return { WS, listeners, toolRegs, cmdRegs, spawns, errors, latexRuns, ctx, ROOT, restore() { console.error = realError }, project: join(WS, 'VibeMath', 'Projects', 'p') }
 }
 async function load(h) {
-  if (!globalThis.__v2PluginPromise) globalThis.__v2PluginPromise = import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href)
-  const mod = await globalThis.__v2PluginPromise   // ONE module instance per process (no ?t= cache-buster): the per-block re-import raced the previous block's pending async work
+  // Seam: V2_PLUGIN points the probe at a mutant copy (same pattern as v3-fix-probes' V3_PLUGIN).
+  const PLUGIN_URL = process.env.V2_PLUGIN
+    ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
+    : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  const CACHE_KEY = '__v2PluginPromise:' + PLUGIN_URL.href
+  if (!globalThis[CACHE_KEY]) globalThis[CACHE_KEY] = import(PLUGIN_URL.href)
+  const mod = await globalThis[CACHE_KEY]   // ONE module instance per URL (no ?t= cache-buster)
   ;(mod.default || mod).apply(h.ctx)
   h.call = async (n, a) => JSON.parse(await (h.toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: h.ROOT }))
   h.fireEnd = (info) => { for (const fn of (h.listeners['subagent/end'] || [])) fn(info) }
@@ -421,6 +426,27 @@ console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
   assert(/下一步：把该对象形式化到 Lean 通过/.test(src), '★★ [A5] require-gate 反馈行携带下一步（与 formal-verify-v2 的行为断言同源）')
 }
 
+// ---------------------------------------------------------------- F2 (proactive tool-name intersection)
+console.log('\n-- F2: 候选工具名与宿主可见工具面求交（composedToolList）--');
+{
+  const schemas = ['vibe_math_status', 'vibe_math_report', 'web_search', 'pwsh', 'math_computation'].map((n) => ({ name: n }));
+  const h = harness({ toolSchemas: schemas });
+  await load(h);
+  await h.call('vibe_math_new_project', { name: 'p' });
+  await h.call('vibe_math_set_params', { maxParallelThreshold: 8, verifierCount: 2, verifierToolAllow: ['vibe_math_status'], verifierAllowNetwork: true });
+  await h.call('vibe_math_add_proposition', { id: 'pF2', 概述: 'P', 布尔估计: 0.6, 优先级: 1, 细类型: { 数论: {} } });
+  const f = join(h.project, 'Propos', '数论_Propos.json');
+  const list = JSON.parse(readFileSync(f, 'utf8'));
+  list[0].证明列表 = [{ 完整过程: 'proof', 正确概率: 0.7, 已验: false }];
+  writeFileSync(f, JSON.stringify(list, null, 2), 'utf8');
+  await h.call('vibe_math_start', {});
+  const v = await h.find(() => h.spawns.find((s2) => s2.label.startsWith('verifier:r-pF2-pf0:')));
+  assert(!!v, 'F2: 验证者子代理已派出（用于观察 toolFilter）');
+  const allow = (v && v.request && v.request.toolFilter && v.request.toolFilter.allow) || [];
+  assert(allow.indexOf('web_search') !== -1, '★ [F2] 宿主注册的 web_search 进入 allow（实测 ' + JSON.stringify(allow) + '）');
+  assert(allow.indexOf('web_fetch') === -1, '★★★ [F2] 宿主**未**注册的 web_fetch 绝不进入 filter（候选 ∩ tools.schemas；实测 ' + JSON.stringify(allow) + '）');
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
+}
 // ---------------------------------------------------------------- M15
 console.log('\n-- M15: status and report share one recentActivity bound (30) --')
 {
