@@ -2573,15 +2573,16 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       if(!agent || !agent.session) return
       const compaction = compactionForAgent(agent)
       if(compaction===undefined) return
-      // `compactIfNeeded` is a POLICY call on the current host: it may return null without compacting
-      // and nothing records that, so a real /compact would silently do nothing. `compactNow` is the
-      // forcing verb; feature-detected so older hosts keep the policy call.
-      const force = typeof compaction.compactNow === 'function'
-      if(!force && typeof compaction.compactIfNeeded !== 'function') return
+      // F2 (user ruling): compaction is driven by the CONFIGURED THRESHOLD only. `compactIfNeeded` is the
+      // POLICY verb, so a host that also offers the FORCING verb (`compactNow`) must NOT be forced - the
+      // per-turn call is a cheap no-op below the threshold, and the core-rules re-anchor happens ONLY when
+      // the policy call reports that it actually compacted.
+      if(typeof compaction.compactIfNeeded !== 'function') return
       try {
-        const signal = makeSignal(params.activityTimeoutMs||60000)
-        const result = force ? await compaction.compactNow(agent, signal) : await compaction.compactIfNeeded(agent, 'pressure', signal)
-        if(result && (result.shadowedSeqs||[]).length>0){
+      const signal = makeSignal(params.activityTimeoutMs||60000)
+      const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+        const didCompact = !!(result && ((result.shadowedSeqs||[]).length>0 || Number(result.shadowedTokenCount||0)>0))
+        if(didCompact){
           // the resident's real session was compacted → its context is now a summary.
           // Flag needCompact so the NEXT wake re-anchors the core rules (they may have been blurred).
           r.roundsSinceCompact=0; r.needCompact=true; r.contextPct=Math.min(r.contextPct||15,25)

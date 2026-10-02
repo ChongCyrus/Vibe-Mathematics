@@ -23,6 +23,15 @@
 //   site 4 realCompact      - realCompact returns early unless liveAgentOf(r.childId) resolves; this
 //                             mock's agents.get() maps only sess-A, so a resident turn never reaches
 //                             the compaction call (probe: the service is never invoked).
+// F1 COVERAGE HOLE (window) - measured, not assumed. The consensus-membership fix (predicate + roster
+// guard) is covered by the SOURCE-LEVEL guards in section N13 (both single-site mutants redden by name:
+// count predicate => 457/2; `_inRoster=true` => 458/1). The behavioural WINDOW the v2/v3 owner proposed
+// (a removed, still-in-flight frozen voter's late ballot) was driven inside section D4 and measured
+// unobservable through the public API: fixed => `before=0/2 after=0/1 card=false`; guard deleted (M2) =>
+// the SAME `0/1`; count predicate (M1) => the SAME `0/1`. The late ballot therefore never reaches the
+// recording site in this composition, so a windowed assertion could not be reddened by M2 and would be
+// vacuous - it was NOT landed. Regression coverage for F1 is N13 (source level).
+
 // F-6 (:786) FIXED, not merely bounded: a failed build-context comparison now records
 // `contextChanged=null` (unknown != unchanged) and emits a one-time named warning (warnedContextProbe,
 // wording states the consequence). It carries NO automated assertion here: the branch is UNREACHABLE

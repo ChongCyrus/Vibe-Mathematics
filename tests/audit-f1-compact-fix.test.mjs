@@ -30,7 +30,7 @@ const assert = (c, m) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const JSONX = (o) => '```json\n' + JSON.stringify(o) + '\n```';
 
-function makeCtx() {
+function makeCtx(opts = {}) {
   const WS = mkdtempSync(join(tmpdir(), 'f1compact-'));
   const listeners = {};
   const toolRegs = [];
@@ -43,21 +43,25 @@ function makeCtx() {
   const registry = new Map();
   const tornDown = new Set();
   let compactCalls = 0;
+  let forceCalls = 0;
   let compactAgentSeen = null;
+  const compactionReply = opts.compactResult === undefined ? { shadowedSeqs: [1, 2, 3], shadowedTokenCount: 1234 } : opts.compactResult;
 
   const ctx = {
     get(name) {
       if (name === 'subprocess') return { async spawn() { return { done: Promise.resolve({ exitCode: 0 }) } } };
       if (name === 'sandboxPolicy') return { workspaceRoot: WS, resolve: () => ({ workspaceRoot: WS }) };
       if (name === 'compaction') {
-        return {
+        const svc = {
           async compactIfNeeded(agent, trigger, signal) {
             compactCalls += 1;
             compactAgentSeen = agent;
-            // a real engine would report what it shadowed
-            return { shadowedSeqs: [1, 2, 3], shadowedTokenCount: 1234 };
+            // a real engine reports what it shadowed (or nothing when it decided not to compact)
+            return compactionReply;
           },
         };
+        if (opts.bothVerbs) svc.compactNow = async (agent, signal) => { forceCalls += 1; compactAgentSeen = agent; return compactionReply; };
+        return svc;
       }
       return undefined;
     },
@@ -109,7 +113,10 @@ function makeCtx() {
   return {
     WS, ctx, toolRegs, spawns, followups, registry, tornDown, timerDisposers,
     compactCalls: () => compactCalls,
+    forceCalls: () => forceCalls,
     compactAgentSeen: () => compactAgentSeen,
+    /** Every prompt text the plugin sent to a child (the recap re-anchor is visible here). */
+    promptTexts: () => followups.map((f) => ((f.blocks && f.blocks[0] && f.blocks[0].text) || '')),
     /** Dispatch subagent/start BEFORE any teardown, like the host does. */
     fireStart(info) { for (const h of listeners['subagent/start'] || []) h(info) },
     /** Tear the child down, then dispatch subagent/end — the host's order. */
@@ -188,6 +195,79 @@ try {
   for (const dispose of m.timerDisposers) { try { dispose() } catch (e) {} }
   rmSync(m.WS, { recursive: true, force: true });
 }
+
+
+console.log('=== F-2 phases: policy verb only, and the re-anchor gated on a REAL compaction ===');
+
+/** Drive one resident turn far enough that realCompact runs (same shape as the F-1 case above). */
+async function driveCompactCase(m) {
+  mod.apply(m.ctx);   // each ctx needs its own apply (measured: without it, "no tool vibe_v4_start")
+  const callTool = async (n, a) => {
+    const d = m.toolRegs.find((x) => x.name === n);
+    if (!d) throw new Error('no tool ' + n);
+    return JSON.parse(await d.execute(a || {}, { agent: m.ctx.agents.roots()[0] }));
+  };
+  await callTool('vibe_v4_start', { problem: 'F2 policy case', residentCount: 1 });
+  const childId = m.spawns[0].childId;
+  m.fireStart({ id: childId, runId: 'r1', provider: 'spawn', local: true });
+  await callTool('vibe_v4_set', { compactAfterRounds: 1 });
+  m.fireEndWithTeardown({
+    id: childId, runId: 'r2', provider: 'spawn', local: true, stopReason: 'completed',
+    lastAssistantMessage: [{ type: 'text', text: JSONX({ summary: 'insight', solved: false }) }],
+  });
+  await sleep(60);
+  for (let i = 0; i < 12 && m.compactCalls() === 0; i++) {
+    const fu = m.followups[m.followups.length - 1];
+    if (fu) {
+      m.fireEndWithTeardown({
+        id: fu.childId, runId: 'w' + i, provider: 'spawn', local: true, stopReason: 'completed',
+        lastAssistantMessage: [{ type: 'text', text: JSONX({ summary: 'advanced', contextPct: 90, compacted: true, solved: false }) }],
+      });
+    }
+    await sleep(60);
+  }
+  // force ONE more wake: the re-anchor (when set) is injected into the NEXT prompt built for the resident
+  await callTool('vibe_v4_message', { to: 'r-1', content: '继续推进。' });
+  await sleep(200);
+  await sleep(120);
+  return { callTool, childId };
+}
+
+function withCleanup(m, fn) {
+  return (async () => {
+    try { return await fn() } finally {
+      try { const d = m.toolRegs.find((x) => x.name === 'vibe_v4_abort'); if (d) await d.execute({}, { agent: m.ctx.agents.roots()[0] }) } catch (e) { /* best effort */ }
+      for (const dispose of m.timerDisposers) { try { dispose() } catch (e) {} }
+      rmSync(m.WS, { recursive: true, force: true });
+    }
+  })();
+}
+
+// (b) BOTH verbs offered => the policy verb must be used and the forcing verb must NOT be called
+const mB = makeCtx({ bothVerbs: true });
+await withCleanup(mB, async () => {
+  await driveCompactCase(mB);
+  assert(mB.compactCalls() > 0, `F2/b the POLICY verb was called (calls=${mB.compactCalls()})`) ;
+  assert(mB.forceCalls() === 0, `F2/b the FORCING verb was NOT called even though the host offers it (forceCalls=${mB.forceCalls()})`);
+});
+
+// (c1) the policy call reports NO compaction => no core-rules re-anchor on the next prompts
+const mC1 = makeCtx({ compactResult: {} });
+await withCleanup(mC1, async () => {
+  await driveCompactCase(mC1);
+  assert(mC1.compactCalls() > 0, 'F2/c1 the policy call ran (so the case is not vacuous)');
+  const recaps = mC1.promptTexts().filter((t) => /核心规则重申/.test(t));
+  assert(recaps.length === 0, '* F2/c1 a no-op policy call sets NO re-anchor (prompts carrying the recap=' + recaps.length + ')');
+});
+
+// (c2) the policy call REPORTS a compaction => the re-anchor appears on the next prompts
+const mC2 = makeCtx({ compactResult: { shadowedSeqs: [1], shadowedTokenCount: 9 } });
+await withCleanup(mC2, async () => {
+  await driveCompactCase(mC2);
+  assert(mC2.compactCalls() > 0, 'F2/c2 the policy call ran');
+  const recaps2 = mC2.promptTexts().filter((t) => /核心规则重申/.test(t));
+  assert(recaps2.length > 0, '* F2/c2 a REPORTED compaction sets the re-anchor (prompts carrying the recap=' + recaps2.length + ')');
+});
 
 console.log(`\n=== F-1 COMPACT FIX RESULT: ${passed} passed, ${failed} failed ===`);
 process.exitCode = failed === 0 ? 0 : 1;
