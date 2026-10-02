@@ -284,11 +284,16 @@ section('§3 op=probe：命中与未命中')
   const missMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
   const mgrName = missMgr.next && missMgr.next.packageManager
   assert(!!mgrName, '★★★ A1：python 的 userInstall 模板在三平台都带包管理器前缀（实测 ' + JSON.stringify(mgrName) + '）')
-  fake.cliCommands = {}
-  if (mgrName) fake.cliCommands[mgrName] = '/fake/' + mgrName + '.exe'
-  const withMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
-  assert(!!withMgr.next && withMgr.next.packageManagerAvailable === true && typeof withMgr.next.command === 'string' && withMgr.next.command.length > 0 && withMgr.next.command === withMgr.next.suggestedCommand, '★★★ 包管理器存在时给出**可执行**命令（command === suggestedCommand，实测 ' + JSON.stringify(withMgr.next && { mgr: withMgr.next.packageManager, avail: withMgr.next.packageManagerAvailable, command: withMgr.next.command }) + '）')
-  mgrBranchExercised = true
+  // F1（守卫验证 HIGH）：flag 必须在「管理器存在 ⇒ 真的算出可执行命令」这一支里才置位；
+  // 只是执行到这一行不算跑过该契约（旧写法在 `if (mgrName)` 之外，任何执行都会置位 ⇒ 装饰性守卫）。
+  if (mgrName) {
+    fake.cliCommands = {}
+    fake.cliCommands[mgrName] = '/fake/' + mgrName + '.exe'
+    const withMgr = await call('math_computation', { op: 'probe', packages: ['refresh'] })
+    const okCmd = !!(withMgr.next && withMgr.next.packageManagerAvailable === true && typeof withMgr.next.command === 'string' && withMgr.next.command.length > 0 && withMgr.next.command === withMgr.next.suggestedCommand)
+    assert(okCmd, '★★★ 包管理器存在时给出**可执行**命令（command === suggestedCommand，实测 ' + JSON.stringify(withMgr.next && { mgr: withMgr.next.packageManager, avail: withMgr.next.packageManagerAvailable, command: withMgr.next.command }) + '）')
+    if (okCmd) mgrBranchExercised = true
+  }
   // 另一半：没有管理器前缀的模板（vendor 下载）仍必须给官方命令、且不得谎称可运行
   await call('vibe_math_set_params', { mathEngines: ['wolfram'] })
   const vendor = await call('math_computation', { op: 'probe', packages: ['refresh'] })

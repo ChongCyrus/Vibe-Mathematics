@@ -15,7 +15,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const PRESET = join(REPO, 'vibe-math-v5')
 const AUDIT = join(HERE, 'audit-v5-lean-abstention.mjs')
-const INVARIANTS = join(HERE, 'audit-prompt-invariants.mjs')
+const INVARIANTS = process.env.PROMPT_INVARIANTS_SUITE ? String(process.env.PROMPT_INVARIANTS_SUITE) : join(HERE, 'audit-prompt-invariants.mjs')
+const ONLY = process.env.MUTANTS_ONLY ? String(process.env.MUTANTS_ONLY).split(',').map((x) => x.trim()).filter(Boolean) : null
 const REL = 'vibe-math-v5/vibe-math-v5.js'
 const SRC = readFileSync(join(PRESET, 'vibe-math-v5.js'), 'utf8')
 
@@ -25,7 +26,10 @@ const MUTANTS = [
     from: 'if (formalOn() && p.formal) {',
     to: 'if (p.formal) {   // MUTANT: the off-mode gate is gone',
     expectAudit: 'S1: a `formal:{…}` reply changes NOTHING observable in off mode',
-    expectInvariant: 'X8',   // measured via the invariant's own --json text below
+    // The cross-suite expectation is an INVARIANT ID, not just "something went red": removing the
+    // gate must redden `audit-prompt-invariants`'s I8 (guard-load-bearing F3: this field used to be
+    // dead — any failing invariant would have been accepted as the claimed red).
+    expectInvariant: 'I8',
   },
   {
     name: 'M2 enforcement disabled',
@@ -60,6 +64,7 @@ console.log('control (unmutated): exit=' + control.code + ' | ' + (control.out.s
 let problems = controlGreen ? 0 : 1
 
 for (const m of MUTANTS) {
+  if (ONLY && !ONLY.includes(m.name.split(' ')[0])) continue
   if (!SRC.includes(m.from)) { console.log(m.name + ': ANCHOR MISSING'); problems += 1; continue }
   const dir = join(tmpdir(), 'v5-abs-mut-' + m.name.split(' ')[0])
   rmSync(dir, { recursive: true, force: true })
@@ -76,11 +81,19 @@ for (const m of MUTANTS) {
       cwd: REPO, encoding: 'utf8', timeout: 600000,
       env: Object.assign({}, process.env, { PROMPT_INVARIANTS_MUTATE: JSON.stringify([REL, m.from, m.to]) }),
     })
-    const txt = String(ir.stdout || '') + String(ir.stderr || '')
     let parsed = null
-    try { parsed = JSON.parse(ir.stdout) } catch (e) { /* report below */ }
-    const invariantRed = ir.status !== 0 && parsed && parsed.failed > 0
-    invariantNote = ' | audit-prompt-invariants: ' + (invariantRed ? 'RED (failed=' + parsed.failed + ')' : 'NOT RED')
+    try { parsed = JSON.parse(ir.stdout) } catch (e) { /* reported below */ }
+    // Assert the EXPECTED invariant, not merely "something failed": the JSON must carry a
+    // `failures` array and `expectInvariant` must appear in it. A missing array or a different
+    // invariant failing is a harness failure, loudly.
+    const failures = parsed && Array.isArray(parsed.failures) ? parsed.failures : null
+    const named = !!failures && failures.some((f) => String(f).includes(m.expectInvariant))
+    const invariantRed = ir.status !== 0 && parsed && parsed.failed > 0 && named
+    invariantNote = ' | audit-prompt-invariants: ' + (invariantRed
+      ? 'RED on ' + m.expectInvariant + ' (failed=' + parsed.failed + ': ' + String(failures[0]).slice(0, 70) + ')'
+      : (failures === null
+        ? 'NO failures[] ARRAY in --json output (cannot verify ' + m.expectInvariant + ')'
+        : 'expected ' + m.expectInvariant + ' but got ' + JSON.stringify(failures.map((f) => String(f).slice(0, 40)).slice(0, 3))))
     if (!invariantRed) problems += 1
   }
   if (!ok) problems += 1

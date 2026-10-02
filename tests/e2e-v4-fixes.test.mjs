@@ -9,6 +9,20 @@ const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; console.error('  FAIL - ' + m) } }
+ // Class-B protection (protocol 搂6.4): EVERY red must name an assertion. An abort under load must
+ // not leave only host chatter behind, so capture the stderr tail and convert uncaught/unhandled into
+ // one named failure with that tail attached.
+ const _errTail = []
+ const _realErr = console.error
+ console.error = (...a) => { _errTail.push(a.map(String).join(' ')); if (_errTail.length > 40) _errTail.shift(); _realErr(...a) }
+ const _abort = (what, e) => {
+   failed++
+   _realErr('  FAIL - 芒鈽 [class-B] ' + what + ': ' + ((e && e.stack) || e))
+   _realErr('  FAIL - 芒鈽 [class-B] captured stderr tail: ' + _errTail.slice(-6).join(' | ').slice(0, 600))
+   process.exit(1)
+ }
+ process.on('uncaughtException', (e) => _abort('UNCAUGHT exception (load/capacity abort)', e))
+ process.on('unhandledRejection', (e) => _abort('UNHANDLED rejection (load/capacity abort)', e))
 // Poll faster and cap lower. Every condition here flips within a few ms of a fired
 // subagent/end (the mock has no ctx.timeout, so no scheduling is timer-bound), and the
 // old 40ms/4000ms pair meant every unsatisfied poll burned up to 4s. 10ms/900ms keeps a
@@ -1204,6 +1218,10 @@ function makeCtx(){
   const capLines=errs.filter(l=>/maxActiveSubagents/.test(l))
   assert(capLines.length===1, 'T42: ONE actionable line for the whole spawn round, not one per refused resident (got '+capLines.length+')')
   assert(/maxActiveSubagents/.test((start&&start.message)||''), 'T42: the start message names the host parameter that raises the ceiling (message='+(start&&start.message)+')')
+  {
+    const capM = String((start && start.message) || '').match(/maxActiveSubagents[^0-9]{0,12}(\d+)/)
+    assert(!!capM, 'T42: the refusal names the OBSERVED cap (cap=' + (capM ? capM[1] : 'unparsed') + ', children requested/spawned so far=' + (typeof spawns !== 'undefined' ? spawns.length : '?') + ')')
+  }
   const st1=await m.callTool('vibe_v4_status', {})
   assert(st1.residentCount===LIMIT && st1.pendingSpawns===2, 'T42: only live residents are counted and the refused ones are queued (residentCount='+st1.residentCount+', pendingSpawns='+st1.pendingSpawns+')')
   assert(st1.busy.length===LIMIT && st1.busy.every(b=>m.spawns.some(sp=>sp.label===b)), 'T42: no half-updated bookkeeping for a refused resident (busy='+JSON.stringify(st1.busy)+')')

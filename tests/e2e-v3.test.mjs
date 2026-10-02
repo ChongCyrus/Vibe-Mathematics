@@ -17,7 +17,11 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, 
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 
-const PLUGIN = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
+// Seam for guard verification: point the preset plugin at a mutant copy (same pattern as
+// tests/math-computation-v2.test.mjs) so A6/F-guards can be reddened without editing the repo.
+const PLUGIN = process.env.MC_V3_PLUGIN
+  ? new URL('file:///' + String(process.env.MC_V3_PLUGIN).replace(/\\/g, '/'))
+  : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
 
 let passed = 0
 let failed = 0

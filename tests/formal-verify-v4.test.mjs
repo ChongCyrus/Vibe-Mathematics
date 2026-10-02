@@ -1725,7 +1725,7 @@ section('N7 delivered prompts carry no labelled-but-empty slot (proposer/agenda/
   assert(txt.length > 100 && /verifying object p-nopowner/.test(txt), '* the delivered verify prompt is non-trivial and names the target (non-vacuity: an empty prompt must not pass below)')
   assert(!/\u63d0\u51fa\u8005\s*\uff09/.test(txt), '* no labelled-but-empty proposer slot in the delivered frame (\u63d0\u51fa\u8005 + ) )')
   assert(!/agenda:\s*[)\uff09]/.test(txt), '* no labelled-but-empty agenda slot in the delivered frame')
-  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  const src = readFileSync(process.env.V4_PLUGIN ? String(process.env.V4_PLUGIN) : fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')   // F2: same V4_PLUGIN seam as N5/N6
   assert(/String\(vs\.targetOwner\|\|''\)\.trim\(\)\?/.test(src), '* the proposer segment is assembled ONLY when a value exists (source-level: the office is never invented)')
 }
 section('N8 the meeting frame\'s relay claim matches reality (no promise of speeches that do not exist)')
@@ -1757,11 +1757,18 @@ section('N10 G-7 class guard: agent-facing compaction takes the AGENT-LOCAL inst
   const { fileURLToPath } = await import('node:url')
   const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
   assert(/function compactionForAgent\(/.test(src), '* v4 defines compactionForAgent (the agent-local accessor)')
-  const bodyOf = (fn) => { const a = src.indexOf('function ' + fn); if (a < 0) return null; const b = src.slice(a + 10).search(/\n {2}(?:async )?function /); if (b < 0) return null; return src.slice(a, a + 10 + b) }
-  const rc = bodyOf('realCompact')
-  assert(rc !== null, '* the agent-facing compact path (realCompact) is found with a strictly bounded window')
-  assert(/compactionForAgent\(agent\)/.test(rc || ''), '* the agent-facing compact path uses the AGENT-LOCAL instance')
-  assert(!/compactionOf\(\)/.test(rc || ''), '* and it does NOT call the host-root compactionOf() directly (a realm never falls back)')
+  // F2 (HIGH): a named, BOUNDED anchor. The old window ran to the next two-space function (109,191 chars)
+  // and swallowed unrelated code, which is why a line-located mutant escaped unnoticed.
+  const CALL = 'const compaction = compactionForAgent(agent)'
+  const at = src.indexOf(CALL)
+  assert(at > 0, '* the agent-facing compaction call exists verbatim (anchor: ' + CALL + ')')
+  const _ls = src.lastIndexOf('\n', at)
+  const _le = src.indexOf('\n', at)
+  const win = src.slice(_ls, _le > 0 ? _le : at + 200)
+  assert(win.length <= 400, '* the inspected window is BOUNDED (the call line only; got ' + win.length + ')')
+  assert(win.indexOf(CALL) !== -1, '* the window really contains the agent-facing call')
+  if (process.env.V4_DEBUG) console.log('  [N10-diag] seam=' + String(process.env.V4_PLUGIN || '(none)') + ' | loaderUrl=' + (typeof pluginUrl === 'function' ? pluginUrl().href : 'n/a') + ' | win=' + win.length + ' | first=' + win.trim().slice(0, 70))
+  assert(!/compactionOf\(\)/.test(win), '* the agent-facing path does NOT call the host-root compactionOf() (a realm never falls back)')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

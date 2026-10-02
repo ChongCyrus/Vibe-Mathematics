@@ -62,6 +62,30 @@ const asJson = has('json')
 const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(4, cpus().length)))
 
 const SELF = 'run-tests.mjs'
+/**
+ * DIAGNOSABILITY (protocol: every red must name an assertion): a failing suite's assertion NAMES are
+ * what a reader needs, and they must appear under the FAILED line - not only in the suite's own last
+ * stdout line. Extract the failing-assertion lines (this repo prints `  - <name>` or `  FAIL - <name>`,
+ * and suites that abort print `FAILURES:`/`Error:` markers), and fall back to the raw tail when a suite
+ * names nothing.
+ */
+function failureDetail(r) {
+  const lines = (String(r.out || '') + '\n' + String(r.err || '')).split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean)
+  const named = lines.filter((l) => /^\s*(?:-|✗|✘)\s+\S/.test(l) || /(^|\s)FAIL[: -]/.test(l) || /^(FAILURES:|SyntaxError|TypeError|ReferenceError|Error:)/.test(l))
+  const chosen = (named.length ? named : lines).slice(-40)
+  return chosen.length ? chosen : ['(no captured output)']
+}
+// `--self-check`: prove the diagnostics above actually surface a NAME. Runs one synthetic failing child
+// through the same extractor and asserts the extracted detail contains its assertion name; the mutant
+// that strips `failureDetail` makes this red.
+if (process.argv.includes('--self-check')) {
+  const { spawnSync } = await import('node:child_process')
+  const synth = spawnSync(process.execPath, ['-e', "console.error('  - synthetic assertion name XYZ'); process.exit(1)"], { encoding: 'utf8' })
+  const detail = failureDetail({ out: synth.stdout, err: synth.stderr }).join('\n')
+  const okSelf = detail.indexOf('synthetic assertion name XYZ') !== -1
+  console.log((okSelf ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a failing child yields a NAMED assertion line (' + detail.trim().slice(0, 80) + ')')
+  process.exit(okSelf ? 0 : 1)
+}
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
 // aborts the run, so a rename cannot turn into a silent gap.
@@ -154,13 +178,11 @@ async function worker(id) {
         (tail ? '  ' + tail.slice(0, 60) : '')
       )
       if (!r.ok) {
-        const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
-        for (const l of lines.slice(-15)) console.log('      ' + l)
+        for (const l of failureDetail(r)) console.log('      ' + l)
       }
     } else if (!r.ok) {
       // In --json mode keep stdout machine-readable: the failure detail travels in the JSON.
-      const lines = (r.out + '\n' + r.err).split('\n').filter(Boolean)
-      r.tailDetail = lines.slice(-15).join('\n')
+      r.tailDetail = failureDetail(r).join('\n')
     }
   }
 }
@@ -193,7 +215,8 @@ if (asJson) {
   console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
     + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')')
   for (const b of bad) {
-    console.log('  FAILED: ' + label(b.job) + ' (exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '') + ')')
+    console.log('  FAILED: ' + label(b.job) + ' [' + b.job.kind + '] (exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '') + ')')
+    for (const l of failureDetail(b)) console.log('      ' + l)
   }
   for (const [f, why] of Object.entries(NEEDS_ARGS)) {
     console.log('  SKIPPED (needs CLI args): ' + f + ' — ' + why + (presentSet.has(f) ? '' : '  [not present in this checkout]'))

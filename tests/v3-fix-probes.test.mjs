@@ -14,7 +14,11 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, readdirSync, 
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
-const PLUGIN = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
+// Seam for guard verification (same pattern as tests/math-computation-v2.test.mjs and the e2e suites):
+// point the preset at a mutant copy so source-level guards can be reddened without editing the repo.
+const PLUGIN = process.env.V3_PLUGIN
+  ? new URL('file:///' + String(process.env.V3_PLUGIN).replace(/\\/g, '/'))
+  : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
 const WS = mkdtempSync(join(tmpdir(), 'vibe-fixprobe-'));
 
 let passed = 0; let failed = 0;
@@ -309,7 +313,7 @@ console.log('\n-- PAPER §6.1 (v3): params — defaults, schema, coercion, both 
   assert(good.params.paperFormat === 'md' && good.params.paperLanguage === 'en' && good.params.finalPaper === false && good.params.paperCompilePdf === false && good.params.paperLatexCommand === 'xelatex', 'v3 legal values are accepted verbatim')
   const regs = toolRegs.filter((s) => s.name === 'vibe_math_set_params')
   assert(regs.length === 1 && ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand'].every((k) => !!regs[0].parameters.properties[k]), 'the registered v3 tool schema carries all five paper keys')
-  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8')
+  const src = readFileSync(PLUGIN, 'utf8')
   assert((src.match(/paperCompilePdf: \{ type: 'boolean' \}/g) || []).length === 2, '★★ BOTH v3 set_params tables were updated (spec v2 §B)')
   assert(/paper \[lang=zh\|en\] \[format=both\|md\|tex\] \[force\]/.test(src), 'the /vibe hint and usage advertise `paper`')
 }
@@ -573,7 +577,7 @@ console.log('\n-- PAPER §2 (v3): a pre-existing paper.pdf is never deleted or o
 // ================= D1 class guard: taught write-paths ⊆ the writer's whitelist =================
 console.log('\n-- D1 guard: every member-facing write path is one the writer accepts --');
 {
-  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const js = readFileSync(PLUGIN, 'utf8');
   const yml = readFileSync(new URL('../vibe-math-v3/agent.cordis.yml', import.meta.url), 'utf8');
   const plugin = js + '\n' + yml;
   // 1) the whitelist the writer really enforces (applyAgentWrites)
@@ -643,14 +647,14 @@ console.log('\n-- P2 (v3): 状态提交有完整性标记，撕裂提交可检�
 // ================= P5–P8 (v3): 状态完整性码形 =================
 console.log('\n-- P5–P8 (v3): 状态完整性码形 --');
 {
-  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const src = readFileSync(PLUGIN, 'utf8');
   assert(/State\/activity_log\.json/.test(src) && /State\/paper\.json/.test(src), '★★ [P5/P6] 活动日志与论文排队状态都进提交清单');
   assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src), '★★ [P7] 裁决日志名带 shortId 后缀');
   assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src), '★★ [P8] 框架分配命题 id 走 shortIdUnique');
 }
 console.log('\n-- F2cap: status/report 的 recentActivity 共用同一上限 --');
 {
-  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const src = readFileSync(PLUGIN, 'utf8');
   const m = /const ACTIVITY_REPORT_MAX = (\d+)/.exec(src);
   assert(!!m, '★★★ [F2cap] 存在命名上限常量 ACTIVITY_REPORT_MAX');
   const cap = Number(m ? m[1] : 0);
@@ -670,7 +674,7 @@ console.log('\n-- F2cap: status/report 的 recentActivity 共用同一上限 --'
 // ================= Frame contracts: planner vocabulary / method-keeper id =================
 console.log('\n-- Frame F1/F2: planner vocabulary == the code\'s accepted actions --');
 {
-  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const src = readFileSync(PLUGIN, 'utf8');
   const allowed = /const allowed = \{([^}]*)\}/.exec(src);
   assert(!!allowed, 'F1: the plan validator allow-list is readable');
   const codeActions = (allowed ? (allowed[1].match(/([a-z]+)\s*:\s*1/g) || []) : []).map((x) => x.split(':')[0].trim()).sort();
@@ -683,7 +687,7 @@ console.log('\n-- Frame F1/F2: planner vocabulary == the code\'s accepted action
 }
 console.log('\n-- Frame F3: method-keeper card-id contract --');
 {
-  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const src = readFileSync(PLUGIN, 'utf8');
   assert(/in the FILE NAME must be EXACTLY the id you list in `created`/.test(src), '★★ [F3] 帧写明「卡文件名里的 id 必须与 created 的 id 逐字相同」（与引理处的分类一致性同型）');
   assert(/调度器按 `created` 里的 id 去/.test(src), '★★ [F3] 帧解释了为什么要一致（调度器按 created 的 id 去找卡）');
   await call('vibe_math_sync_meta', { meta: { kind: 'methods', created: ['m-probeF3'], used: [], improvements: [] } });
@@ -723,7 +727,7 @@ console.log('\n-- F5/F7/F4v3: 两面字段集、人读报告本地化、v3 推�
   const st = await call('vibe_math_status', {});
   const rep = await call('vibe_math_report', {});
   assert('paper' in st && 'paper' in rep && 'at' in st && 'at' in rep, '★★★ [F5] paper/at 两面都有（status 与 report 字段集已对齐）');
-  const src3 = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const src3 = readFileSync(PLUGIN, 'utf8');
   assert(/请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理/.test(src3), '★★ [F4v3] v3 推送行也点名 vibe_math_list_agents（report 只给计数）');
   // F7 行为面：report 工具会编译人读报告 Logs/报告.md
   const findFile = (d, name) => {
@@ -749,7 +753,7 @@ console.log('\n-- F5/F7/F4v3: 两面字段集、人读报告本地化、v3 推�
 // the same poller as the project lock, and a holder that disappears expires (bounded, no deadlock).
 console.log('\n-- D2: 文件写锁是租约（活着就续租，消失后过期） --');
 {
-  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const js = readFileSync(PLUGIN, 'utf8');
   const callAs = async (n, a, agent) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent }));
   const ghost = { id: 'ghost-child', options: {}, session: { id: 'ghost-child', header: { cwd: WS } } };
   const target = 'Progress/q-lock/dL.md';
@@ -782,7 +786,7 @@ console.log('\n-- D2: 文件写锁是租约（活着就续租，消失后过期�
 // ================= D6: mkdir only when a write is actually needed (and silent without a shell) ======
 console.log('\n-- D6: 每轮日志不再无条件跑 shell mkdir --');
 {
-  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const js = readFileSync(PLUGIN, 'utf8');
   const flag = js.indexOf('let journalDirReady = false');
   const mkdir = js.indexOf('if (subprocessOf()) await ensureProgressDir(qid)');
   assert(flag !== -1 && mkdir > flag,
