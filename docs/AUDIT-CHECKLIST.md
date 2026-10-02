@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **55** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **88 项作业（job count）= 44 套件 + 44 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **56** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **89 项作业（job count）= 44 套件 + 45 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -582,7 +582,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | F2 v3 id 契约 | id 形状/唯一性契约 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**8** 族：F2cap / F-A / F5 / F4c / F6a / F6b / F6c + 本行） |
 | F3 v2 `list_agents` | 该工具必须存在且被提及 | **需新增 in-repo harness** |
 | F4 v2 require-gate 下一步 | 拒绝必须给出可执行的下一步 | **需新增 in-repo harness** |
-| A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | **需新增 in-repo harness** |
+| A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | 随包变异族（R14 实测）：`A5-ids` ⇒ **计数断言 0 红**、**ID-SET 语义断言红**，整轮 **82 红**；`A5-kinds` ⇒ **计数断言 0 红**、**KIND 语义断言红**，整轮 **21 红**。**正确措辞**：计数断言**保持绿**、新加的**语义断言必然变红**，其余红是**同一次变异的下游级联**（下游用例引用 id 前缀/kind）—— 不要写成"只有 ID-SET/KIND 变红" |
 | v5 L1 `leanPathContractOk` | Lean 路径契约（文档根 = 框架根） | **需新增 in-repo harness** |
 | v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **需新增 in-repo harness** |
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
@@ -673,6 +673,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **为什么是 180 s（两个实测数字，未来读者据此区分"慢但诚实"与"卡死"）**：整门禁墙钟 **~200 s**；最慢的诚实套件 **135–144 s**（`audit-math-computation-sensitivity`）。180 s 能兜住偶发挂起，又不会误杀诚实套件。
 - **命名覆盖（诚实但慢的套件，不是卡死）**：`run-tests.mjs` 的 `TIMEOUT_OVERRIDES` 给 `v2-fix-probes.mutants.mjs` 与 `v3-fix-probes.mutants.mjs` 各 **900 s**，理由是**实测**：v2 **≈43.1 s/族 × 10 族 ≈ 430 s**、v3 **≈23.5 s/族 × 11 族 ≈ 260 s**（两者内部已把**每个子进程封顶 120 s**，并报 `hangs=[]`，即"慢但诚实"）。**默认仍是 180 s**，普通挂起照旧被快速抓住；只有这两个具名套件被放宽。
 - **v5 家族的覆盖（门禁亲自抓到的校准缺口）**：`v5-institute-fixes.mutants.mjs` 实测**墙钟 201.9 s**（`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`）⇒ **超过 180 s 默认**，因此在 `TIMEOUT_OVERRIDES` 里给它同样的 **900 s**。对照：`formal-verify-v4.mutants.mjs` 实测 **70.9 s**，**无需**覆盖（余量充足）。**记录一次"写入方声明为假、被门禁抓住"的事故**：曾有声明称该 v5 家族已落在其覆盖之内，实际并未；门禁以具名失败 `FAILED: v5-institute-fixes.mutants.mjs [probe] (TIMEOUT after 180s)` 抓住了它 —— 这正是具名超时机制存在的意义（挂起≠还在跑）。
+- **全部变异族的实测总墙钟（覆盖决策的唯一依据）**：v2 **≈430 s**、v3 **≈260 s**（各 **900 s** 覆盖，pre-existing）、v5 **208.5 s**（最新实测；早先 201.9 s，**900 s** 覆盖）、`formal-verify-v4.mutants.mjs` **88.9 s**、`formal-verify-v3.mutants.mjs`（新增，同族门禁条件）**45.5 s**（1/1 具名红、`hangs=[]`、`skipped=[]`）—— **最后两个不需要任何覆盖**（远低于 180 s 默认）。各变异族现在都会打印一行 **TOTAL WALL TIME**；覆盖决策请引用那一行，而不是估算。
 - **改限的规矩**：抬高**默认值或任何覆盖值**都必须**同时更新本行的全部实测数字并在提交信息里说明**；不许为了让门禁变绿而悄悄改（上面三条覆盖用例正是为了让这条规矩可验证）。
 - **禁止**为了让门禁变绿而**悄悄抬高**这个值；确有套件变慢，请**同时**更新这里的两个数字与理由。
 - **怎么让它红一次（in-repo，两个方向）**：① `node tests/run-tests.mjs --self-check` 有一条**真实路径**用例 —— 合成 sleep 作业、`timeoutMs=1000`、走同一个 `runSuite`/`failedLine`，断言 `timedOut=true, exit=null` 且失败行 `FAILED: (synthetic-sleeper) [probe] (TIMEOUT after 1s)`；② 随包的 `tests/run-tests.mutants.mjs` 用 `GATE_SUITE_TIMEOUT_MS=1000` 对**真实套件**做**正例**（具名 TIMEOUT + 非零退出）与**反例**（默认限制下同一套件不报 TIMEOUT、exit 0），因此该判据被双向校验（§9.7 ㉗）。
@@ -696,15 +697,22 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 88`（44 套件 + 44 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 55（**文件计数**：17 个套件 + 38 个探针/脚本）。
+- **计数（实测）**：`TOTAL 89`（44 套件 + 45 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 56（**文件计数**：17 个套件 + 39 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 
 
-### F-5 沙箱围栏根（guard row，实测于 `6e32157`）
+### F-5 沙箱围栏根（guard row，实测于 `466a08b`+：`F-5/1c` 只从该提交起存在）
 
 - **实现**：v4 侧 `policyRootCandidatesOf()`（把解析出的策略对象映射为**候选围栏根**，数组/字符串两种形状都收）、`fenceRootDriftNote()`（把"宿主根 vs 会话根"的差异做成**一次性具名告警**）、`warnedFenceDrift`（**one-shot** 标志，防刷屏）。行为要点：**包含关系**判定（会话根必须落在宿主根内）、**数组**策略逐个取候选、**不可解释的策略 ⇒ no-op**（不是死分支）；`resolve({})` 的**回退调用被排除**在漂移比较之外；折叠仅在 **win32** 生效。
 - **断言锚点**：`tests/formal-verify-v4.test.mjs:1929` 的 `section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming both roots')`；用例命名见 `:1936` 的 NOTE（**case (0) = 宿主根本没有 `sandboxPolicy` 服务**；**case 1b = 服务存在但解析出的根不可解释（`{allow,deny}`）**）、`:1941`（F-5/i：无服务 ⇒ 策略路径从不运行、无告警）、`:1949`（F-5/1b：不可解释 ⇒ **no-op 且无告警**，属**文档化的**边界而非死分支），以及同节的 case ii/iii/iv（漂移比较被调用、包含判定、一次性命名两个根）。
 - **怎么让它红一次（in-repo，随包）**：`node tests/formal-verify-v4.mutants.mjs` —— **6/6 族**按名变红：`F-5/1b: treat \`allow\` as a fence root`、`F-5/ii: the drift comparison is never called`、`F-5/iii+iv: the containment predicate is disabled (always warn)`、`F-5/ii: the one-shot is dropped`、`N15/4: the compaction-failure warning is silenced`、**`F-5/1c: an unknown session cwd is warned about`**；输出 `hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`。**实测墙钟 67.2 s**（各族 12.5–15.0 s；早先记录的 ~58 s 是同一族在更早 revision 的读数），本仓的 `TIMEOUT_OVERRIDES` 无需为它放宽（< 180 s 默认）。
+- **"保持静默"的断言必须同时给出**"离被测分支最近的一步"的**活性证据**：这里能区分"分支真的跑了但选择不告警"与"分支压根没跑"的，是 **`resolve({session})` 的调用计数**（实测 `LIVENESS: resolve calls=11`），而**不是**"策略服务被查过"（同一个服务也被 `workspaceRoot()`/`getPolicy()` 读，查过 ≠ 走到这里），也**不是**"写入成功"（cwd 未知时同一次调用会因**无关的路径原因**返回 `ok:false`）。守卫：N17 的 `F-5/1c`（`tests/formal-verify-v4.test.mjs`）；随包变异：`tests/formal-verify-v4.mutants.mjs` 的**第六条**。
 - **两条文档化边界（有意行为，不是缺陷）**：① **策略里没有根字段 ⇒ no-op**（没有可比的东西，不告警）；② **会话 cwd 未知 ⇒ 构造性相等 ⇒ 静默**（把"未知"当相等，避免用猜测刷告警）——**现在是断言而非仅文档**：`tests/formal-verify-v4.test.mjs:1981`（`* F-5/1c an UNKNOWN session cwd stays SILENT`）与 `:1982`（`* F-5/1c LIVENESS: the helper really ran with an unknown cwd (resolve calls=…, policy queries=…)`）；随包家族的**第六条**即 `F-5/1c: an unknown session cwd is warned about`（**6/6** 族变红）。两者都必须在断言里保持为"**no warning**"，改动它们等于改契约。
 - **历史注记**：`docs/COMPAT-AUDIT-ROUND2.md` 的 §F-5 保留了 `2649a47` 的用例命名更正（case 1 / case 1b），那里是**历史**记录；本行是**可复核的守卫索引**。
+
+### 补遗四：语义单元、分层的断言与"计数是线索"（v4 writer 的措辞 + R14）
+
+- **F-3 / F-4c —— 计数是线索，判决要读在"语义单元"上**：`registerTool(` 有 **36** 个调用点（本仓实测），但**注册单元只有一个** —— 它们都经 `ctx.effect(() => tools.register({…}))`（`vibe-math-v4.js:4042-4047`），所以**没有任何调用点需要自带包装**。同理，失败的 mkdir 在 **`ensureDirs()` 内部**被一次性具名（`warnedMkdir` 声明于 `:353`，置位并告警于 `:507-508`），**覆盖所有调用方**，因此**不需要**任何调用方侧的返回值检查。判决要写成"**哪个单元**被统一/包装/检查了"，并给出 `file:line`。
+- **G-6 —— 分层，不重复**：**断言级**规则在 `tests/formal-verify-v4.test.mjs` 的 **SHIPPED ASSERTION RULES (C)**；**字段级**语义（`pendingSpawns` / `hostChildLimit`）归 `docs/status-report-fields.md`（本批待补该表；两处**不重复**同一句话）。
+- **A2 —— 同样是分层**：**断言级**规则在同上 **SHIPPED ASSERTION RULES (D)**；**实现级**变异族在 `tests/v5-institute-fixes.mutants.mjs` 的 **G1/G2**（实测该文件含 G1×3、G2×2、G4×2 的族名）。

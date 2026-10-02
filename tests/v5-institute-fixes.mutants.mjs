@@ -108,6 +108,8 @@ const FAMILIES = [
   },
   {
     // A5-ids: the COUNT stays 3 and the kinds stay right, but the researcher id PREFIX changes, so the
+    // MEASURED (R14): the count assertions stay GREEN and the ID-SET assertion reddens; the run's other
+    // reds (82) are the cascade of the same mutation - not a claim that only the new assertion reddens.
     // founded ID SET is no longer {acad, r-1, r-2}. This is the discriminator the count cannot catch.
     name: 'A5-ids: the researcher id prefix is renamed (count still 3)',
     from: "researcher: 'r-',",
@@ -116,6 +118,8 @@ const FAMILIES = [
   },
   {
     // A5-kinds: the COUNT stays 3 and the ids stay right, but a founded researcher's KIND is rewritten,
+    // MEASURED (R14): the count and ID-SET assertions stay GREEN and the KIND assertion reddens; the run's
+    // other reds (21) are the cascade of the same mutation - not a claim that only the new assertion reddens.
     // so the kind MULTISET is no longer {academician:1, researcher:2}.
     name: 'A5-kinds: a founded researcher kind is rewritten (count still 3)',
     from: "id: '', kind,",

@@ -422,6 +422,10 @@ console.log('\n[1] the hardened JSON backend (host with no session services at a
     const parsed = JSON.parse(readFileSync(stFile, 'utf8'))
     const inst = parsed.institutes['default::institute']
     assert(!!inst && inst.members.length === 3, 'the persisted state holds 1 academician + 2 researchers (got ' + (inst ? inst.members.length : 'none') + ')')
+// MEASURED (R14, FULL runs): under the A5-ids and A5-kinds mutants BOTH count assertions stay GREEN
+// (0 red) while the new ID-SET / KIND assertion necessarily reddens; those runs show 82 / 21 reds
+// overall, and the remaining ones are the CASCADE of the same mutation (downstream cases reference
+// the id prefix or the kind). So the claim is NOT "only the new assertion reddens".
 // A5: the COUNT is only a lead - assert the semantic unit too. The persisted roster must be
 // exactly {acad, r-1, r-2} by ID and {academician:1, researcher:2} by KIND, so a founding that
 // minted a duplicate id (the allocator returning the same value twice), founded a researcher with

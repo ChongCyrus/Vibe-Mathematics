@@ -318,6 +318,17 @@ async function runVerifyRound(root, target, results, timeoutMs) {
   await sleep(220)
   return un
 }
+/** V3-G1: `unfiredVerifiers(...).length` is a COUNT - the semantic unit is that the fired reviews are
+ *  DISTINCT slots (the `:<index>` suffix), i.e. two genuinely independent reviews of the same object.
+ *  A founding that spawns the same slot twice keeps the count at 2 and used to pass. */
+function assertDistinctSlots(round, tag) {
+  assert(Array.isArray(round) && round.length > 0, tag + ': verifiers were fired')
+  const idx = round.map((x) => String(x.label).split(':').pop())
+  const rIds = round.map((x) => String(x.label).split(':')[1])
+  assert(new Set(idx).size === idx.length, '* V3-G1 ' + tag + ': the reviews are DISTINCT verifier slots (indices=' + JSON.stringify(idx) + ')')
+  assert(new Set(rIds).size === 1, '* V3-G1 ' + tag + ': every review targets the SAME object (targets=' + JSON.stringify(rIds) + ')')
+}
+
 /** Abort + restart: gives the next verification a FRESH task, so a prompt is guaranteed to be
  *  constructed after whatever changed in between (mode switch, archived proof, …). */
 async function restart(root) {
@@ -340,6 +351,7 @@ await callTool('vibe_math_add_proposition', { id: 'p-off', 概述: '关模式下
 await callTool('vibe_math_start', {}, RA)
 const offRound = await runVerifyRound(RA, 'p-off', [1, 1])
 assert(offRound !== null && offRound.length === 2, 'off: two independent verifiers were asked (投票流程照常)')
+  if (offRound) assertDistinctSlots(offRound, 'off round')
 const offProj = projRoot('lean-off')
 assert(await drive(RA, () => existsSync(join(offProj, 'Verified', '命题', 'p-off.md')), 'off Verified card'), "'off' still finalizes on a unanimous boolean vote with NO Lean artifact")
 {
@@ -504,6 +516,7 @@ await callTool('vibe_math_add_proposition', { id: 'p-enc', 概述: '鼓励模式
 await callTool('vibe_math_start', {}, RD)
 const encBatch = await runVerifyRound(RD, 'p-enc', [0.9, 0.95])
 assert(encBatch !== null, 'encourage: the first review round was asked')
+  if (encBatch) assertDistinctSlots(encBatch, 'encourage round')
 if (encBatch) {
   const vp = encBatch.map((s) => s.prompt).join('\n')
   assert(/【Lean 形式化验证（鼓励模式）】/.test(vp), 'the review prompt explains the Lean mode')
@@ -1152,6 +1165,7 @@ await callTool('vibe_math_lean_archive', { kind: 'proof', target: 'p-fid', conte
 await callTool('vibe_math_start', {}, RK)
 const fidBatch = await runVerifyRound(RK, 'p-fid', [0.9, 0.95])
 assert(fidBatch !== null, 'fidelity: the review round was asked')
+  if (fidBatch) assertDistinctSlots(fidBatch, 'fidelity round')
 if (fidBatch) {
   const vp = fidBatch.map((s) => s.prompt).join('\n')
   assert(/一致 → Result = 1/.test(vp), "★ the review prompt states the faithful case as `Result = 1` (v3's REAL reply field, not v4/v5's verdict)")
