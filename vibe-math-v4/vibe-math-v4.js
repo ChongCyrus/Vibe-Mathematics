@@ -344,6 +344,9 @@ export function apply(ctx) {
     // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
     // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
     let warnedNoPolicy = false
+let warnedDeferFormalTodo = false   // F-6: name a swallowed deferForFormal failure once, WITH its consequence
+let warnedIndexRebuild = false   // F-6: name a swallowed settleLeanJob failure once, WITH its consequence
+let warnedCompaction = false   // F-6: name a swallowed realCompact failure once, WITH its consequence
 let warnedWriteFormalTodo = false   // F-6 (1/4): name a swallowed verify-conclusion write once, WITH its consequence
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
@@ -819,7 +822,7 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
         }
       }
       await writeLeanJob(settled)
-      try { await rebuildLeanLibIndexes() } catch(e){ /* best-effort */ }
+      try { await rebuildLeanLibIndexes() } catch(e){ if(!warnedIndexRebuild){ warnedIndexRebuild=true; console.error('vibe-math-v4: settleLeanJob: rebuildLeanLibIndexes failed - the library indexes are STALE; residents may reuse a stale index until the next successful rebuild') } /* best-effort */ }
       pushLeanNotice(settled,Object.assign({},run,{ok,hashMatch}))
       return settled
     }
@@ -2328,7 +2331,7 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       await rewriteSourceProb(target,mean,vs.targetOwner)
       if(!formalTodos.some(t=>t.id===target)) formalTodos.push({id:target,at:now(),why,verdict:isTrue?1:0})
       await putFormal(target,rec,formalTodos)   // single durable write of records + todo together
-      try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ /* best-effort */ }
+      try { await writeFormalTodo(); await writeFormalIndex() } catch(e){ if(!warnedDeferFormalTodo){ warnedDeferFormalTodo=true; console.error('vibe-math-v4: deferForFormal: writeFormalTodo/writeFormalIndex failed - the formal-required deferral (TODO + index) is NOT persisted; the object stays unverified and this decision is lost on reload') } /* best-effort */ }
       logActivity('verify',target+' 的表决结果为 '+(isTrue?'真':'假')+'，但 **require 模式**要求先有 Lean 通过或显式阻塞记录，因此本轮**不定论**（已记入 Formal/TODO.md；原因 formal-required）')
       verifyState=null; wakeKind.clear(); await saveAll()
       // Scheduling is done by finalizeVerify (doSchedule=true) AFTER it releases finalizeLock:
@@ -2572,7 +2575,7 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
           r.roundsSinceCompact=0; r.needCompact=true; r.contextPct=Math.min(r.contextPct||15,25)
           logActivity('compact', r.rId+' real /compact (shadowed '+result.shadowedSeqs.length+' items, ~'+String(result.shadowedTokenCount||0)+' tokens)')
         }
-      } catch(e){ /* real compaction unavailable/failed; the soft directive already covers it */ }
+      } catch(e){ if(!warnedCompaction){ warnedCompaction=true; console.error('vibe-math-v4: realCompact: the compaction call failed - context pressure was NOT compacted; the round/flag heuristic may desync from the real context size') } /* real compaction unavailable/failed; the soft directive already covers it */ }
     }
 
     // ---- liveness / scheduling ----
