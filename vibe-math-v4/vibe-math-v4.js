@@ -1279,15 +1279,23 @@ async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot
         return rows
       }
       const libRows=await scan(formalLibRoot(),'Formal/Lib','def')
-      await writeTextAbs(formalLibRoot()+'/Index.md',['# 可复用 Lean 定义库（跨项目）｜'+currentProject,'',
+      const _idxLibOk = await writeTextAbs(formalLibRoot()+'/Index.md',['# 可复用 Lean 定义库（跨项目）｜'+currentProject,'',
         '> 写新定义之前先查这里：能复用就不要重新定义。复用方式：`import Formal.Lib.<名称>`（模块根 = VibeMath 根，框架已加入编译搜索路径），或用 vibe_v4_lean_read 取原文逐字复制。','',
         '| 名称 | 文件 | 类别 | 依赖 | 摘要 |','|---|---|---|---|---|']
         .concat(libRows.length?libRows:['| （暂无） | | | | |']).join('\n')+'\n')
       const provedRows=await scan(formalProvedRoot(),'Formal/Proved','lemma')
-      await writeTextAbs(formalProvedRoot()+'/Index.md',['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜'+currentProject,'',
+      const _idxProvedOk = await writeTextAbs(formalProvedRoot()+'/Index.md',['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜'+currentProject,'',
         '> 这些文件是通过内核检查的引理，可直接 `import Formal.Proved.<名称>` 复用（模块根 = VibeMath 根）。','',
         '| 名称 | 文件 | 类别 | 依赖 | 陈述 |','|---|---|---|---|---|']
         .concat(provedRows.length?provedRows:['| （暂无） | | | | |']).join('\n')+'\n')
+      // ③ MEASURED: these two writes ignored `writeTextAbs`'s boolean (it swallows and returns
+      // false), so a failed index write looked like success - and that silence propagated to ALL SIX
+      // callers (settleLeanJob, writeLeanLibIndexesSafe, the three leanArchive paths, the lean_lib
+      // tool). Naming it HERE, once, covers every caller (same shape as ensureDirs/warnedMkdir).
+      if((_idxLibOk === false || _idxProvedOk === false) && !warnedIndexRebuild){
+        warnedIndexRebuild = true
+        console.error('vibe-math-v4: rebuildLeanLibIndexes: the Lean library index could NOT be written (lib=' + _idxLibOk + ' proved=' + _idxProvedOk + ') - the index is STALE until the next successful rebuild, so reuse lookups may miss entries')
+      }
       await writeFormalIndex()
       await writeFormalTodo()
       return {lib:libRows.length,proved:provedRows.length,objects:Object.keys(formalRecords()).length}

@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **61** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **94 项作业（job count）= 44 套件 + 50 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **62** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **95 项作业（job count）= 44 套件 + 51 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -537,8 +537,8 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-math-computation-parity.mjs` §7 / §8 | 描述符不得用未知占位符、每个占位符都有实现；cli 策略"声明一次 + 被消费"；僵尸字段（`winPrefix`/`stdinArgv`/`defaultOn`）不得回归 | `descriptor-sweep-proof.mjs`、`cli-policy-proof.mjs` |
 | `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言 + **A7 结构化断言**） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d`；**版本与 source 断言在 `detectDshVersion` 的结构化返回值上**（不是"日志里出现过这个版本串"或"出现过 source 这个词"），日志只保留一条**行形状**检查 | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A7-version ⇒ compat 74/3、A7-source ⇒ 75/2）。早先的 `_oneoff/auditR2/installer-mutants.mjs` 已被它取代（**仅开发检出**，历史） |
 | `tests/audit-installer-policy.test.mjs`（**A8 + 动作/语言约定**） | ① 措辞类断言换成**报告级**：`failedLog(logs).length === 0`（不是"日志里没有『备份失败』四个字"）；② **一个动作一行**：restore / cleanup 各**恰好一次**（`EXACTLY ONCE`）；③ **一个动作一种语言**：任何面向用户的日志**标签**（`[dsh-vibe-math] ` 之后、首个 `：`/`:` 之前）**不得是纯 ASCII**（英文领域词夹在中文标签里、如 `preset 声明方式`，是合规的）——**源码扫描 + 运行期捕获日志两侧都查**；只保留**一条**明确标注的 `[wording smoke check — the ONE allowed]` | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A8-failure ⇒ policy 86/9、DL-label ⇒ 93/2、DL-duplicate ⇒ 94/1） |
-| `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
-| `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | **随包** `tests/audit-persona-surface.mutants.mjs`（**3/3**：真实树基线绿 + **`PERSONA_ROOT` 副本树基线绿**（证明该缝忠实、变异才是红因）+ 注册一个未被提及的工具 ⇒ 守卫**具名红**）；另见本就随包的 `tests/audit-persona-sensitivity.mjs`（多探针，同一 `PERSONA_ROOT` 机制，含 `v2-phantom-tool-mentioned` 等） |
+| `tests/audit-persona-sensitivity.mjs`（并发/原子写） | 语料写入**原子**（临时文件 + rename），并发读者不会读到撕裂文件；敏感度运行前先"预热"语料 | **随包**：① 原子写的不变量在 `tests/audit-persona-surface.test.mjs` 的 `writeAtomic`（`renameSync`）与 `tests/audit-installer-policy.test.mjs` §10「preset writes are ATOMIC」（失败写不得触碰目标）里被断言；② 敏感度守卫自己在 `:75` 记录"surface 的写入是原子的（临时文件 + rename），并发写者无法撕裂"；③ 多探针 harness = `tests/audit-persona-sensitivity.mjs` 本身（`PERSONA_ROOT` 双方向 + SETUP-FAIL ≠ detection）。原 `_oneoff/auditR2/concurrency-proof.mjs` 的撕裂演示属**机制证据**（旧写法 100 撕裂 → 原子 0），已被上述断言取代 |
 
 > **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
 
@@ -573,7 +573,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ## 守卫索引补遗（fallout #4）
 
-**图例（红一次的要求）**：每一行都必须回答"我怎么让它**红一次**"。标 **in-repo** 的 harness 随包发布（`tests/**.mutants.mjs` 或套件内的变异/行为段），**包内读者可复现**；标 **dev-only** 的只能在本仓库的开发检出里跑（不在 `files[]`），**包内读者无法复现** —— 它们应被逐步转成 in-repo 形式。目前**唯一**随包的变异 harness 是 `tests/audit-path-discipline.mutants.mjs`；其余 `_oneoff/auditR2/*` 引用**均为 dev-only**。 （仅开发检出，不随包发布）
+**图例（红一次的要求）**：每一行都必须回答"我怎么让它**红一次**"。标 **in-repo** 的 harness 随包发布（`tests/**.mutants.mjs` 或套件内的变异/行为段，含 `--self-probe`），**包内读者可复现**；标 **dev-only** 的只能在本仓库的开发检出里跑（不在 `files[]`），**包内读者无法复现** —— 它们应被逐步转成 in-repo 形式。**当前随包的 `tests/*.mutants.mjs` 共 21 个**（计数单位 = 文件名，可由 `Get-ChildItem tests/*.mutants.mjs` / `ls tests/*.mutants.mjs` 复核；含本轮新增的 `audit-persona-surface.mutants.mjs`、`audit-installer-assertions.mutants.mjs`、`audit-status-report-fields.mutants.mjs` 等）；仍指向 `_oneoff/auditR2/*` 的行是**剩余待转换项**。
 
 | 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
 |---|---|---|
@@ -588,7 +588,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **需新增 in-repo harness** |
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
 
-**包边界核对（本轮实测）**：`package.json#files` 共 137 条，其中 `_oneoff` 条目 **0 条**；随包的 `*.mutants.mjs` 只有 ["tests/audit-path-discipline.mutants.mjs"]。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**，上表新增行凡标"需新增 in-repo harness"的，即尚未随包、也尚未在本轮补齐。 （仅开发检出，不随包发布）
+**包边界核对（`92c60cc` 实测）**：`package.json#files` 共 **168** 条，其中 `_oneoff` 条目 **0 条**；随包 `tests/*.mutants.mjs` **21 个**（单位 = 文件名；`ls tests/*.mutants.mjs` 可复核）。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**；上表凡标"需新增 in-repo harness"的行即尚未随包。**这两类数字都会随批次变化 —— 复核时请用上面两条命令重新派生，不要照抄本节。**
 
 
 ### 自检的能力边界（"自检通过" ≠ "兼容"）
@@ -696,7 +696,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 - **实现（三层，同一字面量）**：短句 `MATH_VERSION_POLICY_CLAUSE`（grep 锚点）是**唯一**的策略字面量；长句 `MATH_VERSION_POLICY` 由它**拼接派生**；`mathVersionPolicy(pinned)` 由长句派生**策略字段**（安装计划 `versionPolicy` 与运行/缺包路径同一处）；两条**人类消息**同样由短句派生 —— `MATH_MISSING_PACKAGES` 的失败详情（`需要的包未安装：…`）与 `parsePackageSpec` 的 `unsupported version syntax` 提示。因此"一句策略"覆盖**策略字段 + 两条消息**三处表面，短句字面量全文只出现 **1** 次。
 - **断言**：`tests/math-computation-shared.test.mjs` §34（**6** 条**行为**断言，从响应里读，grep 锚点 `S6: the install plan uses the SAME policy wording`）；`tests/audit-math-computation-parity.mjs` §11（**4** 条**静态**断言）。
-- **怎么让它红一次**：单点变异 —— 把安装计划处的助手调用改回旧措辞 ⇒ 共享 §34 **具名红**（实测 `370 passed / 3 failed`）。harness：`_oneoff/auditR2/s6-mutant.mjs`（**dev-only，未随包**）。
+- **怎么让它红一次**：单点变异 —— 把安装计划处的助手调用改回旧措辞 ⇒ 共享 §34 **具名红**（实测 `370 passed / 3 failed`）。harness（**随包**）：`node tests/math-computation-shared.test.mjs --self-probe`（S6 两个用例，与 §34 同一判据；`_oneoff/auditR2/s6-mutant.mjs` 只是同内容的早期 dev-only 草稿）。
 - **parity §11 是"树级"断言（已标注，不冒充可变异证明）**：它读的是**仓库里的随包副本**，刻意**不接** env seam —— 否则会踩协议 ㉟(iii)"loaded-seam vs repo file"（守卫该看仓库文件却看了夹具）。因此它**不能**被 env-seam 变异变红；它的价值是"有人手改仓库副本就会红"，与 parity 的字节一致检查同属一类。
 - **数字（revision `ef54f4d` + 未提交内容哈希；数字不带 revision 不复现）**：shared **373/0** → 变异后 **370/3**；parity **107/0**；contract **200/0**；`--self-probe` **2/2**（各 372/1）；`COPIES OK`。sha256 前缀：`math-computation.js` `8963ec58ba5eb547`、shared `d822d176a6adae06`、parity `440e308dbe4b07f5`。
 
@@ -710,7 +710,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 94`（44 套件 + 50 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 61（**文件计数**：17 个套件 + 44 个探针/脚本）。
+- **计数（实测）**：`TOTAL 95`（44 套件 + 51 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 62（**文件计数**：17 个套件 + 45 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

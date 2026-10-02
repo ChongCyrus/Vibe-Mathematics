@@ -73,6 +73,7 @@
     "tests/audit-status-report-fields.mjs",
     "tests/audit-status-report-fields.mutants.mjs",
     "tests/audit-installer-assertions.mutants.mjs",
+    "tests/audit-persona-surface.mutants.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",

@@ -130,6 +130,14 @@ const FAMILIES = [
     to: 'if(false){',
     expect: /N18 the failed .*write is NAMED exactly once/,
   },
+  {
+    // ③: the in-function naming is removed again, so a failed index write is silent for all six
+    // callers (the measured pre-fix behaviour).
+    name: 'N20-3b: a failed index write is silent again',
+    from: 'if((_idxLibOk === false || _idxProvedOk === false) && !warnedIndexRebuild){',
+    to: 'if(false){',
+    expect: /N20-3b a failed index write is NAMED exactly once/
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

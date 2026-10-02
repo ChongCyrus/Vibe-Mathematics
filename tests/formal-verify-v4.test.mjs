@@ -2063,6 +2063,35 @@ section('N18 F-6: a failed current-project marker write is NAMED exactly once')
 }
 
 
+section('N20-3b rebuildLeanLibIndexes: a failed INDEX WRITE is NAMED once (covers all six callers)')
+{
+  // ③ callsite enumeration (measured at this revision) and verdicts:
+  //   · settleLeanJob (:893)           - own try/catch naming (in-suite capture = measured boundary)
+  //   · writeLeanLibIndexesSafe (:1006) - boundary: cold-recovery convenience, rebuilt again later
+  //   · leanArchive def/proof/blocked (:1394/:1438/:1452) - silent because the FUNCTION swallowed
+  //   · the lean_lib tool (:4139)      - silent for the same reason (measured: ok:true + counts)
+  //   => ONE fix inside the function covers all six; this asserts the naming.
+  const h = await mount()
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
+  const hits = () => seen.filter(l => /rebuildLeanLibIndexes: the Lean library index could NOT be written/.test(l))
+  try {
+    // (a) anti-vacuity: a healthy rebuild is SILENT
+    await h.callTool('vibe_v4_lean_lib', {})
+    await sleep(30)
+    assert(hits().length === 0, '* N20-3b a healthy index rebuild is silent (the case is not vacuous)')
+    // (b) one injected index-write failure => exactly one NAMED warning WITH its consequence
+    fsWriteFailPred = (p) => /(?:Lib|Proved)[\\/]Index\.md$/i.test(String(p))
+    fsWriteFailOnce = true
+    const r = await h.callTool('vibe_v4_lean_lib', {})
+    await sleep(30)
+    assert(hits().length === 1, '* N20-3b a failed index write is NAMED exactly once (matched=' + hits().length + ' of ' + seen.length + ' stderr lines)')
+    assert(/STALE until the next successful rebuild/.test(hits()[0] || ''), '* N20-3b the warning STATES THE CONSEQUENCE (the index is stale until the next successful rebuild)')
+    assert(!!r && r.ok === true, '* N20-3b and the tool still answers with the scanned counts (the naming is additive, not a new failure mode)')
+  } finally { console.error = realErr; fsWriteFailPred = null; fsWriteFailOnce = false }
+}
+
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')
