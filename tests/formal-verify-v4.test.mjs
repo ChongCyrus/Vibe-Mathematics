@@ -23,6 +23,15 @@
 //   site 4 realCompact      - realCompact returns early unless liveAgentOf(r.childId) resolves; this
 //                             mock's agents.get() maps only sess-A, so a resident turn never reaches
 //                             the compaction call (probe: the service is never invoked).
+// F-6 (:786) FIXED, not merely bounded: a failed build-context comparison now records
+// `contextChanged=null` (unknown != unchanged) and emits a one-time named warning (warnedContextProbe,
+// wording states the consequence). It carries NO automated assertion here: the branch is UNREACHABLE
+// from this host mock - `leanBuildContext()` is non-throwing by construction (its only host call,
+// resolveExecutable, is wrapped and degrades to the configured name) and every other step is a
+// defensive coercion over agent-settable params (leanSearchPaths/leanArgs are Array.isArray-guarded and
+// String()-coerced). A mutant without an assertion would prove nothing, so none is claimed.
+// Consumer check (repo-wide grep of `contextChanged`): only 4 references, all in v4's settle paths -
+// the field is write-only for the JSON reader, so `null` cannot be mis-read as `false`.
 // Sites 3/4 carry test-side injection switches in the F-6 work branch (_oneoff/tw-patch.mjs) which
 // can be re-landed together with a host-side caller discriminator.
 // V4 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)

@@ -348,6 +348,7 @@ let warnedDeferFormalTodo = false   // F-6: name a swallowed deferForFormal fail
 let warnedIndexRebuild = false   // F-6: name a swallowed settleLeanJob failure once, WITH its consequence
 let warnedCompaction = false   // F-6: name a swallowed realCompact failure once, WITH its consequence
 let warnedWriteFormalTodo = false   // F-6 (1/4): name a swallowed verify-conclusion write once, WITH its consequence
+let warnedContextProbe = false   // F-6 (:786): name a failed build-context comparison once (unknown != unchanged)
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
@@ -784,10 +785,16 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
       // the job was in flight, RECORD that the current context differs (the compile itself was done
       // with the recorded context, which is what the job id attests to).
       let contextChanged=false
-      try { const nowCtx=await leanBuildContext()
+      try {
+        const nowCtx=await leanBuildContext()
         contextChanged=JSON.stringify([nowCtx.engine,nowCtx.argv,nowCtx.searchPaths])!==JSON.stringify([(job.build||{}).engine,(job.build||{}).argv,(job.build||{}).searchPaths])
-        if(contextChanged) logActivity('formal','作业 '+job.jobId+' 的结果属于记录中的构建上下文（engine/argv/search-paths 已被改动，未影响该次编译的结论）')
-      } catch(e){ /* best effort */ }
+      } catch(e){
+        // F-6 (:786): a comparison that could NOT run must not be recorded as "unchanged" -
+        // unknown != unchanged. Record null AND name it once, with the consequence.
+        contextChanged=null
+        if(!warnedContextProbe){ warnedContextProbe=true; console.error('vibe-math-v4: settleLeanJob: the build-context comparison could not be performed - contextChanged=false is NOT a measurement (recorded as null/unknown)') }
+      }
+      if(contextChanged===true) logActivity('formal','作业 '+job.jobId+' 的结果属于记录中的构建上下文（engine/argv/search-paths 已被改动，未影响该次编译的结论）')
       const ok=!!(run&&run.ok)&&hashMatch
       const timedOut=!!(run&&run.timedOut)
       const state=ok?'settled':(timedOut?'timeout':'failed')
