@@ -57,6 +57,8 @@
     "tests/audit-package-membership.mjs",
     "tests/audit-package-membership.mutants.mjs",
     "tests/audit-v5-prompt-duplication.mjs",
+    "tests/math-computation-a1.mutants.mjs",
+    "tests/e2e-identity-a6.mutants.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",

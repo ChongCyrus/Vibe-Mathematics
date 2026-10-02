@@ -576,10 +576,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 | 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
 |---|---|---|
-| A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
-| A6 name-set 快照 | 工具名集合变化必须被察觉 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
-| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
-| F2 v3 id 契约 | id 形状/唯一性契约 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
+| A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | in-repo：`tests/math-computation-a1.mutants.mjs`（**2/2** 族具名红，`skipped=[]`，`exit=0`；v2/v3 两个预设） |
+| A6 name-set 快照 | 工具名集合变化必须被察觉 | in-repo：`tests/e2e-identity-a6.mutants.mjs`（**2/2** 族具名红，`skipped=[]`，`exit=0`；v2/v3 两个预设） |
+| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**8** 族：F2cap / F-A / F5 / F4c / F6a / F6b / F6c + 本行） |
+| F2 v3 id 契约 | id 形状/唯一性契约 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**8** 族：F2cap / F-A / F5 / F4c / F6a / F6b / F6c + 本行） |
 | F3 v2 `list_agents` | 该工具必须存在且被提及 | **需新增 in-repo harness** |
 | F4 v2 require-gate 下一步 | 拒绝必须给出可执行的下一步 | **需新增 in-repo harness** |
 | A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | **需新增 in-repo harness** |
