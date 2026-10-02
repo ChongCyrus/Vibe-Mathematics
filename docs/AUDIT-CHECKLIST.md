@@ -529,7 +529,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-v3-registration-parity.mjs` | v3 的工具注册与声明面一致 | 该套件自身（`run-tests.mjs:87-90` 以显式 args 运行它） |
 | `tests/formal-verify-v4.test.mjs` §N5–§N9 | N5/N6 路径纪律；N9 行为证明：写到**文档化路径**的卡片必须被 `countArtifacts` 计入（自动会议基数） | 该套件自身的变异/行为断言（§N9 为真机行为证明） |
 | `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | `_oneoff/auditR2/participant-set-proof.mjs`（6/6） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
-| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） **in-repo 证据（可从 tarball 复现）**：`node tests/math-computation-shared.test.mjs --self-probe` —— 删掉**一行** `fail()` 白名单（`out.absent = extra.absent`）后，子进程读数 **361 passed / 1 failed**，具名 §32 断言（"the failure carries an absent[] list"）；默认运行 **362/0** 不变。 |
 | 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | `roundA-mutants.mjs` a1/a2、`round9-mutants.mjs` |
 | 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | `_oneoff/auditR2/descriptor-sweep-proof.mjs`（3/3） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
 | 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | `_oneoff/auditR2/cli-policy-proof.mjs`（4/4）+ 敏感度探针 `cli-policy-ignored` （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
