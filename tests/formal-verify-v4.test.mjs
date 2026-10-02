@@ -20,7 +20,12 @@
 //                             attempted (run every other rebuild caller first, then arm): the settle
 //                             path's index write was still never reached (measured failed=0) -
 //                             caller-discriminating injection attempted, still not reached.
-//   site 4 realCompact      - realCompact returns early unless liveAgentOf(r.childId) resolves; this
+//   site 4 realCompact      - SURFACED (section N15): the mock resolves the child agent and exposes a
+//                             THROWING compaction service only under an injection switch, so a completed
+//                             resident turn reaches realCompact and its catch is asserted to NAME the
+//                             failure exactly once with its consequence (mutant: the warning guard
+//                             disabled => `460/2`, red on N15/4).
+//   site 4 (old note)       - realCompact returns early unless liveAgentOf(r.childId) resolves; this
 //                             mock's agents.get() maps only sess-A, so a resident turn never reaches
 //                             the compaction call (probe: the service is never invoked).
 // F1 COVERAGE HOLE (window) - measured, not assumed. The consensus-membership fix (predicate + roster
@@ -115,7 +120,8 @@ let subprocessAvailable = true
 // Used by §13 to prove the withdrawal is not a best-effort delete: the framework must confirm the
 // file is gone through the fs service and fall back to overwriting it with a withdrawal notice.
 let shellDeletesFiles = true
-let shellMkdirExit = 0        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
+let shellMkdirExit = 0
+let compactionFails = false   // F-6 site 4: expose a THROWING compaction service + resolve child agents        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
 const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
 const shellCalls = []        // every platform-shell script (mkdir at mount, Remove-Item on defect)
@@ -183,7 +189,14 @@ function makeHost() {
   const subprocess = makeSubprocess()
   let ROOT
   const ctx = {
-    get(name) { return name === 'subprocess' && subprocessAvailable ? subprocess : undefined },
+    get(name) {
+      if (name === 'subprocess' && subprocessAvailable) return subprocess
+      if (name === 'compaction' && compactionFails) return {
+        async compactIfNeeded() { throw new Error('COMPACTION_FAIL (injected)') },
+        async compactNow() { throw new Error('COMPACTION_FAIL (injected)') },
+      }
+      return undefined
+    },
     on(e, fn) { (listeners[e] = listeners[e] || []).push(fn) },
     effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } },
     logger: { info() {}, warn() {}, error() {} },
@@ -197,7 +210,10 @@ function makeHost() {
       async sendMessage(parent, childId, blocks) { followups.push({ childId, blocks }) },
       interrupt() {},
     },
-    agents: { roots() { return [] }, get(id) { return id === 'sess-A' ? ROOT : undefined } },
+    agents: { roots() { return [] }, get(id) {
+      if (compactionFails && id && id !== 'sess-A') return { id, session: { id, header: { cwd: WS, parentSession: 'sess-A' } } }
+      return id === 'sess-A' ? ROOT : undefined
+    } },
     fs: {
       async resolve(rel, opts) { const b = (opts && opts.cwd) || WS; const p = (typeof rel === 'string' && isAbsolute(rel)) ? rel.replace(/\//g, '\\') : join(b, ...String(rel).split('/')); return { targetKey: p, displayPath: p } },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
@@ -1856,6 +1872,29 @@ section('N13 F1 invariant guards: membership predicates + roster-only ballots (s
   assert(/_inRoster\s*=\s*!Array\.isArray\(verifyState\.rosterSnapshot\)\s*\|\|\s*verifyState\.rosterSnapshot\.indexOf\(r\.rId\)!==-1/.test(srcF1), '* F1/2 the ballot recording site is guarded by the FROZEN roster (verdicts keys are a subset of rosterSnapshot)')
   const gF1 = srcF1.indexOf('if(!_inRoster)'), aF1 = srcF1.indexOf('verifyState.verdicts[r.rId]={prob:p')
   assert(gF1 !== -1 && aF1 > gF1 && (aF1 - gF1) < 400, '* F1/2 the verdict assignment sits INSIDE that guard (distance=' + (aF1 - gF1) + ' chars)')
+}
+
+section('N15 F-6 site 4: a failed compaction is NAMED exactly once (realCompact -> onResidentEnd)')
+{
+  const h = await establish()
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
+  try {
+    compactionFails = true
+    // the turn end is only processed for a BUSY resident (`if(!busy.delete(r.rId)) return`), so
+    // wake it first, exactly like the suite's workWake() helper does.
+    const before = h.followups.length
+    await h.callTool('vibe_v4_message', { to: 'r-1', content: '请继续推进。' })
+    for (let i = 0; i < 300 && h.followups.length === before; i++) await sleep(10)
+    const cid = h.followups[h.followups.length - 1].childId
+    assert(!!cid, '* N15/4 the resident was woken so the turn end reaches onResidentEnd (childId=' + cid + ')')
+    h.fireEnd(cid, { summary: '推进本轮。', solved: false, contextPct: 20 })
+    for (let i = 0; i < 80 && !seen.some(l => /realCompact: the compaction call failed/.test(l)); i++) await sleep(10)
+    const w = seen.filter(l => /realCompact: the compaction call failed/.test(l))
+    assert(w.length === 1, '* N15/4 realCompact: a failed compaction is NAMED exactly once (matched=' + w.length + ' of ' + seen.length + ' stderr within 800ms)')
+    assert(/NOT compacted/.test(w[0] || ''), '* N15/4 the warning STATES THE CONSEQUENCE (context pressure was NOT compacted)')
+  } finally { console.error = realErr; compactionFails = false }
 }
 
 console.log('passed=' + passed + ' failed=' + failed)
