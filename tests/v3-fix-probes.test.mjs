@@ -66,8 +66,11 @@ let latexCfg = null          // { engines: [...], failFirst?, alwaysFail?, mode?
 let refuseNext = 0           // 接下来的 N 次 startContinuable 抛宿主激活上限（ACTIVATION_LIMIT_REACHED）
 let lastPrompt = ''          // 最近一次子代理提示词（断言用）
 const latexSeen = {};
+// §9.7 ⑱：v3 是模块级单例 harness ⇒ 用逐块重置的失败开关（默认全关，块内 try/finally 恢复）
+const probe = { failList: false, failInterrupt: false, failWritePath: '', policyRoot: '' };
 const ctx = {
   get(name) {
+    if (name === 'sandboxPolicy' && probe.policyRoot) return { resolve(req) { return Object.assign({}, req && req.session ? { session: true } : {}, { workspaceRoot: probe.policyRoot }) } };
     if (name === 'subprocess') {
       return {
         async resolveExecutable(cmd) {
@@ -104,21 +107,21 @@ const ctx = {
   tools: { register(spec) { toolRegs.push(spec); } },
   commands: { register(spec) { cmdRegs.push(spec); return () => {}; } },
   subagents: {
-    list() { return ['spawn']; },
+    list() { if (probe.failList) throw new Error('mock list failure'); return ['spawn']; },
     async startContinuable({ label, request }) {
       if (refuseNext > 0) { refuseNext -= 1; throw new Error('ACTIVATION_LIMIT_REACHED: cannot start a new child: active child limit: 2'); }
       const childId = 'c' + (spawns.length + 1);
       lastPrompt = (request && request.prompt && request.prompt[0] && request.prompt[0].text) || '';
       spawns.push({ label, childId, request }); return { childId };
     },
-    async sendMessage() {}, async followup() {}, interrupt() {},
+    interrupt() { if (probe.failInterrupt) throw new Error('mock interrupt failure'); },
   },
   agents: { roots() { return []; }, get() { return undefined; } },
   fs: {
     async resolve(rel, opts) { return join((opts && opts.cwd) || WS, ...String(rel).split('/')); },
     async stat(t) { return existsSync(t) ? { type: 'file' } : undefined; },
     async readText(t) { return readFileSync(t, 'utf8'); },
-    async writeText(t, content) { mkdirSync(dirname(t), { recursive: true }); writeFileSync(t, content, 'utf8'); },
+    async writeText(t, content) { if (probe.failWritePath && String(t).includes(probe.failWritePath)) throw new Error('mock write failure: ' + probe.failWritePath); mkdirSync(dirname(t), { recursive: true }); writeFileSync(t, content, 'utf8'); },
     async listDir(t) { if (!existsSync(t)) return []; return readdirSync(t, { withFileTypes: true }).map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })); },
   },
 };
@@ -722,6 +725,21 @@ console.log('\n-- F4c: shell 兜底失败不能沉默 --');
   const bodyOf = (name) => { const i = src4c.indexOf('async function ' + name + '('); if (i === -1) return ''; const j = src4c.indexOf('\n  }', i); return j === -1 ? src4c.slice(i, i + 900) : src4c.slice(i, j + 4); };
   assert(/warnShellOnce\('ensureDirs/.test(bodyOf('ensureDirs')), '★★★ [F4c] ensureDirs 失败不是沉默（调用 warnShellOnce）');
   assert(/warnShellOnce\('removeFile/.test(bodyOf('removeFile')), '★★ [F4c] removeFile 失败同样告警（同一类降级路径）');
+}
+console.log('\n-- F6a/v3: list() 失败时的一次性回退告警 --');
+{
+  const realErr = console.error; const buf = [];
+  try {
+    console.error = (...a) => buf.push(a.map(String).join(' '));
+    probe.failList = true;
+    await call('vibe_math_new_project', { name: 'p' });
+    await call('vibe_math_add_problem', { id: 'qA6v3', description: 'x' });
+    await call('vibe_math_start', {});
+    for (let i = 0; i < 40 && spawns.length === 0; i++) await sleep(150);
+    await sleep(200);
+  } finally { probe.failList = false; console.error = realErr; }
+  const hits = buf.join('\n').split('\n').filter((l) => /pickProvider\(\) falling back to 'spawn'/.test(l));
+  assert(hits.length === 1 && /subagents\.list\(\) failed/.test(hits[0] || ''), '★★★ [F6a/v3] list() 失败的一次性回退告警可见且内容正确（实测 ' + JSON.stringify(hits) + '，spawns=' + spawns.length + '）');
 }
 console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
 {
