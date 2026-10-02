@@ -39,6 +39,17 @@ ok(unlistedCited.length === 0, 'every guard-index-cited test file is listed (or 
 ok(listed.has('tests/audit-package-membership.mjs'), 'this audit itself ships')
 ok(!listed.has('tests/audit-market-metadata.test.mjs'), 'the self-excluded repo-only guard is NOT listed (its own assertion)')
 const missingPaths = [...listed].filter((f) => !existsSync(join(REPO, f)))
+// docs sibling rule: a doc cited by a SHIPPED file must ship too (docs/** was previously uncovered).
+const citers = ['README.md', 'README.en.md', 'docs/AUDIT-CHECKLIST.md', 'docs/COMPAT-AUDIT-ROUND2.md']
+const docRefs = new Set()
+for (const c of citers) {
+  const cp = join(REPO, c)
+  if (!existsSync(cp)) continue
+  for (const m of readFileSync(cp, 'utf8').matchAll(/docs\/[A-Za-z0-9._-]+\.md/g)) docRefs.add(m[0])
+}
+ok(docRefs.size > 0, 'shipped files cite at least one docs/*.md')
+const unlistedDocs = [...docRefs].filter((f) => !listed.has(f))
+ok(unlistedDocs.length === 0, 'every docs/*.md cited by a shipped file is listed in package.json#files', JSON.stringify(unlistedDocs))
 ok(missingPaths.length === 0, 'every listed path exists', JSON.stringify(missingPaths))
 console.log('')
 console.log('=== PACKAGE MEMBERSHIP: ' + passed + ' passed, ' + failed + ' failed ===')
