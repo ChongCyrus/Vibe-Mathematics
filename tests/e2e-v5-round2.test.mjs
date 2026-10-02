@@ -789,12 +789,49 @@ console.log('\n[15] the host live-child cap (ACTIVATION_LIMIT_REACHED) is named,
   assert(hired.ok === false && hired.code === 'ACTIVATION_LIMIT_REACHED', 'hire reports the host cap by its typed code (' + JSON.stringify(hired).slice(0, 160) + ')')
   assert(/maxActiveSubagents/.test(hired.message || ''), 'the hire failure names maxActiveSubagents, not the opaque host string')
   assert(hostCalls === callsBefore, 'the host was NOT asked again once the ceiling was known (skip-before-spawn; hostCalls=' + hostCalls + ')')
-  // The refused work is QUEUED, not lost: freeing a slot (fire a member) lets the next round retry.
+  // The refused work is QUEUED, not lost. G-6: freeing a slot is now picked up by the framework's
+  // OWN scheduling pass (`retryPendingSpawns()` is the first line of `schedulePass`), so the
+  // PRIMARY assertion here is the TERMINAL STATE — timing-independent, path-independent:
+  // baseline: the product's OWN derived queue, snapshotted immediately before the fire
+  const preAuto = await h.callTool('vibe_v5_status', {})
+  const queuedBeforeAuto = (preAuto.pendingSpawns || []).map(p => p.id)
+  assert(queuedBeforeAuto.length >= 1, 'precondition: deferred members are queued before the automatic case (' + JSON.stringify(queuedBeforeAuto) + ')')
   await h.callTool('vibe_v5_fire', { id: 'r-1', reason: 'cap test' })
-  const resumed = await h.callTool('vibe_v5_resume', {})
-  assert(resumed.ok === true && resumed.respawned >= 1, 'a slot freed by firing a member lets resume rebuild a capped member (respawned=' + (resumed && resumed.respawned) + ')')
+  await h.settleSpawns()
   const st2 = await h.callTool('vibe_v5_status', {})
   assert(st2.members.filter(m => m.phase === 'active' && m.childId).length === CAP, 'the institute is back at the host ceiling (active=' + st2.members.filter(m => m.phase === 'active').map(m => m.id).join(',') + ')')
+  // ONE freed slot is spent on the deferred work: the queue SHRINKS by exactly one (more members may
+  // be refused than a single freed slot can take — the rest stay queued, visibly).
+  const pendingAfterAuto = (st2.pendingSpawns || []).map(p => p.id)
+  const rebuiltByAuto = queuedBeforeAuto.filter(id => pendingAfterAuto.indexOf(id) === -1)
+  assert(rebuiltByAuto.length === 1 && pendingAfterAuto.length === queuedBeforeAuto.length - 1,
+    '★ the freed capacity was spent on exactly ONE deferred member (queued=' + JSON.stringify(queuedBeforeAuto) + ' → pending=' + JSON.stringify(pendingAfterAuto) + ', rebuilt=' + JSON.stringify(rebuiltByAuto) + ')')
+  assert(rebuiltByAuto.every(id => (st2.members.find(m => m.id === id) || {}).phase === 'active'),
+    '★ the rebuilt deferred member is ACTIVE (' + JSON.stringify(rebuiltByAuto) + ')')
+  // The MANUAL `resume` rebuild path stays pinned too — with the automatic retry disabled by the
+  // documented test seam, `resume` is the only thing that can rebuild, so this cannot race the
+  // scheduler (a disjunction accepting either path would be fine ONLY next to the terminal check).
+  process.env.V5_SPAWN_RETRY = 'manual'
+  try {
+    const beforeManual = await h.callTool('vibe_v5_status', {})
+    const queuedBeforeManual = (beforeManual.pendingSpawns || []).map(p => p.id)
+    assert(queuedBeforeManual.length >= 1, 'precondition: at least one deferred member is queued before the manual case (' + JSON.stringify(queuedBeforeManual) + ')')
+    // free exactly one slot; with the seam on, NOTHING rebuilds it — that is what makes the next
+    // assertion attributable to `resume` alone
+    const victim = beforeManual.members.find(m => m.phase === 'active' && m.childId)
+    await h.callTool('vibe_v5_fire', { id: victim.id, reason: 'manual-resume case' })
+    await h.settleSpawns()
+    const afterFree = await h.callTool('vibe_v5_status', {})
+    assert((afterFree.pendingSpawns || []).length === queuedBeforeManual.length,
+      '★ with the automatic retry disabled the freed slot leaves the queue UNTOUCHED (' + JSON.stringify((afterFree.pendingSpawns || []).map(p => p.id)) + ')')
+    const resumed = await h.callTool('vibe_v5_resume', {})
+    assert(resumed.ok === true && resumed.respawned >= 1,
+      'the MANUAL resume path rebuilds a deferred member on its own (respawned=' + (resumed && resumed.respawned) + ')')
+    const st3 = await h.callTool('vibe_v5_status', {})
+    const rebuilt = queuedBeforeManual.filter(id => (st3.members.find(m => m.id === id) || {}).phase === 'active')
+    assert(rebuilt.length >= 1, '★ the member `resume` was asked to rebuild is ACTIVE now (' + JSON.stringify(rebuilt) + ')')
+    assert(st3.members.filter(m => m.phase === 'active' && m.childId).length >= CAP, 'after the manual resume the terminal state holds the ceiling (active=' + st3.members.filter(m => m.phase === 'active').map(m => m.id).join(',') + ')')
+  } finally { delete process.env.V5_SPAWN_RETRY }
 }
 
 // ---------- 16. a state file that was never loaded must never be overwritten (audit H1) --------

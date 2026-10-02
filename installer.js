@@ -533,7 +533,7 @@ async function checkHostCapabilities(ctx, logger) {
   if (problems.length > 0) {
     logger?.warn?.('[dsh-vibe-math] 宿主自检：' + problems.length + ' 项不满足（' + problems.join('；') + '）。v2/v3/v4/v5 预设依赖这些宿主服务/API，旧版或未经声明兼容的 DSH 可能无法挂载' + (dshVersion ? '（当前检测到 DSH v' + dshVersion + '，来源 ' + versionSource + '，本包适配 ' + (supported.length ? supported.join(' / ') : '(未声明)') + '）' : '') + '。')
   } else {
-    logger?.info?.('[dsh-vibe-math] 宿主自检通过：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (degradations.length === 0 ? '，可选服务 subprocess / sandboxPolicy / compaction 亦齐备' : '（可选服务有缺失，见上方警告）') + (dshVersion ? '（当前 DSH v' + dshVersion + '，来源 ' + versionSource + '；本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
+    logger?.info?.('[dsh-vibe-math] 宿主自检通过（“自检通过” ≠ “兼容”：这里只证明服务/API 的**形状**，不证明**行为**语义）：subagents / agents / tools / commands / fs 服务及关键 API 均可用' + (degradations.length === 0 ? '，可选服务 subprocess / sandboxPolicy / compaction 亦齐备' : '（可选服务有缺失，见上方警告）') + (dshVersion ? '（当前 DSH v' + dshVersion + '，来源 ' + versionSource + '；本包已声明兼容 ' + supported.join(' / ') + '）' : '') + '。')
   }
   return { dshVersion, versionSource, mechanism }
 }

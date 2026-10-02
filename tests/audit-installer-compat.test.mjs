@@ -233,6 +233,15 @@ console.log('=== 4. a pluginManager that never answers must not hold the row ===
 }
 
 console.log('')
+// The self-check proves service/API SHAPE only - never runtime SEMANTICS. The caveat must be on the
+// USER-VISIBLE pass line, so a passing self-check is not read as a compatibility claim.
+{
+  const src = readFileSync(INSTALLER_SRC, 'utf8')
+  const line = src.split(/\r?\n/).find((l) => l.indexOf('自检通过') !== -1 && l.indexOf('logger') !== -1) || ''
+  ok(line.length > 0, 'the installer reports a passing host self-check')
+  ok(line.indexOf('形状') !== -1 && line.indexOf('行为') !== -1, '★ self-check caveat: the PASS line states that SHAPE is proven and BEHAVIOUR is not', JSON.stringify(line.slice(0, 90)))
+}
+
 console.log('=== INSTALLER COMPAT: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')

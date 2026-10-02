@@ -463,8 +463,27 @@ const ACTIVITY_REPORT_MAX = 30
   // Progress_Logs/ 必须和别的骨架目录**一起**建出来（审计 L8）：vibe_math_report 会写
   // `Progress_Logs/report.json`，README 也把它列为布局的一部分，但此前它只靠 writeText 的隐式
   // mkdir 兜底——在宿主不支持删除/创建的路径上（runShell 失败）报告目录就时有时无。
-  async function ensureDirs() { const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Progress_Logs', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Formal/Jobs', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State', 'Computation']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths)) }
-  async function removeFile(rel) { const base = frameworkRoot(); return await runShell(rmCmd(base + '/' + rel)) }
+  // F-4c：shell 兜底失败不能沉默（v2 有 warnShellOnce，v3 此前丢了 ⇒ mkdir/rm 失败无人知晓）。
+  const shellWarned = {}
+  function warnShellOnce(where, r) {
+    const why = (r && (r.error || (r.exitCode === undefined ? undefined : ('exit code ' + r.exitCode)))) || 'unknown failure'
+    const key = String(where) + '|' + why
+    if (shellWarned[key]) return
+    shellWarned[key] = true
+    console.error('vibe-math-v3: ' + where + ' failed (' + why + ')')
+  }
+  async function ensureDirs() {
+    const base = frameworkRoot(); const dirs = ['Problems', 'Progress', 'Progress_Logs', 'Propos', 'Methods', 'Verified/命题', 'Verified/问题', 'Verified/Lean', 'Formal', 'Formal/Jobs', 'Reliable', 'Notes', 'Logs/Verification', 'Logs/Plans', 'State', 'Computation']; const paths = [vibeRoot() + '/Projects', vibeRoot() + '/Methods', vibeRoot() + '/Formal/Lib', vibeRoot() + '/Formal/Proved'].concat(dirs.map(function (d) { return base + '/' + d })); return await runShell(mkdirCmd(paths))
+    const r = await runShell(mkdirCmd(paths))
+    if (!r || !r.ok) warnShellOnce('ensureDirs (mkdir ' + base + ')', r)
+    return r
+  }
+  async function removeFile(rel) {
+    const base = frameworkRoot()
+    const r = await runShell(rmCmd(base + '/' + rel))
+    if (!r || !r.ok) warnShellOnce('removeFile(' + rel + ')', r)
+    return r
+  }
 
   // ================= 数学计算 math_computation：会话侧接线（共享模块，FREEZE §4/§5） =================
   // 探测量（是否装了 python/r/…）是异步的，而提示词是同步构造的 ⇒ 会话级缓存 + TTL 刷新，

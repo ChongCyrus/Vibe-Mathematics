@@ -661,8 +661,7 @@ console.log('\n-- F2cap: status/report 的 recentActivity 共用同一上限 --'
   const uses = (src.match(/recentActivity: activityLog\.slice\(-Math\.min\(ACTIVITY_REPORT_MAX,/g) || []).length;
   assert(uses === 2, '★★★ [F2cap] status 与 report 两处都走同一常量（实测 ' + uses + ' 处；硬编码字面量会在此变红）');
   const entry = /\{ name: 'activityLogCap'[^]*?suggestion: 100 \},/.exec(src);
-  assert(!!entry && /ACTIVITY_REPORT_MAX/.test(entry[0]) && /条）/.test(entry[0]) && !/最多显示 30/.test(entry[0]),
-    '★★★ [F2cap] 参数描述**引用**该常量（而非写死字面量）——doc↔code 交叉来源（cap=' + cap + '，entry=' + JSON.stringify(entry && entry[0].slice(-90)) + '）');
+  assert(!!entry && /ACTIVITY_REPORT_MAX/.test(entry[0]) && /条）/.test(entry[0]) && !/最多显示 30/.test(entry[0]), '★★★ [F2cap] 参数描述**引用**该常量（而非写死字面量）——doc↔code 交叉来源（cap=' + cap + '，entry=' + JSON.stringify(entry && entry[0].slice(-90)) + '）');
   await call('vibe_math_set_params', { activityLogCap: 2 });
   const st = await call('vibe_math_status', {});
   const rep = await call('vibe_math_report', {});
@@ -711,6 +710,14 @@ console.log('\n-- F1: pendingDecisions 在 status/report 同形 --');
     '★★★ [F1] pendingDecisions 两面同形（都是数字；实测 status=' + typeof st.pendingDecisions + ' report=' + typeof rep.pendingDecisions + '）');
   assert(Array.isArray(rep.pendingDecisionItems) && rep.pendingDecisionItems.length === rep.pendingDecisions,
     '★★ [F1] 明细用独立键名 pendingDecisionItems，且长度与计数一致（实测 ' + JSON.stringify(rep.pendingDecisionItems && rep.pendingDecisionItems.length) + '）');
+}
+console.log('\n-- F4c: shell 兜底失败不能沉默 --');
+{
+  const src4c = readFileSync(PLUGIN, 'utf8');
+  assert(/function warnShellOnce\(/.test(src4c), '★★★ [F4c] v3 有 shell 失败的一次性告警器（warnShellOnce）');
+  const bodyOf = (name) => { const i = src4c.indexOf('async function ' + name + '('); if (i === -1) return ''; const j = src4c.indexOf('\n  }', i); return j === -1 ? src4c.slice(i, i + 900) : src4c.slice(i, j + 4); };
+  assert(/warnShellOnce\('ensureDirs/.test(bodyOf('ensureDirs')), '★★★ [F4c] ensureDirs 失败不是沉默（调用 warnShellOnce）');
+  assert(/warnShellOnce\('removeFile/.test(bodyOf('removeFile')), '★★ [F4c] removeFile 失败同样告警（同一类降级路径）');
 }
 console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
 {

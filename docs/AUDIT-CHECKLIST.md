@@ -588,3 +588,9 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
 
 **包边界核对（本轮实测）**：`package.json#files` 共 137 条，其中 `_oneoff` 条目 **0 条**；随包的 `*.mutants.mjs` 只有 ["tests/audit-path-discipline.mutants.mjs"]。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**，上表新增行凡标"需新增 in-repo harness"的，即尚未随包、也尚未在本轮补齐。
+
+
+### 自检的能力边界（"自检通过" ≠ "兼容"）
+
+- `checkHostCapabilities`（以及安装器自检）只证明**服务/API 的存在与形状**，**不证明运行时行为语义**；F-4c/F-5/F-6 一类的语义缺陷对它是**结构性不可见**的。
+- 因此**通过自检不得被读成兼容性结论**。安装器把这句话印在**用户可见的自检通过行**上（`installer.js` 的 `宿主自检通过（…）`），并由 `tests/audit-installer-compat.test.mjs` 的断言钉住（该行必须同时出现"形状"与"行为"）。

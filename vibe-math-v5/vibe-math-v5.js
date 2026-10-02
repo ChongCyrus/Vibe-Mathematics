@@ -928,10 +928,43 @@ export function apply(ctx) {
     let backend = null
     let stateCache = null
 
+    // G-7 (installer ROUND2, safety): the host's `sandboxPolicy.resolve()` may fall back to a WIDER
+    // root than this session's workspace (the host lib catches and resolves `{}` on its own errors).
+    // v5 cannot override the host fence — it passes the policy straight to `fs.writeText` — but it
+    // CAN compare the root it believes in (the session cwd, which every member-facing path is built
+    // from) with the root the policy advertises, and surface a NAMED warning when they disagree.
+    // Recorded once per session (a diagnostic, never a write refusal: refusing would silently stop
+    // persisting legitimate work, and v5 has no way to widen or narrow the host's fence itself).
+    let sandboxPolicyChecked = false
+    let sandboxPolicyMismatch = null
+    function sessionCwd() {
+      try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return String(rootAgent.session.header.cwd) } catch (e) { /* unknown */ }
+      return ''
+    }
+    const normRoot = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    function checkSandboxPolicyRoot() {
+      if (sandboxPolicyChecked) return
+      sandboxPolicyChecked = true
+      try {
+        const sp = sandboxPolicyOf()
+        const policyRoot = sp && sp.workspaceRoot ? String(sp.workspaceRoot) : ''
+        const expected = sessionCwd()
+        if (!policyRoot || !expected) return
+        if (normRoot(policyRoot) !== normRoot(expected)) {
+          sandboxPolicyMismatch = {
+            at: now(), expected, policyRoot,
+            note: '沙箱策略声明的可写根与会话工作目录不一致：v5 用会话工作目录拼所有路径（成员提示词/状态/Formal/Verified），'
+              + '若宿主按策略根解析写操作，产物可能落在预期之外的那棵树。请核对 sandbox 策略的 workspaceRoot。',
+          }
+          console.error('vibe-math-v5: ⚠ 沙箱策略根与会话工作目录不一致（策略=' + policyRoot + '，会话=' + expected + '）：写盘位置可能不是你预期的那棵树')
+        }
+      } catch (e) { /* a diagnostic must never break path resolution */ }
+    }
     function workspaceRoot() {
-      try { if (rootAgent && rootAgent.session && rootAgent.session.header && rootAgent.session.header.cwd) return rootAgent.session.header.cwd } catch (e) { /* fall through */ }
+      const cwd = sessionCwd()
+      if (cwd) { checkSandboxPolicyRoot(); return cwd }
       const sp = sandboxPolicyOf()
-      if (sp && sp.workspaceRoot) return sp.workspaceRoot
+      if (sp && sp.workspaceRoot) { checkSandboxPolicyRoot(); return sp.workspaceRoot }
       return '.'
     }
     const vibeRoot = () => (workspaceRoot() + '/VibeMath').replace(/\\/g, '/')
@@ -2090,7 +2123,7 @@ export function apply(ctx) {
         const limitHit = isActivationLimitReached(e)
         if (limitHit) { noteChildLimit(e); noteSpawnLimitOnce(member) }
         const message = limitHit ? activationLimitText(hostChildLimit) : String((e && e.message) || e)
-        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: message }))
+        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: message, failReason: limitHit ? 'activation-limit' : 'other' }))
         if (limitHit) throw v5err('ACTIVATION_LIMIT_REACHED', message)
         throw e
       }
@@ -5959,11 +5992,12 @@ export function apply(ctx) {
       try {
         await spawnMember(member, initialTask)
       } catch (e) {
-        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: String((e && e.message) || e) }))
+        await putMember(Object.assign({}, memberById(member.id) || member, { phase: 'failed', error: String((e && e.message) || e), failReason: isActivationLimitReached(e) ? 'activation-limit' : 'other' }))
         // Name the host's live-child cap (maxActiveSubagents) instead of relaying its opaque
         // "subagent limit reached (active child limit: N)" string, and use the typed code so the
-        // hirer can tell a HOST ceiling from a broken provider.
-        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: '临时工创建失败：' + activationLimitText(hostChildLimit) } }
+        // hirer can tell a HOST ceiling from a broken provider. The durable `failReason` above is
+        // what `retryPendingSpawns()` (G-6) reads to re-create this temp when capacity frees up.
+        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: '临时工创建失败：' + activationLimitText(hostChildLimit) + '（已登记为待补建：容量释放后框架会在下一次调度轮次自动重试）' } }
         return { ok: false, code: 'V5_PROVISIONING_CONFLICT', message: '临时工创建失败：' + String((e && e.message) || e) }
       }
       await saveChatLine('【雇佣】' + (office ? '所办' : callerId) + ' 雇入临时工 ' + member.id + '，用途：' + purpose)
@@ -6156,6 +6190,62 @@ export function apply(ctx) {
         scheduling = false
       }
     }
+    // ---- G-6 (installer review): refused member spawns are DEFERRED, not lost ----------------
+    // v4 queued a cap-refused spawn in `pendingSpawns` and retried it on the next heartbeat; v5 had
+    // no such queue (only the manual `resume` path retried cap-class failures), so a refusal whose
+    // capacity later freed up produced "nothing happens". The queue here is DERIVED from durable
+    // state instead of being a second source of truth: a refused member is already persisted as
+    // `phase:'failed'` with `failReason:'activation-limit'`, so a restart cannot lose the intent and
+    // a successful retry clears it by construction (the member becomes `active`). Only the bounded
+    // attempt counter is session memory.
+    // Only the attempt counter is session memory; the queue itself derives from durable state. The
+    // retry is bounded by the STOPPING RULE, not by a session counter (v4's shape): a still-capped
+    // member IS retried on the next pass — that attempt is free, because `spawnMember` answers from
+    // the recorded ceiling without asking the host (v5:2037) — while any NON-capacity provisioning
+    // error stops the auto-retry for that member (a broken provider must not be resurrected).
+    const spawnRetryAttempts = new Map()
+    // ONE predicate for "this member was refused by the host's live-child CAP" — used by the
+    // automatic retry here AND by `resume`'s rebuild path, so the two can never disagree about
+    // which failures are deferred work (an ordinary broken-provider failure must never be
+    // resurrected). The explicit durable `failReason` is checked first; the recorded error text is
+    // the fallback for records written before it existed / by paths that only had the message.
+    function isCapRefusedMember(m) {
+      if (!m || m.phase !== 'failed') return false
+      if (m.failReason === 'activation-limit') return true
+      return /active child limit|maxActiveSubagents/.test(String(m.error || ''))
+    }
+    function pendingSpawnMembers() {
+      return inst().members.filter((m) => isCapRefusedMember(m) && !m.childId)
+    }
+    async function retryPendingSpawns() {
+      // TEST SEAM (documented; NOT a product surface): `V5_SPAWN_RETRY=manual` disables the
+      // automatic retry for this process, so a suite can pin the MANUAL `resume` rebuild path
+      // without racing the scheduler. Read per call, so a test can toggle it around one section.
+      if (String(process.env.V5_SPAWN_RETRY || '').toLowerCase() === 'manual') return 0
+      if (!running || autoDone) return 0
+      const pending = pendingSpawnMembers()
+      if (!pending.length) return 0
+      let spawned = 0
+      for (const m of pending) {
+        const n = spawnRetryAttempts.get(m.id) || 0
+        spawnRetryAttempts.set(m.id, n + 1)
+        try {
+          await spawnMember(m, null)
+          spawnRetryAttempts.delete(m.id)
+          spawned += 1
+          await saveChatLine('【编制】容量已释放：重试创建成员 ' + m.id + ' 成功（第 ' + (n + 1) + ' 次尝试）。')
+          await markProgress()
+        } catch (e) {
+          // Still capped: keep it queued and re-check on the next pass. Any OTHER provisioning error
+          // is not a capacity problem — stop auto-retrying it (the operator gets a notice instead).
+          if (!isActivationLimitReached(e)) {
+            spawnRetryAttempts.delete(m.id)
+            await notice('office', '成员 ' + m.id + ' 的自动重试已停止（非容量类失败）：' + String((e && e.message) || e))
+          }
+        }
+      }
+      return spawned
+    }
     async function schedulePass() {
       dbg.passes += 1
       // MEDIUM 8 (deep review): EVERY scheduling pass reads state, and a pass can be armed by a
@@ -6164,6 +6254,9 @@ export function apply(ctx) {
       // fired before the state file was folded in would otherwise see an empty roster and could
       // schedule against it).
       if (!loadSettled) { try { await ready() } catch (e) { /* the pass still runs; status reports it */ } }
+      // G-6: deferred spawns are retried BEFORE anything else is scheduled, so freed capacity is
+      // spent on the work the cap previously refused (v4's `retryPendingSpawns()` position).
+      try { await retryPendingSpawns() } catch (e) { console.error('vibe-math-v5: pending-spawn retry failed: ' + String((e && e.message) || e)) }
       clearHeartbeat()
       syncParamsFromState()
       // A verification that is ALREADY in flight is served first: the two coordination
@@ -7017,7 +7110,7 @@ export function apply(ctx) {
       // "queued" half of the cap handling, retried in this round — gated on the RECORDED cap error
       // so an ordinary failed member (broken provider, rejected tool filter) is never resurrected
       // by a resume. `members` keeps its meaning for the return value below.
-      const queued = inst().members.filter((m) => m.phase === 'failed' && /active child limit|maxActiveSubagents/.test(String(m.error || '')))
+      const queued = inst().members.filter((m) => isCapRefusedMember(m))
       if (!members.length && !queued.length) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'no active member to resume' }
       let respawned = 0
       beginSpawnRound()   // the whole re-spawn loop is ONE round for the cap notice
@@ -7111,8 +7204,8 @@ export function apply(ctx) {
         // payload, so a reader (or an operator comparing two sessions) cannot mistake them for
         // durable state. Durable = derived from the state file; session = rebuilt on load.
         fieldScopes: {
-          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem'],
-          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'tasks', 'failedMembers', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'undecided', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
+          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts'],
+          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'undecided', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
         },
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two
@@ -7132,6 +7225,15 @@ export function apply(ctx) {
         // being a silent, permanent `phase:'failed'` row an operator has to notice by luck.
         failedMembers: s.members.filter((m) => m.phase === 'failed').map((m) => ({ id: m.id, kind: m.kind, error: String(m.error || '').slice(0, 200) })),
         failedMembersNote: 'resume 只重试「live-child 上限」类失败；其它 provisioning 失败请由所办重新招聘（新 id，旧 id 永不复用）',
+        // G-6 (installer review): the DEFERRED spawns — refused by the host's live-child cap, queued
+        // by construction (durable `phase:'failed'` + `failReason:'activation-limit'`) and retried on
+        // every scheduling pass until capacity frees up or the session's attempt budget runs out.
+        // v4 exposed the same fact as `pendingSpawns`; without it a refusal was invisible work.
+        pendingSpawns: pendingSpawnMembers().map((m) => ({
+          id: m.id, kind: m.kind, attempts: spawnRetryAttempts.get(m.id) || 0,
+          error: String(m.error || '').slice(0, 200),
+        })),
+        pendingSpawnsNote: '容量（宿主 live-child 上限）拒绝的成员：已登记为待补建，框架在每次调度轮次自动重试（容量未释放时该次重试不询问宿主，零成本）；成功后该成员转为 active，本列表自动清空。非容量类的 provisioning 失败不会自动重试（会通知所办）。',
         // F8 (status/report review): the two counts have different scopes — `pending` is the
         // INSTITUTE-WIDE number of not-yet-acknowledged messages (not "my unread"), and `delivered`
         // is a CAPPED acknowledgement ledger. Both are named accordingly here.
@@ -7152,7 +7254,7 @@ export function apply(ctx) {
         // consumer read state before the first load settled (see the note on `state()`).
         // F2/F9 (status/report review): both counters are SESSION-scoped (a restart resets them), so
         // the scope is stated here too, not only in the report line.
-        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem, scope: 'session（重启后归零）' },
+        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem, scope: 'session（重启后归零）', sandboxPolicyMismatch: sandboxPolicyMismatch },
         meeting: meeting ? { id: meeting.id, agenda: meeting.agenda, kind: meeting.kind, spoke: Object.keys(meeting.inputs), order: meeting.order } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
@@ -7255,6 +7357,14 @@ export function apply(ctx) {
         L.push('- 历史会议：' + finalized.length + ' 次｜辩论录：' + s.debates.length + ' 份'
           + (open ? '｜⚠ 有 1 场会议未收束：' + open.id + '（开始于 ' + fmtTime(open.at) + '；本会话未恢复它的发言，纪要可能缺失）' : ''))
       }
+      // G-6: deferred spawns (host live-child cap refused them; the framework retries each pass).
+      {
+        const pend = pendingSpawnMembers()
+        if (pend.length) {
+          L.push('- 待补建成员：' + pend.map((m) => m.id + '(' + kindLabel(m.kind) + '，已重试 ' + (spawnRetryAttempts.get(m.id) || 0) + ' 次)').join('、')
+            + '｜容量释放后框架会在下一次调度轮次自动重试（容量未释放时该次重试不询问宿主）；成功后该成员转为 active 并从本行消失')
+        }
+      }
       L.push('- 解决票：' + (solveVotesList().length ? solveVotesList().join('、') : '（无）'))
       // F1 (status/report review, HIGH): the section must read the sources its heading advertises —
       // (a) skipped/malformed EVENTS (top-level `state.diagnostics`, written by `applyV5Event`'s
@@ -7330,6 +7440,10 @@ export function apply(ctx) {
       // SESSION scope stated (a restart resets both counters) and no raw boolean in the sentence.
       L.push('- 持久化（本会话计数）：写失败 ' + stateWriteFailures + ' 次｜首次载入前被读取 ' + prematureReads + ' 次｜状态文件已载入：' + (loadSettled ? '是' : '否'))
       if (lastLoadProblem) L.push('- ⚠ 状态文件问题：' + lastLoadProblem)
+      // G-7 (installer ROUND2): the sandbox fence's root vs the session workspace. A named warning,
+      // not a refusal: v5 cannot change the host's fence, and refusing would stop persisting work.
+      if (sandboxPolicyMismatch) L.push('- ⚠ 沙箱策略根与会话工作目录不一致：策略=' + sandboxPolicyMismatch.policyRoot + '｜会话=' + sandboxPolicyMismatch.expected
+        + '（v5 用会话工作目录拼所有路径；若宿主按策略根解析写操作，产物可能落在预期之外的那棵树——请核对 sandbox 策略的 workspaceRoot）')
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
@@ -7347,8 +7461,8 @@ export function apply(ctx) {
       try {
         await spawnMember(m, null)
       } catch (e) {
-        await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e) }))
-        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: activationLimitText(hostChildLimit) } }
+        await putMember(Object.assign({}, memberById(m.id) || m, { phase: 'failed', error: String((e && e.message) || e), failReason: isActivationLimitReached(e) ? 'activation-limit' : 'other' }))
+        if (isActivationLimitReached(e)) { noteChildLimit(e); return { ok: false, code: 'ACTIVATION_LIMIT_REACHED', message: activationLimitText(hostChildLimit) + '（已登记为待补建：容量释放后框架会在下一次调度轮次自动重试）' } }
         return { ok: false, code: 'V5_PROVISIONING_CONFLICT', message: String((e && e.message) || e) }
       }
       await saveChatLine('【编制】所办增聘常驻研究员 ' + m.id + (direction ? '（方向：' + direction + '）' : '') +
