@@ -628,7 +628,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
 - **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 90`（44 套件 + 46 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 57 个 `tests/*.mjs`（17 个套件 + 40 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 93`（44 套件 + 49 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 60 个 `tests/*.mjs`（17 个套件 + 43 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（260 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
@@ -666,7 +666,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
   所以调度器不会永久冻结；需要人工介入时用 `vibe_v5_fire`（临时工）或所办增删编制。
 - **会议与验证严格互斥**：一方进行中，另一方排队/暂存。因此"在会议上当场定论一个对象"会先排队，
   等会议收口后再走完整的表决流程。
-- **`resume` 后轮次计数从 1 重新计**（内存态，仅用于节流与压缩提示）；权威进度在成员自己的 `Progress/`。
+- **`resume` 后轮次计数的两种情形**（内存态，仅用于节流与压缩提示；权威进度在成员自己的 `Progress/`）：**跨进程重载**（新插件实例 ⇒ 计数器为空）从 **1** 重新计；**同实例重建**（宿主丢了子会话、插件实例还在）**继续**原编号 —— 已有 `轮次 1` 时，重建的提示词读作 **`轮次 2`**。失败/无效的启动**不再抹掉**已有计数（`vibe-math-v5.js:2101-2102` 计算 `(rounds.get(id)||0)+1`，`:2151-2152` 仅在成功后写入）。守卫：`tests/e2e-v5-round2.test.mjs` §[51]（`:2278`/`:2311`，断言重建后是 `轮次 2`）。（口径复核于 `167b52d`）
 - **成员章程是入职快照**：升级本包不会改写已在跑的研究所里成员的章程（它们仍用入职时冻结的版本）。
   需要新章程就在新会话里重开一个研究所；状态文件与文件树无需迁移。
 - **安装器行为同 v2**（在 DSH ≤ 0.1.6 的目录形式上：版本一变即整体替换受管文件并先备份原文，`vibe-math-v5` 目录同样受管；

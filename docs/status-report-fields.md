@@ -49,3 +49,111 @@
   "只更新其一"的代码路径，故按"有意差异"记录；若将来发现漂移，应让 v2 也保留 `状态` 字段或统一判据。
 - **v3 人读报告**（`Logs/报告.md`）：布尔与方向状态已中文化（`运行中：是/否`、`d1:进行中(active)`），
   代码 token 放在括号里备查（审查 F7）。
+
+
+<!-- G-6-FIELD-TABLE-START -->
+
+## 逐预设字段作用域表（G-6：由源码派生，`tests/audit-status-report-fields.mjs` 双向校验）
+
+### v2 的字段与作用域（**源自源码派生**）
+
+| 字段 | 作用域 | 视图 | 含义 |
+|---|---|---|---|
+| `project` | 耐久 | status()（report() 同源） | 当前项目 id/slug |
+| `projects` | 耐久 | status()（report() 同源） | 项目列表 |
+| `problems` | 耐久 | status()（report() 同源） | 问题清单与状态 |
+| `propositions` | 耐久 | status()（report() 同源） | 命题/引理索引 |
+| `stateCommit` | 耐久 | status()（report() 同源） | 状态提交（原子提交标记与世代） |
+| `formal` | 耐久 | status()（report() 同源） | Lean 形式化验证面（作业/回执/结论） |
+| `paper.finalizedAt` | 耐久 | status()（report() 同源） | 论文定稿时间戳 |
+| `paper.artifacts` | 耐久 | status()（report() 同源） | 论文产物清单（md/tex/pdf 等） |
+| `paper.compile` | 耐久 | status()（report() 同源） | LaTeX 编译结果/降级原因 |
+| `stateWriteFailures` | 会话 | status()（report() 同源） | 状态写失败计数（耐久写不健康时可见） |
+| `activeCount` | 会话 | status()（report() 同源） | 活跃子代理数（由注册表推导） |
+| `pendingDecisions` | 会话 | status()（report() 同源） | 等待人工决策的节点 |
+| `registeredAgents` | 会话 | status()（report() 同源） | 已注册子代理表 |
+| `verifyTasks` | 会话 | status()（report() 同源） | 验证任务视图 |
+| `recentActivity` | 会话 | status()（report() 同源） | 最近活动日志（环形缓冲） |
+| `paper.inFlight` | 会话 | status()（report() 同源） | 论文撰写是否在途 |
+| `paper.inFlightSince` | 会话 | status()（report() 同源） | 在途开始时间 |
+| `paper.inFlightAgeMs` | 会话 | status()（report() 同源） | 在途已持续时间 |
+| `paper.reapedThisRun` | 会话 | status()（report() 同源） | 本轮回收的论文撰写者数 |
+| `paper.queued` | 会话 | status()（report() 同源） | 排队的论文撰写请求 |
+
+### v3 的字段与作用域（**源自源码派生**）
+
+| 字段 | 作用域 | 视图 | 含义 |
+|---|---|---|---|
+| `project` | 耐久 | status()（report() 同源） | 当前项目 id/slug |
+| `projects` | 耐久 | status()（report() 同源） | 项目列表 |
+| `problems` | 耐久 | status()（report() 同源） | 问题清单与状态 |
+| `propositions` | 耐久 | status()（report() 同源） | 命题/引理索引 |
+| `stateCommit` | 耐久 | status()（report() 同源） | 状态提交（原子提交标记与世代） |
+| `formal` | 耐久 | status()（report() 同源） | Lean 形式化验证面（作业/回执/结论） |
+| `methods.project` | 耐久 | status()（report() 同源） | 项目级方法库 |
+| `methods.global` | 耐久 | status()（report() 同源） | 全局方法库 |
+| `paper.finalizedAt` | 耐久 | status()（report() 同源） | 论文定稿时间戳 |
+| `paper.artifacts` | 耐久 | status()（report() 同源） | 论文产物清单（md/tex/pdf 等） |
+| `paper.compile` | 耐久 | status()（report() 同源） | LaTeX 编译结果/降级原因 |
+| `stateWriteFailures` | 会话 | status()（report() 同源） | 状态写失败计数（耐久写不健康时可见） |
+| `activeCount` | 会话 | status()（report() 同源） | 活跃子代理数（由注册表推导） |
+| `pendingDecisions` | 会话 | status()（report() 同源） | 等待人工决策的节点 |
+| `registeredAgents` | 会话 | status()（report() 同源） | 已注册子代理表 |
+| `verifyPending` | 会话 | status()（report() 同源） | 待验证项 |
+| `queuedPlanActions` | 会话 | status()（report() 同源） | 排队的计划动作 |
+| `plannerFails` | 会话 | status()（report() 同源） | 规划器失败计数 |
+| `methods.pendingInventions` | 会话 | status()（report() 同源） | 待发明的理论/方法 |
+| `recentActivity` | 会话 | status()（report() 同源） | 最近活动日志（环形缓冲） |
+| `paper.inFlight` | 会话 | status()（report() 同源） | 论文撰写是否在途 |
+| `paper.inFlightSince` | 会话 | status()（report() 同源） | 在途开始时间 |
+| `paper.inFlightAgeMs` | 会话 | status()（report() 同源） | 在途已持续时间 |
+| `paper.reapedThisRun` | 会话 | status()（report() 同源） | 本轮回收的论文撰写者数 |
+| `paper.queued` | 会话 | status()（report() 同源） | 排队的论文撰写请求 |
+
+### v5 的字段与作用域（**源自 `status()` 字面量；v5 的 `fieldScopes` 只是粗分类**）
+
+> v5 的 `fieldScopes` 只给出**类别**（session：2 类），因此下表按 `status()` 的顶层键逐条派生；**不在 `fieldScopes` 分类里的键** 作用域写"未分类（语义见实现）"而不猜。
+
+| 字段 | 作用域 | 视图 | 含义 |
+|---|---|---|---|
+| `ok` | 会话 | status()（report() 同源） | 调用是否成功（机器面总开关） |
+| `institute` | 会话/派生 | status()（report() 同源） | 研究所名与根 |
+| `leanNotices` | 会话 | status()（report() 同源） | Lean 提示（会话内累积） |
+| `leanNoticesScope` | 未分类（语义见实现） | status()（report() 同源） | leanNotices 的作用域声明 |
+| `fieldScopes` | 未分类（语义见实现） | status()（report() 同源） | 本对象自身的字段↔作用域分类（机器可读） |
+| `backend` | 会话/派生 | status()（report() 同源） | 持久化后端种类 |
+| `diagnostics` | 未分类（语义见实现） | status()（report() 同源） | 跳过/畸形事件与状态加载问题 |
+| `debug` | 会话 | status()（report() 同源） | 调度调试计数（passes/reschedule 等） |
+| `quorum` | 未分类（语义见实现） | status()（report() 同源） | 共识/投票视图 |
+| `members` | 未分类（语义见实现） | status()（report() 同源） | 成员名册（含会话态字段） |
+| `tasks` | 未分类（语义见实现） | status()（report() 同源） | 共享任务板 |
+| `failedMembers` | 未分类（语义见实现） | status()（report() 同源） | provisioning 失败的成员 |
+| `failedMembersNote` | 未分类（语义见实现） | status()（report() 同源） | 失败成员的处理说明（重试口径） |
+| `pendingSpawns` | 未分类（语义见实现） | status()（report() 同源） | 被宿主 live-child 上限拒绝、已登记待补建的成员 |
+| `pendingSpawnsNote` | 未分类（语义见实现） | status()（report() 同源） | 待补建的口径说明（何时重试、何时清空） |
+| `chat` | 未分类（语义见实现） | status()（report() 同源） | 邮箱计数（pending 未 ack / delivered 有上限的确认账本） |
+| `chatScope` | 未分类（语义见实现） | status()（report() 同源） | chat 两个计数的作用域声明 |
+| `officeRequests` | 未分类（语义见实现） | status()（report() 同源） | 所办请求（办公室收件） |
+| `officeRequestsShown` | 未分类（语义见实现） | status()（report() 同源） | 本次展示的请求数 |
+| `officeRequestsCap` | 未分类（语义见实现） | status()（report() 同源） | 展示上限 |
+| `officeRequestsDropped` | 未分类（语义见实现） | status()（report() 同源） | 因上限被丢弃的请求数 |
+| `officeRequestsTruncated` | 未分类（语义见实现） | status()（report() 同源） | 是否发生了截断 |
+| `persistence` | 未分类（语义见实现） | status()（report() 同源） | 持久化状态（含 scope） |
+| `meeting` | 未分类（语义见实现） | status()（report() 同源） | 会议视图 |
+| `parkedMeeting` | 未分类（语义见实现） | status()（report() 同源） | 挂起的会议 |
+| `verify` | 未分类（语义见实现） | status()（report() 同源） | 验证面（按对象） |
+| `verifyQueue` | 未分类（语义见实现） | status()（report() 同源） | 验证队列 |
+| `verified` | 未分类（语义见实现） | status()（report() 同源） | 已验证对象集合 |
+| `verifiedTrue` | 未分类（语义见实现） | status()（report() 同源） | 验证为真的对象 |
+| `concludedFalse` | 未分类（语义见实现） | status()（report() 同源） | 结论为假的对象 |
+| `verifiedNote` | 未分类（语义见实现） | status()（report() 同源） | 验证面的说明/口径 |
+| `undecided` | 未分类（语义见实现） | status()（report() 同源） | 未定论对象 |
+| `solveVotes` | 未分类（语义见实现） | status()（report() 同源） | 求解投票 |
+| `formal` | 未分类（语义见实现） | status()（report() 同源） | Lean 形式化验证面（作业/回执/结论） |
+| `paper` | 未分类（语义见实现） | status()（report() 同源） | 论文面（状态/产物/编译） |
+
+### v4：**没有** `fieldScopes`
+
+v4 的源码里**不存在** `fieldScopes`（0 命中，本表由源码派生而非声明）。v4 的机器面字段以 `tests/formal-verify-v4.test.mjs` 的行为断言为准；本表因此**不为 v4 编造行**。
+
+<!-- G-6-FIELD-TABLE-END -->

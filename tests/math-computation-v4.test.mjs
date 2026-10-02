@@ -14,8 +14,11 @@
 //   V4_PLUGIN=<path> points the suite at a MUTATED copy (used by the sensitivity probe).
 //
 // Mutants this suite must kill (each makes ≥1 assertion red):
-//   M1 `default-engines-dropped` — drop 'cli' from DEFAULT_PARAMS.mathEngines (or defaultOn): the
-//      "cli is ON by default" assertions (§8) go red.
+//   M1 `default-engines-dropped` — drop 'cli' from `MATH_ENGINE_ORDER` in `vibe-math-v4/math-engines.js`
+//      (the real source of the default engine list: v4's `DEFAULT_PARAMS.mathEngines` is only
+//      `MATH_PARAM_DEFAULTS.mathEngines.slice()`; the old text also named `defaultOn`, which does not
+//      exist anywhere in the tree — a phantom anchor, corrected per the anchor-hygiene rule): the
+//      "cli is ON by default" assertions (§8) go red. Measured with the corrected site: 2 named reds.
 //   M2 `typed-still-shell` — call mathAvailabilityLine without the mode (or force 'typed+shell'): §12
 //      finds the shell-fallback sentence in the typed prompt → red.
 //   M3 `timeout-no-kill` — return the timeout without calling terminate(): §5 asserts the terminate

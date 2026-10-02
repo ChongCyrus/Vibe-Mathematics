@@ -47,9 +47,11 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 ## 2. 基线（本机：4 核 / Windows，实测）
 
+> **最后一次复核：`167b52d`**。表中"串行/并行"是**该次复核**的实测值：套件行在**重测前**视为"上次复核值"，引用前请重测或写明复核点；**变异族行**一律引用族自己打印的 `TOTAL WALL TIME` 行（不估算、不跨运行拼接）。这与 §1.1/runner 计数由 `--counts` 派生的口径一致。
+
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**90 项作业**（job count）= 44 套件 + 46 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 90  PASS 90  FAIL 0  (suites 44 · probes 46)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
+| `tests/run-tests.mjs`（**93 项作业**（job count）= 44 套件 + 49 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 93  PASS 93  FAIL 0  (suites 44 · probes 49)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
@@ -60,7 +62,8 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/audit-registration.mjs`（4 个预设各一次） | ≈ 1.0 s | — | 裸跑只查 v3，所以 runner 跑四个变体 |
 | `tests/audit-v3-registration-parity.mjs`（+ `--self-probe`） | ≈ 0.3 s | — | 自探针**成功 = exit 1**（变异后守卫必须变红） |
 | `tests/prompt-v5-integrity.test.mjs` | ≈ 2.2 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定；**stdout 里的会议成员顺序仍是运行间随机的**，只有落盘语料是逐字节确定的） |
-| `tests/e2e-v5-round2.test.mjs` | ≈ 3.2 s | — | v5 e2e（含本轮新增的"预置快照不被覆盖""命名研究所被读取""失败轮次"三节） |
+| `tests/e2e-v5-round2.test.mjs` | **≈ 16.3 s**（`167b52d` 实测，395 条断言 ALL GREEN） | — | v5 e2e：邮箱/唤醒、轮次计数（§[47] 失败唤醒仍 pending、§[51] 重建后仍 `轮次 2`）、预置快照不被覆盖、命名研究所、失败轮次等；**早先此处记 ≈3.2 s 是旧口径**，正文小节也已随轮次更新 |
+| `tests/v5-institute-fixes.mutants.mjs`（**变异族**） | — | **族自报 `TOTAL WALL TIME`：261016 ms（另一同修订读数 264063 ms）** | 9/9 族具名变红、`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`；900 s 覆盖（见 `docs/AUDIT-CHECKLIST.md` 的跑测超时行） |
 | `tests/host-failure-paths.test.mjs` | ≈ 6.3 s | — | 真实宿主的失败路径（`kind:'error'`、`/v4 set` 键校验、失败轮次不算进展） |
 | `tests/v4-mailbox-stall.test.mjs` | ≈ 7.1 s | — | `sendMessage` 拒绝后必须重投并唤醒（control + treatment 各一个 host） |
 | `tests/v2-fix-probes.test.mjs` | ≈ 8.6 s | — | v2 的 flat 等权均值 / ≥2 名验证者 / runShell 失败分支（26 条） |
