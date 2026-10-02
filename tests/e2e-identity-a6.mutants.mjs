@@ -7,6 +7,13 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+
+// Bound every child run: run-tests has no per-suite timeout, so an unbounded child hangs the gate.
+// A timeout is reported as HANG, counts as a failure for that family, and is listed in hangs=[].
+const CHILD_TIMEOUT_MS = Number(process.env.MUTANT_CHILD_TIMEOUT_MS || 120000)
+const TIMES = []
+const hangs = []
+let lastHang = false
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 function copyGraph(preset, file, dest) {
@@ -31,8 +38,8 @@ function runFamily(f) {
   catch (e) { writeFileSync(target, before, 'utf8'); skipped.push(f.name + ' (mutation did not compile)'); console.error('  SKIP - ' + f.name + ' (mutation did not compile; restored)'); rmSync(dest, { recursive: true, force: true }); return false }
   let out = ''
   let code = 0
-  try { out = execFileSync(process.execPath, [f.suite], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { [f.env]: join(dest, f.preset + '.js') }) }) }
-  catch (e) { code = (e && e.status) || 1; out = String((e && e.stdout) || '') + String((e && e.stderr) || '') }
+  try { out = execFileSync(process.execPath, [f.suite], { cwd: REPO, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL', env: Object.assign({}, process.env, { [f.env]: join(dest, f.preset + '.js') }) }) }
+  catch (e) { if (e && (e.killed || e.signal === 'SIGKILL')) lastHang = true; code = (e && e.status) || 1; out = String((e && e.stdout) || '') + String((e && e.stderr) || '') }
   const named = out.split(/\r?\n/).filter((l) => /^\s*(FAIL - | {2}- )/.test(l) && f.expect.test(l)).map((l) => l.trim())
   const ok = code !== 0 && named.length > 0
   console.log((ok ? '  ok - ' : '  FAIL - ') + f.name + (named.length ? ' :: ' + named[0].slice(0, 135) : ' :: no named red (exit=' + code + ')'))
@@ -48,9 +55,11 @@ const FAMILIES = [
     expect: /A6：注册的工具\*\*名字集合\*\*与快照逐个匹配/ },
 ]
 let red = 0
-for (const f of FAMILIES) if (runFamily(f)) red++
+for (const f of FAMILIES) { const t0 = Date.now(); lastHang = false; const ok = runFamily(f); const ms = Date.now() - t0; TIMES.push([f.name, ms]); if (lastHang) hangs.push(f.name + "(" + Math.round(ms / 1000) + "s)"); if (ok) red++ }
 console.log('')
 console.log('mutant families reddening the A6 identity assertion by name: ' + red + '/' + FAMILIES.length)
 console.log('skipped=[' + skipped.join(' | ') + ']')
-if (red !== FAMILIES.length || skipped.length) process.exit(1)
+console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
+console.log('hangs=[' + hangs.join(' | ') + ']')
+if (red !== FAMILIES.length || skipped.length || hangs.length) process.exit(1)
 console.log('ALL MUTANTS RED AS REQUIRED')

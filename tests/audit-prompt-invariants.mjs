@@ -67,10 +67,17 @@ const SELF_PROBE_MUTATIONS = [
     expect: 'v5 I8: the reply channel is gated on formalOn()',
   },
   {
-    name: 'v3: one set_params registration loses the Lean params (I13 — the v2.3.1 shipped defect)',
+    name: 'v2: one registration site reverts to a literal without the Lean params (I13, mixed shapes)',
+    rel: 'vibe-math-v2/vibe-math-v2.js',
+    from: "objParams(paramProps()), 'vibe_math_set_params')",
+    to: "objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }), 'vibe_math_set_params')",
+    expect: 'v2 I13: every vibe_math_set_params schema advertises',
+  },
+  {
+    name: 'v3: one registration site reverts to a literal without the Lean params (I13, mixed shapes)',
     rel: 'vibe-math-v3/vibe-math-v3.js',
-    from: 'formalVerify: { type: \'string\'',
-    to: 'formalVerifyDISABLED: { type: \'string\'',
+    from: "objParams(paramProps()), 'vibe_math_set_params')",
+    to: "objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }), 'vibe_math_set_params')",
     expect: 'v3 I13: every vibe_math_set_params schema advertises',
   },
   {
@@ -251,6 +258,28 @@ function objectKeys(src, at) {
     .filter(Boolean)
 }
 
+/**
+ * Keys of the `objParams(...)` argument. Two shapes are supported since F-B (see docs/parameter-schema.md):
+ *   objParams({ ...literal... })   — the historical hand-written table
+ *   objParams(paramProps())        — derived from the SINGLE source PARAM_SCHEMA; the machine key set is
+ *                                    pinned by PARAM_PROPS_KEYS (+ PARAM_PROPS_EXTRA for source-unexpressible
+ *                                    entries), so that is where the advertised keys now come from.
+ * Without the second branch the extractor scanned past `objParams(` to the next `{` anywhere in the file and
+ * returned 0 keys — a silent extraction failure, not a product regression.
+ */
+function schemaKeysFor(full, at) {
+  const open = full.indexOf('{', at)
+  const close = full.indexOf(')', at)
+  if (open !== -1 && (close === -1 || open < close)) return objectKeys(full, at)
+  // Derived form: the key set lives at MODULE scope (before the registration), so search the WHOLE file.
+  const km = /const PARAM_PROPS_KEYS = \[([^\]]*)\]/.exec(full)
+  if (!km) return null
+  const keys = km[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  const em = /const PARAM_PROPS_EXTRA = \{([\s\S]*?)\n\s*\}/.exec(full)
+  const extra = em ? [...em[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*:/gm)].map((m) => m[1]) : []
+  return [...new Set(keys.concat(extra))]
+}
+
 const PRESETS = [
   { tag: 'v2', js: 'vibe-math-v2/vibe-math-v2.js', suite: 'tests/formal-verify-v2.test.mjs', corpus: 'prompt-corpus-v2/formal-verify-v2.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
   { tag: 'v3', js: 'vibe-math-v3/vibe-math-v3.js', suite: 'tests/formal-verify-v3.test.mjs', corpus: 'prompt-corpus-v3/formal-verify-v3.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
@@ -390,7 +419,7 @@ for (const P of PRESETS) {
     while ((m = regRe.exec(code))) {
       const rest = code.slice(m.index)
       const oi = rest.indexOf('objParams(')
-      schemas.push(oi < 0 ? null : objectKeys(rest, oi + 'objParams'.length))
+      schemas.push(oi < 0 ? null : schemaKeysFor(code, m.index + oi + 'objParams('.length))
     }
     check(schemas.length >= 1, P.tag + ' I13: the parameter tool ' + P.setTool + ' is registered',
       'no registerTool(\'' + P.setTool + '\') call found')

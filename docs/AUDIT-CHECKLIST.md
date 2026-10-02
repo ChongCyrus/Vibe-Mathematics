@@ -665,3 +665,13 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **规则**：`installer.js` 面向**用户**的输出（`logger.info/warn` 的每一行）一律**中文**；出现英文标签就是**缺陷**，除非在同一行注明理由（例如必须保留厂商/命令原文）。代码与约定必须一致，后来者不得重新引入英文标签。
 - **依据**：R6 归因发现三条英文标签（`:764`/`:769`/`:791`）与一条信息行（`:787`）混在中文输出里；它们经 **logger 助手**（非 `console.*`）发出，所以按 `console.` grep 查不到 —— 排查时请按 `logger?.info?/warn?` 检索。
 - **连带风险（已实测）**：本地化这类标签会波及**测试助手**（`audit-installer-policy` 的 `failedLog()` 之前匹配旧英文标签 ⇒ 91/1）；改名/改文案必须**连带改守卫**，并把匹配收窄到"只证明失败"的证据（过宽的 alternation 曾把 `preset files:`/`preset baseline:` 当成失败 ⇒ 89/3）。
+
+
+### 跑测超时（门禁必须能终止）
+
+- **默认 180 s/套件**（`GATE_SUITE_TIMEOUT_MS` 可覆盖）：超时会**杀死子进程**并报**具名失败** —— `FAILED: <file> [suite|probe] (TIMEOUT after 180s)`，失败行下面照常打印该子进程捕获的 stdout/stderr 尾部；**挂起绝不能被当成"还在跑"**。
+- **为什么是 180 s（两个实测数字，未来读者据此区分"慢但诚实"与"卡死"）**：整门禁墙钟 **~200 s**；最慢的诚实套件 **135–144 s**（`audit-math-computation-sensitivity`）。180 s 能兜住偶发挂起，又不会误杀诚实套件。
+- **命名覆盖（诚实但慢的套件，不是卡死）**：`run-tests.mjs` 的 `TIMEOUT_OVERRIDES` 给 `v2-fix-probes.mutants.mjs` 与 `v3-fix-probes.mutants.mjs` 各 **900 s**，理由是**实测**：v2 **≈43.1 s/族 × 10 族 ≈ 430 s**、v3 **≈23.5 s/族 × 11 族 ≈ 260 s**（两者内部已把**每个子进程封顶 120 s**，并报 `hangs=[]`，即"慢但诚实"）。**默认仍是 180 s**，普通挂起照旧被快速抓住；只有这两个具名套件被放宽。
+- **改限的规矩**：抬高**默认值或任何覆盖值**都必须**同时更新本行的全部实测数字并在提交信息里说明**；不许为了让门禁变绿而悄悄改（上面三条覆盖用例正是为了让这条规矩可验证）。
+- **禁止**为了让门禁变绿而**悄悄抬高**这个值；确有套件变慢，请**同时**更新这里的两个数字与理由。
+- **怎么让它红一次（in-repo，两个方向）**：① `node tests/run-tests.mjs --self-check` 有一条**真实路径**用例 —— 合成 sleep 作业、`timeoutMs=1000`、走同一个 `runSuite`/`failedLine`，断言 `timedOut=true, exit=null` 且失败行 `FAILED: (synthetic-sleeper) [probe] (TIMEOUT after 1s)`；② 随包的 `tests/run-tests.mutants.mjs` 用 `GATE_SUITE_TIMEOUT_MS=1000` 对**真实套件**做**正例**（具名 TIMEOUT + 非零退出）与**反例**（默认限制下同一套件不报 TIMEOUT、exit 0），因此该判据被双向校验（§9.7 ㉗）。

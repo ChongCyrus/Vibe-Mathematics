@@ -62,6 +62,24 @@ const asJson = has('json')
 const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(4, cpus().length)))
 
 const SELF = 'run-tests.mjs'
+// Per-suite HARD timeout (GATE_SUITE_TIMEOUT_MS overrides, ms). It bounds an intermittent hang so the
+// gate always terminates and a hang is reported - never mistaken for "still running". 180 s comes from
+// measurements: whole-gate wall ~200 s, slowest honest suite 135-144 s (audit-math-computation-sensitivity),
+// so 180 s bounds a hang without killing an honest slow suite. Do NOT raise it silently to "fix" reds.
+const SUITE_TIMEOUT_MS = Math.max(1000, Number(process.env.GATE_SUITE_TIMEOUT_MS || 180000))
+
+// NAMED per-suite overrides for suites that are HONEST but slow (measured, not guessed). Raising a
+// limit is a documented act: update the numbers here AND say so in the commit message - never silently.
+//   v2-fix-probes.mutants.mjs: ~43.1 s per family x 10 families ~= 430 s measured (inner child cap 120 s)
+//   v3-fix-probes.mutants.mjs: ~23.5 s per family x 11 families ~= 260 s measured (inner child cap 120 s)
+// Both report hangs=[] with their own 120 s child cap, i.e. they are slow, not hung - so the 180 s
+// default would misreport them. Everything else keeps the 180 s default.
+const TIMEOUT_OVERRIDES = {
+  'v2-fix-probes.mutants.mjs': 900000,
+  'v3-fix-probes.mutants.mjs': 900000,
+}
+/** One place decides a job limit: explicit job value, then the named override, then the default. */
+function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
 /**
  * DIAGNOSABILITY (protocol: every red must name an assertion): a failing suite's assertion NAMES are
  * what a reader needs, and they must appear under the FAILED line - not only in the suite's own last
@@ -99,6 +117,14 @@ function failureDetail(r) {
 // `--self-check`: prove the diagnostics above actually surface a NAME. Runs one synthetic failing child
 // through the same extractor and asserts the extracted detail contains its assertion name; the mutant
 // that strips `failureDetail` makes this red.
+/** ONE place builds the failure line, so the reporter and the self-check cannot diverge. */
+function failedLine(b) {
+  const kind = '[' + b.job.kind + ']'
+  const why = b.timedOut ? 'TIMEOUT after ' + Math.round(jobLimit(b.job) / 1000) + 's'
+    : 'exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '')
+  return '  FAILED: ' + label(b.job) + ' ' + kind + ' (' + why + ')'
+}
+
 if (process.argv.includes('--self-check')) {
   const { spawnSync } = await import('node:child_process')
   const synth = spawnSync(process.execPath, ['-e', "console.error('  - synthetic assertion name XYZ'); process.exit(1)"], { encoding: 'utf8' })
@@ -114,7 +140,26 @@ if (process.argv.includes('--self-check')) {
   const okReal = namedFailureLines('  FAIL - ★★★ real failure\n').length === 1
   const okAbort = namedFailureLines('TypeError: boom\n').length === 1
   console.log((okReal && okAbort ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a genuine FAIL line and an abort marker are still extracted')
-  process.exit(okSelf && okPassing && okReal && okAbort ? 0 : 1)
+  // TIMEOUT case on the REAL path: a synthetic job that sleeps past a 1 s per-job limit, run through
+  // the SAME runSuite/reporting path the gate uses. A string-only check could pass with a half-armed
+  // timer; this one cannot, because it reads the run own timedOut/exit and the line the reporter builds.
+  const slow = await runSuite({ file: '(synthetic-sleeper)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 5000)', timeoutMs: 1000 })
+  const killedByRunner = slow.timedOut === true && slow.code !== 0
+  const line = failedLine(slow)
+  const namedTimeout = /FAILED: .*\[probe\] \(TIMEOUT after 1s\)/.test(line)
+  console.log((killedByRunner ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': the RUNNER kills a sleeping job at its per-job limit (timedOut=true, exit=' + slow.code + ')')
+  console.log((namedTimeout ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': the failure line names the timeout: ' + line.trim())
+  // OVERRIDE case (real path): the named override must actually EXTEND the limit. A job that sleeps
+  // 1.5 s would be killed by 1 s, so it must survive under the override and report its own seconds.
+  const overrideOk = jobLimit({ file: 'v2-fix-probes.mutants.mjs' }) === 900000 && jobLimit({ file: 'anything-else.mjs' }) === SUITE_TIMEOUT_MS
+  const survived = await runSuite({ file: '(synthetic-ok)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 1500)', timeoutMs: 900000 })
+  const extended = survived.timedOut === false && survived.code === 0
+  const overrideLine = failedLine({ job: { file: 'v2-fix-probes.mutants.mjs', args: [], kind: 'probe', expectExit: 0 }, code: null, timedOut: true })
+  const namesOverride = /TIMEOUT after 900s/.test(overrideLine)
+  console.log((overrideOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a named override is resolved for its suite and nothing else')
+  console.log((extended ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a job that would die at 1 s SURVIVES under the override (real runSuite)')
+  console.log((namesOverride ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a timed-out override reports its own limit (' + overrideLine.trim() + ')')
+  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride ? 0 : 1)
 }
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
@@ -178,12 +223,17 @@ if (!suites.length) { console.error('no suites matched'); process.exit(2) }
 function runSuite(job) {
   return new Promise((resolve) => {
     const t0 = Date.now()
-    const child = spawn(process.execPath, [join(HERE, job.file), ...job.args], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
+    const argv = job.eval ? ['-e', job.eval] : [join(HERE, job.file), ...job.args]
+    const limitMs = jobLimit(job)
+    const child = spawn(process.execPath, argv, { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
+    let timedOut = false
+    const killer = setTimeout(() => { timedOut = true; try { child.kill('SIGKILL') } catch (e) { /* already gone */ } }, limitMs)
+    const clearKiller = () => clearTimeout(killer)
     let out = '', err = ''
     child.stdout.on('data', (d) => { out += d.toString() })
     child.stderr.on('data', (d) => { err += d.toString() })
-    child.on('error', (e) => resolve({ job, code: -1, ms: Date.now() - t0, out, err: err + '\n' + String(e) }))
-    child.on('close', (code) => resolve({ job, code, ms: Date.now() - t0, out, err }))
+    child.on('error', (e) => { clearKiller(); resolve({ job, code: -1, ms: Date.now() - t0, out, err: err + '\n' + String(e), timedOut }) })
+    child.on('close', (code) => { clearKiller(); resolve({ job, code, ms: Date.now() - t0, out, err, timedOut }) })
   })
 }
 
@@ -245,7 +295,7 @@ if (asJson) {
   console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
     + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')')
   for (const b of bad) {
-    console.log('  FAILED: ' + label(b.job) + ' [' + b.job.kind + '] (exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '') + ')')
+    console.log(failedLine(b))
     for (const l of failureDetail(b)) console.log('      ' + l)
   }
   for (const [f, why] of Object.entries(NEEDS_ARGS)) {

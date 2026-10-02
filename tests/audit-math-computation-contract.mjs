@@ -112,9 +112,36 @@ for (const P of PRESETS) {
     const callText = i === -1 ? '' : js.slice(i, js.indexOf('registerTool(', i + 1) === -1 ? i + 4000 : js.indexOf('registerTool(', i + 1))
     const oi = callText.lastIndexOf('objParams(')
     const setSchema = oi === -1 ? '' : callText.slice(oi)
-    ok(setSchema.length > 0, tag + 'set tool takes an objParams({...}) schema argument')
-    for (const k of SIX) {
-      ok(new RegExp('(^|[{,\\s])' + k + '\\s*:').test(setSchema), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'schema len ' + setSchema.length)
+    // F-B (docs/parameter-schema.md): the schema argument has two shapes —
+    //   objParams({ ...literal... })        the historical hand-written table
+    //   objParams(paramProps())             derived from the SINGLE source PARAM_SCHEMA; the machine key set
+    //                                       is pinned by PARAM_PROPS_KEYS (+ PARAM_PROPS_EXTRA)
+    // The derived form has NO `{` after `objParams(`, so the old slice grabbed unrelated text and reported a
+    // 331-char fragment. Resolve the derived form to the single-source key list, searched FILE-WIDE (that
+    // table is module scope and sits before the registration).
+    const at = oi === -1 ? -1 : oi + 'objParams('.length
+    const open = at === -1 ? -1 : callText.indexOf('{', at)
+    const close = at === -1 ? -1 : callText.indexOf(')', at)
+    const literalForm = open !== -1 && (close === -1 || open < close)
+    const derivedKeys = (() => {
+      const km = /const PARAM_PROPS_KEYS = \[([^\]]*)\]/.exec(js)
+      if (!km) return null
+      const keys = km[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+      const em = /const PARAM_PROPS_EXTRA = \{([\s\S]*?)\n\s*\}/.exec(js)
+      const extra = em ? [...em[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*:/gm)].map((m) => m[1]) : []
+      return [...new Set(keys.concat(extra))]
+    })()
+    ok(literalForm ? setSchema.length > 0 : !!derivedKeys,
+      tag + 'set tool takes an objParams(...) schema argument (literal table or single-source derivation)',
+      literalForm ? 'schema len ' + setSchema.length : 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
+    if (literalForm) {
+      for (const k of SIX) {
+        ok(new RegExp('(^|[{,\\s])' + k + '\\s*:').test(setSchema), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'schema len ' + setSchema.length)
+      }
+    } else {
+      for (const k of SIX) {
+        ok(!!derivedKeys && derivedKeys.includes(k), tag + 'set schema has the property ' + k + ' (property-level, not prose)', 'derived keys ' + (derivedKeys ? derivedKeys.length : 0))
+      }
     }
   }
   if (P.dir === 'vibe-math-v2' || P.dir === 'vibe-math-v3') {
