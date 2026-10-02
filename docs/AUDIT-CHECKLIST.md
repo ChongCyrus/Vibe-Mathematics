@@ -576,10 +576,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 | 守卫 / 位置 | 钉住的不变量 | 红一次（harness） |
 |---|---|---|
-| A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | **需新增 in-repo `*.mutants.mjs`**（当前仅有开发检出脚本） |
-| A6 name-set 快照 | 工具名集合变化必须被察觉 | **需新增 in-repo harness** |
-| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | **需新增 in-repo harness** |
-| F2 v3 id 契约 | id 形状/唯一性契约 | **需新增 in-repo harness** |
+| A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
+| A6 name-set 快照 | 工具名集合变化必须被察觉 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
+| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
+| F2 v3 id 契约 | id 形状/唯一性契约 | **通过 env seam 验证，尚无独立 harness**（待 `*.mutants.mjs` 落地后改为 in-repo） |
 | F3 v2 `list_agents` | 该工具必须存在且被提及 | **需新增 in-repo harness** |
 | F4 v2 require-gate 下一步 | 拒绝必须给出可执行的下一步 | **需新增 in-repo harness** |
 | A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | **需新增 in-repo harness** |

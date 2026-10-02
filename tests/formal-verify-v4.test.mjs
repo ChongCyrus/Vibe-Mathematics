@@ -71,6 +71,7 @@ let subprocessAvailable = true
 // Used by §13 to prove the withdrawal is not a best-effort delete: the framework must confirm the
 // file is gone through the fs service and fall back to overwriting it with a withdrawal notice.
 let shellDeletesFiles = true
+let shellMkdirExit = 0        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
 const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
 const shellCalls = []        // every platform-shell script (mkdir at mount, Remove-Item on defect)
@@ -96,7 +97,7 @@ function makeSubprocess() {
         if (shellDeletesFiles && /Remove-Item/.test(script) && m) rmSync(m[1].replace(/''/g, "'"), { force: true })
         if (shellDeletesFiles && /^rm -f /.test(script)) for (const q of script.slice(6).match(/'[^']*'/g) || []) rmSync(q.slice(1, -1), { force: true })
         return {
-          done: Promise.resolve({ exitCode: 0, signal: null }),
+          done: Promise.resolve({ exitCode: (/New-Item|^mkdir -p /.test(script) ? shellMkdirExit : 0), signal: null }),
           collected: { stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
           terminate() {},
         }
@@ -1780,6 +1781,22 @@ section('N10 G-7 class guard: agent-facing compaction takes the AGENT-LOCAL inst
   assert(!/compactionOf\(\)/.test(win), '* the agent-facing path does NOT call the host-root compactionOf() (a realm never falls back)')
 }
 console.log('')
+section('N11 F-4c: a failed mkdir is NAMED exactly once (deferred/distorted diagnosis fixed)')
+{
+  const h = await mount()
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }   // protocol 搂6.4: capture AND still name a red
+  shellMkdirExit = 1
+  try {
+    await h.callTool('vibe_v4_start', { problem: 'F-4c mkdir 失败可见', residentCount: 1 })
+    const mk = shellCalls.filter(s => /New-Item|^mkdir -p /.test(String(s)))
+    assert(mk.length >= 1, '* N11: the mkdir script was actually issued (shellCalls=' + shellCalls.length + ', mkdir=' + mk.length + ')')
+    const warned = seen.filter(l => /ensureDirs: mkdir failed \(exit 1\) under/.test(l))
+    assert(warned.length === 1, '* N11: the mkdir failure is NAMED exactly once (matched=' + warned.length + ' of ' + seen.length + ' captured stderr lines)')
+  } finally { console.error = realErr; shellMkdirExit = 0 }
+}
+
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')

@@ -741,6 +741,23 @@ console.log('\n-- F6a/v3: list() 失败时的一次性回退告警 --');
   const hits = buf.join('\n').split('\n').filter((l) => /pickProvider\(\) falling back to 'spawn'/.test(l));
   assert(hits.length === 1 && /subagents\.list\(\) failed/.test(hits[0] || ''), '★★★ [F6a/v3] list() 失败的一次性回退告警可见且内容正确（实测 ' + JSON.stringify(hits) + '，spawns=' + spawns.length + '）');
 }
+console.log('\n-- F6b/v3: 中断失败必须留痕并点名站点 --');
+{
+  const beforeSpawns = spawns.length;
+  try {
+    probe.failInterrupt = true;
+    await call('vibe_math_new_project', { name: 'p' });
+    await call('vibe_math_add_problem', { id: 'qB6v3', description: 'x' });
+    await call('vibe_math_start', {});
+    for (let i = 0; i < 40 && spawns.length === beforeSpawns; i++) await sleep(150);
+    await call('vibe_math_abort', {});
+  } finally { probe.failInterrupt = false; }
+  const st6 = await call('vibe_math_status', {});
+  const abortedId = spawns.length > beforeSpawns ? spawns[beforeSpawns].childId : 'c1';
+  // v3 的 abort 会中断**所有**已登记子代理 ⇒ 具体 id 不是稳定站点键；站点由 event + why 标签 + 失败文本点名（id 只进诊断消息）。
+  const hits6 = (st6.recentActivity || []).filter((a) => String(a.event) === 'interrupt' && /中断失败（batch clear \(start\/abort\)/.test(String(a.detail)));
+  assert(hits6.length >= 1, '★★★ [F6b/v3] 中断失败进入活动日志并**点名站点**（event=interrupt + 子代理 id=' + abortedId + ' + why 标签 batch clear(start/abort)；实测 ' + JSON.stringify((st6.recentActivity || []).filter((a) => String(a.event) === 'interrupt').slice(-1)[0] || null) + '）');
+}
 console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
 {
   const st = await call('vibe_math_status', {});
