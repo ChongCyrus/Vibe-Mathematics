@@ -3002,7 +3002,7 @@ function verifyTasksView(tasks) {
 }
   // 一票不算共识：≥MIN_REVIEWERS 份独立评审才可能达成/否决共识（审计 M11；与 v3 的最小票数同型）。
   function consensus(t) { const v = voteCount(t); if (v.reportedIds.length < MIN_REVIEWERS) return false; const vs = v.reportedIds.map(function (cid) { return t.childResults[cid].Result }); return vs.every(function (x) { return x === 1 }) || vs.every(function (x) { return x === 0 }) }
-  function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
+  function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; const changedNote = (r.changed != null && String(r.changed).trim()) ? (' [changed: ' + String(r.changed).trim() + ']') : ''; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason + changedNote) } return parts.join('\n') }
   // 说明（审计 L17）：这里曾有一个 `verifierWeight(cid, rigor)`，但全仓只有它的定义、没有任何调用点，
   // 且其公式（clamped ±0.2 rigor 加成、按 childId 取准确率）与 finalVerdict 里真正在用的
   // 稳定身份键 + 0.1 自信加成**并不相同**——留着它只会让人以为 forced 模式走的是那条公式。已删除。
@@ -3079,7 +3079,7 @@ function verifyTasksView(tasks) {
       return
     }
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
-    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round, key: meta.verificationKey || verifierIdentityKey() }
+    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round, key: meta.verificationKey || verifierIdentityKey(), changed: (parsed && parsed.changed != null && String(parsed.changed).trim()) ? String(parsed.changed).trim() : null }
     delete agentRegistry[childId]
     const allReported = voteCount(t, meta.round).allParticipantsReported
     if (!allReported) { await saveAll(); return }
@@ -3536,12 +3536,15 @@ function verifyTasksView(tasks) {
   /**
    * 成员可见路径说明（跨预设审计 P0）。成员/子代理的**文件工具按会话 cwd 解析**相对路径，而下面列出的
    * 路径都是**项目根相对**的 ⇒ 必须显式说明"先拼绝对前缀"；计算产物用回执里的绝对字段。一处常量、
-   * 五处材料文本各自 append（绝不替换既有行）。
+   * 两处**成员可见**材料文本（`paperEvidenceIndex` 证据索引 + `buildPaperDigest` 摘要）各自 append（绝不替换既有行）。
+   * 另三处（`paperCompile` / `paperEmitArtifacts` / `paperMissingArtifacts`）是**框架侧文件操作**，其路径从不进入
+   * 成员可见文本，因此**不**追加本说明——这不是遗漏，而是按"是否需要成员照抄路径"分类的结果。
    */
   const PAPER_PATH_NOTE = '（路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）'
   async function paperEvidenceIndex() {
     const formalNow = formalOn()
-    const out = ['qs/qs.json']
+    const out = []
+    if (await paperPathExists('qs/qs.json')) out.push('qs/qs.json')
     if (formalNow && await paperPathExists('VibeMath_State/formal.json')) out.push('VibeMath_State/formal.json')
     for (const f of await listFiles('Propos')) out.push('Propos/' + f)
     for (const f of await listFiles('Verified')) out.push('Verified/' + f)
@@ -3551,7 +3554,6 @@ function verifyTasksView(tasks) {
     for (const f of await reliableFiles()) out.push('Reliable/' + f)
     const dirs = ['Verification_logs', 'Progress_Logs'].concat(formalNow ? ['Formal'] : [])
     for (let i = 0; i < dirs.length; i++) { const files = await listFiles(dirs[i]); for (let j = 0; j < files.length; j++) out.push(dirs[i] + '/' + files[j]) }
-    out.push(PAPER_PATH_NOTE)
     return out.filter(function (x) { return x.indexOf('Paper/') !== 0 }).sort()
   }
   /** 汇总材料（spec §4）：只含既有证据 + 未决/被否证的显式标注。不含时间戳 ⇒ 哈希稳定。 */

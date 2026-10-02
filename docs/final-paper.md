@@ -27,7 +27,7 @@
 | `paperLanguage` | enum `zh`\|`en` | `zh` | 四套 | 论文语言，同时决定 LaTeX 模板（`ctexart`/`article`）与引擎优先顺序 |
 | `paperCompilePdf` | boolean | `true` | 四套 | 检测到 LaTeX 时是否编译 `paper.pdf` |
 | `paperLatexCommand` | string | `''` | 四套 | 强制指定**一个**引擎可执行文件；空 = 按语言自动探测。指定但解析不到时按"未检测到"降级 |
-| `paperEditor` | enum | v4 `office`；v5 `academician` | **仅 v4/v5** | 定稿代表。v4：`office`（会话根/人类侧）或 `resident:<id>`；v5：`academician` 或 `office`（见 §7） |
+| `paperEditor` | enum | v4 `office`；v5 `academician`（**封闭集合 `office|academician`**，越界取值返回 `V5_INVALID_ARGUMENT`） | **仅 v4/v5** | 定稿代表。v4：`office`（会话根/人类侧）或 `resident:<id>`；v5：`academician` 或 `office`（见 §7） |
 
 归一化：**枚举**的非法值一律回退到上表默认值（绝不回退到更强的档位）；**未知键不会直通参数层**
 （v2/v3 的参数归一化只遍历已知默认键，v4 把被忽略的键列在返回的 `ignored` 里，v5 的 set-schema 是闭集，

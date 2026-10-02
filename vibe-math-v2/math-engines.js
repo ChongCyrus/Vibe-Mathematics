@@ -6,7 +6,7 @@
 // No repo imports — node builtins only (this file imports nothing at all).
 //
 // Placeholders used in the argv templates (each substitutes into ONE argv element only):
-//   <script> <expr> <pkgs> <probeCode> <exe> <pkg> <cliArgv...>
+//   <script> <expr> <pkgs> <probeCode> <exe> <pkg>
 // A descriptor is pure data; every template can be overridden by the user via mathEngineOverride.
 
 export const MATH_ENGINE_ORDER = ['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']
@@ -19,9 +19,9 @@ const ARG_ERROR_HINTS = ['unknown option', 'invalid option', 'unrecognized optio
 export const MATH_ENGINES = {
   python: {
     name: 'python', phase: 'P1',
-    candidates: ['python3', 'python', 'py'], winPrefix: ['-3'],
+    candidates: ['python3', 'python', 'py'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
-    scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], stdinArgv: ['-'], ext: '.py',
+    scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], ext: '.py',
     // round-7 (live): NO shell metacharacters (`|`, `%`) in any probe argv - a real host rejected
     // them with a null spawn. One line per package: "name ok|missing".
     probeCode: "import importlib.util,sys\nfor p in sys.argv[1:]: print(p, 'ok' if importlib.util.find_spec(p) is not None else 'missing')",
@@ -70,7 +70,7 @@ export const MATH_ENGINES = {
     name: 'r', phase: 'P1',
     candidates: ['Rscript', 'R'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
-    scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], stdinArgv: ['--no-save', '--slave'], ext: '.R',
+    scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], ext: '.R',
     // round-7 (live): line-per-package, no `|` in the argv.
     probeCode: "for (p in strsplit('__PKGS__',',')[[1]]) cat(p, if (requireNamespace(p, quietly=TRUE)) 'ok' else 'missing', '\\n')",
     packageProbe: { argv: ['-e', '<probeCode>'], parse: 'pairs' },
@@ -89,7 +89,7 @@ export const MATH_ENGINES = {
     candidates: ['octave', 'octave-cli'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['--no-gui', '--quiet', '<script>'], evalArgv: ['--no-gui', '--quiet', '--eval', '<expr>'],
-    stdinArgv: ['--no-gui', '--quiet'], ext: '.m',
+    ext: '.m',
     // round-7 (live): line-per-package via disp, no `|` and no `%` in the argv.
     probeCode: "s=pkg('list'); n={'__QPKGS__'}; for i=1:numel(n); if any(cellfun(@(x) strcmp(x.name,n{i}),s)); disp([n{i} ' ok']); else; disp([n{i} ' missing']); end; end",
     packageProbe: { argv: ['--no-gui', '--quiet', '--eval', '<probeCode>'], parse: 'pairs' },
@@ -106,7 +106,7 @@ export const MATH_ENGINES = {
     name: 'julia', phase: 'P1',
     candidates: ['julia'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
-    scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], stdinArgv: ['-'], ext: '.jl',
+    scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], ext: '.jl',
     probeCode: 'for p in [__QPKGS__]; println(p, ":", Base.find_package(p) === nothing ? "missing" : "ok"); end',
     packageProbe: { argv: ['-e', '<probeCode>'], parse: 'pairs' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS,
@@ -122,7 +122,7 @@ export const MATH_ENGINES = {
     name: 'matlab', phase: 'P1',
     candidates: ['matlab'],
     versionArgv: ['-batch', 'disp(version)'], versionRe: '(\\d+\\.\\d+)',
-    scriptArgv: ['-batch', "run('<script>')"], evalArgv: ['-batch', '<expr>'], stdinArgv: null, ext: '.m',
+    scriptArgv: ['-batch', "run('<script>')"], evalArgv: ['-batch', '<expr>'], ext: '.m',
     // round-7 (live): no `|`/`%` in any probe argv (a real host rejected such argv with a null spawn).
     probeCode: "t={'__QPKGS__'}; for i=1:numel(t); if license('test',t{i}); disp([t{i} ' ok']); else; disp([t{i} ' missing']); end; end",
     packageProbe: { argv: ['-batch', '<probeCode>'], parse: 'pairs' },
@@ -135,7 +135,7 @@ export const MATH_ENGINES = {
     name: 'maple', phase: 'P1',
     candidates: ['maple'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+)',
-    scriptArgv: ['-q', '<script>'], evalArgv: ['-q', '-c', '<expr>'], stdinArgv: null, ext: '.mpl',
+    scriptArgv: ['-q', '<script>'], evalArgv: ['-q', '-c', '<expr>'], ext: '.mpl',
     // round-7 (live): `print` instead of printf so the argv carries no `|`/`%`.
     probeCode: 'for p in ["__PKGS__"] do try with(p) catch: print(p, " missing"); next end try; print(p, " ok") end do',
     packageProbe: { argv: ['-q', '-c', '<probeCode>'], parse: 'pairs' },
@@ -149,7 +149,7 @@ export const MATH_ENGINES = {
     name: 'wolfram', phase: 'P1',
     candidates: ['wolframscript', 'WolframKernel', 'math'],
     versionArgv: ['-code', '$Version'], versionRe: '(\\d+\\.\\d+(\\.\\d+)?)',
-    scriptArgv: ['-file', '<script>'], evalArgv: ['-code', '<expr>'], stdinArgv: null, ext: '.wl',
+    scriptArgv: ['-file', '<script>'], evalArgv: ['-code', '<expr>'], ext: '.wl',
     probeCode: 'Do[Print[p,":",If[Quiet[Check[Needs[p];True,False]],"ok","missing"]],{p,{__QPKGS__}}]',
     packageProbe: { argv: ['-code', '<probeCode>'], parse: 'pairs' },
     license: 'commercial', argErrorHints: ARG_ERROR_HINTS,
@@ -158,10 +158,10 @@ export const MATH_ENGINES = {
     userInstall: { windows: 'vendor installer + activation', macos: 'vendor installer + activation', linux: 'vendor installer + activation' },
   },
   cli: {
-    name: 'cli', phase: 'P1', defaultOn: true,
+    name: 'cli', phase: 'P1',
     candidates: [], resolveFrom: 'cli.command',
     versionArgv: ['--version'], versionRe: '([^\\s]+)', versionOptional: true,
-    scriptArgv: ['<cliArgv...>'], evalArgv: null, stdinArgv: null, ext: '.txt',
+    evalArgv: null, ext: '.txt',
     probeCode: null, packageProbe: null,
     license: 'user', argErrorHints: ARG_ERROR_HINTS,
     install: null, vendor: null,
@@ -175,7 +175,7 @@ export const MATH_P2_ENGINES = {
   sage: {
     name: 'sage', phase: 'P2', candidates: ['sage'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+)',
-    scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], stdinArgv: ['-'], ext: '.sage',
+    scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], ext: '.sage',
     probeCode: null, packageProbe: { argv: ['-pip', 'list'], parse: 'lines' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS, install: null,
   },

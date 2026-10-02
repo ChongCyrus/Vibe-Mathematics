@@ -164,7 +164,10 @@ console.log('=== 4. a deleted file at the SAME version: restored, nothing backed
   ok(existsSync(at(PRESETS[2], 'agent.cordis.yml')), 'a deleted managed file is restored')
   ok(isCopyOf(PRESETS[2], 'agent.cordis.yml'), 'the restored file is byte-identical to the shipped one')
   ok(!existsSync(join(backupRoot, '2.0.0')), 'a run that replaced nothing creates no backup directory')
-  ok(logs.some((l) => l.includes('restored')), 'the restore is reported')
+  // Guard-sync: the installer's user-visible stream is Chinese by convention (one language, see the
+  // comment at the cleanup line), so these assert the FACT (an action keyword + the count) rather than
+  // an English word.
+  ok(logs.some((l) => /\u8fd8\u539f\u4e86\s*\d+\s*\u4e2a\u7f3a\u5931\u7684\u9884\u8bbe\u6587\u4ef6/.test(l)), 'the restore is reported')
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 
@@ -182,7 +185,7 @@ console.log('=== 5. a preset this bundle no longer ships ===')
   ok(!existsSync(join(presetRoot, 'vibe-math-v1', 'legacy.js')), 'a package-owned file of a dropped preset is removed')
   ok(!existsSync(join(presetRoot, 'vibe-math-v1')), 'the dropped preset directory is removed once empty')
   ok(existsSync(join(presetRoot, 'vibe-math-v0', 'mine.js')), 'a file recorded as user-owned in a dropped preset is kept')
-  ok(logs.some((l) => l.includes('cleanup')), 'the cleanup is reported')
+  ok(logs.some((l) => /\u9884\u8bbe\u6e05\u7406/.test(l) && /\u5220\u9664\s*\d+\s*\u4e2a\u6587\u4ef6/.test(l)), 'the cleanup is reported')
   ok(failedLog(logs).length === 0, 'apply() swallowed no failure', failedLog(logs)[0])
 }
 

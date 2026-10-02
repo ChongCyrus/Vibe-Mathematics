@@ -14,7 +14,7 @@
 ## [0] verify · off/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -66,7 +66,7 @@ Reply with ONLY a JSON object:
 ## [2] verify · encourage/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -212,7 +212,7 @@ Reply with ONLY a JSON object:
 ## [6] verify · require/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -245,7 +245,7 @@ Reply with ONLY a JSON object:
 ## [7] verify · require/verify/debate
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -322,7 +322,7 @@ Reply with ONLY a JSON object:
 ## [9] verify · passed/fidelity
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -354,7 +354,7 @@ Reply with ONLY a JSON object:
 ## [10] verify · passed/fidelity (encourage)
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-passed（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -386,7 +386,7 @@ Reply with ONLY a JSON object:
 ## [11] verify · blocked/verify
 
 ```text
-Resident r-1 — 团队验证。 The group is verifying object p-corpus-blocked（命题，提出者 ）。
+Resident r-1 — 团队验证。 The group is verifying object p-corpus-blocked（命题）。
 请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。
 **投票契约**：只有**恰好 1**（你认为是**绝对**为真）和**恰好 0**（你认为是**绝对**为假）算表决；**严格介于 0 与 1 之间**（例如 0.9、0.95、0.5）是**弃权**——它是你对"该对象为真"的**概率估计**，不是你的一票。
   · 有把握认为它为真就投 **1**；不要为了"留一点余地"投 0.9——那会让全组永远无法定论。
@@ -483,8 +483,7 @@ Reply with ONLY a JSON object:
 
 ```text
 Resident r-2 — 团队会议进行中。 A meeting is in progress (agenda: 分工与是否需要验证).
-这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。
-（目前还没人发言，你先说。）
+本轮是**并行独立发言**：同轮内不会有人先发言给你（唤醒是并行的），你的 input 会在**下一次唤醒/下一轮**转给其他人；请先给出你自己的判断。
 
 你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。
 **停止表决必须是绝对票**：`voteSolved:true` 只表示你认为原问题**已解决**；只要有一名在册常驻没投 `true`（投 false、弃权、或漏写这个字段），run 就**不会**停止。不确定就投 false。

@@ -12,6 +12,21 @@ import { MATH_ENGINES, MATH_ENGINE_ORDER, mathEngineCandidates, mathEngineArgErr
 
 export const MATH_TOOL_NAME = 'math_computation'
 
+// Sweep ruling: the cli policy is declared ONCE, in the descriptor (math-engines.js `cli.policy`).
+// These two readers are the only place the rule is applied, so descriptor and behaviour cannot drift.
+const CLI_POLICY = (MATH_ENGINES.cli && MATH_ENGINES.cli.policy) || {}
+
+// Item-2 ruling: a commercial template's "VERIFY" provenance must REACH the user, and it is declared
+// ONCE (descriptor `verify` + `verifyReason`). Assemble the fields ONLY when a reason exists, so an
+// engine that declares nothing prints no empty slot.
+function verifyFields(engine) {
+  const d = MATH_ENGINES[engine] || {}
+  if (!d.verify) return {}
+  const out = { verify: true }
+  if (typeof d.verifyReason === 'string' && d.verifyReason) out.verifyReason = d.verifyReason
+  return out
+}
+
 export const MATH_PARAM_NAMES = Object.freeze([
   'mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPackages', 'mathInstallScope',
 ])
@@ -256,8 +271,10 @@ export function validateMathArgs(args, params) {
     if (mode !== 'code' && mode !== 'file' && mode !== 'expr') return bad('mode must be code|file|expr for op=run')
     const engine = args.engine || 'auto'
     if (engine === 'cli') {
-      if (p.mathMode !== 'typed+shell') return bad('engine=cli is disabled while mathMode=' + p.mathMode, 'MATH_REFUSED', next('reason', { reason: 'policy' }))
-      if (p.mathEngines.indexOf('cli') === -1) return bad('engine=cli is not in mathEngines', 'MATH_REFUSED', next('reason', { reason: 'engine-not-allowed' }))
+      // Sweep ruling (single source): the cli policy lives in the DESCRIPTOR; the code reads it here
+      // rather than hard-coding 'typed+shell', so the two can no longer drift apart.
+      if (CLI_POLICY.requiresMathMode && p.mathMode !== CLI_POLICY.requiresMathMode) return bad('engine=cli is disabled while mathMode=' + p.mathMode + ' (requires ' + CLI_POLICY.requiresMathMode + ')', 'MATH_REFUSED', next('reason', { reason: 'policy', requiresMathMode: CLI_POLICY.requiresMathMode }))
+      if (CLI_POLICY.requiresEngineInList && p.mathEngines.indexOf('cli') === -1) return bad('engine=cli is not in mathEngines', 'MATH_REFUSED', next('reason', { reason: 'engine-not-allowed', requiresEngineInList: true }))
       if (!isObj(args.cli)) return bad('engine=cli requires cli:{command,argv}', 'MATH_REFUSED', next('reason', { reason: 'missing-cli-command' }))
       if (mode === 'expr') return bad('cli does not support mode=expr', 'MATH_REFUSED', next('reason', { reason: 'expr-not-supported' }))
     }
@@ -319,6 +336,8 @@ async function userInstallNext(H, engine) {
     packageManager: mgr,
     packageManagerAvailable: mgr ? available : null,
     vendorUrl: d.vendor || null,
+    // Item-2: the not-found guidance carries the same provenance when the descriptor declares it.
+    ...verifyFields(engine),
     note: (mgr && !available)
       ? ('本机没有检测到包管理器 ' + mgr + '：建议命令无法运行，请按上面的官方地址手动安装（或先自行安装一个包管理器）。')
       : null,
@@ -376,7 +395,7 @@ export async function probeMathEngines(host, opts) {
       if (d.license === 'commercial') continue // installed but not usable: reported by op=run as LICENSE_REQUIRED
       continue
     }
-    engines.push({ name: name, version: v.version, path: hit, license: d.license })
+    engines.push(Object.assign({ name: name, version: v.version, path: hit, license: d.license }, verifyFields(name)))
   }
   const result = { ok: true, engines: engines, available: engines.length > 0 }
   PROBE_CACHE.set(H, result)
@@ -612,7 +631,7 @@ async function resolveEngine(H, requested, params, args) {
     const d = applyOverride({ name: name, desc: d0 }, params, args)
     if (params.mathEngines.indexOf(name) === -1) return fail('MATH_REFUSED', name, '引擎 ' + name + ' 不在 mathEngines 允许列表内', { next: next('reason', { reason: 'engine-not-allowed' }) })
     if (name === 'cli') {
-      if (params.mathMode !== 'typed+shell') return fail('MATH_REFUSED', name, 'cli 被策略禁用（mathMode=' + params.mathMode + '）', { next: next('reason', { reason: 'policy' }) })
+      if (CLI_POLICY.requiresMathMode && params.mathMode !== CLI_POLICY.requiresMathMode) return fail('MATH_REFUSED', name, 'cli 被策略禁用（需要 mathMode=' + CLI_POLICY.requiresMathMode + '，当前 ' + params.mathMode + '）', { next: next('reason', { reason: 'policy', requiresMathMode: CLI_POLICY.requiresMathMode }) })
       let exe = null
       try { exe = await H.resolveExecutable(args.cli.command) } catch (e) { exe = null }
       if (!exe) return fail('MATH_ENGINE_NOT_FOUND', name, 'cli 命令无法解析：' + args.cli.command, { next: await userInstallNext(H, 'cli') })
@@ -634,7 +653,7 @@ async function resolveEngine(H, requested, params, args) {
     if (!v.ok) {
       if (d.license === 'commercial' || d.versionOptional) {
         const lic = await checkLicence(H, d, hit)
-        if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', { engine: name, url: d.vendor || '' }) })
+        if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', Object.assign({ engine: name, url: d.vendor || '' }, verifyFields(name))) })
         return { ok: true, name: name, desc: d, exe: hit, version: 'unknown' }
       }
       // round-7 (live-session fix): the engine WAS found - so an install guide would be misleading
@@ -646,7 +665,7 @@ async function resolveEngine(H, requested, params, args) {
       })
     }
     const lic = await checkLicence(H, d, hit)
-    if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', { engine: name, url: d.vendor || '' }) })
+    if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', Object.assign({ engine: name, url: d.vendor || '' }, verifyFields(name))) })
     return { ok: true, name: name, desc: d, exe: hit, version: v.version }
   }
   const first = requested === 'auto' ? (params.mathEngines[0] || 'python') : requested
@@ -745,11 +764,14 @@ function assembleArgv(det, mode, payload) {
     }
   }
   if (mode === 'code' || mode === 'file') {
-    return { argv: [det.exe].concat((d.scriptArgv || []).map((a) => a === '<script>' ? payload.scriptAbs : a)) }
+    // Sweep finding (HIGH): substitution must be STRING-level, not exact-element equality - matlab's
+    // descriptor embeds the placeholder (`run('<script>')`), so an exact match let the literal
+    // `run('<script>')` reach the engine and the archived script never ran.
+    return { argv: [det.exe].concat((d.scriptArgv || []).map((a) => String(a).split('<script>').join(payload.scriptAbs))) }
   }
   if (mode === 'expr') {
     if (!d.evalArgv) return { refused: 'engine does not support mode=expr' }
-    return { argv: [det.exe].concat(d.evalArgv.map((a) => a === '<expr>' ? payload.expr : a)) }
+    return { argv: [det.exe].concat(d.evalArgv.map((a) => String(a).split('<expr>').join(payload.expr))) }
   }
   return { refused: 'unknown mode' }
 }
@@ -920,9 +942,9 @@ async function opProbe(H, args, params) {
   // available even when auto-detection found nothing - otherwise probe denied what run would do.
   const engines = probe.engines.slice()
   if (chosen && chosen.ok && !engines.some((e) => e.name === chosen.name)) {
-    engines.push({ name: chosen.name, path: chosen.exe, version: chosen.version, license: (MATH_ENGINES[chosen.name] || {}).license })
+    engines.push(Object.assign({ name: chosen.name, path: chosen.exe, version: chosen.version, license: (MATH_ENGINES[chosen.name] || {}).license }, verifyFields(chosen.name)))
   }
-  const engineInfo = (chosen && chosen.ok) ? { name: chosen.name, path: chosen.exe, version: chosen.version } : null
+  const engineInfo = (chosen && chosen.ok) ? Object.assign({ name: chosen.name, path: chosen.exe, version: chosen.version }, verifyFields(chosen.name)) : null
   // round-9 (F3): the availability line must never be silently partial - name the CONFIGURED engines
   // that were not found (and why), instead of just listing the ones that happened to resolve.
   const foundNames = engines.map((e) => e.name)
@@ -1251,7 +1273,7 @@ async function opInstall(H, args, params) {
   if (!d) return fail('MATH_INVALID_ARGUMENT', engineName, 'unknown engine: ' + engineName)
   if (d.license === 'commercial' || !d.install) {
     return fail('MATH_REFUSED', engineName, engineName + ' 永不代装（商业引擎只给厂商指引）', {
-      next: next('vendor', { engine: engineName, url: d.vendor || '' }),
+      next: next('vendor', Object.assign({ engine: engineName, url: d.vendor || '' }, verifyFields(engineName))),
     })
   }
   const scope = args.scope || params.mathInstallScope || 'user' // per-call only; never persisted anywhere

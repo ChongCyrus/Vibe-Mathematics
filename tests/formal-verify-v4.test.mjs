@@ -1176,7 +1176,7 @@ const K = await establish()
     const later = byLabel('meeting/later speaker (others relayed)')
     assert(!!first && !!later, '★ the corpus carries the MEETING prompt (two perspectives: no prior speech / others already relayed)')
     assert(/meeting is in progress/.test(first.prompt) && /meeting is in progress/.test(later.prompt), 'the meeting entries are built by the real meeting prompt builder')
-    assert(/目前还没人发言/.test(first.prompt), 'the first-speaker entry shows the "nobody has spoken yet" branch')
+    assert(/并行独立发言/.test(first.prompt), 'the first-speaker entry states the parallel-statements semantics (nobody has spoken yet)')
     assert(/已有发言（他人 input，已转发给你）/.test(later.prompt) && /我建议先验证 p-corpus/.test(later.prompt), '★ the later-speaker entry carries a teammate contribution VERBATIM (the group-chat relay is reviewable)')
     assert(/\[r-1\]/.test(later.prompt) && !/\[r-2\]/.test(later.prompt), 'the relayed-speech list excludes the reader and names the real sender id')
     assert(/voteSolved/.test(first.prompt) && /停止表决必须是绝对票/.test(first.prompt), '★ the meeting prompt states the stop-vote contract the code enforces (every speaker must answer true)')
@@ -1627,6 +1627,85 @@ section('N5 v4 member-facing library declarations are root-qualified (members/<y
   const legacy = (text.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<你>\//g) || [])
   assert(legacy.length === 0, '* no declaration keeps the legacy project-root-relative shape (' + JSON.stringify(legacy) + ')')
   assert(/Members\/<你>\/Progress\/progress\.md/.test(text), '* the root-qualified progress declaration is the one the writer uses (Members/<id>/Progress/progress.md)')
+}
+section('N6 four-preset path discipline (member root / prefix-note)')
+{
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const pick = (env, rel) => process.env[env] ? process.env[env] : fileURLToPath(new URL(rel, import.meta.url))
+  const files = {
+    v2: pick('V2_PLUGIN', '../vibe-math-v2/vibe-math-v2.js'),
+    v3: pick('V3_PLUGIN', '../vibe-math-v3/vibe-math-v3.js'),
+    v4: pick('V4_PLUGIN', '../vibe-math-v4/vibe-math-v4.js'),
+    v5: pick('V5_PLUGIN', '../vibe-math-v5/vibe-math-v5.js'),
+  }
+  const ROOT = /Members\/<[^>]+>\/(?:Progress|Propos|Methods|Subproblems)\//g
+  const LEGACY = /(?:^|[^/>])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g
+  for (const k of ['v4', 'v5']) {
+    const src = readFileSync(files[k], 'utf8')
+    const root = (src.match(ROOT) || []).length
+    const legacy = (src.match(LEGACY) || []).length
+    assert(root >= 4, '* ' + k + ': every member-visible library declaration carries the member root (found ' + root + ')')
+    assert(legacy === 0, '* ' + k + ': no declaration keeps the legacy project-root-relative shape (found ' + legacy + ')')
+  }
+  // v3 (v2/v3 deep review D1): the writer `applyAgentWrites` accepts ONLY Problems|Progress|Propos|Methods|Notes
+  // at the PROJECT ROOT, so a `Members/<x>/...` declaration is a write it SILENTLY DISCARDS. v3's member-facing
+  // text must therefore stay root-relative - the opposite of v4/v5, which really do have a member subtree.
+  const v3 = readFileSync(files.v3, 'utf8')
+  assert(!/Members\/<[^>]+>\//.test(v3), '* v3: no member-facing declaration keeps the Members/<x>/ shape (the writer would discard that write)')
+  const v3decl = [...v3.matchAll(/(?:^|[^/>])([A-Za-z]+)\/<[^>]+>\//g)].map((m) => m[1])
+  const WL = ['Problems', 'Progress', 'Propos', 'Methods', 'Notes']
+  const v3ok = v3decl.filter((x) => WL.indexOf(x) !== -1)
+  assert(v3ok.length >= 1, '* v3: its declarations use the project-root-relative sections the writer accepts (found ' + v3ok.length + ' of ' + JSON.stringify(v3decl) + ')')
+  // CLASS GUARD (covers v2/v3/v4/v5): whatever sections the persona/prompts tell an agent to write must be
+  // accepted by that preset's writer - this is the invariant that would have caught both D1 and the v4/v5 cases.
+  assert(/applyAgentWrites[\s\S]{0,600}?(Problems|Progress|Propos|Methods|Notes)/.test(v3), '* class guard: applyAgentWrites whitelists the sections the member-facing text names (v3)')
+  const v2 = readFileSync(files.v2, 'utf8')
+  assert(!LEGACY.test(v2), '* v2 genuinely has no library-declaration vocabulary (so its check below is not vacuous)')
+  assert(/PAPER_PATH_NOTE/.test(v2) && /\u4f1a\u8bdd cwd/.test(v2) && /\u7edd\u5bf9\u524d\u7f00/.test(v2), '* v2 uses the OTHER mechanism: one PAPER_PATH_NOTE stating the session-cwd + absolute-prefix rule')
+  const uses = (v2.match(/PAPER_PATH_NOTE/g) || []).length
+  // (D3 fixed the duplicate: the note no longer belongs in the evidence ENTRY list.) Assert the
+  // STRUCTURE, not an occurrence count: defined once, appended by each member-facing material text,
+  // and never embedded in a bare data entry.
+  const noteDef = (v2.match(/const PAPER_PATH_NOTE/g) || []).length
+  assert(noteDef === 1, '* v2 defines PAPER_PATH_NOTE exactly once (found ' + noteDef + ')')
+  const noteLines = v2.split(/\r?\n/).filter((l) => l.includes('PAPER_PATH_NOTE'))
+  const embeds = noteLines.filter((l) => !/const PAPER_PATH_NOTE/.test(l) && !/[+]|push\(/.test(l))
+  assert(embeds.length === 0, '* v2 never embeds the prose rule in a bare data entry (' + JSON.stringify(embeds).slice(0, 80) + ')')
+  const bodyOf = (src, fn) => {
+    const a = src.indexOf('function ' + fn)
+    if (a < 0) return null
+    const b = src.slice(a + 10).search(/\n {2}(?:async )?function /)
+    if (b < 0) return null            // STRICT bound: no fixed-length fallback (window bleed lesson)
+    return src.slice(a, a + 10 + b)
+  }
+  // RULING (B): the index is a DATA LIST (prose-free); the delivered member-facing material that carries
+  // the paths is the digest, and it must append the note. (The other consumer, paperEmitArtifacts ->
+  // paperBuildMarkdown, produces the FINAL PAPER ARTIFACT for humans, not a member prompt.)
+  assert(!/PAPER_PATH_NOTE/.test(bodyOf(v2, 'paperEvidenceIndex') || ''), '* v2: the evidence-index DATA LIST embeds no prose rule')
+  assert(/PAPER_PATH_NOTE/.test(bodyOf(v2, 'buildPaperDigest') || ''), '* v2: the delivered digest material appends PAPER_PATH_NOTE')
+  assert(bodyOf(v2, 'buildPaperDigest') !== null && bodyOf(v2, 'paperEvidenceIndex') !== null, '* v2: both windows are bounded strictly (no fixed-length fallback)')
+}
+section('N7 delivered prompts carry no labelled-but-empty slot (proposer/agenda/target)')
+{
+  const P = await establish()
+  const txt = await P.prompts('verify', 'r-1', { target: 'p-nopowner', stage: 'independent' })
+  assert(txt.length > 100 && /verifying object p-nopowner/.test(txt), '* the delivered verify prompt is non-trivial and names the target (non-vacuity: an empty prompt must not pass below)')
+  assert(!/\u63d0\u51fa\u8005\s*\uff09/.test(txt), '* no labelled-but-empty proposer slot in the delivered frame (\u63d0\u51fa\u8005 + ) )')
+  assert(!/agenda:\s*[)\uff09]/.test(txt), '* no labelled-but-empty agenda slot in the delivered frame')
+  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  assert(/String\(vs\.targetOwner\|\|''\)\.trim\(\)\?/.test(src), '* the proposer segment is assembled ONLY when a value exists (source-level: the office is never invented)')
+}
+section('N8 the meeting frame\'s relay claim matches reality (no promise of speeches that do not exist)')
+{
+  const P = await establish()
+  const noPrior = await P.prompts('meeting', 'r-1')
+  assert(noPrior.length > 100 && /A meeting is in progress/.test(noPrior), '* the meeting frame is non-trivial (non-vacuity)')
+  assert(!/\u4e0b\u9762\u5df2\u6709\u4eba\u53d1\u8a00/.test(noPrior), '* with NO prior statements the frame does not claim that others have spoken (\u4e0b\u9762\u5df2\u6709\u4eba\u53d1\u8a00)')
+  assert(/\u5e76\u884c\u72ec\u7acb\u53d1\u8a00/.test(noPrior), '* …instead it states the real semantics: this round is parallel independent statements')
+  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  assert(/\(prior\?'\\n\u8fd9\u662f\u4e00\u573a\u771f\u5b9e\u8ba8\u8bba/.test(src), '* the relay claim is gated on prior existing (source-level)')
+  assert(/\(prior\?\(\'\\n\\n### \u5df2\u6709\u53d1\u8a00/.test(src), '* the forwarded-speech block is still delivered whenever prior exists')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

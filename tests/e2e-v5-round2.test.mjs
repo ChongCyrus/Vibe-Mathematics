@@ -1029,6 +1029,24 @@ console.log('\n[21] office-only tools refuse a caller that is neither a member n
   const ghostRm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' }, ghost)
   assert(ghostRm.ok === false && ghostRm.code === 'V5_MEMBER_NOT_FOUND',
     'vibe_v5_remove_researcher is refused for the unidentifiable caller (' + JSON.stringify(ghostRm).slice(0, 90) + ')')
+  // ---- 6.4: the DIAGNOSIS, not just the code -------------------------------------------------
+  const ghostRec = await h.callTool('vibe_v5_record_progress', { content: 'x' }, ghost)
+  assert(ghostRec.ok === false && ghostRec.code === 'V5_MEMBER_NOT_FOUND' && ghostRec.next && ghostRec.next.kind === 'member-call' && ghostRec.next.tool === 'vibe_v5_members',
+    '* 6.4 branch 3 (unidentifiable caller / the office has no member identity): code + next{kind:member-call, tool:vibe_v5_members} (' + JSON.stringify(ghostRec).slice(0, 120) + ')')
+  assert(typeof ghostRec.message === 'string' && /\u6240\u529e|\u6210\u5458/.test(ghostRec.message),
+    '* 6.4 branch 3 EXPLAINS the office/member distinction instead of a bare refusal (' + String(ghostRec.message).slice(0, 90) + ')')
+  const neverH = makeHost({ pluginModule })
+  const neverStarted = await neverH.callTool('vibe_v5_record_progress', { content: 'x' })
+  assert(neverStarted.ok === false && neverStarted.code === 'V5_MEMBER_NOT_FOUND' && neverStarted.next && neverStarted.next.kind === 'start' && neverStarted.next.tool === 'vibe_v5_start',
+    '* 6.4 branch 1 (the institute was never started): code + next{kind:start, tool:vibe_v5_start} (' + JSON.stringify(neverStarted).slice(0, 120) + ')')
+  // Branches 2 (running, zero active) and 4 (id no longer on the roster) are not reachable through
+  // the tool surface from this harness, so they are pinned STRUCTURALLY (each branch with its own
+  // next{} kind), while branches 1 and 3 above are pinned BEHAVIOURALLY.
+  const src5 = readFileSync(PLUGIN, 'utf8')
+  for (const k of ['start', 'staff', 'member-call', 'roster']) {
+    assert(new RegExp("kind: '" + k + "'").test(src5), '* 6.4 memberDiagnosis branch ' + k + ' exists with its own next{} kind')
+  }
+  assert(/vibe_v5_start/.test(src5) && /vibe_v5_add_researcher/.test(src5), '* 6.4 the start/staff branches point at real tools (vibe_v5_start / vibe_v5_add_researcher)')
   const memberRm = await h.callTool('vibe_v5_remove_researcher', { id: 'r-1' }, h.childAgent(h.childOf('r-1')))
   assert(memberRm.ok === false && memberRm.code === 'V5_NOT_OFFICE',
     '...and refused for a member (the tool says Office only), not just for ghosts (' + JSON.stringify(memberRm).slice(0, 90) + ')')
@@ -1979,6 +1997,59 @@ console.log('\n[44] paths stay inside the project root; every quorum view agrees
     'the roster change moved both m and rosterVersion (' + JSON.stringify({ before: v1.st.quorum.m, after: v2.st.quorum.m, v: [v1.st.quorum.rosterVersion, v2.st.quorum.rosterVersion] }) + ')')
 }
 
+// ---------- 45. F2: paperSummary() semantics (md runs must not claim tex / compilation) ----------
+console.log('\n[45] paperSummary(): md runs claim no tex, no compilation, no engine')
+{
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  const mdZh = await h.callTool('vibe_v5_paper', { lang: 'zh', format: 'md', editor: 'office' })
+  const st = await h.callTool('vibe_v5_status', {})
+  const p = st.paper || {}
+  assert(mdZh.ok === true && p.format === 'md', '* the md run is reported as format=md (' + JSON.stringify({ ok: mdZh.ok, format: p.format }) + ')')
+  const arts = Array.isArray(p.artifacts) ? p.artifacts : []
+  assert(arts.indexOf('tex') === -1 && arts.indexOf('pdf') === -1, '* md runs list NO tex/pdf artifacts (found ' + JSON.stringify(arts) + ')')
+  assert(!p.engine, '* md runs report no LaTeX engine - i.e. no requirement on a LaTeX toolchain (engine=' + JSON.stringify(p.engine) + ')')
+  assert(typeof p.dir === 'string' && p.dir.indexOf('Paper/') === 0, '* status.paper.dir is the institute Paper/ dir (' + JSON.stringify(p.dir) + ')')
+  assert(p.meta === null || p.meta === undefined, '* meta stays empty until the paper is finalized (meta=' + JSON.stringify(p.meta) + ')')
+  // md x language and md x editor combinations
+  const h2 = makeHost({ pluginModule })                       // independent host: the first paper is already finalised
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  const mdEn = await h2.callTool('vibe_v5_paper', { lang: 'en', format: 'md', editor: 'academician' })
+  console.log('  [45] fresh-host vibe_v5_paper -> ' + JSON.stringify(mdEn).slice(0, 300))
+  const p2 = (await h2.callTool('vibe_v5_status', {})).paper || {}
+  assert(p2.format === 'md' && p2.lang === 'en', '* md x language: lang is honoured and the format stays md (' + JSON.stringify({ format: p2.format, lang: p2.lang, call: mdEn }) + ')')
+  const p2arts = Array.isArray(p2.artifacts) ? p2.artifacts : []
+  assert(p2arts.indexOf('tex') === -1 && p2arts.indexOf('pdf') === -1 && !p2.engine, '* md x editor: still no tex/pdf and no engine (editor=member)')
+  // the `editor` closed set is a CONTRACT: a valid value succeeds, an invalid one is refused by code
+  const hOk = makeHost({ pluginModule })
+  await hOk.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  const okOffice = await hOk.callTool('vibe_v5_paper', { lang: 'zh', format: 'md', editor: 'office' })
+  assert(okOffice.ok === true, '* editor=office is accepted (the closed set is office|academician) (' + JSON.stringify(okOffice).slice(0, 100) + ')')
+  const hBad = makeHost({ pluginModule })
+  await hBad.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  const badEditor = await hBad.callTool('vibe_v5_paper', { lang: 'zh', format: 'md', editor: 'member' })
+  assert(badEditor.ok === false && badEditor.code === 'V5_INVALID_ARGUMENT', '* an out-of-set editor is refused with V5_INVALID_ARGUMENT, not silently coerced (' + JSON.stringify(badEditor).slice(0, 120) + ')')
+}
+// ---------- 46. F6: memberDiagnosis branches — kind AND exact next.tool, exclusive & exhaustive -------
+console.log('\n[46] memberDiagnosis: per-branch kind + exact next.tool')
+{
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)), 'utf8')
+  const dStart = src.indexOf('function memberDiagnosis(')
+  const dEnd = src.indexOf('\n    function ', dStart + 10)
+  const body = src.slice(dStart, dEnd > 0 ? dEnd : dStart + 4000)   // scope: the diagnosis branches only
+  const pairs = [["start","vibe_v5_start"],["staff","vibe_v5_add_researcher"],["member-call","vibe_v5_members"],["roster","vibe_v5_members"]]
+  for (const [kind, tool] of pairs) {
+    assert(new RegExp("kind: '" + kind + "'[^\\n]*?tool: '" + tool + "'").test(body),
+      '* F6 branch ' + kind + ' pairs with next.tool=' + tool + ' (exact - not just ANY next{})')
+  }
+  for (const [kind] of pairs) {
+    const n = (body.match(new RegExp("kind: '" + kind + "'", 'g')) || []).length
+    assert(n === 1, '* F6 kind ' + kind + ' is declared exactly ONCE (mutually exclusive branches, no duplicate/typo kind) - found ' + n)
+  }
+  assert((body.match(/next: \{/g) || []).length >= 4, '* F6 the four branches are exhaustive: every refusal path carries its own next{}')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

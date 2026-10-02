@@ -570,6 +570,101 @@ console.log('\n-- PAPER §2 (v3): a pre-existing paper.pdf is never deleted or o
   latexCfg = null
 }
 
+// ================= D1 class guard: taught write-paths ⊆ the writer's whitelist =================
+console.log('\n-- D1 guard: every member-facing write path is one the writer accepts --');
+{
+  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const yml = readFileSync(new URL('../vibe-math-v3/agent.cordis.yml', import.meta.url), 'utf8');
+  const plugin = js + '\n' + yml;
+  // 1) the whitelist the writer really enforces (applyAgentWrites)
+  const wl = /if \(!\/\^\(([A-Za-z|]+)\)\\\/\//.exec(js);
+  assert(!!wl && wl[1] === 'Problems|Progress|Propos|Methods|Notes',
+    'D1 whitelist read from applyAgentWrites (got ' + (wl && wl[1]) + ')');
+  const roots = (wl ? wl[1] : '').split('|');
+  // 2) no member subtree exists in v3 at all — the D1 contradiction must not come back
+  assert(plugin.indexOf('Members/') === -1,
+    '★★ [D1] no `Members/` path is taught anywhere in the v3 prompts/persona (v3 has no member subtree)');
+  // 3) every `.md` path inside a WRITE-instruction line must start with an accepted root
+  const WRITE = /(写进|写入|写到|写一张|write into|write the |write its|write a )/;
+  const PATH = /`([A-Za-z][^`\s]*?\.md)`/g;
+  const FRAMEWORK_MAINTAINED = ['Formal/TODO.md']; // written by the framework itself, not by a member
+  const taught = [];
+  for (const line of plugin.split(/\r?\n/)) {
+    if (!WRITE.test(line)) continue;
+    let m;
+    while ((m = PATH.exec(line))) {
+      const p = m[1];
+      if (FRAMEWORK_MAINTAINED.indexOf(p) === -1) taught.push(p);
+    }
+    PATH.lastIndex = 0;
+  }
+  const uniq = [...new Set(taught)];
+  assert(uniq.length >= 3, 'D1 write instructions with explicit .md paths were found (' + uniq.length + ')');
+  const bad = uniq.filter((p) => roots.indexOf(p.split('/')[0]) === -1);
+  assert(bad.length === 0,
+    '★★ [D1] every taught write path is accepted by applyAgentWrites (' + roots.join('|') + '); offenders=' + JSON.stringify(bad));
+  // 4) the solver CHANNEL A prompt must agree with the persona about the narration path
+  const chanA = /CHANNEL A[^\n]*narrative into `Progress\/' \+ q\.id \+ '\/' \+ dir\.id \+ '\.md`/.test(js);
+  assert(chanA, '★★ [D1] CHANNEL A 的叙述路径 = Progress/<qid>/<dirId>.md（与 persona 同一扁平布局）');
+  const personaNarr = js.indexOf('写进 `Progress/<问题id>/<方向id>.md`') !== -1;
+  assert(personaNarr, '★★ [D1] persona 的求解器归属文件说明与 CHANNEL A 同路径（不再教 Members/…）');
+}
+
+// ================= D2: file write locks are leases (renewed while the holder lives) =================
+// The old defect: the refusal window was the literal 60000 and NOTHING ever renewed `at`, so a member
+// writing a big file for >60 s lost exclusivity (another member could legally take the lock).
+// Timing-based assertions are unusable in this harness (set_params values are reverted by the
+// session's init()/settings reload mid-test — see the note in the run report), so this guard pins the
+// lease semantics deterministically: the window is the configurable TTL, a live holder is renewed on
+// the same poller as the project lock, and a holder that disappears expires (bounded, no deadlock).
+console.log('\n-- D2: 文件写锁是租约（活着就续租，消失后过期） --');
+{
+  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const callAs = async (n, a, agent) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent }));
+  const ghost = { id: 'ghost-child', options: {}, session: { id: 'ghost-child', header: { cwd: WS } } };
+  const target = 'Progress/q-lock/dL.md';
+  await call('vibe_math_set_params', { fileLockTimeoutMs: 1000 });
+  const stLock = await call('vibe_math_status', {});
+  assert(Number(stLock.params.fileLockTimeoutMs) === 1000, 'D2 fileLockTimeoutMs 是可配置参数且被接受（实测 ' + stLock.params.fileLockTimeoutMs + '）');
+  // (a) the refusal window is the lease TTL, not a hardcoded 60000
+  assert(/\(now\(\) - \(owner\.at \|\| 0\)\) < fileLockTtl\(\)/.test(js),
+    '★★ [D2] 抢锁判定用的是 fileLockTtl() 而不是硬编码 60000');
+  assert(!/\(now\(\) - \(owner\.at \|\| 0\)\) < 60000/.test(js), '★★ [D2] 旧的字面量 60000 判定已不存在');
+  // (b) a live holder is renewed on the SAME poller as the project lock; a vanished one is not
+  assert(/renewLockIfDue: async function \(\) \{ await renewProjectLock\(\); await renewFileLocks\(\) \}/.test(js),
+    '★★ [D2] renewFileLocks 与 renewProjectLock 挂在同一个锁轮询上');
+  assert(/if \(!fileLockHolderAlive\(o\.childId\)\) continue/.test(js) && /o\.at = now\(\)/.test(js),
+    '★★ [D2] 只有存活的持有者被续租（消失者让租约自然到期，避免永久锁死）');
+  assert(/function fileLockHolderAlive\(id\)[\s\S]{0,400}agentRegistry\[cid\][\s\S]{0,200}rootAgent/.test(js),
+    '★★ [D2] 存活判定 = agentRegistry 里的子代理或本会话根（长文写入者不会在写入中被抢锁）');
+  // (c) deterministic behaviour: while a holder has the lock, another agent is refused; after release it can claim
+  const c1 = await call('vibe_math_claim_write', { target });
+  assert(c1.ok === true, 'D2 活的持有者（会话根）拿到写锁');
+  const c2 = await callAs('vibe_math_claim_write', { target }, ghost);
+  assert(c2.ok !== true && /busy|正被其他代理/.test(String(c2.message || '')),
+    '★★ [D2] 他人持锁期间另一个代理被拒（实测 busy=' + c2.busy + '）');
+  await call('vibe_math_release_write', { target });
+  const c3 = await callAs('vibe_math_claim_write', { target }, ghost);
+  assert(c3.ok === true, 'D2 释放后可被接管');
+  await call('vibe_math_set_params', { fileLockTimeoutMs: 60000 });
+}
+
+// ================= D6: mkdir only when a write is actually needed (and silent without a shell) ======
+console.log('\n-- D6: 每轮日志不再无条件跑 shell mkdir --');
+{
+  const js = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  const flag = js.indexOf('let journalDirReady = false');
+  const mkdir = js.indexOf('if (subprocessOf()) await ensureProgressDir(qid)');
+  assert(flag !== -1 && mkdir > flag,
+    '★★ [D6] 建目录推迟到"确实要写"的分支（journalDirReady 在循环内、调用在其后）');
+  const mkdirCalls = js.split('await ensureProgressDir(qid)').length - 1;
+  assert(mkdirCalls === 1 && js.indexOf('await ensureProgressDir(qid)') > flag,
+    '★★ [D6] 旧的"循环前无条件 mkdir"形态已不存在（ensureProgressDir 只在按需分支里调用一次，实测 ' + mkdirCalls + ' 处）');  assert(/if \(subprocessOf\(\)\) await ensureProgressDir\(qid\)/.test(js),
+    '★★ [D6] 宿主没有 subprocess 时直接跳过 mkdir（无 shell 宿主的每轮日志不再留失败记录）');
+  assert(/if \(!journalDirReady\) \{[\s\S]{0,200}journalDirReady = true/.test(js),
+    '★★ [D6] 一轮只建一次目录（出现第一个待写文件时才建）');
+}
+
 console.log(`\n=== V3 FIX PROBE RESULT: ${passed} passed, ${failed} failed ===`);
 rmSync(WS, { recursive: true, force: true });
 process.exit(failed === 0 ? 0 : 1);

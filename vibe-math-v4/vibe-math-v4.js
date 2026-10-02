@@ -334,7 +334,7 @@ export function apply(ctx) {
     function vibeRoot(){ return (workspaceRoot()+'/VibeMath').replace(/\\/g,'/') }
     function frameworkRoot(){ return vibeRoot()+'/Projects/'+currentProject }
     // Object ids (verify targets, recorded cards) become FILE NAMES and DIRECTORY PATHS
-    // (Verified/命题/<id>.md, Shared/debates/<id>.md, Propos/<r>/<id>.md, source-card scans).
+    // (Verified/命题/<id>.md, Shared/debates/<id>.md, Members/<r>/Propos/<r>/<id>.md, source-card scans).
     // A hostile/sloppy id containing path separators ('../../x') or Windows-forbidden chars would
     // escape the project tree. Keep every harmless character (incl. Chinese) and replace only
     // separators/control chars; strip leading/trailing dots/dashes so the name is never '.'/'..'.
@@ -1665,8 +1665,8 @@ export function apply(ctx) {
       const prior=Object.entries(st.inputs).filter(([k])=>k!==r.rId).map(([k,iv])=>'  ['+k+'] '+String(iv.input||iv.summary||'')).join('\n')
       return (params.residentPersona?params.residentPersona+'\n':'')
         +'Resident '+r.rId+' — 团队会议进行中。 A meeting is in progress (agenda: '+st.agenda+').'
-        +'\n这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。'
-        +(prior?('\n\n### 已有发言（他人 input，已转发给你）\n'+prior):'\n（目前还没人发言，你先说。）')
+        +(prior?'\n这是一场真实讨论：下面已有人发言（转给你），请先看，然后**加入讨论/补充/反驳/表决**。':'\n本轮是**并行独立发言**：同轮内不会有人先发言给你（唤醒是并行的），你的 input 会在**下一次唤醒/下一轮**转给其他人；请先给出你自己的判断。')
+        +(prior?('\n\n### 已有发言（他人 input，已转发给你）\n'+prior):'')
         +'\n\n你可以：提议任务（propose_task）、认领开放任务（claim_task）、提议验证对象（propose_verify）、或对"原问题是否已解决"表决（voteSolved）。请把**你的实际发言**写进 "input"。'
         +'\n**停止表决必须是绝对票**：`voteSolved:true` 只表示你认为原问题**已解决**；只要有一名在册常驻没投 `true`（投 false、弃权、或漏写这个字段），run 就**不会**停止。不确定就投 false。'        +'\nReply with ONLY a JSON object:\n'
         +'{"input":"<your real contribution to this discussion>","propose_task":"<task title or null>","task_desc":"...","claim_task":"<task id or null>","propose_verify":"<id or null>","voteSolved":true}'
@@ -1679,7 +1679,7 @@ export function apply(ctx) {
       const others=Object.entries(src).map(([k,v])=>'- '+k+': 正确概率 '+String(v.prob!=null?Number(v.prob).toFixed(2):0.5)+' → '+v.reason).join('\n')
       const L=[]
       L.push((params.residentPersona?params.residentPersona+'\n':'')
-        +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+targetTypeWord(vs.targetType)+'，提出者 '+vs.targetOwner+'）。\n'
+        +'Resident '+r.rId+' — 团队验证。 The group is verifying object '+vs.targetId+'（'+targetTypeWord(vs.targetType)+(String(vs.targetOwner||'').trim()?('，提出者 '+vs.targetOwner):'')+'）。\n'
         +'请给出你对「该对象为真」的**正确概率 `verdict`**，仅一个 0–1 数值：**1 = 绝对为真，0 = 绝对为假，0.5 = 完全不确定，其余为介于其间的程度**（不要给 TRUE/FALSE，就给一个数值）。\n'
         // ── THE VOTE CONTRACT (why the example below is 1 and not 0.9) ──────────────────────────
         // Only an EXACT 1 or 0 is a vote; anything strictly between is the model's honest
@@ -1933,7 +1933,7 @@ export function apply(ctx) {
     // stall watchdog as the only path that ever convenes an auto-meeting.
     //
     // Setting `artifactBaseline` also means a tile count of the correct sign, since residents write
-    // the paths `Propos/<r>/<id>.md` explicitly.
+    // the paths `Members/<r>/Propos/<r>/<id>.md` explicitly.
     async function countArtifacts(){
       let n=0
       for(const base of ['Propos','Methods','Subproblems']){
@@ -3996,7 +3996,7 @@ frozenParticipants: (activeRosterSnapshot()||{}).rosterSnapshot||null,   // depr
   // library, while the framework alone writes Shared/ and State/). They stay registered (removing them
   // would change the model-visible tool surface) and keep echoing the key, but they now tell the
   // truth: nothing is reserved, nothing is serialized, write only your own files.
-  registerTool('vibe_v4_claim_write','NOT IMPLEMENTED: no lock exists. This returns {ok:true} without reserving anything. Each resident writes only its own library (Progress/<you>/, Propos/<you>/, Methods/<you>/, Subproblems/<you>/), so overlapping writers are not expected; the framework alone writes Shared/ and State/ (serially, per file). Do not rely on this to exclude another resident.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target,locked:false,note:'no lock is implemented; write only your own library files'}))
+  registerTool('vibe_v4_claim_write','NOT IMPLEMENTED: no lock exists. This returns {ok:true} without reserving anything. Each resident writes only its own library (Members/<you>/Progress/<you>/, Members/<you>/Propos/<you>/, Members/<you>/Methods/<you>/, Members/<you>/Subproblems/<you>/), so overlapping writers are not expected; the framework alone writes Shared/ and State/ (serially, per file). Do not rely on this to exclude another resident.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target,locked:false,note:'no lock is implemented; write only your own library files'}))
   registerTool('vibe_v4_release_write','NOT IMPLEMENTED: there is no lock to release. Returns {ok:true} as a no-op so an agent that calls it out of habit is not misled into thinking it held a reservation.',objParams({target:{type:'string'}},['target']),(s,a)=>({ok:true,key:a.target,locked:false,note:'no lock is implemented; nothing was reserved'}))
 
   // ── Lean formal verification (docs/formal-verification.md §5) ─────────────

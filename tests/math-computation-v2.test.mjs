@@ -703,6 +703,18 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
   assert(produced.indexOf('Reliable/ref.md') !== -1, '★★ [F2] 被要求引用的 Reliable/ 可信来源真的进了论文材料证据索引（文本层断言，实测片段 ' + JSON.stringify(produced.slice(Math.max(0, produced.indexOf('Reliable')), produced.indexOf('Reliable') + 40)) + '）')
   assert(produced.indexOf('会话 cwd') !== -1 && produced.indexOf('绝对前缀') !== -1, '★★ [P0] 产出材料写着：文件工具按**会话 cwd** 解析相对路径 ⇒ 列出的相对路径需先拼**项目根的绝对前缀**（文本层断言）')
   assert(produced.indexOf('receipt.scriptAbs') !== -1 || produced.indexOf('receipt.cwd') !== -1, '★★ [P0] 计算产物指向回执里的**绝对**字段（receipt.scriptAbs / receipt.cwd+receipt.scriptPath）')
+  // D3：证据索引（"only files that exist"）条目里只能有真实路径——"路径说明"这类散文规则不得混入
+  const evBlock = produced.slice(produced.indexOf('[EVIDENCE INDEX]'))
+  assert(produced.indexOf('[EVIDENCE INDEX]') !== -1 && evBlock.indexOf('路径说明') === -1,
+    '★★ [D3] 证据索引条目里没有混入散文规则（"路径说明"只出现在 [PROPOSITIONS] 段；实测块首 ' + JSON.stringify(evBlock.slice(0, 100)) + '）')
+  assert(produced.indexOf('路径说明') !== -1, '对照：路径说明仍随材料下发（只是不再占用证据索引条目）')
+  // D5：索引只列**存在**的文件（qs/qs.json 也必须存在才列）
+  const evPaths = evBlock.split('\n').filter((l) => l.trim().indexOf('- ') === 0).map((l) => l.trim().slice(2))
+  assert(evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).every((p) => existsSync(join(projRoot(), p))),
+    '★★ [D5] 证据索引里的 qs/qs.json 在磁盘上真实存在（实测索引前几项 ' + JSON.stringify(evPaths.slice(0, 4)) + '）')
+  const v2src = readFileSync(join(HERE, '..', 'vibe-math-v2', 'vibe-math-v2.js'), 'utf8')
+  assert(v2src.indexOf("if (await paperPathExists('qs/qs.json')) out.push('qs/qs.json')") !== -1,
+    '★★ [D5] 代码层：qs/qs.json 也是**存在才列**（不是无条件 push），"only files that exist" 才名副其实')
   await call('vibe_math_abort', {})
 }
 

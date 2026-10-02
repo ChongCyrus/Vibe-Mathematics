@@ -968,6 +968,70 @@ console.log('-- math_computation shared contract --')
   ok(typeof rj.partialStdout === 'string' && typeof rj.partialStderr === 'string', '★ the TIMEOUT receipt JSON carries the capped partial output (as strings)')
 }
 
+// ── 28. descriptor sweep: NO spawn may ever carry an unsubstituted argv placeholder
+// Sweep finding (HIGH, fixed): matlab's scriptArgv EMBEDS the placeholder (`run('<script>')`) while the
+// module substituted by EXACT element equality, so the literal `run('<script>')` reached the engine and
+// the archived script never ran. This section walks the whole descriptor table.
+{
+  const PLACEHOLDER = /<script>|<expr>|<pkgs>|<pkgs\.\.\.>|<probeCode>|<exe>|<pkg>|<cliArgv/
+  for (const name of (M.MATH_PARAM_DEFAULTS.mathEngines || [])) {
+    if (name === 'cli') continue
+    const h = makeFakeHost({ installed: [name], files: {}, licence: true })
+    M.registerMathComputation(h.host)
+    const r = await h.call({ op: 'run', engine: name, mode: 'code', code: 'x=1\n' })
+    const bad = (h.spawns || []).map((s) => (s && s.argv) || []).flat().filter((a) => typeof a === 'string' && PLACEHOLDER.test(a))
+    ok(bad.length === 0, '★ ' + name + ': no spawn carries a literal argv placeholder', JSON.stringify(bad.slice(0, 2)))
+    if (name === 'matlab' && r.ok === true) {
+      const runs = (h.spawns || []).map((s) => s.argv).filter((a) => a.join(' ').indexOf('-batch') !== -1 && a.join(' ').indexOf('disp(version)') === -1)
+      const run = runs.pop() || []
+      ok(run.some((a) => /run\('.*script\.m'\)/.test(a)), '★ matlab: the EMBEDDED placeholder is substituted (run(\'<abs script.m>\'))', JSON.stringify(run))
+    }
+  }
+}
+
+// ── 29. cli policy is SINGLE-SOURCED (descriptor), not hard-coded in the module
+// Sweep ruling: `cli.policy.requiresMathMode` / `requiresEngineInList` were declared but never consumed
+// (the same rule was hard-coded twice), so descriptor and behaviour could drift. The refusals now carry
+// the DESCRIPTOR value, which is exactly what makes a hard-coded revert observable.
+{
+  const h = makeFakeHost({ installed: ['python3'], params: { mathMode: 'typed' }, cliCommands: ['python3'] })
+  M.registerMathComputation(h.host)
+  const r = await h.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: 'python3' } })
+  ok(r.ok === false && r.code === 'MATH_REFUSED', 'cli under mathMode=typed is refused')
+  ok(r.next && r.next.reason === 'policy' && r.next.requiresMathMode === 'typed+shell',
+    '★ the refusal carries the DESCRIPTOR policy value (next.requiresMathMode === typed+shell)', JSON.stringify(r.next))
+  const h2 = makeFakeHost({ installed: ['python3'], params: { mathMode: 'typed+shell', mathEngines: ['python', 'r'] }, cliCommands: ['python3'] })
+  M.registerMathComputation(h2.host)
+  const r2 = await h2.call({ op: 'run', engine: 'cli', mode: 'code', code: 'print(1)\n', cli: { command: 'python3' } })
+  ok(r2.ok === false && r2.next && r2.next.reason === 'engine-not-allowed' && r2.next.requiresEngineInList === true,
+    '★ when cli is not in mathEngines the refusal surfaces requiresEngineInList from the descriptor', JSON.stringify(r2.next))
+}
+
+// ── 30. a commercial template's VERIFY provenance REACHES the user (item 2)
+// `maple.verify`/`verifyReason` were declared but never reached any response, so a user told "commercial
+// template needs confirmation" could not see WHY. It is surfaced on the probe result (per-engine entry +
+// engineInfo) and on the vendor-guidance payloads; engines without a declared reason print no empty slot.
+{
+  const h = makeFakeHost({ installed: ['maple'], licence: true, files: {} })
+  M.registerMathComputation(h.host)
+  const p = await h.call({ op: 'probe', engine: 'maple' })
+  ok(p.ok === true && !!p.engineInfo && p.engineInfo.verify === true, 'probe reports the verify flag for a commercial template')
+  ok(!!p.engineInfo && typeof p.engineInfo.verifyReason === 'string' && p.engineInfo.verifyReason.length > 0 && /version/i.test(p.engineInfo.verifyReason),
+    '★ probe carries WHY the template needs confirmation (engineInfo.verifyReason)', JSON.stringify(p.engineInfo && p.engineInfo.verifyReason))
+  const entry = (p.engines || []).find((e) => e.name === 'maple')
+  ok(!!entry && entry.verify === true && typeof entry.verifyReason === 'string', 'the per-engine probe entry carries the same provenance')
+  const hp = makeFakeHost({ installed: ['python3'], files: {} })
+  M.registerMathComputation(hp.host)
+  const pp = await hp.call({ op: 'probe', engine: 'python' })
+  ok(!!pp.engineInfo && !('verify' in pp.engineInfo) && !('verifyReason' in pp.engineInfo),
+    '★ an engine without a declared reason prints NO empty slot (assemble-only-when-present)')
+  const hm = makeFakeHost({ installed: [], files: {} })
+  M.registerMathComputation(hm.host)
+  const pm = await hm.call({ op: 'probe', engine: 'maple' })
+  ok(pm.ok === false && !!pm.next && typeof pm.next.verifyReason === 'string' && /version/i.test(pm.next.verifyReason),
+    '★ the not-found guidance also says why the commercial template needs confirmation', JSON.stringify(pm.next && pm.next.verifyReason))
+}
+
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

@@ -191,6 +191,7 @@ export function apply(ctx) {
     methodAutoPromote: false,     // 项目级方法自动晋升全局库（false = 人工门）
     indexAutoRebuild: true,       // 每次写盘后自动重建索引（false = 手动 vibe_math_index）
     projectLockTimeoutMs: 60000,  // 项目锁等待超时
+    fileLockTimeoutMs: 60000,     // 文件写锁租约时长（审计 D2；持有者活着则每 LOCK_POLL_MS 续租）
     // ---- Lean 形式化验证（契约：docs/formal-verification.md，四架构同名同语义）----
     formalVerify: 'off',          // off | encourage | require（三档开关，见 实现方案.md §10.1）
     leanCommand: 'lean',          // 要执行的 Lean 可执行文件（例：'lake'）
@@ -330,6 +331,7 @@ export function apply(ctx) {
     { name: 'methodAutoPromote', type: 'boolean', description: '项目级方法自动晋升全局库（false = 人工门）', suggestion: false },
     { name: 'indexAutoRebuild', type: 'boolean', description: '每次写盘后自动重建索引（false = 手动 vibe_math_index）', suggestion: true },
     { name: 'projectLockTimeoutMs', type: 'integer', description: '项目锁等待超时（毫秒）', suggestion: 60000 },
+    { name: 'fileLockTimeoutMs', type: 'integer', description: '文件写锁租约时长（毫秒，默认 60000，最小 1000）：持有代理存活期间自动续租，持有者消失后最多这么久失效，避免长文写入被别人抢锁（审计 D2）', suggestion: 60000 },
     { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证：off = 不额外要求（默认，提示词里不出现任何 Lean 内容）；encourage = 鼓励按实现难度形式化，Lean 通过后验证转为忠实性审查；require = 同上并加门禁：真/假定论必须先达到 Lean 已通过 或 已记录显式阻塞原因，否则记为未定论（formal-required）并进「形式化待办」', suggestion: 'off' },
     { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
     { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
@@ -577,7 +579,7 @@ export function apply(ctx) {
   // ================= settings =================
   function sanitizeParams(obj) {
     const out = {}
-    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'planningHorizon', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'projectLockTimeoutMs']
+    const intFields = ['maxParallelThreshold', 'solverMaxRounds', 'directionsPerSolver', 'verifierCount', 'debateMaxRounds', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'planningHorizon', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'projectLockTimeoutMs', 'fileLockTimeoutMs']
     const numFields = ['promoteValueThreshold']
     const arrayFields = ['solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'leanArgs']
     const boolFields = ['plannerEnabled', 'methodAutoPromote', 'indexAutoRebuild', 'finalPaper', 'paperCompilePdf', 'leanAsync']
@@ -931,7 +933,10 @@ export function apply(ctx) {
     // 研究日志。设计上这些文件由**代理**写（见 applyAgentWrites 的 Progress/<qid>/ 分支），但代理没写
     // 时索引就会指向不存在的文件。这里补一份**调度器维护**的版本：`ensureProgressDir` 建目录、
     // `directionMdText` 生成内容；带 scheduler-managed 标记的文件每轮刷新，**代理写的文件绝不动**。
-    await ensureProgressDir(qid)
+    // D6：只在**确实要写**时建目录（旧实现在每轮 writeJournal 开头无条件跑一次 shell mkdir，
+    // 即使所有方向文件都已存在且归代理所有）；宿主没有 subprocess 时直接跳过（writeText 仍会落盘），
+    // 这样无 shell 宿主的每一轮日志也不会留下一条 mkdir 失败记录。
+    let journalDirReady = false
     for (const d of dirs) {
       const rel = 'Progress/' + qid + '/' + d.id + '.md'
       // 归属判定：带 `<!-- scheduler-managed -->` 首行的文件由**调度器**维护（每轮刷新）；
@@ -943,6 +948,10 @@ export function apply(ctx) {
         owned = exists && String(txt).indexOf('<!-- scheduler-managed -->') === 0
       } catch (e) { exists = false; owned = false }
       if (exists && !owned) continue
+      if (!journalDirReady) {
+        journalDirReady = true
+        try { if (subprocessOf()) await ensureProgressDir(qid) } catch (e) { /* 无 shell：不打扰这一轮 */ }
+      }
       await writeText(rel, '<!-- scheduler-managed -->\n' + directionMdText(qid, d, true))
     }
   }
@@ -3822,7 +3831,7 @@ export function apply(ctx) {
     return v.dispatched > 0 && v.dispatched >= v.expected && v.quorum
   }
   function consensus(t) { const vs = voteCount(t).reportedIds.map(function (cid) { return t.childResults[cid].Result }); if (vs.length === 0) return false; return vs.every(function (v) { return v === 1 }) || vs.every(function (v) { return v === 0 }) }
-  function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason) } return parts.join('\n') }
+  function buildTranscript(t) { const parts = []; const cids = Object.keys(t.childResults); for (let i = 0; i < cids.length; i++) { const r = t.childResults[cids[i]]; const changedNote = (r.changed != null && String(r.changed).trim()) ? (' [changed: ' + String(r.changed).trim() + ']') : ''; parts.push('Reviewer ' + i + ': Result=' + r.Result + ' Reason=' + r.Reason + changedNote) } return parts.join('\n') }
   async function handleVerifier(childId, meta, output, stopReason) {
     const rId = meta.rId
     const parsed = parseJson(output)
@@ -3841,7 +3850,7 @@ export function apply(ctx) {
       return
     }
     if (t.children.indexOf(childId) === -1) t.children.push(childId)
-    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round }
+    t.childResults[childId] = { Result: Result, Reason: Reason, round: meta.round, changed: (parsed && parsed.changed != null && String(parsed.changed).trim()) ? String(parsed.changed).trim() : null }
     delete agentRegistry[childId]
     // H5：推进/裁决的前置条件是"已凑齐下限票数且本轮都已回报"，不是"目前存在的那几个孩子都报了"。
     // 未凑齐时保持 spawning，由 reconcileVerify 在后续 tick 里补派验证器（不裁决、不定论）。
@@ -4822,13 +4831,34 @@ export function apply(ctx) {
   function fileLockKey(target) {
     return String(target || '').replace(/\\/g, '/')
   }
+  /** 文件写锁的租约时长（审计 D2）：与项目锁同型——**持有者活着就续租**，持有者消失后最多这么久失效。
+   *  旧实现只在 claim 时写一次 `at`、判定窗口固定 60s 且全仓没有续租点：成员写一份大文件超过 60s 后，
+   *  另一个成员可以合法抢锁（锁恰好在它最该起作用的场景失效）。 */
+  function fileLockTtl() { return Math.max(1000, Number(params.fileLockTimeoutMs) || 60000) }
+  function fileLockDue() { return Math.max(250, fileLockTtl() / 4) }
+  function fileLockHolderAlive(id) {
+    const cid = String(id || '')
+    if (!cid || cid === 'scheduler') return true
+    if (agentRegistry[cid]) return true
+    try { return String((rootAgent && rootAgent.id) || '') === cid } catch (e) { return false }
+  }
+  /** 每次锁轮询（LOCK_POLL_MS）里与 renewProjectLock 一同执行：只续租**活着**的持有者。 */
+  async function renewFileLocks() {
+    const ids = Object.keys(fileOwner)
+    for (let i = 0; i < ids.length; i++) {
+      const o = fileOwner[ids[i]]
+      if (!o) continue
+      if (!fileLockHolderAlive(o.childId)) continue // 持有者已消失 ⇒ 让租约自然过期（有界接管）
+      if ((now() - (Number(o.at) || 0)) >= fileLockDue()) o.at = now()
+    }
+  }
   async function claimWrite(target, agent) {
     const childId = (agent && agent.id) ? String(agent.id) : 'scheduler'
     const key = String(target || '').replace(/\\/g, '/')
     if (!key) return { ok: false, message: 'target required' }
     const lockKey = fileLockKey(key)
     const owner = fileOwner[lockKey]
-    if (owner && owner.childId !== childId && (now() - (owner.at || 0)) < 60000) {
+    if (owner && owner.childId !== childId && (now() - (owner.at || 0)) < fileLockTtl()) {
       return { ok: false, busy: owner.childId, message: '文件 "' + key + '" 正被其他代理写入，请稍后（写锁）' }
     }
     // 确保目标父目录存在（如 Progress/<qid>/ 供方向文件写入）
@@ -5031,7 +5061,7 @@ export function apply(ctx) {
     scheduleTick: scheduleTick,
     // Lease renewal for the apply-scope interval (see the ctx.effect below). Kept on the session so
     // the timer needs no per-session context, and so a mock host WITHOUT ctx.timeout still renews.
-    renewLockIfDue: renewProjectLock,
+    renewLockIfDue: async function () { await renewProjectLock(); await renewFileLocks() },
     onChildEnd: onChildEnd,
     dispatchVibeCommand: dispatchVibeCommand,
     handlers: handlers,
@@ -5637,7 +5667,7 @@ const TOOL_DESC = {
   vibe_math_method_add: 'Manually add a method card to Methods/ (creates Methods/<id>.md).',
   vibe_math_method_list: 'List methods from Methods/ (+ global VibeMath/Methods/): id, 标题, 类型, 状态, 可信断言, applications count.',
   vibe_math_lock_status: 'Show the project lock occupancy.',
-  vibe_math_claim_write: '(member) Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.',
+  vibe_math_claim_write: '(member) Acquire the write lock for one target file (relative to the project root). Call before writing a Markdown file directly; a file may only be written by ONE agent at a time. The lock is a LEASE: it is renewed automatically while you are still alive, so a long write keeps it; if your process disappears the lease expires after fileLockTimeoutMs (default 60000) and another agent may take it. Returns the display path you may write (VibeMath/Projects/<project>/<target>) and a hint.',
   vibe_math_release_write: '(member) Release the write lock for one target file (relative to the project root). Call after you finished writing it.',
   vibe_math_sync_meta: '(member) After you write content into Markdown files, report ONLY lightweight scheduling metadata to keep the scheduler state in sync (content stays in the md files). meta.kind must be one of:\n- "directions": {qid, directions:[{id,title,method,core_assumption,feasibility}], methods_used:[{id,效果,建议}], new_inventions:[{类型,标题,内容描述,是否已入库}]}\n- "solver": {qid, dirId, round, survival, status:"continue|success|dead-end", dead_end_reason, lemmas:[{id,title,statement,proof,prob,价值/关键性,分类,优先级}], methods_used, new_inventions, solution_prob, solution_text, sub_questions:[{q_sub_title,q_sub_statement,assumption_title,assumption_statement}]}\n- "methods": {used:[{id,效果,建议}], created:[ids], improvements:[{id,改进内容,原因}]}',
   vibe_math_lean_run: "(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Never throws: a missing toolchain returns LEAN_NOT_FOUND, a non-zero exit returns the compiler output. Pass target=<object id> to also record the run against that object.",

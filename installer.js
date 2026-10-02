@@ -219,8 +219,14 @@ function withTimeout(promise, ms) {
   })
 }
 
-async function detectDshVersion(ctx) {
-  try { const v = process.env.DSH_VERSION; if (v && String(v).trim()) return { version: String(v).trim(), source: 'DSH_VERSION' } } catch (e) {}
+export async function detectDshVersion(ctx) {
+  // Installer review (finding): several sources can report this host's version, and "first available
+  // wins" hid a CONFLICTING host state (the same lesson the `engines.dsh`-vs-`dshReleases` rule already
+  // records below). Probe them ALL, keep the first available authoritative (priority unchanged), and
+  // record the rest so a disagreement is visible instead of silent.
+  const probes = []
+  const add = (source, version) => { const v = (version === undefined || version === null) ? '' : String(version).trim(); if (v) probes.push({ source: source, version: v }) }
+  try { add('DSH_VERSION', process.env.DSH_VERSION) } catch (e) {}
   try {
     const pm = (ctx && ctx.get) ? ctx.get('pluginManager') : undefined
     if (pm && typeof pm.listBundles === 'function') {
@@ -228,21 +234,24 @@ async function detectDshVersion(ctx) {
       // stalling this row's activation (non-fatal either way — see the constant's comment).
       const bundles = await withTimeout(pm.listBundles(), LIST_BUNDLES_TIMEOUT_MS)
       const host = (bundles || []).find((b) => b && (b.name === '@deepseek-ai/dsh-base' || b.name === '@deepseek-ai/dsh'))
-      if (host && host.version) return { version: String(host.version), source: 'pluginManager:' + host.name }
+      if (host && host.version) add('pluginManager:' + host.name, host.version)
     }
   } catch (e) { /* no such service, or it cannot list yet */ }
   try {
     const boot = await import('@deepseek-ai/dsh-app-boot')
-    if (boot && typeof boot.getDshRuntimeVersion === 'function') {
-      return { version: String(boot.getDshRuntimeVersion()), source: 'dsh-app-boot' }
-    }
+    if (boot && typeof boot.getDshRuntimeVersion === 'function') add('dsh-app-boot', boot.getDshRuntimeVersion())
   } catch (e) { /* host packages are not reachable from this plugin's module scope */ }
   try {
     const p = __require.resolve('@deepseek-ai/dsh/package.json')
-    const v = (JSON.parse(readFileSync(p, 'utf8')).version || '').trim()
-    if (v) return { version: v, source: '@deepseek-ai/dsh/package.json' }
+    add('@deepseek-ai/dsh/package.json', JSON.parse(readFileSync(p, 'utf8')).version || '')
   } catch (e) { /* not a global install layout — rely on the capability check */ }
-  return undefined
+  if (!probes.length) return undefined
+  const first = probes[0]
+  const conflicts = probes.slice(1).filter((x) => x.version !== first.version)
+  const out = { version: first.version, source: first.source, probes: probes.slice() }
+  // Assemble the disagreement slot ONLY when there is one (no empty slot for agreeing hosts).
+  if (conflicts.length) out.disagreement = { primary: first.source, conflicts: conflicts.slice() }
+  return out
 }
 
 /**
@@ -729,7 +738,8 @@ export async function apply(ctx) {
     if (unreadableStale.length > 0) cleanupNotes.push(unreadableStale.length + ' 个文件**无法读取**（既不能证明是本安装器写入的，也无法备份），已跳过删除并保留原文件：' + unreadableStale.join(', '))
     if (keptUserFiles > 0) cleanupNotes.push(keptUserFiles + ' 个记为用户所有的文件被保留（' + [...keptUserDirs].join(', ') + '），要清理请手动删除')
     if (removedFiles > 0 || removedDirs.length > 0 || cleanupNotes.length > 0) {
-      logger?.info?.('[dsh-vibe-math] preset cleanup: removed ' + removedFiles + ' file(s) from ' + removedDirs.length + ' stale preset dir(s) (' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') that are no longer shipped' +
+      // 约定：安装器面向用户的日志统一中文（英文片段混进中文句子会让用户读到半句话）。
+      logger?.info?.('[dsh-vibe-math] 预设清理：从 ' + removedDirs.length + ' 个已不再随包发布的过期预设目录（' + removedDirs.map(d => d.split(/[\\/]/).pop()).join(', ') + ') 中删除 ' + removedFiles + ' 个文件' +
         (cleanupNotes.length > 0 ? '；' + cleanupNotes.join('；') : '') + '。')
     }
 
@@ -768,9 +778,9 @@ export async function apply(ctx) {
       // SAME VERSION, and BOTH facts are reported: a missing file being restored must not hide the
       // drift notice (the audit's repro: the log said "restored 1" and never mentioned the drift).
       const parts = []
-      if (installed > 0) parts.push('restored ' + installed + ' missing preset file(s)')
+      if (installed > 0) parts.push('还原了 ' + installed + ' 个缺失的预设文件')
       if (kept > 0) {
-        parts.push(kept + ' file(s) differ from the shipped copy and were left untouched (v' + pkgVersion + ' 未变)' +
+        parts.push(kept + ' 个文件与随包副本不同，已保持原样（v' + pkgVersion + ' 未变）' +
           (userEditedKept > 0 ? '，其中 ' + userEditedKept + ' 个是安装之后的改动（记为用户所有：弃用 preset 的清理不会删除它们）' : '') +
           '；下一次版本变更会先备份原文再替换')
       }
@@ -778,6 +788,6 @@ export async function apply(ctx) {
     }
     /* the host self-check ran at the top of apply() — it also decides the preset mechanism */
   } catch (err) {
-    logger?.warn?.('[dsh-vibe-math] preset install/update failed: %s', String((err && err.message) || err))
+    logger?.warn?.('[dsh-vibe-math] preset install/update failed: ' + String((err && err.message) || err))
   }
 }

@@ -86,7 +86,7 @@ const EV = {
   debate: 'vibe5/debate',
   verdict: 'vibe5/verdict',
   queue: 'vibe5/queue',
-  counters: 'vibe5/counters',
+  solve: 'vibe5/solve',
   progress: 'vibe5/progress',
   formal: 'vibe5/formal',
 }
@@ -330,6 +330,11 @@ export function apply(ctx) {
       formal: {},
       todo: [],
       queue: [],
+      // Per-member answers to the "is the original problem solved?" question (HIGH 3). It used to
+      // live in an in-memory Map: the tally gated `solved` and was PUBLISHED by status/report, but
+      // a restart or a second session over the same institute lost it, so cross-session unanimity
+      // was impossible and the published view was wrong. Durable like `verdicts`.
+      solve: {},
       counters: { academician: 0, researcher: 0, temp: 0, task: 0, meeting: 0, message: 0, verify: 0 },
       runId: '',
       lastProgressAt: now(),
@@ -340,7 +345,11 @@ export function apply(ctx) {
       paper: null,
     }
   }
-  function initState() { return { v: PROJECTION_VERSION, institutes: {}, order: [] } }
+  // LOW (deep review): `state.order` used to be maintained here and preserved in the diagnostics
+  // fallback, but NOTHING ever read it — dead payload written into every snapshot. Removed: the
+  // institutes map is the index (`Object.keys(state.institutes)`), and old files that still carry
+  // an `order` key are simply ignored.
+  function initState() { return { v: PROJECTION_VERSION, institutes: {} } }
 
   function withInstitute(state, key, mut) {
     const cur = state.institutes[key] || emptyInstitute(key, '', '')
@@ -348,8 +357,7 @@ export function apply(ctx) {
     if (nextInst === cur) return state
     const institutes = Object.assign({}, state.institutes)
     institutes[key] = nextInst
-    const order = state.order.indexOf(key) === -1 ? state.order.concat([key]) : state.order
-    return { v: state.v, institutes, order, diagnostics: state.diagnostics }
+    return { v: state.v, institutes, diagnostics: state.diagnostics }
   }
 
   // Fold ONE event. Unknown/malformed events are SKIPPED and recorded in
@@ -357,6 +365,41 @@ export function apply(ctx) {
   // log purism, and a malformed event is a code defect that tests must catch.
   // (DSH's own team projection latches `state.failure` forever instead — a shape
   // v5 deliberately does not copy.)
+  // ── in-fold id allocation (deep-review HIGH 1) ───────────────────────────────
+  // Ids used to be minted OUTSIDE the fold (read `counters` → `msg-N` → `await putMessage`), so
+  // two same-tick writers could mint the SAME id; the fold then deduped (`messages`) or upserted
+  // (`members`/`tasks`), silently dropping or overwriting one object while BOTH callers reported
+  // success. An event may now carry `d.make(alloc)` instead of a ready object: it runs INSIDE the
+  // fold, allocates its id from the fold's OWN counters, and returns the object(s) to
+  // append/upsert — the fold applies the object AND the bumped counters in the same step, so two
+  // concurrent appends cannot collide. Already-identified objects (`d.member`/`d.task`/
+  // `d.message`/`d.index`, the update paths) keep working unchanged.
+  const ID_PREFIX = { message: 'msg-', task: 't-', meeting: 'mt-', researcher: 'r-', temp: 't-' }
+  // MEDIUM 4 (deep review): the OFFICE is not a member, so `to:'voters'` never reaches it — yet
+  // `addResearcher`/`startMeeting` told the caller "已向所办提议" while only voters were addressed
+  // (and only the office may approve either). Office-addressed requests are now a first-class
+  // target: a durable message under this pseudo-id, surfaced by `status().officeRequests` and by
+  // `report()`, capped so the queue cannot grow without bound.
+  const OFFICE_INBOX = 'office'
+  const OFFICE_REQUEST_CAP = 10
+  function makeIdAllocator(inst) {
+    const counters = Object.assign({}, inst.counters)
+    let dirty = false
+    return {
+      next(kind) {
+        if (kind === 'academician') {
+          counters.academician = Math.max(1, Number(counters.academician) || 0)
+          dirty = true
+          return 'acad'
+        }
+        const n = Math.max(0, Number(counters[kind]) || 0) + 1
+        counters[kind] = n
+        dirty = true
+        return (ID_PREFIX[kind] || kind + '-') + n
+      },
+      counters() { return dirty ? counters : inst.counters },
+    }
+  }
   function applyV5Event(state, event) {
     try {
       if (!event || typeof event.type !== 'string') return state
@@ -392,30 +435,72 @@ export function apply(ctx) {
       }
       if (t === EV.member) {
         return withInstitute(state, key, (inst) => {
-          const m = d.member
-          if (!m || typeof m.id !== 'string') return inst
+          const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
+          const made = alloc ? d.make(alloc) : d.member
+          const list = (Array.isArray(made) ? made : [made]).filter(Boolean)
+          if (!list.length) return inst
           const members = inst.members.slice()
-          const i = members.findIndex((x) => x.id === m.id)
-          if (i === -1) members.push(m); else members[i] = m
-          return Object.assign({}, inst, { members })
+          let changed = false
+          for (const m of list) {
+            if (!m || typeof m.id !== 'string' || !m.id) continue
+            const i = members.findIndex((x) => x.id === m.id)
+            if (i === -1) members.push(m); else members[i] = m
+            changed = true
+          }
+          if (!changed) return inst
+          const out = Object.assign({}, inst, { members })
+          if (alloc) out.counters = alloc.counters()
+          return out
         })
       }
       if (t === EV.task) {
         return withInstitute(state, key, (inst) => {
-          const task = d.task
-          if (!task || typeof task.id !== 'string') return inst
+          const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
+          const made = alloc ? d.make(alloc) : d.task
+          const list = (Array.isArray(made) ? made : [made]).filter(Boolean)
+          if (!list.length) return inst
           const tasks = inst.tasks.slice()
-          const i = tasks.findIndex((x) => x.id === task.id)
-          if (i === -1) tasks.push(task); else tasks[i] = task
-          return Object.assign({}, inst, { tasks })
+          let changed = false
+          for (const task of list) {
+            if (!task || typeof task.id !== 'string' || !task.id) continue
+            const i = tasks.findIndex((x) => x.id === task.id)
+            if (i === -1) tasks.push(task); else tasks[i] = task
+            changed = true
+          }
+          if (!changed) return inst
+          const out = Object.assign({}, inst, { tasks })
+          if (alloc) out.counters = alloc.counters()
+          return out
         })
       }
       if (t === EV.message) {
         return withInstitute(state, key, (inst) => {
-          const msg = d.message
-          if (!msg || typeof msg.id !== 'string') return inst
-          if (inst.messages.some((x) => x.id === msg.id)) return inst
-          return Object.assign({}, inst, { messages: inst.messages.concat([msg]) })
+          const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
+          const made = alloc ? d.make(alloc) : d.message
+          const list = (Array.isArray(made) ? made : [made]).filter(Boolean)
+          if (!list.length) return inst
+          const messages = inst.messages.slice()
+          let changed = false
+          for (const msg of list) {
+            if (!msg || typeof msg.id !== 'string' || !msg.id) continue
+            if (messages.some((x) => x.id === msg.id)) continue
+            messages.push(msg)
+            changed = true
+          }
+          if (!changed) return inst
+          // MEDIUM 4 (deep review): office-addressed requests (a member proposal that ONLY the
+          // office can approve) are never "delivered" — the office is not a member and has no
+          // inbox drain — so they are capped here, newest kept, oldest dropped. Without that cap
+          // `messages` would grow for the whole run.
+          let self = messages
+          const officeMsgs = self.filter((m) => m.to === OFFICE_INBOX)
+          if (officeMsgs.length > OFFICE_REQUEST_CAP) {
+            const drop = new Set(officeMsgs.slice(0, officeMsgs.length - OFFICE_REQUEST_CAP).map((m) => m.id))
+            self = self.filter((m) => !drop.has(m.id))
+          }
+          const out = Object.assign({}, inst, { messages: self })
+          if (alloc) out.counters = alloc.counters()
+          return out
         })
       }
       if (t === EV.delivered) {
@@ -441,11 +526,14 @@ export function apply(ctx) {
       }
       if (t === EV.meeting) {
         return withInstitute(state, key, (inst) => {
-          const idx = d.index
-          if (!idx || typeof idx.id !== 'string') return inst
+          const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
+          const idx = alloc ? d.make(alloc) : d.index
+          if (!idx || typeof idx.id !== 'string' || !idx.id) return inst
           if (inst.meetings.some((x) => x.id === idx.id)) return inst
           const meetings = inst.meetings.concat([idx])
-          return Object.assign({}, inst, { meetings: meetings.length > 200 ? meetings.slice(meetings.length - 200) : meetings })
+          const out = Object.assign({}, inst, { meetings: meetings.length > 200 ? meetings.slice(meetings.length - 200) : meetings })
+          if (alloc) out.counters = alloc.counters()
+          return out
         })
       }
       if (t === EV.debate) {
@@ -469,9 +557,23 @@ export function apply(ctx) {
         return withInstitute(state, key, (inst) => {
           if (!d.target || typeof d.target !== 'string') return inst
           const formal = Object.assign({}, inst.formal)
-          if (d.record === null) delete formal[d.target]
+          // MEDIUM 6 (deep review): `record` and `todo` accept a FUNCTION (a mutation applied
+          // inside the fold), exactly like `EV.queue`/`patch.paper`. The old shape built them from
+          // reads taken OUTSIDE the fold (`formalTodo().filter(...)`) and replaced the durable
+          // value wholesale, so two same-tick writers for different targets lost one entry —
+          // the lost-update class the queue fix at this file's queue branch already removed.
+          if (typeof d.record === 'function') {
+            const target = d.target
+            const next = d.record(formal[target] === undefined ? null : formal[target])
+            if (next === null || next === undefined) delete formal[target]
+            else formal[target] = next
+          } else if (d.record === null) delete formal[d.target]
           else formal[d.target] = d.record
-          const todo = d.todo === undefined ? (inst.todo || []) : (Array.isArray(d.todo) ? d.todo : (inst.todo || []))
+          const todo = d.todo === undefined
+            ? (inst.todo || [])
+            : (typeof d.todo === 'function'
+              ? (d.todo(inst.todo || []) || inst.todo || [])
+              : (Array.isArray(d.todo) ? d.todo : (inst.todo || [])))
           return Object.assign({}, inst, { formal, todo })
         })
       }
@@ -491,8 +593,19 @@ export function apply(ctx) {
           return Object.assign({}, inst, { queue: list })
         })
       }
-      if (t === EV.counters) {
-        return withInstitute(state, key, (inst) => Object.assign({}, inst, { counters: Object.assign({}, inst.counters, d.counters || {}) }))
+      if (t === EV.solve) {
+        // HIGH 3: one durable place for the "is it solved?" tally. `d.clear` resets it (a new
+        // solve question), `d.member`+`d.value` records/withdraws ONE member's answer (`null`
+        // withdraws, mirroring how `fire` drops a dismissed member's ballot).
+        return withInstitute(state, key, (inst) => {
+          if (d.clear) return Object.assign({}, inst, { solve: {} })
+          const member = String(d.member || '')
+          if (!member) return inst
+          const cur = Object.assign({}, inst.solve || {})
+          if (d.value === null || d.value === undefined) delete cur[member]
+          else cur[member] = d.value === true
+          return Object.assign({}, inst, { solve: cur })
+        })
       }
       if (t === EV.progress) {
         return withInstitute(state, key, (inst) => Object.assign({}, inst, {
@@ -505,7 +618,7 @@ export function apply(ctx) {
       // Never throw out of the fold: one bad event must not break every later read.
       try {
         const diagnostics = (state.diagnostics || []).concat([{ at: now(), type: String(event && event.type), error: String((e && e.message) || e) }])
-        return { v: state.v, institutes: state.institutes, order: state.order, diagnostics: diagnostics.slice(-50) }
+        return { v: state.v, institutes: state.institutes, diagnostics: diagnostics.slice(-50) }
       } catch (e2) { return state }
     }
   }
@@ -525,7 +638,7 @@ export function apply(ctx) {
   // default path, after which `vibe_v5_configure {institute:'alpha'}` never read alpha's
   // file and wrote an EMPTY institute over it. Switching paths now re-reads the new path
   // first, and if that read fails the backend refuses to write instead of clobbering.
-  function makeFileBackend(readTextAbs, writeTextAbs, pathOf) {
+  function makeFileBackend(readTextAbs, writeTextAbs, pathOf, onWriteFailure) {
     let mem = initState()
     let chain = Promise.resolve(true)
     let loadedPath            // the path whose file is currently folded into `mem`
@@ -599,7 +712,17 @@ export function apply(ctx) {
         // late writer always lands the FULL newest state and can never overwrite with
         // a stale subset (v4 §27 writeJson defect).
         chain = chain.then(async () => {
-          try { await writeTextAbs(pathOf(), JSON.stringify(snapshot, null, 2)) } catch (e) { /* best effort */ }
+          // MEDIUM 7 (deep review): the write used to be wrapped in `catch { /* best effort */ }`,
+          // and `writeTextAbs` already swallows its own failures (it returns `undefined`), so a
+          // failed write was INVISIBLE: the in-memory state advanced, every caller reported
+          // success, and the operator believed the run was persisted. The fold cannot be rolled
+          // back here, so the failure is made durable + visible instead (`onWriteFailure` feeds the
+          // same `diagnostics` list that `report()` prints under `## ⚠ 状态诊断`) and also logged.
+          const outcome = await writeTextAbs(pathOf(), JSON.stringify(snapshot, null, 2))
+          if (outcome === undefined) {
+            try { onWriteFailure(pathOf()) } catch (e) { /* diagnostics must never break the chain */ }
+            try { console.error('vibe-math-v5: state write FAILED for ' + pathOf() + ' — the in-memory state advanced but the file is STALE') } catch (e) { /* ignore */ }
+          }
           return true
         })
         return mem
@@ -803,7 +926,8 @@ export function apply(ctx) {
     async function writeTextRel(rel, content) { return (await writeTextAbs(instRoot() + '/' + rel, content)) !== undefined }
 
     function installBackend() {
-      backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json')
+      backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json',
+        (p) => noteWriteProblem(p))   // MEDIUM 7: a failed write must be visible, never swallowed
       return backend
     }
     // The ONE call site that awaits the backend's load (the sensitivity probe for
@@ -817,9 +941,24 @@ export function apply(ctx) {
     // backend's `mem` is still the empty initial state, so a fresh process would report
     // an empty roster and `resume` would refuse with "no active member to resume" —
     // i.e. the fallback would silently lose the whole institute across a restart.
+    // MEDIUM 8 (deep review): "a read must be preceded by an awaited load" was only a CONVENTION.
+    // `state()` stays synchronous by design (the whole fold reads through it), so it can only
+    // START the load — a read that lands before that load settles sees the empty/previous `mem`.
+    // Enforcement is impossible without making every read async, so the rule is now explicit and
+    // OBSERVABLE:
+    //   • SAFE (they all `await ready()` first): every `registerTool` handler, the `/v5` command,
+    //     `commit()` (it awaits `awaitBackendLoad()` before touching `mem`) and `schedulePass()`
+    //     (see its `ready()` call).
+    //   • UNSAFE by construction: any other synchronous consumer of the session API
+    //     (`inst()`/`state()` called from inside ANOTHER plugin, or from a raw host callback that
+    //     does not go through a tool wrapper). Those get a counter (`prematureReads`) surfaced by
+    //     `status()`/`report()` so the gap is visible instead of silent.
+    let loadSettled = false
+    let prematureReads = 0
     async function ready() {
       if (!backend) installBackend()
       await awaitBackendLoad()
+      loadSettled = true
       // Crash recovery for the Lean queue runs ONCE per session, after the state file is
       // folded in: a leftover Formal/Jobs/*.json is re-queued or explicitly interrupted, and
       // is NEVER silently turned into `passed` (docs/formal-verification.md §7-7).
@@ -846,6 +985,9 @@ export function apply(ctx) {
       // not been folded in yet (the 2.4.1 audit's H1: a read-less `state()` was half of the
       // overwrite). `ready()`/`commit()` await the same load; here it only has to START.
       ensureLoaded()
+      // MEDIUM 8: a read that lands before the first successful load is counted (and reported),
+      // instead of silently answering from the empty/previous snapshot.
+      if (!loadSettled) prematureReads += 1
       stateCache = backend.read()
       return stateCache
     }
@@ -870,6 +1012,14 @@ export function apply(ctx) {
       const t = String(text || '').slice(0, 300)
       if (t && pendingLoadNotes.indexOf(t) === -1) pendingLoadNotes.push(t)
       if (pendingLoadNotes.length > 5) pendingLoadNotes = pendingLoadNotes.slice(-5)
+    }
+    // MEDIUM 7 (deep review): a FAILED state write cannot be rolled back (the fold already
+    // advanced the in-memory state), so it must at least be impossible to miss. Counted for
+    // `status()`/`report()` AND queued for the next allowed commit's diagnostics.
+    let stateWriteFailures = 0
+    function noteWriteProblem(p) {
+      stateWriteFailures += 1
+      noteLoadProblem('state write FAILED (the file is STALE): ' + String(p || '?'))
     }
     function drainLoadNotes() {
       if (!pendingLoadNotes.length || !stateCache) return
@@ -913,15 +1063,22 @@ export function apply(ctx) {
     const patchInstitute = (patch) => commit(EV.institute, { patch })
     const putMember = (member) => commit(EV.member, { member })
     const putTask = (task) => commit(EV.task, { task })
-    const putMessage = (message) => commit(EV.message, { message })
+    // HIGH 1: creation goes through an in-fold allocator — the callback runs INSIDE the fold, so
+    // the id it hands out and the object it returns are committed in one step (makeIdAllocator).
+    // The old whole-object creation setters (`putMessage`/`putMeeting`/`putCounters`) are GONE on
+    // purpose: reusing one would mint an id from a read taken outside the fold and reintroduce the
+    // silent-loss race this fix removes. Updates use `putMember`/`putTask` (already-identified
+    // objects) and, for messages, the same allocator.
+    const putMessageMake = (make) => commit(EV.message, { make })
+    // HIGH 3: the "is it solved?" tally is durable state, not an in-memory Map.
+    const putSolve = (patch) => commit(EV.solve, patch || {})
     const ackDelivered = (ids) => commit(EV.delivered, { ids })
-    const putMeeting = (index) => commit(EV.meeting, { index })
     const putDebate = (index) => commit(EV.debate, { index })
     const putVerdict = (target, record) => commit(EV.verdict, { target, record })
     // The verify queue has NO whole-array setter any more: both of its mutations go through
     // `appendToQueue`/`takeQueueHead` below, which hand a FUNCTION to the event fold so the
-    // read-modify-write is atomic (the lost-proposal race).
-    const putCounters = (counters) => commit(EV.counters, { counters })
+    // read-modify-write is atomic (the lost-proposal race). Counters are bumped by the object
+    // folds themselves (`makeIdAllocator`), so there is no `counters` setter either.
     const markProgress = async () => {
       lastProgressAt = now()
       await commit(EV.progress, { at: lastProgressAt, artifactCount: inst().artifactCount })
@@ -1555,22 +1712,28 @@ export function apply(ctx) {
       let targets
       if (to === 'all' || to === '') targets = activeMembers().filter((m) => m.id !== from)
       else if (to === 'voters') targets = voters().filter((m) => m.id !== from)
-      else {
+      else if (to === OFFICE_INBOX) {
+        // MEDIUM 4: an office-addressed request. The office has no member id and is never woken,
+        // so this is a durable note the office reads from `status()`/`report()` on its next turn.
+        targets = [{ id: OFFICE_INBOX }]
+      } else {
         const t = memberById(to)
         if (!t || t.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + to + '" not found' }
         if (t.id === from) return { ok: false, code: 'V5_SELF_MESSAGE', message: 'cannot message yourself' }
         targets = [t]
       }
       if (!targets.length) return { ok: true, delivered: 0, note: 'no other active member' }
-      const counters = Object.assign({}, inst().counters)
-      let n = Math.max(Number(counters.message) || 0, 0)
       const at = now()
-      for (const t of targets) {
-        n += 1
-        await putMessage({ id: 'msg-' + n, from, to: t.id, kind, text, at })
-      }
-      counters.message = n
-      await putCounters(counters)
+      // HIGH 1 (deep review): the ids are allocated INSIDE the fold and all recipients go into ONE
+      // commit. The old shape read `counters` here, minted `msg-N` locally and awaited one
+      // `putMessage` per recipient: a second same-tick `say` minted the SAME ids, and the
+      // `EV.message` fold deduped them away — the message vanished while this function still
+      // returned `ok:true`.
+      const made = []
+      await putMessageMake((alloc) => {
+        for (const t of targets) made.push({ id: alloc.next('message'), from, to: t.id, kind, text, at })
+        return made
+      })
       // The office talking to the institute is HALF of the `paperEditor='office'` consultation
       // requirement; counting it here (the one place a message really is queued) means the gate
       // cannot be satisfied by merely intending to consult (docs/final-paper.md §7).
@@ -1580,7 +1743,7 @@ export function apply(ctx) {
       // recipient promptly instead of waiting for the digest window. Plain chat stays
       // batched because deliveryDecision gates it — the kick only starts the pass.
       scheduleNext().catch(() => {})
-      return { ok: true, delivered: targets.length, to: targets.map((t) => t.id).join(',') }
+      return { ok: true, delivered: targets.length, to: targets.map((t) => t.id).join(','), ids: made.map((m) => m.id) }
     }
     // A framework NOTICE to one member. This must NOT be sent as the member itself:
     // `say()` refuses a self-addressed message (V5_SELF_MESSAGE), so the previous
@@ -1654,14 +1817,11 @@ export function apply(ctx) {
     // DSH's "names are immortal" rule) so a re-hired temp can never inherit a
     // dismissed member's archives or task ownership.
     async function newMember(kind, opts) {
-      const counters = Object.assign({}, inst().counters)
-      let id
-      if (kind === 'academician') { counters.academician = Math.max(1, Number(counters.academician) || 0); id = 'acad' }
-      else if (kind === 'researcher') { counters.researcher = (Number(counters.researcher) || 0) + 1; id = 'r-' + counters.researcher }
-      else { counters.temp = (Number(counters.temp) || 0) + 1; id = 't-' + counters.temp }
-      await putCounters(counters)
       const member = {
-        id, kind,
+        // HIGH 1: the id is EMPTY here on purpose — the fold's allocator fills it (and bumps
+        // `counters.<kind>`) inside the same commit, so two concurrent hires cannot mint the same
+        // `r-N`/`t-N` and silently overwrite each other's roster entry.
+        id: '', kind,
         childId: '',
         phase: 'provisioning',
         direction: String((opts && opts.direction) || ''),
@@ -1669,17 +1829,21 @@ export function apply(ctx) {
         term: (opts && opts.term) || '',
         provider: String((opts && opts.provider) || 'spawn'),
         // The charter is FROZEN at hire time — it says "你入职时的在册编制（这是一份**快照**）".
-        // It therefore has to be CAPTURED here, not at the first successful spawn: a member
+        // It therefore has to be CAPTURED inside the fold, right after the id is known: a member
         // the host's live-child cap refused is recorded `failed` and only spawned later by
         // `resume`, and rebuilding the charter then would describe the resume-time roster
         // (`memberPersona(member)` would also silently drop any `staffPersona` change).
-        persona: memberPersona({ id, kind, direction: String((opts && opts.direction) || ''), hiredBy: (opts && opts.hiredBy) || '' }),
+        persona: '',
         error: '',
         createdAt: now(),
         dismissedAt: 0,
         dismissReason: '',
       }
-      await putMember(member)
+      await commit(EV.member, { make: (alloc) => {
+        member.id = alloc.next(kind)
+        member.persona = memberPersona(member)
+        return member
+      } })
       return member
     }
     function memberPersona(member) {
@@ -1972,7 +2136,10 @@ export function apply(ctx) {
       L.push('             全体表决者（任务仍会执行，但你的理由不会被埋掉），')
       if (kind !== 'temp') {
         L.push('  "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），')
-        L.push('  "fire": {"id":"t-2","reason":"…"}                             ← 解雇（雇主/院士；你只能解雇你雇的），')
+        // MEDIUM 5 (deep review): the hint must match the authority matrix EXACTLY. It used to say
+      // "雇主/院士" without the `academicianLeads` precondition, and implied the academician could
+      // dismiss a PERMANENT researcher (only the office can — `fire` refuses otherwise).
+      L.push('  "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），')
       }
       L.push('  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）')
       L.push('  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）')
@@ -2369,18 +2536,24 @@ export function apply(ctx) {
     async function formalSetRun(target, run) {
       const t = idSafe(String(target || ''))
       if (!t) return
-      const prev = formalOf(t)
+      // MEDIUM 6 (deep review): the record is built INSIDE the fold (`record` as a function), so a
+      // concurrent writer for the SAME target (e.g. the async Lean queue completing while a sync
+      // run reports) can no longer overwrite it from a stale read.
+      //
       // Running a file NEVER changes an already-decided status: a green run does not by
       // itself make an object `passed` (only archiving a proof does), and a failing scratch
       // run must not silently erase a recorded `passed`/`blocked` decision. Everything else
       // becomes `attempted`, which is the honest "we tried, see the compiler output" state.
-      const keep = (prev.status === 'passed' || prev.status === 'blocked') ? prev.status : 'attempted'
-      await putFormal(t, Object.assign({}, prev, {
-        status: keep,
-        file: run.file || prev.file || '',
-        run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
-        updatedAt: now(),
-      }))
+      await putFormal(t, (prev0) => {
+        const prev = prev0 || { status: 'none' }
+        const keep = (prev.status === 'passed' || prev.status === 'blocked') ? prev.status : 'attempted'
+        return Object.assign({}, prev, {
+          status: keep,
+          file: run.file || prev.file || '',
+          run: { at: now(), ok: !!run.ok, exitCode: run.exitCode === undefined ? null : run.exitCode, ms: run.ms || 0, stdoutTail: tail(run.stdout, 800), stderrTail: tail(run.stderr, 800) },
+          updatedAt: now(),
+        })
+      })
     }
     // Withdrawing an archived proof means the file must stop looking like the object's proof.
     // The POLICY-COMPLIANT route is an overwrite through the injected `fs` service (it carries
@@ -2417,16 +2590,20 @@ export function apply(ctx) {
       const why = String(note || '').trim()
       if (!t) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target is required' }
       if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "decision='defect' 必须写明 note（具体偏差）" }
-      const prev = formalOf(t)
-      const proofRel = String(prev.proof || ('Verified/Lean/' + t + '.lean'))
-      await putFormal(t, Object.assign({}, prev, {
+      // MEDIUM 6 (deep review): BOTH halves are mutations applied inside the fold — the record
+      // (built from the record the fold sees) and the TODO list (the old shape read
+      // `formalTodo()`, pushed and wrote the array back, so a concurrent writer for another
+      // target lost an entry).
+      const proofRel = String(formalOf(t).proof || ('Verified/Lean/' + t + '.lean'))
+      await putFormal(t, (prev0) => Object.assign({}, prev0 || { status: 'none' }, {
         status: 'attempted', proof: '', decision: 'defect', note: why,
         fidelity: { at: now(), by: String(memberId || ''), note: why }, updatedAt: now(),
-      }))
+      }), (todo0) => {
+        const list = (todo0 || []).filter((x) => x.id !== t)
+        list.push({ id: t, at: now(), why: '形式化不合格（忠实性缺陷）：' + why })
+        return list
+      })
       const removed = await removeArchivedProof(proofRel)
-      const list = formalTodo().filter((x) => x.id !== t)
-      list.push({ id: t, at: now(), why: '形式化不合格（忠实性缺陷）：' + why })
-      await putFormal(t, formalOf(t), list)
       await writeFormalTodo()
       await writeFormalIndex()
       // `removeArchivedProof` can fail on a host whose shell cannot delete AND whose
@@ -3564,10 +3741,9 @@ export function apply(ctx) {
     }
 
     // ---- task board (compare-and-set DAG, ported from DSH agent-teams) ----
-    function nextTaskId() {
-      const c = Number(inst().counters.task) || 0
-      return { id: 't-' + (c + 1), n: c + 1 }
-    }
+    // `t-N` ids are minted by the fold's allocator inside `taskCreate` (HIGH 1); there is no
+    // read-side id preview any more, because an id read outside the fold is exactly what allowed
+    // two concurrent creates to mint the same one.
     // DAG validation: self-reference, duplicates, and missing/deleted blockers are
     // refused up front; a cycle is detected over the WHOLE candidate graph, exactly
     // like the DSH original, so a bad dependency can never be stored.
@@ -3615,11 +3791,8 @@ export function apply(ctx) {
         if (scopes.indexOf(n) === -1) scopes.push(n)
       }
       const blockedBy = (args.blocked_by || args.blockedBy || []).map(String)
-      const { id, n } = nextTaskId()
-      validateDeps(id, blockedBy)
-      const counters = Object.assign({}, inst().counters); counters.task = n
       const task = {
-        id, revision: 1, subject, description,
+        id: '', revision: 1, subject, description,
         status: 'pending', ownerId: '',
         blockedBy, writeScopes: scopes,
         priority: Number.isFinite(Number(args.priority)) ? Number(args.priority) : 0,
@@ -3627,8 +3800,17 @@ export function apply(ctx) {
         assignedBy: '', why: '', acceptance: '',
         createdAt: now(), updatedAt: now(),
       }
-      await putCounters(counters)
-      await putTask(task)
+      // HIGH 1: the id and the `counters.task` bump happen INSIDE the fold. The dependency check
+      // runs there too, against the FINAL id; a rejection returns null so the fold writes nothing
+      // (an earlier shape allocated the id here and committed the bumped counter separately, so
+      // two same-tick creates could mint the same `t-N` and the fold's upsert overwrote one).
+      const got = { err: null }
+      await commit(EV.task, { make: (alloc) => {
+        task.id = alloc.next('task')
+        try { validateDeps(task.id, blockedBy) } catch (e) { got.err = e; return null }
+        return task
+      } })
+      if (got.err) throw got.err
       await writeTaskboardMirror()
       await markProgress()
       notifyActivity()
@@ -4170,16 +4352,27 @@ export function apply(ctx) {
     // reason, put the object on the formalization TODO, and say so in the group chat. The
     // object keeps its mean probability and its debate record, so nothing is lost.
     async function deferForFormal(vs, j, isTrue) {
-      const rec = formalOf(vs.target)
-      const why = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 ' + (rec.status || 'none') + '）'
+      // MEDIUM 6 (deep review): both the record and the TODO list are built INSIDE the fold, so a
+      // concurrent writer (a Lean run finishing for another target while this verdict settles)
+      // cannot lose the other's entry.
+      const why = 'formal-required：尚未取得 Lean 形式化通过，也没有显式阻塞记录（当前状态 '
+        + String((formalOf(vs.target).status) || 'none') + '）'
       await writeDebateDoc(vs, false, j)
       await putVerdict(vs.target, Object.assign({}, vs, {
         closed: true, outcome: 'undecided', reason: why, mean: j.mean, formalDeferred: true,
         m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
+        // LOW (deep review): record the ELECTORATE too. judgeVerdict had it (ase.voters) and
+        // the closed record used to drop it, so a completed decision could not be audited for who
+        // was counted once the roster changed.
+        voters: j.voters,
       }))
-      const list = formalTodo().filter((t) => t.id !== vs.target)
-      list.push({ id: vs.target, at: now(), why, verdict: isTrue ? 1 : 0 })
-      await putFormal(vs.target, rec.status === 'none' ? { status: 'none', deferredAt: now() } : rec, list)
+      await putFormal(vs.target,
+        (prev0) => ((prev0 && prev0.status && prev0.status !== 'none') ? prev0 : { status: 'none', deferredAt: now() }),
+        (todo0) => {
+          const list = (todo0 || []).filter((t) => t.id !== vs.target)
+          list.push({ id: vs.target, at: now(), why, verdict: isTrue ? 1 : 0 })
+          return list
+        })
       await writeFormalTodo()
       await writeFormalIndex()
       await saveChatLine('【形式化】' + vs.target + ' 的表决结果为 ' + (isTrue ? '真' : '假')
@@ -4197,6 +4390,10 @@ export function apply(ctx) {
       await putVerdict(vs.target, Object.assign({}, vs, {
         closed: true, outcome: 'undecided', reason: j.reason, mean: j.mean,
         m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
+        // LOW (deep review): record the ELECTORATE too. judgeVerdict had it (ase.voters) and
+        // the closed record used to drop it, so a completed decision could not be audited for who
+        // was counted once the roster changed.
+        voters: j.voters,
       }))
       await putDebate({ target: vs.target, at: now(), file: 'Shared/Debates/' + vs.target + '.md', outcome: 'undecided' })
       await saveChatLine('【求真表决】' + vs.target + ' 未达门槛（' + j.reason + '）；留库为未定论，平均概率 ' +
@@ -4214,6 +4411,10 @@ export function apply(ctx) {
       await putVerdict(vs.target, Object.assign({}, vs, {
         closed: true, outcome: isTrue ? 'true' : 'false', mean: isTrue ? 1 : 0,
         m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
+        // LOW (deep review): record the ELECTORATE too. judgeVerdict had it (ase.voters) and
+        // the closed record used to drop it, so a completed decision could not be audited for who
+        // was counted once the roster changed.
+        voters: j.voters,
       }))
       await putDebate({ target: vs.target, at: now(), file: 'Shared/Debates/' + vs.target + '.md', outcome: isTrue ? 'true' : 'false' })
       await saveChatLine('【求真结论】' + vs.target + ' 经 ' + (isTrue ? j.bTrue : j.bFalse) + ' 名有表决权者一致判' +
@@ -4347,13 +4548,22 @@ export function apply(ctx) {
     }
 
     // ---- chat log / meeting plumbing --------------------------------------
+    // LOW (deep review): the day's chat MIRROR was an unsynchronized read-modify-write — two lines
+    // produced in the same tick both read `prev`, and the second write dropped the first. Appends
+    // are now serialized through one promise chain (the authoritative record is `inst().messages`;
+    // this file is the human-readable mirror, which is why this is a LOW).
+    let chatChain = Promise.resolve(true)
     async function saveChatLine(text) {
       const line = String(text || '').trim()
       if (!line) return false
       const day = fmtTime().slice(0, 10)
       const rel = 'Shared/Chat/' + day + '.md'
-      const prev = (await readTextRel(rel)) || ('# 研究所群聊记录｜' + instituteName + '｜' + day + '\n\n')
-      return await writeTextRel(rel, prev + '- ' + fmtTime().slice(11) + '｜' + line + '\n')
+      const run = async () => {
+        const prev = (await readTextRel(rel)) || ('# 研究所群聊记录｜' + instituteName + '｜' + day + '\n\n')
+        return await writeTextRel(rel, prev + '- ' + fmtTime().slice(11) + '｜' + line + '\n')
+      }
+      chatChain = chatChain.then(run, run)
+      return await chatChain
     }
     // Wake a member only when it is not already running. Never called while paused
     // (a paused institute must not be nudged into new work — v4 §29-T36).
@@ -4368,7 +4578,12 @@ export function apply(ctx) {
     // meeting request is PARKED (first one wins; later requests do not overwrite it)
     // and resumed once the verification clears. The watchdog clock starts only when
     // the meeting ACTUALLY begins (v4 §26/§27).
-    const solveVotes = new Map()   // memberId -> boolean, for the current solve question
+    // HIGH 3 (deep review): the "is the original problem solved?" tally is DURABLE state
+    // (`inst().solve`), not an in-memory Map. It gates 结题 and is published by status/report, so a
+    // restart or a second session must see the same answers; the old Map made cross-session
+    // unanimity impossible and let the published view disagree with the durable one.
+    const solveVotesOf = () => inst().solve || {}
+    const solveVotesList = () => Object.entries(solveVotesOf()).map(([k, v]) => k + '=' + v)
     async function startMeeting(callerId, opts) {
       const o = opts || {}
       const agenda = String(o.agenda || '').trim()
@@ -4385,8 +4600,11 @@ export function apply(ctx) {
         // r-2 and the voters replied to the wrong person.
         if (callerId) {
           await say(callerId, { to: 'voters', kind: 'voters', text: '提议开会：「' + agenda + '」（' + kind + '）' })
+          // MEDIUM 4: the office is the only other actor allowed to convene, so the proposal is
+          // ALSO addressed to it (voters alone never reached it).
+          await say(callerId, { to: OFFICE_INBOX, kind: 'office-request', text: '请所办裁定：是否召开会议「' + agenda + '」（类型：' + kind + '｜提议人：' + callerId + '）' })
         }
-        return { ok: true, proposed: true, message: '已向院士/所办提议开会（只有院士或所办可以直接召开）' }
+        return { ok: true, proposed: true, message: '已向院士/所办提议开会（只有院士或所办可以直接召开；所办会在 status/report 的 officeRequests 里看到该提议）' }
       }
       if (autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute has already concluded; start a new run to convene again' }
       if (!running) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute is not running' }
@@ -4400,20 +4618,28 @@ export function apply(ctx) {
       return await beginMeeting({ agenda, kind, target: String(o.target || ''), by: office ? 'office' : callerId })
     }
     async function beginMeeting(opts) {
-      const counters = Object.assign({}, inst().counters)
-      counters.meeting = (Number(counters.meeting) || 0) + 1
-      await putCounters(counters)
-      const id = 'mt-' + counters.meeting
       const order = activeMembers().map((m) => m.id)
       // Rotate who speaks first: with a fixed order the same member always speaks
       // before it can see the others (v4 §24.1-④).
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t }
+      const idx = { id: '', agenda: opts.agenda, kind: opts.kind || 'sync', at: 0, file: '' }
+      // HIGH 1: `mt-N` and the `counters.meeting` bump are allocated inside the fold (the old
+      // shape read the counter here and committed it separately, so two concurrent convenings
+      // could both become `mt-3` and the fold's dedupe dropped the second one).
+      await commit(EV.meeting, { make: (alloc) => {
+        idx.id = alloc.next('meeting')
+        idx.at = now()
+        idx.file = 'Shared/Meetings/' + idx.id + '.md'
+        return idx
+      } })
+      const id = idx.id
       meeting = {
         id, agenda: opts.agenda, kind: opts.kind || 'sync', target: opts.target || '',
         by: opts.by || 'office', order, inputs: {}, extras: {}, lastInputAt: now(), startedAt: now(),
       }
-      solveVotes.clear()
-      await putMeeting({ id, agenda: meeting.agenda, kind: meeting.kind, at: now(), file: 'Shared/Meetings/' + id + '.md' })
+      // HIGH 3: a NEW solve question starts with an empty DURABLE tally (a clear has to be
+      // persisted too, otherwise a reload would resurrect the previous question's answers).
+      await putSolve({ clear: true })
       await saveChatLine('【会议 ' + id + '】召开：' + meeting.agenda + '（类型：' + meeting.kind + '｜召集人：' + meeting.by + '）')
       // A meeting that ACTUALLY begins and was convened by the office is the other half of the
       // `paperEditor='office'` consultation requirement (docs/final-paper.md §7). Counted here, not at the
@@ -4541,7 +4767,8 @@ export function apply(ctx) {
       if (autoDone) return true
       const vs = voters().map((m) => m.id)
       if (!vs.length) return false
-      if (!vs.every((id) => solveVotes.get(id) === true)) return false
+      const sv = solveVotesOf()
+      if (!vs.every((id) => sv[id] === true)) return false
       // ── THE FINAL PAPER PHASE COMES FIRST (docs/final-paper.md §3) ────────────────────────────────
       // `finishRun` flips phase='solved' / autoDone / running=false, after which the machinery
       // REFUSES: `wakeIfIdle` returns false, `startMeeting` rejects a concluded institute and
@@ -4563,7 +4790,9 @@ export function apply(ctx) {
       const m = memberById(memberId)
       if (!m) return
       if (m.kind === 'temp') return   // no vote
-      solveVotes.set(memberId, val === true)
+      // HIGH 3: the answer is committed to the durable tally (it survives a reload and is visible
+      // to a second session), not to a process-local Map.
+      await putSolve({ member: memberId, value: val === true })
       // Evaluate the stop condition on EVERY solve vote, not only when a meeting
       // finalizes. A vote that lands after the meeting closed — a late reply, or an
       // ordinary round carrying vote_solved — would otherwise be recorded and never
@@ -5506,6 +5735,10 @@ export function apply(ctx) {
     }
 
     // ---- hire / fire -------------------------------------------------------
+    // INVARIANT (HIGH 2): an ACTIVE temp always has an ACTIVE employer — `fire` dismisses a
+    // member's temps with it (`dismissTempsOf`), and the office idempotently catches up on state
+    // written before that cascade existed. `maxTempTotal` is therefore counted exactly over the
+    // temps a running institute can still use.
     function employedTemps() { return activeMembers().filter((m) => m.kind === 'temp') }
     // ANY academician or permanently-employed researcher may hire its own temp
     // workers, and may fire the ones it hired. This is the requirement the official
@@ -5547,26 +5780,55 @@ export function apply(ctx) {
       notifyActivity()
       return { ok: true, id: member.id, kind: 'temp', purpose, note: '现在可以用 vibe_v5_say {to:"' + member.id + '"} 或 vibe_v5_assign 给它派活' }
     }
+    // HIGH 2 (deep review): a dismissed member's TEMP WORKERS are dismissed WITH IT. They carry
+    // `hiredBy: <employer id>`, so once the employer is dismissed the employer check
+    // (`target.hiredBy === callerId`) can never match again — only the office could ever clear
+    // them — while `employedTemps()` kept counting them against `maxTempTotal` and the scheduler
+    // kept waking them (a dismissed member's team quietly burning budget). The rule is explicit:
+    // **a member's temps belong to that member's tenure**. The cascade is one level deep because
+    // temps may not hire (`hire` refuses a temp caller), so no deeper recursion is possible.
+    async function dismissTempsOf(employerId, callerId, note) {
+      const mine = inst().members.filter((m) => m.kind === 'temp' && m.phase === 'active' && m.hiredBy === employerId)
+      const done = []
+      for (const t of mine) {
+        const r = await fire(callerId, { id: t.id, reason: note })
+        if (r && r.ok) done.push(t.id)
+      }
+      return done
+    }
     // Firing is REAL: the current turn is cancelled, the resident continuable child is
-    // released, its tasks are reclaimed, its queued mail is dropped and it is marked
-    // dismissed. Its id is never reused, so a re-hire can never inherit its archives.
+    // released, its tasks are reclaimed, its queued mail is dropped, its own temp workers are
+    // dismissed with it, and it is marked dismissed. Its id is never reused, so a re-hire can
+    // never inherit its archives.
     async function fire(callerId, o) {
       const args = o || {}
       const id = String(args.id || args.member || '').trim()
       const target = memberById(id)
       if (!target) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no such member ' + id }
-      if (target.phase === 'dismissed') return { ok: true, already: true, message: id + ' 已被解雇' }
+      if (target.phase === 'dismissed') {
+        // Idempotent cleanup for state written before the cascade existed (or a hand-edited
+        // file): only the office may act here, because a dismissed non-temp target skips the
+        // permission check below.
+        const cleaned = isOffice(callerId) ? await dismissTempsOf(id, callerId, '雇主已被解雇（补做级联）') : []
+        return { ok: true, already: true, cascadedTemps: cleaned, message: id + ' 已被解雇' }
+      }
       const office = isOffice(callerId)
       const acad = isAcademician(callerId)
       const allowed = office || (acad && params.academicianLeads && target.kind === 'temp') || (target.kind === 'temp' && target.hiredBy === callerId)
       if (!allowed) {
-        return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: '你只能解雇你雇的临时工；解雇他人雇的或常驻研究员需由院士/所办执行' }
+        // MEDIUM 5 (deep review): the refusal names the ACTUAL matrix. The old text promised the
+        // academician a power it only has when `academicianLeads` is on, and implied it could
+        // dismiss a permanent researcher (it cannot — see the next guard).
+        return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: '拒绝：能解雇它的只有 ①所办 ②该临时工的雇主本人 ③academicianLeads=true 时的院士（且仅限临时工）；常驻研究员只能由所办解聘，成员只能向所办提议' }
       }
       if (target.kind !== 'temp' && !office) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '解聘常驻研究员只能向所办提议，由所办批准（成员不能直接执行）' }
       }
       const reason = String(args.reason || '').trim()
       const reclaimed = await releaseTasksOf(id, 'dismissed: ' + reason)
+      // Cascade BEFORE the employer is marked dismissed: the temps are still reachable and the
+      // caller's authority (office / leading academician) is the same one that dismissed them.
+      const cascaded = target.kind === 'temp' ? [] : await dismissTempsOf(id, callerId, '雇主 ' + id + ' 被解雇（级联）')
       if (target.childId) {
         try { if (typeof subagents.interrupt === 'function') subagents.interrupt(target.childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) { /* fire-and-return */ }
         try {
@@ -5577,7 +5839,9 @@ export function apply(ctx) {
         liveAgents.delete(target.childId)
       }
       busy.delete(id)
-      solveVotes.delete(id)
+      // HIGH 3: withdraw the dismissed member's durable solve answer, exactly like its ballot is
+      // dropped from every open verdict below (an answer from a former member must not carry).
+      await putSolve({ member: id, value: null })
       rounds.delete(id)
       roundsSinceCompact.delete(id)
       contextPct.delete(id)
@@ -5605,11 +5869,12 @@ export function apply(ctx) {
       }))
       await writeRosterMirror()
       await saveChatLine('【解雇】' + id + ' 已由 ' + (office ? '所办' : callerId) + ' 解雇（原因：' + (reason || '未说明') +
-        '）。代号永不复用；其未完成任务已收回' + (reclaimed.length ? '（' + reclaimed.join('、') + '）' : '') + '。')
+        '）。代号永不复用；其未完成任务已收回' + (reclaimed.length ? '（' + reclaimed.join('、') + '）' : '') +
+        (cascaded.length ? '；随其解雇的临时工 ' + cascaded.join('、') + '（雇主离场 ⇒ 其临时工一并解雇）' : '') + '。')
       await markProgress()
       notifyActivity()
       await scheduleNext()
-      return { ok: true, dismissed: id, reclaimedTasks: reclaimed, reason }
+      return { ok: true, dismissed: id, reclaimedTasks: reclaimed, cascadedTemps: cascaded, reason }
     }
     async function nudge(callerId, o) {
       if (!callerId) return memberDiagnosis('督办（vibe_v5_nudge）', callerId)
@@ -5696,6 +5961,12 @@ export function apply(ctx) {
     }
     async function schedulePass() {
       dbg.passes += 1
+      // MEDIUM 8 (deep review): EVERY scheduling pass reads state, and a pass can be armed by a
+      // timer or an event callback that never went through a tool wrapper. Awaiting the load here
+      // is what makes the internal paths safe by construction instead of by convention (a pass
+      // fired before the state file was folded in would otherwise see an empty roster and could
+      // schedule against it).
+      if (!loadSettled) { try { await ready() } catch (e) { /* the pass still runs; status reports it */ } }
       clearHeartbeat()
       syncParamsFromState()
       // A verification that is ALREADY in flight is served first: the two coordination
@@ -5976,7 +6247,7 @@ export function apply(ctx) {
           '- 时间: ' + fmtTime(),
           '- 记录者: ' + member.id,
           '- 该成员认为原问题已解决: ' + (p.solved === true),
-          '- 有表决权的解决票: ' + Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v).join('、'),
+          '- 有表决权的解决票: ' + (solveVotesList().join('、') || '（无）'),
           '',
         ].join('\n'))
       }
@@ -6499,7 +6770,9 @@ export function apply(ctx) {
       // (v4 §30-T38).
       meeting = null
       pendingMeeting = null
-      solveVotes.clear()
+      // HIGH 3: a NEW solve question starts with an empty DURABLE tally (a clear has to be
+      // persisted too, otherwise a reload would resurrect the previous question's answers).
+      await putSolve({ clear: true })
       busy.clear()
       wakeKind.clear()
       currentMember = ''
@@ -6530,14 +6803,28 @@ export function apply(ctx) {
           childId: m.childId ? m.childId.slice(0, 12) : '', error: m.error || '',
         })),
         tasks: listTasks(),
+        // LOW (deep review): a member whose provisioning failed stays on the roster forever (ids
+        // are never reused, so the entry must stay) — but `resume` only retries the ones refused by
+        // the HOST's live-child cap. Everything else is surfaced here with the remedy, instead of
+        // being a silent, permanent `phase:'failed'` row an operator has to notice by luck.
+        failedMembers: s.members.filter((m) => m.phase === 'failed').map((m) => ({ id: m.id, kind: m.kind, error: String(m.error || '').slice(0, 200) })),
+        failedMembersNote: 'resume 只重试「live-child 上限」类失败；其它 provisioning 失败请由所办重新招聘（新 id，旧 id 永不复用）',
         chat: { pending: s.messages.length, delivered: s.delivered.length },
+        // MEDIUM 4 (deep review): the requests only the OFFICE can approve. `to:'voters'` never
+        // reaches the office (it is not a member), so an unapproved proposal used to be invisible
+        // to the one actor able to act on it.
+        officeRequests: s.messages.filter((m) => m.to === OFFICE_INBOX).map((m) => ({ id: m.id, from: m.from, text: String(m.text || ''), at: m.at })),
+        // MEDIUM 7/8 (deep review): persistence health is part of the status. `stateWriteFailures`
+        // > 0 means the in-memory state is AHEAD of the file; `prematureReads` > 0 means some
+        // consumer read state before the first load settled (see the note on `state()`).
+        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled },
         meeting: meeting ? { id: meeting.id, agenda: meeting.agenda, kind: meeting.kind, spoke: Object.keys(meeting.inputs), order: meeting.order } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
         verifyQueue: s.queue.map((q) => q.target),
         verified: Object.keys(s.verdicts).filter((k) => s.verdicts[k] && s.verdicts[k].closed && s.verdicts[k].outcome !== 'undecided'),
         undecided: Object.keys(s.verdicts).filter((k) => { const v = s.verdicts[k]; return v && v.closed && v.outcome === 'undecided' }),
-        solveVotes: Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v),
+        solveVotes: solveVotesList(),
         // Lean formal verification: mode + per-object status + the formalization TODO. This
         // is how an office/human audits "did we really get strict proofs, or only consensus?"
         formal: {
@@ -6603,10 +6890,15 @@ export function apply(ctx) {
       L.push('')
       L.push('## 群聊 / 会议')
       L.push('- 未读消息：' + s.messages.length + '｜已投递：' + s.delivered.length)
+      // MEDIUM 4: the office's own inbox — requests that only the office can approve.
+      {
+        const reqs = s.messages.filter((m) => m.to === OFFICE_INBOX)
+        L.push('- 待所办裁定：' + (reqs.length ? reqs.length + ' 条（最新：' + String(reqs[reqs.length - 1].text || '').slice(0, 120) + '）' : '（无）'))
+      }
       if (meeting) L.push('- 进行中会议：' + meeting.id + '｜' + meeting.agenda + '｜已发言 ' + Object.keys(meeting.inputs).join('、'))
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
       L.push('- 历史会议：' + s.meetings.length + ' 次｜辩论录：' + s.debates.length + ' 份')
-      L.push('- 解决票：' + (solveVotes.size ? Array.from(solveVotes.entries()).map(([k, v]) => k + '=' + v).join('、') : '（无）'))
+      L.push('- 解决票：' + (solveVotesList().length ? solveVotesList().join('、') : '（无）'))
       if ((s.diagnostics || []).length) {
         L.push('')
         L.push('## ⚠ 状态诊断（被跳过的事件 / 状态文件读取问题）')
@@ -6641,6 +6933,8 @@ export function apply(ctx) {
       L.push('## 文件位置')
       L.push('- 根目录：' + instRoot())
       L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/（成员的库文件路径 = Members/<id>/Progress/progress.md 等；文件工具按会话 cwd 解析 ⇒ 请用完整路径）｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
+      // MEDIUM 7/8: the two persistence facts an operator must not have to guess.
+      L.push('- 持久化：写失败 ' + stateWriteFailures + ' 次｜首次载入前被读取 ' + prematureReads + ' 次｜已载入 ' + loadSettled)
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
@@ -6648,7 +6942,10 @@ export function apply(ctx) {
     async function addResearcher(callerId, direction) {
       if (!isOffice(callerId)) {
         await say(callerId, { to: 'voters', kind: 'voters', text: '提议增聘一名常驻研究员（方向：' + String(direction || '未指定') + '）' })
-        return { ok: true, proposed: true, message: '已向所办提议增聘常驻研究员（编制变更需所办批准）' }
+        // MEDIUM 4: the office is the ONLY actor that can execute this, and `to:'voters'` never
+        // reaches it — the proposal is now addressed to the office as well.
+        await say(callerId, { to: OFFICE_INBOX, kind: 'office-request', text: '请所办裁定：增聘一名常驻研究员（方向：' + String(direction || '未指定') + '｜提议人：' + callerId + '）' })
+        return { ok: true, proposed: true, message: '已向所办提议增聘常驻研究员（编制变更需所办批准；所办会在 status/report 的 officeRequests 里看到该提议）' }
       }
       if (!running || autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute is not running' }
       const m = await newMember('researcher', { direction: String(direction || '') })

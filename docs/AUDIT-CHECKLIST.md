@@ -516,3 +516,21 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
   要求：**分数 ≥80 且无 critical/high**。命令与安装方式见 §9 顶部。
 - Action 版本核对脚本已随之删除（没有工作流就没有可核对的 pin）。**若将来有人（包括我）真要引入工作流**：
   第三方 Action 必须钉 commit SHA 并保留版本注释，同时把本节的结论一并更新，并说明这次引入解决了什么原文中非做不可的问题。
+
+
+## 本周期新增守卫索引（守卫/章节 → 它钉住的不变量 → 证明它会咬的变异）
+
+> 维护规则：只列**能在代码里指出来**的守卫；每行给出"不变量"与"变异"两列，变异脚本都在仓库外的 `_oneoff/auditR2/`。
+
+| 守卫 / 章节 | 钉住的不变量 | 证明它会咬的变异 |
+|---|---|---|
+| `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | `_oneoff/auditR2/participant-set-proof.mjs`（6/6） |
+| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 |
+| 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | `roundA-mutants.mjs` a1/a2、`round9-mutants.mjs` |
+| 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | `_oneoff/auditR2/descriptor-sweep-proof.mjs`（3/3） |
+| 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | `_oneoff/auditR2/cli-policy-proof.mjs`（4/4）+ 敏感度探针 `cli-policy-ignored` |
+| 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | `_oneoff/auditR2/verify-provenance-proof.mjs`（2/2） |
+| `tests/audit-math-computation-parity.mjs` §7 / §8 | 描述符不得用未知占位符、每个占位符都有实现；cli 策略"声明一次 + 被消费"；僵尸字段（`winPrefix`/`stdinArgv`/`defaultOn`）不得回归 | `descriptor-sweep-proof.mjs`、`cli-policy-proof.mjs` |
+| `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d` | `_oneoff/auditR2/installer-mutants.mjs`（2/2） |
+| `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | `_oneoff/auditR2/persona-mutant.mjs`（268/0 → 265/3） |
+| `tests/audit-persona-sensitivity.mjs`（并发修复） | 语料写入**原子**（临时文件 + rename）；敏感度运行前先"预热"语料 | `_oneoff/auditR2/concurrency-proof.mjs`（非原子 100 撕裂 → 0；3/3 并行轮全绿） |

@@ -34,8 +34,10 @@ const PROBES = [
   {
     name: 'cli-policy-ignored',
     file: 'math-computation.js',
-    from: "if (p.mathMode !== 'typed+shell') return bad('engine=cli is disabled while mathMode=' + p.mathMode, 'MATH_REFUSED', next('reason', { reason: 'policy' }))",
-    to: 'if (false) return bad(\'noop\')',
+    // Re-anchored after the single-source ruling: the policy now comes from the DESCRIPTOR (CLI_POLICY),
+    // so the probe disables the descriptor-driven guard. Ignoring it must turn the shared suite RED.
+    from: 'if (CLI_POLICY.requiresMathMode && p.mathMode !== CLI_POLICY.requiresMathMode)',
+    to: 'if (false && CLI_POLICY.requiresMathMode)',
     expect: 'cli refused while mathMode=typed',
   },
   {

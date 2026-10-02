@@ -136,7 +136,9 @@ const probes = [
     name: 'solve-vote-not-unanimous',
     ref: 'selfdrive-v5.mjs',
     guarantee: '⑥ the institute must not stop unless EVERY voter agrees',
-    from: "      if (!vs.every((id) => solveVotes.get(id) === true)) return false",
+    // Anchor follows the HIGH-3 fix (the tally moved from an in-memory Map to durable state); the
+    // guarantee is unchanged — the unanimity test itself is what the mutation removes.
+    from: "      const sv = solveVotesOf()\n      if (!vs.every((id) => sv[id] === true)) return false",
     to: "      if (false) return false",
   },
   // ── probes added after the round-2 audit found these defects ──────────────
@@ -154,8 +156,8 @@ const probes = [
     // The anchor must include the CALL. An `if (false)` inserted before the comment would
     // leave the real `await checkSolved()` below it untouched — an inert mutation that
     // would masquerade as a blind spot.
-    from: "      solveVotes.set(memberId, val === true)\n      // Evaluate the stop condition on EVERY solve vote, not only when a meeting\n      // finalizes. A vote that lands after the meeting closed — a late reply, or an\n      // ordinary round carrying vote_solved — would otherwise be recorded and never\n      // read, leaving a unanimously-concluded institute running forever.\n      await checkSolved()",
-    to: "      solveVotes.set(memberId, val === true)",
+    from: "      await putSolve({ member: memberId, value: val === true })\n      // Evaluate the stop condition on EVERY solve vote, not only when a meeting\n      // finalizes. A vote that lands after the meeting closed — a late reply, or an\n      // ordinary round carrying vote_solved — would otherwise be recorded and never\n      // read, leaving a unanimously-concluded institute running forever.\n      await checkSolved()",
+    to: "      await putSolve({ member: memberId, value: val === true })",
   },
   {
     name: 'proposal-only-kicks-scheduler',

@@ -3369,7 +3369,6 @@ PROJECT: proj
 - Verified/Lean/pPersist.lean
 - VibeMath_State/formal.json
 - qs/qs.json
-- （路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 ```
 
 ## [44] spawn · verifier:r-pFree:0 · case=nogate
@@ -9002,7 +9001,6 @@ PROJECT: proj
 [EVIDENCE INDEX] (only files that exist)
 - Progress_Logs/report.json
 - qs/qs.json
-- （路径说明：成员/子代理的文件工具按**会话 cwd** 解析相对路径，因此上面列出的相对路径都必须先拼上**项目根的绝对前缀**再使用；计算产物请用回执里的绝对字段 `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来。）
 ```
 
 ## [124] push · main-agent · case=push-report

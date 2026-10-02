@@ -19,7 +19,7 @@ import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join, resolve } from 'node:path'
-import { satisfiesDshRange, dshVersionVerdict, PRESETS } from '../installer.js'
+import { satisfiesDshRange, dshVersionVerdict, detectDshVersion, PRESETS } from '../installer.js'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
 const pkg = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
@@ -200,6 +200,36 @@ console.log('=== 4. a pluginManager that never answers must not hold the row ===
     'a prompt listBundles() still supplies the version (the timeout is a fallback, not a replacement)',
     quick.logs.filter((l) => l.includes('source')).join(' | ').slice(0, 160))
   rmSync(tmp, { recursive: true, force: true })
+}
+
+// Installer review (finding): several sources can report the host's version and "first available wins"
+// hid a conflicting host state. The probe records EVERY value+source, keeps the first available
+// authoritative (priority unchanged), and assembles `disagreement` ONLY when one exists.
+{
+  const prev = process.env.DSH_VERSION
+  try {
+    // Import through INSTALLER_SRC (env-overridable) so a single-site mutant on a COPY of installer.js
+    // reaches these assertions - that is what makes the mutant below able to bite.
+    const mod = await import(pathToFileURL(INSTALLER_SRC).href + '?t=' + Date.now())
+    const probe = mod.detectDshVersion || detectDshVersion
+    process.env.DSH_VERSION = '9.9.9'
+    const disagreeing = { get: (n) => (n === 'pluginManager' ? { listBundles: async () => [{ name: '@deepseek-ai/dsh', version: '8.8.8' }] } : undefined) }
+    const d1 = await probe(disagreeing)
+    ok(d1 && d1.version === '9.9.9' && d1.source === 'DSH_VERSION', 'the FIRST available source stays authoritative (which version wins is unchanged)', JSON.stringify(d1))
+    ok(d1 && Array.isArray(d1.probes) && d1.probes.length >= 2 && d1.probes.some((p) => p.source.indexOf('pluginManager') === 0 && p.version === '8.8.8'),
+      '★ every probe value+source is recorded (nothing is silently dropped)', JSON.stringify(d1 && d1.probes))
+    ok(!!(d1 && d1.disagreement) && d1.disagreement.primary === 'DSH_VERSION' && d1.disagreement.conflicts.some((c) => c.version === '8.8.8'),
+      '★ DISAGREEING probes surface a disagreement slot naming the conflict', JSON.stringify(d1 && d1.disagreement))
+    const agreeing = { get: (n) => (n === 'pluginManager' ? { listBundles: async () => [{ name: '@deepseek-ai/dsh', version: '9.9.9' }] } : undefined) }
+    const d2 = await probe(agreeing)
+    ok(d2 && d2.version === '9.9.9' && !('disagreement' in d2), '★ AGREEING probes print NO disagreement slot (assemble-only-on-conflict)', JSON.stringify(d2))
+    // The `%s` placeholder that could reach the user: every installer log line must pre-concatenate.
+    const isrc = readFileSync(INSTALLER_SRC, 'utf8')
+    const printf = isrc.split('\n').filter((l) => /logger|console/.test(l) && /%[sd]/.test(l))
+    ok(printf.length === 0, '★ no installer log line carries a bare printf placeholder (%s/%d)', JSON.stringify(printf.slice(0, 2)))
+  } finally {
+    if (prev === undefined) delete process.env.DSH_VERSION; else process.env.DSH_VERSION = prev
+  }
 }
 
 console.log('')

@@ -226,6 +226,35 @@ console.log('\n-- M11: one surviving reviewer cannot produce a verdict --')
   h.restore(); rmSync(h.WS, { recursive: true, force: true })
 }
 
+// ---------------------------------------------------------------- D4
+console.log('\n-- D4: the debate prompt asks for "changed" AND the framework keeps it --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { maxParallelThreshold: 6, verifierCount: 2, debateMaxRounds: 2, verdictMode: 'flat' })
+  await h.call('vibe_math_add_proposition', { id: 'pD4', 概述: 'D4 改判理由', 概率: 0.6, 分类: '数论' })
+  await h.call('vibe_math_start', {})
+  const vs = await h.find(() => { const x = h.spawns.filter((s) => String(s.label).indexOf('verifier:r-pD4') === 0); return x.length >= 2 ? x : undefined })
+  assert(!!vs, 'D4 两个验证器被派出（' + (vs || []).length + '）')
+  const fire = (childId, result, changed) => h.fireEnd({ id: childId, runId: 'd4-' + Math.random().toString(36).slice(2, 7), stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: '```json\n' + JSON.stringify(changed ? { Result: result, Reason: '理由', changed: changed } : { Result: result, Reason: '理由' }) + '\n```' }] })
+  // round 1: 1 vs 0.5 ⇒ no consensus ⇒ a real debate round 2
+  fire(vs[0].childId, 1); fire(vs[1].childId, 0.5)
+  await wait(400)
+  // round 2 (re-wake the same children; fireEnd is a no-op without an in-flight turn): one states a change
+  for (let i = 0; i < 6; i++) { fire(vs[0].childId, 1, '被对方的反例说服后提高了置信'); fire(vs[1].childId, 1); await wait(250) }
+  const logDir = join(h.project, 'Verification_logs')
+  const got = await h.find(() => {
+    if (!existsSync(logDir)) return undefined
+    const fs2 = readdirSync(logDir).filter((f) => f.endsWith('.json'))
+    if (!fs2.length) return undefined
+    const newest = fs2.sort().pop()
+    const j = JSON.parse(readFileSync(join(logDir, newest), 'utf8'))
+    return (j.transcript || '').indexOf('[changed:') !== -1 ? j : undefined
+  })
+  assert(!!got, '★ [D4] 裁决落库的辩论 transcript 里保留了评审的改判理由（changed）')
+  await h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
 // ---------------------------------------------------------------- M15
 console.log('\n-- M15: status and report share one recentActivity bound (30) --')
 {

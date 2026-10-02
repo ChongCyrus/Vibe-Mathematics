@@ -17,7 +17,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -106,7 +106,12 @@ for (const f of MODULES) {
     : new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
   const order = E.MATH_ENGINE_ORDER
   ok(JSON.stringify(order) === JSON.stringify(['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']), 'MATH_ENGINE_ORDER is exactly the P1 set')
-  ok(E.MATH_ENGINES.cli.defaultOn === true, 'cli is flagged defaultOn')
+  // Item-3 ruling: `defaultOn` was declared but never consumed - cli's default-on property is
+  // already pinned above through the REAL single source (MATH_PARAM_DEFAULTS.mathEngines).
+  const zombie = ['winPrefix', 'stdinArgv', 'defaultOn']
+    .filter((f) => JSON.stringify(E.MATH_ENGINES).indexOf('"' + f + '"') !== -1 || JSON.stringify(E.MATH_P2_ENGINES).indexOf('"' + f + '"') !== -1)
+  ok(zombie.length === 0, 'no zombie descriptor field is declared (winPrefix/stdinArgv/defaultOn were removed)', JSON.stringify(zombie))
+  ok(!/<cliArgv/.test(readFileSync(join(REPO, 'vibe-math-v2', 'math-engines.js'), 'utf8')), 'the decorative <cliArgv...> marker is gone from the descriptor table')
   ok(E.MATH_ENGINES.cli.policy && E.MATH_ENGINES.cli.policy.requiresMathMode === 'typed+shell' && E.MATH_ENGINES.cli.policy.requiresEngineInList === true, 'cli policy gate declared')
   ok(E.MATH_ENGINES.maple.verify === true && !!E.MATH_ENGINES.maple.verifyReason, 'Maple template is flagged VERIFY with a reason')
   for (const name of ['matlab', 'maple', 'wolfram']) {
@@ -190,6 +195,81 @@ for (const f of MODULES) {
   const doc = rf(join(REPO, 'docs', 'math-computation.md'), 'utf8')
   for (const k of kinds) ok(doc.indexOf('`' + k + '`') !== -1, 'docs/math-computation.md names next.kind ' + k)
   for (const r of reasons) ok(doc.indexOf('`' + r + '`') !== -1, 'docs/math-computation.md names next.reason ' + r)
+}
+
+// ── 7. descriptor sweep: every argv placeholder dialect must be one the module IMPLEMENTS
+// Sweep finding (HIGH, fixed): substitution was exact-element (`a === '<script>'`), so matlab's embedded
+// `run('<script>')` reached the engine literally. The fix is string-level; this guard keeps the two
+// sides in sync: no descriptor may use a placeholder the module does not substitute.
+{
+  const E = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
+  const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
+  const src = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
+  const SUPPORTED = {
+    '<script>': "split('<script>').join(",
+    '<expr>': "split('<expr>').join(",
+    '<pkgs>': "a === '<pkgs>'",
+    '<pkgs...>': "a === '<pkgs...>'",
+    '<probeCode>': "a === '<probeCode>'",
+    '<exe>': ".replace(/<exe>/g, exe)",
+    '<pkg>': ".replace(/<pkg>/g, pkg)",
+    '__PKGS__': ".replace(/__PKGS__/g, plain)",
+    '__QPKGS__': ".replace(/__QPKGS__/g, quoted)",
+    '__PKG__': ".replace(/__PKG__/g, pkg)",
+  }
+  const stringsOf = (d) => [].concat(
+    Object.values(d.scriptArgv || {}).filter((x) => typeof x === 'string'),
+    Object.values(d.evalArgv || {}).filter((x) => typeof x === 'string'),
+    ((d.packageProbe && d.packageProbe.argv) || []).filter((x) => typeof x === 'string'),
+    typeof d.probeCode === 'string' ? [d.probeCode] : [],
+    (d.install ? [].concat(d.install.userArgv || [], d.install.systemArgv || [], d.install.uninstallArgv || []) : []).filter((x) => typeof x === 'string'),
+  )
+  const all = Object.assign({}, E.MATH_ENGINES, E.MATH_P2_ENGINES)
+  const unknown = []
+  const unimplemented = []
+  for (const name of Object.keys(all)) {
+    for (const s of stringsOf(all[name])) {
+      for (const m of (s.match(/<[a-z.]+>|__[A-Z]+__/g) || [])) {
+        if (!(m in SUPPORTED)) unknown.push(name + ':' + m)
+        else if (SUPPORTED[m] && src.indexOf(SUPPORTED[m]) === -1) unimplemented.push(name + ':' + m)
+      }
+    }
+  }
+  ok(unknown.length === 0, 'no descriptor uses an UNKNOWN argv placeholder', JSON.stringify([...new Set(unknown)]))
+  ok(unimplemented.length === 0, 'every descriptor placeholder has an implementation in the module (no literal placeholder can reach an engine)', JSON.stringify([...new Set(unimplemented)]))
+  ok(/String\(a\)\.split\('<script>'\)\.join\(/.test(src) && /String\(a\)\.split\('<expr>'\)\.join\(/.test(src),
+    'substitution is STRING-level for <script>/<expr> (embedded forms like matlab run(\'<script>\') are covered)')
+}
+
+// ── 8. the cli policy is declared ONCE (descriptor) and consumed, never hard-coded
+// Sweep ruling: `cli.policy.{requiresMathMode,requiresEngineInList}` were declared but never consumed,
+// while the same rules were hard-coded twice in the module (so they could drift). The module now reads
+// the descriptor; this guard makes a hard-coded revert impossible to land.
+{
+  const engPath = join(REPO, 'vibe-math-v2', 'math-engines.js')
+  const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
+  const eng = existsSync(engPath) ? readFileSync(engPath, 'utf8') : ''
+  const mod = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
+  ok(/policy:\s*\{\s*requiresMathMode:\s*'typed\+shell',\s*requiresEngineInList:\s*true\s*\}/.test(eng),
+    'the cli descriptor DECLARES its policy (requiresMathMode + requiresEngineInList)')
+  ok((mod.match(/CLI_POLICY\.requiresMathMode/g) || []).length >= 2 && (mod.match(/CLI_POLICY\.requiresEngineInList/g) || []).length >= 1,
+    'the module CONSUMES the descriptor policy (both refusal sites read CLI_POLICY)')
+  ok(!/mathMode !== 'typed\+shell'/.test(mod),
+    'no hard-coded policy comparison is left in the module (the rule lives only in the descriptor)')
+}
+
+// ── 9. doc-sync: the v5 editor closed set and v2's single-source status/report helper are documented
+{
+  const v5 = existsSync(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js')) ? readFileSync(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), 'utf8') : ''
+  const fp = existsSync(join(REPO, 'docs', 'final-paper.md')) ? readFileSync(join(REPO, 'docs', 'final-paper.md'), 'utf8') : ''
+  // The closed set appears twice in v5 (the coerce call and the tool schema enum); the separator may be
+  // written with or without a space, so accept both rather than pinning one spelling.
+  ok(/\[\s*'office'\s*,\s*'academician'\s*\]/.test(v5) && /V5_INVALID_ARGUMENT/.test(v5), 'v5 validates the paper editor against the closed set and returns V5_INVALID_ARGUMENT')
+  ok(fp.indexOf('office|academician') !== -1 && fp.indexOf('V5_INVALID_ARGUMENT') !== -1, 'docs/final-paper.md documents the v5 editor closed set + its error code')
+  const v2src = existsSync(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js')) ? readFileSync(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), 'utf8') : ''
+  const v2doc = existsSync(join(REPO, 'vibe-math-v2', '实现方案.md')) ? readFileSync(join(REPO, 'vibe-math-v2', '实现方案.md'), 'utf8') : ''
+  ok((v2src.match(/verifyTasksView\(/g) || []).length >= 3, 'v2 produces status+report through ONE verifyTasksView helper')
+  ok(v2doc.indexOf('verifyTasksView') !== -1, 'the v2 design doc states the single-source status/report helper')
 }
 
 console.log('')
