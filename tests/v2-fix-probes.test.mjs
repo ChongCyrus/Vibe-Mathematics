@@ -2,9 +2,10 @@
 // Each scenario drives the REAL plugin through the public tool API + the host's service mocks.
 //
 // Run: node tests/v2-fix-probes.test.mjs
-import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve as pathResolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; process.stderr.write('  FAIL - ' + m + '\n') } }
@@ -82,11 +83,12 @@ function harness(opts) {
   const ROOT = { id: 'S', options: { provider: 'mock', model: 'mock' }, session: { id: 'S', header: { cwd: WS } } }
   return { WS, listeners, toolRegs, cmdRegs, spawns, errors, latexRuns, ctx, ROOT, restore() { console.error = realError }, project: join(WS, 'VibeMath', 'Projects', 'p') }
 }
+// Seam: V2_PLUGIN points the probe at a mutant copy (same pattern as v3-fix-probes' V3_PLUGIN).
+// Module scope so probes that re-instantiate a FRESH copy take it from the same (possibly mutant) source.
+const PLUGIN_URL = process.env.V2_PLUGIN
+  ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
+  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
 async function load(h) {
-  // Seam: V2_PLUGIN points the probe at a mutant copy (same pattern as v3-fix-probes' V3_PLUGIN).
-  const PLUGIN_URL = process.env.V2_PLUGIN
-    ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
-    : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
   const CACHE_KEY = '__v2PluginPromise:' + PLUGIN_URL.href
   if (!globalThis[CACHE_KEY]) globalThis[CACHE_KEY] = import(PLUGIN_URL.href)
   const mod = await globalThis[CACHE_KEY]   // ONE module instance per URL (no ?t= cache-buster)
@@ -429,15 +431,29 @@ console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
 // ---------------------------------------------------------------- F6a/F6b (silent-failure surfacing)
 console.log('\n-- F6a/F6b: 静默回退与中断失败必须留痕 --');
 {
+  // 5× 矩阵发现：一次性告警若已被本进程早先的段落消费，本段就再也看不到它。
+  // 因此这里走**文档化的 seam**加载一个**全新模块实例**（临时目录里复制 preset + 其相对导入），
+  // 断言真正的契约：告警内容正确、且在**同一实例内至多出现一次**。
+  const srcDir = dirname(fileURLToPath(PLUGIN_URL));   // seam-resolved: a V2_PLUGIN mutant is re-instantiated too
+  const cdir = mkdtempSync(join(tmpdir(), 'v2-f6a-'));
+  for (const f of ['vibe-math-v2.js', 'math-computation.js', 'math-engines.js']) copyFileSync(join(srcDir, f), join(cdir, f));
+  const prevPlugin = process.env.V2_PLUGIN;
+  process.env.V2_PLUGIN = join(cdir, 'vibe-math-v2.js');
   const h1 = harness({ failSubagentsList: true });
-  await load(h1);
-  await h1.call('vibe_math_new_project', { name: 'p' });
-  await h1.call('vibe_math_add_problem', { id: 'qA6', description: 'x' });
-  await h1.call('vibe_math_start', {});
-  await h1.find(() => h1.spawns.length > 0);   // the tick spawns asynchronously (default 2s) — wait before reading stderr
-  const errs = h1.errors.join('\n');
-  assert(/pickProvider\(\) falling back to 'spawn'/.test(errs) && /subagents\.list\(\) failed/.test(errs), '★★★ [F6a] list() 失败的一次性告警可见（实测 ' + JSON.stringify((errs.split('\n').filter((x) => /pickProvider/.test(x))[0] || errs.slice(-120))) + '）');
-  h1.restore(); await wait(250); rmSync(h1.WS, { recursive: true, force: true });
+  try {
+    await load(h1);
+    await h1.call('vibe_math_new_project', { name: 'p' });
+    await h1.call('vibe_math_set_params', { maxParallelThreshold: 8 });
+    await h1.call('vibe_math_add_problem', { id: 'qA6', description: 'x' });
+    await h1.call('vibe_math_start', {});
+    await h1.find(() => h1.spawns.length > 0);           // 异步 tick 才产出子代理
+    await h1.find(() => h1.spawns.length > 1, 20);       // 尽量制造第二次 pickProvider 调用（至多一次的正面证据）
+    const hits = h1.errors.join('\n').split('\n').filter((l) => /pickProvider\(\) falling back to 'spawn'/.test(l));
+    assert(hits.length === 1 && /subagents\.list\(\) failed/.test(hits[0] || ''), '★★★ [F6a] 回退告警内容正确且在**同一实例内恰好一次**（实测 ' + JSON.stringify(hits) + '，spawns=' + h1.spawns.length + '）');
+  } finally {
+    if (prevPlugin === undefined) delete process.env.V2_PLUGIN; else process.env.V2_PLUGIN = prevPlugin;
+    h1.restore(); await wait(250); rmSync(h1.WS, { recursive: true, force: true }); rmSync(cdir, { recursive: true, force: true });
+  }
   const h2 = harness({ failInterrupt: true });
   await load(h2);
   await h2.call('vibe_math_new_project', { name: 'p' });
