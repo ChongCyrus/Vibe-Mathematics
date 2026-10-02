@@ -60,6 +60,13 @@ const read = readRaw
 const SELF_PROBE_MUTATIONS = [
   { name: 'control (no mutation)', rel: '', from: '', to: '', expect: '', control: true },
   {
+    name: 'v5: the formal gate is REMOVED but a comment still quotes it (I8 must read code, not comments)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'formalOn() && p.formal',
+    to: 'true /* removed gate: formalOn() && p.formal */',
+    expect: 'v5 I8: the reply channel is gated on formalOn()',
+  },
+  {
     name: 'v3: one set_params registration loses the Lean params (I13 — the v2.3.1 shipped defect)',
     rel: 'vibe-math-v3/vibe-math-v3.js',
     from: 'formalVerify: { type: \'string\'',
@@ -318,7 +325,9 @@ for (const P of PRESETS) {
     v4: /applyFormalReply[\s\S]{0,900}!formalOn\(\)/,
     v5: /formalOn\(\)\s*&&\s*p\.formal/,
   }
-  check(offGuards[P.tag].test(js), P.tag + ' I8: the reply channel is gated on formalOn() (off stays a no-op)')
+  // A text gate must read CODE, not comments: a comment quoting `formalOn() && p.formal` satisfied
+  // the raw-source version of this check, which hid a removed gate (self-probe mutation below proves it).
+  check(offGuards[P.tag].test(code), P.tag + ' I8: the reply channel is gated on formalOn() (off stays a no-op)')
 
   // I9 — the corpus covers every mode and is deterministic / machine-path free.
   check(corpus.includes('【Lean 形式化验证（鼓励模式）】'), P.tag + ' I9: corpus covers encourage mode')

@@ -758,6 +758,28 @@ console.log('\n-- F6b/v3: 中断失败必须留痕并点名站点 --');
   const hits6 = (st6.recentActivity || []).filter((a) => String(a.event) === 'interrupt' && /中断失败（batch clear \(start\/abort\)/.test(String(a.detail)));
   assert(hits6.length >= 1, '★★★ [F6b/v3] 中断失败进入活动日志并**点名站点**（event=interrupt + 子代理 id=' + abortedId + ' + why 标签 batch clear(start/abort)；实测 ' + JSON.stringify((st6.recentActivity || []).filter((a) => String(a.event) === 'interrupt').slice(-1)[0] || null) + '）');
 }
+console.log('\n-- F6c/v3: 项目指针写失败必须可观察 --');
+{
+  try {
+    probe.failWritePath = 'current.';
+    await call('vibe_math_new_project', { name: 'p' });
+  } finally { probe.failWritePath = ''; }
+  const st6c = await call('vibe_math_status', {});
+  const last6c = st6c.stateWriteFailures && st6c.stateWriteFailures.last;
+  assert(!!last6c && /current\./.test(JSON.stringify(last6c)), '★★★ [F6c/v3] 项目指针写失败进入 status.stateWriteFailures（实测 ' + JSON.stringify(st6c.stateWriteFailures) + '）');
+}
+console.log('\n-- F5/v3: 围栏根与会话工作区不一致必须一次性告警 --');
+{
+  const realErr5 = console.error; const buf5 = [];
+  try {
+    console.error = (...a) => buf5.push(a.map(String).join(' '));
+    probe.policyRoot = join(tmpdir(), 'not-this-session');
+    await call('vibe_math_pause', {});
+    await call('vibe_math_resume', {});
+  } finally { probe.policyRoot = ''; console.error = realErr5; }
+  const hits5 = buf5.join('\n').split('\n').filter((l) => /sandbox fence root differs from this session workspace/.test(l));
+  assert(hits5.length === 1, '★★★ [F5/v3] 围栏根漂移一次性具名告警（实测 ' + JSON.stringify(hits5[0] || buf5.slice(-160)) + '）');
+}
 console.log('\n-- F3: fieldScopes 标注会话 vs 耐久 --');
 {
   const st = await call('vibe_math_status', {});

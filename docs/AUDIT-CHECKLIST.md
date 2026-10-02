@@ -651,3 +651,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 - **诚实标注：这个扫描在今天的提示词上是"构造性空跑"** —— 三个预设的 `declaredParams=0`，即真实提示词里**没有**可扫的声明行；它的"会咬"完全由**自我探针**证明（注入一行即红），将来任何"只写一份副本"或"`params.<name>` 不可读"的声明都会被它抓住。
 - 参考计数（默认模式）：本守卫 **66/0**；`audit-prompt-invariants` **157/0**。
+
+
+### 约定：文本门必须读代码，而不是注释
+
+- **文本型断言（"在源码里 grep 某个门"）必须先 `stripComments` 再匹配**：一条**注释**里出现 `formalOn() && p.formal` 曾让 I8 在**真实门被删除**后仍然变绿（守卫看着在，实际上没在守）。
+- 反例证据是随包的：`tests/audit-prompt-invariants.mjs --self-probe` 的变异"v5: the formal gate is REMOVED but a comment still quotes it (I8 must read code, not comments)" ⇒ 具名红（`v5 I8: the reply channel is gated on formalOn()`）。
+- 同类检查（I1/I2 及 X5–X8 扫描器自身的守卫）也都在**去注释后的代码流**上运行；新增文本门请照此办理。
