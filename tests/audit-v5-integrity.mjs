@@ -13,9 +13,88 @@ import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'no
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const FILE = new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
-const raw = readFileSync(FILE, 'utf8')
+const HERE = new URL('../', import.meta.url)
+/**
+ * `V5_INTEGRITY_MUTATE` carries a JSON `[rel, from, to]` triple: that ONE repo-relative file is mutated
+ * IN MEMORY for one child run. Combined with `--self-probe` this makes every guard below reproducible
+ * from OUTSIDE — a verifier no longer has to copy this audit and rewrite its URLs to point it at a
+ * mutated copy (R16's request). Same shape as `audit-prompt-invariants.mjs` and the
+ * `math-computation-shared --self-probe` pattern.
+ */
+const MUT = process.env.V5_INTEGRITY_MUTATE
+function readRaw(rel) {
+  let text = readFileSync(new URL(rel, HERE), 'utf8')
+  if (MUT) {
+    try {
+      const [r, from, to] = JSON.parse(MUT)
+      if (r === rel && from) text = text.replace(from, to)
+    } catch (e) { /* a malformed mutation is a harness error, not an audit failure */ }
+  }
+  return text
+}
+
+/**
+ * Each mutation is a REAL defect shape for one of this audit's guards. `expect` is a substring that MUST
+ * appear in the failing run; `control: true` marks the unmutated run, which must stay green.
+ */
+const SELF_PROBE_MUTATIONS = [
+  { name: 'control (no mutation)', rel: '', from: '', to: '', expect: '', control: true },
+  {
+    name: 'F3: a status() top-level key is renamed (the frozen field surface must redden)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'leanNoticesScope: ',
+    to: 'leanNoticesScopeRenamed: ',
+    expect: 'status() field surface changed',
+  },
+  {
+    name: 'F1: the README resume claim loses its in-instance case (the pairing gate must redden)',
+    rel: 'README.md',
+    from: '**同实例重建**（宿主丢了子会话、插件实例还在）**继续**原编号',
+    to: '**同实例重建**从 1 重新开始',
+    expect: 'README resume-claim side missing',
+  },
+  {
+    name: 'F1: a code anchor the README cites is removed (its philosophy gate must redden)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'rounds.set(member.id, startRound)',
+    to: 'void 0 /* anchor removed (self-probe) */',
+    expect: 'philosophy gate missing from the implementation: the founding round is applied only AFTER a successful start',
+  },
+]
+
+if (process.argv.includes('--self-probe')) {
+  const bad = []
+  for (const mut of SELF_PROBE_MUTATIONS) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--json'], {
+      cwd: fileURLToPath(HERE),
+      env: Object.assign({}, process.env, mut.control ? {} : { V5_INTEGRITY_MUTATE: JSON.stringify([mut.rel, mut.from, mut.to]) }),
+      encoding: 'utf8',
+    })
+    let parsed = null
+    try { parsed = JSON.parse(r.stdout) } catch (e) { /* fall through to the diagnostic below */ }
+    const text = (r.stdout || '') + (r.stderr || '')
+    if (mut.control) {
+      const ok = r.status === 0 && parsed && parsed.failed === 0
+      console.log((ok ? 'PASS ' : 'FAIL ') + 'control: the unmutated run stays green (' + (parsed ? parsed.failed + ' findings, ' + parsed.gates + ' gates' : 'unparsable output') + ')')
+      if (!ok) bad.push('control run was not green')
+      continue
+    }
+    const hit = text.includes(mut.expect)
+    const red = r.status === 1 && parsed && parsed.failed > 0
+    const ok = red && hit
+    console.log((ok ? 'PASS ' : 'FAIL ') + mut.name + (ok ? '' : '  → exit=' + r.status + ' hit=' + hit + ' failed=' + (parsed && parsed.failed)))
+    if (!ok) bad.push(mut.name + ' (exit ' + r.status + ', expected ' + JSON.stringify(mut.expect) + ')')
+  }
+  console.log('')
+  console.log('V5 INTEGRITY SELF-PROBE: ' + (SELF_PROBE_MUTATIONS.length - bad.length) + '/' + SELF_PROBE_MUTATIONS.length + ' as required')
+  for (const b of bad) console.error('  FAIL ' + b)
+  process.exit(bad.length === 0 ? 0 : 1)
+}
+
+const FILE_REL = 'vibe-math-v5/vibe-math-v5.js'
+const raw = readRaw(FILE_REL)
 // Strip comments, string literals AND regex literals before any identifier scan. Without this the
 // heuristic matches English words inside comments that merely precede a '(' (e.g.
 // "// per unit (" becomes a phantom call to unit()), drowning the real findings.
@@ -79,6 +158,8 @@ function stripNoise(s) {
 const src = stripNoise(raw)
 const findings = []
 const notes = []
+// How many philosophy gates the run checked (module scope so `--json` can report it).
+let gateCount = 0
 
 const lineOf = (idx) => src.slice(0, idx).split('\n').length
 
@@ -213,7 +294,7 @@ else {
 const raised = new Set()
 for (const m of raw.matchAll(/v5err\(\s*'(V5_[A-Z_]+)'/g)) raised.add(m[1])
 for (const m of raw.matchAll(/code:\s*'(V5_[A-Z_]+)'/g)) raised.add(m[1])
-const docs = readFileSync(new URL('../vibe-math-v5/实现方案.md', import.meta.url), 'utf8')
+const docs = readRaw('vibe-math-v5/实现方案.md')
 const documented = new Set()
 for (const m of docs.matchAll(/`(V5_[A-Z_]+)`/g)) documented.add(m[1])
 const onlyDocs = new Set()
@@ -262,8 +343,8 @@ function packageRows(yaml) {
   }
   return rows
 }
-const v5yaml = readFileSync(new URL('../vibe-math-v5/agent.cordis.yml', import.meta.url), 'utf8')
-const v4yaml = readFileSync(new URL('../vibe-math-v4/agent.cordis.yml', import.meta.url), 'utf8')
+const v5yaml = readRaw('vibe-math-v5/agent.cordis.yml')
+const v4yaml = readRaw('vibe-math-v4/agent.cordis.yml')
 const v5rows = packageRows(v5yaml)
 const v4names = new Set(packageRows(v4yaml).map(r => r.name))
 const RELATIVE_OK = new Set(['./vibe-math-v5.js'])
@@ -293,7 +374,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
 // against the implementation: a name in the plan but not the code is an unimplemented
 // requirement, and a name in the code but not the plan is undocumented surface.
 {
-  const plan = readFileSync(new URL('../vibe-math-v5/实现方案.md', import.meta.url), 'utf8')
+  const plan = readRaw('vibe-math-v5/实现方案.md')
   const planTools = new Set()
   for (const m of plan.matchAll(/\bvibe_v5_[a-z_]+/g)) planTools.add(m[0])
   const codeTools = new Set()
@@ -397,8 +478,8 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   // anchor that pins the in-instance case (the two CODE anchors are gates in the GATES table below). Only
   // the prose side is checked here, and every side reports how much it matched, so this cannot pass vacuously.
   {
-    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
-    const suite = readFileSync(new URL('./e2e-v5-round2.test.mjs', import.meta.url), 'utf8')
+    const readme = readRaw('README.md')
+    const suite = readRaw('tests/e2e-v5-round2.test.mjs')
     const readmeClaims = [
       ['the two-case framing', /`resume`\s*后轮次计数的两种情形/],
       ['case 1 = a cross-process reload counts from 1', /跨进程重载[^\n]*从\s*\*\*1\*\*\s*重新计/],
@@ -504,6 +585,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     if (!raw.includes(needle)) findings.push('philosophy gate missing from the implementation: ' + label)
   }
   notes.push('philosophy gates checked: ' + GATES.length)
+  gateCount = GATES.length
 
   // The prompt corpus is a SHIPPED deliverable, not a build artifact: a human must be able
   // to read the exact text every member receives without decoding session logs.
@@ -527,7 +609,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   // never contain a wrong-identity brief.
   try {
     const corpusPath = new URL('prompt-corpus-v5/prompt-corpus-v5.json', REPO_ROOT)
-    const c = JSON.parse(readFileSync(corpusPath, 'utf8'))
+    const c = JSON.parse(readRaw('prompt-corpus-v5/prompt-corpus-v5.json'))
     const kinds = new Set((c.prompts || []).map(p => p.kind))
     const need = ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
       'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
@@ -556,7 +638,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   // it is the only prompt the MAIN agent receives, and no e2e suite loads the YAML, so a
   // human reviewer needs the corpus on disk (generated by audit-persona-surface.test.mjs).
   try {
-    const pc = JSON.parse(readFileSync(new URL('prompt-corpus-persona/persona-corpus.json', REPO_ROOT), 'utf8'))
+    const pc = JSON.parse(readRaw('prompt-corpus-persona/persona-corpus.json'))
     for (const d of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5']) {
       if (!(pc.presets || []).some((p) => p.preset === d)) findings.push('the persona corpus is missing preset ' + d)
     }
@@ -611,6 +693,14 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
 }
 
 // ---- report ------------------------------------------------------------
+// `--json` is the machine-readable contract the `--self-probe` children parse (same shape as
+// audit-prompt-invariants.mjs): { gates, failed, findings, notes }. It is emitted BEFORE the human
+// output so a child run's stdout is parseable in one piece.
+if (process.argv.includes('--json')) {
+  console.log(JSON.stringify({ gates: gateCount, failed: findings.length, findings, notes }))
+  for (const f of findings) console.error('  FINDING: ' + f)
+  process.exit(findings.length ? 1 : 0)
+}
 console.log('-- V5 integrity audit --')
 for (const n of notes) console.log('  note: ' + n)
 console.log('')
