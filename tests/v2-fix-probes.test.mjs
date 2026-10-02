@@ -255,6 +255,124 @@ console.log('\n-- D4: the debate prompt asks for "changed" AND the framework kee
   await h.restore(); rmSync(h.WS, { recursive: true, force: true })
 }
 
+// ---------------------------------------------------------------- P1
+console.log('\n-- P1: add_proposition 拒绝覆盖已有 id（与自动路径同语义） --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  const a1 = await h.call('vibe_math_add_proposition', { id: 'pP1', 概述: '第一版陈述', 布尔估计: 0.6 })
+  assert(a1.ok === true, 'P1 首次新建成功')
+  const a2 = await h.call('vibe_math_add_proposition', { id: 'pP1', 概述: '冒名覆盖', 布尔估计: 0.9 })
+  assert(a2.ok !== true && String(a2.code) === 'PROPOSITION_ID_EXISTS',
+    '★★ [P1] 同 id 再次新建被拒绝（实测 code=' + JSON.stringify(a2.code || a2.message) + '）')
+  assert(typeof a2.next === 'string' && a2.next.length > 0, '★★ [P1] 拒绝时给出可执行的 next（换新 id / 编辑该卡）')
+  const list = await h.call('vibe_math_list_propositions', {})
+  const kept = (list.propositions || []).filter((x) => x.id === 'pP1')[0]
+  assert(kept && kept.概述 === '第一版陈述', '★★ [P1] 已有卡内容未被覆盖（实测 概述=' + JSON.stringify(kept && kept.概述) + '）')
+  const a3 = await h.call('vibe_math_add_proposition', { id: 'pP1b', 概述: '新卡', 布尔估计: 0.5 })
+  assert(a3.ok === true, '对照：换一个新 id 仍可正常新建')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------- P2
+console.log('\n-- P2: 状态提交有完整性标记，撕裂提交可检测 --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { verdictMode: 'flat' })
+  const st = await h.call('vibe_math_status', {})
+  assert(st.stateCommit && Number(st.stateCommit.seq) >= 1,
+    '★★ [P2] 提交标记存在且带序号（实测 seq=' + (st.stateCommit && st.stateCommit.seq) + '）')
+  assert(st.stateCommit.complete === true && Array.isArray(st.stateCommit.files) && st.stateCommit.files.length >= 6,
+    '★★ [P2] 标记列出全部状态文件且都非空（files=' + ((st.stateCommit.files || []).length) + '，mode=' + st.stateCommit.mode + '）')
+  assert(st.stateCommit.mode === 'stage-commit' || st.stateCommit.mode === 'direct',
+    '对照：提交模式被如实记录（' + st.stateCommit.mode + '）')
+  // 撕裂提交：删掉标记列出的一份状态文件（模拟崩溃落在两次写之间），再 resume ⇒ 必须检测到并留痕
+  const victimRel = st.stateCommit.files.filter((f) => /tasks\.json$/.test(f))[0] || st.stateCommit.files[0]
+  rmSync(join(h.project, victimRel), { force: true })
+  await h.call('vibe_math_resume', {})
+  const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+  assert(acts.indexOf('上一次状态提交不完整') !== -1,
+    '★★ [P2] 撕裂提交被明确报出（活动日志：' + JSON.stringify(acts.slice(-200)) + '）')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------- P3
+console.log('\n-- P3: 待计分评审样本必须落盘（崩溃不再静默丢样本） --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { verifierCount: 2, maxParallelThreshold: 4, debateMaxRounds: 1, verdictMode: 'flat' })
+  await h.call('vibe_math_add_proposition', { id: 'pP3', 概述: '待计分样本', 布尔估计: 0.6 })
+  await h.call('vibe_math_start', {})
+  const vs = await h.find(() => { const x = h.spawns.filter((s) => String(s.label).indexOf('verifier:r-pP3') === 0); return x.length >= 2 ? x : undefined })
+  assert(!!vs, 'P3 两个验证器被派出（' + (vs || []).length + '）')
+  for (let i = 0; i < (vs || []).length; i++) h.answer('verifier:r-pP3', 0.5, 40)
+  await wait(600)
+  const rel = join('VibeMath_State', 'pending_review_scores.json')
+  const persisted = await h.find(() => {
+    const f = join(h.project, rel)
+    if (!existsSync(f)) return undefined
+    const j = JSON.parse(readFileSync(f, 'utf8'))
+    return Object.keys(j).length > 0 ? j : undefined
+  })
+  assert(!!persisted, '★★ [P3] 待计分样本落盘（VibeMath_State/pending_review_scores.json 非空）')
+  assert(persisted && Object.keys(persisted).some((k) => k.indexOf('pP3') !== -1),
+    '★★ [P3] 落盘内容包含刚投票的对象（keys=' + JSON.stringify(Object.keys(persisted || {}).slice(0, 3)) + '）')
+  await h.call('vibe_math_resume', {})
+  const after = JSON.parse(readFileSync(join(h.project, rel), 'utf8'))
+  assert(Object.keys(after).some((k) => k.indexOf('pP3') !== -1),
+    '★★ [P3] 恢复后样本仍在（loadState 回读，不是被清空重来）')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------- P4
+console.log('\n-- P4: 被拒绝/失败的落盘必须可见 --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_set_params', { verdictMode: 'flat' })
+  // 制造"存在但无法解析"的状态文件 ⇒ 损坏守卫必须拒绝写入，而且这次拒绝要**可见**
+  writeFileSync(join(h.project, 'VibeMath_State', 'tasks.json'), '{not json', 'utf8')
+  await h.call('vibe_math_resume', {}) // 先让插件**读到**这个坏文件（损坏守卫据此标记它）
+  await h.call('vibe_math_pause', {})
+  const st = await h.call('vibe_math_status', {})
+  assert(st.stateWriteFailures && Number(st.stateWriteFailures.count) >= 1,
+    '★★ [P4] 被拒绝的写入计入诊断（count=' + (st.stateWriteFailures && st.stateWriteFailures.count) + '）')
+  assert(st.stateWriteFailures.last && /tasks\.json/.test(String(st.stateWriteFailures.last.rel)),
+    '★★ [P4] 诊断指出具体文件（last.rel=' + (st.stateWriteFailures.last && st.stateWriteFailures.last.rel) + '）')
+  const rep = await h.call('vibe_math_report', {})
+  assert(rep.stateWriteFailures && Number(rep.stateWriteFailures.count) >= 1, '★★ [P4] report 同样暴露该诊断（不只 status）')
+  const acts = (await h.call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n')
+  assert(/拒绝写入/.test(acts), '★★ [P4] 活动日志有"拒绝写入"留痕（实测 ' + JSON.stringify(acts.slice(-140)) + '）')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------- P5–P8
+console.log('\n-- P5–P8: 状态完整性（日志回读 / 论文排队 / 日志名 / 短 id 唯一） --')
+{
+  const h = harness(); await load(h)
+  await h.call('vibe_math_new_project', { name: 'p' })
+  await h.call('vibe_math_pause', {})
+  const st0 = await h.call('vibe_math_status', {})
+  const rel = (f) => join(h.project, 'VibeMath_State', f)
+  assert(existsSync(rel('activity_log.json')), '★★ [P5] activityLog 落盘（VibeMath_State/activity_log.json）')
+  assert(existsSync(rel('paper.json')), '★★ [P6] 论文排队/回收计数落盘（VibeMath_State/paper.json）')
+  const pj = JSON.parse(readFileSync(rel('paper.json'), 'utf8'))
+  assert('pending' in pj && 'reaps' in pj, '★★ [P6] paper.json 含 pending/reaps（实测 ' + JSON.stringify(pj) + '）')
+  // P5 回读：resume 之后活动日志不为空（旧实现每次都从零开始）
+  await h.call('vibe_math_resume', {})
+  const st1 = await h.call('vibe_math_status', {})
+  assert((st1.recentActivity || []).length > 0,
+    '★★ [P5] 恢复后 recentActivity 非空（从磁盘回读；实测 ' + (st1.recentActivity || []).length + ' 条）')
+  const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
+  assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src),
+    '★★ [P7] 裁决日志名带 shortId 后缀（同一毫秒的两次裁决不再互相覆盖）')
+  assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src),
+    '★★ [P8] 框架分配命题 id 走 shortIdUnique（分配前查重，不再靠概率）')
+  h.restore(); rmSync(h.WS, { recursive: true, force: true })
+}
+
 // ---------------------------------------------------------------- M15
 console.log('\n-- M15: status and report share one recentActivity bound (30) --')
 {

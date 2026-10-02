@@ -1622,11 +1622,21 @@ section('N5 v4 member-facing library declarations are root-qualified (members/<y
 {
   const P = await establish()
   const text = (await P.prompts('brainstorm', 'r-1')) + '\n' + (await P.prompts('normal', 'r-1'))
-  const decls = (text.match(/Members\/<[^>]*>\/(?:Progress|Propos|Methods|Subproblems)\//g) || [])
-  assert(decls.length >= 4, '* every member-visible library declaration carries the member root (found ' + decls.length + ')')
-  const legacy = (text.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<你>\//g) || [])
-  assert(legacy.length === 0, '* no declaration keeps the legacy project-root-relative shape (' + JSON.stringify(legacy) + ')')
-  assert(/Members\/<你>\/Progress\/progress\.md/.test(text), '* the root-qualified progress declaration is the one the writer uses (Members/<id>/Progress/progress.md)')
+  // INVERTED (critical correction): the framework's writer/reader live at the PROJECT ROOT
+  // (publishProgress writes Progress/<rId>/progress.md; countArtifacts scans Propos|Methods|Subproblems
+  // under frameworkRoot()). The delivered text must document THOSE paths, never Members/<x>/...
+  const decls = (text.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g) || [])
+  assert(decls.length >= 4, '* every member-visible library declaration is PROJECT-ROOT relative (Progress/<you>/, Propos/<you>/, ...) - the shape the framework scans (found ' + decls.length + ')')
+  const wrongMembers = (text.match(/Members\/<[^>]+>\//g) || [])
+  assert(wrongMembers.length === 0, '* NO member-facing declaration uses the Members/<x>/ shape (the framework never scans it) - found ' + JSON.stringify(wrongMembers))
+  assert(/Progress\/<你>\/progress\.md/.test(text), '* the documented progress path matches publishProgress (Progress/<rId>/progress.md)')
+  assert(/Propos\/<你>\//.test(text) && /Methods\/<你>\//.test(text) && /Subproblems\/<你>\//.test(text), '* the documented card paths match the record tools (Propos|Methods|Subproblems/<rId>/<id>.md)')
+  // CLASS GUARD (one level above v3's): what the prompt documents must be what the code reads/scans
+  const src4 = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  for (const base of ['Progress', 'Propos', 'Methods', 'Subproblems']) {
+    assert(new RegExp("'" + base + "'").test(src4), '* class guard: the framework reads/scans ' + base + ' - every documented write path must map onto a scanned base')
+  }
+  assert(/['"]Members\/['"]\s*\+/.test(src4) === false, '* class guard: no code path (writer) builds a Members/<id>/... path in v4')
 }
 section('N6 four-preset path discipline (member root / prefix-note)')
 {
@@ -1641,12 +1651,22 @@ section('N6 four-preset path discipline (member root / prefix-note)')
   }
   const ROOT = /Members\/<[^>]+>\/(?:Progress|Propos|Methods|Subproblems)\//g
   const LEGACY = /(?:^|[^/>])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g
-  for (const k of ['v4', 'v5']) {
+  for (const k of ['v5']) {   // v5 pending vm-v5's re-verification; v4 handled explicitly below
     const src = readFileSync(files[k], 'utf8')
     const root = (src.match(ROOT) || []).length
     const legacy = (src.match(LEGACY) || []).length
     assert(root >= 4, '* ' + k + ': every member-visible library declaration carries the member root (found ' + root + ')')
     assert(legacy === 0, '* ' + k + ': no declaration keeps the legacy project-root-relative shape (found ' + legacy + ')')
+  }
+  // v4 (critical correction): the framework writes/reads at the PROJECT ROOT - publishProgress writes
+  // Progress/<rId>/progress.md and countArtifacts scans Propos|Methods|Subproblems under frameworkRoot(),
+  // so a Members/<x>/... declaration is a path NOTHING scans.
+  {
+    const src4 = files.v4 ? readFileSync(files.v4, 'utf8') : ''
+    const decl4 = (src4.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g) || [])
+    const bad4 = (src4.match(/Members\/<[^>]+>\//g) || [])
+    assert(!/Members\/<[^>]+>\//.test(src4), '* v4: NO member-facing declaration/code claim uses the Members/<x>/ shape (found ' + bad4.length + ')')
+    assert(/Progress|<rId>|progress\.md/.test(src4), '* v4: the writer/reader bases are the project-root Progress/Propos/Methods/Subproblems')
   }
   // v3 (v2/v3 deep review D1): the writer `applyAgentWrites` accepts ONLY Problems|Progress|Propos|Methods|Notes
   // at the PROJECT ROOT, so a `Members/<x>/...` declaration is a write it SILENTLY DISCARDS. v3's member-facing
@@ -1661,7 +1681,7 @@ section('N6 four-preset path discipline (member root / prefix-note)')
   // accepted by that preset's writer - this is the invariant that would have caught both D1 and the v4/v5 cases.
   assert(/applyAgentWrites[\s\S]{0,600}?(Problems|Progress|Propos|Methods|Notes)/.test(v3), '* class guard: applyAgentWrites whitelists the sections the member-facing text names (v3)')
   const v2 = readFileSync(files.v2, 'utf8')
-  assert(!LEGACY.test(v2), '* v2 genuinely has no library-declaration vocabulary (so its check below is not vacuous)')
+  assert(!/Members\/<[^>]+>\//.test(v2), '* v2: no Members/<x>/ shape either (anti-vacuity for the class, without over-claiming v2 has no path vocabulary)')
   assert(/PAPER_PATH_NOTE/.test(v2) && /\u4f1a\u8bdd cwd/.test(v2) && /\u7edd\u5bf9\u524d\u7f00/.test(v2), '* v2 uses the OTHER mechanism: one PAPER_PATH_NOTE stating the session-cwd + absolute-prefix rule')
   const uses = (v2.match(/PAPER_PATH_NOTE/g) || []).length
   // (D3 fixed the duplicate: the note no longer belongs in the evidence ENTRY list.) Assert the
@@ -1706,6 +1726,18 @@ section('N8 the meeting frame\'s relay claim matches reality (no promise of spee
   const src = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
   assert(/\(prior\?'\\n\u8fd9\u662f\u4e00\u573a\u771f\u5b9e\u8ba8\u8bba/.test(src), '* the relay claim is gated on prior existing (source-level)')
   assert(/\(prior\?\(\'\\n\\n### \u5df2\u6709\u53d1\u8a00/.test(src), '* the forwarded-speech block is still delivered whenever prior exists')
+}
+section('N9 behavioural: a write to the DOCUMENTED path is counted by countArtifacts (auto-meeting basis)')
+{
+  const P = await establish()
+  const st0 = await P.callTool('vibe_v4_status', {})
+  assert(typeof st0.artifactCount === 'number', '* status exposes artifactCount (the auto-meeting basis) - keys: ' + JSON.stringify(Object.keys(st0).slice(0, 14)))
+  const rec = await P.callTool('vibe_v4_record_proposition', { id: 'p-docpath', statement: '文档路径行为证明', value: 0.5, motive: 'm', p: 0.5 }, P.resAgent(P.childOf('r-1')))
+  assert(rec.ok === true, '* a member card is recorded through the tool (returned ' + JSON.stringify(rec).slice(0, 120) + ')')
+  const st1 = await P.callTool('vibe_v4_status', {})
+  assert(st1.artifactCount > st0.artifactCount, '* the card written to the DOCUMENTED path (Propos/<id>/<id>.md at the project root) IS counted by countArtifacts (' + st0.artifactCount + ' -> ' + st1.artifactCount + ')')
+  const files = P.host && P.host.fsWrites ? P.host.fsWrites.map((w) => String(w.path || '')).join(',') : ''
+  assert(files.indexOf('Members/') === -1, '* no write landed under Members/ (the shape nothing scans) - writes: ' + files.slice(0, 160))
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

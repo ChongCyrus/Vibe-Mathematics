@@ -351,13 +351,19 @@ export function apply(ctx) {
   // an `order` key are simply ignored.
   function initState() { return { v: PROJECTION_VERSION, institutes: {} } }
 
+  // S3 (deep-review 4): the returned state now PRESERVES every unknown TOP-LEVEL key from the
+  // loaded file (`Object.assign({}, state, …)`) instead of rebuilding `{v, institutes,
+  // diagnostics}` and thereby silently erasing anything a NEWER revision wrote at that level. The
+  // institute level already behaved that way (the fold copies the institute object), so this makes
+  // the two levels consistent. `order` stays gone for good (it was written-but-never-read and was
+  // removed in the previous round), so nothing is re-added here.
   function withInstitute(state, key, mut) {
     const cur = state.institutes[key] || emptyInstitute(key, '', '')
     const nextInst = mut(cur)
     if (nextInst === cur) return state
     const institutes = Object.assign({}, state.institutes)
     institutes[key] = nextInst
-    return { v: state.v, institutes, diagnostics: state.diagnostics }
+    return Object.assign({}, state, { institutes })
   }
 
   // Fold ONE event. Unknown/malformed events are SKIPPED and recorded in
@@ -618,7 +624,8 @@ export function apply(ctx) {
       // Never throw out of the fold: one bad event must not break every later read.
       try {
         const diagnostics = (state.diagnostics || []).concat([{ at: now(), type: String(event && event.type), error: String((e && e.message) || e) }])
-        return { v: state.v, institutes: state.institutes, diagnostics: diagnostics.slice(-50) }
+        // S3: keep every unknown top-level key here too (see `withInstitute`).
+        return Object.assign({}, state, { v: state.v, institutes: state.institutes, diagnostics: diagnostics.slice(-50) })
       } catch (e2) { return state }
     }
   }
@@ -638,7 +645,7 @@ export function apply(ctx) {
   // default path, after which `vibe_v5_configure {institute:'alpha'}` never read alpha's
   // file and wrote an EMPTY institute over it. Switching paths now re-reads the new path
   // first, and if that read fails the backend refuses to write instead of clobbering.
-  function makeFileBackend(readTextAbs, writeTextAbs, pathOf, onWriteFailure) {
+  function makeFileBackend(readTextAbs, writeTextAbs, pathOf, onWriteFailure, onLoadProblem) {
     let mem = initState()
     let chain = Promise.resolve(true)
     let loadedPath            // the path whose file is currently folded into `mem`
@@ -648,21 +655,39 @@ export function apply(ctx) {
     // Fold ONE path into `mem`. `readTextAbs` returning undefined means "no file yet", which
     // is the only case that licences a later write; anything else (a throw, a parse error, a
     // version mismatch) leaves `loadOk` false so commit() refuses to clobber it.
+    // S2 (deep-review 4): the REASON is recorded (`loadProblem`), because "no file" and "a file we
+    // could not use" used to look identical to every reader — an operator saw an empty institute
+    // with no hint that their state file exists and was rejected, and the note only appeared after
+    // a WRITE was attempted.
+    let loadProblem = ''
     async function doLoad(p) {
       let ok = false
+      loadProblem = ''
       try {
         const raw = await readTextAbs(p)
         if (raw === undefined || raw === null || raw === '') ok = true
         else {
-          const parsed = JSON.parse(raw)
-          if (parsed && parsed.v === PROJECTION_VERSION) { mem = parsed; ok = true }
+          let parsed = null
+          try { parsed = JSON.parse(raw) } catch (e) { loadProblem = 'invalid JSON (truncated or corrupt)' }
+          if (parsed) {
+            if (parsed.v === PROJECTION_VERSION) { mem = parsed; ok = true }
+            else loadProblem = 'schema version mismatch: file has v=' + JSON.stringify(parsed.v) + ', this build reads v=' + PROJECTION_VERSION
+          }
         }
-      } catch (e) { /* a corrupt/unreadable file is ignored; it is not authoritative */ }
+      } catch (e) { loadProblem = 'unreadable: ' + String((e && e.message) || e) }
       loadedPath = p
       loadOk = ok
       loadPromise = null
       loadPendingPath = null
       return mem
+    }
+    // S2: the actionable text for a file that EXISTS but could not be used (vs "no file yet").
+    function loadProblemText(where) {
+      if (!loadProblem) return ''
+      return 'the state file ' + where + ' exists but could NOT be used (' + loadProblem + '); '
+        + 'writes are refused so it is never clobbered. Fix: back it up, then either restore a v'
+        + PROJECTION_VERSION + ' file or remove/rename it to start a fresh institute in that path '
+        + '(the current file is left untouched).'
     }
     const backend = {
       kind: 'file',
@@ -677,6 +702,9 @@ export function apply(ctx) {
         loadPendingPath = path
         loadPromise = doLoad(path)
         await loadPromise
+        // S2: a file that EXISTS but was rejected is reported on the READ path too (not only when
+        // a write is refused), so `/v5 status` can never silently look like "nothing here yet".
+        if (!loadOk && loadProblem) { try { onLoadProblem(loadProblemText(path)) } catch (e) { /* diagnostics must not break the load */ } }
         if (loadedPath === pathOf()) return mem
         // The path moved again while we were reading: hand back the state for the path
         // that is current NOW rather than one for a directory we are no longer using.
@@ -900,6 +928,27 @@ export function apply(ctx) {
     // writes keep going through `instRoot()`. `instRel()` is the one place that composes it.
     const instRootRel = () => 'VibeMath/Projects/' + project + '/Institutes/' + instituteName
     const instRel = (rel) => instRootRel() + '/' + String(rel == null ? '' : rel).replace(/^\/+/, '')
+    // CLASS GUARD (lead's re-verification round): "documented member write paths must be paths the
+    // framework scans/reads". `instRootRel()` (what the member-facing text advertises) and
+    // `instRoot()` (what `writeTextRel`/`readTextRel`/`readLibrary`/`findCardRel`/`mkdirs` actually
+    // use) are two COMPOSITIONS of the same layout: if a future edit changes one and not the other,
+    // the text advertises a directory nothing writes to (exactly the v4 defect found in 58fff7f).
+    // Comparing the two compositions — instead of trusting two hand-copied strings — is what makes
+    // that class impossible to reintroduce silently.
+    function memberPathContractOk() {
+      const probe = 'Members/__probe__/Progress/progress.md'
+      const documented = instRel(probe)
+      const abs = (instRoot() + '/' + probe).replace(/\\/g, '/')
+      const ws = String(workspaceRoot() || '').replace(/\\/g, '/')
+      if (!ws || ws === '.') return true                 // no cwd to strip: nothing to compare
+      const actual = abs.indexOf(ws) === 0 ? abs.slice(ws.length).replace(/^\/+/, '') : abs
+      if (documented !== actual) {
+        console.error('vibe-math-v5: member library path contract BROKEN — the member-facing text says "'
+          + documented + '" but the framework writes/reads "' + actual + '"')
+        return false
+      }
+      return true
+    }
 
     function getPolicy() {
       const sp = sandboxPolicyOf()
@@ -927,7 +976,8 @@ export function apply(ctx) {
 
     function installBackend() {
       backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json',
-        (p) => noteWriteProblem(p))   // MEDIUM 7: a failed write must be visible, never swallowed
+        (p) => noteWriteProblem(p),                       // MEDIUM 7: a failed write must be visible, never swallowed
+        (text) => { lastLoadProblem = text; noteLoadProblem(text) })   // S2: a rejected file is visible on READS too
       return backend
     }
     // The ONE call site that awaits the backend's load (the sensitivity probe for
@@ -968,6 +1018,10 @@ export function apply(ctx) {
       // The math availability line is derived at session start (and on every tuning that
       // touches the six math_* keys); `probeMathEngines` caches per host, so this is cheap.
       try { await refreshMathLine() } catch (e) { console.error('vibe-math-v5: math probe: ' + String((e && e.message) || e)) }
+      // The member-library path contract (documented root == the root the framework writes/reads).
+      // A broken contract is recorded in `diagnostics` so `report()` shows it instead of leaving a
+      // silent "members write where nothing reads" state.
+      try { if (!memberPathContractOk()) noteLoadProblem('member library path contract broken (documented root != framework root)') } catch (e) { /* never break ready() */ }
       return true
     }
     // Load the CURRENT state path before its first read. `state()` is synchronous by design
@@ -1017,6 +1071,9 @@ export function apply(ctx) {
     // advanced the in-memory state), so it must at least be impossible to miss. Counted for
     // `status()`/`report()` AND queued for the next allowed commit's diagnostics.
     let stateWriteFailures = 0
+    // S2: the ACTIONABLE reason a state file that exists was rejected (empty while everything is
+    // fine). Surfaced by `status()`/`report()` on the read path, not only after a refused write.
+    let lastLoadProblem = ''
     function noteWriteProblem(p) {
       stateWriteFailures += 1
       noteLoadProblem('state write FAILED (the file is STALE): ' + String(p || '?'))
@@ -1046,6 +1103,12 @@ export function apply(ctx) {
       const cur = stateCache.institutes[key]
       if (cur) {
         phase = cur.phase || phase
+        // S1 (deep-review 4 / repro: `_oneoff/s1-solved-reload.mjs`): the CONCLUDED marker is
+        // durable state, not a session memory. `autoDone` used to live only in memory, so a fresh
+        // session over a `phase:'solved'` file had `autoDone=false` and `/v5 start` re-founded the
+        // concluded institute (new runId, new members on top of the old roster). Mirroring the
+        // persisted phase makes every existing `autoDone` guard correct again on reload.
+        autoDone = String(phase) === 'solved'
         // Restored params must go through the SAME normalisation as `vibe_v5_set`: a hand-edited
         // or foreign-shaped state file (e.g. mathEngines as a comma STRING, a bogus enum, a
         // sub-1000 timeout) would otherwise reach `visibleParams()` and v5's own
@@ -2101,6 +2164,12 @@ export function apply(ctx) {
     function replySpec(kind) {
       const L = []
       L.push('结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：')
+      // F2 (deep-review 5): the block below is a FIELD CATALOGUE — it carries `←` explanations and
+      // `|`/`或` value hints, so it is deliberately NOT parseable JSON, while the sentence above
+      // demands "only a JSON object". Saying that out loud (and giving a strictly valid template at
+      // the end of the catalogue) removes the contradiction instead of leaving a model to guess.
+      L.push('（下面是**字段目录**：`←` 后是说明，`|`/`或` 是取值提示，因此这一段并非合法 JSON；'
+        + '**你真正要输出的对象必须严格合法**，最小形态见目录末尾的样例。）')
       L.push('{')
       L.push('  "say": "你想对全所说的话（群聊）"  或  {"to":"r-2","text":"…"}（私信）  或  {"to":"voters","text":"…"}（只对表决者），')
       L.push('  "progress": "本轮进展叙述（会被追加到你的 Progress/progress.md）",')
@@ -2141,11 +2210,23 @@ export function apply(ctx) {
       // dismiss a PERMANENT researcher (only the office can — `fire` refuses otherwise).
       L.push('  "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），')
       }
-      L.push('  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）')
+      // P1a (deep-review 4, re-scoped after the lead's correction): the unanimity rule DOES live
+      // in the delivered charter (【十、停止】) and in the meeting frame (:2268), but NOT next to
+      // this per-round field description — a member reading only the reply spec can misjudge what
+      // a partial yes does. One truthful clause, right where the field is described.
+      L.push('  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。'
+        + '**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；'
+        + '只有全体有表决权者都 true 时才会停止。')
       L.push('  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）')
       L.push('  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）')
       L.push('  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态')
       L.push('}')
+      // F2: a strictly valid template, so "only a JSON object" has a concrete, parseable shape even
+      // though the catalogue above is not JSON. Keep it minimal and legal (no comments, no unions).
+      L.push('最小合法样例（可直接照抄，字段可增删）：')
+      L.push('```json')
+      L.push('{"say":"…","progress":"…","solved":false,"contextPct":40}')
+      L.push('```')
       return L.join('\n')
     }
     // Every prompt builder below passes the member it is addressing. There is
@@ -2230,6 +2311,14 @@ export function apply(ctx) {
         L.push('')
       } else {
         L.push('（你是本次会议的第一位发言者，目前还没有别人发言。）')
+        // F3 (deep-review 5; v4's counterpart states this): "first speaker" alone left two things
+        // unsaid — when the others' opinions arrive, and how the meeting ends. Both statements below
+        // match the code: `askMeetingRound` wakes up to `maxParallel` members per round and
+        // `continueMeetingRound` keeps collecting until nobody is missing (the stall watchdog
+        // handles a member that never answers), then `finalizeMeeting` writes the minutes.
+        L.push('（流程：框架**每轮最多同时征询 maxParallel 名成员**（默认 3），把**已经收集到的**发言'
+          + '附在唤醒提示里，直到所有在册成员都发过言；卡住的成员由会议看门狗处理。'
+          + '收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）')
         L.push('')
       }
       L.push('请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。')
@@ -3843,7 +3932,10 @@ export function apply(ctx) {
       const expected = Number(args.expected_revision !== undefined ? args.expected_revision : args.expectedRevision)
       if (!Number.isFinite(expected)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'expected_revision is required' }
       if (expected !== task.revision) {
-        return { ok: false, code: 'V5_TASK_STALE_REVISION', message: 'task ' + id + ' is at revision ' + task.revision + ', not ' + expected + ' — re-read it with vibe_v5_task_get' }
+        // F6 (deep-review 5): this message is routed into Chinese frames (`【框架提示】…`), where a
+        // raw English diagnostic reads as noise. The CODE stays (`V5_TASK_STALE_REVISION`) and the
+        // revision numbers stay, but the sentence is Chinese now for the member reading it.
+        return { ok: false, code: 'V5_TASK_STALE_REVISION', message: '任务 ' + id + ' 当前 revision 是 ' + task.revision + '，不是 ' + expected + ' —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）' }
       }
       const action = String(args.action || '')
       const office = isOffice(memberId)
@@ -5933,7 +6025,13 @@ export function apply(ctx) {
       }
       if (cur && cur.project) project = cur.project
       if (cur && cur.institute) instituteName = cur.institute
-      if (cur) phase = cur.phase || phase
+      if (cur) {
+        phase = cur.phase || phase
+        // S1: keep the concluded marker in sync with the persisted phase on EVERY sync (this is
+        // the path `status()`/`report()`/`configure()` go through), so no view can show a
+        // concluded institute as ongoing, or vice versa.
+        autoDone = String(phase) === 'solved'
+      }
     }
     // Scheduling TRAMPOLINE. The consensus finalizers call `scheduleNext()` themselves
     // (a settled verification should immediately drive whatever comes next), so a
@@ -6521,6 +6619,18 @@ export function apply(ctx) {
       if (a.institute !== undefined && String(a.institute).trim()) patch.institute = String(a.institute).trim()
       if (a.problem !== undefined) patch.problem = { id: slugify(String(a.problem).slice(0, 40)) || 'problem', statement: String(a.problem) }
       if (a.params && typeof a.params === 'object') patch.params = Object.assign({}, params, normalizeParams(a.params))
+      // C1 (deep-review 4): a configure with NOTHING to apply used to still commit
+      // `patch.phase = 'idle'` below — a no-arg `/v5 configure` silently regressed a CONCLUDED
+      // institute (`report()` then showed 已结题 false). A no-op configure is now a true no-op:
+      // no commit, no phase change, and the answer says exactly that + the usage.
+      if (patch.project === undefined && patch.institute === undefined && patch.problem === undefined && patch.params === undefined) {
+        return {
+          ok: true, noop: true, project, institute: instituteName,
+          phase: String(inst().phase || phase),
+          note: 'configure 没有收到任何参数：未改动任何状态（当前研究所 ' + instituteName + '，phase=' + String(inst().phase || phase) + '）。'
+            + '用法：/v5 configure <研究所名> <问题…>（可在同一行里带 problem；切换研究所名会用一个新的所）。',
+        }
+      }
       if (patch.project !== undefined || patch.institute !== undefined) {
         const np = patch.project !== undefined ? patch.project : project
         const ni = patch.institute !== undefined ? patch.institute : instituteName
@@ -6591,7 +6701,17 @@ export function apply(ctx) {
     async function doStart(args) {
       const a = args || {}
       if (running && !autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'already running' }
-      if (autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'this institute already concluded; configure a new one in a new session' }
+      // S1 (repro `_oneoff/s1-solved-reload.mjs`): the concluded state is durable (`phase:'solved'`
+      // in the state file), so the guard checks the PERSISTED phase as well as the in-memory flag.
+      // The refusal names the concrete next step instead of only the code.
+      if (autoDone || String(phase) === 'solved') {
+        return {
+          ok: false, code: 'V5_INSTITUTE_STATE',
+          message: '本所已结题（状态文件里的 phase = solved，runId = ' + String(inst().runId || '') + '），不能再 start：'
+            + '结题运行的结论/论文/成员都已归档在这个所里。要继续工作请二选一 —— ①在新会话里 `/v5 configure <新研究所名> <问题>` 再 `/v5 start`（推荐）；'
+            + '②同一会话里也要先 `/v5 configure <新研究所名> <问题>`（本所已有成员，故 configure 只接受切换到一个**新的**研究所名）。',
+        }
+      }
       const patch = {}
       if (a.problem !== undefined && String(a.problem).trim()) patch.problem = { id: slugify(String(a.problem).slice(0, 40)) || 'problem', statement: String(a.problem) }
       const p = Object.assign({}, params, normalizeParams(a.params || {}))
@@ -6817,7 +6937,7 @@ export function apply(ctx) {
         // MEDIUM 7/8 (deep review): persistence health is part of the status. `stateWriteFailures`
         // > 0 means the in-memory state is AHEAD of the file; `prematureReads` > 0 means some
         // consumer read state before the first load settled (see the note on `state()`).
-        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled },
+        persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem },
         meeting: meeting ? { id: meeting.id, agenda: meeting.agenda, kind: meeting.kind, spoke: Object.keys(meeting.inputs), order: meeting.order } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
@@ -6935,6 +7055,7 @@ export function apply(ctx) {
       L.push('- 工作目录相对路径（你的文件工具的基准）：' + instRootRel() + '/｜已确立：Verified/｜成员库：Members/<id>/（成员的库文件路径 = Members/<id>/Progress/progress.md 等；文件工具按会话 cwd 解析 ⇒ 请用完整路径）｜群聊：Shared/Chat/｜会议：Shared/Meetings/｜辩论：Shared/Debates/')
       // MEDIUM 7/8: the two persistence facts an operator must not have to guess.
       L.push('- 持久化：写失败 ' + stateWriteFailures + ' 次｜首次载入前被读取 ' + prematureReads + ' 次｜已载入 ' + loadSettled)
+      if (lastLoadProblem) L.push('- ⚠ 状态文件问题：' + lastLoadProblem)
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
@@ -7307,7 +7428,7 @@ export function apply(ctx) {
   // ── /v5 slash command ────────────────────────────────────────────────────
   ctx.effect(() => commands.register({
     name: 'v5', description: 'control the Vibe Math V5 research institute',
-    input: { hint: '[configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper [lang=en] [format=tex] [editor=office] [force]]' },
+    input: { hint: '[configure <研究所名> <问题…>|start|resume|pause|stop|status|report|members|message <收件人|all> <正文…>|meeting <议程…>|hire <用途> <初始任务…>|fire <成员id> [理由…]|add [方向…]|remove <成员id>|set <键>=<值> …|paper [lang=zh|en] [format=both|md|tex] [editor=office|academician] [force]]' },
     handler: async function (inv) {
       const s = getSession(inv && inv.agent)
       if (!s) return { kind: 'error', text: JSON.stringify({ ok: false, error: 'no session' }) }
@@ -7339,7 +7460,20 @@ export function apply(ctx) {
       else if (cmd === 'members') r = { ok: true, members: s.status().members }
       else if (cmd === 'message') r = await s.say('office', { to: rest[0] || 'all', text: rest.slice(1).join(' '), kind: 'office' })
       else if (cmd === 'meeting') r = await s.startMeeting('office', { agenda: rest.join(' '), kind: 'sync' })
-      else if (cmd === 'hire') r = await s.hire('office', { purpose: rest[0] || '', initial_task: rest.slice(1).join(' ') || rest[0] || '' })
+      // C3 (deep-review 4): `/v5 hire X` used to FABRICATE `initial_task` from the purpose, while
+      // the tool path requires both (`hire 必须写明 purpose/initial_task`). The CLI now requires
+      // both too, so the member can never receive a meaningless initial task behind an `ok:true`.
+      else if (cmd === 'hire') {
+        if (!rest.length || !rest.slice(1).join(' ').trim()) {
+          r = {
+            ok: false, code: 'V5_INVALID_ARGUMENT',
+            message: '用法：/v5 hire <用途 purpose> <初始任务 initial_task…>（两者都必填，与 vibe_v5_hire 一致）。'
+              + '例如：/v5 hire 验算大整数分解的边界情形 用 30 分钟写出 50 位以内合数的试除脚本并归档回执。',
+          }
+        } else {
+          r = await s.hire('office', { purpose: rest[0], initial_task: rest.slice(1).join(' ') })
+        }
+      }
       else if (cmd === 'fire') r = await s.fire('office', { id: rest[0] || '', reason: rest.slice(1).join(' ') })
       else if (cmd === 'add') r = await s.addResearcher('office', rest.join(' '))
       else if (cmd === 'remove') r = await s.removeResearcher(rest[0] || '')
@@ -7366,15 +7500,31 @@ export function apply(ctx) {
         r = await s.startPaper('manual', { lang: o.lang, format: o.format, editor: o.editor, force })
       } else if (cmd === 'set') {
         const upd = {}
+        // C2 (deep-review 4): a token WITHOUT `=` used to be skipped silently, so
+        // `/v5 set mathMode typed` answered `ok:true` and changed NOTHING. Every malformed token
+        // is now refused with the accepted shape, instead of a success that lies.
+        const badTokens = []
         for (const tok of rest) {
           const eq = tok.indexOf('=')
-          if (eq <= 0) continue
+          if (eq <= 0) { badTokens.push(tok); continue }
           const k = tok.slice(0, eq), v = tok.slice(eq + 1)
           const n = Number(v)
           upd[k] = Number.isFinite(n) && v !== '' ? n : (v === 'true' ? true : v === 'false' ? false : v)
         }
-        r = await s.setParams(upd)
-      } else r = { ok: false, usage: 'configure|start|resume|pause|stop|status|report|members|message|meeting|hire|fire|add|remove|set|paper [lang=zh|en] [format=both|md|tex] [editor=office|academician] [force]' }
+        if (badTokens.length) {
+          r = {
+            ok: false, code: 'V5_INVALID_ARGUMENT',
+            message: '这些参数缺少 "="（未被解析）：' + badTokens.join('、') + '。正确写法：/v5 set <键>=<值> …（例如 mathMode=typed quorumCap=3 formalVerify=require）',
+          }
+        } else if (!Object.keys(upd).length) {
+          r = {
+            ok: false, code: 'V5_INVALID_ARGUMENT',
+            message: '/v5 set 需要至少一个 <键>=<值>（例如 mathMode=typed）。可用键见 vibe_v5_set 的描述与 /v5 status 的 params。',
+          }
+        } else {
+          r = await s.setParams(upd)
+        }
+      } else r = { ok: false, usage: 'configure <研究所名> <问题…>|start|resume|pause|stop|status|report|members|message <收件人|all> <正文…>|meeting <议程…>|hire <用途> <初始任务…>|fire <成员id> [理由…]|add [方向…]|remove <成员id>|set <键>=<值> …|paper [lang=zh|en] [format=both|md|tex] [editor=office|academician] [force]' }
       // A business failure (the dispatch result's own ok:false) is a FAILED command: the host's
       // CommandResult union distinguishes success from error, and returning 'success' made a rejected
       // invocation look identical to a successful one (same fix as v2/v3).

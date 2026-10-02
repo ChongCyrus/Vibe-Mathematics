@@ -219,6 +219,7 @@ export function apply(ctx) {
   // 状态/报告里最近活动最多显示多少条（**一个常量**）：此前 buildReport 用 min(30, cap)、getStatus
   // 硬编码 min(10, cap)，同一个字段两个端点给出不同答案，而参数说明承诺的是 30（审计 M15）。
   const ACTIVITY_REPORT_MAX = 30
+  const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（status/report 只显示 30 条，但恢复时保留更多线索）
   // 至少 2 名独立评审才能出裁决（审计 M11）：一票裁决会把单个验证者的判断写成"完全验证"的布尔结论。
   const MIN_REVIEWERS = 2
   // 中段裁决（0<正确概率<1）的**重验冷却**（审计 M12）：中段值是"为真的概率"，不是定论，对象不能
@@ -342,7 +343,13 @@ export function apply(ctx) {
   // ================= fs =================
   async function fsTarget(rel) { return await fs.resolve(rel, { cwd: frameworkRoot() }) }
   async function readText(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
-  async function writeText(rel, content) { const t = await fsTarget(rel); await fs.writeText(t, content, undefined, undefined, getPolicy()); return true }
+  async function writeText(rel, content) {
+    const t = await fsTarget(rel)
+    const r = await fs.writeText(t, content, undefined, undefined, getPolicy())
+    // P4：宿主若用返回值（而非抛异常）报告写失败，也要留痕——旧实现无条件 return true 会把它吞掉。
+    if (r && r.ok === false) noteStateWriteFailure(rel, 'host reported write failure' + (r.error ? (': ' + r.error) : ''))
+    return true
+  }
   async function readJson(rel) { const t = await readText(rel); if (t === undefined || t === '') return undefined; try { return JSON.parse(t) } catch (e) { noteSuspect(rel); return undefined } }
   /**
    * Corruption guard. `readJson` cannot tell "no file yet" from "file present but
@@ -368,7 +375,15 @@ export function apply(ctx) {
     console.error('vibe-math-v2: write to ' + rel + ' blocked (file is unparseable; see the earlier warning)')
     return false
   }
-  async function writeJson(rel, obj) { if (!assertWritable(rel)) return false; return await writeText(rel, JSON.stringify(obj, null, 2)) }
+  async function writeJson(rel, obj) {
+    if (!assertWritable(rel)) {
+      // P4：损坏守卫拒绝写入过去是**完全静默**的（返回 false 没人看）⇒ 会话以为已提交、磁盘还是旧内容。
+      noteStateWriteFailure(rel, 'corruption guard refused write')
+      logActivity('state', '拒绝写入（该 JSON 已存在但无法解析，先修/删它）：' + rel)
+      return false
+    }
+    return await writeText(rel, JSON.stringify(obj, null, 2))
+  }
   async function listFiles(rel) { try { const t = await fsTarget(rel); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'file' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function listDirsAt(base, rel) { try { const t = await fs.resolve(rel, { cwd: base }); const s = await fs.stat(t); if (s === undefined) return []; const entries = await fs.listDir(t); return entries.filter(function (e) { return e && e.type === 'directory' }).map(function (e) { return e.name }) } catch (e) { return [] } }
   async function readTextAbs(path) { try { const t = await fs.resolve(path); const s = await fs.stat(t); if (s === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
@@ -732,6 +747,75 @@ export function apply(ctx) {
     }
     return out
   }
+  /** P2：状态提交的原子性 + 完整性标记。
+   *
+   *  可用能力只有 fs.resolve/stat/readText/writeText（**宿主没有 rename**）。所以提交协议是
+   *  「**暂存 → 回读校验 → 提交 → 标记**」：
+   *    1) 每个状态文件先写 `<rel>.tmp`，再回读确认**非空**（截断/失败写在这里就被抓住）；
+   *    2) 暂存成功才把它写进最终路径（`writeText(rel, …)`），失败则记入 `stateWriteFailures`；
+   *    3) 全部落地后**最后**写 `VibeMath_State/commit.json`：`{seq, at, checkpoint, files, missing, mode}`
+   *       —— 它是"这次提交完整"的唯一标记，恢复时用它判断上一次提交是否撕裂。
+   *
+   *  **不用 shell move**：宿主可能只提供受控/模拟的 subprocess（本轮实测：假 subprocess 返回 exit 0
+   *  但不会真的移动文件 ⇒ "搬"成功、文件却不存在，状态直接丢失）。有鉴于此，这里坚持只走宿主 fs API；
+   *  代价是没有 rename 级原子性，收益是任何宿主上都不会静默丢文件。
+   */
+  let stateCommitSeq = 0
+  let stateCommit = { seq: 0, at: 0, complete: false, mode: '', files: [], missing: [] }
+  const stateWriteFailures = []   // P4：被拒绝/失败的落盘（status/report 可见）
+  function noteStateWriteFailure(rel, error) {
+    stateWriteFailures.push({ rel: String(rel), error: String(error || 'unknown'), at: now() })
+    if (stateWriteFailures.length > 32) stateWriteFailures.shift()
+  }
+  async function relNonEmpty(rel) {
+    try { const t = await fsTarget(rel); const st = await fs.stat(t); return !!(st && (st.size === undefined || st.size > 0)) } catch (e) { return false }
+  }
+  async function writeJsonAtomic(rel, obj) {
+    // P4：原子路径也必须过损坏守卫（否则「存在但解析失败」的状态文件会被静默覆写）
+    if (!assertWritable(rel)) {
+      noteStateWriteFailure(rel, 'corruption guard refused write')
+      logActivity('state', '拒绝写入（该 JSON 已存在但无法解析，先修/删它）：' + rel)
+      return 'refused'
+    }
+    const text = JSON.stringify(obj, null, 2)
+    // 没有 shell 就没法清理暂存文件（宿主 fs 无 delete/rename）⇒ 直接写，避免留下 .tmp 垃圾与告警
+    if (!subprocessOf()) {
+      try { await writeText(rel, text) } catch (e) { noteStateWriteFailure(rel, (e && e.message) || e) }
+      if (!(await relNonEmpty(rel))) noteStateWriteFailure(rel, 'written but empty/missing')
+      return 'direct'
+    }
+    const tmp = rel + '.tmp'
+    let staged = false
+    try { await writeText(tmp, text); staged = await relNonEmpty(tmp) } catch (e) { staged = false }
+    let mode = 'direct'
+    if (staged) {
+      try { await writeText(rel, text); mode = 'stage-commit' } catch (e) { noteStateWriteFailure(rel, (e && e.message) || e) }
+      try { await removeFile(tmp) } catch (e) { /* 清理暂存文件失败不影响提交内容 */ }
+    } else {
+      try { await writeText(rel, text) } catch (e) { noteStateWriteFailure(rel, (e && e.message) || e) }
+    }
+    if (!(await relNonEmpty(rel))) noteStateWriteFailure(rel, 'written but empty/missing')
+    return mode
+  }
+  async function commitState(files) {
+    stateCommitSeq += 1
+    const modes = []
+    const missing = []
+    for (let i = 0; i < files.length; i++) {
+      const mode = await writeJsonAtomic(files[i].rel, files[i].obj)
+      modes.push(mode)
+      if (!(await relNonEmpty(files[i].rel))) missing.push(files[i].rel)
+    }
+    const commit = {
+      seq: stateCommitSeq, at: now(), epoch: processEpoch,
+      checkpoint: Number(scheduler.lastCheckpoint) || now(),
+      files: files.map(function (x) { return x.rel }), missing: missing,
+      mode: modes.indexOf('stage-commit') === -1 ? 'direct' : 'stage-commit',
+    }
+    await writeJsonAtomic('VibeMath_State/commit.json', commit)
+    stateCommit = Object.assign({ complete: missing.length === 0 }, commit)
+    return commit
+  }
   async function loadState() {
     const s = await readJson('VibeMath_State/scheduler_state.json')
     // 丢弃历史持久化的 activeCount：旧值可能已经漂移，绝不能覆盖推导值（见 activeCount()）。
@@ -741,23 +825,55 @@ export function apply(ctx) {
     const va = await readJson('VibeMath_State/verifier_accuracy.json'); if (va) verifierAccuracy = sanitizeAccuracy(va)
     const tk = await readJson('VibeMath_State/tasks.json'); if (tk) tasks = tk
     const er = await readJson('VibeMath_State/explorer_retries.json'); if (er) explorerRetries = er
+    // P3：恢复待计分样本（有上限、有溢出告警，见 recordReviewForScoring）
+    // P5：把磁盘上的活动日志并回内存（旧实现只落 report 快照且从不回读 ⇒ 恢复后 status 从零开始）
+    const al = await readJson('VibeMath_State/activity_log.json')
+    if (Array.isArray(al) && al.length) { const seen = {}; const merged = []; for (const e of al.concat(activityLog)) { const k = String(e && e.at) + '|' + String(e && e.detail); if (seen[k]) continue; seen[k] = true; merged.push(e) } activityLog = merged.slice(-ACTIVITY_PERSIST_MAX) }
+    // P6：论文排队/回收计数恢复；在途撰写者跨进程不可恢复 ⇒ 清掉留痕
+    const pj = await readJson('VibeMath_State/paper.json')
+    if (pj && typeof pj === 'object') { if (pj.pending) paperPending = pj.pending; paperReaps = Number(pj.reaps) || 0 }
+    if (paperInFlight) { logActivity('paper', '上一进程的在途撰写者 ' + paperInFlight + ' 不可恢复（child 随进程结束）⇒ 交由 paper 锁/回收逻辑重新触发'); paperInFlight = ''; paperInFlightAt = 0 }
+    const prs = await readJson('VibeMath_State/pending_review_scores.json')
+    if (prs && typeof prs === 'object' && !Array.isArray(prs)) pendingReviewScores = prs
     // 形式化记录（docs/formal-verification.md §4）：v2 没有会话投影，这条状态必须自己持久化，
     // 否则一次 resume 就让 require 门禁失忆（已 passed 的对象被再当"未尝试"）。
+    // P2：先校验上一次提交的完整性（不完整 ⇒ 留痕，再按逐文件容错读取）
+    await loadCommitMarker()
     const fm = await readJson('VibeMath_State/formal.json')
     formalState = {
       records: (fm && fm.records && typeof fm.records === 'object' && !Array.isArray(fm.records)) ? fm.records : {},
       todo: (fm && Array.isArray(fm.todo)) ? fm.todo : [],
     }
   }
+  /** P2：恢复时校验上一次提交的完整性（标记列出但缺失/为空的状态文件 = 撕裂提交）。 */
+  async function loadCommitMarker() {
+    const cm = await readJson('VibeMath_State/commit.json')
+    if (!cm || typeof cm !== 'object') { stateCommit = { seq: 0, at: 0, complete: false, mode: '', files: [], missing: [] }; return stateCommit }
+    const missing = []
+    const files = Array.isArray(cm.files) ? cm.files : []
+    for (let i = 0; i < files.length; i++) { if (!(await relNonEmpty(files[i]))) missing.push(files[i]) }
+    stateCommitSeq = Number(cm.seq) || 0
+    stateCommit = Object.assign({}, cm, { complete: missing.length === 0, missing: missing })
+    if (missing.length && files.length) logActivity('state', '上一次状态提交不完整（缺失/为空：' + missing.join(', ') + '）⇒ 按逐文件容错读取，最后一次提交的部分字段可能丢失')
+    return stateCommit
+  }
   async function saveAll() {
-    await writeJson('VibeMath_State/scheduler_state.json', scheduler)
-    await writeJson('VibeMath_State/agent_registry.json', agentRegistry)
-    await writeJson('VibeMath_State/decision_queue.json', decisionQueue)
-    await writeJson('VibeMath_State/verifier_accuracy.json', verifierAccuracy)
-    await writeJson('VibeMath_State/tasks.json', tasks)
-    await writeJson('VibeMath_State/explorer_retries.json', explorerRetries)
-    await writeJson('VibeMath_State/formal.json', { records: formalRecords(), todo: formalTodo() })
+    // P2：checkpoint 先落进内存再提交（旧顺序是提交完才改内存 ⇒ 磁盘上的 checkpoint 永远滞后一次）
     scheduler.lastCheckpoint = now()
+    await commitState([
+      { rel: 'VibeMath_State/scheduler_state.json', obj: scheduler },
+      { rel: 'VibeMath_State/agent_registry.json', obj: agentRegistry },
+      { rel: 'VibeMath_State/decision_queue.json', obj: decisionQueue },
+      { rel: 'VibeMath_State/verifier_accuracy.json', obj: verifierAccuracy },
+      { rel: 'VibeMath_State/tasks.json', obj: tasks },
+      { rel: 'VibeMath_State/explorer_retries.json', obj: explorerRetries },
+      { rel: 'VibeMath_State/formal.json', obj: { records: formalRecords(), todo: formalTodo() } },
+      // P3：待计分样本也必须落盘——旧实现只在内存，崩溃/恢复后这批评审永远不会被计分（准确率静默丢样本）
+      { rel: 'VibeMath_State/pending_review_scores.json', obj: pendingReviewScores },
+      // P5：活动日志（有界）落盘；P6：论文排队/回收计数落盘（在途 childId 不落，见 loadState）
+      { rel: 'VibeMath_State/activity_log.json', obj: activityLog.slice(-ACTIVITY_PERSIST_MAX) },
+      { rel: 'VibeMath_State/paper.json', obj: { pending: paperPending, reaps: paperReaps } },
+    ])
   }
   // 查询类工具（status/setup/report）汇报前重读设置文件：文件是唯一持久化源，可能在会话启动后被用户手改或由本进程外编辑更新。
   async function refreshParams() {
@@ -2016,6 +2132,21 @@ export function apply(ctx) {
     return out
   }
   async function findProposition(pId) { const all = await getPropos(); return all.find(function (p) { return p.id === pId }) }
+  /**
+   * P1：`add_proposition`/`/vibe add-proposition` 只用于**新建**。id 已存在时**拒绝**，绝不覆盖——
+   * 旧实现是"按 id upsert"，会把已有卡的 陈述/证明列表/证伪列表 换成全新的空列表（静默丢数据），
+   * 而 sync_meta 的引理路径（v3 侧）本来就有 `propos.has` + 文件存在双守卫。这里把两者语义拉齐。
+   */
+  function propositionIdConflict(id, all) {
+    const hit = (all || []).filter(function (x) { return String(x.id) === String(id) })[0]
+    if (!hit) return null
+    return {
+      code: 'PROPOSITION_ID_EXISTS',
+      message: '命题 id "' + id + '" 已存在：add_proposition 只用于**新建**，不会覆盖已有卡（其 陈述/证明列表/证伪列表 一律保留）。',
+      next: '换一个新 id 新建（例如 p-' + shortId() + '）；要修改已有卡请用文件工具直接编辑 Propos/<分类>/<id>.md。',
+      existing: { id: hit.id, 概述: hit.概述, 布尔估计: hit.布尔估计, category: hit._category },
+    }
+  }
   async function upsertProposition(p) {
     const cat = p._category || categoryOf(p)
     delete p._category
@@ -2036,6 +2167,7 @@ export function apply(ctx) {
     const propos = await getPropos()
     return {
       ok: true, at: now(), project: currentProject, projectExists: await projectExistsOnDisk(), frameworkRoot: frameworkRoot(),
+      stateWriteFailures: { count: stateWriteFailures.length, last: stateWriteFailures[stateWriteFailures.length - 1] || null },
       running: scheduler.running, mode: params.mode,
       activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
@@ -2883,8 +3015,9 @@ export function apply(ctx) {
     if (!lemma || !lemma.title) return
     let be = clamp01(lemma.布尔估计 != null ? lemma.布尔估计 : 0.6)
     if (be >= 1) be = 0.99; else if (be <= 0) be = 0.01 // 写入时概率必须 <1 且 >0（待验证器验证）
+    const p8Ids = (await getPropos()).map(function (x) { return x.id })
     const p = {
-      id: 'p-' + shortId(), 概述: lemma.statement || lemma.title,
+      id: 'p-' + shortIdUnique(function (x) { return p8Ids.indexOf(x) !== -1 }), 概述: lemma.statement || lemma.title,
       布尔估计: be,
       细类型: (lemma.细类型 && typeof lemma.细类型 === 'object') ? lemma.细类型 : { 未分类: {} },
       证明列表: [{ 完整过程: lemma.proof || '', 正确概率: clamp01(0.7), '支持信息/依据': '' }],
@@ -3228,7 +3361,7 @@ function verifyTasksView(tasks) {
     // 文件名来自 t.rId，而 rId 是**用户可写**的 q.id / p.id 拼出来的（buildVerifyCandidates 里
     // 'r-' + q.id + '-s' + j）。fs.resolve 只做规范化、并不拒绝 '..'，所以 q.id = 'x/../../../../pwn'
     // 会让这次写落到项目树之外（审计 C1，已用 pathdemo2.cjs 复现）。路径段一律过 safeId。
-    await writeJson('Verification_logs/' + safeId(String(t.rId)) + '_' + Date.now() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
+    await writeJson('Verification_logs/' + safeId(String(t.rId)) + '_' + Date.now() + '_' + shortId() + '.json', { r: r, verdict: v, results: t.childResults, transcript: buildTranscript(t), history: t.history || [], at: now() })
 
     if (r.kind === 'proposition') {
       const p = await findProposition(r.pId)
@@ -4029,6 +4162,8 @@ function verifyTasksView(tasks) {
     return {
       ok: true, initialized: rootAgent !== undefined, running: scheduler.running,
       project: currentProject, projectExists: await projectExistsOnDisk(), projects: await listDirsAt(vibeRoot(), 'Projects'),
+      stateCommit: stateCommit,
+      stateWriteFailures: { count: stateWriteFailures.length, last: stateWriteFailures[stateWriteFailures.length - 1] || null },
       mode: params.mode, activeCount: activeCount(), maxParallelThreshold: params.maxParallelThreshold,
       frameworkRoot: frameworkRoot(),
       problems: { total: qs.length, solved: qs.filter(function (q) { return q.已解决 }).length },
@@ -4102,7 +4237,9 @@ function verifyTasksView(tasks) {
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
   registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), async function (args) { const qs = await getQs(); if (qs.some(function (q) { return q.id === args.id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: args.id, 概述: args.description, 已解决: false, 解法列表: [], 优先级: args.priority || 0, progress: { directions: [] } }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } })
-  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), async function (args) {
+  registerTool('vibe_math_add_proposition', 'Add a NEW proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性). The id must be NEW: if it already exists the call is REFUSED with code PROPOSITION_ID_EXISTS (existing cards are never overwritten — their 证明列表/证伪列表 are preserved); pick a fresh id (e.g. p-<8 hex>) or edit the card file Propos/<分类>/<id>.md directly.', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), async function (args) {
+    const p1Conflict = propositionIdConflict(args.id, await getPropos())
+    if (p1Conflict) { logActivity('proposition', '拒绝覆盖已有命题：' + args.id); return Object.assign({ ok: false }, p1Conflict) }
     const p = { id: args.id, 概述: args.概述, 布尔估计: clamp01(args.布尔估计 != null ? args.布尔估计 : 0.5), 细类型: (args.细类型 && typeof args.细类型 === 'object') ? args.细类型 : { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: (args.优先级 != null) ? args.优先级 : 1, '价值/关键性': clamp01(args['价值/关键性'] != null ? args['价值/关键性'] : 0.5), progress: { 来源: 'user', 说明: '用户手动添加。' } }
     await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) }
   })
@@ -4150,7 +4287,7 @@ function verifyTasksView(tasks) {
     if (cmd === 'save') return await saveSettings()
     if (cmd === 'template') return await createTemplate(args[0] === 'project' ? 'project' : 'global')
     if (cmd === 'add') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add <id> <description>' }; const qs = await getQs(); if (qs.some(function (q) { return q.id === id })) return { ok: false, message: 'problem id already exists' }; qs.push({ id: id, 概述: desc, 已解决: false, 解法列表: [], 优先级: 0, progress: { directions: [] } }); await writeQs(qs); scheduleTick(); return { ok: true, message: 'problem added' } }
-    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p = { id: id, 概述: desc, 布尔估计: 0.5, 细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1, '价值/关键性': 0.5, progress: { 来源: 'user-vibe', 说明: '用户通过 /vibe 添加。' } }; await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) } }
+    if (cmd === 'add-proposition') { const id = args[0]; const desc = args.slice(1).join(' '); if (!id || !desc) return { ok: false, message: 'usage: /vibe add-proposition <id> <概述>' }; const p1c = propositionIdConflict(id, await getPropos()); if (p1c) { logActivity('proposition', '拒绝覆盖已有命题：' + id); return Object.assign({ ok: false }, p1c) } const p = { id: id, 概述: desc, 布尔估计: 0.5, 细类型: { 未分类: {} }, 证明列表: [], 证伪列表: [], 优先级: 1, '价值/关键性': 0.5, progress: { 来源: 'user-vibe', 说明: '用户通过 /vibe 添加。' } }; await upsertProposition(p); scheduleTick(); return { ok: true, proposition: p, file: proposFile(categoryOf(p)) } }
     if (cmd === 'list-propositions') { const all = await getPropos(); return { ok: true, count: all.length, propositions: all.map(function (p) { return { id: p.id, 概述: p.概述, 布尔估计: p.布尔估计, 优先级: p.优先级, '价值/关键性': p['价值/关键性'], category: p._category } }) } }
     if (cmd === 'project') {
       if (args.length === 0 || args[0] === 'list') return { ok: true, current: currentProject, projects: await listDirsAt(vibeRoot(), 'Projects') }
@@ -4238,7 +4375,7 @@ function verifyTasksView(tasks) {
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
   registerTool('vibe_math_add_problem', 'Add a problem to the current project qs/qs.json.', objParams({ id: { type: 'string' }, description: { type: 'string' }, priority: { type: 'integer' } }, ['id', 'description']), 'vibe_math_add_problem')
-  registerTool('vibe_math_add_proposition', 'Add a proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性).', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), 'vibe_math_add_proposition')
+  registerTool('vibe_math_add_proposition', 'Add a NEW proposition to Propos/ (with 概述, 布尔估计, 细类型, 优先级, 价值/关键性). The id must be NEW: if it already exists the call is REFUSED with code PROPOSITION_ID_EXISTS (existing cards are never overwritten — their 证明列表/证伪列表 are preserved); pick a fresh id (e.g. p-<8 hex>) or edit the card file Propos/<分类>/<id>.md directly.', objParams({ id: { type: 'string' }, 概述: { type: 'string' }, 布尔估计: { type: 'number' }, 优先级: { type: 'integer' }, '价值/关键性': { type: 'number' }, 细类型: { type: 'object' } }, ['id', '概述']), 'vibe_math_add_proposition')
   registerTool('vibe_math_list_propositions', 'List propositions from Propos/ (summary index: id, 概述, 布尔估计, 优先级, 价值/关键性, category, 依赖假设).', objParams({}), 'vibe_math_list_propositions')
   registerTool('vibe_math_new_project', 'Create a new math project folder and switch to it.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_new_project')
   registerTool('vibe_math_set_project', 'Switch the current math project.', objParams({ name: { type: 'string' } }, ['name']), 'vibe_math_set_project')
@@ -4717,6 +4854,11 @@ function now() { return Date.now() }
 
 function uuid() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) { if (i === 8 || i === 13 || i === 18 || i === 23) s += '-'; else s += h[Math.floor(Math.random() * 16)] } return s }
 
+/// P8：框架分配 id 时先查重（shortId 是 Math.random 的 8 位 hex，碰撞概率极低但后果是静默覆盖）。
+function shortIdUnique(isTaken) {
+  for (let i = 0; i < 8; i++) { const id = shortId(); if (!isTaken(id)) return id }
+  return shortId()
+}
 function shortId() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 8; i++) s += h[Math.floor(Math.random() * 16)]; return s }
 
 function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }

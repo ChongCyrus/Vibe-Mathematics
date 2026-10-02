@@ -94,7 +94,7 @@ async function runCase(problemId) {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, e.name)
       if (e.isDirectory()) walk(p)
-      else if (/-s0_\d+\.json$/.test(e.name)) found.push(p)
+      else if (/-s0_\d+_[0-9a-f]{8}\.json$/.test(e.name)) found.push(p)
     }
   }
   walk(WS)
@@ -107,8 +107,10 @@ console.log('-- C1: verification-log paths are sanitised --')
   const r = await runCase('q1')
   const name = r.verdictLogs.length ? r.verdictLogs[0].split(/[\\/]/).pop() : '(none)'
   assert(r.verdictLogs.length === 1, 'normal id: exactly one verification log written (' + r.verdictLogs.length + ')')
-  assert(/^r-q1-s0_\d+\.json$/.test(name), 'normal id round-trips to the expected file name (got ' + name + ')')
-  assert(JSON.parse(readFileSync(r.verdictLogs[0], 'utf8')).verdict === 1, 'the log is the real settleVerdict transcript (verdict=1)')
+  assert(/^r-q1-s0_\d+_[0-9a-f]{8}\.json$/.test(name), 'normal id round-trips to the expected file name <rId>_<ms>_<shortId>.json (got ' + name + ')')
+  const logPath = r.verdictLogs[0]
+  assert(typeof logPath === 'string' && logPath.length > 0, 'normal id: a verdict-log path was discovered for reading (got ' + JSON.stringify(logPath) + ')')
+  assert(logPath ? JSON.parse(readFileSync(logPath, 'utf8')).verdict === 1 : false, 'the log is the real settleVerdict transcript (verdict=1)')
   rmSync(r.WS, { recursive: true, force: true })
 }
 {
@@ -117,13 +119,13 @@ console.log('-- C1: verification-log paths are sanitised --')
   const inside = r.verdictLogs
   const name = inside.length ? inside[0].split(/[\\/]/).pop() : '(none)'
   assert(inside.length === 1, 'hostile id: the verification log exists inside Verification_logs/ (' + inside.length + ')')
-  assert(/^r-x_{2,}pwn-s0_\d+\.json$/.test(name), 'hostile id is mapped to a single safe path segment (got ' + name + ')')
+  assert(/^r-x_{2,}pwn-s0_\d+_[0-9a-f]{8}\.json$/.test(name), 'hostile id is mapped to a single safe path segment (got ' + name + ')')
   const escaped = r.found.filter((f) => inside.indexOf(f) === -1)
   assert(escaped.length === 0, 'nothing was written outside Verification_logs/ (escaped=' + JSON.stringify(escaped.map((f) => f.replace(r.WS, '<WS>'))) + ')')
   // The pre-fix escape resolved to <WS>/VibeMath/pwn-s0_<ts>.json (four '..' out of
   // Projects/<p>/Verification_logs); assert that directory holds no such file at all.
   const vibeDir = join(r.WS, 'VibeMath')
-  const strays = readdirSync(vibeDir).filter((n) => /pwn-s0_.*\.json$/.test(n))
+  const strays = (existsSync(vibeDir) ? readdirSync(vibeDir) : []).filter((n) => /pwn-s0_.*\.json$/.test(n))
   assert(strays.length === 0, 'no escaped log is left directly under <WS>/VibeMath/ (' + JSON.stringify(strays) + ')')
   rmSync(r.WS, { recursive: true, force: true })
 }

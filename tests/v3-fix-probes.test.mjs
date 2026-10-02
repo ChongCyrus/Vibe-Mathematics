@@ -610,6 +610,44 @@ console.log('\n-- D1 guard: every member-facing write path is one the writer acc
   assert(personaNarr, '★★ [D1] persona 的求解器归属文件说明与 CHANNEL A 同路径（不再教 Members/…）');
 }
 
+// ================= P1: add_proposition 拒绝覆盖已有 id =================
+console.log('\n-- P1 (v3): add_proposition 拒绝覆盖已有 id --');
+{
+  await call('vibe_math_new_project', { name: 'p1guard' });
+  const a1 = await call('vibe_math_add_proposition', { id: 'pP1v3', 概述: '第一版', 概率: 0.6, 分类: '分析' });
+  assert(a1.ok === true, 'P1 首次新建成功');
+  const a2 = await call('vibe_math_add_proposition', { id: 'pP1v3', 概述: '冒名覆盖', 概率: 0.9, 分类: '分析' });
+  assert(a2.ok !== true && String(a2.code) === 'PROPOSITION_ID_EXISTS', '★★ [P1] 同 id 再次新建被拒绝（实测 code=' + JSON.stringify(a2.code || a2.message) + '）');
+  assert(typeof a2.next === 'string' && a2.next.length > 0, '★★ [P1] 拒绝时给出可执行的 next');
+  const list = await call('vibe_math_list_propositions', {});
+  const kept = (list.propositions || []).filter((x) => x.id === 'pP1v3')[0];
+  assert(kept && Number(kept.概率) === 0.6, '★★ [P1] 已有卡未被覆盖（概率仍是 0.6，实测 ' + JSON.stringify(kept && kept.概率) + '）');
+  const a3 = await call('vibe_math_add_proposition', { id: 'pP1v3b', 概述: '新卡', 概率: 0.5, 分类: '分析' });
+  assert(a3.ok === true, '对照：换新 id 可正常新建');
+}
+// ================= P2: 状态提交完整性标记 =================
+console.log('\n-- P2 (v3): 状态提交有完整性标记，撕裂提交可检测 --');
+{
+  await call('vibe_math_new_project', { name: 'p2commit' });
+  await call('vibe_math_set_params', { verdictMode: 'flat' });
+  const st = await call('vibe_math_status', {});
+  assert(st.stateCommit && Number(st.stateCommit.seq) >= 1, '★★ [P2] 提交标记存在且带序号（实测 seq=' + (st.stateCommit && st.stateCommit.seq) + '）');
+  assert(st.stateCommit.complete === true && Array.isArray(st.stateCommit.files) && st.stateCommit.files.length >= 6, '★★ [P2] 标记列出全部状态文件且都非空（files=' + ((st.stateCommit.files || []).length) + '，mode=' + st.stateCommit.mode + '）');
+  const root = join(WS, 'VibeMath', 'Projects', 'p2commit');
+  const victimRel = st.stateCommit.files.filter((f) => /tasks\.json$/.test(f))[0] || st.stateCommit.files[0];
+  rmSync(join(root, victimRel), { force: true });
+  await call('vibe_math_resume', {});
+  const acts = (await call('vibe_math_status', {})).recentActivity.map((a) => a.detail).join('\n');
+  assert(acts.indexOf('上一次状态提交不完整') !== -1, '★★ [P2] 撕裂提交被明确报出（活动日志：' + JSON.stringify(acts.slice(-200)) + '）');
+}
+// ================= P5–P8 (v3): 状态完整性码形 =================
+console.log('\n-- P5–P8 (v3): 状态完整性码形 --');
+{
+  const src = readFileSync(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url), 'utf8');
+  assert(/State\/activity_log\.json/.test(src) && /State\/paper\.json/.test(src), '★★ [P5/P6] 活动日志与论文排队状态都进提交清单');
+  assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src), '★★ [P7] 裁决日志名带 shortId 后缀');
+  assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src), '★★ [P8] 框架分配命题 id 走 shortIdUnique');
+}
 // ================= D2: file write locks are leases (renewed while the holder lives) =================
 // The old defect: the refusal window was the literal 60000 and NOTHING ever renewed `at`, so a member
 // writing a big file for >60 s lost exclusivity (another member could legally take the lock).

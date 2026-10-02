@@ -29,10 +29,14 @@ const v5 = rd('vibe-math-v5/vibe-math-v5.js')
 const ROOT = /Members\/<[^>]+>\/(?:Progress|Propos|Methods|Subproblems)\//g
 const LEGACY = /(?:^|[^/>])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g
 
-for (const [k, src] of [['v4', v4], ['v5', v5]]) {
+for (const [k, src] of [['v5', v5]]) {   // v5 pending vm-v5's re-verification of its bases
   assert((src.match(ROOT) || []).length >= 4, k + ': member-visible declarations carry the member root')
   assert((src.match(LEGACY) || []).length === 0, k + ': no legacy project-root-relative member-library declaration')
 }
+// v4 (critical correction): writer/reader live at the PROJECT ROOT - a Members/<x>/... path is never scanned
+assert(!/Members\/<[^>]+>\//.test(v4), 'v4: no Members/<x>/ declaration (the framework never scans it)')
+assert(/(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//.test(v4), 'v4: declarations use the project-root bases the writer/reader use')
+assert(/progress\.md/.test(v4), 'class guard: v4 documents/writes the Progress base it reads')
 
 assert(!/Members\/<[^>]+>\//.test(v3), 'v3: no Members/<x>/ declaration (applyAgentWrites would DISCARD such a write)')
 assert(/applyAgentWrites[\s\S]{0,600}?(Problems|Progress|Propos|Methods|Notes)/.test(v3), 'class guard: v3 writer whitelists the sections its prompts name')
