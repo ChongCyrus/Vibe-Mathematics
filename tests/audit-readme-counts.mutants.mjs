@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { claims } from './helpers/doc-counts-format.mjs'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = join(HERE, '..')
@@ -30,7 +31,10 @@ const derived = JSON.parse(spawnSync(process.execPath, [join(HERE, 'run-tests.mj
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
 const dir = mkdtempSync(join(tmpdir(), 'counts-mut-'))
 const zh = readFileSync(join(REPO, 'README.md'), 'utf8')
-const needle = '`TOTAL ' + derived.total + '`（' + derived.suites + ' 套件 + ' + derived.probes + ' 探针/变体）'
+const shippedFiles = pkg.files.filter((f) => f.startsWith('tests/') && f.endsWith('.mjs'))
+const shipped = { total: shippedFiles.length, suites: shippedFiles.filter((f) => f.endsWith('.test.mjs')).length }
+shipped.probes = shipped.total - shipped.suites
+const needle = claims(derived, shipped).zhTotal
 if (zh.indexOf(needle) === -1) {
   ok(false, 'the tamper anchor is present in README.md (the guard and the harness agree on the shape)', 'ANCHOR MISS: ' + needle)
 } else {
@@ -38,7 +42,7 @@ if (zh.indexOf(needle) === -1) {
   const mut = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { COUNTS_README: join(dir, 'README.md') }) })
   const out = String(mut.stdout || '') + String(mut.stderr || '')
   const failLines = out.split('\n').filter((l) => /^  - /.test(l))
-  const named = failLines.some((l) => l.indexOf('README.md quotes the DERIVED totals') !== -1)
+  const named = failLines.some((l) => l.indexOf('README.md carries the canonical JOB-count bullet') !== -1)
   ok(mut.status !== 0 && named, '★ tampering the quoted TOTAL makes the count guard RED by name', 'exit=' + mut.status)
   if (!named) for (const l of failLines.slice(0, 4)) console.log('      guard failure: ' + l.trim().slice(0, 130))
 }

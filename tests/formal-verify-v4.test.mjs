@@ -1938,7 +1938,7 @@ section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming 
   try {
     const r1 = await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 1' }, h.resAgent(h.childOf('r-1')))
     await sleep(50)
-    assert(drift().length === 0, '* F-5/i NO comparable root in the policy => NO warning (the no-op path is asserted, not silent) (' + drift().length + ')')
+    assert(drift().length === 0, '* F-5/i NO sandboxPolicy SERVICE at all => the policy path never runs and NO warning appears (drift=' + drift().length + '; the uninterpretable-root no-op is case 1b)')
     assert(r1 && r1.ok !== false, '* F-5/i and getPolicy() still returns a usable policy (the write went through)')
     // F-5/1b: a policy SERVICE that resolves to a shape with NO interpretable root ({allow,deny}) -
     // the helper IS invoked and must stay silent (uninterpretable => no-op, today's behaviour).
