@@ -351,8 +351,54 @@ let warnedWriteFormalTodo = false   // F-6 (1/4): name a swallowed verify-conclu
 let warnedContextProbe = false   // F-6 (:786): name a failed build-context comparison once (unknown != unchanged)
 let warnedPaperWrite = false   // G3: name a paper whose required artifact is missing after finalize (once)
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
+let warnedFenceDrift = false   // F-5: name a resolved fence root that is NOT this session workspace (once)
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
-    function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session) return sp.resolve({session:rootAgent.session}) } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
+    function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session){ const p=sp.resolve({session:rootAgent.session}); fenceRootDriftNote(p); return p } } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
+    /**
+     * F-5 (R9 ruling): the SESSION-scoped policy can resolve to a fence root that does not CONTAIN
+     * this session workspace - the host silently widened or re-homed the write fence. Shape mirrored
+     * from v3 (policyRootOf / warnFenceDriftOnce / checkFenceRoot returning p), with the conservative
+     * predicate the probe requires:
+     *   - containment, never equality: an ANCESTOR root is a legitimate configuration, so equality
+     *     alone would report normal setups as drift (once per session);
+     *   - an array of roots (list-style fences) => accept when the workspace is inside ANY element;
+     *   - no root field / non-string / an object shape we cannot interpret (e.g. {allow,deny}) =>
+     *     NO-OP: today's behaviour. The live probe could not read the real host resolve() shape (no
+     *     service is reachable from a plugin row in this sandbox), so we never guess - the no-op path
+     *     is asserted positively in tests instead;
+     *   - the `resolve({})` fallback is NEVER compared (it already has its own named warning and its
+     *     root is by definition not this session cwd => comparing it could only add noise);
+     *   - normalisation: separators -> "/", trailing slashes stripped, case-folded ONLY on win32 (on a
+     *     case-sensitive host folding would hide a real drift = a false negative).
+     * Zero behaviour change: no refusal, and getPolicy() still returns the resolved policy.
+     */
+    function policyRootCandidatesOf(p){
+      try {
+        if(!p || typeof p !== 'object') return []
+        let pick
+        if(p.workspaceRoot !== undefined) pick = p.workspaceRoot
+        else if(p.root !== undefined) pick = p.root
+        else if(p.cwd !== undefined) pick = p.cwd
+        else if(p.config && p.config.workspaceRoot !== undefined) pick = p.config.workspaceRoot
+        if(Array.isArray(pick)) return pick.filter(x => typeof x === 'string' && x)
+        return (typeof pick === 'string' && pick) ? [pick] : []
+      } catch(e) { return [] }
+    }
+    function fenceRootDriftNote(p){
+      try {
+        const cands = policyRootCandidatesOf(p)
+        if(!cands.length) return   // no comparable root => documented NO-OP (asserted in tests)
+        const norm = (x) => { let v = String(x).replace(/\\/g, '/'); if(v.length > 1) v = v.replace(/\/+$/, ''); return process.platform === 'win32' ? v.toLowerCase() : v }
+        const session = norm(workspaceRoot())
+        if(!session || session === '.') return
+        const contained = cands.some((c) => { const r = norm(c); return !!r && (session === r || session.indexOf(r + '/') === 0) })
+        if(contained) return
+        if(!warnedFenceDrift){
+          warnedFenceDrift = true
+          console.error('vibe-math-v4: sandbox fence root does not CONTAIN this session workspace (resolved="' + cands.join('", "') + '", session="' + workspaceRoot() + '") - writes may be fenced away from the session workspace; boundary: a policy exposing no interpretable root field cannot be compared')
+        }
+      } catch(e) { /* a diagnostic must never break policy resolution */ }
+    }
     function psQuote(p){ return "'"+String(p).replace(/'/g,"''")+"'" }
     /** POSIX 单引号引用：把 ' 换成 '\'' 以安全嵌入任意路径。 */
     function shQuote(p){ return "'"+String(p).replace(/'/g,"'\\''")+"'" }
@@ -3550,6 +3596,9 @@ let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distor
     async function start({problem,residentCount,seedDirections}){
       await loadSettings()
       currentProject=await readCurrentProject(); if(!currentProject||currentProject==='default'){ currentProject='default'; }
+      // F-3/F-4c verdicts: tool registration is wrapped once, in the registerTool helper (ctx.effect),
+      // so no call site needs its own wrapper; and a failed mkdir is named ONCE inside ensureDirs itself,
+      // which covers every caller (including this bare one) - no caller-side return check is needed.
       await ensureDirs()
       if(problem) problemText=String(problem)
       if(!problemText) return {ok:false,message:'problem text required (pass problem, or use vibe_v4_configure first)'}

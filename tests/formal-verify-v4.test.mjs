@@ -131,6 +131,8 @@ let subprocessAvailable = true
 // file is gone through the fs service and fall back to overwriting it with a withdrawal notice.
 let shellDeletesFiles = true
 let shellMkdirExit = 0
+let sandboxDriftRoot = null   // F-5: when set, the mock policy resolves THIS root (drift/containment harness)
+let sandboxNoRoot = false     // F-5: when set, the mock policy exposes NO interpretable root (no-op path)
 let compactionFails = false   // F-6 site 4: expose a THROWING compaction service + resolve child agents        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
 const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
@@ -201,6 +203,7 @@ function makeHost() {
   const ctx = {
     get(name) {
       if (name === 'subprocess' && subprocessAvailable) return subprocess
+      if (name === 'sandboxPolicy' && (sandboxDriftRoot || sandboxNoRoot)) return sandboxNoRoot ? { allow: ['x'], deny: [] } : { workspaceRoot: sandboxDriftRoot, resolve: () => ({ workspaceRoot: sandboxDriftRoot }) }
       if (name === 'compaction' && compactionFails) return {
         async compactIfNeeded() { throw new Error('COMPACTION_FAIL (injected)') },
         async compactNow() { throw new Error('COMPACTION_FAIL (injected)') },
@@ -1922,6 +1925,43 @@ section('N14 F2 compaction policy: policy verb only, re-anchor only after a REAL
   assert(/const didCompact\s*=/.test(bodyC), '* F2/a the re-anchor is gated on didCompact (evidence that the policy call ACTUALLY compacted)')
   assert(/if\(didCompact\)\{/.test(bodyC), '* F2/a and the gate is the if(didCompact){ branch (mutant: if(true){ => this reddens)')
 }
+
+section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming both roots')
+{
+  const h = await establish()
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
+  const drift = () => seen.filter(l => /fence root does not CONTAIN this session workspace/.test(l))
+  const ws = () => String(h.WS).replace(/\\/g, '/')
+  try {
+    const r1 = await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 1' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    assert(drift().length === 0, '* F-5/i NO comparable root in the policy => NO warning (the no-op path is asserted, not silent) (' + drift().length + ')')
+    assert(r1 && r1.ok !== false, '* F-5/i and getPolicy() still returns a usable policy (the write went through)')
+    // (iv) agreeing roots => silence (anti-vacuity)
+    sandboxDriftRoot = ws()
+    await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 4' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    assert(drift().length === 0, '* F-5/iv an AGREEING resolved root produces NO warning (not vacuous)')
+    // (iii) containment: an ANCESTOR root is legitimate => silence
+    sandboxDriftRoot = ws().replace(/\/[^/]+$/, '')
+    await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 3' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    assert(drift().length === 0, '* F-5/iii a root that CONTAINS the session workspace is accepted (no per-session false alarm)')
+    // (ii) real drift => exactly one named warning naming BOTH sides
+    sandboxDriftRoot = ws() + '/somewhere-else'
+    await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 2' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    // a SECOND drift-triggering resolution: the one-shot must keep the warning at exactly one
+    await h.callTool('vibe_v4_publish_progress', { content: 'F-5 case 2b' }, h.resAgent(h.childOf('r-1')))
+    await sleep(50)
+    const w = drift()
+    assert(w.length === 1, '* F-5/ii the drift is NAMED exactly once (matched=' + w.length + ' of ' + seen.length + ' stderr lines)')
+    assert(/resolved=/.test(w[0] || '') && /session=/.test(w[0] || ''), '* F-5/ii the warning names BOTH the resolved root and the session workspace')
+  } finally { console.error = realErr; sandboxDriftRoot = null; sandboxNoRoot = false }
+}
+
 
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
