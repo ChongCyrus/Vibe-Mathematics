@@ -2,6 +2,14 @@
 /**
  * PERSONA SURFACE — prompt/allocation consistency for the four presets.
  *
+ * DEFECT CLASS (why this guard exists; it belongs to the dual-persona-block parity family of §3)
+ *   "capability advertised but never granted, or granted but never advertised": the persona block is
+ *   the main agent view of the tool surface, so a registered-but-unnamed tool is invisible and a
+ *   named-but-unregistered tool is a trap. Every other suite calls apply(ctx) directly and never
+ *   parses the YAML, so this class cannot fail anywhere else.
+ *
+ * Run: node tests/audit-persona-surface.test.mjs
+ *
  * WHY THIS EXISTS
  *   The persona row of each `agent.cordis.yml` is the prompt the MAIN agent actually
  *   receives, and it is the only place the main agent learns which `vibe_*` tools exist
