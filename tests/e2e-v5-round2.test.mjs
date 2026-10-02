@@ -1871,7 +1871,7 @@ console.log('\n[42] every Lean prompt site obeys the leanInitiative gate in both
 }
 
 // ---------- 43. pre-start diagnosis + coherent quorum (architecture self-test defects 1/2) -------
-// The self-test (§18 of _oneoff/method3-scripted-driving.md) found that before `start`:
+// The self-test (§18 of _oneoff/slv-playbook.md（原 method3-scripted-driving.md）) found that before `start`:
 //   (1) record_progress / record_proposition / verdict answered a BARE `V5_MEMBER_NOT_FOUND`
 //       with no hint about why or what to do first;
 //   (2) `vibe_v5_status` reported `quorum.m=1` with `voters=0` — reading like a satisfied quorum.
