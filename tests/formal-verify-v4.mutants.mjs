@@ -123,6 +123,13 @@ const FAMILIES = [
     to: '    if(!session) return',
     expect: /F-5\/1c an UNKNOWN session cwd stays SILENT/,
   },
+  {
+    // F6-v4: the `.current` marker write fails silently again (its guard is removed).
+    name: 'N18: a failed current-project marker write is silent again',
+    from: 'if(ok===false && !warnedCurrentProject){',
+    to: 'if(false){',
+    expect: /N18 the failed .*write is NAMED exactly once/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

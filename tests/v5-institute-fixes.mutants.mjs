@@ -135,6 +135,14 @@ const FAMILIES = [
     expect: /\[spawnMember\] a FAILED start must not consume a round/,
   },
   {
+    // spawnMember: restoring the destructive rollback — `rounds.delete`/`roundsSinceCompact.delete` in the
+    // catch, which ERASES the count of a member being RESUMED (its numbering then restarts at 1).
+    name: 'spawnMember: the failed-start rollback DELETES the existing round count again',
+    from: "        busy.delete(member.id)\n        wakeKind.delete(member.id)",
+    to: "        busy.delete(member.id)\n        wakeKind.delete(member.id)\n        rounds.delete(member.id)\n        roundsSinceCompact.delete(member.id)",
+    expect: /\[spawnMember\] a FAILED resume must not move the round number backwards/,
+  },
+  {
     // spawnMember: dropping the explicit next-round argument, so the founding prompt's status block
     // falls back to the stored counter (still 0 at that point) and announces 轮次 0.
     name: 'spawnMember: the founding prompt is built without the explicit round',

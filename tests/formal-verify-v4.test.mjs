@@ -156,10 +156,12 @@ let subprocessAvailable = true
 // file is gone through the fs service and fall back to overwriting it with a withdrawal notice.
 let shellDeletesFiles = true
 let shellMkdirExit = 0
+let fsWriteFailPred = null   // F-6/N18: (targetKey) => boolean; the first matching write FAILS (payload/path anchored)
+let fsWriteFailOnce = false
 let sandboxDriftRoot = null   // F-5: when set, the mock policy resolves THIS root (drift/containment harness)
 let sandboxNoRoot = false     // F-5: when set, the mock policy exposes NO interpretable root (no-op path)
 let sandboxUnknownCwd = false   // F-5/1c: the captured root agent has NO cwd (unknown => `.` guard)
-let compactionFails = false   // F-6 site 4: expose a THROWING compaction service + resolve child agents        // F-4c: inject a failing mkdir (0 = real behaviour, unchanged)
+let compactionFails = false   // F-6 site 4: expose a THROWING compaction service + resolve child agents
 const leanRuns = []          // every spawn the framework made, for cwd/argv assertions
 const terminated = []        // files whose handle the framework actively terminate()d (docs §7)
 const shellCalls = []        // every platform-shell script (mkdir at mount, Remove-Item on defect)
@@ -261,7 +263,7 @@ let sandboxResolveCalls = 0     // F-5/1c: resolve({session}) calls = fenceRootD
       async resolve(rel, opts) { const b = (opts && opts.cwd) || WS; const p = (typeof rel === 'string' && isAbsolute(rel)) ? rel.replace(/\//g, '\\') : join(b, ...String(rel).split('/')); return { targetKey: p, displayPath: p } },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
       async readText(t) { return readFileSync(t.targetKey, 'utf8') },
-      async writeText(t, c) { mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
+      async writeText(t, c) { if (fsWriteFailOnce && fsWriteFailPred && fsWriteFailPred(String(t.targetKey), String(c))) { fsWriteFailOnce = false; throw new Error('FS_WRITE_FAIL (injected): ' + t.targetKey) } mkdirSync(dirname(t.targetKey), { recursive: true }); writeFileSync(t.targetKey, c, 'utf8') },
       async listDir(t) { if (!existsSync(t.targetKey)) return []; return readdirSync(t.targetKey, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })) },
     },
   }
@@ -2030,6 +2032,34 @@ section('N17 F-5 fence-root drift: containment, no-op boundary, one-shot naming 
     assert(w.length === 1, '* F-5/ii the drift is NAMED exactly once (matched=' + w.length + ' of ' + seen.length + ' stderr lines)')
     assert(/resolved=/.test(w[0] || '') && /session=/.test(w[0] || ''), '* F-5/ii the warning names BOTH the resolved root and the session workspace')
   } finally { console.error = realErr; sandboxDriftRoot = null; sandboxNoRoot = false }
+}
+
+
+section('N18 F-6: a failed current-project marker write is NAMED exactly once')
+{
+  // PRE-START: configure() refuses while a run is live and returns BEFORE writeCurrentProject
+  // (measured with establish(): the injection never fired), so this section mounts without starting.
+  const h = await mount()
+  const seen = []
+  const realErr = console.error
+  console.error = (...a) => { seen.push(a.map(String).join(' ')); realErr(...a) }
+  const hits = () => seen.filter((l) => /current-project marker was NOT persisted/.test(l))
+  try {
+    // ONE injected failure, only for the `.current` marker write (path-anchored, existing hook)
+    fsWriteFailPred = (p) => /[\\/]\.current$/.test(String(p))
+    fsWriteFailOnce = true
+    await h.callTool('vibe_v4_configure', { project: 'n18-proj' })
+    await sleep(50)
+    assert(hits().length === 1, '* N18 the failed `.current` write is NAMED exactly once (matched=' + hits().length + ' of ' + seen.length + ' stderr lines)')
+    assert(/next session may load the previous project/.test(hits()[0] || ''), '* N18 the warning STATES THE CONSEQUENCE (the next session may load the previous project)')
+    // anti-vacuity: a SUCCESSFUL marker write stays silent
+    fsWriteFailPred = null
+    fsWriteFailOnce = false
+    seen.length = 0
+    await h.callTool('vibe_v4_configure', { project: 'n18-proj-2' })
+    await sleep(50)
+    assert(hits().length === 0, '* N18 a SUCCESSFUL marker write is silent (the assertion is not vacuous)')
+  } finally { console.error = realErr; fsWriteFailPred = null; fsWriteFailOnce = false }
 }
 
 

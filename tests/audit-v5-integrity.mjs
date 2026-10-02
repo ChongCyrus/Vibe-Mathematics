@@ -344,9 +344,10 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     // The 2026-09 field test shipped a framework whose every member brief named the WRONG
     // member. These gates keep the structural fixes in place, and the companion
     // prompt-v5-integrity.test.mjs asserts the TEXT those fixes produce.
-    ['the status block takes the member it describes', 'function briefBlock(member) {'],
+    ['the status block takes the member it describes', 'function briefBlock(member, roundNo) {'],
     ['an unknown identity fails loudly instead of being guessed', "throw v5err('V5_INTERNAL', 'briefBlock: a member is required"],
-    ['the status block is built from that member, never a global', 'function stateBlock(member) {\n      return briefBlock(member)\n    }'],
+    ['the status block is built from that member, never a global', 'function stateBlock(member, roundNo) {\n      return briefBlock(member, roundNo)\n    }'],
+    ['the founding prompt is told the round it is starting (never a stored 0)', 'const prompt = initialPrompt(member, initialTask, mode, startRound)'],
     ['the joiner is committed to the roster BEFORE its brief is built', "member.phase = 'active'\n      member.childId = ''\n      await putMember(member)"],
     ['the charter is frozen at hire and reused on resume', 'const persona = member.persona || memberPersona(member)'],
     ['a rebuilt session is framed as a rebuild', "const resume = mode === 'resume'"],

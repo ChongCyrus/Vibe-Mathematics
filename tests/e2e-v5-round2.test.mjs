@@ -79,6 +79,11 @@ function makeHost(opts) {
   // continuation is gone). `sendAttempts` records that the wake was TRIED, so a probe can tell
   // "the wake failed" apart from "no wake was scheduled at all".
   let failSend = !!o.failSendMessage
+  // spawnMember seam: force every `subagents.startContinuable` to throw (the host cap / a host outage).
+  // `startAttempts` records that founding was TRIED, so a probe can tell "the start failed" apart from
+  // "no start was attempted".
+  let failStart = !!o.failStartContinuable
+  const startAttempts = []
   // Every effect disposer, so a test can simulate a plugin UNLOAD (the Lean queue's disposer is
   // registered first: it terminates in-flight compiles and marks them interrupted).
   const effectDisposers = []
@@ -118,6 +123,14 @@ function makeHost(opts) {
     subagents: {
       list() { return ['spawn'] },
       async startContinuable({ label, request }) {
+        startAttempts.push(label)
+        if (failStart) {
+          // The HOST-CAP shape (not a generic error): `spawnMember` maps it to ACTIVATION_LIMIT_REACHED and
+          // the founding loop QUEUES the member, which is the path a healed host retries.
+          const e = new Error('subagent limit reached (active child limit: 2); wait for an existing child to finish or complete this work with the current agents')
+          e.code = 'ACTIVATION_LIMIT_REACHED'
+          throw e
+        }
         const id = 'c' + (spawns.length + 1)
         const childSession = makeSession(id, 'sess-A'); childSession.header.cwd = WS
         liveAgents.set(id, { id, session: childSession, options: request && request.agentOptions })
@@ -240,7 +253,7 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, setFailSend(v) { failSend = !!v }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, startAttempts, setFailSend(v) { failSend = !!v }, setFailStart(v) { failStart = !!v }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -2224,6 +2237,79 @@ console.log('\n[49] G4: the assign writes the task exactly once, and a stale CAS
     'a second write reusing the just-read revision is the lost-update window')
   assert(/assignedBy: isOffice\(memberId\)/.test(body),
     '★ the metadata goes through the CAS call itself (assignedBy/why/acceptance passed as the internal meta argument)')
+}
+// ---------- 50. spawnMember: the founding round counts only on a SUCCESSFUL start -------------------
+console.log('\n[50] spawnMember: the first prompt shows 轮次 1, and a failed start consumes no round')
+{
+  const h = makeHost({ pluginModule })
+  const startPromptOf = (m) => {
+    const sp = h.spawnOf(m)
+    const blocks = (sp && sp.request && sp.request.prompt) || []
+    return blocks.map((b) => (b && b.text) || '').join('\n')
+  }
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  const first = startPromptOf('r-1')
+  assert(h.spawns.length >= 2 && first.length > 0, 'precondition: the founding prompt of r-1 was recorded (' + h.spawns.length + ' spawn(s))')
+  assert(/轮次 1/.test(first), '★ the FOUNDING prompt announces the round it is starting (轮次 1): ' + JSON.stringify((/轮次 \d+/.exec(first) || ['<none>'])[0]))
+  assert(!/轮次 0/.test(first), '★★ the founding prompt never displays 轮次 0 (the counter is applied after the start, so the value must be passed in explicitly)')
+  await h.settleSpawns()
+  // A FAILED founding must not consume a round: the retry's prompt must still say 轮次 1.
+  const h2 = makeHost({ pluginModule, failStartContinuable: true })
+  const startPromptOf2 = (m) => {
+    const sp = h2.spawnOf(m)
+    const blocks = (sp && sp.request && sp.request.prompt) || []
+    return blocks.map((b) => (b && b.text) || '').join('\n')
+  }
+  await h2.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  assert(h2.startAttempts.length >= 1 && h2.spawns.length === 0,
+    'precondition: founding was ATTEMPTED and every start failed (attempts=' + h2.startAttempts.length + ', spawns=' + h2.spawns.length + ')')
+  const st0 = await h2.callTool('vibe_v5_status', {})
+  assert(st0.members.some((m) => m.phase === 'failed'), 'the failed founders are recorded as failed, not left active')
+  // Heal the host and rebuild through the documented manual resume path.
+  h2.setFailStart(false)
+  await h2.callTool('vibe_v5_resume', {})
+  await h2.settleSpawns()
+  const retry = startPromptOf2('r-1')
+  assert(retry.length > 0, 'precondition: the resumed member was actually started on the retry')
+  assert(/轮次 1/.test(retry),
+    '★★★ [spawnMember] a FAILED start must not consume a round: the rebuilt member\'s first prompt shows 轮次 1, not 2 (' + JSON.stringify((/轮次 \d+/.exec(retry) || ['<none>'])[0]) + ')')
+}
+// ---------- 51. spawnMember: a FAILED resume must not move the round number backwards ----------------
+console.log('\n[51] spawnMember: a failed resume keeps the existing round number (never restarts it)')
+{
+  const h = makeHost({ pluginModule })
+  // The FIRST matching spawn is the founding one; after a rebuild the newest entry is the resumed one.
+  const lastStartPromptOf = (m) => {
+    const sp = h.spawns.slice().reverse().find((s) => String(s.label || '').indexOf('vibe5 ' + m + ' ') !== -1)
+    const blocks = (sp && sp.request && sp.request.prompt) || []
+    return blocks.map((b) => (b && b.text) || '').join('\n')
+  }
+  const roundOf = (t) => ((/轮次 (\d+)/.exec(t) || [])[1] || '<none>')
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  assert(roundOf(lastStartPromptOf('r-1')) === '1',
+    'precondition: the founding prompt starts the member at 轮次 1 (got ' + roundOf(lastStartPromptOf('r-1')) + ')')
+  // Simulate the HOST losing the children (a restart) WITHOUT dismissing the member: its count survives.
+  // (`vibe_v5_fire` deletes the counters on purpose, so it cannot be used for this scenario.)
+  await h.ctx.subagents.drainContinuableChildren(h.ROOT, [h.childOf('r-1')])
+  const attemptsBefore = h.startAttempts.length
+  h.setFailStart(true)
+  await h.callTool('vibe_v5_resume', {})
+  assert(h.startAttempts.length > attemptsBefore,
+    'precondition: the resume was ATTEMPTED while every start fails (attempts ' + attemptsBefore + ' -> ' + h.startAttempts.length + ')')
+  assert(roundOf(lastStartPromptOf('r-1')) === '1',
+    'precondition: the failed resume started nobody (the newest prompt is still the founding one)')
+  // Heal and resume again: the count must CONTINUE, not restart.
+  h.setFailStart(false)
+  await h.callTool('vibe_v5_resume', {})
+  await h.settleSpawns()
+  const resumed = lastStartPromptOf('r-1')
+  assert(h.spawns.filter((s) => String(s.label || '').indexOf('vibe5 r-1 ') !== -1).length >= 2,
+    'precondition: the member was actually rebuilt on the healed resume (' + h.spawns.length + ' spawns total)')
+  assert(roundOf(resumed) === '2',
+    '★★★ [spawnMember] a FAILED resume must not move the round number backwards: the rebuilt prompt says 轮次 ' +
+    roundOf(resumed) + ', expected 轮次 2 (the existing count must survive the failed attempt)')
+  assert(!/轮次 1/.test(resumed), '★★ the existing count was not restarted — no 轮次 1 on the resumed prompt')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

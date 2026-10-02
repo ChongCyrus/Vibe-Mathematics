@@ -257,6 +257,10 @@ async function drainVerifyRound(n) {
 console.log('-- V5 self-drive --')
 
 // ---------- founding ----------
+// F6 tightening (staff): the persona parameter must actually REACH the member prompts. MEASURED: a
+// single-site mutant that drops `params.staffPersona` (`const extra = ''`) is caught by NO current
+// suite (audit-participant-set-parity ok, audit-persona-sensitivity ok, audit-persona-surface 276/0).
+await callTool('vibe_v5_set', { staffPersona: 'STAFF-MARKER-X' })
 const started = await callTool('vibe_v5_start', { problem: '证明：不存在整数解 x^n + y^n = z^n（n>2）的初等情形', researcherCount: 3 })
 assert(started.ok === true, 'vibe_v5_start ok (' + JSON.stringify(started).slice(0, 150) + ')')
 assert(spawns.length === 4, 'founded 1 academician + 3 researchers (got ' + spawns.length + ')')
@@ -339,6 +343,20 @@ if (sv.verify) {
 // NO voter list (vibe-math-v5.js:7316); the voter IDS live in `status.quorum` (quorumView(), :7277/:1262).
 const voterIds = (sv.quorum && Array.isArray(sv.quorum.voters)) ? sv.quorum.voters.map(String).sort() : null
 assert(!!voterIds && voterIds.join(',') === ['acad', 'r-1', 'r-2', 'r-3'].sort().join(','), '* V5-A1 the voter id SET is exactly {acad, r-1, r-2, r-3} (P=4 keeps the count; got ' + JSON.stringify(voterIds) + ')')
+// V5-A2 (roster): the published participant SET and its own COUNT must agree, and the ids must be
+// distinct. MEASURED: a mutant that publishes `vs.slice(1)` as `voters` while keeping `voterCount`
+// is caught by NO current suite (the parity audit checks field PRESENCE, not agreement).
+const qv = sv.quorum || {}
+const qvoters = Array.isArray(qv.voters) ? qv.voters.map(String) : null
+assert(!!qvoters && qvoters.length === Number(qv.voterCount), '* V5-A2 the published voter SET agrees with its own count (voters=' + (qvoters ? qvoters.length : 'none') + ' voterCount=' + qv.voterCount + ')')
+assert(!!qvoters && new Set(qvoters).size === qvoters.length, '* V5-A2 and the published voter ids are DISTINCT (got ' + JSON.stringify(qvoters) + ')')
+// V5-A3 (staff): the staffPersona set before founding must appear in the member PERSONA/prompts.
+// NOTE (measured): the existing `every member got the full charter` length check stays GREEN under
+// the mutant, so the marker search is the only discriminator.
+const marker = 'STAFF-MARKER-X'
+const sawStaff = spawns.some((sp) => String(sp.persona || '').indexOf(marker) !== -1)
+  || wakes.some((w) => (((w.blocks && w.blocks[0] && w.blocks[0].text) || '')).indexOf(marker) !== -1)
+assert(sawStaff, '* V5-A3 the staff persona reaches the member persona/prompts (marker=' + marker + '; spawns=' + spawns.length + ', wakes=' + wakes.length + ')')
 
   // Round: only ONE boolean vote (< m) must NOT verify.
   plannedVotes = new Map([['acad', 0.9], ['r-1', 1], ['r-2', 0.5], ['r-3', 0.7]])

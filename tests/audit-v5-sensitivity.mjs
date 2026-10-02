@@ -207,8 +207,8 @@ const probes = [
     name: 'brief-names-the-last-woken-member',
     ref: 'prompt-v5-integrity.test.mjs',
     guarantee: '⑳ a prompt\'s [状态] block must name the member it is sent to (the exact field bug: briefs named the previous member)',
-    from: "    function stateBlock(member) {\n      return briefBlock(member)\n    }",
-    to: "    function stateBlock(member) {\n      return briefBlock(memberById(currentMember) || activeMembers()[0] || member)\n    }",
+    from: "    function stateBlock(member, roundNo) {\n      return briefBlock(member, roundNo)\n    }",
+    to: "    function stateBlock(member, roundNo) {\n      return briefBlock(memberById(currentMember) || activeMembers()[0] || member, roundNo)\n    }",
   },
   {
     name: 'joiner-absent-from-own-roster',

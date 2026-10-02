@@ -1703,13 +1703,17 @@ export function apply(ctx) {
     // only AFTER the subagent had already been started, every member's induction brief
     // named the PREVIOUSLY founded member (the academician was told it was "?"). The
     // model's whole self-model, its library path and its vote were therefore wrong.
-    function briefBlock(member) {
+    // `roundNo` is an explicit override for the round this block is being built FOR. The founding
+    // prompt needs it: `spawnMember` now counts the round only after `startContinuable` succeeds, so
+    // without the override the very first prompt would announce 轮次 0 instead of 轮次 1 (spawnMember/
+    // G2-class: a failed start must not consume a round, but the first prompt must still show round 1).
+    function briefBlock(member, roundNo) {
       if (!member || typeof member.id !== 'string' || !member.id) {
         throw v5err('V5_INTERNAL', 'briefBlock: a member is required (a status block must never be built for an unknown identity)')
       }
       const ms = activeMembers()
       const b = []
-      b.push('[状态] 你是 ' + member.id + '（' + kindLabel(member.kind) + '）｜轮次 ' + (rounds.get(member.id) || 0) +
+      b.push('[状态] 你是 ' + member.id + '（' + kindLabel(member.kind) + '）｜轮次 ' + (roundNo !== undefined ? roundNo : (rounds.get(member.id) || 0)) +
         '｜法定票数 m=' + (voterCount() > 0 ? quorumM() : '未启动') + '｜有表决权者 ' + voterCount() + ' 人')
       b.push('[在册] ' + (ms.length ? ms.map((x) => x.id).join('、') : '（无）'))
       // Members that are on the books but NOT on the floor. Silently omitting them made a
@@ -2091,15 +2095,18 @@ export function apply(ctx) {
       wakeKind.set(member.id, kind)
       currentMember = member.id
       lastActiveAt.set(member.id, now())
-      rounds.set(member.id, (rounds.get(member.id) || 0) + 1)
-      roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
+      // G2-class (spawnMember): the counters are COMPUTED here but applied only after `startContinuable`
+      // succeeds (see below). `startRound` is also passed into `initialPrompt` explicitly, so the founding
+      // prompt announces the round it is actually starting instead of 0.
+      const startRound = (rounds.get(member.id) || 0) + 1
+      const startRoundsSinceCompact = (roundsSinceCompact.get(member.id) || 0) + 1
       // The charter is FROZEN at hire time (it is the durable "seal" record and it says
       // "你入职时的在册编制"). Rebuilding it on resume would silently rewrite that
       // hire-time snapshot into a resume-time one and make the sentence untrue. `newMember`
       // captures it, so every member has one by the time it can be spawned.
       const persona = member.persona || memberPersona(member)
       member.persona = persona
-      const prompt = initialPrompt(member, initialTask, mode)
+      const prompt = initialPrompt(member, initialTask, mode, startRound)
       await putMember(member)
       await mkdirs()
       await writeRosterMirror()
@@ -2121,10 +2128,11 @@ export function apply(ctx) {
         // Roll the in-memory marks back so a failed provisioning leaves no phantom
         // "busy, round 1" member behind; the member record itself goes to `failed` and
         // the caller's catch reports it.
+        // The counters are NOT touched: they were never applied on this attempt (they are set only
+        // after a successful start), and the previous rollback used `rounds.delete(...)`, which also
+        // ERASED the count of a member being RESUMED — a failed resume then restarted its numbering.
         busy.delete(member.id)
         wakeKind.delete(member.id)
-        rounds.delete(member.id)
-        roundsSinceCompact.delete(member.id)
         // The host's live-child cap is a HOST limit (maxActiveSubagents on the `subagent` row), not
         // a defect in this member: remember the ceiling, report it BY NAME instead of relaying the
         // opaque host string, and throw the TYPED error so the founding loop / hire / addResearcher
@@ -2138,6 +2146,10 @@ export function apply(ctx) {
       }
       member.childId = started.childId
       childOwner.set(started.childId, sessionId)
+      // G2-class (spawnMember): the child really exists now, so THIS is the point where the round counts.
+      // A failed/invalid start above left both counters untouched (and no longer erased a resume's count).
+      rounds.set(member.id, startRound)
+      roundsSinceCompact.set(member.id, startRoundsSinceCompact)
       // Register the FOUNDING turn as in-flight, exactly like a normal wake does.
       // Without this the child's first `subagent/end` has no token to match, so
       // onMemberEnd would ignore it: the founding round would never be processed and
@@ -2332,10 +2344,10 @@ export function apply(ctx) {
     // Every prompt builder below passes the member it is addressing. There is
     // deliberately NO fallback to "the last member we happened to touch": guessing the
     // identity is what produced the wrong-identity briefs in the first place.
-    function stateBlock(member) {
-      return briefBlock(member)
+    function stateBlock(member, roundNo) {
+      return briefBlock(member, roundNo)
     }
-    function initialPrompt(member, initialTask, mode) {
+    function initialPrompt(member, initialTask, mode, roundNo) {
       const L = []
       const resume = mode === 'resume'
       L.push(resume
@@ -2356,7 +2368,7 @@ export function apply(ctx) {
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
       mathPushLine(L)
       L.push('------------')
-      L.push(stateBlock(member))
+      L.push(stateBlock(member, roundNo))
       L.push('------------')
       L.push(replySpec(member.kind))
       return L.join('\n')

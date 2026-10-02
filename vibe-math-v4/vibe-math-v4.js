@@ -352,6 +352,7 @@ let warnedContextProbe = false   // F-6 (:786): name a failed build-context comp
 let warnedPaperWrite = false   // G3: name a paper whose required artifact is missing after finalize (once)
 let warnedMkdir = false   // F-4c: name a failed mkdir ONCE (the deferred/distorted-diagnosis fix)
 let warnedFenceDrift = false   // F-5: name a resolved fence root that is NOT this session workspace (once)
+let warnedCurrentProject = false   // F-6: name a failed `.current` marker write once, WITH its consequence
     function warnNoPolicyOnce(){ if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: sandboxPolicy unavailable; writes go out with no explicit policy') } }
     function getPolicy(){ const sp=sandboxPolicyOf(); if(!sp){ warnNoPolicyOnce(); return undefined } try { if(rootAgent&&rootAgent.session){ const p=sp.resolve({session:rootAgent.session}); fenceRootDriftNote(p); return p } } catch(e){ warnNoPolicyOnce() } try { const p=sp.resolve({}); if(!warnedNoPolicy){ warnedNoPolicy=true; console.error('vibe-math-v4: falling back to sandboxPolicy.resolve({}) — the fence root is the host-configured workspace, not necessarily this session cwd') } return p } catch(e){ warnNoPolicyOnce() } return undefined }
     /**
@@ -514,7 +515,20 @@ let warnedFenceDrift = false   // F-5: name a resolved fence root that is NOT th
     async function readTextAbs(path){ try { const t=await fs.resolve(path); const s=await fs.stat(t); if(s===undefined) return undefined; return await fs.readText(t) } catch(e){ return undefined } }
     async function writeTextAbs(path,content){ try { const t=await fs.resolve(path); await fs.writeText(t,content,undefined,undefined,getPolicy()); return true } catch(e){ return false } }
     async function readCurrentProject(){ try { const t=await readTextAbs(vibeRoot()+'/.current'); if(t) return String(t).trim() } catch(e){} return currentProject }
-    async function writeCurrentProject(){ try { await writeTextAbs(vibeRoot()+'/.current', currentProject) } catch(e){} }
+    // F-6 boundaries MEASURED on this revision (recorded, not fixed here - both would need a readText
+// failure signal and therefore touch as many callers as writeTextAbs, which the lead deferred):
+//   - readCurrentProject(): a failed READ is swallowed inside readTextAbs (:514), so this function
+//     cannot tell "read failed" from "no marker"; its silent fallback stays.
+//   - assertWritable()'s outer `catch(e){}` (:491) CANNOT FIRE, because readText (:438) has already
+//     erased the failure: it swallows every error and returns undefined, so a present-but-unreadable
+//     file is treated as MISSING and the overwrite guard silently allows the write. The silent skip
+//     therefore happens ONE LAYER UP, not in the catch. Surfacing it means making readText REPORT
+//     failure - the same breadth as :515 writeTextAbs, which the lead deferred.
+//   - writeCurrentProject()'s own `catch` branch is likewise DEFENSIVE-ONLY: writeTextAbs never throws
+//     (it catches internally and returns a boolean), so the `ok===false` branch is the only reachable
+//     one; the exception path is kept as belt-and-braces and is recorded as unreachable (measured: a
+//     mutant that removes it cannot redden the N18 assertion, so it ships without a family entry).
+async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot()+'/.current', currentProject); if(ok===false && !warnedCurrentProject){ warnedCurrentProject=true; console.error('vibe-math-v4: the current-project marker was NOT persisted - the next session may load the previous project') } } catch(e){ if(!warnedCurrentProject){ warnedCurrentProject=true; console.error('vibe-math-v4: the current-project marker was NOT persisted - the next session may load the previous project') } } }
 
     // ================= Lean formal verification ==============================
     // Contract: docs/formal-verification.md (shared by v2/v3/v4/v5).
@@ -2731,7 +2745,12 @@ let warnedFenceDrift = false   // F-5: name a resolved fence root that is NOT th
         // the top of the next pass — never in a tight loop here.
         if(!r.childId) continue
         let ok=false
-        try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){ ok=false }
+        // F4 (measured then reverted): this is the ONLY heartbeatPrompt wake site in v4 - the fairness/idle
+// fill. Both the soft-compaction design and the guards T13/A1 require THIS round to be a NORMAL
+// research round when contextPct >= compactThreshold (that is where the [CONTEXT COMPACT ...]
+// self-summary directive must land). Re-kinding it as its own kind therefore breaks them, and F4's
+// premise (a distinct non-research CHECKPOINT wake) has no separate path on this revision.
+try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){ ok=false }
         if(ok) started++
         await saveAll()
         if(!ok) continue             // a failed wake must NOT stop the fill; try the next idle resident

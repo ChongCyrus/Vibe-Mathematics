@@ -83,6 +83,20 @@ const FAMILIES = [
     to: "const voters = () => { const v = activeMembers().filter((m) => m.kind === 'academician' || m.kind === 'researcher'); return v.length > 1 ? v.slice(0, -1).concat([v[0]]) : v }",
     expect: /V5-A1 the voter id SET is exactly/,
   },
+  {
+    // F6 tightening (roster): the published voter set drops one member while its COUNT stays put.
+    name: 'V5-A2: the published voter set disagrees with its own count',
+    from: 'voters: vs.map((m) => m.id),',
+    to: 'voters: vs.slice(1).map((m) => m.id),',
+    expect: /V5-A2 the published voter SET agrees with its own count/,
+  },
+  {
+    // F6 tightening (staff): the member persona ignores `params.staffPersona` again.
+    name: 'V5-A3: the staff persona never reaches the prompts',
+    from: "const extra = String(params.staffPersona || '').trim()",
+    to: "const extra = ''",
+    expect: /V5-A3 the staff persona reaches the member persona\/prompts/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
