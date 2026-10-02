@@ -15,7 +15,7 @@
 // Usage: node tests/math-computation-shared.test.mjs
 // ============================================================================================
 import { makeFakeHost } from './helpers/math-computation-fake-seam.mjs'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
 // The sensitivity probe (tests/audit-math-computation-sensitivity.mjs) points this at a MUTATED copy
 // of the module pair; the default is the shipped copy in vibe-math-v2/.
@@ -23,6 +23,35 @@ const MODULE = process.env.MATH_COMPUTATION_MODULE
   ? pathToFileURL(process.env.MATH_COMPUTATION_MODULE).href
   : new URL('../vibe-math-v2/math-computation.js', import.meta.url).href
 const M = await import(MODULE)
+
+// ── --self-probe (shipped): prove the §32 evidence assertion can REDDEN, from the tarball alone.
+// It copies the module, removes ONE `fail()` whitelist line, and requires the named §32 assertion
+// to fail in the child. Usage: node tests/math-computation-shared.test.mjs --self-probe
+if (process.argv.includes('--self-probe')) {
+  const { mkdtempSync, copyFileSync, readFileSync: rf, writeFileSync: wf, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join, dirname } = await import('node:path')
+  const { spawnSync } = await import('node:child_process')
+  const modPath = process.env.MATH_COMPUTATION_MODULE || fileURLToPath(new URL('../vibe-math-v2/math-computation.js', import.meta.url))
+  const dir = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe-'))
+  const enginesSrc = join(dirname(modPath), 'math-engines.js')
+  try { copyFileSync(enginesSrc, join(dir, 'math-engines.js')) } catch (e) { /* engines may be resolved elsewhere */ }
+  const src = rf(modPath, 'utf8')
+  const whitelist = '  if (extra && Array.isArray(extra.absent)) out.absent = extra.absent\n'
+  if (src.indexOf(whitelist) === -1) {
+    console.log('SELF-PROBE FAIL: the fail() whitelist line for absent[] was not found (the probe cannot mutate what it cannot see)')
+    rmSync(dir, { recursive: true, force: true })
+    process.exit(1)
+  }
+  wf(join(dir, 'math-computation.js'), src.replace(whitelist, ''))
+  const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir, 'math-computation.js') }) })
+  const out = String(child.stdout || '') + String(child.stderr || '')
+  const named = out.indexOf('S2 absence evidence: the failure carries an absent[] list') !== -1
+  const sum = (out.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
+  rmSync(dir, { recursive: true, force: true })
+  console.log((child.status !== 0 && named ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE fail() whitelist line reddens the named §32 assertion (' + sum + ')')
+  process.exit(child.status !== 0 && named ? 0 : 1)
+}
 
 let passed = 0, failed = 0
 const failures = []
