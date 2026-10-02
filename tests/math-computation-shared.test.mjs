@@ -1045,6 +1045,17 @@ console.log('-- math_computation shared contract --')
   ok(r2.ok === false && r2.code === 'MATH_ENGINE_BAD_ARGV', 'a usage error reports MATH_ENGINE_BAD_ARGV')
   ok('stdout' in r2 && 'stderr' in r2, '★ S3 symmetry: MATH_ENGINE_BAD_ARGV carries BOTH partial stdout and stderr')
 }
+// ── 32. S2: the failure a user actually hits carries the SAME absence evidence as the success shape
+{
+  const h = makeFakeHost({ installed: [] })
+  M.registerMathComputation(h.host)
+  const r = await h.call({ op: 'probe' })
+  ok(r.ok === false && r.code === 'MATH_ENGINE_NOT_FOUND', 'no resolvable engine reports MATH_ENGINE_NOT_FOUND')
+  ok(Array.isArray(r.configured) && r.configured.length > 0, '★ S2 absence evidence: the failure names the CONFIGURED engines', JSON.stringify(r.configured ?? null))
+  const absent = Array.isArray(r.absent) ? r.absent : []
+  ok(absent.length > 0, '★ S2 absence evidence: the failure carries an absent[] list (not a silent partial)', JSON.stringify(r.absent ?? null))
+  ok(absent.every((a) => a && typeof a.why === 'string' && a.why.length > 0), 'every absent[] entry carries a why', JSON.stringify(absent))
+}
 console.log('')
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)

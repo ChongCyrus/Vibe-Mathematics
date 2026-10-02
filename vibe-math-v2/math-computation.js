@@ -303,6 +303,8 @@ function fail(code, engine, message, extra) {
   if (extra && extra.missing) out.missing = extra.missing
   if (extra && extra.engines) out.engines = extra.engines
   if (extra && extra.available !== undefined) out.available = extra.available
+  if (extra && extra.configured) out.configured = extra.configured
+  if (extra && Array.isArray(extra.absent)) out.absent = extra.absent
   if (extra && extra.packages) out.packages = extra.packages
   // round-7 (live-session fix): the probe diagnostic must survive into the response, otherwise
   // "存在但不可用" is opaque (a real session showed exactly that).
@@ -923,6 +925,14 @@ async function opProbe(H, args, params) {
   const probeDet = familyProbeDet(chosen)
   if (want.length && probeDet) packages = await probePackages(H, probeDet, want)
   else if (want.length && chosen && chosen.ok && chosen.name === 'cli') packages = { requested: want.map((s) => parsePackageSpec(s).name || s), found: {}, precheckSkipped: 'engine=cli：无法从命令名判断引擎族（不阻塞）' }
+  // S2 + round-9 F3: the absence list must exist BEFORE the early failure return, because the
+  // failure a user actually hits must carry the same evidence as the success shape.
+  const absentFor = (names) => params.mathEngines
+    .filter((e) => names.indexOf(e) === -1)
+    .map((e) => ((MATH_ENGINES[e] && MATH_ENGINES[e].resolveFrom === 'cli.command')
+      ? { engine: e, why: 'needs-a-caller-supplied-command' }
+      : { engine: e, why: 'not-found-on-this-machine' }))
+
   if (requested && chosen && !chosen.ok) {
     // Policy/absence refusal for the REQUESTED engine, with its own guidance.
     const out = Object.assign({}, chosen)
@@ -934,7 +944,7 @@ async function opProbe(H, args, params) {
   }
   if (!probe.available && !(chosen && chosen.ok)) {
     const first = requested || params.mathEngines[0] || 'python'
-    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（请求：' + first + '）', { next: await userInstallNext(H, first), engines: [], available: false, packages: packages })
+    const out = fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（请求：' + first + '）', { next: await userInstallNext(H, first), engines: [], available: false, configured: params.mathEngines.slice(), absent: absentFor(probe.engines.map((e) => e.name)), packages: packages })
     out.op = 'probe'
     return out
   }
@@ -950,10 +960,7 @@ async function opProbe(H, args, params) {
   const foundNames = engines.map((e) => e.name)
   // Per-engine absence explanation. The key is `why` (NOT the reserved machine-readable vocabulary
   // key), so the parity guard's exhaustive `next.reason` set stays exactly the refusal vocabulary.
-  const absent = params.mathEngines.filter((e) => foundNames.indexOf(e) === -1).map((e) => {
-    if (MATH_ENGINES[e] && MATH_ENGINES[e].resolveFrom === 'cli.command') return { engine: e, why: 'needs-a-caller-supplied-command' }
-    return { engine: e, why: 'not-found-on-this-machine' }
-  })
+  const absent = absentFor(foundNames)
   return {
     ok: true, op: 'probe', engine: engineInfo ? engineInfo.name : null, engineInfo: engineInfo,
     engines: engines, available: true, packages: packages,
