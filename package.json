@@ -37,6 +37,7 @@
     "docs/final-paper.md",
     "docs/math-computation.md",
     "tests/audit-math-computation-parity.mjs",
+    "tests/audit-participant-set-parity.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-sensitivity.mjs",
     "tests/math-computation-shared.test.mjs",

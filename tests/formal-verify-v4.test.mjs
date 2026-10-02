@@ -1612,6 +1612,22 @@ section('N4 off: the DELIVERED verify prompt has no formalization content or dan
   const enc = await P.prompts('verify', 'r-1', { target: 'p-fprompt', stage: 'independent' })
   assert(/Lean|formal/.test(enc), '* under encourage the delivered prompt DOES carry the formalization block (the gate is a gate, not a deletion)')
 }
+// ===============================================================
+// N5. v4 path basis (second instance of the recurring class): every member-visible library
+//     declaration must carry the MEMBER root (Members/<你>/...), exactly like the framework's
+//     readers/writers (Members/<id>/Progress/progress.md). The legacy project-root-relative shape
+//     (Progress/<你>/...) made fs-following residents write outside Members/<id>/.
+// ===============================================================
+section('N5 v4 member-facing library declarations are root-qualified (members/<you>/...)')
+{
+  const P = await establish()
+  const text = (await P.prompts('brainstorm', 'r-1')) + '\n' + (await P.prompts('normal', 'r-1'))
+  const decls = (text.match(/Members\/<[^>]*>\/(?:Progress|Propos|Methods|Subproblems)\//g) || [])
+  assert(decls.length >= 4, '* every member-visible library declaration carries the member root (found ' + decls.length + ')')
+  const legacy = (text.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<你>\//g) || [])
+  assert(legacy.length === 0, '* no declaration keeps the legacy project-root-relative shape (' + JSON.stringify(legacy) + ')')
+  assert(/Members\/<你>\/Progress\/progress\.md/.test(text), '* the root-qualified progress declaration is the one the writer uses (Members/<id>/Progress/progress.md)')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

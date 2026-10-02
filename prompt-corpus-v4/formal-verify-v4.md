@@ -31,7 +31,7 @@ Reply with ONLY a JSON object:
 ## [1] work · off/normal
 
 ```text
-Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -99,7 +99,7 @@ Reply with ONLY a JSON object:
 ## [3] work · encourage/normal
 
 ```text
-Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -178,7 +178,7 @@ Reply with ONLY a JSON object:
 ## [5] work · encourage/coreRules
 
 ```text
-[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（<VIBEMATH>/Projects/default/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。
+[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（<VIBEMATH>/Projects/default/ 的 Members/<你>/Progress/<你>/、Members/<你>/Propos/<你>/、Members/<你>/Methods/<你>/、Members/<你>/Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。
 `facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。
 【顺手形式化（鼓励）】把你工作中常用或可能复用的对象、假设、新定义，用 Lean 形式化定义并归档到全局可复用库（vibe_v4_lean_archive kind='def'），已成立的引理归到 Formal/Proved/（kind='lemma'）；写之前先 vibe_v4_lean_lib 查重，避免重复定义。
   · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——
@@ -278,7 +278,7 @@ Reply with ONLY a JSON object:
 ## [8] work · require/normal
 
 ```text
-Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -423,7 +423,7 @@ Reply with ONLY a JSON object:
 ## [14] work · require/real work wake
 
 ```text
-Resident researcher r-2 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-2 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -510,7 +510,7 @@ Reply with ONLY a JSON object:
 ## [19] work · normal + queued inbox line ([<sender>] content)
 
 ```text
-Resident researcher r-1 — 第 1 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 1 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮1
@@ -554,7 +554,7 @@ Reply with ONLY a JSON object:
 ## [20] work · normal + delivered message frame ([NEW MESSAGE from ...])
 
 ```text
-Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -592,7 +592,7 @@ Reply with ONLY a JSON object:
 ## [21] work · normal + group-chat frame ([群聊])
 
 ```text
-Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 0 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮0
@@ -630,7 +630,7 @@ Reply with ONLY a JSON object:
 ## [22] work · task frame ([YOU CLAIMED TASK ...])
 
 ```text
-Resident researcher r-1 — 第 2 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。
+Resident researcher r-1 — 第 2 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。
 
 团队成员：
 - r-1「（未定）」active·轮2

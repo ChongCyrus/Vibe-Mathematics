@@ -76,6 +76,14 @@ ok(existsSync(join(HERE, String((pkg.dsh.bundle || {}).patch || 'cordis.patch.ym
   const compatNote = String((pkg.dsh || {}).compatNote || '')
   ok(compatNote.indexOf(ver) !== -1, 'dsh.compatNote mentions the current version ' + ver,
     'compatNote starts: ' + compatNote.slice(0, 60))
+  // F8 follow-up: the lockfile version fields once drifted behind package.json (2.7.1 vs 2.7.2) and
+  // nothing noticed. The lockfile is not shipped, but the repo must stay self-consistent.
+  try {
+    const lock = JSON.parse(readFileSync(join(HERE, 'package-lock.json'), 'utf8'))
+    ok(String(lock.version || '') === ver, 'package-lock.json top-level version matches package.json (' + ver + ')', 'lockfile: ' + lock.version)
+  } catch (e) {
+    ok(false, 'package-lock.json is readable JSON', String((e && e.message) || '').slice(0, 80))
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -1555,24 +1555,24 @@ export function apply(ctx) {
     async function inboxText(rId){ const mb=mailboxes.get(rId)||[]; if(mb.length===0) return '  (no new messages)\n'; return mb.map(m=>'  ['+senderLabel(m.from)+'] '+m.content).join('\n')+'\n' }
     function residentLibraries(){
       const base=frameworkRoot()
-      return '你的资料库根目录：'+base+'/\n'
-        +'  Progress/<你>/progress.md —— 你的研究日志（叙述，可追加。主要内容是尝试过的各方法、路线、历程、进度，当前研究进展/进度、将来的计划与打算，及各路线、过程中遇到的障碍及其原因，对各路线、方法的看法、可行性评估，自己研究过程中的一些有价值看法、感想、猜想、理解。以及其它各种你认为有价值的值得记录的事物、经验、方法/想法、创新等都可进行记录）。\n'
-        +'  Propos/<你>/<id>.md —— 你的命题/引理。格式：\n'
+      return '你的资料库根目录（**绝对前缀**，下面每条都已带库根）：'+base+'/Members/<你>/\n'
+        +'  Members/<你>/Progress/progress.md —— 你的研究日志（叙述，可追加。主要内容是尝试过的各方法、路线、历程、进度，当前研究进展/进度、将来的计划与打算，及各路线、过程中遇到的障碍及其原因，对各路线、方法的看法、可行性评估，自己研究过程中的一些有价值看法、感想、猜想、理解。以及其它各种你认为有价值的值得记录的事物、经验、方法/想法、创新等都可进行记录）。\n'
+        +'  Members/<你>/Propos/<id>.md —— 你的命题/引理。格式：\n'
         +'    - ID: p-<id>; - 状态: 未定论; - 概率: <0-1>; - 价值程度: <0-1>; - 动机用途计划: <为何重要/打算怎么用>\n'
         +'    然后 ## 陈述 <陈述>；## 证明尝试；## 证伪尝试。\n'
-        +'  Methods/<你>/<id>.md —— 你的理论/方法/工具。格式：- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。\n'
-        +'  Subproblems/<你>/<id>.md —— 你的子问题。格式：- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 陈述；## 进度。\n'
-        +'  ⚠ 你的文件工具（读/写）按**会话 cwd** 解析路径：上面列出的相对子路径都要先拼上**绝对前缀** '+base+'/ 再使用（例如 '+base+'/Propos/<你>/p-1.md）；计算产物同理——请用回执里的**绝对**字段 receipt.scriptAbs，或把 receipt.cwd 与 receipt.scriptPath 拼起来，不要用相对路径。\n'
+        +'  Members/<你>/Methods/<id>.md —— 你的理论/方法/工具。格式：- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 核心内容；## 定义与记号；## 应用记录；## 改进历史。\n'
+        +'  Members/<你>/Subproblems/<id>.md —— 你的子问题。格式：- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: ...；然后 ## 陈述；## 进度。\n'
+        +'  ⚠ 你的文件工具（读/写）按**会话 cwd** 解析路径：上面列出的相对子路径都要先拼上**成员库根** '+base+'/Members/<你>/ 再使用（例如 '+base+'/Members/r-1/Propos/p-1.md）；计算产物同理——请用回执里的**绝对**字段 receipt.scriptAbs，或把 receipt.cwd 与 receipt.scriptPath 拼起来，不要用相对路径。\n'
     }
     function toolList(){
       return 'vibe_v4_send_message {to, content} —— 给某常驻发消息（to=all 广播）。\n'
         +'vibe_v4_meeting {agenda} —— 发起/参与会议（框架会把各常驻的实际 input 转给其他人，让大家看到并讨论/辩论）。\n'
         +'vibe_v4_propose_task/claim_task/task_done/list_tasks —— 共享任务板（提议/认领/完成/查看；任务板是你们协调分工的载体）。\n'
-        +'vibe_v4_publish_progress/record_proposition/record_method/record_subproblem —— 便捷记录器（可选；推荐直接用 fs 写自己的文件）。\n'
+        +'vibe_v4_publish_progress/record_proposition/record_method/record_subproblem —— 便捷记录器（可选；推荐直接用 fs 写自己的文件，路径必须带库根 Members/<你>/）。\n'
         +'vibe_v4_read_progress {id} —— 只读某常驻的进展。\n'
         +'vibe_v4_list_residents / vibe_v4_list_tasks —— 查看团队组成 / 开放任务。\n'
         +'vibe_v4_report_context {pct} —— 上报上下文占比（框架据此压缩你的上下文）。\n'
-        +'fs (read/write/list) —— 读取任意文件；写入你自己的文件（推荐直接用 fs 直接写自己的 md）。\n'
+        +'fs (read/write/list) —— 读取任意文件；写入你自己的文件（推荐直接用 fs 直接写自己的 md；**路径必须带库根 Members/<你>/，否则会落到别处**）。\n'
     }
     // A shared, complete context block so a resident always knows the situation: mission,
     // work model, what it can do, which files it owns (+ formats), what others' files are,
@@ -1588,14 +1588,14 @@ export function apply(ctx) {
       s.push('### 工作模式（会发生什么）')
       s.push('1. 每人有一份持久、全组可见的专属资料库（见下）。')
       s.push('2. 你们自由发消息、开会；**会议会把每个人实际说的话（input）转给其他人**，让你看得到、能回复、能讨论、能辩论。')
-      s.push('3. 你独立研究，并**直接用 fs 写入你自己的文件**（按格式），供全组阅读。')
+      s.push('3. 你独立研究，并**直接用 fs 写入你自己的文件**（**路径必须带库根 Members/<你>/**，按格式），供全组阅读。')
       s.push('4. 任何"已确立"的东西须**全组一致**验证（全真或全假）才作数；否则只是带概率的工作估计。')
       s.push('5. 只有**全组在会议上一致认为原问题已解决**，run 才停止。')
       s.push('')
       s.push('### 你负责的文件（你只写自己的；但可读任何人的）')
       s.push(residentLibraries())
       s.push('其他人把结论/进展写进他们的目录，你就能读到。**你应主动读别人的库**，对齐事实、彼此衔接、避免重复劳动。')
-      if(level!=='full'){ s.push('（格式见你最初的说明；直接用 fs 写自己的文件即可。）') }
+      if(level!=='full'){ s.push('（格式见你最初的说明；直接用 fs 写自己的文件即可，**路径必须带库根 Members/<你>/**。）') }
       s.push('')
       s.push('### 可用工具')
       s.push(toolList())
@@ -1603,7 +1603,7 @@ export function apply(ctx) {
       if(level==='full'){
         s.push('### 可自主发明理论/工具（鼓励，但不强迫）')
         s.push('请注意：你可以（但**不强迫**，完全视实际需要而定）尝试自主构建新的理论框架或工具——例如对某种系统做抽象化、一般化，抽离/推广出更一般的结构或理论框架；然后不断完善这个理论框架，在该框架下推得各种定理、性质、结论，以利于该框架下问题的解决。这就像为解决方程问题发明了群论、为分析需要建立了泛函分析框架——它比单纯解决当前问题更有学术价值，因为你直接得到了一类更普遍的方法/理论体系。')
-        s.push('若你发明了这样的理论/工具，请**阐明它对原问题的用处、价值**；后续可根据需要不断**完善、一般化、推广**它。把这类成果记入你的 Methods/<你>/ 库。')
+        s.push('若你发明了这样的理论/工具，请**阐明它对原问题的用处、价值**；后续可根据需要不断**完善、一般化、推广**它。把这类成果记入你的 Members/<你>/Methods/<你>/ 库。')
         s.push('')
       }
       s.push('### 规则')
@@ -1622,7 +1622,7 @@ export function apply(ctx) {
       // The formalization line is appended HERE (not frozen into a brief) because the mode is
       // dynamic: after a /compact the resident must re-anchor on the rules it is actually
       // living under right now.
-      return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Progress/<你>/、Propos/<你>/、Methods/<你>/、Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
+      return '[核心规则重申] 只有 Verified/（及标记"已验证·真/假"）算已确立；验证须全组一致（全真或全假）才作数，否则留库附平均概率；你只写自己的库（'+base+'/ 的 Members/<你>/Progress/<你>/、Members/<你>/Propos/<你>/、Members/<你>/Methods/<你>/、Members/<你>/Subproblems/<你>/），可只读任何人的库；任务分工由团队讨论决定；退出只输出一个 JSON 对象。'
         +'\n`facilitator` 是**框架/人类介入的信使名**，不是常驻成员，也不在编制里——**不要向它回信**（`vibe_v4_send_message` 会返回 no such resident）；要回话请用本轮回执的 "input" 字段（会转给全组）或 `vibe_v4_send_message {to:"all"}`。'
         +(leanDailyOn()?('\n'+formalWorkLine()):'')
         // math_computation is INDEPENDENT of formalVerify (its own `mathComputation` switch).
@@ -1634,7 +1634,7 @@ export function apply(ctx) {
         +(r.direction?('\n\n你被建议的初始方向（可自行调整/细化）：\n'+r.direction+'\n'):'')
         +'## 这是你的第一轮：独立头脑风暴\n'
         +'独立地想清楚：你对这个问题的洞察 / 解决方向 / 关键子问题 / 可能的引理 / 粗略计划。你还未见到其他人，先独立产出。\n'
-        +'把有价值的产物**直接用 fs 写进你自己的文件**（按上面格式），并在 summary 里概述你的切入方向与初步结论（标注哪些是猜想、哪些凭你已确证）。\n'
+        +'把有价值的产物**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**，按上面格式），并在 summary 里概述你的切入方向与初步结论（标注哪些是猜想、哪些凭你已确证）。\n'
         +'Reply with ONLY a JSON object:\n'
         +'{"summary":"<your insight / direction / rough plan, one tight paragraph>","solved":false}'
     }
@@ -1646,7 +1646,7 @@ export function apply(ctx) {
       await refreshMathAvailability()
       const mathAvail=mathAvailabilityBlock()
       return (params.residentPersona?params.residentPersona+'\n':'')
-        +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**；想对团队说的话放 "input"（会转给其他常驻）。\n'
+        +'Resident researcher '+r.rId+' — 第 '+r.rounds+' 轮。一切由你和团队讨论决定。动手前先**读别人的库**对齐事实、避免重复；把新进展/结论**直接用 fs 写进你自己的文件**（**路径带库根 Members/<你>/**）；想对团队说的话放 "input"（会转给其他常驻）。\n'
         +'\n团队成员：\n'+banner()+'\n'
         +'New items:\n'+ (await inboxText(r.rId)) +'\n'
         // Settled background compiles are announced ONCE, in the next prompt constructed (spec §2.4):
