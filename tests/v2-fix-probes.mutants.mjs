@@ -68,6 +68,18 @@ const FAMILIES = [
     from: "noteStateWriteFailure('current.' + safeId(sessionId) + '.json', (e && e.message) || e)", to: 'void e' },
 ]
 let red = 0
+FAMILIES.push(
+  { name: 'F5/v2: fence-root comparison removed', expect: /\[F5\/v2\] 围栏根漂移/,
+    from: 'if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)', to: 'void actual' },
+)
+FAMILIES.push(
+  { name: 'F-B: derivation drops the source descriptions', expect: /\[F-B\/v2\] 每个机读描述都来自真源且非空/,
+    from: 'if (e.description) p.description = e.description', to: 'void e /* MUTANT F-B: no source description */' },
+  { name: 'F-B: one exception entry deleted', expect: /\[F-B\/v2\] 例外集合 == docs\/parameter-schema\.md/,
+    from: "solverToolAllow: { type: 'array', items: { type: 'string' } },", to: '' },
+  { name: 'F-B: one registration site reverted to a literal', expect: /\[F-B\/v2\] 两处注册点都由 paramProps\(\)/,
+    from: "objParams(paramProps()), 'vibe_math_set_params')", to: "objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }), 'vibe_math_set_params')" },
+)
 for (const f of FAMILIES) if (runFamily(f)) red++
 console.log('')
 console.log('mutant families reddening the v2 probe by name: ' + red + '/' + FAMILIES.length)

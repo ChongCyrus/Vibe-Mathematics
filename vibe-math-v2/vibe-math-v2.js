@@ -1,3 +1,106 @@
+// ================= F-B: 参数机读 schema 的单一真源（模块作用域） =================
+// 工具面 `vibe_math_set_params` 的 `parameters` 由 PARAM_SCHEMA 派生，描述/类型只有一处真源
+//（真源与例外说明见 docs/parameter-schema.md）。本块整体位于**模块作用域**，因为本文件定义了两处
+// `objParams`（会话层 makeSession + apply 层）——只有模块作用域能被两层同时看见（rehearsal 曾因此
+// 让 apply 层拿到只有例外项的残缺 schema）。下列常量与 PARAM_SCHEMA 是从 makeSession 内**逐字上移**的纯
+// 常量（值不变、作用域上移），会话层原有引用照旧解析到它们。
+  const IS_WINDOWS = process.platform === 'win32'
+  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
+  const NETWORK_TOOLS = ['web_search', 'web_fetch']
+  const ACTIVITY_REPORT_MAX = 30
+const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
+  const PARAM_SCHEMA = [
+    { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
+    { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
+    { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
+    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向（互不干扰）；N>1 = 额外附带最多 N 个其他活跃方向摘要用于协调', suggestion: 1 },
+    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（下限 2：一票不裁决）。并发预算紧张时单个对象同时最多占用 maxParallelThreshold-2 个槽位（至少 2），以保证另一个对象也凑得齐 2 票', suggestion: 3 },
+    { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
+    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致时取各评审自报概率的**均值**，绝不折叠成固定的 0.5）；forced = 强制裁决（按验证者历史准确率+布尔票置信度加权）。准确率按 provider/model 这种稳定身份记，且只在对象**后来**取得布尔定论时才计分', suggestion: 'flat' },
+    { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
+    { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
+    { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
+    { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
+    { name: 'explorerPersona', type: 'string', description: '注入每个 explorer/重派生提示词开头的人格/要求', suggestion: '' },
+    { name: 'knowledgeContext', type: 'string', description: '共享知识/数据模型说明（空 = 内置完整版；非空 = 覆盖，注入 explorer/solver/verifier 提示词）', suggestion: '' },
+    { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
+    { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
+    { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
+    { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
+    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承全部；true=允许（在已有 allow 列表时补入本次组合真正注册的网络工具）；false=禁止网络工具', suggestion: '' },
+    { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关（同 solverAllowNetwork）', suggestion: '' },
+    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关：空=继承全部；true=允许（在已有 allow 列表时补入）；false=禁止 ' + SCRIPT_TOOLS.join('/'), suggestion: '' },
+    { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关（同 solverAllowScripts）', suggestion: '' },
+    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
+    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
+    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 同时按该间隔定时自动汇报', suggestion: 0 },
+    { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
+    { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
+    { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
+    { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整：none=不自动调；progress-graded=按「定论接近度（|布尔估计-0.5|）+ 证明/证伪材料量」重算，越接近定论越优先验证', suggestion: 'none' },
+    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
+    { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限（达到后该问题标记为方向耗尽）', suggestion: 3 },
+    { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证档位：off=不额外要求（默认，提示词里不出现 Lean）；encourage=鼓励按实现难度自行形式化，一旦 Lean 通过则验证重点转为「忠实性审查」；require=同 encourage 且加门禁——对象的 formal.status 未达到 passed/blocked 前，真/假裁定记为未定论（原因 formal-required）并写入 Formal/TODO.md', suggestion: 'off' },
+    { name: 'leanCommand', type: 'string', description: '要执行的 Lean 可执行文件（默认 lean；用 lake 时配合 leanArgs=["env","lean"]）', suggestion: 'lean' },
+    { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加命令行参数（默认空）', suggestion: [] },
+    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，默认 120000，最小 1000）；异步档下它同时是**每个后台编译作业**的预算（到时主动 terminate，作业记 timeout、对象留在 attempted）', suggestion: 120000 },
+    { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_lib / vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
+    { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
+    { name: 'leanInitiative', type: 'string', enum: LEAN_INITIATIVE_MODES.slice(), description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
+    { name: 'leanSearchPaths', type: 'array', items: { type: 'string' }, description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
+    { name: 'finalPaper', type: 'boolean', description: '收口（严格终止）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已检验通过的命题/解法/成果整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
+    { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
+    { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
+    { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志', suggestion: true },
+    { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。该命令解析不到时按"未检测到"降级（只留 tex+md）', suggestion: '' },
+    // ---- 数学计算 math_computation（六参数冻结；描述与 prompts.md §1/§6 口径一致）----
+    { name: 'mathComputation', type: 'enum', options: ['off', 'auto', 'on'], description: '数学计算总开关：off = 真无操作（提示词零提及）；auto = 探测到 mathEngines 里任一允许引擎才工作；on = 同上（探测失败时工具仍返回可执行的安装指引，而不是假装可用）', suggestion: 'auto' },
+    { name: 'mathMode', type: 'enum', options: ['typed', 'typed+shell'], description: '计算策略：typed+shell（默认）= 工具不可用时允许宿主 shell 兜底，但结论必须标注"未经工具归档（shell 路径）"；typed = 只用工具路径（提示词里不出现 shell 兜底段，engine:"cli" 返回 REFUSED{reason:policy}）', suggestion: 'typed+shell' },
+    { name: 'mathEngines', type: 'string[]', description: '允许的引擎列表（默认 python|r|octave|julia|matlab|maple|wolfram|cli）。cli 默认开启且走同一套超时/输出上限/回执；从列表里移除某引擎即禁用（商业引擎只探测+许可，永不安装）', suggestion: MATH_PARAM_DEFAULTS.mathEngines.slice() },
+    { name: 'mathTimeoutMs', type: 'integer', description: '单次数学计算的超时上限（毫秒，默认 60000，最小 1000）；到时主动 terminate 并把回执标为 MATH_TIMEOUT', suggestion: 60000 },
+    { name: 'mathPackages', type: 'string[]', description: '需要预检的包（默认空）。缺包只报告 + 给"用户自装指引"或"代理代装计划"，不会执行脚本，也永不自动安装', suggestion: [] },
+    { name: 'mathInstallScope', type: 'string', enum: ['user', 'system'], description: '安装作用域：user（默认，用户级目录）；system 只对当次显式调用生效、永不记忆（不会写进状态文件）', suggestion: 'user' },
+  ]
+
+// 钉住"机读键集合"（现状 v2=49 / v3=63 个，不随 PARAM_SCHEMA 增删而漂移）。
+const PARAM_PROPS_KEYS = ['maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'verdictMode', 'reportMode', 'promoteValueThreshold', 'priorityAdjust', 'proposPriorityAdjust', 'provider', 'model', 'solverPersona', 'verifierPersona', 'explorerPersona', 'knowledgeContext', 'solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'solverAllowNetwork', 'verifierAllowNetwork', 'solverAllowScripts', 'verifierAllowScripts', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'directionsPerSolver', 'formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs', 'leanAsync', 'leanJobsMaxParallel', 'leanInitiative', 'leanSearchPaths', 'mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPackages', 'mathInstallScope', 'finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand']
+// 源无法表达的条目：数组 items / oneOf / mode 的现状枚举顺序 —— 逐字沿用，并由
+// "例外集合 == docs/parameter-schema.md" 断言钉住。
+const PARAM_PROPS_EXTRA = {
+solverToolAllow: { type: 'array', items: { type: 'string' } },
+solverToolDeny: { type: 'array', items: { type: 'string' } },
+verifierToolAllow: { type: 'array', items: { type: 'string' } },
+verifierToolDeny: { type: 'array', items: { type: 'string' } },
+leanArgs: { type: 'array', items: { type: 'string' } },
+mathEngines: { type: 'array', items: { type: 'string' } },
+mathPackages: { type: 'array', items: { type: 'string' } },
+solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] },
+verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] },
+solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] },
+verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] },
+}
+function paramProps() {
+  const props = {}
+  for (const name of PARAM_PROPS_KEYS) {
+    const e = PARAM_SCHEMA.find(function (x) { return x && x.name === name })
+    if (!e) continue
+    const enumVals = (Array.isArray(e.enum) && e.enum.length) ? e.enum : ((Array.isArray(e.options) && e.options.length) ? e.options : null)
+    const isEnum = e.type === 'enum' || !!enumVals
+    const p = isEnum ? { type: 'string', enum: (enumVals || []).slice() } : { type: e.type }
+    if (e.description) p.description = e.description
+    props[name] = p
+  }
+  // 例外表覆盖"源无法表达"的字段，但**保留源里的描述**（覆盖度 v2 49/49、v3 63/63）
+  for (const k of Object.keys(PARAM_PROPS_EXTRA)) {
+    const base = props[k] || {}
+    props[k] = Object.assign({}, PARAM_PROPS_EXTRA[k])
+    if (base.description) props[k].description = base.description
+  }
+  return props
+}
+// ================= end F-B =================
+
 // Vibe Math V2 — host plugin implementing the classic-architecture spec
 // ("vibe-math-v2/实现方案.md"): probability-driven scheduling over a
 // problem list (qs/qs.json) and a proposition knowledge base (Propos/),
@@ -218,7 +321,6 @@ export function apply(ctx) {
   let explorerRetries = {}
   // 状态/报告里最近活动最多显示多少条（**一个常量**）：此前 buildReport 用 min(30, cap)、getStatus
   // 硬编码 min(10, cap)，同一个字段两个端点给出不同答案，而参数说明承诺的是 30（审计 M15）。
-  const ACTIVITY_REPORT_MAX = 30
   const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（status/report 只显示 30 条，但恢复时保留更多线索）
   // 至少 2 名独立评审才能出裁决（审计 M11）：一票裁决会把单个验证者的判断写成"完全验证"的布尔结论。
   const MIN_REVIEWERS = 2
@@ -272,14 +374,11 @@ export function apply(ctx) {
   // host applies the filter when establishing a continuable child
   // (dsh-subagent: childCtx.tools.restrict(...)), so a stale name meant the child
   // was never created at all.
-  const IS_WINDOWS = process.platform === 'win32'
-  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
   // 这两个名字是否真的存在取决于**本次组合**：v2 自己的 agent.cordis.yml 把 tool-web 行设成
   // fetch:false，于是 web_search 在、web_fetch 不在，而 filter 里只要有一个宿主不注册的名字，
   // restrict() 就整条拒绝 → 子代理先失败一次再走 sanitizeToolFilter 重试，日志还会谎称"你的配置过期"
   // （审计 M8/M9）。所以能力清单**向宿主的可见工具面查询**（tools.schemas，宿主自己在
   // dsh-tools/lib/index.js 里就是这么用的），查不到/不可信时才退回静态候选表。
-  const NETWORK_TOOLS = ['web_search', 'web_fetch']
   /**
    * 本会话可见的工具名集合；null = 无法可信地确定（此时一律保留候选名，行为与改动前一致）。
    * 自校验：这张表必须包含本插件自己注册的工具，否则说明这个 scope 视图不是子代理真正看到的
@@ -304,59 +403,6 @@ export function apply(ctx) {
   }
 
   // ================= parameter schema =================
-  const PARAM_SCHEMA = [
-    { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
-    { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
-    { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数（agent_self_iteration 上限）', suggestion: 3 },
-    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向（互不干扰）；N>1 = 额外附带最多 N 个其他活跃方向摘要用于协调', suggestion: 1 },
-    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（下限 2：一票不裁决）。并发预算紧张时单个对象同时最多占用 maxParallelThreshold-2 个槽位（至少 2），以保证另一个对象也凑得齐 2 票', suggestion: 3 },
-    { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
-    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: 'flat = 均衡机制（不一致时取各评审自报概率的**均值**，绝不折叠成固定的 0.5）；forced = 强制裁决（按验证者历史准确率+布尔票置信度加权）。准确率按 provider/model 这种稳定身份记，且只在对象**后来**取得布尔定论时才计分', suggestion: 'flat' },
-    { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
-    { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
-    { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
-    { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
-    { name: 'explorerPersona', type: 'string', description: '注入每个 explorer/重派生提示词开头的人格/要求', suggestion: '' },
-    { name: 'knowledgeContext', type: 'string', description: '共享知识/数据模型说明（空 = 内置完整版；非空 = 覆盖，注入 explorer/solver/verifier 提示词）', suggestion: '' },
-    { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
-    { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
-    { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
-    { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
-    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承全部；true=允许（在已有 allow 列表时补入本次组合真正注册的网络工具）；false=禁止网络工具', suggestion: '' },
-    { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关（同 solverAllowNetwork）', suggestion: '' },
-    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关：空=继承全部；true=允许（在已有 allow 列表时补入）；false=禁止 ' + SCRIPT_TOOLS.join('/'), suggestion: '' },
-    { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关（同 solverAllowScripts）', suggestion: '' },
-    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
-    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用**建议**上限（0 = 不限）。框架只把它写进提示词，不计数、不强制', suggestion: 0 },
-    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动（有代理状态更新等事件才写/推报告）；>0 = 同时按该间隔定时自动汇报', suggestion: 0 },
-    { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息让主代理主动汇报；both = 两者都做', suggestion: 'file' },
-    { name: 'promoteValueThreshold', type: 'number', description: 'Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json', suggestion: 0.7 },
-    { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '优先级动态调整策略：none=不自动调；deadend-deprioritize=方向全死路时降优先级；survival-map=按最高方向存活率重算（存活率高越优先）', suggestion: 'none' },
-    { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整：none=不自动调；progress-graded=按「定论接近度（|布尔估计-0.5|）+ 证明/证伪材料量」重算，越接近定论越优先验证', suggestion: 'none' },
-    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）：多久扫描一次子代理状态并推进（越小越灵敏、越大越省资源）', suggestion: 2000 },
-    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
-    { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限（达到后该问题标记为方向耗尽）', suggestion: 3 },
-    { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证档位：off=不额外要求（默认，提示词里不出现 Lean）；encourage=鼓励按实现难度自行形式化，一旦 Lean 通过则验证重点转为「忠实性审查」；require=同 encourage 且加门禁——对象的 formal.status 未达到 passed/blocked 前，真/假裁定记为未定论（原因 formal-required）并写入 Formal/TODO.md', suggestion: 'off' },
-    { name: 'leanCommand', type: 'string', description: '要执行的 Lean 可执行文件（默认 lean；用 lake 时配合 leanArgs=["env","lean"]）', suggestion: 'lean' },
-    { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加命令行参数（默认空）', suggestion: [] },
-    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，默认 120000，最小 1000）；异步档下它同时是**每个后台编译作业**的预算（到时主动 terminate，作业记 timeout、对象留在 attempted）', suggestion: 120000 },
-    { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_lib / vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
-    { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
-    { name: 'leanInitiative', type: 'string', enum: LEAN_INITIATIVE_MODES.slice(), description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
-    { name: 'leanSearchPaths', type: 'array', items: { type: 'string' }, description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
-    { name: 'finalPaper', type: 'boolean', description: '收口（严格终止）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已检验通过的命题/解法/成果整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
-    { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
-    { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
-    { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志', suggestion: true },
-    { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。该命令解析不到时按"未检测到"降级（只留 tex+md）', suggestion: '' },
-    // ---- 数学计算 math_computation（六参数冻结；描述与 prompts.md §1/§6 口径一致）----
-    { name: 'mathComputation', type: 'enum', options: ['off', 'auto', 'on'], description: '数学计算总开关：off = 真无操作（提示词零提及）；auto = 探测到 mathEngines 里任一允许引擎才工作；on = 同上（探测失败时工具仍返回可执行的安装指引，而不是假装可用）', suggestion: 'auto' },
-    { name: 'mathMode', type: 'enum', options: ['typed', 'typed+shell'], description: '计算策略：typed+shell（默认）= 工具不可用时允许宿主 shell 兜底，但结论必须标注"未经工具归档（shell 路径）"；typed = 只用工具路径（提示词里不出现 shell 兜底段，engine:"cli" 返回 REFUSED{reason:policy}）', suggestion: 'typed+shell' },
-    { name: 'mathEngines', type: 'string[]', description: '允许的引擎列表（默认 python|r|octave|julia|matlab|maple|wolfram|cli）。cli 默认开启且走同一套超时/输出上限/回执；从列表里移除某引擎即禁用（商业引擎只探测+许可，永不安装）', suggestion: MATH_PARAM_DEFAULTS.mathEngines.slice() },
-    { name: 'mathTimeoutMs', type: 'integer', description: '单次数学计算的超时上限（毫秒，默认 60000，最小 1000）；到时主动 terminate 并把回执标为 MATH_TIMEOUT', suggestion: 60000 },
-    { name: 'mathPackages', type: 'string[]', description: '需要预检的包（默认空）。缺包只报告 + 给"用户自装指引"或"代理代装计划"，不会执行脚本，也永不自动安装', suggestion: [] },
-    { name: 'mathInstallScope', type: 'string', enum: ['user', 'system'], description: '安装作用域：user（默认，用户级目录）；system 只对当次显式调用生效、永不记忆（不会写进状态文件）', suggestion: 'user' },
-  ]
 
   // ================= fs =================
   async function fsTarget(rel) { return await fs.resolve(rel, { cwd: frameworkRoot() }) }
@@ -4288,7 +4334,7 @@ function verifyTasksView(tasks) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事：formalVerify=off 只关验证阶段，eager 仍注入日线）；leanSearchPaths = 额外 Lean 搜索路径（默认空 = 只用自动注入的 VibeMath 根；非空时先注入它们、再注入自动根）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); if (args && MATH_PARAM_NAMES.some(function (k) { return k in args })) { try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响参数保存 */ } } return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事：formalVerify=off 只关验证阶段，eager 仍注入日线）；leanSearchPaths = 额外 Lean 搜索路径（默认空 = 只用自动注入的 VibeMath 根；非空时先注入它们、再注入自动根）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams(paramProps()), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); if (args && MATH_PARAM_NAMES.some(function (k) { return k in args })) { try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响参数保存 */ } } return { ok: true, params: params } })
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -4426,7 +4472,7 @@ function verifyTasksView(tasks) {
   registerTool('vibe_math_status', 'Show scheduler status, params, active agents, projects, and recent activity.', objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', 'Return the full progress report and write it to Progress_Logs/report.json.', objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.', objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事：formalVerify=off 只关验证阶段，eager 仍注入日线）；leanSearchPaths = 额外 Lean 搜索路径（默认空 = 只用自动注入的 VibeMath 根；非空时先注入它们、再注入自动根）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams({ maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowNetwork: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, verifierAllowScripts: { oneOf: [{ type: 'boolean' }, { type: 'string', enum: [''] }] }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象的 formal.status 未达到 passed/blocked 之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 `--search-path <VibeMath 根>`，用户已显式给出就不注入）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）。leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事：formalVerify=off 只关验证阶段，eager 仍注入日线）；leanSearchPaths = 额外 Lean 搜索路径（默认空 = 只用自动注入的 VibeMath 根；非空时先注入它们、再注入自动根）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。', objParams(paramProps()), 'vibe_math_set_params')
   registerTool('vibe_math_setup', 'Return the interactive parameter schema for guided configuration.', objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.', objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.', objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
@@ -4856,7 +4902,6 @@ function leanJobId(key, fingerprint) {
 /** "已落地且通过"的**唯一**判据：state=settled 且 exit 0 且未超时未中断（内容哈希由 settle 校验）。 */
 function leanJobSettledOk(rec) { return !!rec && rec.state === 'settled' && rec.exitCode === 0 && !rec.timedOut && !rec.interrupted }
 /** 主动性档位（修订 §1）：与"验证时的要求强度"（formalVerify）是两件事。 */
-const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
 
 export const __testHelpers = {
   uuid,

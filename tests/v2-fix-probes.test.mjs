@@ -1,3 +1,7 @@
+// Defect class: silent-failure surfacing (F6a/F6b/F6c), declared asymmetry (F-A), path-base mixing (F6), fence-root drift (F5).
+// Every assertion below must be falsifiable: tests/*.mutants.mjs contains the matching single-site
+// mutants whose named reds prove it (see docs/parameter-schema.md for the F-B exception table).
+// Run: node tests/v2-fix-probes.test.mjs
 // Probes for the remaining v2 fixes (H3, H4/M12/M13, M10, M11, M15, H5).
 // Each scenario drives the REAL plugin through the public tool API + the host's service mocks.
 //
@@ -661,7 +665,41 @@ console.log('\n-- PAPER §6.1: params — defaults, schema presence, coercion, r
   const regs = h.toolRegs.filter((s) => s.name === 'vibe_math_set_params')
   assert(regs.length === 1 && ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand'].every((k) => !!regs[0].parameters.properties[k]), 'the registered tool schema carries all five paper keys')
   const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
-  assert((src.match(/paperCompilePdf: \{ type: 'boolean' \}/g) || []).length === 2, '★★ BOTH v2 set_params tables were updated (spec v2 §B: 5–6 coordinated sites)')
+console.log('\n-- F5/v2: 围栏根与会话工作区不一致必须一次性告警 --');
+{
+  const realErr5v2 = console.error; const buf5v2 = [];
+  const h5v2 = harness({ policyRoot: join(tmpdir(), 'not-this-session') });
+  try {
+    console.error = (...a) => buf5v2.push(a.map(String).join(' '));
+    await load(h5v2);
+    await h5v2.call('vibe_math_new_project', { name: 'p' });
+    await h5v2.call('vibe_math_pause', {});
+    await h5v2.call('vibe_math_resume', {});
+  } finally { console.error = realErr5v2; }
+  h5v2.restore(); await wait(250); rmSync(h5v2.WS, { recursive: true, force: true });
+  const hits5v2 = buf5v2.join('\n').split('\n').filter((l) => /sandbox fence root differs from this session workspace/.test(l));
+  assert(hits5v2.length === 1, '★★★ [F5/v2] 围栏根漂移一次性具名告警（实测 ' + JSON.stringify(hits5v2[0] || buf5v2.slice(-160)) + '）');
+}
+  // ---- F-B（单一真源）：机读 parameters 由 PARAM_SCHEMA 派生，两处注册点、真源与文档三方一致 ----
+  {
+    const srcFb = readFileSync(PLUGIN_URL, 'utf8')
+    const sitesFb = srcFb.match(/objParams\(paramProps\(\)\)/g) || []
+    assert(sitesFb.length === 2, '★★★ [F-B/v2] 两处注册点都由 paramProps() 从 PARAM_SCHEMA 派生（实测 ' + sitesFb.length + ' 处；写回硬编码字面量会在此变红）')
+    const keysFb = (() => { const m = /const PARAM_PROPS_KEYS = \[([^\]]*)\]/.exec(srcFb); return m ? m[1].split(/,/).map((x) => x.trim().replace(/^.|.$/g, "")).filter(Boolean) : [] })()
+    const propsFb = regs[0].parameters.properties
+    assert(keysFb.length > 0 && keysFb.length === Object.keys(propsFb).length, '★★★ [F-B/v2] 机读键集合 == PARAM_PROPS_KEYS（声明 ' + keysFb.length + ' vs schema ' + Object.keys(propsFb).length + '）')
+    const byNameFb = {}; for (const p of setup.parameters) byNameFb[p.name] = p
+    const missingFb = keysFb.filter((k) => !propsFb[k] || !propsFb[k].description)
+    assert(missingFb.length === 0, '★★★ [F-B/v2] 每个机读描述都来自真源且非空（缺失 ' + JSON.stringify(missingFb) + '）')
+    const mismatchFb = keysFb.filter((k) => byNameFb[k] && propsFb[k].description !== byNameFb[k].description)
+    assert(mismatchFb.length === 0, '★★★ [F-B/v2] 机读 description == PARAM_SCHEMA 真源逐字（不一致 ' + JSON.stringify(mismatchFb) + '）')
+    const extraFb = (() => { const m = /const PARAM_PROPS_EXTRA = \{([\s\S]*?)\n\}/.exec(srcFb); return m ? [...m[1].matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*):/gm)].map((x) => x[1]) : [] })()
+    const docFb = readFileSync(new URL('../docs/parameter-schema.md', import.meta.url), 'utf8')
+    const docKeysFb = new Set([...docFb.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map((m) => m[1]))
+    const undocumentedFb = extraFb.filter((k) => !docKeysFb.has(k))
+    const nFb = docFb.indexOf('## v2（') >= 0 ? Number((docFb.slice(docFb.indexOf('## v2（')).match(/(\d+) 条例外/) || [])[1] || 0) : 0
+    assert(extraFb.length > 0 && undocumentedFb.length === 0 && extraFb.length === nFb, '★★★ [F-B/v2] 例外集合 == docs/parameter-schema.md（实测 ' + extraFb.length + ' vs 文档 ' + nFb + '，未记录 ' + JSON.stringify(undocumentedFb) + '）')
+  }
   assert(/paper \[lang=zh\|en\] \[format=both\|md\|tex\] \[force\]/.test(src), 'the /vibe hint and usage advertise `paper`')
   h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })   // deferred deletion: let the plugin's pending async work finish first (harness flake fix)
 }

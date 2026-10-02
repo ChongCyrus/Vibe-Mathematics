@@ -1,3 +1,7 @@
+// Defect class: A1 skip ledger: same half-contract as v2 — non-exercise must be recorded, not silently skipped.
+// Every assertion below must be falsifiable: tests/*.mutants.mjs contains the matching single-site
+// mutants whose named reds prove it (see docs/parameter-schema.md for the F-B exception table).
+// Run: node tests/math-computation-v3.test.mjs
 // tests/math-computation-v3.test.mjs — v3 接线面验收（math_computation P1）
 //
 // 覆盖 guards.md §1 里属于"预设接线"的部分（1–13、18–20、22 的接线侧 + 16 的提示词面）：

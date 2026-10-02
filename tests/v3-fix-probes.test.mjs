@@ -317,7 +317,26 @@ console.log('\n-- PAPER §6.1 (v3): params — defaults, schema, coercion, both 
   const regs = toolRegs.filter((s) => s.name === 'vibe_math_set_params')
   assert(regs.length === 1 && ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand'].every((k) => !!regs[0].parameters.properties[k]), 'the registered v3 tool schema carries all five paper keys')
   const src = readFileSync(PLUGIN, 'utf8')
-  assert((src.match(/paperCompilePdf: \{ type: 'boolean' \}/g) || []).length === 2, '★★ BOTH v3 set_params tables were updated (spec v2 §B)')
+  // ---- F-B（单一真源）：机读 parameters 由 PARAM_SCHEMA 派生，两处注册点、真源与文档三方一致 ----
+  {
+    const srcFb = readFileSync(PLUGIN, 'utf8')
+    const sitesFb = srcFb.match(/objParams\(paramProps\(\)\)/g) || []
+    assert(sitesFb.length === 2, '★★★ [F-B/v3] 两处注册点都由 paramProps() 从 PARAM_SCHEMA 派生（实测 ' + sitesFb.length + ' 处；写回硬编码字面量会在此变红）')
+    const keysFb = (() => { const m = /const PARAM_PROPS_KEYS = \[([^\]]*)\]/.exec(srcFb); return m ? m[1].split(/,/).map((x) => x.trim().replace(/^.|.$/g, "")).filter(Boolean) : [] })()
+    const propsFb = regs[0].parameters.properties
+    assert(keysFb.length > 0 && keysFb.length === Object.keys(propsFb).length, '★★★ [F-B/v3] 机读键集合 == PARAM_PROPS_KEYS（声明 ' + keysFb.length + ' vs schema ' + Object.keys(propsFb).length + '）')
+    const byNameFb = {}; for (const p of setup.parameters) byNameFb[p.name] = p
+    const missingFb = keysFb.filter((k) => !propsFb[k] || !propsFb[k].description)
+    assert(missingFb.length === 0, '★★★ [F-B/v3] 每个机读描述都来自真源且非空（缺失 ' + JSON.stringify(missingFb) + '）')
+    const mismatchFb = keysFb.filter((k) => byNameFb[k] && propsFb[k].description !== byNameFb[k].description)
+    assert(mismatchFb.length === 0, '★★★ [F-B/v3] 机读 description == PARAM_SCHEMA 真源逐字（不一致 ' + JSON.stringify(mismatchFb) + '）')
+    const extraFb = (() => { const m = /const PARAM_PROPS_EXTRA = \{([\s\S]*?)\n\}/.exec(srcFb); return m ? [...m[1].matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*):/gm)].map((x) => x[1]) : [] })()
+    const docFb = readFileSync(new URL('../docs/parameter-schema.md', import.meta.url), 'utf8')
+    const docKeysFb = new Set([...docFb.matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map((m) => m[1]))
+    const undocumentedFb = extraFb.filter((k) => !docKeysFb.has(k))
+    const nFb = docFb.indexOf('## v3（') >= 0 ? Number((docFb.slice(docFb.indexOf('## v3（')).match(/(\d+) 条例外/) || [])[1] || 0) : 0
+    assert(extraFb.length > 0 && undocumentedFb.length === 0 && extraFb.length === nFb, '★★★ [F-B/v3] 例外集合 == docs/parameter-schema.md（实测 ' + extraFb.length + ' vs 文档 ' + nFb + '，未记录 ' + JSON.stringify(undocumentedFb) + '）')
+  }
   assert(/paper \[lang=zh\|en\] \[format=both\|md\|tex\] \[force\]/.test(src), 'the /vibe hint and usage advertise `paper`')
 }
 

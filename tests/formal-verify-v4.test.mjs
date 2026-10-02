@@ -16,7 +16,10 @@
 //   site 3 settleLeanJob    - the injected index-write failure is consumed by whichever
 //                             rebuildLeanLibIndexes() caller fires first (measured: armed=3,
 //                             failed=1, warning not emitted), so the mock cannot discriminate the
-//                             caller that this site guards.
+//                             caller that this site guards. Caller-discriminating injection was
+//                             attempted (run every other rebuild caller first, then arm): the settle
+//                             path's index write was still never reached (measured failed=0) -
+//                             caller-discriminating injection attempted, still not reached.
 //   site 4 realCompact      - realCompact returns early unless liveAgentOf(r.childId) resolves; this
 //                             mock's agents.get() maps only sess-A, so a resident turn never reaches
 //                             the compaction call (probe: the service is never invoked).

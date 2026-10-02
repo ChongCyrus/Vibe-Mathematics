@@ -1,3 +1,118 @@
+// ================= F-B: 参数机读 schema 的单一真源（模块作用域） =================
+// 工具面 `vibe_math_set_params` 的 `parameters` 由 PARAM_SCHEMA 派生，描述/类型只有一处真源
+//（真源与例外说明见 docs/parameter-schema.md）。本块整体位于**模块作用域**，因为本文件定义了两处
+// `objParams`（会话层 makeSession + apply 层）——只有模块作用域能被两层同时看见（rehearsal 曾因此
+// 让 apply 层拿到只有例外项的残缺 schema）。下列常量与 PARAM_SCHEMA 是从 makeSession 内**逐字上移**的纯
+// 常量（值不变、作用域上移），会话层原有引用照旧解析到它们。
+  const IS_WINDOWS = process.platform === 'win32'
+  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
+  const NETWORK_TOOLS = ['web_search', 'web_fetch']
+const ACTIVITY_REPORT_MAX = 30
+const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
+  const PARAM_SCHEMA = [
+    { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
+    { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
+    { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数', suggestion: 3 },
+    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向', suggestion: 1 },
+    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（实际下界为 2：少于 2 份独立评审一律不定论，见 minVotes）', suggestion: 3 },
+    { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
+    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: '裁决模式：flat = 均衡机制（分歧时 0.5）；forced = 强制裁决（对每票等权取均值；严格 1/0 是绝对投票，其影响通过数值本身拉向端点。**不按"历史准确率"加权**——该统计量统计的是与本批裁决的一致度，没有后续真值可纠正）；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值，修复 v2 flat 误判）', suggestion: 'forced' },
+    { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
+    { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
+    { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
+    { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
+    { name: 'explorerPersona', type: 'string', description: '注入每个 explorer/重派生提示词开头的人格/要求', suggestion: '' },
+    { name: 'plannerPersona', type: 'string', description: '注入规划代理提示词开头的人格/要求', suggestion: '' },
+    { name: 'methodKeeperPersona', type: 'string', description: '注入方法整理代理提示词开头的人格/要求', suggestion: '' },
+    { name: 'knowledgeContext', type: 'string', description: '共享知识/数据模型说明（空 = 内置完整版；非空 = 覆盖）', suggestion: '' },
+    { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
+    { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
+    { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
+    { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
+    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承；true=允许；false=禁止', suggestion: '' },
+    { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关', suggestion: '' },
+    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关', suggestion: '' },
+    { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关', suggestion: '' },
+    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
+    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
+    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动', suggestion: 0 },
+    { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息；both = 两者', suggestion: 'file' },
+    { name: 'promoteValueThreshold', type: 'number', description: '命题「价值/关键性」≥ 该值且未决(0,1) 时自动晋升为问题', suggestion: 0.7 },
+    { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '问题优先级动态调整策略', suggestion: 'none' },
+    { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整策略', suggestion: 'none' },
+    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）', suggestion: 2000 },
+    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
+    { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限', suggestion: 3 },
+    { name: 'planningHorizon', type: 'integer', description: '规划代理一次计划的最多动作数（"接下来 n 次"）', suggestion: 3 },
+    { name: 'plannerEnabled', type: 'boolean', description: 'false = 完全走内置启发式调度（规划代理禁用）', suggestion: true },
+    { name: 'plannerProvider', type: 'string', description: '规划代理模型 provider（空 = 继承根代理）', suggestion: '' },
+    { name: 'plannerModel', type: 'string', description: '规划代理模型 id（空 = 继承根代理）', suggestion: '' },
+    { name: 'planMinIntervalMs', type: 'integer', description: '每一次规划调用的最小间隔（毫秒）；对**每一次**规划调用都生效（含空计划、含「空闲但仍有工作」，不再有空闲绕过）', suggestion: 30000 },
+    { name: 'plannerMaxFails', type: 'integer', description: '规划代理连续失败达此值 → 自动降级启发式', suggestion: 3 },
+    { name: 'methodKeepIntervalMs', type: 'integer', description: 'Method Keeper 定时整理间隔（0 = 事件驱动）', suggestion: 0 },
+    { name: 'methodKeepEvery', type: 'integer', description: '每积累 N 个待沉淀发明/新命题触发一次整理', suggestion: 5 },
+    { name: 'methodAutoPromote', type: 'boolean', description: '项目级方法自动晋升全局库（false = 人工门）', suggestion: false },
+    { name: 'indexAutoRebuild', type: 'boolean', description: '每次写盘后自动重建索引（false = 手动 vibe_math_index）', suggestion: true },
+    { name: 'projectLockTimeoutMs', type: 'integer', description: '项目锁等待超时（毫秒）', suggestion: 60000 },
+    { name: 'fileLockTimeoutMs', type: 'integer', description: '文件写锁租约时长（毫秒，默认 60000，最小 1000）：持有代理存活期间自动续租，持有者消失后最多这么久失效，避免长文写入被别人抢锁（审计 D2）', suggestion: 60000 },
+    { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证：off = 不额外要求（默认，提示词里不出现任何 Lean 内容）；encourage = 鼓励按实现难度形式化，Lean 通过后验证转为忠实性审查；require = 同上并加门禁：真/假定论必须先达到 Lean 已通过 或 已记录显式阻塞原因，否则记为未定论（formal-required）并进「形式化待办」', suggestion: 'off' },
+    { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
+    { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
+    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）；异步档下它同时是**每个后台作业**的预算（到时主动 terminate，作业记 timeout，对象留在 attempted）', suggestion: 120000 },
+    { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
+    { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
+    { name: 'leanInitiative', type: 'enum', options: ['off', 'normal', 'eager'], description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
+    { name: 'leanSearchPaths', type: 'string[]', description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
+    { name: 'finalPaper', type: 'boolean', description: '收口（checkTermination 的完整收口分支：无未解决问题、无待验证对象、无任务/计划/门）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已定论命题/解法/方法整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
+    { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md（跳过编译）；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
+    { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
+    { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志（不阻塞定稿）', suggestion: true },
+    { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。解析不到时按"未检测到"降级', suggestion: '' },
+    // ---- 数学计算 math_computation（六参数冻结；描述与 prompts.md §1/§6 口径一致）----
+    { name: 'mathComputation', type: 'enum', options: ['off', 'auto', 'on'], description: '数学计算总开关：off = 真无操作（提示词零提及）；auto = 探测到 mathEngines 里任一允许引擎才工作；on = 同上（探测失败时工具仍返回可执行的安装指引，而不是假装可用）', suggestion: 'auto' },
+    { name: 'mathMode', type: 'enum', options: ['typed', 'typed+shell'], description: '计算策略：typed+shell（默认）= 工具不可用时允许宿主 shell 兜底，但结论必须标注"未经工具归档（shell 路径）"；typed = 只用工具路径（提示词里不出现 shell 兜底段，engine:"cli" 返回 REFUSED{reason:policy}）', suggestion: 'typed+shell' },
+    { name: 'mathEngines', type: 'string[]', description: '允许的引擎列表（默认 python|r|octave|julia|matlab|maple|wolfram|cli）。cli 默认开启且走同一套超时/输出上限/回执；从列表里移除某引擎即禁用（商业引擎只探测+许可，永不安装）', suggestion: MATH_PARAM_DEFAULTS.mathEngines.slice() },
+    { name: 'mathTimeoutMs', type: 'integer', description: '单次数学计算的超时上限（毫秒，默认 60000，最小 1000）；到时主动 terminate 并把回执标为 MATH_TIMEOUT', suggestion: 60000 },
+    { name: 'mathPackages', type: 'string[]', description: '需要预检的包（默认空）。缺包只报告 + 给"用户自装指引"或"代理代装计划"，不会执行脚本，也永不自动安装', suggestion: [] },
+    { name: 'mathInstallScope', type: 'enum', options: ['user', 'system'], description: '安装作用域：user（默认，用户级目录）；system 只对当次显式调用生效、永不记忆（不会写进状态文件）', suggestion: 'user' },
+  ]
+
+// 钉住"机读键集合"（现状 v2=49 / v3=63 个，不随 PARAM_SCHEMA 增删而漂移）。
+const PARAM_PROPS_KEYS = ['mode', 'maxParallelThreshold', 'solverMaxRounds', 'verifierCount', 'debateMaxRounds', 'verdictMode', 'reportMode', 'promoteValueThreshold', 'priorityAdjust', 'proposPriorityAdjust', 'provider', 'model', 'solverPersona', 'verifierPersona', 'explorerPersona', 'plannerPersona', 'methodKeeperPersona', 'knowledgeContext', 'solverToolAllow', 'solverToolDeny', 'verifierToolAllow', 'verifierToolDeny', 'solverAllowNetwork', 'verifierAllowNetwork', 'solverAllowScripts', 'verifierAllowScripts', 'solverMaxToolCalls', 'verifierMaxToolCalls', 'reportIntervalMs', 'tickIntervalMs', 'activityLogCap', 'maxExplorerRetries', 'directionsPerSolver', 'planningHorizon', 'plannerEnabled', 'plannerProvider', 'plannerModel', 'planMinIntervalMs', 'plannerMaxFails', 'methodKeepIntervalMs', 'methodKeepEvery', 'methodAutoPromote', 'indexAutoRebuild', 'projectLockTimeoutMs', 'formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs', 'leanAsync', 'leanJobsMaxParallel', 'leanInitiative', 'leanSearchPaths', 'mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPackages', 'mathInstallScope', 'finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand']
+// 源无法表达的条目：数组 items / oneOf / mode 的现状枚举顺序 —— 逐字沿用，并由
+// "例外集合 == docs/parameter-schema.md" 断言钉住。
+const PARAM_PROPS_EXTRA = {
+solverToolAllow: { type: 'array', items: { type: 'string' } },
+solverToolDeny: { type: 'array', items: { type: 'string' } },
+verifierToolAllow: { type: 'array', items: { type: 'string' } },
+verifierToolDeny: { type: 'array', items: { type: 'string' } },
+leanArgs: { type: 'array', items: { type: 'string' } },
+mathEngines: { type: 'array', items: { type: 'string' } },
+mathPackages: { type: 'array', items: { type: 'string' } },
+leanSearchPaths: { type: 'array', items: { type: 'string' } },
+mode: { type: 'string', enum: ['manual', 'auto'] },
+}
+function paramProps() {
+  const props = {}
+  for (const name of PARAM_PROPS_KEYS) {
+    const e = PARAM_SCHEMA.find(function (x) { return x && x.name === name })
+    if (!e) continue
+    const enumVals = (Array.isArray(e.enum) && e.enum.length) ? e.enum : ((Array.isArray(e.options) && e.options.length) ? e.options : null)
+    const isEnum = e.type === 'enum' || !!enumVals
+    const p = isEnum ? { type: 'string', enum: (enumVals || []).slice() } : { type: e.type }
+    if (e.description) p.description = e.description
+    props[name] = p
+  }
+  // 例外表覆盖"源无法表达"的字段，但**保留源里的描述**（覆盖度 v2 49/49、v3 63/63）
+  for (const k of Object.keys(PARAM_PROPS_EXTRA)) {
+    const base = props[k] || {}
+    props[k] = Object.assign({}, PARAM_PROPS_EXTRA[k])
+    if (base.description) props[k].description = base.description
+  }
+  return props
+}
+// ================= end F-B =================
+
 // Vibe Math V3 — host plugin implementing the THIRD-generation architecture
 // ("vibe-math-v3/实现方案.md"): paper-style Markdown knowledge base + agent
 // self-organizing scheduling + universal theory/method invention library.
@@ -228,7 +343,6 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
   const VERIFIER_ACC_KEEP = 200
 // F2（对照 v2:221）：status 与 report 的 recentActivity **共用**这一上限；参数 activityLogCap
 // 只能把它调小、不能调大（旧实现 status 硬编码 10、report 硬编码 30，读者无从知道）。
-const ACTIVITY_REPORT_MAX = 30
   function pruneVerifierAccuracy() {
     const keys = Object.keys(verifierAccuracy)
     for (let i = 0; i < keys.length - VERIFIER_ACC_KEEP; i++) delete verifierAccuracy[keys[i]]
@@ -308,73 +422,6 @@ const ACTIVITY_REPORT_MAX = 30
   function makeSignal(ms) { return AbortSignal.timeout(ms || 30000) }
 
   // ================= parameter schema =================
-  const PARAM_SCHEMA = [
-    { name: 'mode', type: 'enum', options: ['auto', 'manual'], description: 'auto = 无人值守自动通过关键节点；manual = 关键节点挂起人工决策', suggestion: 'auto' },
-    { name: 'maxParallelThreshold', type: 'integer', description: '全局最大并发子代理轮数（新派发前须满足 active < 阈值）', suggestion: 4 },
-    { name: 'solverMaxRounds', type: 'integer', description: '每个求解方向的最大迭代轮数', suggestion: 3 },
-    { name: 'directionsPerSolver', type: 'integer', description: '每个 solver 提示词附带的其他活跃方向摘要数量：1 = 只看自己方向', suggestion: 1 },
-    { name: 'verifierCount', type: 'integer', description: '每个验证对象的独立验证器数量（实际下界为 2：少于 2 份独立评审一律不定论，见 minVotes）', suggestion: 3 },
-    { name: 'debateMaxRounds', type: 'integer', description: '验证辩论（交流群）最大轮数', suggestion: 5 },
-    { name: 'verdictMode', type: 'enum', options: ['flat', 'forced'], description: '裁决模式：flat = 均衡机制（分歧时 0.5）；forced = 强制裁决（对每票等权取均值；严格 1/0 是绝对投票，其影响通过数值本身拉向端点。**不按"历史准确率"加权**——该统计量统计的是与本批裁决的一致度，没有后续真值可纠正）；两者都先做近共识判定（同侧且均值≥0.85/≤0.15取均值，修复 v2 flat 误判）', suggestion: 'forced' },
-    { name: 'provider', type: 'string', description: '子代理模型 provider（空 = 继承根代理）', suggestion: '' },
-    { name: 'model', type: 'string', description: '子代理模型 id（空 = 继承根代理）', suggestion: '' },
-    { name: 'solverPersona', type: 'string', description: '注入每个求解器提示词开头的人格/要求', suggestion: '' },
-    { name: 'verifierPersona', type: 'string', description: '注入每个验证器提示词开头的人格/要求', suggestion: '' },
-    { name: 'explorerPersona', type: 'string', description: '注入每个 explorer/重派生提示词开头的人格/要求', suggestion: '' },
-    { name: 'plannerPersona', type: 'string', description: '注入规划代理提示词开头的人格/要求', suggestion: '' },
-    { name: 'methodKeeperPersona', type: 'string', description: '注入方法整理代理提示词开头的人格/要求', suggestion: '' },
-    { name: 'knowledgeContext', type: 'string', description: '共享知识/数据模型说明（空 = 内置完整版；非空 = 覆盖）', suggestion: '' },
-    { name: 'solverToolAllow', type: 'string[]', description: '求解器允许的工具名列表（空 = 继承全部工具）', suggestion: [] },
-    { name: 'solverToolDeny', type: 'string[]', description: '求解器禁止的工具名列表', suggestion: [] },
-    { name: 'verifierToolAllow', type: 'string[]', description: '验证器允许的工具名列表', suggestion: [] },
-    { name: 'verifierToolDeny', type: 'string[]', description: '验证器禁止的工具名列表', suggestion: [] },
-    { name: 'solverAllowNetwork', type: 'boolean', description: '求解器网络工具开关：空=继承；true=允许；false=禁止', suggestion: '' },
-    { name: 'verifierAllowNetwork', type: 'boolean', description: '验证器网络工具开关', suggestion: '' },
-    { name: 'solverAllowScripts', type: 'boolean', description: '求解器脚本工具开关', suggestion: '' },
-    { name: 'verifierAllowScripts', type: 'boolean', description: '验证器脚本工具开关', suggestion: '' },
-    { name: 'solverMaxToolCalls', type: 'integer', description: '求解器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
-    { name: 'verifierMaxToolCalls', type: 'integer', description: '验证器每轮外部工具调用上限（0 = 不限）', suggestion: 0 },
-    { name: 'reportIntervalMs', type: 'integer', description: '进度汇报间隔（毫秒）：0 = 仅事件驱动', suggestion: 0 },
-    { name: 'reportMode', type: 'enum', options: ['file', 'push', 'both'], description: 'file = 写报告文件；push = 推送消息；both = 两者', suggestion: 'file' },
-    { name: 'promoteValueThreshold', type: 'number', description: '命题「价值/关键性」≥ 该值且未决(0,1) 时自动晋升为问题', suggestion: 0.7 },
-    { name: 'priorityAdjust', type: 'enum', options: ['none', 'deadend-deprioritize', 'survival-map'], description: '问题优先级动态调整策略', suggestion: 'none' },
-    { name: 'proposPriorityAdjust', type: 'enum', options: ['none', 'progress-graded'], description: '命题优先级动态调整策略', suggestion: 'none' },
-    { name: 'tickIntervalMs', type: 'integer', description: '调度器心跳间隔（毫秒）', suggestion: 2000 },
-    { name: 'activityLogCap', type: 'integer', description: '活动日志保留条数（影响 status/report 里 recentActivity 的细节量，两者最多显示 ' + ACTIVITY_REPORT_MAX + ' 条）', suggestion: 100 },
-    { name: 'maxExplorerRetries', type: 'integer', description: 'explorer 拆方向失败的重派生上限', suggestion: 3 },
-    { name: 'planningHorizon', type: 'integer', description: '规划代理一次计划的最多动作数（"接下来 n 次"）', suggestion: 3 },
-    { name: 'plannerEnabled', type: 'boolean', description: 'false = 完全走内置启发式调度（规划代理禁用）', suggestion: true },
-    { name: 'plannerProvider', type: 'string', description: '规划代理模型 provider（空 = 继承根代理）', suggestion: '' },
-    { name: 'plannerModel', type: 'string', description: '规划代理模型 id（空 = 继承根代理）', suggestion: '' },
-    { name: 'planMinIntervalMs', type: 'integer', description: '每一次规划调用的最小间隔（毫秒）；对**每一次**规划调用都生效（含空计划、含「空闲但仍有工作」，不再有空闲绕过）', suggestion: 30000 },
-    { name: 'plannerMaxFails', type: 'integer', description: '规划代理连续失败达此值 → 自动降级启发式', suggestion: 3 },
-    { name: 'methodKeepIntervalMs', type: 'integer', description: 'Method Keeper 定时整理间隔（0 = 事件驱动）', suggestion: 0 },
-    { name: 'methodKeepEvery', type: 'integer', description: '每积累 N 个待沉淀发明/新命题触发一次整理', suggestion: 5 },
-    { name: 'methodAutoPromote', type: 'boolean', description: '项目级方法自动晋升全局库（false = 人工门）', suggestion: false },
-    { name: 'indexAutoRebuild', type: 'boolean', description: '每次写盘后自动重建索引（false = 手动 vibe_math_index）', suggestion: true },
-    { name: 'projectLockTimeoutMs', type: 'integer', description: '项目锁等待超时（毫秒）', suggestion: 60000 },
-    { name: 'fileLockTimeoutMs', type: 'integer', description: '文件写锁租约时长（毫秒，默认 60000，最小 1000）：持有代理存活期间自动续租，持有者消失后最多这么久失效，避免长文写入被别人抢锁（审计 D2）', suggestion: 60000 },
-    { name: 'formalVerify', type: 'enum', options: ['off', 'encourage', 'require'], description: 'Lean 形式化验证：off = 不额外要求（默认，提示词里不出现任何 Lean 内容）；encourage = 鼓励按实现难度形式化，Lean 通过后验证转为忠实性审查；require = 同上并加门禁：真/假定论必须先达到 Lean 已通过 或 已记录显式阻塞原因，否则记为未定论（formal-required）并进「形式化待办」', suggestion: 'off' },
-    { name: 'leanCommand', type: 'string', description: 'Lean 可执行文件（例：lean / lake；配合 leanArgs=[env,lean] 用 lake）', suggestion: 'lean' },
-    { name: 'leanArgs', type: 'string[]', description: '插在 .lean 文件名之前的附加参数', suggestion: [] },
-    { name: 'leanTimeoutMs', type: 'integer', description: '单次 Lean 运行的超时上限（毫秒，非正数回退默认）；异步档下它同时是**每个后台作业**的预算（到时主动 terminate，作业记 timeout，对象留在 attempted）', suggestion: 120000 },
-    { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
-    { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
-    { name: 'leanInitiative', type: 'enum', options: ['off', 'normal', 'eager'], description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
-    { name: 'leanSearchPaths', type: 'string[]', description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
-    { name: 'finalPaper', type: 'boolean', description: '收口（checkTermination 的完整收口分支：无未解决问题、无待验证对象、无任务/计划/门）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已定论命题/解法/方法整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
-    { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md（跳过编译）；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
-    { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
-    { name: 'paperCompilePdf', type: 'boolean', description: '检测到 LaTeX 时是否编译 paper.pdf（-interaction=nonstopmode 跑两遍；失败先尝试修复：换引擎/去不支持宏包/最小模板）。false 或无 LaTeX 时只保留 tex+md 并记日志（不阻塞定稿）', suggestion: true },
-    { name: 'paperLatexCommand', type: 'string', description: '指定 LaTeX 引擎可执行文件（空 = 按语言探测：中文 xelatex > latexmk > pdflatex > lualatex > tectonic；英文 pdflatex 优先）。解析不到时按"未检测到"降级', suggestion: '' },
-    // ---- 数学计算 math_computation（六参数冻结；描述与 prompts.md §1/§6 口径一致）----
-    { name: 'mathComputation', type: 'enum', options: ['off', 'auto', 'on'], description: '数学计算总开关：off = 真无操作（提示词零提及）；auto = 探测到 mathEngines 里任一允许引擎才工作；on = 同上（探测失败时工具仍返回可执行的安装指引，而不是假装可用）', suggestion: 'auto' },
-    { name: 'mathMode', type: 'enum', options: ['typed', 'typed+shell'], description: '计算策略：typed+shell（默认）= 工具不可用时允许宿主 shell 兜底，但结论必须标注"未经工具归档（shell 路径）"；typed = 只用工具路径（提示词里不出现 shell 兜底段，engine:"cli" 返回 REFUSED{reason:policy}）', suggestion: 'typed+shell' },
-    { name: 'mathEngines', type: 'string[]', description: '允许的引擎列表（默认 python|r|octave|julia|matlab|maple|wolfram|cli）。cli 默认开启且走同一套超时/输出上限/回执；从列表里移除某引擎即禁用（商业引擎只探测+许可，永不安装）', suggestion: MATH_PARAM_DEFAULTS.mathEngines.slice() },
-    { name: 'mathTimeoutMs', type: 'integer', description: '单次数学计算的超时上限（毫秒，默认 60000，最小 1000）；到时主动 terminate 并把回执标为 MATH_TIMEOUT', suggestion: 60000 },
-    { name: 'mathPackages', type: 'string[]', description: '需要预检的包（默认空）。缺包只报告 + 给"用户自装指引"或"代理代装计划"，不会执行脚本，也永不自动安装', suggestion: [] },
-    { name: 'mathInstallScope', type: 'enum', options: ['user', 'system'], description: '安装作用域：user（默认，用户级目录）；system 只对当次显式调用生效、永不记忆（不会写进状态文件）', suggestion: 'user' },
-  ]
 
   // ================= fs (adapted to DSH 0.1.1: resolve returns {targetKey, displayPath}) =================
   async function fsTarget(rel) { return await fs.resolve(rel, { cwd: frameworkRoot() }) }
@@ -1419,11 +1466,8 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   // host applies the filter when establishing a continuable child
   // (dsh-subagent: childCtx.tools.restrict(...)), so a stale name meant the child
   // was never created at all.
-  const IS_WINDOWS = process.platform === 'win32'
-  const SCRIPT_TOOLS = IS_WINDOWS ? ['pwsh'] : ['bash']
   // 'web_fetch' is only registered when the composition enables fetch (the v4
   // preset sets `fetch: false`), so it is a candidate that sanitizeToolFilter drops.
-  const NETWORK_TOOLS = ['web_search', 'web_fetch']
   /**
    * Drop filter names this host does not register. `known` comes from the host's
    * own rejection message, which lists every registered global tool, so this
@@ -4956,7 +5000,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), async function () { await refreshParams(); return await getStatus() })
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), async function () { await refreshParams(); await maybeWriteReport(true); return await buildReport() })
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), async function (args) { params.mode = args.mode; await saveAll(); await saveSettings(); if (params.mode === 'auto') await autoResolvePending(); return { ok: true, mode: params.mode } })
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); if (args && MATH_PARAM_NAMES.some(function (k) { return k in args })) { try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响参数保存 */ } } return { ok: true, params: params } })
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams(paramProps()), async function (args) { params = Object.assign({}, params, sanitizeParams(args)); await saveAll(); await saveSettings(); if (args && MATH_PARAM_NAMES.some(function (k) { return k in args })) { try { await refreshMathProbe(true) } catch (e) { /* 探测失败不影响参数保存 */ } } return { ok: true, params: params } })
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), async function () { await refreshParams(); const list = PARAM_SCHEMA.map(function (p) { const out = Object.assign({}, p); out.current = params[p.name]; out.default = DEFAULT_PARAMS[p.name]; return out }); return { ok: true, parameters: list, saveTo: frameworkRoot() + '/vibe_math_setting.json' } })
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), async function () { return await saveSettings() })
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), async function (args) { return await createTemplate((args && args.where) || 'global') })
@@ -5316,7 +5360,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   registerTool('vibe_math_status', TOOL_DESC.vibe_math_status, objParams({}), 'vibe_math_status')
   registerTool('vibe_math_report', TOOL_DESC.vibe_math_report, objParams({}), 'vibe_math_report')
   registerTool('vibe_math_set_mode', TOOL_DESC.vibe_math_set_mode, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }, ['mode']), 'vibe_math_set_mode')
-  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams({ mode: { type: 'string', enum: ['manual', 'auto'] }, maxParallelThreshold: { type: 'integer' }, solverMaxRounds: { type: 'integer' }, verifierCount: { type: 'integer' }, debateMaxRounds: { type: 'integer' }, verdictMode: { type: 'string', enum: ['flat', 'forced'] }, reportMode: { type: 'string', enum: ['file', 'push', 'both'] }, promoteValueThreshold: { type: 'number' }, priorityAdjust: { type: 'string', enum: ['none', 'deadend-deprioritize', 'survival-map'] }, proposPriorityAdjust: { type: 'string', enum: ['none', 'progress-graded'] }, provider: { type: 'string' }, model: { type: 'string' }, solverPersona: { type: 'string' }, verifierPersona: { type: 'string' }, explorerPersona: { type: 'string' }, plannerPersona: { type: 'string' }, methodKeeperPersona: { type: 'string' }, knowledgeContext: { type: 'string' }, solverToolAllow: { type: 'array', items: { type: 'string' } }, solverToolDeny: { type: 'array', items: { type: 'string' } }, verifierToolAllow: { type: 'array', items: { type: 'string' } }, verifierToolDeny: { type: 'array', items: { type: 'string' } }, solverAllowNetwork: { type: 'boolean' }, verifierAllowNetwork: { type: 'boolean' }, solverAllowScripts: { type: 'boolean' }, verifierAllowScripts: { type: 'boolean' }, solverMaxToolCalls: { type: 'integer' }, verifierMaxToolCalls: { type: 'integer' }, reportIntervalMs: { type: 'integer' }, tickIntervalMs: { type: 'integer' }, activityLogCap: { type: 'integer' }, maxExplorerRetries: { type: 'integer' }, directionsPerSolver: { type: 'integer' }, planningHorizon: { type: 'integer' }, plannerEnabled: { type: 'boolean' }, plannerProvider: { type: 'string' }, plannerModel: { type: 'string' }, planMinIntervalMs: { type: 'integer' }, plannerMaxFails: { type: 'integer' }, methodKeepIntervalMs: { type: 'integer' }, methodKeepEvery: { type: 'integer' }, methodAutoPromote: { type: 'boolean' }, indexAutoRebuild: { type: 'boolean' }, projectLockTimeoutMs: { type: 'integer' }, formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] }, leanCommand: { type: 'string' }, leanArgs: { type: 'array', items: { type: 'string' } }, leanTimeoutMs: { type: 'integer' }, leanAsync: { type: 'boolean' }, leanJobsMaxParallel: { type: 'integer' }, leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] }, leanSearchPaths: { type: 'array', items: { type: 'string' } }, mathComputation: { type: 'string', enum: ['off', 'auto', 'on'] }, mathMode: { type: 'string', enum: ['typed', 'typed+shell'] }, mathEngines: { type: 'array', items: { type: 'string' } }, mathTimeoutMs: { type: 'integer' }, mathPackages: { type: 'array', items: { type: 'string' } }, mathInstallScope: { type: 'string', enum: ['user', 'system'] }, finalPaper: { type: 'boolean' }, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] }, paperLanguage: { type: 'string', enum: ['zh', 'en'] }, paperCompilePdf: { type: 'boolean' }, paperLatexCommand: { type: 'string' } }), 'vibe_math_set_params')
+  registerTool('vibe_math_set_params', TOOL_DESC.vibe_math_set_params, objParams(paramProps()), 'vibe_math_set_params')
   registerTool('vibe_math_setup', TOOL_DESC.vibe_math_setup, objParams({}), 'vibe_math_setup')
   registerTool('vibe_math_save_settings', TOOL_DESC.vibe_math_save_settings, objParams({}), 'vibe_math_save_settings')
   registerTool('vibe_math_template', TOOL_DESC.vibe_math_template, objParams({ where: { type: 'string', enum: ['global', 'project'] } }), 'vibe_math_template')
@@ -5765,7 +5809,6 @@ function leanJobId(key, fingerprint) {
 /** "已落地且通过"的**唯一**判据：state=settled 且 exit 0 且未超时未中断（内容哈希由 settle 校验）。 */
 function leanJobSettledOk(rec) { return !!rec && rec.state === 'settled' && rec.exitCode === 0 && !rec.timedOut && !rec.interrupted }
 /** 主动性档位（修订 §1）：与"验证时的要求强度"（formalVerify）是两件事。 */
-const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
 
 export const __testHelpers = {
   uuid,

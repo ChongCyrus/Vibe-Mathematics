@@ -69,6 +69,14 @@ const FAMILIES = [
     from: "noteStateWriteFailure('current.' + safeId(sessionId) + '.json', (e && e.message) || e)", to: 'void e' },
 ]
 let red = 0
+FAMILIES.push(
+  { name: 'F-B: derivation drops the source descriptions', expect: /\[F-B\/v3\] 每个机读描述都来自真源且非空/,
+    from: 'if (e.description) p.description = e.description', to: 'void e /* MUTANT F-B: no source description */' },
+  { name: 'F-B: one exception entry deleted', expect: /\[F-B\/v3\] 例外集合 == docs\/parameter-schema\.md/,
+    from: "mode: { type: 'string', enum: ['manual', 'auto'] },", to: '' },
+  { name: 'F-B: one registration site reverted to a literal', expect: /\[F-B\/v3\] 两处注册点都由 paramProps\(\)/,
+    from: "objParams(paramProps()), 'vibe_math_set_params')", to: "objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }), 'vibe_math_set_params')" },
+)
 for (const f of FAMILIES) if (runFamily(f)) red++
 console.log('')
 console.log('mutant families reddening the v3 probe by name: ' + red + '/' + FAMILIES.length)
