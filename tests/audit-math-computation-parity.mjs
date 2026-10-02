@@ -276,6 +276,18 @@ for (const f of MODULES) {
 // here: parity reads the shipped copy unconditionally, so a mutant cannot reach what it reads (the
 // assertion would exist but could never redden). What parity keeps is the canonical<->copy byte identity,
 // which makes a canonical-only change impossible to ship unnoticed - a stronger defence than a text grep.
+// ── 11. S6: the version policy has ONE wording (constant + helper), not one per path.
+{
+  const mc = readFileSync(join(REPO, 'vibe-math-v2', 'math-computation.js'), 'utf8')
+  ok((mc.match(/version-constraints-are-existence-only: /g) || []).length === 1, '★ S6: the policy wording appears exactly ONCE (in MATH_VERSION_POLICY)')
+  ok(/function mathVersionPolicy\(/.test(mc), 'S6: the shared helper mathVersionPolicy() exists')
+  ok(mc.indexOf('版本求解交给包管理器（本工具只检查是否已安装') === -1, '★ S6: the old divergent install-plan wording is gone')
+  ok(/versionPolicy: mathVersionPolicy\(args\.packages/.test(mc), 'S6: the install plan builds its wording through the helper')
+  ok((mc.match(/只检查是否存在；版本求解交给包管理器/g) || []).length === 1, '★ S6: the policy clause literal appears exactly ONCE (MATH_VERSION_POLICY_CLAUSE)')
+  ok(/const MATH_VERSION_POLICY = .*MATH_VERSION_POLICY_CLAUSE/.test(mc), 'S6: the long policy sentence is DERIVED from the clause')
+  ok(/MATH_MISSING_PACKAGES[\s\S]{0,120}MATH_VERSION_POLICY_CLAUSE/.test(mc), 'S6: the missing-package detail derives the clause')
+}
+
 console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -1121,6 +1121,40 @@ console.log('')
   ok(src.indexOf('MATH_INSTALL_FAILED') === -1, 'no 12th failure code was added (MATH_FAILURE_CODES stays frozen)')
 }
 
+// ── 34. S6: the install plan, the run path and the missing-package failure state ONE policy the
+// same way (behavioural: read from the responses, not from the source text).
+{
+  const PREFIX = 'version-constraints-are-existence-only: '
+  const h = makeFakeHost({ installed: ['python3'] })
+  M.registerMathComputation(h.host)
+  const plan = await h.call({ op: 'install', packages: ['numpy==1.2.3'] })
+  const planPolicy = String((plan && plan.plan && plan.plan.versionPolicy) || '')
+  ok(plan.ok === true && !!plan.plan, 'S6: an install dry-run returns a plan', JSON.stringify(plan && plan.code))
+  ok(planPolicy.indexOf(PREFIX) === 0, '★ S6: the install plan uses the SAME policy wording as the run path', planPolicy.slice(0, 70))
+  ok(planPolicy.indexOf('numpy==1.2.3') !== -1, '★ S6: the plan names the pinned spec it does not enforce', planPolicy.slice(0, 90))
+  const miss = await h.call({ op: 'run', engine: 'python', mode: 'code', packages: ['numpy==1.2.3'], code: 'x=1\n' })
+  ok(miss.ok === false && miss.code === 'MATH_MISSING_PACKAGES', 'S6: a pinned-but-missing package fails as MATH_MISSING_PACKAGES', JSON.stringify(miss.code))
+  ok(String(miss.versionPolicy || '').indexOf(PREFIX) === 0, '★ S6: the failure path uses the same wording', String(miss.versionPolicy || '').slice(0, 70))
+  ok(String(miss.versionPolicy || '') === planPolicy, '★ S6: plan and failure wording are byte-identical for the same spec', JSON.stringify([planPolicy.slice(0, 40), String(miss.versionPolicy || '').slice(0, 40)]))
+  ok(String(miss.message || '').indexOf('只检查是否存在；版本求解交给包管理器') !== -1, '★ S6: the MATH_MISSING_PACKAGES detail derives the same clause', String(miss.message || '').slice(0, 70))
+  const badSpec = M.parsePackageSpec('numpy@1.2')
+  ok(badSpec && badSpec.ok === false && String(badSpec.problem || '').indexOf('只检查是否存在；版本求解交给包管理器') !== -1, '★ S6: the unsupported-version-syntax message derives the same clause', String((badSpec && badSpec.problem) || '').slice(0, 80))
+  ok(String(planPolicy || '').indexOf('只检查是否存在；版本求解交给包管理器') !== -1, '★ S6: the policy FIELD itself contains that clause (one literal, three surfaces)', planPolicy.slice(0, 80))
+}
+
+// ── 35. S6 derivation is LOAD-BEARING (found by mutant case 2): "the message contains the clause" also
+// passes when the message RE-INLINES the same words, so the real checks are (a) the clause exists as
+// exactly ONE literal in the module and (b) the two human messages are built from the constant.
+{
+  const src = readFileSync(fileURLToPath(new URL(MODULE)), 'utf8')
+  const clause = '只检查是否存在；版本求解交给包管理器'
+  const occurrences = src.split(clause).length - 1
+  ok(occurrences === 1, '★ S6: the policy clause exists as exactly ONE literal in the module (a re-inlined message is caught)', 'occurrences=' + occurrences)
+  ok(/MATH_MISSING_PACKAGES[\s\S]{0,160}MATH_VERSION_POLICY_CLAUSE/.test(src), '★ S6: the missing-package detail is built from the clause constant', 'MATH_MISSING_PACKAGES … MATH_VERSION_POLICY_CLAUSE')
+  ok(/unsupported version syntax[\s\S]{0,160}MATH_VERSION_POLICY_CLAUSE/.test(src), '★ S6: the unsupported-version-syntax message is built from the clause constant')
+  ok(/const MATH_VERSION_POLICY = .*MATH_VERSION_POLICY_CLAUSE/.test(src), '★ S6: the long policy sentence is derived from the clause')
+}
+
 console.log('=== MATH COMPUTATION SHARED: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)

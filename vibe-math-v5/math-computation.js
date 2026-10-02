@@ -295,6 +295,19 @@ export function validateMathArgs(args, params) {
 
 // ── failure / return shells ─────────────────────────────────────────────────────────────────────
 function next(kind, extra) { return Object.assign({ kind: kind }, extra || {}) }
+/**
+ * S6: ONE wording for the version policy, so the install plan, the run path and the missing-package
+ * failure cannot drift into different sentences describing the same rule. Grep anchor:
+ * MATH_VERSION_POLICY (and its single call site family mathVersionPolicy).
+ */
+/** S6: the ONE short clause that states the policy; the long sentence and the two human messages
+ * below are all built from it, so the semantics cannot drift. Grep anchor: MATH_VERSION_POLICY_CLAUSE. */
+const MATH_VERSION_POLICY_CLAUSE = '只检查是否存在；版本求解交给包管理器'
+const MATH_VERSION_POLICY = 'version-constraints-are-existence-only: 只按 base name 检查是否存在，约束本身从不校验（' + MATH_VERSION_POLICY_CLAUSE + '）'
+function mathVersionPolicy(pinned) {
+  return MATH_VERSION_POLICY + ((pinned && pinned.length) ? '；本次未校验的约束：' + pinned.join(', ') : '；本次没有版本约束')
+}
+
 function fail(code, engine, message, extra) {
   const out = { ok: false, op: null, engine: engine || null, code: code, message: message }
   if (extra && extra.next) out.next = extra.next
@@ -996,7 +1009,7 @@ async function opRun(H, args, params) {
   const want = (args.packages && args.packages.length) ? args.packages : params.mathPackages
   // round-9 (F7): version constraints are NOT enforced - we only check existence by base name.
   const pinnedSpecs = want.filter((sp) => parsePackageSpec(sp).pinned)
-  const versionPolicy = 'version-constraints-are-existence-only: 只按 base name 检查是否存在，约束本身从不校验（版本求解交给包管理器）' + (pinnedSpecs.length ? '；本次未校验的约束：' + pinnedSpecs.join(', ') : '；本次没有版本约束')
+  const versionPolicy = mathVersionPolicy(pinnedSpecs)
   // round-7 (finding 3): for cli the precheck runs against the FAMILY of `cli.command` (same
   // discovery-shaped logic); an unrecognisable command SKIPS the precheck instead of reporting a
   // false "missing" that would block the escape hatch.
@@ -1007,7 +1020,7 @@ async function opRun(H, args, params) {
   // timeout) must not be read as "missing" - that misled a real session.
   const missing = (probeDet && !pk.probeFailed) ? want.map((s) => parsePackageSpec(s).name || s).filter((p) => Object.prototype.hasOwnProperty.call(pk.found, p) && !pk.found[p]) : []
   if (missing.length) {
-    return fail('MATH_MISSING_PACKAGES', det.name, '需要的包未安装：' + missing.join(', ') + '（只检查是否存在；版本求解交给包管理器）', {
+    return fail('MATH_MISSING_PACKAGES', det.name, '需要的包未安装：' + missing.join(', ') + '（' + MATH_VERSION_POLICY_CLAUSE + '）', {
       missing: missing,
       next: next('agent-install', { engine: det.name, packages: missing, specs: want.slice(), dryRun: true }),
       packages: pk,
@@ -1318,7 +1331,7 @@ async function opInstall(H, args, params) {
   const plan = {
     engine: engineName, scope: scope, manager: activeManager, commands: commands,
     managerAssumed: !!(managerInfo && managerInfo.assumed), managerWhy: managerInfo ? managerInfo.why : '',
-    versionPolicy: '版本求解交给包管理器（本工具只检查是否已安装，并把 pkg<op>version 原样透传）',
+    versionPolicy: mathVersionPolicy(args.packages || []),
     note: scope === 'user' ? '将安装到用户级目录' : '仅本次系统作用域（不会被记住）',
   }
   const planToken = sha256(JSON.stringify({ engine: engineName, packages: args.packages, scope: scope, commands: commands }) + '|planVersion=1').slice(0, 32)
@@ -1363,7 +1376,7 @@ export function parsePackageSpec(spec) {
   const raw = String(spec == null ? '' : spec).trim()
   if (!raw) return { ok: false, problem: 'empty package spec' }
   if (!PKG_SPEC_RE.test(raw)) {
-    return { ok: false, problem: 'unsupported version syntax: "' + raw + '"（版本求解交给包管理器：请用它能理解的形式，例如 pip 的 pkg==1.2 或 conda 的 pkg=1.2；本工具只检查是否已安装）' }
+    return { ok: false, problem: 'unsupported version syntax: "' + raw + '"（' + MATH_VERSION_POLICY_CLAUSE + '：请用它能理解的形式，例如 pip 的 pkg==1.2 或 conda 的 pkg=1.2）' }
   }
   const name = raw.replace(/(?:==|>=|<=|~=|!=|>|<|=).*$/, '').replace(/\[.*$/, '')
   return { ok: true, name: name, spec: raw, pinned: raw !== name }

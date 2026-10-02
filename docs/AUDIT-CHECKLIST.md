@@ -675,3 +675,18 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **改限的规矩**：抬高**默认值或任何覆盖值**都必须**同时更新本行的全部实测数字并在提交信息里说明**；不许为了让门禁变绿而悄悄改（上面三条覆盖用例正是为了让这条规矩可验证）。
 - **禁止**为了让门禁变绿而**悄悄抬高**这个值；确有套件变慢，请**同时**更新这里的两个数字与理由。
 - **怎么让它红一次（in-repo，两个方向）**：① `node tests/run-tests.mjs --self-check` 有一条**真实路径**用例 —— 合成 sleep 作业、`timeoutMs=1000`、走同一个 `runSuite`/`failedLine`，断言 `timedOut=true, exit=null` 且失败行 `FAILED: (synthetic-sleeper) [probe] (TIMEOUT after 1s)`；② 随包的 `tests/run-tests.mutants.mjs` 用 `GATE_SUITE_TIMEOUT_MS=1000` 对**真实套件**做**正例**（具名 TIMEOUT + 非零退出）与**反例**（默认限制下同一套件不报 TIMEOUT、exit 0），因此该判据被双向校验（§9.7 ㉗）。
+
+
+### S6：版本策略只有一句措辞（`MATH_VERSION_POLICY`）
+
+- **实现（三层，同一字面量）**：短句 `MATH_VERSION_POLICY_CLAUSE`（grep 锚点）是**唯一**的策略字面量；长句 `MATH_VERSION_POLICY` 由它**拼接派生**；`mathVersionPolicy(pinned)` 由长句派生**策略字段**（安装计划 `versionPolicy` 与运行/缺包路径同一处）；两条**人类消息**同样由短句派生 —— `MATH_MISSING_PACKAGES` 的失败详情（`需要的包未安装：…`）与 `parsePackageSpec` 的 `unsupported version syntax` 提示。因此"一句策略"覆盖**策略字段 + 两条消息**三处表面，短句字面量全文只出现 **1** 次。
+- **断言**：`tests/math-computation-shared.test.mjs` §34（**6** 条**行为**断言，从响应里读，grep 锚点 `S6: the install plan uses the SAME policy wording`）；`tests/audit-math-computation-parity.mjs` §11（**4** 条**静态**断言）。
+- **怎么让它红一次**：单点变异 —— 把安装计划处的助手调用改回旧措辞 ⇒ 共享 §34 **具名红**（实测 `370 passed / 3 failed`）。harness：`_oneoff/auditR2/s6-mutant.mjs`（**dev-only，未随包**）。
+- **parity §11 是"树级"断言（已标注，不冒充可变异证明）**：它读的是**仓库里的随包副本**，刻意**不接** env seam —— 否则会踩协议 ㉟(iii)"loaded-seam vs repo file"（守卫该看仓库文件却看了夹具）。因此它**不能**被 env-seam 变异变红；它的价值是"有人手改仓库副本就会红"，与 parity 的字节一致检查同属一类。
+- **数字（revision `ef54f4d` + 未提交内容哈希；数字不带 revision 不复现）**：shared **373/0** → 变异后 **370/3**；parity **107/0**；contract **200/0**；`--self-probe` **2/2**（各 372/1）；`COPIES OK`。sha256 前缀：`math-computation.js` `8963ec58ba5eb547`、shared `d822d176a6adae06`、parity `440e308dbe4b07f5`。
+
+
+#### S6 补充：派生必须"承重"（mutant 发现的紧度缺口）
+
+- **缺口**：最初只断言"失败详情里**含有**该短句"，而把短句**内联复制**回消息同样满足它 ⇒ 该断言**不承重**（mutant 案例 2 实测：改回内联后仍然 `376 passed / 0 failed`）。
+- **修法**：承重断言放在**能变红的地方**（共享套件读 **env 解析出的**模块源码）——见 §35：短句在模块里**只出现 1 次**、`MATH_MISSING_PACKAGES` 详情**由常量构造**、`unsupported version syntax` 提示**由常量构造**、长句**由短句派生**。改回内联后：`occurrences=2` ⇒ `378 passed / 2 failed`，两条**具名红**（"the policy clause exists as exactly ONE literal"、"the missing-package detail is built from the clause constant"）。
