@@ -1339,12 +1339,18 @@ async function opInstall(H, args, params) {
       const code = (r && r.timedOut) ? 'MATH_TIMEOUT' : 'MATH_NONZERO_EXIT'
       const out = fail(code, engineName, '安装失败（' + c.argv.join(' ') + '）：' + (r ? ('exit=' + r.exit) : 'no subprocess'), { next: next('note', { audit: 'Computation/installs/' + planToken + '.json' }) })
       out.audit = 'Computation/installs/' + planToken + '.json'
+      // S4/S5 (non-breaking): install failures are discriminated by op + installedSoFar + timedOut,
+      // NOT by a new failure code (MATH_FAILURE_CODES is frozen). Mirrors the `out.audit`
+      // post-assignment and needs nothing from fail()'s key whitelist.
+      out.op = 'install'
+      out.timedOut = !!(r && r.timedOut)
+      out.installedSoFar = results.filter((x) => x.exit === 0).map((x) => x.argv)
       return out
     }
   }
   const audit = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: activeManager, commands: commands, results: results, exit: 0, timedOut: false, installed: args.packages, before: {}, after: {}, rollback: rollbackFor(d, exe, args.packages, uninstallTmpl), network: 'not-enforced-by-plugin' }
   await H.writeText('Computation/installs/' + planToken + '.json', JSON.stringify(audit, null, 2))
-  return { ok: true, op: 'install', engine: engineName, executed: true, scope: scope, audit: 'Computation/installs/' + planToken + '.json', message: '已安装：' + args.packages.join(', ') + '（审计：Computation/installs/' + planToken + '.json）' }
+  return { ok: true, op: 'install', engine: engineName, executed: true, scope: scope, installedSoFar: commands.map((c) => c.argv), audit: 'Computation/installs/' + planToken + '.json', message: '已安装：' + args.packages.join(', ') + '（审计：Computation/installs/' + planToken + '.json）' }
 }
 
 // ── round-6 (B/D): package specs + Python package-manager dispatch ──────────────────────────────

@@ -190,3 +190,5 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 ## 9. 参数配置在哪改
 
 `vibe_math_set_params`（v2/v3）、`vibe_v4_set`（v4）、`vibe_v5_set`（v5）以及各自的控制面：v2/v3 是 `vibe_math_setup`（交互式 schema）/`vibe_math_status`/`vibe_math_template`/`vibe_math_save_settings`，v4 是 `vibe_v4_configure`/`vibe_v4_status`（**没有** `template`/`setup`），v5 是 `vibe_v5_configure`/`vibe_v5_status`（同样没有 `template`/`setup`）；六个参数名在四套、README 双语参数表与本文中拼写一致（由 `tests/audit-math-computation-parity.mjs` 与 `audit-math-computation-contract.mjs` 盯着）。
+
+- **安装失败的判别（不新增失败码）**：`install` 失败用 **`op:'install'` + `installedSoFar`（已成功的命令 argv）+ `timedOut`** 区分，**不**新增失败码（`MATH_FAILURE_CODES` 属冻结接口，扩展需单独的接口变更批次）；成功路径同样给出 `installedSoFar`，调用方无需特判。

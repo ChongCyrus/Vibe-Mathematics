@@ -50,7 +50,7 @@ if (process.argv.includes('--self-probe')) {
   const sum = (out.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
   rmSync(dir, { recursive: true, force: true })
   console.log((child.status !== 0 && named ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE fail() whitelist line reddens the named §32 assertion (' + sum + ')')
-  process.exit(child.status !== 0 && named ? 0 : 1)
+      process.exit(child.status !== 0 && named ? 0 : 1)
 }
 
 let passed = 0, failed = 0
