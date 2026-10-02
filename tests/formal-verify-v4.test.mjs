@@ -1832,6 +1832,23 @@ section('N11 F-4c: a failed mkdir is NAMED exactly once (deferred/distorted diag
   } finally { console.error = realErr; shellMkdirExit = 0 }
 }
 
+section('N13 F1 invariant guards: membership predicates + roster-only ballots (source level)')
+{
+  const srcF1 = PLUGIN_SRC()
+  const bodyOfF1 = (name) => { const a = srcF1.indexOf('function ' + name + '('); if (a < 0) return null; let d = 0; for (let i = a; i < srcF1.length; i++) { const ch = srcF1[i]; if (ch === '{') d++; else if (ch === '}') { d--; if (d === 0) return srcF1.slice(a, i + 1) } } return null }
+  const cvrF1 = bodyOfF1('continueVerifyRound'), fvF1 = bodyOfF1('finalizeVerify')
+  assert(!!cvrF1 && !!fvF1, '* F1/1 both consensus functions are found (bounded, brace-balanced windows)')
+  assert(cvrF1.length < 20000 && fvF1.length < 20000, '* F1/1 the inspected windows are BOUNDED (cvr=' + cvrF1.length + ', fv=' + fvF1.length + ') - a runaway window is itself a failure')
+  const MEMF1 = 'ids.every(id=>vs.verdicts[id]!==undefined)'
+  assert(cvrF1.indexOf(MEMF1) !== -1, '* F1/1 continueVerifyRound requires MEMBERSHIP of the frozen ids')
+  assert(fvF1.indexOf(MEMF1) !== -1, '* F1/1 finalizeVerify uses the SAME membership predicate (the two views cannot disagree)')
+  assert(!/Object\.keys\(vs\.verdicts\)\.length>=/.test(fvF1), '* F1/1 finalizeVerify does NOT use the count-only predicate (that is the F1 regression: a non-roster ballot could satisfy it)')
+  assert(/const vals=ids\.filter\(id=>vs\.verdicts\[id\]!==undefined\)\.map\(id=>vs\.verdicts\[id\]\)/.test(fvF1), '* F1/1 finalizeVerify takes `vals` ONLY from the frozen ids (never Object.values of the live map)')
+  assert(/_inRoster\s*=\s*!Array\.isArray\(verifyState\.rosterSnapshot\)\s*\|\|\s*verifyState\.rosterSnapshot\.indexOf\(r\.rId\)!==-1/.test(srcF1), '* F1/2 the ballot recording site is guarded by the FROZEN roster (verdicts keys are a subset of rosterSnapshot)')
+  const gF1 = srcF1.indexOf('if(!_inRoster)'), aF1 = srcF1.indexOf('verifyState.verdicts[r.rId]={prob:p')
+  assert(gF1 !== -1 && aF1 > gF1 && (aF1 - gF1) < 400, '* F1/2 the verdict assignment sits INSIDE that guard (distance=' + (aF1 - gF1) + ' chars)')
+}
+
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
 console.log('ALL GREEN')
