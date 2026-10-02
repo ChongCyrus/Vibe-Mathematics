@@ -58,6 +58,31 @@
 // the field is write-only for the JSON reader, so `null` cannot be mis-read as `false`.
 // Sites 3/4 carry test-side injection switches in the F-6 work branch (_oneoff/tw-patch.mjs) which
 // can be re-landed together with a host-side caller discriminator.
+// ---------------------------------------------------------------
+// SHIPPED ASSERTION RULES (the rules behind N13-N17; the authoring ledger lives outside the package,
+// so the essentials ship HERE, next to the guards they govern).
+//   (A) LIVENESS BEFORE SILENCE (governs N17/F-5, especially case 1c): every "no warning / no write /
+//       no re-anchor" assertion must ALSO prove that the code under test RAN, and the proof must be
+//       taken at the step CLOSEST to that branch. Measured counter-examples on this mock: "the policy
+//       service was queried" is NOT proof (`sandboxPolicyOf()` is read by BOTH workspaceRoot() and
+//       getPolicy()), and "the write succeeded" is NOT proof either (with an unknown cwd the same call
+//       returns ok:false for an UNRELATED path reason). The workable instrument is the resolve() call
+//       count - `LIVENESS: resolve calls=11` - because resolve({session}) runs immediately before
+//       fenceRootDriftNote(). Mutant "unknown cwd => warn" reddens `F-5/1c ... stays SILENT (drift=1)`.
+//   (B) A SYMBOL'S EXISTENCE IS NOT ITS USE (governs the F-3/F-4c verdicts recorded in-product at
+//       vibe-math-v4.js:3553): a count is a LEAD, never a verdict - the verdict must be read at the
+//       SEMANTIC UNIT. Measured: `registerTool(` appears 36 times but there is exactly ONE registration
+//       unit (the ctx.effect inside the registerTool helper), so no call site needs its own wrapper;
+//       and a failed mkdir is named ONCE INSIDE ensureDirs (warnedMkdir), which covers every caller -
+//       including the bare `await ensureDirs()` - so no caller-side return check is required.
+//   (C) G-6 HOST CONCURRENCY CAP, assertion level: when the host's live-child cap refuses a spawn, the
+//       assertion must require the cap to be NAMED together with the knob that raises it, the durable
+//       marker to survive (hostChildLimit / failReason), and the freed capacity to be spent on exactly
+//       ONE deferred member. Field-level semantics: docs/status-report-fields.md (pendingSpawns).
+//   (D) A2 WAKE/WATCHDOG, assertion level: ack only AFTER a successful delivery, and advance the round
+//       counter only AFTER a successful send - asserted under INJECTED send failures, never on the
+//       happy path (where build == send == success hides the defect). Shipped families: v5 G1/G2.
+// ---------------------------------------------------------------
 // V4 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
 // Asserts the whole contract of the `formalVerify` knob for the v4 preset:

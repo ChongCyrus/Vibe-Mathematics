@@ -60,7 +60,7 @@ apply('docs/AUDIT-CHECKLIST.md', (s) => {
   let out = replaceLine(s, MARKERS.d1Row, c.d1Row)
   if (out === null) return null
   out = out.replace(/\d+ 项作业（job count）= \d+ 套件 \+ \d+ 探针\/变体/, c.ckClaim)
-  out = out.replace(/只发 `tests\/` 的 \*\*\d+[^*]*\*\*（[^）]*）/, c.ckShipped)
+  out = out.replace(/只发 `tests\/` 的 .*?（[^）]*）/, c.ckShipped)
   return out
 })
 

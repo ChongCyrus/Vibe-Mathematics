@@ -116,7 +116,7 @@ flowchart TB
 
 ## ✨ 功能特色
 
-- **最终论文（四个预设默认开启）**：收口时自动撰写一篇**只整理已有证据**的完整论文，且论文阶段发生在 run 被标记完成**之前**；产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`。参数 `finalPaper`（默认 `true`）/`paperFormat`（默认 `both`）/`paperLanguage`（默认 `zh`）/`paperCompilePdf`（默认 `true`）（v4/v5 另有 `paperEditor`），手动 `/vN paper [lang=] [format=] [editor=] [force]`；PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`），否则仍交付 tex+md。完整契约与用法见 [`docs/final-paper.md`](docs/final-paper.md)。
+- **最终论文（四个预设默认开启）**：收口时自动撰写一篇**只整理已有证据**的完整论文，且论文阶段发生在 run 被标记完成**之前**；产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`（v2/v3 另有 `paper.lock.json`）。参数 `finalPaper`（默认 `true`）/`paperFormat`（默认 `both`）/`paperLanguage`（默认 `zh`）/`paperCompilePdf`（默认 `true`）（v4/v5 另有 `paperEditor`），手动 `/vN paper [lang=] [format=] [editor=] [force]`；PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`），否则仍交付 tex+md。完整契约与用法见 [`docs/final-paper.md`](docs/final-paper.md)。
 - **多代理自动求解**：主代理把问题交给调度器，调度器派发 explorer / solver / verifier（v2/v3）与 **planner（规划代理，v3）**、**method-keeper（方法整理代理，v3）** 等子代理协同求解，**你无需逐节点手操**。
 - **多代理交叉验证**：每个结论交给 ≥3 个「严苛审稿人」**独立审查 → 辩论（交流群）→ 裁决**（v3 默认**近共识裁决**：同侧且均值 ≥0.85/≤0.15 取均值，避免"0.9 vs 1"被误判成 0.5）。
 - **论文式 Markdown 知识库（v3）**：问题清单（含问题间依赖、后生问题产生原因与计划）、研究日志、命题、方法库全部以 md 论文/研究报告式书写与续写（方向重派生时旧方向的日志自动归档保留）；**只有 `Verified/` 与验证器判真/假的对象绝对可信**，其余 md（含方法库未验证断言）仅作经验参考。
@@ -452,7 +452,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 
 **Step 6 — 收口时自动产出最终论文（默认开启）**
 
-四个预设默认 `finalPaper=true`：论文阶段在各个收口信号命中后、**run 被标记完成之前**启动（v2/v3 由专职「论文撰写」子代理整理已有证据，v4/v5 由团队合写 → 交叉互审 → 定稿代表定稿并取得一致认同）。产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`：`paper.tex` / `paper.pdf` 只在 `paperFormat` 含 tex 且宿主检测到 LaTeX 引擎时产出（中文优先 `xelatex`；没有引擎就只交 md/tex，不阻塞收尾）。手动触发用 `/vibe paper`（v2/v3）、`/v4 paper`、`/v5 paper`，可带 `lang=` / `format=` / `editor=` / `force`；完整契约见 [`docs/final-paper.md`](docs/final-paper.md)。
+四个预设默认 `finalPaper=true`：论文阶段在各个收口信号命中后、**run 被标记完成之前**启动（v2/v3 由专职「论文撰写」子代理整理已有证据，v4/v5 由团队合写 → 交叉互审 → 定稿代表定稿并取得一致认同）。产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`（v2/v3 另有 `paper.lock.json`）：`paper.tex` / `paper.pdf` 只在 `paperFormat` 含 tex 且宿主检测到 LaTeX 引擎时产出（中文优先 `xelatex`；没有引擎就只交 md/tex，不阻塞收尾）。手动触发用 `/vibe paper`（v2/v3）、`/v4 paper`、`/v5 paper`，可带 `lang=` / `format=` / `editor=` / `force`；完整契约见 [`docs/final-paper.md`](docs/final-paper.md)。
 
 ### 🖼️ 实际使用示例（长截图）
 
@@ -541,7 +541,7 @@ v2 **没有专属参数**：它的完整参数集就是上表「适用」列含 
 
 #### 最终论文（final paper）
 
-四个预设都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
+四个预设都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
 
 ### v3（论文式 md + 规划代理 + 方法库）专属参数
 
@@ -564,7 +564,7 @@ v3 接受 v2 的**全部**参数（见上表「适用」列含 v3 的行），�
 
 #### 最终论文（final paper）
 
-v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之前**派遣撰写者）：专职「论文撰写」子代理产出 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。无引擎或编译失败仍交付 tex+md、记警告、不阻塞定稿。完整契约见 `docs/final-paper.md`。
+v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之前**派遣撰写者）：专职「论文撰写」子代理产出 `Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。无引擎或编译失败仍交付 tex+md、记警告、不阻塞定稿。完整契约见 `docs/final-paper.md`。
 
 ### v4（常驻自组织 · 实验）专属参数
 
@@ -577,7 +577,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 
 #### 最终论文（final paper）
 
-默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（引擎可用时另有 `paper.pdf`；`paper.lock.json` 是该目录的写锁，用于并发的复写/重编译串行化）。完整契约见 `docs/final-paper.md`。
+默认开启；v4 在一致性会议投出「一致停止」票后、**标记完成之前**进入 paper 阶段。团队流程：各 resident 写自己库里的部分 → 合并（去重、统一术语与记号）→ 至少一轮**交叉互审** → 定稿代表按 `paperEditor`（默认 `office`，或 `resident:<id>`）梳理成最终稿 → **全体明确"可交付"**才定稿（有反对则继续迭代，超轮次上限记警告并把分歧写进附录）。手动：`/v4 paper [lang=] [format=] [editor=office|resident:<id>] [force]`。产物 `Paper/<run id>/{paper.md,paper.tex,paper.meta.json,paper.log.md}`（引擎可用时另有 `paper.pdf`）。**注意：v4 不写 `paper.lock.json`** —— 论文目录的复写串行化在本进程内完成；**共享文件写锁并未实现**，`vibe_v4_claim_write` 会返回 `{ok:true}` 但不保留任何东西（见 `vibe-math-v4.js` 的工具说明）。完整契约见 `docs/final-paper.md`。
 
 **v4 专属工具 `vibe_v4_formal_report`（文档补记，round-3）**：把"哪些命题/方法已经得到形式化支撑、支撑强度如何"汇报给常驻团队，是 v4 **团队自治**流程的一部分——居民之间要靠这条汇报对齐"谁能引用哪条已定论结论"，因此它**只存在于 v4**（v2/v3 是专职求解/验证子代理架构，其形式化状态由 `vibe_math_lean_*` 与验证日志承载；v5 由院士评审路径 `vibe_v5_propose_verify`/`vibe_v5_verdict` 与 `vibe_v5_status` 承载）。v4 的两处 persona 文本块都要求成员使用它；v4 的 `status`/`report` 也会汇总其输出。
 
@@ -628,7 +628,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
 - **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 86`（44 套件 + 42 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 53 个 `tests/*.mjs`（17 个套件 + 36 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 88`（44 套件 + 44 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 55 个 `tests/*.mjs`（17 个套件 + 38 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（260 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）

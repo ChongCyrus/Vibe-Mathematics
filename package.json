@@ -65,6 +65,8 @@
     "tests/audit-readme-counts.mjs",
     "tests/audit-readme-counts.mutants.mjs",
     "tests/helpers/doc-counts-format.mjs",
+    "tests/audit-artifact-docs.mjs",
+    "tests/audit-artifact-docs.mutants.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",
