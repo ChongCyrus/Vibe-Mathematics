@@ -210,7 +210,7 @@ function runSuite(modulePath) {
 for (const p of PROBES) {
   const dir = mkdtempSync(join(tmpdir(), 'mc-sens-' + p.name + '-'))
   copyFileSync(join(SRC, 'math-engines.js'), join(dir, 'math-engines.js'))
-  const src = readFileSync(join(SRC, p.file), 'utf8')
+  const src = readFileSync(join(SRC, p.file), 'utf8').replace(/\r\n/g, '\n')  // anchors are LF: normalize CRLF checkouts
   if (src.indexOf(p.from) === -1) {
     bad++
     console.log('  FAIL ' + p.name + ' — mutation anchor no longer applies (drift): ' + JSON.stringify(p.from.slice(0, 60)))

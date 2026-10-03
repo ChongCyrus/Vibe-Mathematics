@@ -42,7 +42,7 @@ if (process.argv.includes('--self-probe')) {
   const dir = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe-'))
   const enginesSrc = join(dirname(modPath), 'math-engines.js')
   try { copyFileSync(enginesSrc, join(dir, 'math-engines.js')) } catch (e) { /* engines may be resolved elsewhere */ }
-  const src = rf(modPath, 'utf8')
+  const src = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
   const whitelist = '  if (extra && Array.isArray(extra.absent)) out.absent = extra.absent\n'
   if (src.indexOf(whitelist) === -1) {
     console.log('SELF-PROBE FAIL: the fail() whitelist line for absent[] was not found (the probe cannot mutate what it cannot see)')
@@ -62,7 +62,7 @@ if (process.argv.includes('--self-probe')) {
   // assertion in the child's FAIL line (a label found anywhere in the output is NOT a red).
   const s45line = '      out.installedSoFar = results.filter((x) => x.exit === 0).map((x) => x.argv)\n'
   const dir2 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe2-'))
-  const src2 = rf(modPath, 'utf8')
+  const src2 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
   let ok2 = false
   if (src2.indexOf(s45line) === -1) {
     console.log('SELF-PROBE FAIL: the installedSoFar assignment was not found (cannot mutate what it cannot see)')
@@ -81,7 +81,7 @@ if (process.argv.includes('--self-probe')) {
   // case 3 (§30, verify provenance): the SAME predicates the §30 assertions use, fed a broken helper.
   // The real `verifyFields(engine)` helper is extracted from the module under test and run against a stub
   // descriptor table; dropping its single reason line (or the no-empty-slot guard) must flip its predicate.
-  const src3 = rf(modPath, 'utf8')
+  const src3 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
   const hStart = src3.indexOf('function verifyFields(engine) {')
   let helper = ''
   if (hStart !== -1) {
@@ -121,7 +121,7 @@ if (process.argv.includes('--self-probe')) {
     const dir4 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe4-'))
     try {
       copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir4, 'math-engines.js'))
-      const src4 = rf(modPath, 'utf8')
+      const src4 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
       const FROM4 = "via: 'host-runtime'"
       const n4 = src4.split(FROM4).length - 1
       if (n4 !== 1) {
@@ -140,7 +140,55 @@ if (process.argv.includes('--self-probe')) {
       }
     } finally { rmSync(dir4, { recursive: true, force: true }) }
   }
-  process.exit(child.status !== 0 && named && ok2 && ok3 && ok4 ? 0 : 1)
+  // case 5 (task-2 item 3): restore the old `injected || …` form -> the named empty-injection
+  // assertion must redden (a JS empty array is truthy, so the per-OS table was suppressed).
+  let ok5 = false
+  {
+    const dir5 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe5-'))
+    try {
+      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir5, 'math-engines.js'))
+      const src5 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
+      const FIXED5 = 'const roots = (Array.isArray(injected) && injected.length) ? injected : mathInstallRoots(engineName, env, win)'
+      const n5 = src5.split(FIXED5).length - 1
+      if (n5 !== 1) console.log('SELF-PROBE FAIL: the empty-array guard occurs ' + n5 + ' times (expected exactly 1)')
+      else {
+        wf(join(dir5, 'math-computation.js'), src5.split(FIXED5).join('const roots = injected || mathInstallRoots(engineName, env, win)'), 'utf8')
+        const child5 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
+          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir5, 'math-computation.js') }) })
+        const out5 = String(child5.stdout || '') + String(child5.stderr || '')
+        const failLines5 = out5.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
+        ok5 = child5.status !== 0 && failLines5.some((l) => l.indexOf('task-2 empty-injection') !== -1)
+        const sum5 = (out5.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary').trim()
+        console.log((ok5 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': restoring the old injected-truthiness form reddens the named empty-injection assertion (' + sum5 + ')')
+        if (!ok5) for (const l of failLines5.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+      }
+    } finally { rmSync(dir5, { recursive: true, force: true }) }
+  }
+  // case 6 (task-2 built-in route): empty the built-in root table -> the named built-in-route assertion
+  // must redden (§23c injects NO roots, so the built-in table is the only stage that can find it).
+  let ok6 = false
+  {
+    const dir6 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe6-'))
+    try {
+      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir6, 'math-engines.js'))
+      const src6 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
+      const TABLE6 = 'return (table[engineName] || []).filter((x) => typeof x === \'string\' && x)'
+      const n6 = src6.split(TABLE6).length - 1
+      if (n6 !== 1) console.log('SELF-PROBE FAIL: the built-in root-table return occurs ' + n6 + ' times (expected exactly 1)')
+      else {
+        wf(join(dir6, 'math-computation.js'), src6.split(TABLE6).join('return []'), 'utf8')
+        const child6 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
+          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir6, 'math-computation.js') }) })
+        const out6 = String(child6.stdout || '') + String(child6.stderr || '')
+        const failLines6 = out6.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
+        ok6 = child6.status !== 0 && failLines6.some((l) => l.indexOf('task-2 built-in route') !== -1)
+        const sum6 = (out6.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary').trim()
+        console.log((ok6 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': emptying the built-in root table reddens the named built-in-route assertion (' + sum6 + ')')
+        if (!ok6) for (const l of failLines6.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+      }
+    } finally { rmSync(dir6, { recursive: true, force: true }) }
+  }
+    process.exit(child.status !== 0 && named && ok2 && ok3 && ok4 && ok5 && ok6 ? 0 : 1)
 }
 
 let passed = 0, failed = 0
@@ -984,6 +1032,46 @@ console.log('-- math_computation shared contract --')
     ok(typeof M.mathInstallRoots === 'function' && M.mathInstallRoots(e, {}, true).length > 0 && M.mathInstallRoots(e, {}, false).length > 0,
       '★ every engine with a well-defined default install dir declares per-OS roots: ' + e)
   }
+}
+// ── 23c (task-2): the route a REAL machine takes — the BUILT-IN per-OS table + a REAL filesystem
+// listing. §23/§23b above both INJECT the candidate roots; this section has NO `installRoots` at all
+// and uses a real absolute temp dir laid out like <tmp>/R/<version>/bin. `knownInstallCandidates`
+// reads process.env at CALL time, so pointing `ProgramFiles` at the temp dir is enough (no seam).
+async function task2ProbeBuiltInRoots(opts) {
+  const { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const tmp = mkdtempSync(join(tmpdir(), 'mc-known-install-'))
+  const prevPF = process.env.ProgramFiles
+  try {
+    mkdirSync(join(tmp, 'R', 'R-4.6.1', 'bin'), { recursive: true })
+    writeFileSync(join(tmp, 'R', 'R-4.6.1', 'bin', 'Rscript.exe'), '')
+    process.env.ProgramFiles = tmp
+    const h = makeFakeHost(Object.assign({ installed: [], runtimeRoots: [] }, opts || {}))
+    h.host.listDirAbs = async (abs) => {
+      try { return readdirSync(abs, { withFileTypes: true }).map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })) } catch (e) { return [] }
+    }
+    M.registerMathComputation(h.host)
+    const p = await h.call({ op: 'probe', engine: 'r' })
+    return { p, tmp }
+  } finally {
+    if (prevPF === undefined) delete process.env.ProgramFiles; else process.env.ProgramFiles = prevPF
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+{
+  const { p, tmp } = await task2ProbeBuiltInRoots(null)
+  ok(p.ok === true && p.engine === 'r', '★ task-2 built-in route: an engine under the BUILT-IN per-OS root is discovered with a REAL fs listing (no installRoots injection)')
+  ok(!!p.engineInfo && /R-4\.6\.1\/bin\/Rscript/.test(String(p.engineInfo.path)) && String(p.engineInfo.path).replace(/\\/g, '/').indexOf(tmp.replace(/\\/g, '/')) !== -1,
+    '★ task-2 built-in route: the discovered path is the versioned install dir inside the temp root (' + String(p.engineInfo && p.engineInfo.path) + ')')
+  ok(!!p.engineInfo && p.engineInfo.foundVia === 'known-install', '★ task-2 built-in route: foundVia names the known-install stage (' + String(p.engineInfo && p.engineInfo.foundVia) + ')')
+}
+// ── 23d (task-2 item 3): an EMPTY injected array must not suppress the built-in table. A JS empty array
+// is TRUTHY, so `injected || mathInstallRoots(...)` silently disabled the whole per-OS stage.
+{
+  const { p } = await task2ProbeBuiltInRoots({ installRoots: { r: [] } })
+  ok(p.ok === true && !!p.engineInfo && p.engineInfo.foundVia === 'known-install',
+    '★ task-2 empty-injection: a host that answers [] still falls back to the BUILT-IN roots (a JS empty array is truthy)')
 }
 // ── 24. round-9 (real-engine): never suggest an install command that cannot run on this machine
 {

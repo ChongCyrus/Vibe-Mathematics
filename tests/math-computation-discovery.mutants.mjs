@@ -40,7 +40,7 @@ const CASES = [
     edit: (t) => t.replace(M3_FROM, '') },
   { name: 'b1: the host-injected install roots are ignored (back to ambient env)',
     expect: 'a Rscript that exists ONLY in the default install dir is discovered',
-    edit: (t) => t.replace('const roots = injected || mathInstallRoots(engineName, env, win)', 'const roots = mathInstallRoots(engineName, env, win)') },
+    edit: (t) => t.replace('const roots = (Array.isArray(injected) && injected.length) ? injected : mathInstallRoots(engineName, env, win)', 'const roots = mathInstallRoots(engineName, env, win)') },
   { name: 'b2: the octave/julia per-OS root entries are removed',
     expect: 'every engine with a well-defined default install dir declares per-OS roots: octave',
     edit: (t) => t.split('octave: win').join('octaveDisabled: win').split('julia: win').join('juliaDisabled: win') },
@@ -58,7 +58,7 @@ const CASES = [
   ok(b.status === 0, 'baseline: the shipped suite is green on the copied module pair (so a red below is the mutation)', b.sum.slice(0, 70))
   rmSync(dir, { recursive: true, force: true })
 }
-const ORIGIN = readFileSync(join(SRC, 'math-computation.js'), 'utf8')
+const ORIGIN = readFileSync(join(SRC, 'math-computation.js'), 'utf8').replace(/\r\n/g, '\n')  // anchors are LF
 for (const c of CASES) {
   const mutated = c.edit(ORIGIN)
   if (mutated === ORIGIN) { ok(false, c.name + ' — the single-site anchor applies', 'ANCHOR MISS'); continue }

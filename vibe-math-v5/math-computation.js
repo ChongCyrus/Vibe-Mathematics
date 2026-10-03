@@ -461,7 +461,9 @@ async function knownInstallCandidates(H, engineName) {
       if (Array.isArray(r)) injected = r.filter((x) => typeof x === 'string' && x)
     } catch (e) { injected = null }
   }
-  const roots = injected || mathInstallRoots(engineName, env, win)
+  // A JS empty array is TRUTHY: a host that answers `[]` must fall back to the built-in table,
+  // otherwise the whole per-OS stage is silently suppressed (task-2).
+  const roots = (Array.isArray(injected) && injected.length) ? injected : mathInstallRoots(engineName, env, win)
   const exts = win ? ['', '.exe', '.cmd'] : ['']
   const out = []
   const listNames = async (dir, kind) => {
