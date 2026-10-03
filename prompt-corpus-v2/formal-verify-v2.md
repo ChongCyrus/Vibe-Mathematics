@@ -3430,6 +3430,8 @@ HARD RULES:
 - A section with no evidence must be exactly 「（本节暂无证据支持的内容——不编造。）」 (do not pad it).
 - Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
 
+LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, ask the user once (installing TeX requires the user's explicit approval); (4) with no answer, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.
+
 OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
 
 KEY CASE IS PART OF THE REPLY CONTRACT: the verifier reply uses `Result`/`Reason` (capitalised; the debate round adds `changed`), while every other reply uses lowercase keys exactly as shown (`directions`, `lemmas`, `status`, `solution`, `solution_probability`). The parser matches keys EXACTLY, case-sensitively, and accepts NO aliases (e.g. `result` is not read).
@@ -9226,6 +9228,8 @@ HARD RULES:
     9. 附录：证据与文件索引 — 9 Verified/、Logs/、关键卡片路径
 - A section with no evidence must be exactly 「（本节暂无证据支持的内容——不编造。）」 (do not pad it).
 - Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.
+
+LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, ask the user once (installing TeX requires the user's explicit approval); (4) with no answer, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.
 
 OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:
 

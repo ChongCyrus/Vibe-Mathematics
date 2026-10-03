@@ -9,7 +9,8 @@ const run = (env) => {
   try { parsed = JSON.parse(r.stdout) } catch (e) { /* reported */ }
   return { code: r.status, parsed, out: String(r.stdout || '') + String(r.stderr || '') }
 }
-const control = run({ PROMPT_DUP_SKIP_CLAUSES: '1' })   // duplication-only control (clauses land with the prompt edits)
+const control = run({})   // task-9: with all four presets carrying the shared LaTeX-missing block, the clause
+                          // block is ACTIVE in the control too — a skipped clause check is a vacuous guard.
 const MUTS = [
   ['v2 single-copy drift', ['vibe-math-v2', 'Data lives under {{cwd}}/VibeMath/Projects/<project>/', 'Data lives under {{cwd}}/VibeMath/Projects/<project>/ (mutated in ONE copy only)']],
   ['v3 single-copy drift', ['vibe-math-v3', 'TRUST RULE: only Verified/', 'TRUST RULE (mutated in ONE copy only): only Verified/']],
@@ -24,7 +25,7 @@ const DECL_MUTS = [
   ['v4 declaration line (unread field)', ['vibe-math-v4', 'When the user asks about progress, call vibe_v4_report and summarize in plain language.', 'When the user asks about progress, call vibe_v4_report and summarize in plain language.\r\n        - activityLogCap = 100']],
 ]
 let problems = 0
-console.log('control (duplication-only, clauses skipped): exit=' + control.code + ' | ' + JSON.stringify(control.parsed && { passed: control.parsed.passed, failed: control.parsed.failed })
+console.log('control (duplication + clauses, default mode): exit=' + control.code + ' | ' + JSON.stringify(control.parsed && { passed: control.parsed.passed, failed: control.parsed.failed })
   + (control.parsed && control.parsed.report ? ' | ' + control.parsed.report.map((r) => r.preset + ':ratio=' + r.ratio).join(' ') : ''))
 if (control.code !== 0) problems += 1
 const NAMED = /share a substantial common prefix|present in BOTH copies|scaffolding, not prompt prose/

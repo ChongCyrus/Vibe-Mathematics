@@ -122,6 +122,13 @@ const SELF_PROBE_MUTATIONS = [
     to: ', then continue',
     expect: 'v3 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
   },
+  {
+    name: 'v2: the LaTeX-missing guidance loses its re-detect step (I15)',
+    rel: 'vibe-math-v2/vibe-math-v2.js',
+    from: ', re-detect, then continue',
+    to: ', then continue',
+    expect: 'v2 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -343,7 +350,7 @@ for (const P of PRESETS) {
   // language its prompt ACTUALLY ships (v4/v5 carry the zh block, v3's paper-writer prompt is English),
   // so every preset keeps a SINGLE-SITE named red (a mutation that deletes one language's marker must
   // redden: requiring "either language" would have made the zh mutations no-ops once both exist).
-  const I15_LANG = { v4: 'zh', v5: 'zh', v3: 'en' }
+  const I15_LANG = { v4: 'zh', v5: 'zh', v3: 'en', v2: 'en' }
   const I15_MARKERS = {
     zh: ['检测不到 LaTeX 引擎时', '有界核查', '不要全盘扫描', '并重新检测', '向用户问一次', '照旧降级', '绝不自动安装', '绝不写工作区之外', '当失败'],
     en: ['When no LaTeX engine is detected', 'never scan whole drives', 're-detect', 'ask the user once', 'degrade exactly as today', 'never auto-install', 'never write outside the workspace'],
