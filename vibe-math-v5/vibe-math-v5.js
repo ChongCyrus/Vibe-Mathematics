@@ -6053,7 +6053,7 @@ export function apply(ctx) {
       if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) files.push('paper.pdf')
       const warnings = (p.warnings || []).slice()
       if (compile.status === 'failed') warnings.push('LaTeX 编译失败（已保留 paper.tex 与 paper.md，不阻塞定稿）：' + (compile.attempts || []).map((a) => a.engine + '/' + a.label + ' exit=' + a.exitCode + (a.message ? '(' + a.message + ')' : '')).join('；'))
-      if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。')
+      if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。')
       // F6: the failed REQUIRED writes are named ONCE (for this finalisation), before the meta is built,
       // so the warning lands in `meta.warnings`, in the flow log, in the state and in the return value.
       if (writeFailures.length) warnings.push(paperWriteFailureWarning(writeFailures))

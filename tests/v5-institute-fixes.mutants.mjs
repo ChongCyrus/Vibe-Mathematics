@@ -175,6 +175,22 @@ const FAMILIES = [
     to: "const viaShort = leanAbsPath(probe + 'x')",
     expect: /\[v5 L1\] a HEALTHY composition surfaces no Lean path contract note/,
   },
+  {
+    // task-9: the durable meta must record the probed TeX paths — dropping them makes the recorded
+    // evidence disappear while the compile result still degrades identically.
+    name: 'task-9: the durable meta stops recording the probed TeX paths (triedPaths emptied)',
+    from: 'triedPaths: compile.triedPaths || []',
+    to: 'triedPaths: []',
+    expect: /\[task-9\] the durable meta records the probed TeX paths/,
+  },
+  {
+    // task-9: the not-detected warning keeps its tail but must also say where it looked and how to pin
+    // an engine — reverting that sentence to the old text must redden the guarding assertion by name.
+    name: 'task-9: the not-detected warning drops the actionable sentence again',
+    from: '只交付 paper.tex 与 paper.md。已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。',
+    to: '只交付 paper.tex 与 paper.md。',
+    expect: /\[task-9\] the not-detected warning keeps its tail AND says where it looked/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

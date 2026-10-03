@@ -1289,9 +1289,14 @@ console.log('\n[24] manual paper, office editor: parts → cross-review → cons
   const md = existsSync(join(dir, 'paper.md')) ? readFileSync(join(dir, 'paper.md'), 'utf8') : ''
   const tex = existsSync(join(dir, 'paper.tex')) ? readFileSync(join(dir, 'paper.tex'), 'utf8') : ''
   const meta = existsSync(join(dir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8')) : null
-  // task-9 evidence (print-only in pass 1; the guarding assertions + named reds land in pass 2): the durable
-  // meta must carry the UNION of the known-root candidates that the REAL detection probed on this host.
+  // task-9 evidence: the durable meta must carry the UNION of the known-root candidates that the REAL
+  // detection probed on this host (kept as a log so the same-run evidence stays greppable).
   console.log('    [task-9] v5 detection evidence: compile=' + String(meta && meta.compile && meta.compile.status) + ' triedPaths=' + JSON.stringify((meta && meta.compile && meta.compile.triedPaths) || null))
+  assert(Array.isArray(meta && meta.compile && meta.compile.triedPaths) && meta.compile.triedPaths.length > 0,
+    '★ [task-9] the durable meta records the probed TeX paths (triedPaths)')
+  const warnText = (meta && Array.isArray(meta.warnings) ? meta.warnings : []).join(' | ')
+  assert(warnText.indexOf('只交付 paper.tex 与 paper.md。') !== -1 && warnText.indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1,
+    '★ [task-9] the not-detected warning keeps its tail AND says where it looked and how to pin an engine')
   const heads = (md.match(/^## \d+\. /gm) || []).length
   assert(heads === 9, '★ the md carries exactly the 9-section skeleton (got ' + heads + ')')
   assert(md.indexOf('p-paper') !== -1, '★ the verified proposition is listed with its evidence path')
