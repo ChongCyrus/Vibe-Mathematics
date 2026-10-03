@@ -10,6 +10,8 @@
 
 **宿主没有解析服务时的行为变化**：宿主若不提供 `subprocess.resolveExecutable`，解析不再**直接失败**，而是继续尝试已知安装位置（该宿主同样可能装着 Lean）——v3 原先的 `no resolveExecutable` 短路已随之移除；v5 的预检同理改为可回退。
 
+**LaTeX 解析（同构）**：论文管线的引擎探测走同一条顺序 —— `paperLatexCommand` **显式**时只用它（解析不到即按“未检测到”降级，永不猜）；否则宿主 PATH，再回退到**文档化的常见 TeX 根**（`%ProgramFiles%\texlive\*` 按发行年 glob、`%ProgramFiles(x86)%\texlive`、MiKTeX、`~/Library/TeX/texbin`、`/usr/local/texlive/*`、`~/.TinyTeX/bin`、`/opt/texlive`）。探测结果带上 `via`（`explicit`/`path`/`known-install`）以便报“选中了哪个引擎、怎么找到的”。**已测量的限制（接受）**：TeX Live 若装在常见根之外（例如另一个盘符），回退**不会**发现它 —— 此时请显式设置 `paperLatexCommand`。
+
 ## Lean 解析顺序与来源（task-6，2.7.4 起）
 
 `vibe_v4_lean_run` 解析 Lean 可执行文件时**不再只看宿主 PATH**（旧行为：宿主 PATH 与会话 PATH 不同时，

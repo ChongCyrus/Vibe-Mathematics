@@ -3922,16 +3922,16 @@ function verifyTasksView(tasks) {
   async function paperDetectLatex(lang) {
     const sub = subprocessOf()
     if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess' }
-    if (typeof sub.resolveExecutable !== 'function') return { available: [], reason: 'no-resolveExecutable' }
+    /* task-4: a host without resolveExecutable is still served by the known-location fallback (no short-circuit) */
     const forced = String(params.paperLatexCommand || '').trim()
     if (forced) {
-      try { const p = await sub.resolveExecutable(forced); return p ? { available: [{ name: forced, path: String(p) }], reason: 'ok', forced: true } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
+      try { const _fr = await resolveKnownTool(sub, { name: forced, explicit: forced, kind: 'tex' }); const p = _fr.exe; return p ? { available: [{ name: forced, path: String(p), via: _fr.via }], reason: 'ok', forced: true } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
       catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
     }
     const order = lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH
     const available = []
     for (let i = 0; i < order.length; i++) {
-      try { const p = await sub.resolveExecutable(order[i]); if (p) available.push({ name: order[i], path: String(p) }) } catch (e) { /* 未安装 */ }
+      try { const _or = await resolveKnownTool(sub, { name: order[i], explicit: '', kind: 'tex' }); const p = _or.exe; if (p) available.push({ name: order[i], path: String(p), via: _or.via }) } catch (e) { /* 未安装 */ }
     }
     return { available: available, reason: available.length ? 'ok' : 'none' }
   }
