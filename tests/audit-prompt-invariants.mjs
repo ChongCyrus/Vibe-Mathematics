@@ -108,6 +108,13 @@ const SELF_PROBE_MUTATIONS = [
     to: '',
     expect: 'v4 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
   },
+  {
+    name: 'v5: the LaTeX-missing guidance loses its re-detect step (I15)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: '并重新检测',
+    to: '',
+    expect: 'v5 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -328,7 +335,7 @@ for (const P of PRESETS) {
   // three hard boundaries. Rolled out per preset (v4 → v5 → v3 → v2): extend this list slice by slice,
   // and keep the block byte-identical across presets (per-preset voice only after the shared sentence)
   // so `audit-prompt-duplication`'s shared-prefix property survives.
-  if (['v4'].includes(P.tag)) {
+  if (['v4', 'v5'].includes(P.tag)) {
     check(js.includes('检测不到 LaTeX 引擎时') && js.includes('有界核查') && js.includes('不要全盘扫描') &&
       js.includes('写入 paperLatexCommand 并重新检测') && js.includes('向用户问一次') && js.includes('照旧降级') &&
       js.includes('绝不自动安装') && js.includes('绝不写工作区之外') && js.includes('当失败'),

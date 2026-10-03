@@ -2430,6 +2430,7 @@ export function apply(ctx) {
       if (initialTask) { L.push(resume ? '恢复说明：' : '你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
       mathPushLine(L)
+      paperPushLine(L)
       L.push('------------')
       L.push(stateBlock(member, roundNo))
       L.push('------------')
@@ -2449,6 +2450,7 @@ export function apply(ctx) {
       }
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
+      paperPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2466,6 +2468,7 @@ export function apply(ctx) {
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
+      paperPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2501,6 +2504,7 @@ export function apply(ctx) {
       L.push('如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都')
       L.push('一致认为是真时，本所才会停下来。')
       mathPushLine(L)
+      paperPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2546,6 +2550,7 @@ export function apply(ctx) {
       L.push('**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**')
       L.push('本所宁可留下未定论，也不要一个骗人的结论。')
       mathPushLine(L)
+      paperPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -3525,6 +3530,15 @@ export function apply(ctx) {
     // Push the tool section into a prompt under construction (a no-op in the 'off' mode, which
     // is the "off means zero mention" discipline).
     function mathPushLine(L) { const b = mathPromptBlock('zh'); if (b) L.push(b) }
+
+    // task-9 2b: the LaTeX-missing guidance (four bounded steps + three hard boundaries). Kept
+    // BYTE-IDENTICAL with the other presets; per-preset voice may only follow this block.
+    function paperHintBlock(lang) {
+      return lang === 'en'
+        ? '\nWhen no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, ask the user once (installing TeX requires the user\'s explicit approval); (4) with no answer, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.'
+        : '\n检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就向用户问一次（安装 TeX 需用户明确同意）；④ 无应答则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。'
+    }
+    function paperPushLine(L) { const b = paperHintBlock('zh'); if (b) L.push(b) }
 
     function formalPromptBlock(target) {
       if (!formalOn()) return ''
