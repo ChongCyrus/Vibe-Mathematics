@@ -67,6 +67,13 @@ const SELF_PROBE_MUTATIONS = [
     to: 'void 0 /* anchor removed (self-probe) */',
     expect: 'philosophy gate missing from the implementation: the founding round is applied only AFTER a successful start',
   },
+  {
+    name: 'F2/G1: the diagram is mutated back to the pre-G1 inbox order (the pairing gate must redden)',
+    rel: 'vibe-math-v5/架构图.md',
+    from: '唯一的推进驱动',
+    to: '唯一的推进驱动（先 ack 再构造）',
+    expect: '架构图 still states the pre-G1 order',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -518,6 +525,19 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     const applyLine = lineOf('rounds.set(member.id, startRound)')
     if (startLine === -1 || applyLine === -1) findings.push('the spawnMember round-count anchors are gone (startRound=' + startLine + ', applied=' + applyLine + ')')
     notes.push('F1 resume-claim pairing: README ' + readmeHits + '/' + readmeClaims.length + ' claims, behavioural anchors ' + suiteHits + '/' + suiteClaims.length + '; cited-line drift (README pins a revision): startRound now :' + startLine + ', applied now :' + applyLine)
+  }
+
+  // F2/G1 pairing (prose ↔ code): the v5 diagram must not state the PRE-G1 order, and must describe the
+  // implemented one. Going through `readRaw` gives this block the same `V5_INTEGRITY_MUTATE` seam as every
+  // other file, which is what the `--self-probe` case below relies on.
+  {
+    const diagram = readRaw('vibe-math-v5/架构图.md')
+    const FORBID = /先\s*ack/
+    const CLAUSES = /构造[^\n]{0,12}(后|再)[^\n]{0,12}ack|ack[^\n]{0,12}(仅|只)[^\n]{0,12}(成功|送达)/
+    if (FORBID.test(diagram)) findings.push('架构图 still states the pre-G1 order: ack before the prompt is built (F2/G1)')
+    if (!CLAUSES.test(diagram)) findings.push('架构图 does not describe the implemented inbox order (construct first / ack only on success)')
+    if (!raw.includes('if (ok && prompt.pending.length) await ackPending(')) findings.push('the ack is no longer gated by a successful wake (F2/G1 anchor missing)')
+    notes.push('架构图 inbox pairing: forbid-hits=' + (FORBID.test(diagram) ? 1 : 0) + ', clauses=' + (CLAUSES.test(diagram) ? 1 : 0))
   }
 
   // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
