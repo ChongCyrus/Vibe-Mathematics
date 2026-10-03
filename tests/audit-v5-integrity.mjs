@@ -568,7 +568,14 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
       docFiles += 1
       if (DOC_FORBID.test(readRaw('docs/' + f))) { docHits += 1; findings.push('docs/' + f + ' still states the pre-G1 order: ack the mail before building the prompt (F2/G1)') }
     }
-    notes.push('docs/** inbox pairing: files=' + docFiles + ', forbid-hits=' + docHits)
+    // The scan covers LIVE docs only. `docs/release-notes/**` is a FROZEN published record: the pre-G1
+    // wording there is history, not a stale claim, so it must stay OUT of the scan — and the exemption is
+    // ASSERTED (a missing/empty directory fails) so a future change to recursive scanning cannot silently
+    // start scanning frozen history. Same convention as audit-readme-counts.mjs's frozen TOTAL-65 notes.
+    let frozenNotes = []
+    try { frozenNotes = readdirSync(new URL('docs/release-notes/', HERE)).filter((n) => n.endsWith('.md')) } catch (e) { frozenNotes = [] }
+    if (!frozenNotes.length) findings.push('the frozen release-notes exemption is EMPTY or missing (docs/release-notes/*.md) — re-decide the scan scope explicitly, never widen it silently')
+    notes.push('docs/** inbox pairing: files=' + docFiles + ', forbid-hits=' + docHits + '; frozen docs/release-notes/*.md exempted=' + frozenNotes.length)
   }
 
   // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
