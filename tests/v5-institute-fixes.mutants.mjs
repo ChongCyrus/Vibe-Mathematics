@@ -32,7 +32,8 @@ function runFamily(f) {
   mkdirSync(dest, { recursive: true })
   copyGraph(MAIN, dest)
   const target = join(dest, f.editFile || MAIN)
-  const before = readFileSync(target, 'utf8')
+  const before = readFileSync(target, 'utf8').replace(/\r\n?/g, '\n')   // task-7: anchors are LF; a CRLF checkout made them match 0 times
+if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not EOL-normalised (CRLF leaked into anchor matching)'); process.exit(1) }
   const n = before.split(f.from).length - 1
   const okCount = f.lastOnly || f.all ? n >= 1 : n === 1
   if (!okCount) {

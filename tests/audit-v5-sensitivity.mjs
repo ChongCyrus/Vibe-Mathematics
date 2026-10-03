@@ -27,7 +27,8 @@ const TESTS = {}
 for (const f of ['selfdrive-v5.mjs', 'e2e-v5-round2.test.mjs', 'prompt-v5-integrity.test.mjs', 'formal-verify-v5.test.mjs']) {
   TESTS[f] = fileURLToPath(new URL('./' + f, import.meta.url))
 }
-const original = readFileSync(SRC, 'utf8')
+const original = readFileSync(SRC, 'utf8').replace(/\r\n?/g, '\n')   // task-7: anchors are LF; a CRLF checkout made them match 0 times
+if (/\r/.test(original)) { console.error('SETUP-FAIL - the anchor source was not EOL-normalised (CRLF leaked into anchor matching)'); process.exit(1) }
 const REPO = fileURLToPath(new URL('..', import.meta.url))
 const dir = mkdtempSync(join(tmpdir(), 'v5-sens-'))
 

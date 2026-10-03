@@ -30,7 +30,7 @@ const HERE = new URL('../', import.meta.url)
  */
 const MUT = process.env.V5_INTEGRITY_MUTATE
 function readRaw(rel) {
-  let text = readFileSync(new URL(rel, HERE), 'utf8')
+  let text = readFileSync(new URL(rel, HERE), 'utf8').replace(/\r\n?/g, '\n')
   if (MUT) {
     try {
       const [r, from, to] = JSON.parse(MUT)

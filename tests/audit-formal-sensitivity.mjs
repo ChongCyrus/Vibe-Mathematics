@@ -41,7 +41,10 @@ const PLUGINS = {
   v5: { file: join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
 }
 const ORIGINAL = {}
-for (const [k, v] of Object.entries(PLUGINS)) ORIGINAL[k] = readFileSync(v.file, 'utf8')
+for (const [k, v] of Object.entries(PLUGINS)) {
+  ORIGINAL[k] = readFileSync(v.file, 'utf8').replace(/\r\n?/g, '\n')   // task-7: anchors are LF; a CRLF checkout made them match 0 times
+  if (/\r/.test(ORIGINAL[k])) { console.error('SETUP-FAIL - the anchor source was not EOL-normalised (CRLF leaked into anchor matching)'); process.exit(1) }
+}
 
 // Each probe: { name, preset, guarantee, from, to }
 // `from` must occur EXACTLY once, so a mutation can never quietly hit the wrong site.
