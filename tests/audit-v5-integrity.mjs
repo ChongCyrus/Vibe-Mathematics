@@ -9,7 +9,7 @@
 //   5. leftover development markers / TODO scaffolding
 // Run: node tests/audit-v5-integrity.mjs   (exit 1 on any finding)
 // ============================================================
-import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -73,6 +73,20 @@ const SELF_PROBE_MUTATIONS = [
     from: '唯一的推进驱动',
     to: '唯一的推进驱动（先 ack 再构造）',
     expect: '架构图 still states the pre-G1 order',
+  },
+  {
+    name: 'F2/G1: the plan is mutated back to the explicit pre-G1 inbox phrasing (the pairing gate must redden)',
+    rel: 'vibe-math-v5/实现方案.md',
+    from: '**未 ack ⇒ 仍可重投**',
+    to: '**先 ack 邮件、再构造**；**未 ack ⇒ 仍可重投**',
+    expect: '实现方案.md still states the pre-G1 order',
+  },
+  {
+    name: 'F2/G1: a docs file is mutated back to the named pre-G1 phrasing (the docs-wide gate must redden)',
+    rel: 'docs/AUDIT-CHECKLIST.md',
+    from: '身份一律显式传递，绝不猜测。',
+    to: '身份一律显式传递，绝不猜测。先 ack 再构造',
+    expect: 'still states the pre-G1 order',
   },
 ]
 
@@ -538,6 +552,23 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     if (!CLAUSES.test(diagram)) findings.push('架构图 does not describe the implemented inbox order (construct first / ack only on success)')
     if (!raw.includes('if (ok && prompt.pending.length) await ackPending(')) findings.push('the ack is no longer gated by a successful wake (F2/G1 anchor missing)')
     notes.push('架构图 inbox pairing: forbid-hits=' + (FORBID.test(diagram) ? 1 : 0) + ', clauses=' + (CLAUSES.test(diagram) ? 1 : 0))
+    // The PLAN uses the explicit pre-G1 phrases only: a sentence that legitimately QUOTES or FORBIDS the old
+    // order must not trip this, so the pattern names the phrases instead of the bare `先 ack`.
+    const planDoc = readRaw('vibe-math-v5/实现方案.md')
+    const PLAN_FORBID = /先\s*ack\s*邮件[、,，]?\s*再构造|先\s*ack[、,，]?\s*后构造/
+    if (PLAN_FORBID.test(planDoc)) findings.push('实现方案.md still states the pre-G1 order: ack the mail before building the prompt (F2/G1)')
+    notes.push('实现方案.md inbox pairing: forbid-hits=' + (PLAN_FORBID.test(planDoc) ? 1 : 0))
+    // The SAME class produced five instances, the last one inside the guard checklist itself, so the scan
+    // covers every top-level docs/*.md. The phrase is NAMED (never the bare `先 ack`) so a sentence that
+    // legitimately QUOTES or FORBIDS the old order cannot trip it. NOTE (applier): `HERE` is the REPO ROOT
+    // (see `new URL(rel, HERE)` above), so the docs directory is `new URL('docs/', HERE)` — NOT `../docs/`.
+    const DOC_FORBID = /先\s*ack[^\n]{0,8}再构造/
+    let docHits = 0, docFiles = 0
+    for (const f of readdirSync(new URL('docs/', HERE)).filter((n) => n.endsWith('.md'))) {
+      docFiles += 1
+      if (DOC_FORBID.test(readRaw('docs/' + f))) { docHits += 1; findings.push('docs/' + f + ' still states the pre-G1 order: ack the mail before building the prompt (F2/G1)') }
+    }
+    notes.push('docs/** inbox pairing: files=' + docFiles + ', forbid-hits=' + docHits)
   }
 
   // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
