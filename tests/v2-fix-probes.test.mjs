@@ -497,38 +497,38 @@ console.log('\n-- F6a/F6b: 静默回退与中断失败必须留痕 --');
   assert(hits2.length === 1, '★★★ [F6b/v2] 中断失败进入活动日志并**点名站点**（event=interrupt + 子代理 id + why 标签 batch clear(start/abort)；实测 ' + JSON.stringify((st2.recentActivity || []).filter((a) => String(a.event) === 'interrupt').slice(-1)[0] || null) + '）');
   h2.restore(); await wait(250); rmSync(h2.WS, { recursive: true, force: true });
 }
-// ---------------------------------------------------------------- F6c (project pointer must not fail silently)
-console.log('\n-- F6c: 项目指针写失败必须可观察 --');
-{
-  const h = harness({ failWritePath: 'current.' });
-  await load(h);
-  await h.call('vibe_math_new_project', { name: 'p' });
-  const st = await h.call('vibe_math_status', {});
-  const last = st.stateWriteFailures && st.stateWriteFailures.last;
-  assert(!!last && /current\./.test(JSON.stringify(last)), '★★★ [F6c] 项目指针写失败进入 status.stateWriteFailures（实测 ' + JSON.stringify(st.stateWriteFailures) + '）');
-  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
-}
-// ---------------------------------------------------------------- F2 (proactive tool-name intersection)
-console.log('\n-- F2: 候选工具名与宿主可见工具面求交（composedToolList）--');
-{
-  const schemas = ['vibe_math_status', 'vibe_math_report', 'web_search', 'pwsh', 'math_computation'].map((n) => ({ name: n }));
-  const h = harness({ toolSchemas: schemas });
-  await load(h);
-  await h.call('vibe_math_new_project', { name: 'p' });
-  await h.call('vibe_math_set_params', { maxParallelThreshold: 8, verifierCount: 2, verifierToolAllow: ['vibe_math_status'], verifierAllowNetwork: true });
-  await h.call('vibe_math_add_proposition', { id: 'pF2', 概述: 'P', 布尔估计: 0.6, 优先级: 1, 细类型: { 数论: {} } });
-  const f = join(h.project, 'Propos', '数论_Propos.json');
-  const list = JSON.parse(readFileSync(f, 'utf8'));
-  list[0].证明列表 = [{ 完整过程: 'proof', 正确概率: 0.7, 已验: false }];
-  writeFileSync(f, JSON.stringify(list, null, 2), 'utf8');
-  await h.call('vibe_math_start', {});
-  const v = await h.find(() => h.spawns.find((s2) => s2.label.startsWith('verifier:r-pF2-pf0:')));
-  assert(!!v, 'F2: 验证者子代理已派出（用于观察 toolFilter）');
-  const allow = (v && v.request && v.request.toolFilter && v.request.toolFilter.allow) || [];
-  assert(allow.indexOf('web_search') !== -1, '★ [F2] 宿主注册的 web_search 进入 allow（实测 ' + JSON.stringify(allow) + '）');
-  assert(allow.indexOf('web_fetch') === -1, '★★★ [F2] 宿主**未**注册的 web_fetch 绝不进入 filter（候选 ∩ tools.schemas；实测 ' + JSON.stringify(allow) + '）');
-  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
-}
+// ---------------------------------------------------------------- F6c (project pointer must not fail silently)
+console.log('\n-- F6c: 项目指针写失败必须可观察 --');
+{
+  const h = harness({ failWritePath: 'current.' });
+  await load(h);
+  await h.call('vibe_math_new_project', { name: 'p' });
+  const st = await h.call('vibe_math_status', {});
+  const last = st.stateWriteFailures && st.stateWriteFailures.last;
+  assert(!!last && /current\./.test(JSON.stringify(last)), '★★★ [F6c] 项目指针写失败进入 status.stateWriteFailures（实测 ' + JSON.stringify(st.stateWriteFailures) + '）');
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
+}
+// ---------------------------------------------------------------- F2 (proactive tool-name intersection)
+console.log('\n-- F2: 候选工具名与宿主可见工具面求交（composedToolList）--');
+{
+  const schemas = ['vibe_math_status', 'vibe_math_report', 'web_search', 'pwsh', 'math_computation'].map((n) => ({ name: n }));
+  const h = harness({ toolSchemas: schemas });
+  await load(h);
+  await h.call('vibe_math_new_project', { name: 'p' });
+  await h.call('vibe_math_set_params', { maxParallelThreshold: 8, verifierCount: 2, verifierToolAllow: ['vibe_math_status'], verifierAllowNetwork: true });
+  await h.call('vibe_math_add_proposition', { id: 'pF2', 概述: 'P', 布尔估计: 0.6, 优先级: 1, 细类型: { 数论: {} } });
+  const f = join(h.project, 'Propos', '数论_Propos.json');
+  const list = JSON.parse(readFileSync(f, 'utf8'));
+  list[0].证明列表 = [{ 完整过程: 'proof', 正确概率: 0.7, 已验: false }];
+  writeFileSync(f, JSON.stringify(list, null, 2), 'utf8');
+  await h.call('vibe_math_start', {});
+  const v = await h.find(() => h.spawns.find((s2) => s2.label.startsWith('verifier:r-pF2-pf0:')));
+  assert(!!v, 'F2: 验证者子代理已派出（用于观察 toolFilter）');
+  const allow = (v && v.request && v.request.toolFilter && v.request.toolFilter.allow) || [];
+  assert(allow.indexOf('web_search') !== -1, '★ [F2] 宿主注册的 web_search 进入 allow（实测 ' + JSON.stringify(allow) + '）');
+  assert(allow.indexOf('web_fetch') === -1, '★★★ [F2] 宿主**未**注册的 web_fetch 绝不进入 filter（候选 ∩ tools.schemas；实测 ' + JSON.stringify(allow) + '）');
+  h.restore(); await wait(250); rmSync(h.WS, { recursive: true, force: true })
+}
 // ---------------------------------------------------------------- M15
 console.log('\n-- M15: status and report share one recentActivity bound (30) --')
 {
@@ -850,6 +850,7 @@ console.log('\n-- PAPER §6.4: compile branches (success / repaired / persistent
   assert(!!m && m.artifacts.tex === true && m.artifacts.md === true && m.artifacts.pdf === false, '★ (d) only tex+md are delivered')
   assert(noH.errors.length === before, '★★ (d) the not-detected branch logs no error (clean degradation)')
   assert(readFileSync(join(noH.paperDir('p'), 'paper.log.md'), 'utf8').indexOf('未检测到任何 LaTeX 引擎') !== -1, '(d) the log records why no pdf was produced')
+  assert(readFileSync(join(noH.paperDir('p'), 'paper.log.md'), 'utf8').indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1, '★ [task-9/v2] the not-detected log keeps its reason AND says where it looked and how to pin an engine')
   noH.restore(); rmSync(noH.WS, { recursive: true, force: true })
 
   // (e) resolver 在、但一个引擎都解析不到（真机另一种形态）

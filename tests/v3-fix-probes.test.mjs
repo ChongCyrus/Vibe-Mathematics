@@ -444,6 +444,7 @@ console.log('\n-- PAPER §6.4 (v3): compile branches (ok / repaired / failed / n
   m = await asyncFind(() => readMeta('pc4', 'pc4'), 60)
   assert(!!m && m.compile === 'not-detected' && m.artifacts.tex === true && m.artifacts.md === true && m.artifacts.pdf === false, '★ v3 (d) no LaTeX → compile=not-detected with tex+md only')
   assert(read(join(pdir('pc4', 'pc4'), 'paper.log.md')).indexOf('未检测到任何 LaTeX 引擎') !== -1, 'v3 (d) the log records why no pdf was produced')
+  assert(read(join(pdir('pc4', 'pc4'), 'paper.log.md')).indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1, '★ [task-9/v3] the not-detected log keeps its reason AND says where it looked and how to pin an engine')
   // (e) resolver 在但一个引擎都解析不到
   latexCfg = { mode: 'resolver-empty' }
   await call('vibe_math_new_project', { name: 'pc5' })

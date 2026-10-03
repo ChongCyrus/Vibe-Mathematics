@@ -4572,7 +4572,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     if (o.format === 'md') return { compile: 'skipped', reason: 'paperFormat=md（不产出 tex，跳过编译）', engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     const det = await paperDetectLatex(o.lang)
     if (det.available.length === 0) {
-      await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）')
+      await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。')
       return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, triedPaths: det.triedPaths || [], pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     }
     await paperAppendLog(id, 'latex', '检测到引擎 ' + det.available.map(function (x) { return x.name }).join(', ') + (det.forced ? '（paperLatexCommand 指定）' : ('（顺序 ' + (o.lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH).join(' > ') + '）')))

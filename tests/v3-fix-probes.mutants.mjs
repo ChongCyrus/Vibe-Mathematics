@@ -85,6 +85,10 @@ FAMILIES.push(
   { name: 'F-B: one registration site reverted to a literal', expect: /\[F-B\/v3\] 两处注册点都由 paramProps\(\)/,
     from: "objParams(paramProps()), 'vibe_math_set_params')", to: "objParams({ mode: { type: 'string', enum: ['manual', 'auto'] } }), 'vibe_math_set_params')" },
 )
+FAMILIES.push(
+  { name: 'task-9/v3: the not-detected log drops the actionable sentence', expect: /\[task-9\/v3\]/,
+    from: '已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。', to: '' },
+)
 for (const f of FAMILIES) { const t0 = Date.now(); lastHang = false; const ok = runFamily(f); const ms = Date.now() - t0; TIMES.push([f.name, ms]); if (lastHang) hangs.push(f.name + '(' + Math.round(ms / 1000) + 's)'); if (ok) red++ }
 console.log('')
 console.log('mutant families reddening the v3 probe by name: ' + red + '/' + FAMILIES.length)
