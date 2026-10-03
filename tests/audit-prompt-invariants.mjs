@@ -115,6 +115,13 @@ const SELF_PROBE_MUTATIONS = [
     to: '',
     expect: 'v5 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
   },
+  {
+    name: 'v3: the LaTeX-missing guidance loses its re-detect step (I15)',
+    rel: 'vibe-math-v3/vibe-math-v3.js',
+    from: ', re-detect, then continue',
+    to: ', then continue',
+    expect: 'v3 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -332,13 +339,17 @@ for (const P of PRESETS) {
   check(!/偏离\s*(?:→|->|=>)\s*0/.test(code), P.tag + ' I2: no "偏离 → 0" instruction')
 
   // I15 (task-9 2b) — the LaTeX-missing guidance must reach the AGENT: four bounded steps plus the
-  // three hard boundaries. Rolled out per preset (v4 → v5 → v3 → v2): extend this list slice by slice,
-  // and keep the block byte-identical across presets (per-preset voice only after the shared sentence)
-  // so `audit-prompt-duplication`'s shared-prefix property survives.
-  if (['v4', 'v5'].includes(P.tag)) {
-    check(js.includes('检测不到 LaTeX 引擎时') && js.includes('有界核查') && js.includes('不要全盘扫描') &&
-      js.includes('写入 paperLatexCommand 并重新检测') && js.includes('向用户问一次') && js.includes('照旧降级') &&
-      js.includes('绝不自动安装') && js.includes('绝不写工作区之外') && js.includes('当失败'),
+  // three hard boundaries. Rolled out per preset (v4 → v5 → v3 → v2); each preset is checked in the
+  // language its prompt ACTUALLY ships (v4/v5 carry the zh block, v3's paper-writer prompt is English),
+  // so every preset keeps a SINGLE-SITE named red (a mutation that deletes one language's marker must
+  // redden: requiring "either language" would have made the zh mutations no-ops once both exist).
+  const I15_LANG = { v4: 'zh', v5: 'zh', v3: 'en' }
+  const I15_MARKERS = {
+    zh: ['检测不到 LaTeX 引擎时', '有界核查', '不要全盘扫描', '并重新检测', '向用户问一次', '照旧降级', '绝不自动安装', '绝不写工作区之外', '当失败'],
+    en: ['When no LaTeX engine is detected', 'never scan whole drives', 're-detect', 'ask the user once', 'degrade exactly as today', 'never auto-install', 'never write outside the workspace'],
+  }
+  if (I15_LANG[P.tag]) {
+    check(I15_MARKERS[I15_LANG[P.tag]].every((s) => js.includes(s)),
       P.tag + ' I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries')
   }
 

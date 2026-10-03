@@ -4514,6 +4514,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
       PAPER_SKELETON.map(function (s, i) { return '    ' + (i + 1) + '. ' + s.key + ' — ' + s.spec }).join('\n') + '\n' +
       '- A section with no evidence must be exactly 「' + PAPER_NO_EVIDENCE + '」 (do not pad it).\n' +
       '- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.\n\n' +
+      'LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, ask the user once (installing TeX requires the user\'s explicit approval); (4) with no answer, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.\n\n' +
       'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' +
       '{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}\n\n' +
       'MATERIAL (evidence only — do not add anything beyond it):\n' + digest
