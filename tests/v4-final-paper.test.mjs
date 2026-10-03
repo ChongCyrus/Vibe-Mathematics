@@ -511,6 +511,9 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   assert(st.paper.status === 'done' && (meta.compile || {}).result === 'not-detected' && /未检测到 LaTeX/.test((meta.compile || {}).reason || ''),
     '★ no LaTeX engine: compile=not-detected, tex+md kept, NO error thrown')
   assert(existsSync(join(dir, 'paper.tex')) && existsSync(join(dir, 'paper.md')), 'tex+md are still produced on the no-LaTeX branch')
+  const stNoTexJson = JSON.stringify(await m.callTool('vibe_v4_status', {}))
+  assert(stNoTexJson.indexOf('只产出 tex+md') !== -1 && stNoTexJson.indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1,
+    '★ [task-9/v4] the not-detected state WARNS with the old tail + where it looked + how to pin an engine')
   await finish(m)
 }
 {

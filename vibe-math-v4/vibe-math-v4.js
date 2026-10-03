@@ -3568,7 +3568,8 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
         ps.status='failed'   // terminal, like a failed compile: no complete deliverable is claimed
         if(!warnedPaperWrite){ warnedPaperWrite=true; console.error('vibe-math-v4: paperFinalize: required paper artifact(s) MISSING after finalize (' + _paperGone.join(', ') + ') - the paper is marked FAILED instead of done; the deliverable is incomplete and `files` never claims a missing artifact') }
       }
-      const warn=[ps.warning,ps.compile&&ps.compile.result==='failed'?ps.compile.error:''].filter(Boolean).join('；')
+      const warn=[ps.warning,ps.compile&&ps.compile.result==='failed'?ps.compile.error:'',ps.compile&&ps.compile.result==='not-detected'?('未检测到 LaTeX 引擎（'+(ps.compile.reason||'')+'）：只产出 tex+md，不编译。已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。'):''].filter(Boolean).join('；')
+      if(warn) ps.warning=warn   // task-11: the compile note must reach the finalize return + status view (the paper body is composed before ps.compile exists)
       if(warn) logActivity('paper','最终论文完成（有警告）：'+ps.dir+'｜'+warn)
       else logActivity('paper','最终论文完成：'+ps.dir+'（'+ps.files.join('、')+(ps.compile?('｜编译 '+(ps.compile.result||'')):'')+'）')
       return {ok:true,id:ps.id,dir:ps.dir,files:ps.files,compile:ps.compile,rounds:ps.round,dissent:ps.dissent,warning:ps.warning}

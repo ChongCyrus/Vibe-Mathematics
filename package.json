@@ -114,6 +114,7 @@
     "prompt-corpus-v5/prompt-corpus-v5.md",
     "tests/prompt-v5-integrity.test.mjs",
     "tests/run-tests.mjs",
+    "tests/v4-final-paper.mutants.mjs",
     "tests/run-tests.mutants.mjs",
     "screenshots.json",
     "tests/selfdrive-v5.mjs",
