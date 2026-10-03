@@ -3394,7 +3394,7 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       const tried=[]
       for(let i=0;i<order.length;i++){
         const exe=order[i]
-        try { const r=await sub.resolveExecutable(exe); if(r) return {ok:true,exe:String(r),tried,alts:order.slice(i+1)} }
+        try { const _rr=await resolveKnownTool(sub,{name:exe,explicit:(i===0&&prefer)?exe:'',kind:'tex'}); const r=_rr.exe; if(r) return {ok:true,exe:String(r),via:_rr.via,tried,alts:order.slice(i+1)} }
         catch(e){ tried.push(exe) }
       }
       return {ok:false,tried,reason:'LATEX_NOT_FOUND'}
