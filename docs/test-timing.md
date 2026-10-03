@@ -51,7 +51,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**101 项作业**（job count）= 44 套件 + 57 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 101  PASS 101  FAIL 0  (suites 44 · probes 57)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
+| `tests/run-tests.mjs`（**102 项作业**（job count）= 44 套件 + 58 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 102  PASS 102  FAIL 0  (suites 44 · probes 58)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
@@ -63,6 +63,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 | `tests/audit-v3-registration-parity.mjs`（+ `--self-probe`） | ≈ 0.3 s | — | 自探针**成功 = exit 1**（变异后守卫必须变红） |
 | `tests/prompt-v5-integrity.test.mjs` | ≈ 2.2 s | — | 虚拟时钟下生成 v5 语料（语料字节稳定；**stdout 里的会议成员顺序仍是运行间随机的**，只有落盘语料是逐字节确定的） |
 | `tests/e2e-v5-round2.test.mjs` | **≈ 16.3 s**（`167b52d` 实测，ALL GREEN；**断言条数不写在这里** —— 它随轮次变化，跑一次即知） | — | v5 e2e：邮箱/唤醒、轮次计数（§[47] 失败唤醒仍 pending、§[51] 重建后仍 `轮次 2`）、预置快照不被覆盖、命名研究所、失败轮次等；**早先此处记 ≈3.2 s 是旧口径**，正文小节也已随轮次更新 |
+| `tests/audit-engine-faces.mjs`（**环境感知**：存在才跑，缺席 SKIP） | — | **≈ 15 s**（本机三面齐全：Lean 真编译 + 数值真跑 + LaTeX 起点） | 引擎缺席时打印 `SKIP: no <engine> on this machine (<reason>)`，**不判红**；三面齐全时 13/0/0 |
 | `tests/v5-institute-fixes.mutants.mjs`（**变异族**） | — | **族自报 `TOTAL WALL TIME` ≈300 s**（本轮 298959 ms；复核方 299649 / 295216 ms —— ~1.5% 机器差异，**不要合成单点数字**） | 11/11 族具名变红、`hangs=[]`、`skipped=[]`、`ALL MUTANTS RED AS REQUIRED`；900 s 覆盖（见 `docs/AUDIT-CHECKLIST.md` 的跑测超时行） |
 | `tests/host-failure-paths.test.mjs` | ≈ 6.3 s | — | 真实宿主的失败路径（`kind:'error'`、`/v4 set` 键校验、失败轮次不算进展） |
 | `tests/v4-mailbox-stall.test.mjs` | ≈ 7.1 s | — | `sendMessage` 拒绝后必须重投并唤醒（control + treatment 各一个 host） |

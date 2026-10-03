@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **65** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **101 项作业（job count）= 44 套件 + 57 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **66** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **102 项作业（job count）= 44 套件 + 58 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -529,6 +529,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-v3-registration-parity.mjs` | v3 的工具注册与声明面一致 | 该套件自身（`run-tests.mjs:87-90` 以显式 args 运行它） |
 | `tests/formal-verify-v4.test.mjs` §N5–§N9 | N5/N6 路径纪律；N9 行为证明：写到**文档化路径**的卡片必须被 `countArtifacts` 计入（自动会议基数） | 该套件自身的变异/行为断言（§N9 为真机行为证明） |
 | `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | **随包** `node tests/audit-participant-set-parity.mjs --self-probe`（**6/6**：同一批谓词对**真实源码**为真、对**故意改坏的字符串**为假 —— 单位 = 谓词用例数，逐条打印 `green-now=… broken-goes-red=…`）；该变体已注册为 runner job。原 `_oneoff/auditR2/participant-set-proof.mjs` 已删除（其内容即此自探针） |
+| **引擎面（真实二进制）** | 存在则**真跑**、缺席则**响亮 SKIP**（绝不静默通过、绝不让门禁在无引擎机器上变红）：数值（`python`/`Rscript`）、Lean（`lean`）、LaTeX（`xelatex`）三面 | **随包** `node tests/audit-engine-faces.mjs`（本机三面齐全 ⇒ **13 passed / 0 failed / 0 skipped**：`probe` 报 `configured` 且 `foundVia=known-install`、`mode:'code'` 真算出 42 且 `exit=0`；Lean 真编译 GOOD⇒exit 0 / BAD⇒exit≠0 带自身错误行；LaTeX 绝对 `paperLatexCommand` ⇒ `{"ok":true,"started":true}`，不存在路径 ⇒ 不崩溃并记录）＋ **`--self-probe` 3/3**（numeric＝模块 `runId` 改名、lean＝v4 路径守卫、latex＝v5 paper 起点各自**单点**变异 ⇒ 具名红）。**已知未行使**：Lean 经**注册处理器**的“读文件并执行”路径（预设的 `workspaceRoot()` 取根代理，最小 ctx 取不到 ⇒ 落到 `process.cwd()`）；LaTeX 的**编译**本身（在论文撰写子代理里） | 
 | `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | **随包** `node tests/math-computation-discovery.mutants.mjs`（**5/5**：**副本对基线绿**（未变异的模块对）＋ m3 丢掉已知安装目录查找 ⇒ **376/4**、b1 忽略宿主注入根 ⇒ **376/4**、b2 删掉 octave/julia 每 OS 根 ⇒ **378/2**、m4 假设包管理器存在 ⇒ **376/4**；每个都命中**具名** §23/§23b 断言，单位 = 具名断言标签）。原 dev-only 草稿 `round9-mutants.mjs`、`roundB-mutants.mjs` 已删除 |
 | 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | **随包** `node tests/math-computation-archive-rerun.mutants.mjs`（**3/3**：**副本对基线绿** ＋ a1 删掉 `ARCHIVED_SCRIPT_RERUN` 告警 ⇒ **379/1**、a2 让归档源永不被识别 ⇒ **378/2**；每个都命中**具名** §26 断言，单位 = 具名断言标签）。原 `roundA-mutants.mjs`（a1/a2）与 `round9-mutants.mjs` 的引用均已转换/删除 |
 | 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | **随包** `node tests/audit-math-computation-parity.mjs --self-probe`（§7 四条：STRING-level 替换、未知占位符、已知占位符必须有实现、**旧写法产物必被谓词抓住**；单位 = 谓词用例数，逐条打印 `green-now=… broken-goes-red=…`）；该变体已注册为 runner job |
@@ -716,7 +717,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 101`（44 套件 + 57 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 65（**文件计数**：17 个套件 + 48 个探针/脚本）。
+- **计数（实测）**：`TOTAL 102`（44 套件 + 58 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 66（**文件计数**：17 个套件 + 49 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

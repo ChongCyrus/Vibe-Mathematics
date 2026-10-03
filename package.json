@@ -80,6 +80,7 @@
     "docs/audit-methodology.md",
     "docs/release-playbook.md",
     "docs/slv-playbook.md",
+    "tests/audit-engine-faces.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",
