@@ -54,6 +54,11 @@ let spawnIdx = 0
 let verifyTriggered = false
 let step = 0
 const MAX = 300
+// task-13: a FIXED pass budget is not enough on a loaded machine (gate #3 saw the run still open after 300
+// passes while the same file passes standalone twice over). The drive loop now ALSO stops on a wall-clock
+// deadline, which is only reached when the institute genuinely needs longer - healthy runs finish well
+// within MAX passes. Bounded, and covered by this probe's own TIMEOUT_OVERRIDES entry.
+const SELFDRIVE_CAP_MS = Number(process.env.E2E_SELFDRIVE_CAP_MS || 180000)
 let autoDoneSeen = false
 // A parallel-fill wake means MULTIPLE residents are in-flight at once; in real DSH each completes
 // independently and fires its own subagent/end. So the driver must DRAIN every queued followup per
@@ -104,7 +109,8 @@ let followupIdx = 0
 let lastRec = null
 let mWakes = 0, vWakes = 0, nWakes = 0, meetProposed = false
 let verifyTarget = 'p-r-3' // the resident that currentResident routed the brainstorm record to (last spawned)
-for(step=0; step<MAX; step++){
+const DRIVE_T0 = Date.now()
+for(step=0; step<MAX && Date.now()-DRIVE_T0 < SELFDRIVE_CAP_MS; step++){
   const did = await driveOne()
   const s0 = await callTool('vibe_v4_status', {})
   if(s0.autoDone){ autoDoneSeen = true; break }
