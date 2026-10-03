@@ -605,9 +605,16 @@ writeFileSync(join(toolProj, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1
 }
 {
   toolchainAvailable = false
-  const runNoTc = await callTool('vibe_math_lean_run', { file: 'Formal/good.lean' }, RE)
+// task-6: the missing-toolchain simulation must deny the KNOWN-LOCATION fallback too (a machine with
+// Lean installed would otherwise resolve it through %ELAN_HOME%/~/.elan and the run would succeed).
+const _tcSaved = {}; for (const _k of ['ELAN_HOME', 'USERPROFILE', 'HOME', 'LOCALAPPDATA']) _tcSaved[_k] = process.env[_k]
+process.env.ELAN_HOME = 'Z:/no-elan'; process.env.USERPROFILE = 'Z:/no-home'; process.env.HOME = 'Z:/no-home'; process.env.LOCALAPPDATA = 'Z:/no-local'
+let runNoTc
+try {
+  runNoTc = await callTool('vibe_math_lean_run', { file: 'Formal/good.lean' }, RE)
   assert(runNoTc.ok === false && runNoTc.code === 'LEAN_NOT_FOUND', 'a missing toolchain returns LEAN_NOT_FOUND instead of crashing')
   assert(/仍可把形式化代码写下来归档/.test(runNoTc.message), 'the failure explains the graceful degradation')
+} finally { for (const _k of Object.keys(_tcSaved)) { if (_tcSaved[_k] === undefined) delete process.env[_k]; else process.env[_k] = _tcSaved[_k] } }
   assert(/本宿主无法执行 Lean（LEAN_NOT_FOUND）/.test(runNoTc.hint || '') && !/编译器输出修复后重跑/.test(runNoTc.hint || ''),
     '★ the failure hint never tells the agent to fix compiler output that does not exist — it points at the archive + explicit-blocker way out (§6 hard requirement 4)')
   toolchainAvailable = true

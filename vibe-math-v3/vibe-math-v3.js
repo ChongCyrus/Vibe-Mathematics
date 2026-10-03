@@ -152,6 +152,69 @@ function paramProps() {
 //   State/                     — scheduler private state (JSON, scheduler-only)
 // Workspace level: VibeMath/Methods/ = GLOBAL theory library (cross-project),
 //   VibeMath/current.<sessionId>.json = per-session current project.
+
+// ── task-4: known-location fallback (math-engine parity) ────────────────────────────────────────────
+// Resolution order: an EXPLICIT command (leanCommand / paperLatexCommand) is used alone and never
+// guessed; otherwise the host resolver (PATH) is tried first, then the known install locations for this
+// platform. Provenance is returned so the caller can report \`leanFoundVia: 'explicit'|'path'|'known-install'\`,
+// and the probed list travels on failure ("I looked here too"), never just "not found on PATH".
+async function resolveKnownTool(sub, opts) {
+  const name = String((opts && opts.name) || '')
+  const explicit = String((opts && opts.explicit) || '').trim()
+  const kind = String((opts && opts.kind) || 'lean')
+  const tried = []
+  const env = (typeof process !== 'undefined' && process.env) || {}
+  const win = !!(typeof process !== 'undefined' && process.platform === 'win32')
+  const home = String(env.USERPROFILE || env.HOME || (win ? 'C:/Users/Default' : '/root'))
+  const local = String(env.LOCALAPPDATA || '')
+  const pf = String(env.ProgramFiles || 'C:/Program Files')
+  const pf86 = String(env['ProgramFiles(x86)'] || 'C:/Program Files (x86)')
+  const elan = String(env.ELAN_HOME || '')
+  const exts = win ? ['', '.exe', '.cmd', '.bat'] : ['']
+  const resolvePath = async (p) => {
+    tried.push(p)
+    try { const fs = await import('node:fs'); for (const e of exts) { const q = p + e; try { if (fs.existsSync(q) && fs.statSync(q).isFile()) return q } catch (err) { /* keep looking */ } } } catch (err) { /* no fs */ }
+    return null
+  }
+  const listDirs = async (p) => { try { const fs = await import('node:fs'); return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) } catch (err) { return [] } }
+  const knownLean = win
+    ? [elan ? elan + '/bin' : null, home + '/.elan/bin', local ? local + '/Programs/lean' : null, pf + '/lean/bin']
+    : [elan ? elan + '/bin' : null, home + '/.elan/bin', home + '/.local/bin', '/usr/local/bin', '/opt/lean/bin']
+  const knownTex = win
+    ? [pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64']
+    : [home + '/Library/TeX/texbin', '/usr/local/texlive', home + '/.TinyTeX/bin', '/opt/texlive']
+  const list = kind === 'tex' ? knownTex : knownLean
+  // 1) EXPLICIT: only it, never a guess.
+  if (explicit) {
+    if (typeof sub.resolveExecutable === 'function') { try { const p = await sub.resolveExecutable(explicit); if (p) return { exe: String(p), via: 'explicit', tried, name: explicit } } catch (e) { /* fall through to PATH */ } }
+    const p = await resolvePath(explicit)
+    if (p) return { exe: p, via: 'explicit', tried, name: explicit }
+    return { exe: null, via: null, tried, name: explicit, reason: 'explicit command not resolvable: ' + explicit }
+  }
+  // 2) PATH via the host resolver.
+  if (typeof sub.resolveExecutable === 'function') {
+    try { const p = await sub.resolveExecutable(name); if (p) return { exe: String(p), via: 'path', tried, name } } catch (e) { /* PATH miss is expected */ }
+  }
+  // 3) KNOWN INSTALL LOCATIONS (Windows TeX roots are globbed per release: <root>/<year>/bin/windows).
+  for (const base of list) {
+    if (!base) continue
+    if (kind === 'tex' && !/bin/i.test(base)) {
+      for (const year of await listDirs(base)) {
+        for (const sub2 of ['bin/windows', 'bin/x86_64-linux', 'bin/universal-darwin', 'bin']) {
+          const p = await resolvePath(base + '/' + year + '/' + sub2 + '/' + name)
+          if (p) return { exe: p, via: 'known-install', tried, name }
+        }
+      }
+      continue
+    }
+    const p = await resolvePath(base + '/' + name)
+    if (p) return { exe: p, via: 'known-install', tried, name }
+  }
+  return { exe: null, via: null, tried, name, reason: 'not found on PATH or in the known install locations' }
+}
+
+export { resolveKnownTool }
+
 export const name = 'vibe-math-v3'
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands']
 import { createHash } from 'node:crypto'
@@ -395,24 +458,24 @@ const ACTIVITY_PERSIST_MAX = 200 // P5：活动日志落盘上限（恢复时保
    * 保证结果永不为 `.` / `..`、也不含分隔符。
    */
   let warnedNoPolicy = false
-  // F-5：围栏漂移检测（只告警不拒写）。边界：若解析结果**不暴露**任何 root 字段，本比对无法运行。
-  function policyRootOf(p) {
-    if (!p || typeof p !== 'object') return ''
-    const cand = p.workspaceRoot || p.root || p.cwd || (p.config && p.config.workspaceRoot) || ''
-    return String(cand || '').replace(/\\/g, '/').replace(/\/+$/, '')
-  }
-  let warnedFenceDrift = false
-  function warnFenceDriftOnce(actual, expected) {
-    if (warnedFenceDrift) return
-    warnedFenceDrift = true
-    console.error('vibe-math-v3' + ': sandbox fence root differs from this session workspace (resolved="' + actual + '", session="' + expected + '") — writes may be fenced to the host-configured root; boundary: when the policy object exposes no root field this comparison cannot run')
-  }
-  function checkFenceRoot(p) {
-    const actual = policyRootOf(p)
-    const expected = String(workspaceRoot() || '').replace(/\\/g, '/').replace(/\/+$/, '')
-    if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)
-    return p
-  }
+  // F-5：围栏漂移检测（只告警不拒写）。边界：若解析结果**不暴露**任何 root 字段，本比对无法运行。
+  function policyRootOf(p) {
+    if (!p || typeof p !== 'object') return ''
+    const cand = p.workspaceRoot || p.root || p.cwd || (p.config && p.config.workspaceRoot) || ''
+    return String(cand || '').replace(/\\/g, '/').replace(/\/+$/, '')
+  }
+  let warnedFenceDrift = false
+  function warnFenceDriftOnce(actual, expected) {
+    if (warnedFenceDrift) return
+    warnedFenceDrift = true
+    console.error('vibe-math-v3' + ': sandbox fence root differs from this session workspace (resolved="' + actual + '", session="' + expected + '") — writes may be fenced to the host-configured root; boundary: when the policy object exposes no root field this comparison cannot run')
+  }
+  function checkFenceRoot(p) {
+    const actual = policyRootOf(p)
+    const expected = String(workspaceRoot() || '').replace(/\\/g, '/').replace(/\/+$/, '')
+    if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)
+    return p
+  }
   function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v3: sandboxPolicy unavailable; writes go out with no explicit policy') } }
   // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
   // deliberately reported (once): with no session it resolves the policy's CONFIGURED root
@@ -1439,13 +1502,13 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   }
 
   // ================= child spawn / followup =================
-  // F-6a：宿主 list() 失败（或既无 spawn 也无 fork）时回退到假定值必须**留痕**，不能静默猜。
-  let providerFallbackWarned = false
-  function warnProviderFallback(why) {
-    if (providerFallbackWarned) return
-    providerFallbackWarned = true
-    console.error('vibe-math-v3: pickProvider() falling back to \'spawn\': ' + why)
-  }
+  // F-6a：宿主 list() 失败（或既无 spawn 也无 fork）时回退到假定值必须**留痕**，不能静默猜。
+  let providerFallbackWarned = false
+  function warnProviderFallback(why) {
+    if (providerFallbackWarned) return
+    providerFallbackWarned = true
+    console.error('vibe-math-v3: pickProvider() falling back to \'spawn\': ' + why)
+  }
   function pickProvider() { let names = []; let listed = false; try { names = subagents.list ? subagents.list() : []; listed = true } catch (e) { warnProviderFallback('subagents.list() failed: ' + ((e && e.message) || e)) } if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork'; if (listed) warnProviderFallback('host exposes neither spawn nor fork (list=' + JSON.stringify(names) + ')'); return 'spawn' }
   function childAgentOptions(role) {
     const o = {}
@@ -1552,12 +1615,12 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
    * 都吞成静默成功（调用方拿到 undefined，还以为已经中断）。现在：空/未知 id ⇒ `code` +
    * `next{tool,hint}`，宿主抛错 ⇒ 保留错误文本并给替代出口；只有真的发出中断才 `ok:true`。
    */
-  /** F-6b：中断失败必须留痕（调用点此前丢掉 {ok:false}，界面看起来一切正常）。 */
-  async function interruptTraced(cid, why) {
-    const r = await interruptChild(cid)
-    if (r && r.ok === false) logActivity('interrupt', '中断失败（' + why + '）：' + String(cid) + ' — ' + String(r.message || r.code || ''))
-    return r
-  }
+  /** F-6b：中断失败必须留痕（调用点此前丢掉 {ok:false}，界面看起来一切正常）。 */
+  async function interruptTraced(cid, why) {
+    const r = await interruptChild(cid)
+    if (r && r.ok === false) logActivity('interrupt', '中断失败（' + why + '）：' + String(cid) + ' — ' + String(r.message || r.code || ''))
+    return r
+  }
   async function interruptChild(childId) {
     const id = String(childId == null ? '' : childId).trim()
     if (!id) return { ok: false, code: 'VIBE_MATH_INVALID_ARGUMENT', message: 'interruptChild 失败：childId 为空——无法确定要中断哪个子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 列出本会话在册子代理的 id，再带 childId 调用。' } }
@@ -2986,11 +3049,11 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     const p = plan || leanBuildPlan()
     const cmd = String(p.engine || 'lean')
     const cap = Math.max(1000, Number(timeoutMs) || Number(params.leanTimeoutMs) || 120000)
-    if (typeof sub.resolveExecutable !== 'function') {
-      return { ok: false, code: 'LEAN_NOT_FOUND', message: 'the host subprocess service exposes no resolveExecutable(); cannot resolve "' + cmd + '" —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
-    }
+    let leanVia = null
+    // task-6: a host without resolveExecutable can still be served by the known-location fallback,
+    // so this preflight no longer short-circuits; resolveKnownTool() below handles both hosts.
     let exe
-    try { exe = await sub.resolveExecutable(cmd) } catch (e) {
+    try { const _r = await resolveKnownTool(sub, { name: 'lean', explicit: (cmd && cmd !== 'lean') ? cmd : '', kind: 'lean' }); exe = _r.exe; leanVia = _r.via; if (!exe) return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + cmd + '": ' + String(_r.reason || 'not found') + ' —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started, next: { kind: 'note', tried: _r.tried } } } catch (e) {
       return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + cmd + '": ' + String((e && e.message) || e) + ' —— 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
     }
     const inject = Array.isArray(p.inject) ? p.inject : leanSearchPathPlan(p.args, p.searchPaths, vibeRoot()).inject
@@ -3040,7 +3103,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     const isTimeout = timedOut || ms >= cap
     return {
       ok: ok, exitCode: exitCode, signal: (outcome && outcome.signal) || null, ms: ms,
-      command: argv.join(' '), file: rel, searchPath: searchPath,
+      command: argv.join(' '), file: rel, searchPath: searchPath, leanFoundVia: leanVia,
       stdout: formalTail(out, 4000), stderr: formalTail(err, 4000),
       timedOut: isTimeout,
       code: ok ? undefined : (isTimeout ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
