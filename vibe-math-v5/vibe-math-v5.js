@@ -5881,7 +5881,8 @@ export function apply(ctx) {
       const order = PAPER_ENGINE_ORDER[lang === 'en' ? 'en' : 'zh'].slice()
       const forced = String(params.paperLatexCommand || '').trim()
       if (!forced) return order
-      return [forced].concat(order.filter((n) => n !== forced))
+      // task-10: an EXPLICIT paperLatexCommand is used ALONE (docs/final-paper.md §B) - no fall-through.
+      return [forced]
     }
     async function latexEngines(lang) {
       const sub = subprocessOf()

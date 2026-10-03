@@ -1419,6 +1419,20 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
   assert(metam.compile.status === 'skipped' && !/编译|tex/.test((metam.warnings || []).join(' ')),
     '★ paperFormat=md skips compilation silently (no missing-tex warning): ' + JSON.stringify(metam.warnings))
 }
+// task-10: an explicit paperLatexCommand is honoured LITERALLY — with engines AVAILABLE but the explicit
+// command unresolvable, the run degrades as "not detected"; it must never fall through to another engine.
+{
+  const hp = makeHost({ pluginModule, subprocess: fakeLatex({ installed: ['xelatex', 'pdflatex'] }) })
+  await hp.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await hp.settleSpawns()
+  await hp.callTool('vibe_v5_set', { paperLatexCommand: 'Z:/definitely/not/here/xelatex.exe' })
+  await hp.callTool('vibe_v5_paper', {})
+  await drivePaper(hp)
+  const dp = paperDirOf(hp, 'institute')
+  const metap = JSON.parse(readFileSync(join(dp, 'paper.meta.json'), 'utf8'))
+  assert(metap.compile.status === 'not-detected',
+    '★ [task-10/v5] an unresolvable explicit paperLatexCommand degrades (never falls through to another engine) — got ' + JSON.stringify(metap.compile.status))
+}
 
 // ---------- 28. office-only surface + id normalisation ----------
 console.log('\n[28] the final-paper surface is office-only and its directory id cannot escape Paper/')

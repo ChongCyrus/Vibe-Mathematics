@@ -191,6 +191,14 @@ const FAMILIES = [
     to: '只交付 paper.tex 与 paper.md。',
     expect: /\[task-9\] the not-detected warning keeps its tail AND says where it looked/,
   },
+  {
+    // task-10: restoring the merged candidate list lets an unresolvable explicit command fall through
+    // to another engine (the documented rule is "explicit ⇒ only it").
+    name: 'task-10: the explicit LaTeX command falls through to another engine again',
+    from: 'return [forced]',
+    to: 'return [forced].concat(order.filter((n) => n !== forced))',
+    expect: /\[task-10\/v5\] an unresolvable explicit paperLatexCommand degrades/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
