@@ -88,6 +88,13 @@ const SELF_PROBE_MUTATIONS = [
     to: '身份一律显式传递，绝不猜测。先 ack 再构造',
     expect: 'still states the pre-G1 order',
   },
+  {
+    name: 'F2/G1: the plan is mutated to re-introduce the pre-G1 re-send contract (the named check must redden)',
+    rel: 'vibe-math-v5/实现方案.md',
+    from: '`makeFileBackend`',
+    to: '`makeFileBackend`（queued 永不重发）',
+    expect: 'still states the pre-G1 re-send contract',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -576,6 +583,12 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     try { frozenNotes = readdirSync(new URL('docs/release-notes/', HERE)).filter((n) => n.endsWith('.md')) } catch (e) { frozenNotes = [] }
     if (!frozenNotes.length) findings.push('the frozen release-notes exemption is EMPTY or missing (docs/release-notes/*.md) — re-decide the scan scope explicitly, never widen it silently')
     notes.push('docs/** inbox pairing: files=' + docFiles + ', forbid-hits=' + docHits + '; frozen docs/release-notes/*.md exempted=' + frozenNotes.length)
+    // The plan ALSO carried the pre-G1 re-send contract ("queued 不重发/永不重发") in two sketch lines while
+    // its own M2 row already said "未 ack ⇒ 仍可重投". NAMED phrase only, scoped to the plan file, so a
+    // sentence that legitimately quotes or forbids the old wording cannot trip it.
+    const QUEUED_FORBID = /queued\s*(永不|不)重发/
+    if (QUEUED_FORBID.test(planDoc)) findings.push('实现方案.md still states the pre-G1 re-send contract (queued 不重发/永不重发): unacked mail is re-deliverable (F2/G1)')
+    notes.push('实现方案.md queued-no-resend phrasing: hits=' + (QUEUED_FORBID.test(planDoc) ? 1 : 0))
   }
 
   // The plan's philosophy is enforced by concrete gates; assert the load-bearing ones
