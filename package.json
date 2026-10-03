@@ -185,6 +185,8 @@
     "tests/audit-installer-policy.test.mjs",
     "scripts/build-preset-rows.mjs",
     "scripts/update-doc-counts.mjs",
+    "scripts/clean-temp.mjs",
+    "tests/temp-hygiene.mutants.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",

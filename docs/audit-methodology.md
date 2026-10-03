@@ -78,3 +78,13 @@ node tests/run-tests.mjs --self-check   # 校验门禁自身的诊断/超时机�
 4. **重跑** `node scripts/update-doc-counts.mjs` 让文档计数收敛；
 5. 在 [`AUDIT-CHECKLIST.md`](./AUDIT-CHECKLIST.md) 增加/更新该行（不变量 + 怎么让它红一次），并在 `docs/release-notes/` 的对应版本里说明**用户可见的变化与验证方式**；
 6. 若最终发现**没有判别力**，按 §4 写成实测边界。
+
+## 8. 环境卫兵：被杀死的套件会泄漏临时目录（实测）
+
+- **实测**：本机 `%TEMP%`（`C:\Users\admin\AppData\Local\Temp\1`）顶层曾达 **248,737 项**，其中**我们的套件临时目录 245,288 项**（`vibe-*` 221,939、`v2-fix-*` 23,160、…），**111,223 项早于 24 h**（最早约两周前）。
+- **根因**：套件用 `mkdtempSync(join(tmpdir(), '<prefix>-…'))` 建工作区并在 `finally` 清理 ✓，**但被门禁超时 SIGKILL 的进程无法清理**；另有一些套件每次运行创建大量目录 ⇒ 数百次门禁后线性累积。
+- **卫兵（`scripts/clean-temp.mjs`，由 `tests/run-tests.mjs` 启动时调用）**：
+  1. **清扫**：只删 `os.tmpdir()` **顶层**、名称匹配**从 `tests/*.mjs` 的 `mkdtempSync` 自动提取的前缀**（实测 **88** 个）、且 **`mtime` 早于阈值**（默认 **6 h**，避免误删并发运行的另一场门禁）的目录；`--dry-run` 只打印计划；`--age-hours=N`／`--no-temp-hygiene` 可调。
+  2. **临时目录优先落 D 盘**：`D:\_tmp` 可用时把 `TEMP/TMP/TMPDIR` 指向它（`os.tmpdir()` **自动跟随** ⇒ **零产品改动**），不可用则回退，**不硬失败**。
+- **自证**：`node scripts/clean-temp.mjs --self-test` 断言"**新鲜目录绝不清理**"、"陈旧且前缀匹配才清理"、"**只匹配精确前缀**"、"前缀表来自套件"；变异家族 `tests/temp-hygiene.mutants.mjs` 用两条**单点**变异（去掉年龄阈值／去掉前缀判断）证明这些断言**按名变红**（实测 **2/2**）。
+- **通道陷阱（真实踩过）**：卫生信息**必须写 stderr** —— `tests/run-tests.mjs --counts`／`--json` 的 **stdout 是机器可读 JSON**（`scripts/update-doc-counts.mjs` 会 `JSON.parse` 它），把日志写到 stdout 会让计数刷新直接崩（`SyntaxError: Unexpected token 'r'`）。

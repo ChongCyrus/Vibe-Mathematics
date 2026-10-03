@@ -32,6 +32,9 @@
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
  *   node tests/run-tests.mjs --json               # machine-readable summary on stdout
+ *   node tests/run-tests.mjs --temp-age-hours=12  # temp hygiene: stale-scratch threshold (default 6 h)
+ *   node tests/run-tests.mjs --temp-dry-run       # temp hygiene: print the plan, delete nothing
+ *   node tests/run-tests.mjs --no-temp-hygiene    # skip the sweep and the roomier-drive temp root
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
@@ -58,6 +61,24 @@ const flag = (name) => {
 const has = (name) => argv.includes('--' + name)
 const only = flag('only')
 const exclude = flag('exclude')
+// TEMP HYGIENE (task-12): a suite killed by the per-suite timeout cannot clean up, and some suites
+// create many workspace dirs per run — measured here: %TEMP% held 160,923 top-level entries, 144,404 of
+// them stale suite dirs (oldest ~2 weeks). Sweep the stale ones (top level, EXTRACTED suite prefixes,
+// older than --temp-age-hours) and prefer the roomier drive's temp root; `os.tmpdir()` follows TEMP/TMP,
+// so the suites need NO change. Hygiene must never break the sweep itself, and it reports on **stderr**
+// because stdout is a MACHINE-READABLE channel here (`--counts`/`--json` are JSON.parsed by callers).
+if (!has('no-temp-hygiene')) {
+  try {
+    const { suitePrefixes, sweep, preferredTempRoot, useTempRoot } = await import('../scripts/clean-temp.mjs')
+    if (useTempRoot(preferredTempRoot())) console.error('run-tests: temp root -> ' + process.env.TEMP + ' (roomier drive preferred; D:\\_tmp when present)')
+    sweep({
+      prefixes: suitePrefixes(),
+      ageHours: Number(flag('temp-age-hours')[0] || 6),
+      dryRun: has('temp-dry-run'),
+      log: (m) => console.error(m),
+    })
+  } catch (e) { console.error('run-tests: temp hygiene skipped (' + ((e && e.message) || e) + ')') }
+}
 const asJson = has('json')
 const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(4, cpus().length)))
 
