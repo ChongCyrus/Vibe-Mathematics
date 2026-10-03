@@ -194,6 +194,8 @@ const VARIANTS = [
   { file: 'audit-participant-set-parity.mjs', args: ['--self-probe'] },
   // §7/§8 predicates, shipped: same functions fed broken strings.
   { file: 'audit-math-computation-parity.mjs', args: ['--self-probe'] },
+  // §30 verify-provenance predicates (case 3), shipped.
+  { file: 'math-computation-shared.test.mjs', args: ['--self-probe'] },
   // The two-registration-paths probe, inverted: it applies a real description mutation and
   // REQUIRES the parity check to exit 1 (exit 2 means the mutation no longer applies = drift).
   {
@@ -227,7 +229,10 @@ for (const v of VARIANTS) {
     if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
     continue
   }
-  suites.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: v.file.endsWith('.test.mjs') ? 'suite' : 'probe' })
+  // A VARIANT is an EXTRA instrumented run of the SAME script (argument variants), never an additional
+  // suite: the counting unit for `suites` is "the suites proper", one per script. Classifying by file name
+  // here would inflate `suites` whenever a suite gains a `--self-probe` job (R18: it did, 44 -> 45).
+  suites.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: 'probe' })
 }
 suites.sort((a, b) => (label(a) < label(b) ? -1 : 1))
 if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))

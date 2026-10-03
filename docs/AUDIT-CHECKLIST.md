@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **62** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **97 项作业（job count）= 44 套件 + 53 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **64** 项（**文件计数**；其中 `.test.mjs` **17** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **100 项作业（job count）= 44 套件 + 56 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -520,7 +520,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ## 本周期新增守卫索引（守卫/章节 → 它钉住的不变量 → 证明它会咬的变异）
 
-> 维护规则：只列**能在代码里指出来**的守卫；每行给出"不变量"与"变异"两列，变异脚本都在仓库外的 `_oneoff/auditR2/`。 （仅开发检出，不随包发布）
+> 维护规则：只列**能在代码里指出来**的守卫；每行给出"不变量"与"变异"两列。**变异脚本多数已随包** —— 形式是 `tests/*.mutants.mjs`（单位：文件名）或套件内的 `--self-probe` / 变异段（由 runner 的 `VARIANTS` 注册为 **job**）。仍标 **dev-only** 的行指向 `_oneoff/auditR2/*`（**不在 `files[]`**），属**剩余待转换项**；转换完成时该行的 dev-only 标记必须一并删掉。
 
 | 守卫 / 章节 | 钉住的不变量 | 证明它会咬的变异 |
 |---|---|---|
@@ -529,11 +529,11 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-v3-registration-parity.mjs` | v3 的工具注册与声明面一致 | 该套件自身（`run-tests.mjs:87-90` 以显式 args 运行它） |
 | `tests/formal-verify-v4.test.mjs` §N5–§N9 | N5/N6 路径纪律；N9 行为证明：写到**文档化路径**的卡片必须被 `countArtifacts` 计入（自动会议基数） | 该套件自身的变异/行为断言（§N9 为真机行为证明） |
 | `tests/audit-participant-set-parity.mjs` | 四个预设各**只有一个**参与集生产者；集合与"版本/期望"同时给出；v2/v3 的有意差异被钉住 | **随包** `node tests/audit-participant-set-parity.mjs --self-probe`（**6/6**：同一批谓词对**真实源码**为真、对**故意改坏的字符串**为假 —— 单位 = 谓词用例数，逐条打印 `green-now=… broken-goes-red=…`）；该变体已注册为 runner job。原 `_oneoff/auditR2/participant-set-proof.mjs` 已删除（其内容即此自探针） |
-| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | `_oneoff/auditR2/round9-mutants.mjs` m3、`roundB-mutants.mjs` b1/b2 （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） **in-repo 证据（可从 tarball 复现）**：`node tests/math-computation-shared.test.mjs --self-probe` —— 删掉**一行** `fail()` 白名单（`out.absent = extra.absent`）后，子进程读数 **361 passed / 1 failed**，具名 §32 断言（"the failure carries an absent[] list"）；默认运行 **362/0** 不变。 |
-| 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | `roundA-mutants.mjs` a1/a2、`round9-mutants.mjs` |
+| `tests/math-computation-shared.test.mjs` §23 / §23b | 装了但不在 PATH 的引擎可被发现；根来自**宿主注入**（不依赖本机 `ProgramFiles`）；R/Octave/Julia/MATLAB 每 OS 根齐备 | **随包** `node tests/math-computation-discovery.mutants.mjs`（**5/5**：**副本对基线绿**（未变异的模块对）＋ m3 丢掉已知安装目录查找 ⇒ **376/4**、b1 忽略宿主注入根 ⇒ **376/4**、b2 删掉 octave/julia 每 OS 根 ⇒ **378/2**、m4 假设包管理器存在 ⇒ **376/4**；每个都命中**具名** §23/§23b 断言，单位 = 具名断言标签）。原 dev-only 草稿 `round9-mutants.mjs`、`roundB-mutants.mjs` 已删除 |
+| 同上 §26 | 编辑**原源文件**重跑 ⇒ 同一归档 + attempt≥2 + `scriptChanged`；指向**归档副本** ⇒ 新归档 + `fileIsArchivedScript`/`ARCHIVED_SCRIPT_RERUN` | **随包** `node tests/math-computation-archive-rerun.mutants.mjs`（**3/3**：**副本对基线绿** ＋ a1 删掉 `ARCHIVED_SCRIPT_RERUN` 告警 ⇒ **379/1**、a2 让归档源永不被识别 ⇒ **378/2**；每个都命中**具名** §26 断言，单位 = 具名断言标签）。原 `roundA-mutants.mjs`（a1/a2）与 `round9-mutants.mjs` 的引用均已转换/删除 |
 | 同上 §28 | **任何** spawn 都不得带未替换的 argv 占位符（matlab 的 `run('<script>')` 内嵌形态） | **随包** `node tests/audit-math-computation-parity.mjs --self-probe`（§7 四条：STRING-level 替换、未知占位符、已知占位符必须有实现、**旧写法产物必被谓词抓住**；单位 = 谓词用例数，逐条打印 `green-now=… broken-goes-red=…`）；该变体已注册为 runner job |
 | 同上 §29 | cli 策略来自**描述符**（`CLI_POLICY`），模块内不得再有硬编码比较；拒绝里带描述符值 | **随包** 同上 `--self-probe`（§8 四条：声明、被消费、无硬编码、拒绝里带描述符值）+ 敏感度探针 `cli-policy-ignored` |
-| 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | `_oneoff/auditR2/verify-provenance-proof.mjs`（2/2） （**仅开发检出，不随包发布**：包内读者无法复现该欄证据） |
+| 同上 §30 | 商业模板的 `verify`/`verifyReason` **到达用户**；未声明者**不打印空槽** | **随包** `node tests/math-computation-shared.test.mjs --self-probe`（**case 3 / §30：2/2**：从被测模块里抽出**真实**的 `verifyFields(engine)` 助手，喂一个 stub 描述符表，删掉它唯一的 reason 行（或空槽守卫）后，**§30 自己的谓词** `carriesVerifyProvenance` / `hasNoVerifySlot` 必须翻假；单位 = 谓词用例数）；该变体已注册为 runner job。原 `_oneoff/auditR2/verify-provenance-proof.mjs` 已删除 |
 | `tests/audit-math-computation-parity.mjs` §7 / §8 | 描述符不得用未知占位符、每个占位符都有实现；cli 策略"声明一次 + 被消费"；僵尸字段（`winPrefix`/`stdinArgv`/`defaultOn`）不得回归 | **随包** `--self-probe`（**8/8**，§7 与 §8 各四条）；两个 dev-only 草稿（`descriptor-sweep-proof.mjs`、`cli-policy-proof.mjs`）已删除 |
 | `tests/audit-installer-compat.test.mjs`（版本探测块 + `%s` 断言 + **A7 结构化断言**） | 多来源不一致时出现 `disagreement`（一致时**不出现**）；日志行不得带 `%s`/`%d`；**版本与 source 断言在 `detectDshVersion` 的结构化返回值上**（不是"日志里出现过这个版本串"或"出现过 source 这个词"），日志只保留一条**行形状**检查 | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A7-version ⇒ compat 74/3、A7-source ⇒ 75/2）。早先的 `_oneoff/auditR2/installer-mutants.mjs` 已被它取代（**仅开发检出**，历史） |
 | `tests/audit-installer-policy.test.mjs`（**A8 + 动作/语言约定**） | ① 措辞类断言换成**报告级**：`failedLog(logs).length === 0`（不是"日志里没有『备份失败』四个字"）；② **一个动作一行**：restore / cleanup 各**恰好一次**（`EXACTLY ONCE`）；③ **一个动作一种语言**：任何面向用户的日志**标签**（`[dsh-vibe-math] ` 之后、首个 `：`/`:` 之前）**不得是纯 ASCII**（英文领域词夹在中文标签里、如 `preset 声明方式`，是合规的）——**源码扫描 + 运行期捕获日志两侧都查**；只保留**一条**明确标注的 `[wording smoke check — the ONE allowed]` | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A8-failure ⇒ policy 86/9、DL-label ⇒ 93/2、DL-duplicate ⇒ 94/1） |
@@ -579,8 +579,8 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 |---|---|---|
 | A1 v2/v3 skip 台账 + `mgrBranchExercised` | 跳过/未走到分支必须留痕，不能沉默 | in-repo：`tests/math-computation-a1.mutants.mjs`（**2/2** 族具名红，`skipped=[]`，`exit=0`；v2/v3 两个预设） |
 | A6 name-set 快照 | 工具名集合变化必须被察觉 | in-repo：`tests/e2e-identity-a6.mutants.mjs`（**2/2** 族具名红，`skipped=[]`，`exit=0`；v2/v3 两个预设） |
-| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**8** 族：F2cap / F-A / F5 / F4c / F6a / F6b / F6c + 本行） |
-| F2 v3 id 契约 | id 形状/唯一性契约 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**8** 族：F2cap / F-A / F5 / F4c / F6a / F6b / F6c + 本行） |
+| F1 v3 planner 集合相等 | planner 的两侧集合必须相等 | in-repo：`tests/v3-fix-probes.mutants.mjs`（**族数从族自报行现取**：本轮 **11/11** 具名红；族名以该文件为准，含 F2cap / F-A / F5 / F4c / F6a / F6b / F6c 等 —— **不要照抄固定数字**，跑一次即知） |
+| F2 v3 id 契约 | id 形状/唯一性契约 | in-repo：`tests/v3-fix-probes.mutants.mjs`（同上：本轮 **11/11**；v2 对应族 `tests/v2-fix-probes.mutants.mjs` 本轮 **10/10**；两者都打印 `TOTAL WALL TIME` 供复核） |
 | F3 v2 `list_agents` | 该工具必须存在且被提及 | **需新增 in-repo harness** |
 | F4 v2 require-gate 下一步 | 拒绝必须给出可执行的下一步 | **需新增 in-repo harness** |
 | A5 v5 kind 多重集 + id 集 | 事件 kind 的多重集与 id 集不变 | 随包变异族（R14 实测）：`A5-ids` ⇒ **计数断言 0 红**、**ID-SET 语义断言红**，整轮 **82 红**；`A5-kinds` ⇒ **计数断言 0 红**、**KIND 语义断言红**，整轮 **21 红**。**正确措辞**：计数断言**保持绿**、新加的**语义断言必然变红**，其余红是**同一次变异的下游级联**（下游用例引用 id 前缀/kind）—— 不要写成"只有 ID-SET/KIND 变红" |
@@ -588,7 +588,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **需新增 in-repo harness** |
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
 
-**包边界核对（`92c60cc` 实测）**：`package.json#files` 共 **168** 条，其中 `_oneoff` 条目 **0 条**；随包 `tests/*.mutants.mjs` **21 个**（单位 = 文件名；`ls tests/*.mutants.mjs` 可复核）。因此索引里凡指向 `_oneoff/auditR2/*` 的行都是 **dev-only**；上表凡标"需新增 in-repo harness"的行即尚未随包。**这两类数字都会随批次变化 —— 复核时请用上面两条命令重新派生，不要照抄本节。**
+**包边界核对（实测，随批次变化）**：`package.json#files` 共 **170** 条，其中 `_oneoff` 条目 **0 条**；随包 `tests/*.mutants.mjs` **23 个**（单位 = 文件名）。**这两类数字必须重新派生、不要照抄**：`node -e "console.log(Object.keys(require('./package.json').files).length)"` 与 `ls tests/*.mutants.mjs | wc -l`（Windows：`(Get-ChildItem tests/*.mutants.mjs).Count`）。**本轮之后索引里已无 live dev-only 行**：凡是提到 `_oneoff/auditR2/*` 的地方都明确标为**历史/已被取代**；如需新增证据，一律走 `tests/*.mutants.mjs` 或套件内 `--self-probe`（并在 runner 的 `VARIANTS` 里注册为 job）。
 
 
 ### 自检的能力边界（"自检通过" ≠ "兼容"）
@@ -710,7 +710,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 97`（44 套件 + 53 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 62（**文件计数**：17 个套件 + 45 个探针/脚本）。
+- **计数（实测）**：`TOTAL 100`（44 套件 + 56 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 64（**文件计数**：17 个套件 + 47 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

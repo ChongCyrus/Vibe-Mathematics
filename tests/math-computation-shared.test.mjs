@@ -25,6 +25,11 @@ const MODULE = process.env.MATH_COMPUTATION_MODULE
   : new URL('../vibe-math-v2/math-computation.js', import.meta.url).href
 const M = await import(MODULE)
 
+// §30 predicates — used by the §30 assertions AND by `--self-probe` case 3, so the shipped proof and the
+// audit cannot drift ("same predicate, broken input"). Unit: descriptor entries carrying the reason.
+const carriesVerifyProvenance = (v) => !!v && v.verify === true && typeof v.verifyReason === 'string' && v.verifyReason.length > 0
+const hasNoVerifySlot = (v) => !!v && !('verify' in v) && !('verifyReason' in v)
+
 // ── --self-probe (shipped): prove the §32 evidence assertion can REDDEN, from the tarball alone.
 // It copies the module, removes ONE `fail()` whitelist line, and requires the named §32 assertion
 // to fail in the child. Usage: node tests/math-computation-shared.test.mjs --self-probe
@@ -73,7 +78,42 @@ if (process.argv.includes('--self-probe')) {
     if (!ok2) for (const l of failLines2.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
   }
   rmSync(dir2, { recursive: true, force: true })
-  process.exit(child.status !== 0 && named && ok2 ? 0 : 1)
+  // case 3 (§30, verify provenance): the SAME predicates the §30 assertions use, fed a broken helper.
+  // The real `verifyFields(engine)` helper is extracted from the module under test and run against a stub
+  // descriptor table; dropping its single reason line (or the no-empty-slot guard) must flip its predicate.
+  const src3 = rf(modPath, 'utf8')
+  const hStart = src3.indexOf('function verifyFields(engine) {')
+  let helper = ''
+  if (hStart !== -1) {
+    let d = 0, end = hStart
+    for (let i = hStart; i < src3.length; i++) { if (src3[i] === '{') d++; else if (src3[i] === '}') { d--; if (d === 0) { end = i + 1; break } } }
+    helper = src3.slice(hStart, end)
+  }
+  const REASON_LINE = "  if (typeof d.verifyReason === 'string' && d.verifyReason) out.verifyReason = d.verifyReason\n"
+  const GUARD_LINE = '  if (!d.verify) return {}\n'
+  let ok3 = false
+  if (helper.indexOf(REASON_LINE) === -1 || helper.indexOf(GUARD_LINE) === -1) {
+    console.log('SELF-PROBE FAIL: the §30 helper anchors were not found (the probe cannot mutate what it cannot see)')
+  } else {
+    const stub = { maple: { verify: true, verifyReason: 'CLI spelling varies by Maple version - confirm on a licensed machine' }, python: { license: 'free' } }
+    const make = (s) => new Function('MATH_ENGINES', s + '\nreturn verifyFields;')(stub)
+    const good = make(helper)
+    const broken = make(helper.replace(REASON_LINE, ''))
+    const brokenGuard = make(helper.replace(GUARD_LINE, ''))
+    const cases3 = [
+      ['§30 probe carries WHY (shared predicate carriesVerifyProvenance)', carriesVerifyProvenance(good('maple')), carriesVerifyProvenance(broken('maple'))],
+      ['§30 no empty slot without a declared reason (hasNoVerifySlot)', hasNoVerifySlot(good('python')), hasNoVerifySlot(brokenGuard('python'))],
+    ]
+    let bad3 = 0
+    for (const [name, greenNow, redWhenBroken] of cases3) {
+      const okc = greenNow === true && redWhenBroken === false
+      if (!okc) bad3++
+      console.log((okc ? '  ok   ' : '  FAIL ') + name + ' :: green-now=' + greenNow + ' broken-goes-red=' + !redWhenBroken)
+    }
+    ok3 = bad3 === 0
+    console.log('  --- §30 verify-provenance predicates: ' + (cases3.length - bad3) + '/' + cases3.length + ' as required')
+  }
+  process.exit(child.status !== 0 && named && ok2 && ok3 ? 0 : 1)
 }
 
 let passed = 0, failed = 0
@@ -1071,11 +1111,11 @@ console.log('-- math_computation shared contract --')
   ok(!!p.engineInfo && typeof p.engineInfo.verifyReason === 'string' && p.engineInfo.verifyReason.length > 0 && /version/i.test(p.engineInfo.verifyReason),
     '★ probe carries WHY the template needs confirmation (engineInfo.verifyReason)', JSON.stringify(p.engineInfo && p.engineInfo.verifyReason))
   const entry = (p.engines || []).find((e) => e.name === 'maple')
-  ok(!!entry && entry.verify === true && typeof entry.verifyReason === 'string', 'the per-engine probe entry carries the same provenance')
+  ok(carriesVerifyProvenance(entry), 'the per-engine probe entry carries the same provenance')
   const hp = makeFakeHost({ installed: ['python3'], files: {} })
   M.registerMathComputation(hp.host)
   const pp = await hp.call({ op: 'probe', engine: 'python' })
-  ok(!!pp.engineInfo && !('verify' in pp.engineInfo) && !('verifyReason' in pp.engineInfo),
+  ok(hasNoVerifySlot(pp.engineInfo),
     '★ an engine without a declared reason prints NO empty slot (assemble-only-when-present)')
   const hm = makeFakeHost({ installed: [], files: {} })
   M.registerMathComputation(hm.host)
