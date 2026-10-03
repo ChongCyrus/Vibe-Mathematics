@@ -158,6 +158,7 @@ function makeHost() {
   const toolRegs = []
   const cmdRegs = []
   const spawns = []
+  let interruptThrows = false   // task-14 (SLV P3): injection seam for the "host refuses to interrupt" branch
   const ctx = {
     get(name) {
       if (name === 'subprocess') return (fake && fake.noSubprocess) ? undefined : subprocess
@@ -180,7 +181,7 @@ function makeHost() {
       },
       async sendMessage() { return 'w' },
       async followup() { return 'w' },
-      interrupt() {},
+      interrupt() { if (interruptThrows) throw new Error('宿主拒绝中断（测试注入）') },
     },
     fs: {
       async resolve(rel, opts) { const base = (opts && opts.cwd) || WS; const p = String(rel).replace(/\\/g, '/'); return /^([A-Za-z]:|\/)/.test(p) ? p : join(base, ...p.split('/')) },
@@ -205,7 +206,7 @@ function makeHost() {
       return t[p]
     },
   })
-  return { ctx, toolRegs, cmdRegs, spawns, listeners, fs: fsBase }
+  return { ctx, toolRegs, cmdRegs, spawns, listeners, fs: fsBase, set interruptThrows(v) { interruptThrows = v } }
 }
 function makeRoot(id) { return { id, options: { provider: 'mock', model: 'mock' }, session: { id, header: { cwd: WS, parentSession: undefined } }, followup() {} } }
 
@@ -703,6 +704,17 @@ section('§19 成员作用域失败诊断：interruptChild 显式失败 + decisi
   const badDecide = await call('vibe_math_decide', { id: 'no-such-decision', action: 'approve' })
   assert(badDecide.ok === false && badDecide.code === 'VIBE_MATH_DECISION_NOT_FOUND', '★ [D1] 未知 decision id ⇒ code=VIBE_MATH_DECISION_NOT_FOUND，不是裸 message（实测 ' + JSON.stringify(badDecide).slice(0, 170) + '）')
   assert(!!badDecide.next && badDecide.next.tool === 'vibe_math_list_decisions', '★ [D1] 决策诊断的 next 指向真实存在的 vibe_math_list_decisions（实测 ' + JSON.stringify(badDecide.next || null) + '）')
+  // task-14 (SLV P3): the "host REFUSES to interrupt" branch — the one failure mode §19 did NOT cover.
+  // A live child is required FIRST (otherwise the code returns CHILD_NOT_FOUND and the guard would pass for
+  // the wrong reason); only then does the fake host start throwing.
+  const liveChild = (H.spawns && H.spawns.length) ? H.spawns[H.spawns.length - 1].childId : ''
+  const interruptible = await rawInterrupt({ childId: liveChild })
+  assert(interruptible.ok === true, '★ [P3/v2] 前置：可中断的 child 返回 ok:true（childId=' + liveChild + '，实测 ' + JSON.stringify(interruptible).slice(0, 140) + '）')
+  H.interruptThrows = true
+  let refused
+  try { refused = await rawInterrupt({ childId: liveChild }) } finally { H.interruptThrows = false }
+  assert(refused && refused.ok !== true && refused.code === 'VIBE_MATH_INTERRUPT_FAILED', '★ [P3/v2] 宿主拒绝中断 ⇒ 具名失败 code=VIBE_MATH_INTERRUPT_FAILED（实测 ' + JSON.stringify(refused).slice(0, 170) + '）')
+  assert(!!refused.next && refused.next.tool === 'vibe_math_abort' && !!refused.next.hint, '★ [P3/v2] 该失败带 next{tool=vibe_math_abort,hint}（实测 ' + JSON.stringify(refused.next || null) + '）')
 }
 // ── §20 审计 P0（**文本层断言**）：成员可见材料必须写明"文件工具按会话 cwd 解析相对路径 ⇒ 下面列出的
 // 相对路径要先拼项目根的绝对前缀；计算产物用回执的绝对字段 receipt.scriptAbs"。断言直接读**产出文本**

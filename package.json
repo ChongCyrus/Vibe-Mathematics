@@ -187,6 +187,7 @@
     "scripts/update-doc-counts.mjs",
     "scripts/clean-temp.mjs",
     "tests/temp-hygiene.mutants.mjs",
+    "tests/v2v3-interrupt.mutants.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
