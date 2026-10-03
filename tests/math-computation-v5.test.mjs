@@ -438,8 +438,8 @@ section('9 cli is a tool path: default on, disabled by mathMode or by the engine
   const seam = makeSeam({ installed: {}, resolveAll: true })
   const h = makeHost(seam)
   const r = await h.callMath({ op: 'run', engine: 'cli', mode: 'code', code: 'ignored-by-cli\n', cli: { command: 'my-tool', argv: ['--json', 'q'] } })
-  assert(r.ok === true && r.engineInfo && r.engineInfo.name === 'cli:my-tool' && r.engineInfo.source === 'cli',
-    '★ engine=cli runs by default and is recorded as cli:<command> (' + JSON.stringify(r.engineInfo) + ')')
+  assert(r.ok === true && r.engineInfo && r.engineInfo.name === 'cli:my-tool' && r.engineInfo.source === 'cli' && r.engineInfo.foundVia === 'cli',
+    '★ engine=cli runs by default and is recorded as cli:<command> with foundVia=cli (' + JSON.stringify(r.engineInfo) + ')')
   const cliCall = seam.runCalls[seam.runCalls.length - 1]
   // round-7 (finding 4): mode:'code' appends the archived script path, so the executed argv is the
   // user argv plus that path; the receipt keeps the user argv verbatim.

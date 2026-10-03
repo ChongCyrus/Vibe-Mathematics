@@ -33,7 +33,7 @@ function runSuite(dir) {
   const o = String(r.stdout || '') + String(r.stderr || '')
   return { status: r.status, out: o, failLines: o.split('\n').filter((l) => /^\s*FAIL\b/.test(l)), sum: (o.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim() }
 }
-const M3_FROM = "  // round-9: then the known per-OS install locations (an engine installed without touching PATH).\n  for (const p of await knownInstallCandidates(H, d.name)) {\n    if (typeof p === 'string' && p) return p\n  }\n"
+const M3_FROM = "  // round-9: then the known per-OS install locations (an engine installed without touching PATH).\n  for (const p of await knownInstallCandidates(H, d.name)) {\n    if (typeof p === 'string' && p) return { exe: p, via: 'known-install' }\n  }\n"
 const CASES = [
   { name: 'm3: the known-install-location lookup is dropped (PATH + bundled runtime only)',
     expect: 'a Rscript that exists ONLY in the default install dir is discovered',

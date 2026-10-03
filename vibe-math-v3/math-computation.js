@@ -405,12 +405,12 @@ export async function probeMathEngines(host, opts) {
     if (name === 'cli') continue // cli needs a caller-supplied command, so it is not auto-detected
     const hit = await resolveCandidate(H, d)
     if (!hit) continue
-    const v = await probeVersion(H, d, hit)
+    const v = await probeVersion(H, d, hit.exe)
     if (!v.ok) {
       if (d.license === 'commercial') continue // installed but not usable: reported by op=run as LICENSE_REQUIRED
       continue
     }
-    engines.push(Object.assign({ name: name, version: v.version, path: hit, license: d.license }, verifyFields(name)))
+    engines.push(Object.assign({ name: name, version: v.version, path: hit.exe, foundVia: hit.via, license: d.license }, verifyFields(name)))
   }
   const result = { ok: true, engines: engines, available: engines.length > 0 }
   PROBE_CACHE.set(H, result)
@@ -491,17 +491,17 @@ async function resolveCandidate(H, d) {
   for (const c of cands) {
     try {
       const p = await H.resolveExecutable(c)
-      if (typeof p === 'string' && p) return p
+      if (typeof p === 'string' && p) return { exe: p, via: 'path' }
     } catch (e) { /* not this one */ }
   }
   // round-7 (fix 2): DSH ships its own runtimes; PATH always wins, so this is a LAST resort. The
   // tree name is globbed (never hard-coded) and executable names come from the descriptor candidates.
   for (const p of await dshRuntimeCandidates(H, d.name)) {
-    if (typeof p === 'string' && p) return p
+    if (typeof p === 'string' && p) return { exe: p, via: 'host-runtime' }
   }
   // round-9: then the known per-OS install locations (an engine installed without touching PATH).
   for (const p of await knownInstallCandidates(H, d.name)) {
-    if (typeof p === 'string' && p) return p
+    if (typeof p === 'string' && p) return { exe: p, via: 'known-install' }
   }
   return null
 }
@@ -660,16 +660,16 @@ async function resolveEngine(H, requested, params, args) {
         cliProbe = fv.diag || null
         if (fv.ok) cliVersion = fv.version
       }
-      return { ok: true, name: name, desc: d, exe: exe, version: cliVersion, family: fam || null, probe: cliProbe }
+      return { ok: true, name: name, desc: d, exe: exe, version: cliVersion, family: fam || null, probe: cliProbe, via: 'cli' }
     }
     const hit = await resolveCandidate(H, d)
     if (!hit) continue
-    const v = await probeVersionWithRetry(H, d, hit)
+    const v = await probeVersionWithRetry(H, d, hit.exe)
     if (!v.ok) {
       if (d.license === 'commercial' || d.versionOptional) {
-        const lic = await checkLicence(H, d, hit)
+        const lic = await checkLicence(H, d, hit.exe)
         if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', Object.assign({ engine: name, url: d.vendor || '' }, verifyFields(name))) })
-        return { ok: true, name: name, desc: d, exe: hit, version: 'unknown' }
+        return { ok: true, name: name, desc: d, exe: hit.exe, version: 'unknown', via: hit.via }
       }
       // round-7 (live-session fix): the engine WAS found - so an install guide would be misleading
       // (the user does not need to install anything; the host path is what failed). Report the probe
@@ -679,9 +679,9 @@ async function resolveEngine(H, requested, params, args) {
         next: next('note', { guidance: '引擎已找到但探测失败：请检查宿主 subprocess 通路（冷启动/超时/权限），或用 mathEngineOverride 调整 versionArgv 模板；已装的引擎不需要重装。' }),
       })
     }
-    const lic = await checkLicence(H, d, hit)
+    const lic = await checkLicence(H, d, hit.exe)
     if (!lic.ok) return fail('MATH_ENGINE_LICENSE_REQUIRED', name, name + ' 已安装但许可不可用（仅厂商可激活）', { next: next('vendor', Object.assign({ engine: name, url: d.vendor || '' }, verifyFields(name))) })
-    return { ok: true, name: name, desc: d, exe: hit, version: v.version }
+    return { ok: true, name: name, desc: d, exe: hit.exe, version: v.version, via: hit.via }
   }
   const first = requested === 'auto' ? (params.mathEngines[0] || 'python') : requested
   return fail('MATH_ENGINE_NOT_FOUND', first, '本机没有可用的计算引擎（试过：' + names.join(', ') + '）', { next: await userInstallNext(H, first) })
@@ -967,7 +967,7 @@ async function opProbe(H, args, params) {
   if (chosen && chosen.ok && !engines.some((e) => e.name === chosen.name)) {
     engines.push(Object.assign({ name: chosen.name, path: chosen.exe, version: chosen.version, license: (MATH_ENGINES[chosen.name] || {}).license }, verifyFields(chosen.name)))
   }
-  const engineInfo = (chosen && chosen.ok) ? Object.assign({ name: chosen.name, path: chosen.exe, version: chosen.version }, verifyFields(chosen.name)) : null
+  const engineInfo = (chosen && chosen.ok) ? Object.assign({ name: chosen.name, path: chosen.exe, version: chosen.version, foundVia: chosen.via }, verifyFields(chosen.name)) : null
   // round-9 (F3): the availability line must never be silently partial - name the CONFIGURED engines
   // that were not found (and why), instead of just listing the ones that happened to resolve.
   const foundNames = engines.map((e) => e.name)
@@ -1000,7 +1000,7 @@ async function opRun(H, args, params) {
   const det = await resolveEngine(H, args.engine || 'auto', params, args)
   if (!det.ok) return det
   const desc = applyOverride(det, params, args)
-  const det2 = { ok: true, name: det.name, desc: desc, exe: det.exe, version: det.version }
+  const det2 = { ok: true, name: det.name, desc: desc, exe: det.exe, version: det.version, via: det.via }
   // The generic escape hatch is recorded as `cli:<command>` (spec §4.3 / guards §18): the model and
   // the receipt must be able to tell WHICH command was run, not just that it was "cli".
   const cliCommand = args.cli && typeof args.cli.command === 'string' ? args.cli.command : ''
@@ -1118,7 +1118,7 @@ async function opRun(H, args, params) {
     schema: 'vibe-math/math-computation-receipt@1',
     runId: runId, preset: H.designator, project: slug(root), op: 'run', mode: mode,
     attempt: attempt, attemptDir: dir, baseRunDir: baseDir,
-    engine: { name: engineLabel, path: det.exe, version: det.version, source: det.name === 'cli' ? 'cli' : 'path' },
+    engine: { name: engineLabel, path: det.exe, version: det.version, source: det.name === 'cli' ? 'cli' : 'path', foundVia: det2.via },
     script: { path: scriptRel, sha256: scriptHash, bytes: Buffer.byteLength(scriptText, 'utf8') },
     scriptPath: scriptRel, scriptHash: scriptHash,
     // round-8 (P0/D3): member file tools are session-cwd relative, so the ABSOLUTE locations must be

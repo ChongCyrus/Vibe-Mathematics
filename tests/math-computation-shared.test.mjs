@@ -113,7 +113,34 @@ if (process.argv.includes('--self-probe')) {
     ok3 = bad3 === 0
     console.log('  --- §30 verify-provenance predicates: ' + (cases3.length - bad3) + '/' + cases3.length + ' as required')
   }
-  process.exit(child.status !== 0 && named && ok2 && ok3 ? 0 : 1)
+  // case 4 (task-1): mislabel the bundled-runtime stage -> the named foundVia assertion must redden.
+  // NOTE: the self-probe's fs imports are ALIASED at the top of this block (`rf` = readFileSync,
+  // `wf` = writeFileSync); using the unaliased names here is a ReferenceError, not a probe failure.
+  let ok4 = false
+  {
+    const dir4 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe4-'))
+    try {
+      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir4, 'math-engines.js'))
+      const src4 = rf(modPath, 'utf8')
+      const FROM4 = "via: 'host-runtime'"
+      const n4 = src4.split(FROM4).length - 1
+      if (n4 !== 1) {
+        console.log('SELF-PROBE FAIL: the stage-2 via anchor occurs ' + n4 + ' times (expected exactly 1)')
+      } else {
+        wf(join(dir4, 'math-computation.js'), src4.split(FROM4).join("via: 'path'"), 'utf8')
+        const child4 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
+          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir4, 'math-computation.js') }) })
+        const out4 = String(child4.stdout || '') + String(child4.stderr || '')
+        const failLines4 = out4.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
+        const named4 = failLines4.some((l) => l.indexOf('a bundled runtime tree is reported as host-runtime') !== -1)
+        const summary4 = out4.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary'
+        ok4 = child4.status !== 0 && named4
+        console.log((ok4 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': mislabelling the bundled-runtime stage reddens the named foundVia assertion (' + summary4 + ')')
+        if (!ok4) for (const l of failLines4.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+      }
+    } finally { rmSync(dir4, { recursive: true, force: true }) }
+  }
+  process.exit(child.status !== 0 && named && ok2 && ok3 && ok4 ? 0 : 1)
 }
 
 let passed = 0, failed = 0
@@ -278,7 +305,7 @@ console.log('-- math_computation shared contract --')
     ok(r.cliScriptAppended === true, 'the return shell flags cliScriptAppended')
     ok(r.engine === 'cli:/fake/bin/mytool' && r.engineInfo.name === 'cli:/fake/bin/mytool', 'cli is labelled cli:<command> in the shell and engineInfo')
     const rj = JSON.parse(state.file(r.receipt.json))
-    ok(rj.engine.name === 'cli:/fake/bin/mytool' && rj.engine.source === 'cli' && rj.cli && rj.cli.argv.length === 2, 'cli receipt records cli:<command>, source=cli and the USER argv')
+    ok(rj.engine.name === 'cli:/fake/bin/mytool' && rj.engine.source === 'cli' && rj.engine.foundVia === 'cli' && rj.cli && rj.cli.argv.length === 2, 'cli receipt records cli:<command>, source=cli, foundVia=cli and the USER argv')
     ok(rj.cli.scriptAppended === true && rj.argv[rj.argv.length - 1] === r.argv[3], 'the receipt records scriptAppended and the executed argv')
   })
   await withHost({ params: { mathMode: 'typed' } }, async (state) => {
@@ -705,6 +732,7 @@ console.log('-- math_computation shared contract --')
     const p = await hb.call({ op: 'probe', engine: 'python' })
     ok(p.ok === true && p.engine === 'python' && p.engineInfo.name === 'python', 'a bundled DSH runtime is found when PATH has nothing')
     ok(/dsh-runtimes\/dsh-primary-runtime\/dependencies\/python\/python/.test(p.engineInfo.path), 'the discovered path comes from the generically globbed runtime tree')
+      ok(p.engineInfo.foundVia === 'host-runtime', '★ a bundled runtime tree is reported as host-runtime (foundVia, not the coarse source)')
     const r = await hb.call({ op: 'run', engine: 'python', mode: 'code', code: 'print(1)\n' })
     ok(r.ok === true && !!r.engineInfo.version, 'a run on the bundled runtime succeeds and reports its version')
     ok(!r.next, 'a found bundled runtime emits NO install guidance')
@@ -930,6 +958,7 @@ console.log('-- math_computation shared contract --')
   const p = await h.call({ op: 'probe', engine: 'r' })
   ok(p.ok === true && p.engine === 'r', '★ a Rscript that exists ONLY in the default install dir is discovered (not on PATH)')
   ok(!!p.engineInfo && /installs\/R\/R-4\.6\.1\/bin\/Rscript/.test(String(p.engineInfo.path)), 'the discovered path is the versioned install dir (' + String(p.engineInfo && p.engineInfo.path).slice(0, 60) + ')')
+      ok(p.engineInfo.foundVia === 'known-install', '★ a known install dir is reported as known-install (foundVia)')
 }
 // ── 23b. round-B (F3): the SAME walker covers Octave and Julia default dirs (both layout shapes)
 {

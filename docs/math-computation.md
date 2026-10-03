@@ -142,6 +142,7 @@ python 走 pip 时仍有真实的系统模板（不带 `--user`）；conda/mamba
 - **`mathEngineOverride` **不是**发现手段**：它只按引擎名覆盖 **argv 模板**（如 `{python:{versionArgv,scriptArgv,evalArgv,packageProbe}}`），**不能指定一个可执行文件**。所以 `MATH_ENGINE_NOT_FOUND` 的正解是：装上引擎、把解释器放进 PATH、让上面的 DSH 运行时被扫到，或用 `engine:'cli'` + `cli.command` 显式给命令。
 - **round-9 响应字段（真机发现后新增，文档与实现同步）**：
   - 引擎发现顺序：PATH → 宿主自带的运行时（`runtimeRoots` + `listDirAbs`）→ **各操作系统的已知安装目录**（`mathInstallRoots(engine, env, win)`，覆盖 R / Octave / Julia / MATLAB 与 Windows 上的 Python；Maple / Wolfram 布局不固定，未纳入）。**存在性一律靠列目录证明**。宿主若提供可选的 **`installRoots(engine)`**，则**以它为准**（不再读模块进程的 `ProgramFiles`/`LOCALAPPDATA`），测试与自定义布局因此都不依赖机器环境。
+- **`source` 与 `foundVia`**：回执与 `engineInfo` 的 `source` 是**粗粒度**标签（`cli`=显式命令；其余一律 `path`）；**发现来源**看新增的 **`foundVia`**（`path`=PATH/宿主解析、`host-runtime`=DSH 自带运行时、`known-install`=各 OS 已知安装目录；显式命令时为 `cli`）。
   - `probe` 返回 `configured`（配置里启用的引擎全集）与 **`absent[]`**（每个缺席引擎带 **`why`**：`not-found-on-this-machine` / `needs-a-caller-supplied-command`），message 也会点名"已配置但本机未发现：…"——可用性行**不再静默地只报一部分**（F3）。
   - `run` 的成功响应与 `MATH_MISSING_PACKAGES` 失败**都**带 **`versionPolicy`** 与 **`constraintsNotEnforced:[…]`**：明确"版本约束只按 base name 查存在、从不校验"，并点名本次**未校验**的约束（无约束时为空数组）——杜绝"静默丢弃约束"（F7）。
   - **`MATH_TIMEOUT` 与 `MATH_NONZERO_EXIT` 的证据字段一致**：都带 `argv`、`receipt`、`exit`（超时为 `null`）与 `stderr`（同样的截断上限），超时另有 `timedOut:true`（F5）。**超时的部分输出还进持久回执**：`receipt.json` 带 **`partialStdout`**/**`partialStderr`**（各取**最后 2000 字符**，`math-computation.js:1089-1090`；响应里的 `stdout`/`stderr` 走同一来源，`:1131-1132`），所以事后只看回执也能看到超时前产生了什么。
