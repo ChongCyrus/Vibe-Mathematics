@@ -3390,7 +3390,8 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       const sub=subprocessOf(); if(sub===undefined) return {ok:false,tried:[],triedPaths:[],reason:'NO_SUBPROCESS'}
       const prefer=String(params.paperLatexCommand||'').trim()
       const base=lang==='en'?['pdflatex','latexmk','xelatex','lualatex','tectonic']:['xelatex','latexmk','pdflatex','lualatex','tectonic']
-      const order=(prefer?[prefer]:[]).concat(base.filter(x=>x!==prefer))
+      // task-10: an EXPLICIT paperLatexCommand is used ALONE (docs/final-paper.md §B) - no fall-through.
+      const order=prefer?[prefer]:base
       const tried=[]
       const triedPaths=[]   // task-9: union of the known-root candidates probed across THIS detection
       for(let i=0;i<order.length;i++){

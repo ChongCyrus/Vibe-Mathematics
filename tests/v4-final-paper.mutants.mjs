@@ -87,6 +87,14 @@ const FAMILIES = [
     to: '',
     expect: /\[task-9\/v4\]/,
   },
+  {
+    // task-10: restoring the merged order lets an unresolvable explicit command fall through to another
+    // engine again (the documented rule is "explicit ⇒ only it").
+    name: 'task-10/v4: the explicit LaTeX command falls through to another engine again',
+    from: 'const order=prefer?[prefer]:base',
+    to: 'const order=(prefer?[prefer]:[]).concat(base.filter(x=>x!==prefer))',
+    expect: /\[task-10\/v4\]/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const t0 = Date.now(); const ok = runFamily(f); const ms = Date.now() - t0; if (ok) red++ }

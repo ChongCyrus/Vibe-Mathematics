@@ -517,6 +517,19 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   await finish(m)
 }
 {
+  // task-10: an explicit paperLatexCommand is honoured LITERALLY — if it cannot be resolved the run
+  // degrades as "not detected"; it must NEVER silently fall through to a different engine.
+  const m = makeCtx(); await newPlugin(m)
+  await startRun(m, 'explicit-unresolvable', { paperLatexCommand: 'Z:/definitely/not/here/xelatex.exe' })
+  COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex', 'pdflatex']   // engines ARE available: the explicit choice still wins
+  await m.cmd('paper lang=zh format=both')
+  const stExplicit = await drive(m, paperReply({}), (s) => s.paper && s.paper.status === 'done', { maxMs: 90000 })
+  const metaExplicit = readJsonIf(join(m.WS, 'VibeMath', 'Projects', 'default', 'Paper', stExplicit.paper.id, 'paper.meta.json')) || {}
+  assert((metaExplicit.compile || {}).result === 'not-detected',
+    '★ [task-10/v4] an unresolvable explicit paperLatexCommand degrades (never falls through to another engine) — got ' + JSON.stringify((metaExplicit.compile || {}).result))
+  await finish(m)
+}
+{
   const m = makeCtx(); await newPlugin(m)
   await startRun(m, 'no-compile', { paperCompilePdf: false })
   COMPILER.mode = 'ok'; COMPILER.engines = ['xelatex']   // an engine IS available — the knob must still win
