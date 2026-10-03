@@ -5871,12 +5871,14 @@ export function apply(ctx) {
     }
     async function latexEngines(lang) {
       const sub = subprocessOf()
-      if (!sub || typeof sub.resolveExecutable !== 'function') {
+      // task-4: only a missing subprocess short-circuits - a host without resolveExecutable is still
+      // served by the known-location stage (resolveKnownTool tolerates that host).
+      if (!sub) {
         return { engines: [], reason: '宿主没有 subprocess 服务：无法检测或调用 LaTeX' }
       }
       const engines = []
       for (const name of paperEngineCandidates(lang)) {
-        try { const exe = await sub.resolveExecutable(name); if (exe) engines.push({ name: String(name), exe: String(exe) }) } catch (e) { /* not installed */ }
+        try { const _vr = await resolveKnownTool(sub, { name, explicit: '', kind: 'tex' }); const exe = _vr.exe; if (exe) engines.push({ name: String(name), exe: String(exe), via: _vr.via }) } catch (e) { /* not installed */ }
       }
       return { engines, reason: engines.length ? '' : ('未检测到 LaTeX 引擎（' + paperEngineCandidates(lang).join('/') + '）') }
     }
