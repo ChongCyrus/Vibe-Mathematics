@@ -69,6 +69,8 @@ node tests/run-tests.mjs --self-check   # 校验门禁自身的诊断/超时机�
 4. **嵌套 `pwsh -File` 在本环境不可解析**：需要在同一进程里用 `& script.ps1` 调用，避免 `pwsh` 再起一层。
 5. **单次 `ENOENT` 不等于文件不存在**：可能是路径拼接、工作目录或编码问题。判定"文件不在"要看**同一路径**的多次独立观测（例如同时用目录列举与直接读取）。
 6. **`Select-String` 的模式默认是正则**：要按字面匹配就用 `-SimpleMatch`；否则 `[`、`.`、`(` 之类会被当正则元字符，命中数会骗人。
+7. **行尾（EOL）与行号都不能当锚**：`git status` 在 `core.autocrlf` 下**看不见** EOL 漂移（改了行尾仍是 "clean"）；**孤立 CR** 会让 `--ignore-cr-at-eol` 计数失真，也会让 `Select-String` 与 `read`／`ReadAllLines` 报出**不同的行号**。⇒ 改文件时**只认"唯一文本锚"**（含足够上下文以保证唯一），**绝不认行号**；提交前用 `git diff --ignore-cr-at-eol` 核对**真实语义差异**（而不是行尾噪声）。
+8. **`-Include` 在非递归路径下不生效**：`Get-ChildItem <dir> -File -Include *.md` 会**静默扫不到东西**（于是"零命中"被误读成"不存在"）⇒ 要么加 `-Recurse`，要么把过滤写进 `Where-Object`。
 
 ## 7. 新增一条守卫时的清单
 
