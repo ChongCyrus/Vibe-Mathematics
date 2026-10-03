@@ -50,6 +50,69 @@
 // to a host session log: DSH's session persistence refuses to load a session that carries an unknown
 // event type unless the writer marked it `ignorable: true`, and `Session.append` cannot set that
 // field — so the old projection-based primary made the user's own session unresumable.
+
+// ── task-4: known-location fallback (math-engine parity) ────────────────────────────────────────────
+// Resolution order: an EXPLICIT command (leanCommand / paperLatexCommand) is used alone and never
+// guessed; otherwise the host resolver (PATH) is tried first, then the known install locations for this
+// platform. Provenance is returned so the caller can report \`leanFoundVia: 'explicit'|'path'|'known-install'\`,
+// and the probed list travels on failure ("I looked here too"), never just "not found on PATH".
+async function resolveKnownTool(sub, opts) {
+  const name = String((opts && opts.name) || '')
+  const explicit = String((opts && opts.explicit) || '').trim()
+  const kind = String((opts && opts.kind) || 'lean')
+  const tried = []
+  const env = (typeof process !== 'undefined' && process.env) || {}
+  const win = !!(typeof process !== 'undefined' && process.platform === 'win32')
+  const home = String(env.USERPROFILE || env.HOME || (win ? 'C:/Users/Default' : '/root'))
+  const local = String(env.LOCALAPPDATA || '')
+  const pf = String(env.ProgramFiles || 'C:/Program Files')
+  const pf86 = String(env['ProgramFiles(x86)'] || 'C:/Program Files (x86)')
+  const elan = String(env.ELAN_HOME || '')
+  const exts = win ? ['', '.exe', '.cmd', '.bat'] : ['']
+  const resolvePath = async (p) => {
+    tried.push(p)
+    try { const fs = await import('node:fs'); for (const e of exts) { const q = p + e; try { if (fs.existsSync(q) && fs.statSync(q).isFile()) return q } catch (err) { /* keep looking */ } } } catch (err) { /* no fs */ }
+    return null
+  }
+  const listDirs = async (p) => { try { const fs = await import('node:fs'); return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) } catch (err) { return [] } }
+  const knownLean = win
+    ? [elan ? elan + '/bin' : null, home + '/.elan/bin', local ? local + '/Programs/lean' : null, pf + '/lean/bin']
+    : [elan ? elan + '/bin' : null, home + '/.elan/bin', home + '/.local/bin', '/usr/local/bin', '/opt/lean/bin']
+  const knownTex = win
+    ? [pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64']
+    : [home + '/Library/TeX/texbin', '/usr/local/texlive', home + '/.TinyTeX/bin', '/opt/texlive']
+  const list = kind === 'tex' ? knownTex : knownLean
+  // 1) EXPLICIT: only it, never a guess.
+  if (explicit) {
+    if (typeof sub.resolveExecutable === 'function') { try { const p = await sub.resolveExecutable(explicit); if (p) return { exe: String(p), via: 'explicit', tried, name: explicit } } catch (e) { /* fall through to PATH */ } }
+    const p = await resolvePath(explicit)
+    if (p) return { exe: p, via: 'explicit', tried, name: explicit }
+    return { exe: null, via: null, tried, name: explicit, reason: 'explicit command not resolvable: ' + explicit }
+  }
+  // 2) PATH via the host resolver.
+  if (typeof sub.resolveExecutable === 'function') {
+    try { const p = await sub.resolveExecutable(name); if (p) return { exe: String(p), via: 'path', tried, name } } catch (e) { /* PATH miss is expected */ }
+  }
+  // 3) KNOWN INSTALL LOCATIONS (Windows TeX roots are globbed per release: <root>/<year>/bin/windows).
+  for (const base of list) {
+    if (!base) continue
+    if (kind === 'tex' && !/bin/i.test(base)) {
+      for (const year of await listDirs(base)) {
+        for (const sub2 of ['bin/windows', 'bin/x86_64-linux', 'bin/universal-darwin', 'bin']) {
+          const p = await resolvePath(base + '/' + year + '/' + sub2 + '/' + name)
+          if (p) return { exe: p, via: 'known-install', tried, name }
+        }
+      }
+      continue
+    }
+    const p = await resolvePath(base + '/' + name)
+    if (p) return { exe: p, via: 'known-install', tried, name }
+  }
+  return { exe: null, via: null, tried, name, reason: 'not found on PATH or in the known install locations' }
+}
+
+export { resolveKnownTool }
+
 export const inject = ['subagents', 'agents', 'fs', 'tools', 'commands', 'timer']
 
 // ── math_computation (docs/math-computation.md) ──────────────────────────────
@@ -2673,9 +2736,10 @@ export function apply(ctx) {
         return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel, ms: 0 }
       }
       const cap = Math.max(1000, Number(timeoutMs) || Number(params.leanTimeoutMs) || 120000)
+      let leanVia = null
       let exe
       try {
-        exe = await sub.resolveExecutable(String(params.leanCommand || 'lean'))
+        { const _lc = String(params.leanCommand || 'lean').trim(); const _r = await resolveKnownTool(sub, { name: 'lean', explicit: (_lc && _lc !== 'lean') ? _lc : '', kind: 'lean' }); exe = _r.exe; leanVia = _r.via; if (!exe) return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + _lc + '": ' + String(_r.reason || 'not found') + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started, next: { kind: 'note', tried: _r.tried } } }
       } catch (e) {
         return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + String(params.leanCommand || 'lean') + '": ' + String((e && e.message) || e) + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, ms: now() - started }
       }
@@ -2740,7 +2804,7 @@ export function apply(ctx) {
       const ok = exitCode === 0
       return {
         ok, exitCode, signal: (outcome && outcome.signal) || null, ms,
-        command: argv.join(' '), file: rel,
+        command: argv.join(' '), file: rel, leanFoundVia: leanVia,
         stdout: tail(out, 4000), stderr: tail(err, 4000),
         timedOut: timedOut || ms >= cap,
         code: ok ? undefined : ((timedOut || ms >= cap) ? 'LEAN_TIMEOUT' : 'LEAN_FAILED'),
@@ -2959,7 +3023,7 @@ export function apply(ctx) {
       if (sub === undefined || typeof sub.spawn !== 'function') {
         return { ok: false, code: 'NO_SUBPROCESS', message: 'the host exposes no subprocess service; Lean cannot be executed here', file: rel }
       }
-      try { await sub.resolveExecutable(String(params.leanCommand || 'lean')) } catch (e) {
+      try { const _lc2 = String(params.leanCommand || 'lean').trim(); const _r2 = await resolveKnownTool(sub, { name: 'lean', explicit: (_lc2 && _lc2 !== 'lean') ? _lc2 : '', kind: 'lean' }); if (!_r2.exe) return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + _lc2 + '": ' + String(_r2.reason || 'not found') + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel, next: { kind: 'note', tried: _r2.tried } } } catch (e) {
         return { ok: false, code: 'LEAN_NOT_FOUND', message: 'cannot resolve "' + String(params.leanCommand || 'lean') + '": ' + String((e && e.message) || e) + ' — 仍可把形式化代码写下来归档，但无法在此宿主上执行', file: rel }
       }
       return { ok: true, rel, abs }
