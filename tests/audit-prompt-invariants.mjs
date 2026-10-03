@@ -101,6 +101,13 @@ const SELF_PROBE_MUTATIONS = [
     to: "'meetingKeepEvery']",
     expect: 'advertised but dropped: [leanTimeoutMs]',
   },
+  {
+    name: 'v4: the LaTeX-missing guidance loses its re-detect step (I15)',
+    rel: 'vibe-math-v4/vibe-math-v4.js',
+    from: '并重新检测',
+    to: '',
+    expect: 'v4 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -316,6 +323,17 @@ for (const P of PRESETS) {
 
   // I2 — never tell a voter to answer 0 for a faithfulness defect (comments excluded).
   check(!/偏离\s*(?:→|->|=>)\s*0/.test(code), P.tag + ' I2: no "偏离 → 0" instruction')
+
+  // I15 (task-9 2b) — the LaTeX-missing guidance must reach the AGENT: four bounded steps plus the
+  // three hard boundaries. Rolled out per preset (v4 → v5 → v3 → v2): extend this list slice by slice,
+  // and keep the block byte-identical across presets (per-preset voice only after the shared sentence)
+  // so `audit-prompt-duplication`'s shared-prefix property survives.
+  if (['v4'].includes(P.tag)) {
+    check(js.includes('检测不到 LaTeX 引擎时') && js.includes('有界核查') && js.includes('不要全盘扫描') &&
+      js.includes('写入 paperLatexCommand 并重新检测') && js.includes('向用户问一次') && js.includes('照旧降级') &&
+      js.includes('绝不自动安装') && js.includes('绝不写工作区之外') && js.includes('当失败'),
+      P.tag + ' I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries')
+  }
 
   // I3 — the defect rule is in the injected text.
   check(js.includes('不要投 0'), P.tag + ' I3: injected text forbids a 0 vote on a defect')
