@@ -51,7 +51,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**100 项作业**（job count）= 44 套件 + 56 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 100  PASS 100  FAIL 0  (suites 44 · probes 56)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
+| `tests/run-tests.mjs`（**101 项作业**（job count）= 44 套件 + 57 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 101  PASS 101  FAIL 0  (suites 44 · probes 57)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |
@@ -81,7 +81,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 > 上表 `run-tests` 的 `≈424 s / ≈121 s` 两列是 **当时的门禁规模**（44 个套件、21 个探针/变体） 时的实测（2026 年 math_computation
 > P1/P2a + 审计修复轮之后）。`audit-formal-sensitivity`（49 探针，实测 wall 260.7 s）与 `e2e-v4-fixes`（≈ 98 s）
 > 是两条最长的独立路径；两者都不在 `run-tests` 的默认集合里时，整轮 wall 由 `e2e-v4-fixes` 决定。
-> 数字**形状**（当前 `TOTAL 100 … suites 44 · probes 56`）以 runner 每次运行的输出为准；本文件里的每个 `TOTAL <n>` 都由 `tests/audit-readme-counts.mjs` 与 `--counts` 对账（历史数字只出现在冻结的 `docs/release-notes/**` 里，按名排除）。
+> 数字**形状**（`TOTAL <n> … suites <s> · probes <p>`；具体值以 runner 每次运行的输出为准，本文件**不复述**）——本文件里出现的每个 `TOTAL <n>` 都由 `tests/audit-readme-counts.mjs` 与 `--counts` 对账（历史数字只出现在冻结的 `docs/release-notes/**` 里，按名排除）。
 
 单套件耗时（并行时的关键路径按此排序）：
 

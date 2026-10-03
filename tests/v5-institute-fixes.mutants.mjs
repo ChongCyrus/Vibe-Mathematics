@@ -166,6 +166,14 @@ const FAMILIES = [
     to: '      if (false) {',
     expect: /\[F6\] a failed FINALIZE-time log write is named exactly once/,
   },
+  {
+    // v5 L1 (`leanPathContractOk`): the tools' short form resolves to a DIFFERENT file, so the load-time
+    // contract check fails and queues 'Lean path contract broken …'; report() must then surface it.
+    name: 'v5 L1: the Lean tools short form resolves to the WRONG file (path contract broken)',
+    from: 'const viaShort = leanAbsPath(probe)',
+    to: "const viaShort = leanAbsPath(probe + 'x')",
+    expect: /\[v5 L1\] a HEALTHY composition surfaces no Lean path contract note/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

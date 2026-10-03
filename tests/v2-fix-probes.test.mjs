@@ -90,6 +90,12 @@ function harness(opts) {
 }
 // Seam: V2_PLUGIN points the probe at a mutant copy (same pattern as v3-fix-probes' V3_PLUGIN).
 // Module scope so probes that re-instantiate a FRESH copy take it from the same (possibly mutant) source.
+// The source-TEXT assertions must read the same artifact the behavioural assertions run: with
+// V2_PLUGIN pointing at a mutant copy, a text assertion that read the repo file could never redden
+// (R19: this is what a mutant harness needs to reach it). Default is unchanged: the repo file.
+const readPluginSrc = () => (process.env.V2_PLUGIN
+  ? readFileSync(String(process.env.V2_PLUGIN), 'utf8')
+  : readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8'))
 const PLUGIN_URL = process.env.V2_PLUGIN
   ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
   : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
@@ -378,7 +384,7 @@ console.log('\n-- P5–P8: 状态完整性（日志回读 / 论文排队 / 日�
   const st1 = await h.call('vibe_math_status', {})
   assert((st1.recentActivity || []).length > 0,
     '★★ [P5] 恢复后 recentActivity 非空（从磁盘回读；实测 ' + (st1.recentActivity || []).length + ' 条）')
-  const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
+  const src = readPluginSrc()
   assert(/Date\.now\(\) \+ '_' \+ shortId\(\) \+ '\.json'/.test(src),
     '★★ [P7] 裁决日志名带 shortId 后缀（同一毫秒的两次裁决不再互相覆盖）')
   assert(/function shortIdUnique\(isTaken\)/.test(src) && /'p-' \+ shortIdUnique\(/.test(src),
@@ -432,7 +438,7 @@ console.log('\n-- F5/F6: 两面字段集与 paths 基准 --');
 }
 console.log('\n-- F4: push 帧点名各代理状态的来源工具 --')
 {
-  const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
+  const src = readPluginSrc()
   assert(/请调用 vibe_math_report 汇总当前进展，并用 vibe_math_list_agents 取各代理/.test(src), '★★ [F4] push 帧点名 vibe_math_list_agents（report 只给计数，逐代理状态在那个工具里）')
   assert(/下一步：把该对象形式化到 Lean 通过/.test(src), '★★ [A5] require-gate 反馈行携带下一步（与 formal-verify-v2 的行为断言同源）')
 }
@@ -664,7 +670,7 @@ console.log('\n-- PAPER §6.1: params — defaults, schema presence, coercion, r
   assert(good.params.paperFormat === 'tex' && good.params.paperLanguage === 'en' && good.params.finalPaper === false && good.params.paperCompilePdf === false && good.params.paperLatexCommand === 'xelatex', 'legal values are accepted verbatim')
   const regs = h.toolRegs.filter((s) => s.name === 'vibe_math_set_params')
   assert(regs.length === 1 && ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperLatexCommand'].every((k) => !!regs[0].parameters.properties[k]), 'the registered tool schema carries all five paper keys')
-  const src = readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8')
+  const src = readPluginSrc()
 console.log('\n-- F5/v2: 围栏根与会话工作区不一致必须一次性告警 --');
 {
   const realErr5v2 = console.error; const buf5v2 = [];

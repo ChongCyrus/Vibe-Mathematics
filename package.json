@@ -76,6 +76,7 @@
     "tests/audit-persona-surface.mutants.mjs",
     "tests/math-computation-discovery.mutants.mjs",
     "tests/math-computation-archive-rerun.mutants.mjs",
+    "tests/v2-list-agents-and-next-step.mutants.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
     "tests/audit-math-computation-contract.mjs",

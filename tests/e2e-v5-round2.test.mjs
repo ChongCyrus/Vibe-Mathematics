@@ -2390,6 +2390,35 @@ console.log('\n[52] F6: a refused required write is named exactly once; a succes
   const okLog = existsSync(join(okDir, 'paper.log.md')) ? readFileSync(join(okDir, 'paper.log.md'), 'utf8') : ''
   assert(okLog.indexOf('## 定稿（') !== -1, '★ anti-vacuity: the healthy run\'s log carries the 定稿 section (the seam is what removed it)')
 }
+// ---------- 53. v5 L1: a broken Lean path contract is SURFACED in report()'s diagnostics ------------
+console.log('\n[53] v5 L1 leanPathContractOk: the queued note reaches report() diagnostics')
+{
+  const { readFileSync: rf1 } = await import('node:fs')
+  const { fileURLToPath: fp1 } = await import('node:url')
+  const src = rf1(fp1(PLUGIN), 'utf8')
+  assert(src.indexOf('function leanPathContractOk() {') !== -1, '★ [v5 L1] the contract checker exists (symbol anchor)')
+  assert(src.indexOf("if (!leanPathContractOk()) noteLoadProblem('Lean path contract broken") !== -1,
+    '★ [v5 L1] the load path CALLS it and queues the named note (source anchor)')
+  assert(src.indexOf('drainLoadNotes()') > src.indexOf('leanPathContractOk()'),
+    '★ [v5 L1] the queued note is DRAINED on the next commit (the drain site follows the check)')
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 0 })
+  await h.settleSpawns()
+  // ONE more committing action: `commit()` is what drains the queued load notes into the diagnostics log.
+  await h.callTool('vibe_v5_message', { to: 'all', content: 'L1 probe commit' })
+  // `report()` returns a STRING, so the tool spec is invoked directly (callTool would JSON.parse it).
+  const spec = h.toolRegs.find((t) => t.name === 'vibe_v5_report')
+  const rep = spec ? String(await spec.execute({}, { agent: h.ROOT })) : ''
+  // MEASURED (2026-10, this suite): a healthy host's report() is ~1050 chars and does NOT contain the
+  // diagnostics section — that section is CONDITIONAL (it renders only when there is something to report),
+  // so the anti-vacuity check must be "the report tool was found and returned a substantive string", not
+  // "the diagnostics heading is present". The negative L1 assertion below is what discriminates, and the
+  // shipped family's v5-L1 mutant proves it can redden (12/12, named red on the line beneath).
+  assert(spec !== undefined && rep.length > 200,
+    '★ precondition: the report tool was found and returned a substantive report (' + rep.length + ' chars)')
+  assert(rep.indexOf('Lean path contract broken') === -1,
+    '★★ [v5 L1] a HEALTHY composition surfaces no Lean path contract note in report() diagnostics')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
