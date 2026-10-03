@@ -190,6 +190,39 @@ if (!LEAN) {
     const esc = parse(await tool.execute({ name: 'probeProj', file: '../../../../escape.lean' }, { agent }))
     ok(esc && esc.ok === false && esc.code === 'V4_INVALID_ARGUMENT',
       '★ engine-faces lean: the handler NAMES its path contract (an out-of-tree file ⇒ V4_INVALID_ARGUMENT; ' + JSON.stringify({ ok: esc && esc.ok, code: esc && esc.code }) + ')')
+    // (c) task-6: the resolver contract, asserted DIRECTLY through the exported seam
+    // (`resolveKnownTool`, exported exactly as `mathInstallRoots` is in the shared module). No ctx, no
+    // root agent, no scaffold file, and no engine required: the resolver is driven with fake subprocess
+    // services and a temp ELAN_HOME, so this block runs anywhere.
+    {
+      const presetPath = resolve(REPO, process.env.V4_PLUGIN || 'vibe-math-v4/vibe-math-v4.js')
+      const R = await import(pathToFileURL(presetPath).href + '?t=' + Date.now())
+      const res = R.resolveKnownTool
+      ok(typeof res === 'function', '★ engine-faces lean: the resolver seam `resolveKnownTool` is exported for testing (like `mathInstallRoots`)')
+      const fakeHome = mkdtempSync(join(tmpdir(), 'engine-elan-'))
+      mkdirSync(join(fakeHome, 'bin'), { recursive: true })
+      writeFileSync(join(fakeHome, 'bin', 'lean.exe'), 'stub')
+      const hadElan = Object.prototype.hasOwnProperty.call(process.env, 'ELAN_HOME'), savedElan = process.env.ELAN_HOME
+      const throwing = { resolveExecutable: async () => { throw new Error('not found on PATH') } }
+      const resolving = { resolveExecutable: async (c) => 'C:/fake/path/' + c + '.exe' }
+      try {
+        process.env.ELAN_HOME = fakeHome
+        const k = await res(throwing, { name: 'lean', explicit: '', kind: 'lean' })
+        ok(k && k.via === 'known-install' && Array.isArray(k.tried) && k.tried.some((t) => t.indexOf('lean') !== -1 || t.indexOf('bin') !== -1),
+          '★ engine-faces lean: with PATH missing, the KNOWN-LOCATION fallback resolves and reports via=known-install (' + JSON.stringify({ via: k && k.via, exe: String(k && k.exe).slice(-24), tried: (k && k.tried || []).slice(0, 2) }) + ')')
+        const p = await res(resolving, { name: 'lean', explicit: '', kind: 'lean' })
+        ok(p && p.via === 'path' && /fake\/path/.test(String(p.exe)),
+          '★ engine-faces lean: a host-resolvable command reports via=path (' + JSON.stringify({ via: p && p.via }) + ')')
+        const e1 = await res(resolving, { name: 'lean', explicit: 'C:/custom/leanx.exe', kind: 'lean' })
+        ok(e1 && e1.via === 'explicit', '★ engine-faces lean: an explicit command that resolves reports via=explicit (' + JSON.stringify({ via: e1 && e1.via }) + ')')
+        const e2 = await res(throwing, { name: 'lean', explicit: 'C:/nope/leanx.exe', kind: 'lean' })
+        ok(e2 && e2.exe === null && e2.via === null && Array.isArray(e2.tried) && e2.tried.length > 0,
+          '★ engine-faces lean: an explicit command is NEVER guessed away — it fails with via=null and lists what it probed (' + JSON.stringify({ via: e2 && e2.via, tried: (e2 && e2.tried || []).slice(0, 2) }) + ')')
+      } finally {
+        if (hadElan) process.env.ELAN_HOME = savedElan; else delete process.env.ELAN_HOME
+        rmSync(fakeHome, { recursive: true, force: true })
+      }
+    }
     console.log('  note: the handler\'s FILE-EXECUTION path is not reachable from a minimal ctx: workspaceRoot()')
     console.log('        reads the root agent (vibe-math-v4.js:338) and falls back to process.cwd() here, so the')
     console.log('        tool resolved the file under the repo tree. The real toolchain is exercised directly above;')
@@ -229,6 +262,8 @@ if (process.argv.includes('--self-probe')) {
   const cases = [
     { face: 'numeric', env: 'MATH_COMPUTATION_MODULE', file: 'vibe-math-v2/math-computation.js', from: 'runId: runId, attempt: attempt,', to: 'runIdX: runId, attempt: attempt,', label: 'engine-faces numeric', engines: [PY, RC] },
     { face: 'lean', env: 'V4_PLUGIN', file: 'vibe-math-v4/vibe-math-v4.js', from: 'if(norm!==root&&norm.indexOf(root+\'/\')!==0) return null', to: 'if(false) return null', label: 'engine-faces lean', engines: [LEAN] },
+    { face: 'lean-known-install', env: 'V4_PLUGIN', file: 'vibe-math-v4/vibe-math-v4.js', from: "\n    if (p) return { exe: p, via: 'known-install', tried, name }", to: "\n    if (p) return { exe: p, via: 'path', tried, name }", label: 'the KNOWN-LOCATION fallback resolves and reports via=known-install', engines: [LEAN] },
+    { face: 'lean-tried-list', env: 'V4_PLUGIN', file: 'vibe-math-v4/vibe-math-v4.js', from: 'tried.push(p)', to: 'void 0', label: 'an explicit command is NEVER guessed away', engines: [LEAN] },
     { face: 'latex', env: 'V5_PLUGIN', file: 'vibe-math-v5/vibe-math-v5.js', from: 'ok: true, started: true, id: p.id,', to: 'ok: false, started: true, id: p.id,', label: 'engine-faces latex', engines: [XELATEX] },
   ]
   for (const c of cases) {
@@ -247,6 +282,7 @@ if (process.argv.includes('--self-probe')) {
     const named = namedIn(out)(c.label) && r.status !== 0
     console.log((named ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': the one-site ' + c.face + ' mutant reddens its named assertion')
     if (!named) for (const l of out.split('\n').filter((l) => /^\s*FAIL\b/.test(l)).slice(0, 3)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    if (!named) console.log('      child exit=' + r.status + ' tail=' + String(out).trim().split('\n').slice(-3).join(' | ').slice(0, 220))
     if (!named) probeBad++
     rmSync(dirRoot, { recursive: true, force: true })
   }

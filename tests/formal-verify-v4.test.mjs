@@ -595,7 +595,15 @@ assert(esc4.ok === false && esc4.code === 'V4_INVALID_ARGUMENT', 'an unrelated a
 const notLean = await D.callTool('vibe_v4_lean_run', { file: 'Formal/good.txt' }, r1)
 assert(notLean.ok === false && notLean.code === 'V4_INVALID_ARGUMENT', 'only .lean files can be executed')
 toolchainAvailable = false
-const noTc = await D.callTool('vibe_v4_lean_run', { file: 'Formal/good.lean' }, r1)
+// task-6: "no toolchain" must ALSO cover the known-location fallback — on a machine with Lean installed
+// (`%ELAN_HOME%\bin`, `~/.elan/bin`) an unresolvable PATH would otherwise fall through to it and the run
+// would succeed. Isolate the environment sources for the duration of this simulation.
+const _savedTcEnv = {}
+for (const _k of ['ELAN_HOME', 'USERPROFILE', 'HOME', 'LOCALAPPDATA']) _savedTcEnv[_k] = process.env[_k]
+process.env.ELAN_HOME = 'Z:/no-elan'; process.env.USERPROFILE = 'Z:/no-home'; process.env.HOME = 'Z:/no-home'; process.env.LOCALAPPDATA = 'Z:/no-local'
+let noTc
+try { noTc = await D.callTool('vibe_v4_lean_run', { file: 'Formal/good.lean' }, r1) }
+finally { for (const _k of Object.keys(_savedTcEnv)) { if (_savedTcEnv[_k] === undefined) delete process.env[_k]; else process.env[_k] = _savedTcEnv[_k] } }
 assert(noTc.ok === false && noTc.code === 'LEAN_NOT_FOUND', '★ a missing toolchain returns LEAN_NOT_FOUND instead of crashing')
 assert(/仍可把形式化代码写下来归档/.test(noTc.message || ''), 'the failure explains the graceful degradation')
 assert((await D.callTool('vibe_v4_status', {})).ok === true, 'the group did NOT crash on the missing toolchain (status still answers)')

@@ -5,6 +5,23 @@
 > 参数、路径、工具名、提示词语义、门禁规则、索引格式都必须与本文件一致。
 
 ---
+
+## Lean 解析顺序与来源（task-6，2.7.4 起）
+
+`vibe_v4_lean_run` 解析 Lean 可执行文件时**不再只看宿主 PATH**（旧行为：宿主 PATH 与会话 PATH 不同时，
+明明装了 Lean 却报 `LEAN_NOT_FOUND`；与数学引擎自 2.7.2 起的"已知安装目录"阶段不对称）。顺序：
+
+1. **显式** `leanCommand`（且不等于默认 `lean`）⇒ **只用它**，解析不到就失败，**绝不猜**；
+2. 宿主 `subprocess.resolveExecutable`（PATH）；
+3. **已知安装位置**：`%ELAN_HOME%\bin`、`%USERPROFILE%\.elan\bin`、`%LOCALAPPDATA%\Programs\**`
+   （POSIX：`~/.elan/bin`、`~/.local/bin`、`/usr/local/bin`）。
+
+**可观测**：结果携带 `leanFoundVia: 'explicit' | 'path' | 'known-install'`（构建上下文同样携带）；
+解析失败时 `LEAN_NOT_FOUND` 的 `next.tried` **点名已探测过的具体路径**，而不是只说 "not found on PATH"。
+
+**可测试缝**：解析器以 `export { resolveKnownTool }` 暴露（与共享模块导出 `mathInstallRoots` 同理），
+`tests/audit-engine-faces.mjs` 用假 `subprocess` + 临时 `ELAN_HOME` 直接断言四种情形
+（`known-install` / `path` / `explicit` / 显式但不可解析 ⇒ `via:null` 且 `tried` 非空）。
 
 ## 0. 为什么要有它
 
