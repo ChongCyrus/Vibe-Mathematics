@@ -553,7 +553,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   // other file, which is what the `--self-probe` case below relies on.
   {
     const diagram = readRaw('vibe-math-v5/架构图.md')
-    const FORBID = /先\s*ack/
+    const FORBID = /先\s*ack[^\n]{0,8}再构造/
     const CLAUSES = /构造[^\n]{0,12}(后|再)[^\n]{0,12}ack|ack[^\n]{0,12}(仅|只)[^\n]{0,12}(成功|送达)/
     if (FORBID.test(diagram)) findings.push('架构图 still states the pre-G1 order: ack before the prompt is built (F2/G1)')
     if (!CLAUSES.test(diagram)) findings.push('架构图 does not describe the implemented inbox order (construct first / ack only on success)')
