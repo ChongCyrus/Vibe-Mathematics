@@ -400,24 +400,24 @@ export function apply(ctx) {
   function projectRoot(slug) { return vibeRoot() + '/Projects/' + slug }
   function frameworkRoot() { return projectRoot(currentProject) }
   let warnedNoPolicy = false
-  // F-5：围栏漂移检测（只告警不拒写）。边界：若解析结果**不暴露**任何 root 字段，本比对无法运行。
-  function policyRootOf(p) {
-    if (!p || typeof p !== 'object') return ''
-    const cand = p.workspaceRoot || p.root || p.cwd || (p.config && p.config.workspaceRoot) || ''
-    return String(cand || '').replace(/\\/g, '/').replace(/\/+$/, '')
-  }
-  let warnedFenceDrift = false
-  function warnFenceDriftOnce(actual, expected) {
-    if (warnedFenceDrift) return
-    warnedFenceDrift = true
-    console.error('vibe-math-v2' + ': sandbox fence root differs from this session workspace (resolved="' + actual + '", session="' + expected + '") — writes may be fenced to the host-configured root; boundary: when the policy object exposes no root field this comparison cannot run')
-  }
-  function checkFenceRoot(p) {
-    const actual = policyRootOf(p)
-    const expected = String(workspaceRoot() || '').replace(/\\/g, '/').replace(/\/+$/, '')
-    if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)
-    return p
-  }
+  // F-5：围栏漂移检测（只告警不拒写）。边界：若解析结果**不暴露**任何 root 字段，本比对无法运行。
+  function policyRootOf(p) {
+    if (!p || typeof p !== 'object') return ''
+    const cand = p.workspaceRoot || p.root || p.cwd || (p.config && p.config.workspaceRoot) || ''
+    return String(cand || '').replace(/\\/g, '/').replace(/\/+$/, '')
+  }
+  let warnedFenceDrift = false
+  function warnFenceDriftOnce(actual, expected) {
+    if (warnedFenceDrift) return
+    warnedFenceDrift = true
+    console.error('vibe-math-v2' + ': sandbox fence root differs from this session workspace (resolved="' + actual + '", session="' + expected + '") — writes may be fenced to the host-configured root; boundary: when the policy object exposes no root field this comparison cannot run')
+  }
+  function checkFenceRoot(p) {
+    const actual = policyRootOf(p)
+    const expected = String(workspaceRoot() || '').replace(/\\/g, '/').replace(/\/+$/, '')
+    if (actual && expected && actual !== expected) warnFenceDriftOnce(actual, expected)
+    return p
+  }
   function warnNoPolicyOnce() { if (!warnedNoPolicy) { warnedNoPolicy = true; console.error('vibe-math-v2: sandboxPolicy unavailable; writes go out with no explicit policy') } }
   // Sandbox fence for our own writes. The `resolve({})` fallback is a last resort and is
   // deliberately reported (once): with no session it resolves the policy's CONFIGURED root
@@ -2359,13 +2359,13 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   }
 
   // ================= child spawn / followup =================
-  // F-6a：宿主 list() 失败（或既无 spawn 也无 fork）时回退到假定值必须**留痕**，不能静默猜。
-  let providerFallbackWarned = false
-  function warnProviderFallback(why) {
-    if (providerFallbackWarned) return
-    providerFallbackWarned = true
-    console.error('vibe-math-v2: pickProvider() falling back to \'spawn\': ' + why)
-  }
+  // F-6a：宿主 list() 失败（或既无 spawn 也无 fork）时回退到假定值必须**留痕**，不能静默猜。
+  let providerFallbackWarned = false
+  function warnProviderFallback(why) {
+    if (providerFallbackWarned) return
+    providerFallbackWarned = true
+    console.error('vibe-math-v2: pickProvider() falling back to \'spawn\': ' + why)
+  }
   function pickProvider() { let names = []; let listed = false; try { names = subagents.list ? subagents.list() : []; listed = true } catch (e) { warnProviderFallback('subagents.list() failed: ' + ((e && e.message) || e)) } if (names.indexOf('spawn') !== -1) return 'spawn'; if (names.indexOf('fork') !== -1) return 'fork'; if (listed) warnProviderFallback('host exposes neither spawn nor fork (list=' + JSON.stringify(names) + ')'); return 'spawn' }
   function childAgentOptions() { const o = {}; try { if (rootAgent && rootAgent.options) { if (rootAgent.options.provider) o.provider = rootAgent.options.provider; if (rootAgent.options.model) o.model = rootAgent.options.model } } catch (e) {} if (params.provider) o.provider = params.provider; if (params.model) o.model = params.model; return o }
   /**
@@ -2439,12 +2439,12 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
    * 都吞成静默成功（调用方拿到 undefined，还以为已经中断）。现在：空/未知 id ⇒ `code` +
    * `next{tool,hint}`，宿主抛错 ⇒ 保留错误文本并给替代出口；只有真的发出中断才 `ok:true`。
    */
-  /** F-6b：中断失败必须留痕（调用点此前丢掉 {ok:false}，界面看起来一切正常）。 */
-  async function interruptTraced(cid, why) {
-    const r = await interruptChild(cid)
-    if (r && r.ok === false) logActivity('interrupt', '中断失败（' + why + '）：' + String(cid) + ' — ' + String(r.message || r.code || ''))
-    return r
-  }
+  /** F-6b：中断失败必须留痕（调用点此前丢掉 {ok:false}，界面看起来一切正常）。 */
+  async function interruptTraced(cid, why) {
+    const r = await interruptChild(cid)
+    if (r && r.ok === false) logActivity('interrupt', '中断失败（' + why + '）：' + String(cid) + ' — ' + String(r.message || r.code || ''))
+    return r
+  }
   async function interruptChild(childId) {
     const id = String(childId == null ? '' : childId).trim()
     if (!id) return { ok: false, code: 'VIBE_MATH_INVALID_ARGUMENT', message: 'interruptChild 失败：childId 为空——无法确定要中断哪个子代理。', next: { kind: 'reason', tool: 'vibe_math_list_agents', hint: '用 vibe_math_list_agents 列出本会话在册子代理的 id，再带 childId 调用。' } }
@@ -3921,19 +3921,21 @@ function verifyTasksView(tasks) {
    */
   async function paperDetectLatex(lang) {
     const sub = subprocessOf()
-    if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess' }
+    if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess', triedPaths: [] }
     /* task-4: a host without resolveExecutable is still served by the known-location fallback (no short-circuit) */
     const forced = String(params.paperLatexCommand || '').trim()
+    /* task-9: the UNION of the known-root candidates probed during THIS detection (every attempt, incl. the explicit one) */
+    let triedPaths = []
     if (forced) {
-      try { const _fr = await resolveKnownTool(sub, { name: forced, explicit: forced, kind: 'tex' }); const p = _fr.exe; return p ? { available: [{ name: forced, path: String(p), via: _fr.via }], reason: 'ok', forced: true } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
-      catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
+      try { const _fr = await resolveKnownTool(sub, { name: forced, explicit: forced, kind: 'tex' }); const p = _fr.exe; return p ? { available: [{ name: forced, path: String(p), via: _fr.via }], reason: 'ok', forced: true, triedPaths: _fr.tried } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true, triedPaths: _fr.tried } }
+      catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true, triedPaths: [] } }
     }
     const order = lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH
     const available = []
     for (let i = 0; i < order.length; i++) {
-      try { const _or = await resolveKnownTool(sub, { name: order[i], explicit: '', kind: 'tex' }); const p = _or.exe; if (p) available.push({ name: order[i], path: String(p), via: _or.via }) } catch (e) { /* 未安装 */ }
+      try { const _or = await resolveKnownTool(sub, { name: order[i], explicit: '', kind: 'tex' }); triedPaths = triedPaths.concat(_or.tried); const p = _or.exe; if (p) available.push({ name: order[i], path: String(p), via: _or.via }) } catch (e) { /* 未安装 */ }
     }
-    return { available: available, reason: available.length ? 'ok' : 'none' }
+    return { available: available, reason: available.length ? 'ok' : 'none', triedPaths: triedPaths }
   }
   function paperArgvFor(engine) {
     if (engine.name === 'latexmk') return [engine.path, '-pdf', '-interaction=nonstopmode', '-halt-on-error', 'paper.tex']
@@ -3973,7 +3975,7 @@ function verifyTasksView(tasks) {
     const det = await paperDetectLatex(o.lang)
     if (det.available.length === 0) {
       await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）')
-      return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
+      return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, triedPaths: det.triedPaths || [], pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     }
     await paperAppendLog(id, 'latex', '检测到引擎 ' + det.available.map(function (x) { return x.name }).join(', ') + (det.forced ? '（paperLatexCommand 指定）' : ('（顺序 ' + (o.lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH).join(' > ') + '）')))
     const plan = [{ engine: det.available[0], tex: texPrimary, mode: 'primary' }]

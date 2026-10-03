@@ -3387,17 +3387,18 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
     // by the compiler subprocess inside `Paper/<id>/` — the plugin just `stat`s it. The Lean seam
     // (`sub.resolveExecutable` + `sub.spawn`) is reused verbatim so a fake compiler is injectable.
     async function paperDetectEngine(lang){
-      const sub=subprocessOf(); if(sub===undefined) return {ok:false,tried:[],reason:'NO_SUBPROCESS'}
+      const sub=subprocessOf(); if(sub===undefined) return {ok:false,tried:[],triedPaths:[],reason:'NO_SUBPROCESS'}
       const prefer=String(params.paperLatexCommand||'').trim()
       const base=lang==='en'?['pdflatex','latexmk','xelatex','lualatex','tectonic']:['xelatex','latexmk','pdflatex','lualatex','tectonic']
       const order=(prefer?[prefer]:[]).concat(base.filter(x=>x!==prefer))
       const tried=[]
+      const triedPaths=[]   // task-9: union of the known-root candidates probed across THIS detection
       for(let i=0;i<order.length;i++){
         const exe=order[i]
-        try { const _rr=await resolveKnownTool(sub,{name:exe,explicit:(i===0&&prefer)?exe:'',kind:'tex'}); const r=_rr.exe; if(r) return {ok:true,exe:String(r),via:_rr.via,tried,alts:order.slice(i+1)} }
+        try { const _rr=await resolveKnownTool(sub,{name:exe,explicit:(i===0&&prefer)?exe:'',kind:'tex'}); triedPaths.push(..._rr.tried); const r=_rr.exe; if(r) return {ok:true,exe:String(r),via:_rr.via,tried,triedPaths,alts:order.slice(i+1)} }
         catch(e){ tried.push(exe) }
       }
-      return {ok:false,tried,reason:'LATEX_NOT_FOUND'}
+      return {ok:false,tried,triedPaths,reason:'LATEX_NOT_FOUND'}
     }
     function paperEngineArgv(exe,lang){
       if(/latexmk$/.test(exe)) return [exe,'-interaction=nonstopmode',lang==='en'?'-pdf':'-xelatex','paper.tex']
@@ -3434,7 +3435,7 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       // Never clobber an existing pdf (v2 §D): a previously compiled artifact is kept as-is.
       if(await paperPdfExists(dir)) return {result:'ok',engine:'existing',note:'已存在 paper.pdf，未覆盖',attempts:[]}
       const det=await paperDetectEngine(ps.cfg.language)
-      if(!det.ok) return {result:'not-detected',reason:'未检测到 LaTeX 引擎（'+(det.tried.join('/')||'subprocess 不可用')+'）：只产出 tex+md，不编译',tried:det.tried,attempts:[]}
+      if(!det.ok) return {result:'not-detected',reason:'未检测到 LaTeX 引擎（'+(det.tried.join('/')||'subprocess 不可用')+'）：只产出 tex+md，不编译',tried:det.tried,triedPaths:det.triedPaths||[],attempts:[]}
       const cap=posMs(params.activityTimeoutMs,120000)
       const attempts=[]
       const runTwice=async(exe,label,passes)=>{

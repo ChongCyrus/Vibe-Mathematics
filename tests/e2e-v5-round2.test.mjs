@@ -1289,6 +1289,9 @@ console.log('\n[24] manual paper, office editor: parts → cross-review → cons
   const md = existsSync(join(dir, 'paper.md')) ? readFileSync(join(dir, 'paper.md'), 'utf8') : ''
   const tex = existsSync(join(dir, 'paper.tex')) ? readFileSync(join(dir, 'paper.tex'), 'utf8') : ''
   const meta = existsSync(join(dir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(dir, 'paper.meta.json'), 'utf8')) : null
+  // task-9 evidence (print-only in pass 1; the guarding assertions + named reds land in pass 2): the durable
+  // meta must carry the UNION of the known-root candidates that the REAL detection probed on this host.
+  console.log('    [task-9] v5 detection evidence: compile=' + String(meta && meta.compile && meta.compile.status) + ' triedPaths=' + JSON.stringify((meta && meta.compile && meta.compile.triedPaths) || null))
   const heads = (md.match(/^## \d+\. /gm) || []).length
   assert(heads === 9, '★ the md carries exactly the 9-section skeleton (got ' + heads + ')')
   assert(md.indexOf('p-paper') !== -1, '★ the verified proposition is listed with its evidence path')

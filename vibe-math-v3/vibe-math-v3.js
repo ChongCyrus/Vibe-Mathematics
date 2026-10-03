@@ -4521,19 +4521,21 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   /** LaTeX 检测（spec §5 + 修订 §D）：paperLatexCommand 非空时只用它；否则按语言顺序探测。 */
   async function paperDetectLatex(lang) {
     const sub = subprocessOf()
-    if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess' }
+    if (sub === undefined || typeof sub.spawn !== 'function') return { available: [], reason: 'no-subprocess', triedPaths: [] }
     /* task-4: a host without resolveExecutable is still served by the known-location fallback (no short-circuit) */
     const forced = String(params.paperLatexCommand || '').trim()
+    /* task-9: the UNION of the known-root candidates probed during THIS detection (every attempt, incl. the explicit one) */
+    let triedPaths = []
     if (forced) {
-      try { const _fr = await resolveKnownTool(sub, { name: forced, explicit: forced, kind: 'tex' }); const p = _fr.exe; return p ? { available: [{ name: forced, path: String(p), via: _fr.via }], reason: 'ok', forced: true } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
-      catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true } }
+      try { const _fr = await resolveKnownTool(sub, { name: forced, explicit: forced, kind: 'tex' }); const p = _fr.exe; return p ? { available: [{ name: forced, path: String(p), via: _fr.via }], reason: 'ok', forced: true, triedPaths: _fr.tried } : { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true, triedPaths: _fr.tried } }
+      catch (e) { return { available: [], reason: 'paperLatexCommand not found: ' + forced, forced: true, triedPaths: [] } }
     }
     const order = lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH
     const available = []
     for (let i = 0; i < order.length; i++) {
-      try { const _or = await resolveKnownTool(sub, { name: order[i], explicit: '', kind: 'tex' }); const p = _or.exe; if (p) available.push({ name: order[i], path: String(p), via: _or.via }) } catch (e) { /* 未安装 */ }
+      try { const _or = await resolveKnownTool(sub, { name: order[i], explicit: '', kind: 'tex' }); triedPaths = triedPaths.concat(_or.tried); const p = _or.exe; if (p) available.push({ name: order[i], path: String(p), via: _or.via }) } catch (e) { /* 未安装 */ }
     }
-    return { available: available, reason: available.length ? 'ok' : 'none' }
+    return { available: available, reason: available.length ? 'ok' : 'none', triedPaths: triedPaths }
   }
   function paperArgvFor(engine) {
     if (engine.name === 'latexmk') return [engine.path, '-pdf', '-interaction=nonstopmode', '-halt-on-error', 'paper.tex']
@@ -4571,7 +4573,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     const det = await paperDetectLatex(o.lang)
     if (det.available.length === 0) {
       await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）')
-      return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
+      return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, triedPaths: det.triedPaths || [], pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     }
     await paperAppendLog(id, 'latex', '检测到引擎 ' + det.available.map(function (x) { return x.name }).join(', ') + (det.forced ? '（paperLatexCommand 指定）' : ('（顺序 ' + (o.lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH).join(' > ') + '）')))
     const plan = [{ engine: det.available[0], tex: texPrimary, mode: 'primary' }]

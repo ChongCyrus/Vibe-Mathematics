@@ -5874,13 +5874,14 @@ export function apply(ctx) {
       // task-4: only a missing subprocess short-circuits - a host without resolveExecutable is still
       // served by the known-location stage (resolveKnownTool tolerates that host).
       if (!sub) {
-        return { engines: [], reason: '宿主没有 subprocess 服务：无法检测或调用 LaTeX' }
+        return { engines: [], reason: '宿主没有 subprocess 服务：无法检测或调用 LaTeX', triedPaths: [] }
       }
       const engines = []
+      const triedPaths = []   // task-9: union of the known-root candidates probed across THIS detection
       for (const name of paperEngineCandidates(lang)) {
-        try { const _vr = await resolveKnownTool(sub, { name, explicit: '', kind: 'tex' }); const exe = _vr.exe; if (exe) engines.push({ name: String(name), exe: String(exe), via: _vr.via }) } catch (e) { /* not installed */ }
+        try { const _vr = await resolveKnownTool(sub, { name, explicit: '', kind: 'tex' }); triedPaths.push(..._vr.tried); const exe = _vr.exe; if (exe) engines.push({ name: String(name), exe: String(exe), via: _vr.via }) } catch (e) { /* not installed */ }
       }
-      return { engines, reason: engines.length ? '' : ('未检测到 LaTeX 引擎（' + paperEngineCandidates(lang).join('/') + '）') }
+      return { engines, triedPaths, reason: engines.length ? '' : ('未检测到 LaTeX 引擎（' + paperEngineCandidates(lang).join('/') + '）') }
     }
     // ONE engine invocation. NEVER throws: every failure becomes a readable result (the Lean
     // seam's discipline) and a timeout really terminates the process.
@@ -5918,7 +5919,7 @@ export function apply(ctx) {
         return { status: 'kept-existing', engine: '', reason: 'Paper/' + id + '/paper.pdf 已存在：不覆盖（docs/final-paper.md §5）', attempts: [] }
       }
       const det = await latexEngines(lang)
-      if (!det.engines.length) return { status: 'not-detected', engine: '', reason: det.reason, attempts: [] }
+      if (!det.engines.length) return { status: 'not-detected', engine: '', reason: det.reason, triedPaths: det.triedPaths || [], attempts: [] }
       const e0 = det.engines[0], e1 = det.engines[1] || e0
       const plan = [
         { label: 'full', engine: e0, text: tex, nonstopOnly: false },
@@ -6057,7 +6058,7 @@ export function apply(ctx) {
       // so the warning lands in `meta.warnings`, in the flow log, in the state and in the return value.
       if (writeFailures.length) warnings.push(paperWriteFailureWarning(writeFailures))
       const meta = paperMeta(Object.assign({}, p, { finalizedAt, compile: compile.status, engine: compile.engine || '' }), {
-        finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', attempts: compile.attempts || [] }, files,
+        finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', triedPaths: compile.triedPaths || [], attempts: compile.attempts || [] }, files,
       })
       if (await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(meta, null, 2) + '\n')) files.push('paper.meta.json')
       // `meta.warnings` is the SAME array, so a meta write failure still reaches the state, the log and

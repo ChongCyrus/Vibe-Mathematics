@@ -5,12 +5,14 @@
 > 参数、路径、工具名、提示词语义、门禁规则、索引格式都必须与本文件一致。
 
 ---
-
+
 **模拟必须封堵新代码能走的每一条路**：解析顺序新增一个阶段时，任何“模拟缺失”的测试必须同时否认该阶段 —— 否则在**装了该引擎的机器**上，“PATH 不可解析”的模拟会经已知安装位置**成功**，断言随之失效（`formal-verify-v4` 就是这样变红的）。同类的沉默失败还有一个：变异用例的 `to` 侧若丢掉 `from` 侧的前导换行，变异体会把两条语句接成一行 ⇒ **语法错误** ⇒ 子进程在 import 阶段崩溃（没有子进程输出诊断时完全看不见）。
 
 **宿主没有解析服务时的行为变化**：宿主若不提供 `subprocess.resolveExecutable`，解析不再**直接失败**，而是继续尝试已知安装位置（该宿主同样可能装着 Lean）——v3 原先的 `no resolveExecutable` 短路已随之移除；v5 的预检同理改为可回退。
 
 **LaTeX 解析（同构）**：论文管线的引擎探测走同一条顺序 —— `paperLatexCommand` **显式**时只用它（解析不到即按“未检测到”降级，永不猜）；否则宿主 PATH，再回退到**文档化的常见 TeX 根**（`%ProgramFiles%\texlive\*` 按发行年 glob、`%ProgramFiles(x86)%\texlive`、MiKTeX、`~/Library/TeX/texbin`、`/usr/local/texlive/*`、`~/.TinyTeX/bin`、`/opt/texlive`）。探测结果带上 `via`（`explicit`/`path`/`known-install`）以便报“选中了哪个引擎、怎么找到的”。**已测量的限制（接受）**：TeX Live 若装在常见根之外（例如另一个盘符），回退**不会**发现它 —— 此时请显式设置 `paperLatexCommand`。
+
+**可观测（`triedPaths`，task-9）**：LaTeX 探测结果在**成功与失败**两种情况下都携带 `triedPaths` —— 该次探测中**所有尝试**（含显式命令那一次）探测过的**已知根候选路径**的**并集**，用于让"未检测到引擎"的降级警告能说出"我也找过这些地方"（与 Lean 的 `next.tried` 对称）。它**不改变**降级语义：仍只交付 `paper.tex` + `paper.md`，**非致命**。
 
 ## Lean 解析顺序与来源（task-6，2.7.4 起）
 
