@@ -588,7 +588,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | v5 L2 `defectTargetsThisReply` | `defect` 只能针对本轮对象 | **随包** `tests/audit-v5-lean-abstention.mutants.mjs` 的 **M2**（已存在，不是缺口）：它变异的正是该谓词，并让 `tests/audit-v5-lean-abstention.mjs` 的**具名**断言 `S2: the same reply cannot conclude the object it declared defective` 变红。实测控制（本机复核过）：`MUTANTS_ONLY='M2 enforcement disabled' node tests/audit-v5-lean-abstention.mutants.mjs` ⇒ `control (unmutated): exit=0 | passed=31 failed=0` ＋ `ALL MUTANTS RED AS REQUIRED`，exit 0 |
 | v4 N10 compaction agent-local 守卫 | compaction 只作用于本 agent | `formal-verify-v4.test.mjs` §N10（套件内行为断言） |
 
-**包边界核对（实测，随批次变化）**：`package.json#files` 共 **170** 条，其中 `_oneoff` 条目 **0 条**；随包 `tests/*.mutants.mjs` **23 个**（单位 = 文件名）。**这两类数字必须重新派生、不要照抄**：`node -e "console.log(Object.keys(require('./package.json').files).length)"` 与 `ls tests/*.mutants.mjs | wc -l`（Windows：`(Get-ChildItem tests/*.mutants.mjs).Count`）。**本轮之后索引里已无 live dev-only 行**：凡是提到 `_oneoff/auditR2/*` 的地方都明确标为**历史/已被取代**；如需新增证据，一律走 `tests/*.mutants.mjs` 或套件内 `--self-probe`（并在 runner 的 `VARIANTS` 里注册为 job）。
+**包边界核对（实测，随批次变化）**：`package.json#files` 共 **173** 条（本版新增两份发布说明），其中 `_oneoff` 条目 **0 条**；随包 `tests/*.mutants.mjs` **24 个**（单位 = 文件名）。**这两类数字必须重新派生、不要照抄**：`node -e "console.log(Object.keys(require('./package.json').files).length)"` 与 `ls tests/*.mutants.mjs | wc -l`（Windows：`(Get-ChildItem tests/*.mutants.mjs).Count`）。**本轮之后索引里已无 live dev-only 行**：凡是提到 `_oneoff/auditR2/*` 的地方都明确标为**历史/已被取代**；如需新增证据，一律走 `tests/*.mutants.mjs` 或套件内 `--self-probe`（并在 runner 的 `VARIANTS` 里注册为 job）。
 
 
 ### 自检的能力边界（"自检通过" ≠ "兼容"）

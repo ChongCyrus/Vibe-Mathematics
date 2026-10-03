@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.7.2",
+  "version": "2.7.3",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -40,7 +40,7 @@
     "docs/status-report-fields.md",
     "tests/audit-math-computation-parity.mjs",
     "tests/audit-participant-set-parity.mjs",
-        "tests/audit-readme-bilingual.test.mjs",
+    "tests/audit-readme-bilingual.test.mjs",
     "tests/audit-v3-registration-parity.mjs",
     "tests/audit-registration.mjs",
     "tests/math-computation-v2.test.mjs",
@@ -189,7 +189,9 @@
     "docs/release-notes/README.md",
     "docs/release-notes/README.en.md",
     "docs/release-notes/RELEASE-NOTES-2.7.2.md",
-    "docs/release-notes/RELEASE-NOTES-2.7.2.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.7.2.en.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.3.md",
+    "docs/release-notes/RELEASE-NOTES-2.7.3.en.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -219,7 +221,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.7.2 补丁版：只含修复与附加响应字段，既有行为契约不变。① 真实引擎发现：顺序为 PATH → 宿主自带运行时 → 各操作系统的已知安装目录（覆盖 R / Octave / Julia / MATLAB 与 Windows 上的 Python；Maple / Wolfram 的目录布局不固定，未纳入），且可由宿主通过 installRoots 注入；装了却没进 PATH 的引擎现在能被发现。② 不再给出本机跑不了的安装命令（仅在包管理器确实存在时给出命令，否则给官方地址与说明）。③ probe 报告 configured 与 absent[]（每个缺席引擎带 why）。④ MATH_TIMEOUT 与 MATH_NONZERO_EXIT 证据一致，超时的部分 stdout/stderr 同时进入响应与回执。⑤ 版本约束口径明说（versionPolicy/constraintsNotEnforced，响应与持久回执都有），绝不静默丢弃。⑥ run 响应带 runId/attempt；指向归档副本重跑会明确标注 fileIsArchivedScript + ARCHIVED_SCRIPT_RERUN（那是新归档，不是同一归档的新 attempt）。⑦ v4 名册快照 + rosterVersion + 冻结/修剪规则；v4 paper 字段标注投影。⑧ 成员可见材料补齐「文件工具按会话 cwd 解析、相对路径需绝对前缀、计算产物用 receipt.scriptAbs」指引；v2/v3 决策与中断诊断给出 code + next。参数默认值、数据格式与目录结构未变，DSH 支撑窗口不变，无需迁移。",
+    "compatNote": "v2.7.3 补丁版：只含修复与验证加固，既有行为契约不变。① v5 邮袋：确认（ack）只在发送成功后发生，未确认的消息下次仍会重投（此前失败唤醒可能丢信）；同一轮不重复 prepend。② v5 入会与恢复：入会提示带真实轮次（从 轮次 1 起，不再出现 轮次 0），失败启动不消耗轮次；失败恢复不再清空既有编号（重建后从原编号继续）。③ v5 论文定稿：必需产物（paper.md/paper.tex/paper.meta.json/paper.log.md）写失败会具名告警一次并说明后果与补偿路径，产物清单只列真正落盘者，重跑幂等补写且不重复告警。④ v5 任务 CAS：被拒的陈旧 expected_revision 不改变任务（回读 revision/ownerId/status 不变）。⑤ v5 成员库路径契约：文档根与框架实际根不一致会被具名指出，且该提示会进入 report() 诊断。⑥ v4：Lean 库索引写失败具名一次（带 lib=/proved= 与 STALE until the next successful rebuild），覆盖全部调用点且不改变工具返回值；当前项目标记（.current）写失败同样具名一次。⑦ 安装器用户可见输出只用中文标签，每个动作只报一次；备份与既有文件判定改为报告级。⑧ 文档中 8 处仍描述「先 ack 再构造」的旧顺序已改正，并新增文↔码配对检查防止回流。参数名与默认值、数据格式、目录结构均未变；DSH 支撑窗口不变；无需迁移。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",
