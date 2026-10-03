@@ -44,6 +44,11 @@ let passed = 0, failed = 0
 const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+// task-13: the polling windows below defaulted to 3000 ms, which a LOADED gate can exceed (measured:
+// `e2e-v5-round2` reported 7 paper-phase failures under the parallel gate while passing standalone).
+// Every window gets this FLOOR; a healthy run settles in milliseconds, so it is only reached when the
+// plugin is genuinely late under load. Bounded, so the suite still fits its default 180 s budget.
+const WAIT_FLOOR_MS = Number(process.env.E2E_V5_WAIT_FLOOR_MS || 30000)
 
 // The host contract v5 needs has NO session services at all: the plugin declares
 // `inject = ['subagents','agents','fs','tools','commands','timer']` and keeps its state in a
@@ -234,7 +239,7 @@ function makeHost(opts) {
    *  otherwise a single unanswered heartbeat would stop all further passes. */
   async function peekWakeOf(member, maxWaitMs) {
     const t0 = Date.now()
-    while (Date.now() - t0 < (maxWaitMs || 3000)) {
+    while (Date.now() - t0 < Math.max(maxWaitMs || 3000, WAIT_FLOOR_MS)) {
       const i = wakes.findIndex(w => labelOf(w.childId) === member)
       if (i !== -1) {
         const w = wakes.splice(i, 1)[0]
@@ -252,7 +257,7 @@ function makeHost(opts) {
   // whose recipient is whichever member the scheduler picked.
   async function peekWakeWhere(pred, maxWaitMs) {
     const t0 = Date.now()
-    while (Date.now() - t0 < (maxWaitMs || 3000)) {
+    while (Date.now() - t0 < Math.max(maxWaitMs || 3000, WAIT_FLOOR_MS)) {
       const i = wakes.findIndex(w => pred((w.blocks && w.blocks[0] && w.blocks[0].text) || ''))
       if (i !== -1) {
         const w = wakes.splice(i, 1)[0]

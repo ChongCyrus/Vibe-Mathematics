@@ -61,7 +61,10 @@ if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not E
   try {
     out = execFileSync(process.execPath, [SUITE], {
       cwd: REPO, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL',
-      env: Object.assign({}, process.env, { [ENV]: join(dest, MAIN) }),
+      // task-13: a mutated CHILD only has to redden BY NAME, so it runs with a SMALL wait floor - the patient
+    // default (E2E_V5_WAIT_FLOOR_MS = 30 s inside the suite) belongs to the real gate run. Without this the
+    // 15 families x (patient suite) exceeded even the family's 900 s override and timed the family out.
+    env: Object.assign({}, process.env, { [ENV]: join(dest, MAIN), E2E_V5_WAIT_FLOOR_MS: '2000' }),
     })
   } catch (e) {
     if (e && (e.killed || e.signal === 'SIGKILL')) hang = true

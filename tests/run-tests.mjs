@@ -27,7 +27,7 @@
  * runner (audit-formal-sensitivity.mjs) does, and it passes its own dirs.
  *
  * Usage:
- *   node tests/run-tests.mjs                      # every suite + probe, concurrency = min(4, cpus)
+ *   node tests/run-tests.mjs                      # every suite + probe, concurrency = min(2, cpus) (measured: 4 oversubscribes)
  *   node tests/run-tests.mjs --concurrency=6
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
@@ -67,7 +67,10 @@ const exclude = flag('exclude')
 // older than --temp-age-hours) and prefer the roomier drive's temp root; `os.tmpdir()` follows TEMP/TMP,
 // so the suites need NO change. Hygiene must never break the sweep itself, and it reports on **stderr**
 // because stdout is a MACHINE-READABLE channel here (`--counts`/`--json` are JSON.parsed by callers).
-if (!has('no-temp-hygiene')) {
+// Machine modes (`--self-check`, `--counts`) must not DELETE anything: the first is a guard the mutant
+// family runs repeatedly, the second is called by scripts/update-doc-counts.mjs on every check - a sweep
+// there is a surprising side effect (and a slow one). Only a genuine test sweep cleans up.
+if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {
   try {
     const { suitePrefixes, sweep, preferredTempRoot, useTempRoot } = await import('../scripts/clean-temp.mjs')
     if (useTempRoot(preferredTempRoot())) console.error('run-tests: temp root -> ' + process.env.TEMP + ' (roomier drive preferred; D:\\_tmp when present)')
@@ -80,7 +83,14 @@ if (!has('no-temp-hygiene')) {
   } catch (e) { console.error('run-tests: temp hygiene skipped (' + ((e && e.message) || e) + ')') }
 }
 const asJson = has('json')
-const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(4, cpus().length)))
+// task-13 (MEASURED): the default used to be min(4, cpus) = 4 on this 4-core box, and the heavy jobs then
+// ran 1.3x-4.5x SLOWER than standalone - the gate's own "slowest" lines recorded v2-fix-probes.mutants
+// 430 s standalone -> 568-651 s under the gate, v5-institute-fixes.mutants 202 s -> 419-900 s (the last
+// one TIMING OUT at its own 900 s override). That oversubscription is what made timing-sensitive suites
+// report failures that never reproduce standalone (e2e-v4-fixes T1/T19/T22/T23/T26/T31, e2e-v5-round2
+// paper phase, host-failure-paths stall watchdog). Two concurrent jobs keep the machine honest; pass
+// --concurrency=N explicitly when a faster (noisier) sweep is wanted.
+const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(2, cpus().length)))
 
 const SELF = 'run-tests.mjs'
 // Per-suite HARD timeout (GATE_SUITE_TIMEOUT_MS overrides, ms). It bounds an intermittent hang so the
@@ -102,9 +112,25 @@ const TIMEOUT_OVERRIDES = {
   // AS REQUIRED) - i.e. OVER the 180 s default, so it gets the same 900 s as the v2/v3 families.
   // History worth keeping: a writer CLAIMED this family fitted its override when it did not, and the
   // gate caught it as "FAILED: v5-institute-fixes.mutants.mjs [probe] (TIMEOUT after 180s)" - the
-  // named-timeout mechanism doing its job. For contrast, formal-verify-v4.mutants.mjs MEASURED
-  // 70.9 s wall, i.e. ample headroom, so it needs no override.
+  // named-timeout mechanism doing its job. (The older note here claimed formal-verify-v4.mutants.mjs
+  // MEASURED 70.9 s with ample headroom - that became STALE as the family grew; see its own entry below.)
   'v5-institute-fixes.mutants.mjs': 900000,
+  // e2e-v4-fixes.test.mjs: MEASURED, not guessed (task-13). Its cases script an institute and pump
+  // member followups; the pump loops used FIXED iteration caps (i<300 etc.) which, under a loaded gate,
+  // ran out BEFORE the plugin's next scheduling tick produced the verification/debate wakes.
+  // Instrumented proof under load: `T1 DEBUG: {"fi":300,"fu":302,"running":true,"phase":"active",
+  // "autoDone":false}` - the run was ALIVE (not concluded, so NOT a product race), the loop had simply
+  // exhausted its cap. The loops now also stop on a wall-clock deadline (LOOP_CAP_MS, default 45 s per
+  // loop, reached only in that pathological case, so healthy runs are unchanged), and the suite honestly
+  // needs more than the 180 s default: it MEASURED 160.2 s wall under the gate before this change.
+  // 420 s = that measurement + headroom for the bounded deadlines. Never raise this silently.
+  'e2e-v4-fixes.test.mjs': 420000,
+  // formal-verify-v4.mutants.mjs: the family grew after the 70.9 s note above was written. Re-measured
+  // for task-13: 146.2 s standalone and 212.7 s with three heavy peers in parallel (ALL MUTANTS RED AS
+  // REQUIRED in both) - i.e. it legitimately exceeds the 180 s default under gate load, where a killed
+  // family then reports its children's F-5/N15/N18 assertions as failures (which reads like a regression
+  // but is only the timeout). 900 s matches the sibling families' convention.
+  'formal-verify-v4.mutants.mjs': 900000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then the default. */
 function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
@@ -179,10 +205,14 @@ if (process.argv.includes('--self-check')) {
   console.log((namedTimeout ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': the failure line names the timeout: ' + line.trim())
   // OVERRIDE case (real path): the named override must actually EXTEND the limit. A job that sleeps
   // 1.5 s would be killed by 1 s, so it must survive under the override and report its own seconds.
-  const NAMED_OVERRIDES = ['v2-fix-probes.mutants.mjs', 'v3-fix-probes.mutants.mjs', 'v5-institute-fixes.mutants.mjs']
-  const overrideOk = NAMED_OVERRIDES.every((f) => jobLimit({ file: f }) === 900000)
+  // task-13: the list is DERIVED from the table. A hard-coded example went stale the moment
+  // `formal-verify-v4.mutants.mjs` earned an override - and this self-check caught exactly that, by name
+  // (which is why it is worth deriving: the invariant is "every entry resolves to its own limit, and an
+  // unlisted file gets the default", not "these three files are the special ones").
+  const NAMED_OVERRIDES = Object.keys(TIMEOUT_OVERRIDES)
+  const overrideOk = NAMED_OVERRIDES.length > 0
+    && NAMED_OVERRIDES.every((f) => jobLimit({ file: f }) === TIMEOUT_OVERRIDES[f] && jobLimit({ file: f }) > SUITE_TIMEOUT_MS)
     && jobLimit({ file: 'anything-else.mjs' }) === SUITE_TIMEOUT_MS
-    && jobLimit({ file: 'formal-verify-v4.mutants.mjs' }) === SUITE_TIMEOUT_MS   // measured 70.9 s: no override needed
   const survived = await runSuite({ file: '(synthetic-ok)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 1500)', timeoutMs: 900000 })
   const extended = survived.timedOut === false && survived.code === 0
   const overrideLine = failedLine({ job: { file: 'v2-fix-probes.mutants.mjs', args: [], kind: 'probe', expectExit: 0 }, code: null, timedOut: true })

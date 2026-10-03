@@ -7,6 +7,17 @@ import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+// task-13: per-loop WALL-CLOCK cap. The scripts below pump followups with FIXED iteration caps (i<300 etc.);
+// under a loaded gate those ran out BEFORE the plugin's next scheduling tick created the verification/debate wakes
+// (instrumented proof: T1 DEBUG {fi:300, fu:302, running:true, autoDone:false} - alive, just not there yet). Every loop
+// now ALSO stops on a wall-clock deadline, which is only reached in that pathological case, so healthy runs are unchanged.
+const LOOP_CAP_MS = Number(process.env.E2E_V4_LOOP_CAP_MS || 45000)
+// task-13: `waitFor` windows are passed explicitly (900/3000 ms) all over this file; a 3 s window cannot
+// survive a loaded gate, and even 15 s was measured to fall short (gate log: "waitFor did not settle:
+// window=15000ms" for T2 A2 while the same case passes standalone). Every window therefore gets this
+// FLOOR, which is only reached when the artifact is genuinely late - a healthy run settles in
+// milliseconds. It is bounded (and the suite's own 420 s budget covers the pathological case).
+const WAIT_FLOOR_MS = Number(process.env.E2E_V4_WAIT_FLOOR_MS || 40000)
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; console.error('  FAIL - ' + m) } }
  // Class-B protection (protocol 搂6.4): EVERY red must name an assertion. An abort under load must
@@ -27,7 +38,7 @@ const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else 
 // subagent/end (the mock has no ctx.timeout, so no scheduling is timer-bound), and the
 // old 40ms/4000ms pair meant every unsatisfied poll burned up to 4s. 10ms/900ms keeps a
 // generous ~90x margin over the observed settle time while cutting the tail drastically.
-async function waitFor(pred, t=900){ const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);{ console.error('  FAIL - waitFor did not settle: window=' + t + 'ms, waited=' + (Date.now() - s) + 'ms, predicate=' + String(pred).slice(0, 60)); res(false) }} },10) }) }
+async function waitFor(pred, t=900){ t = Math.max(t, WAIT_FLOOR_MS); const s=Date.now(); return new Promise(res=>{ const iv=setInterval(()=>{ if(pred()){clearInterval(iv);res(true)} else if(Date.now()-s>t){clearInterval(iv);{ console.error('  FAIL - waitFor did not settle: window=' + t + 'ms, waited=' + (Date.now() - s) + 'ms, predicate=' + String(pred).slice(0, 60)); res(false) }} },10) }) }
 const IDLE_POLLS = Number(process.env.V4_IDLE_POLLS || 100)
 let quietPolls = 0
 // "The framework has stopped asking": reset on every answered followup, trip after a silence.
@@ -77,7 +88,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
-  for(let i=0;i<300;i++){
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
@@ -106,7 +117,7 @@ function makeCtx(){
   await m.callToolAs('vibe_v4_record_method', { id:'m-meth', title:'方法', type:'方法', content:'c', value:0.5, motivation:'m' }, m.spawns[0].childId)
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   let fi=0, proposed=false
-  for(let i=0;i<300;i++){
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
@@ -208,7 +219,7 @@ function makeCtx(){
   // With parallel-fill both residents get a checkpoint wake at once; drain them so neither stays busy,
   // then have one resident send a group message (input) which must be relayed into the others' mailboxes.
   let fu=null, drained=0
-  for(let i=0;i<80;i++){ if(m.followups.length>drained){ const f=m.followups[drained]; drained++; if(!fu && /CHECKPOINT/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||'')){ fu=f } else { m.fireEnd({ id: f.childId, runId:'d-'+drained, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }) } } else await sleep(40) }
+  for(let i=0,T0=Date.now();i<80&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>drained){ const f=m.followups[drained]; drained++; if(!fu && /CHECKPOINT/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||'')){ fu=f } else { m.fireEnd({ id: f.childId, runId:'d-'+drained, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'x', solved:false})}] }) } } else await sleep(40) }
   assert(fu, 'T6: got a fairness/checkpoint wake after brainstorm')
   // this resident speaks to the whole team; the message must be relayed into every other resident's mailbox.
   m.fireEnd({ id: fu.childId, runId:'t6-w', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'我推进引理A', input:'大家好，我建议先验证引理A。', solved:false})}] })
@@ -231,7 +242,7 @@ function makeCtx(){
   assert(/背景/.test(brain) && /可用工具/.test(brain) && /你负责的文件/.test(brain) && /工作模式/.test(brain), 'T7: brainstorm prompt carries the FULL background/mission/tools/files (once)')
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   let fu=null
-  for(let i=0;i<60;i++){ if(m.followups.length>0){ fu=m.followups.shift(); break } await sleep(40) }
+  for(let i=0,T0=Date.now();i<60&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>0){ fu=m.followups.shift(); break } await sleep(40) }
   assert(fu && /CHECKPOINT/.test(fu.blocks[0].text), 'T7: got a lean checkpoint wake after brainstorm')
   const hp = fu.blocks[0].text
   assert(!/你负责的文件/.test(hp) && !/可用工具/.test(hp) && !/背景/.test(hp), 'T7: subsequent prompts do NOT repeat the long background (lean, no context bloat)')
@@ -264,7 +275,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(80) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
-  for(let i=0;i<300;i++){
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; const k=/verifying object/i.test(pt)?'verify':/meeting is in progress/i.test(pt)?'meeting':'normal'
@@ -336,7 +347,7 @@ function makeCtx(){
   m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
   await sleep(80)
   let fi=0, proposedMeeting=false, sawNormalDirective=false, checkedMeeting=false, directiveInMeeting=false
-  for(let i=0;i<400;i++){
+  for(let i=0,T0=Date.now();i<400&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone){ break }; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -374,7 +385,7 @@ function makeCtx(){
   await sleep(80)
   // drive followups; detect the auto-convened sync meeting
   let sawAutoMeeting=false, fi=0
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(30); break }
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     if(/meeting is in progress/i.test(pt) && /没有新进展/.test(pt)){ sawAutoMeeting=true; break }
@@ -395,7 +406,7 @@ function makeCtx(){
   const rc = m.spawns[0].childId
   m.fireEnd({ id: rc, runId:'br-r-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] })
   await sleep(80)
-  for(let i=0;i<60;i++){ if(m.followups.length>0){ const fu=m.followups.shift(); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; if(/CHECKPOINT/.test(pt)){
+  for(let i=0,T0=Date.now();i<60&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>0){ const fu=m.followups.shift(); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''; if(/CHECKPOINT/.test(pt)){
     assert(/继续解决|自主推进/.test(pt), 'T15: heartbeat prompt nudges the resident to CONTINUE solving (self-drive)')
     assert(!/请用一句话说明你下一步做什么/.test(pt), 'T15: heartbeat prompt is NOT the old passive "state your next step"')
     break
@@ -415,7 +426,7 @@ function makeCtx(){
   // drain followups; if the A branch fills concurrency it will queue MULTIPLE normal self-drive wakes
   // in one pass (all 3 idle residents get woken together). A one-at-a-time loop delivers 1 at a time.
   let consumed=0, sawBatch=false
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(m.followups.length>consumed+1){
       const batch=m.followups.slice(consumed)
       const normals=batch.filter(f=>/CHECKPOINT/.test((f.blocks&&f.blocks[0]&&f.blocks[0].text)||''))
@@ -440,7 +451,7 @@ function makeCtx(){
   await m.callTool('vibe_v4_message', { to:'all', content:'全体注意' })
   await sleep(40)
   let fired=0
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(m.followups.length-before>=2) break
     if(m.followups.length>before+fired){ m.fireEnd({ id: m.followups[before+fired].childId, runId:'mb-'+(fired++), provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ok', solved:false})}] }); await sleep(20) }
     else await sleep(20)
@@ -461,7 +472,7 @@ function makeCtx(){
   const meet=await m.callTool('vibe_v4_meeting', { agenda:'分工讨论' })
   assert(meet.ok===true, 'T18: a meeting is explicitly convened')
   let consumed=0, progressed=false, removed=false
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(consumed<m.followups.length){
       const fu=m.followups[consumed]; consumed++
       const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -497,7 +508,7 @@ function makeCtx(){
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   // Track per-round verify wakes: round-1 (independent, no "上一轮意见") vs round-2 (debate, carries history).
   let fi=0, proposed=false, sawDebate=false, round1Verify=0, round2Verify=0
-  for(let i=0;i<400;i++){
+  for(let i=0,T0=Date.now();i<400&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -534,7 +545,7 @@ function makeCtx(){
   writeFileSync(join(proj,'Propos','r-1','card-x.md'), '- ID: p-x; - 状态: 未定论; - 概率: 0.5; - 价值程度: 0.5; - 动机用途计划: m\n\n## 陈述\nS\n## 证明尝试\n## 证伪尝试\n', 'utf8')
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
   let fi=0, proposed=false
-  for(let i=0;i<300;i++){
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -575,7 +586,7 @@ function makeCtx(){
   // tick so two onResidentEnd run concurrently through finalizeMeeting (the reentry race from test9).
   let consumed=0, meetingRounds=0
   const flushUntil = async ()=> {
-    for(let i=0;i<400;i++){
+    for(let i=0,T0=Date.now();i<400&&Date.now()-T0<LOOP_CAP_MS;i++){
       if(consumed>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) return; continue }
       const fu=m.followups[consumed]; consumed++
       const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -620,7 +631,7 @@ function makeCtx(){
   // Count verify cycles on p-dup: first proposal -> unanimous TRUE (all vote 1) -> Verified.
   let fi=0, proposed=false, verifyWakes=0
   const drain = async ()=> {
-    for(let i=0;i<400;i++){
+    for(let i=0,T0=Date.now();i<400&&Date.now()-T0<LOOP_CAP_MS;i++){
       if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
       busyTick()
       const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -639,7 +650,7 @@ function makeCtx(){
   const before = m.followups.length
   const rr = await m.callTool('vibe_v4_status', {})
   // deliver a normal round that tries to propose p-dup again
-  let consumed=0; const findNormal = async ()=> { for(let i=0;i<60;i++){ if(m.followups.length>consumed){ const fu=m.followups[consumed]; consumed++; if(!/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')) return fu } else await sleep(20) } return null }
+  let consumed=0; const findNormal = async ()=> { for(let i=0,T0=Date.now();i<60&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>consumed){ const fu=m.followups[consumed]; consumed++; if(!/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')) return fu } else await sleep(20) } return null }
   const fuN = await findNormal()
   if(fuN){ m.fireEnd({ id: fuN.childId, runId:'t22r', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'再次验证', solved:false, propose_verify:'p-dup'})}] }) }
   await sleep(120)
@@ -664,7 +675,7 @@ function makeCtx(){
   // cannot inject a second wake stream from the mock, so we emulate the queued-propose via the second
   // resident's own normal wake right after the first verify closes but inside the dedup window — the
   // framework must drop it at propose time (maybeQueueVerify) AND at beginVerify if it slipped through.
-  for(let i=0;i<500;i++){
+  for(let i=0,T0=Date.now();i<500&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -696,7 +707,7 @@ function makeCtx(){
   // (tests/v4-final-paper.test.mjs).
   await m.callTool('vibe_v4_meeting', { agenda:'表决是否完成' })
   let fi=0, votedSolved=false
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]
@@ -742,13 +753,13 @@ function makeCtx(){
   // scheduler pass — driving it from a parked state is a different code path than the one T25 is
   // about. Wait for the transition instead of guessing with a sleep.
   let phaseNow=''
-  for(let i=0;i<300;i++){ phaseNow=(await m.callTool('vibe_v4_status',{})).phase; if(phaseNow!=='brainstorm') break; await sleep(15) }
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){ phaseNow=(await m.callTool('vibe_v4_status',{})).phase; if(phaseNow!=='brainstorm') break; await sleep(15) }
   assert(phaseNow==='active', 'T25: the two brainstorm ends closed the brainstorm phase before the meeting was requested (phase='+phaseNow+')')
   const mt=await m.callTool('vibe_v4_meeting', { agenda:'讨论验证对象' })
   assert(mt && mt.ok===true && mt.deferred!==true, 'T25: with the brainstorm closed and no consensus in flight the meeting STARTS (not parked): '+JSON.stringify(mt))
   let fi=0, meetingDone=false
   let verifyA=0, verifyB=0
-  for(let i=0;i<600;i++){
+  for(let i=0,T0=Date.now();i<600&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.running===false||s0.autoDone) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -785,7 +796,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false, removed=false, votes=0
-  for(let i=0;i<700;i++){
+  for(let i=0,T0=Date.now();i<700&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-rm.md'))) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -823,7 +834,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false
-  for(let i=0;i<300;i++){
+  for(let i=0,T0=Date.now();i<300&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone||s0.running===false) break; if(idleTick()) break; continue }
     busyTick()
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
@@ -853,7 +864,7 @@ function makeCtx(){
   await sleep(80)
   await m.callTool('vibe_v4_meeting', { agenda:'暂停期间的会议' })
   let fi=0, meetingWake=null
-  for(let i=0;i<200;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(/meeting is in progress/i.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ meetingWake=fu; break } } else await sleep(20) }
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(/meeting is in progress/i.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ meetingWake=fu; break } } else await sleep(20) }
   assert(meetingWake!==null, 'T28: meeting wake arrived')
   const pa=await m.callTool('vibe_v4_pause', {})
   assert(pa.ok===true, 'T28: pause accepted')
@@ -865,7 +876,7 @@ function makeCtx(){
   const res=await m.callTool('vibe_v4_resume', {})
   assert(res.ok===true, 'T28: resume accepted')
   let mtDone=false
-  for(let i=0;i<75;i++){ const st=await m.callTool('vibe_v4_status',{}); if(st.meetingInProgress===false){ mtDone=true; break } await sleep(40) }
+  for(let i=0,T0=Date.now();i<75&&Date.now()-T0<LOOP_CAP_MS;i++){ const st=await m.callTool('vibe_v4_status',{}); if(st.meetingInProgress===false){ mtDone=true; break } await sleep(40) }
   assert(mtDone, 'T28: the frozen meeting concluded after resume (meetingInProgress cleared)')
   let mtFile=false
   try { mtFile=readdirSync(join(m.WS,'VibeMath','Projects','default','Shared','meetings')).some(n=>n.startsWith('mt-')) } catch(e){}
@@ -883,7 +894,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(50) }
   // get a normal wake for r-1, then deliver the SAME end twice in the same tick
   let fi=0, wake=null
-  for(let i=0;i<120;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(!/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ wake=fu; break } } else await sleep(25) }
+  for(let i=0,T0=Date.now();i<120&&Date.now()-T0<LOOP_CAP_MS;i++){ if(m.followups.length>fi){ const fu=m.followups[fi++]; if(!/meeting is in progress/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'') && !/verifying object/.test((fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||'')){ wake=fu; break } } else await sleep(25) }
   assert(wake!==null, 'T29: got a normal wake')
   const endInfo = { id: wake.childId, runId:'t29-1', provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'我提议任务', input:'团队注意', solved:false, propose_task:'T29唯一任务', task_desc:'测试'})}] }
   m.fireEnd(endInfo); m.fireEnd(endInfo)   // duplicate end, same tick
@@ -926,7 +937,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposedY=false, xProposed=false, removed=false, votesY=0, votesX=0
-  for(let i=0;i<900;i++){
+  for(let i=0,T0=Date.now();i<900&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-x.md')) && existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-y.md'))) break; continue }
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
@@ -971,7 +982,7 @@ function makeCtx(){
   assert(st0.meetingInProgress===false && st0.parkedMeeting==='风暴期的协调', 'T32: meeting not started yet; parkedMeeting visible (parkedMeeting='+st0.parkedMeeting+')')
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(40) }
   let fi=0, sawMeeting=false
-  for(let i=0;i<250;i++){
+  for(let i=0,T0=Date.now();i<250&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(20); if(sawMeeting) break; continue }
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     if(/meeting is in progress/i.test(pt)){ sawMeeting=true; m.fireEnd({ id: fu.childId, runId:'t32-'+i, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({input:'讨论', voteSolved:false})}] }); await sleep(30); break }
@@ -1065,7 +1076,7 @@ function makeCtx(){
   await sleep(80)
   await m.callTool('vibe_v4_meeting', { agenda:'索引测试' })
   let fi=0, concluded=false
-  for(let i=0;i<200;i++){
+  for(let i=0,T0=Date.now();i<200&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(20); if(concluded) break; continue }
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
@@ -1095,7 +1106,7 @@ function makeCtx(){
   // refused afterwards; the paper phase (spec v2 §A1) defers `autoDone` and has its own suite.
   await m.callTool('vibe_v4_meeting', { agenda:'全体一致停止' })
   let fi=0, stopped=false
-  for(let i=0;i<250;i++){
+  for(let i=0,T0=Date.now();i<250&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(20); const s0=await m.callTool('vibe_v4_status',{}); if(s0.autoDone){ stopped=true; break } continue }
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
@@ -1128,7 +1139,7 @@ function makeCtx(){
   for(const sp of m.spawns){ m.fireEnd({ id: sp.childId, runId:'br-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins', solved:false})}] }); await sleep(30) }
   // a verify proposal with a traversal id must be sanitized before it becomes a file name
   let fi=0, proposed=false
-  for(let i=0;i<350;i++){
+  for(let i=0,T0=Date.now();i<350&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(proj,'Verified','命题','p-esc.md'))) break; continue }
     const fu=m.followups[fi++]; const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
@@ -1177,7 +1188,7 @@ function makeCtx(){
   await m.callTool('vibe_v4_meeting', { agenda:'提议验证p-neg' })
   const ridOf = (cid)=>{ for(const sp of m.spawns) if(sp.childId===cid) return sp.label; return '' }
   let fi=0, proposed=false, verifyWakes=0
-  for(let i=0;i<500;i++){
+  for(let i=0,T0=Date.now();i<500&&Date.now()-T0<LOOP_CAP_MS;i++){
     if(fi>=m.followups.length){ await sleep(15); if(existsSync(join(m.WS,'VibeMath','Projects','default','Verified','命题','p-neg.md'))) break; continue }
     const fu=m.followups[fi++]; const rid=ridOf(fu.childId); const pt=(fu.blocks&&fu.blocks[0]&&fu.blocks[0].text)||''
     let reply
