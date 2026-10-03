@@ -11,7 +11,8 @@
  * (scripts/update-doc-counts.mjs) and the mutant harness use, so the three cannot disagree.
  *
  * Run: node tests/audit-readme-counts.mjs
- * Env (mutant harness): COUNTS_README / COUNTS_README_EN / COUNTS_TIMING / COUNTS_CHECKLIST (absolute or repo-relative).
+ * Env (mutant harness): COUNTS_README / COUNTS_README_EN / COUNTS_TIMING / COUNTS_CHECKLIST / COUNTS_FIELDS /
+ * COUNTS_PAPER / COUNTS_MATH (absolute or repo-relative). The last three serve the F-C live-doc sweep.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -59,6 +60,33 @@ if (derived) {
   ok(!/TOTAL 57/.test(zh), 'the stale README claim (TOTAL 57) is gone')
   ok(!/TOTAL 65  PASS 65/.test(tt), 'the old test-timing baseline row (TOTAL 65 PASS 65) is gone')
   ok(!/\*\*65 项\*\* = 44 套件 \+ 21/.test(tt + ck), 'no bolded stale 65-item claim remains (prose about the migration is fine)')
+
+  // ── F-C: EVERY `TOTAL <n>` in a LIVE doc equals the derived job count ────────────────────────────
+  // Published release notes under `docs/release-notes/**` are FROZEN history: they record what the gate
+  // read at their own release (`TOTAL 65` in 2.7.0/2.7.1), so they are excluded BY NAME — and the
+  // exclusion is asserted non-empty and reported, so the sweep cannot silently skip everything.
+  const FROZEN_EXCLUDED = ['docs/release-notes/RELEASE-NOTES-2.7.0.md', 'docs/release-notes/RELEASE-NOTES-2.7.0.en.md', 'docs/release-notes/RELEASE-NOTES-2.7.1.md', 'docs/release-notes/RELEASE-NOTES-2.7.1.en.md', 'docs/release-notes/RELEASE-NOTES-2.7.2.md']
+  const LIVE_DOCS = [
+    ['COUNTS_README', 'README.md'], ['COUNTS_README_EN', 'README.en.md'], ['COUNTS_TIMING', 'docs/test-timing.md'],
+    ['COUNTS_CHECKLIST', 'docs/AUDIT-CHECKLIST.md'],
+    ['COUNTS_FIELDS', 'docs/status-report-fields.md'], ['COUNTS_PAPER', 'docs/final-paper.md'], ['COUNTS_MATH', 'docs/math-computation.md'],
+  ]
+  let occurrences = 0, scanned = 0
+  for (const [env, rel] of LIVE_DOCS) {
+    let text = ''
+    try { text = read(env, rel) } catch (e) { continue }
+    scanned++
+    for (const m of text.matchAll(/TOTAL\s+(\d+)/g)) {
+      occurrences++
+      ok(Number(m[1]) === derived.total, '★ ' + rel + ': every TOTAL <n> equals the derived job count (' + m[1] + ' vs ' + derived.total + ')',
+        'occurrence: ' + m[0])
+    }
+  }
+  console.log('  live-docs scanned=' + scanned + ' TOTAL-occurrences=' + occurrences + ' frozen-excluded=' + FROZEN_EXCLUDED.length)
+  ok(scanned > 0 && occurrences > 0, '★ the F-C sweep is non-vacuous (it scanned live docs and found TOTAL occurrences)',
+    'scanned=' + scanned + ' occurrences=' + occurrences)
+  ok(FROZEN_EXCLUDED.length > 0, '★ the frozen release notes are excluded BY NAME, not by a pattern that could swallow the sweep',
+    JSON.stringify(FROZEN_EXCLUDED.length))
 }
 
 console.log('')

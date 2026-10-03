@@ -112,12 +112,18 @@
 
 ### v5 的字段与作用域（**源自 `status()` 字面量；v5 的 `fieldScopes` 只是粗分类**）
 
-> v5 的 `fieldScopes` 只给出**类别**（session：2 类），因此下表按 `status()` 的顶层键逐条派生；**不在 `fieldScopes` 分类里的键** 作用域写"未分类（语义见实现）"而不猜。
+> v5 的 `fieldScopes` 只给出**类别**（对象里两个键 `session` / `durable`，各自装若干**类别描述**而不是逐字段），因此下表按 `status()` 的顶层键逐条派生；**不在 `fieldScopes` 分类里的键** 作用域写"未分类（语义见实现）"而不猜。派生由 `tests/audit-status-report-fields.mjs` 双向核对，并打印 `frozen / doc-rows / exceptions` 三个计数（`frozen` = 源码里的顶层键数，`doc-rows` = 本表行数，`exceptions` = 显式豁免数，当前为 0）。
 
 | 字段 | 作用域 | 视图 | 含义 |
 |---|---|---|---|
 | `ok` | 会话 | status()（report() 同源） | 调用是否成功（机器面总开关） |
 | `institute` | 会话/派生 | status()（report() 同源） | 研究所名与根 |
+| `project` | 会话/派生 | status()（report() 同源） | 当前项目（会话根的项目标识） |
+| `key` | 会话 | status()（report() 同源） | 本研究所的状态键（状态文件与隔离用） |
+| `phase` | 耐久 | status()（report() 同源） | 研究所阶段（从状态文件派生） |
+| `running` | 会话 | status()（report() 同源） | 调度器是否在跑（重建后由会话状态决定） |
+| `autoDone` | 会话 | status()（report() 同源） | 自动模式是否已完成收口（phase 的会话镜像） |
+| `runId` | 耐久 | status()（report() 同源） | 当前 run 的 id |
 | `leanNotices` | 会话 | status()（report() 同源） | Lean 提示（会话内累积） |
 | `leanNoticesScope` | 未分类（语义见实现） | status()（report() 同源） | leanNotices 的作用域声明 |
 | `fieldScopes` | 未分类（语义见实现） | status()（report() 同源） | 本对象自身的字段↔作用域分类（机器可读） |
@@ -151,6 +157,8 @@
 | `solveVotes` | 未分类（语义见实现） | status()（report() 同源） | 求解投票 |
 | `formal` | 未分类（语义见实现） | status()（report() 同源） | Lean 形式化验证面（作业/回执/结论） |
 | `paper` | 未分类（语义见实现） | status()（report() 同源） | 论文面（状态/产物/编译） |
+| `lastProgressAt` | 未分类（语义见实现） | status()（report() 同源） | 最近一次进展的时间戳（停滞判定用） |
+| `params` | 未分类（语义见实现） | status()（report() 同源） | 规范化后的运行参数（会话内可写、耐久只存落盘值） |
 
 ### v4：**没有** `fieldScopes`
 

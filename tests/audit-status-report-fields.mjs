@@ -44,22 +44,45 @@ function fieldScopesOf(text) {
   return out
 }
 function statusKeysOf(text) {
-  const lines = text.split(/\r?\n/)
-  const fn = lines.findIndex((l) => /function status\s*\(/.test(l))
+  // Robust: brace/comment/string aware, and it reads SHORTHAND properties too —
+  // `institute: instituteName, project, key, phase,` is FOUR keys, not one. The earlier line-anchored
+  // version missed 8 real keys (R19 F-A: project/key/phase/running/autoDone/runId/lastProgressAt/params).
+  const fn = text.search(/function\s+status\s*\(/)
   if (fn === -1) return null
-  const ret = lines.findIndex((l, i) => i > fn && /return\s*\{/.test(l))
+  const ret = text.indexOf('return {', fn)
   if (ret === -1) return null
-  let depth = 0
-  const buf = []
-  for (let i = ret; i < lines.length; i++) {
-    buf.push(lines[i]); depth += (lines[i].match(/\{/g) || []).length - (lines[i].match(/\}/g) || []).length
-    if (i > ret && depth <= 0) break
+  const start = text.indexOf('{', ret)
+  let d0 = 0, stop = start, k = start
+  while (k < text.length) {
+    const c = text[k]
+    if (c === '/' && text[k + 1] === '/') { while (k < text.length && text[k] !== '\n') k++; continue }
+    if (c === '/' && text[k + 1] === '*') { k += 2; while (k < text.length && !(text[k] === '*' && text[k + 1] === '/')) k++; k += 2; continue }
+    if (c === '"' || c === "'" || c === '`') { const q = c; k++; while (k < text.length) { if (text[k] === '\\') k += 2; else if (text[k] === q) break; else k++ } k++; continue }
+    if (c === '{' || c === '[' || c === '(') d0++
+    else if (c === '}' || c === ']' || c === ')') { d0--; if (d0 === 0) { stop = k; break } }
+    k++
   }
+  if (d0 !== 0) return null
+  const body = text.slice(start + 1, stop)
+  const segs = []
+  let buf = '', d = 0, j = 0
+  while (j < body.length) {
+    const c = body[j]
+    if (c === '/' && body[j + 1] === '/') { while (j < body.length && body[j] !== '\n') j++; continue }
+    if (c === '/' && body[j + 1] === '*') { j += 2; while (j < body.length && !(body[j] === '*' && body[j + 1] === '/')) j++; j += 2; continue }
+    if (c === '"' || c === "'" || c === '`') { const q = c; buf += c; j++; while (j < body.length) { buf += body[j]; if (body[j] === '\\') { j++; buf += body[j] } else if (body[j] === q) break; j++ } j++; continue }
+    if (c === '{' || c === '[' || c === '(') d++
+    if (c === '}' || c === ']' || c === ')') d--
+    if (c === ',' && d === 0) { segs.push(buf); buf = ''; j++; continue }
+    buf += c; j++
+  }
+  if (buf.trim()) segs.push(buf)
   const keys = []
-  let d = 0
-  for (const raw of buf.join('\n').split('\n')) {
-    if (d === 1) { const m = /^([A-Za-z_$][\w$]*)\s*:/.exec(raw.trim()); if (m) keys.push(m[1]) }
-    d += (raw.match(/\{/g) || []).length - (raw.match(/\}/g) || []).length + (raw.match(/\[/g) || []).length - (raw.match(/\]/g) || []).length
+  for (const seg of segs) {
+    const t = seg.trim()
+    if (!t) continue
+    const m = /^([A-Za-z_$][\w$]*)\s*(?::|$|,)/.exec(t)
+    if (m) keys.push(m[1])
   }
   return [...new Set(keys)]
 }
@@ -115,6 +138,25 @@ if (f2 && f3 && s5) {
       }
       ok(wrong.length === 0, '★ ' + c.preset + ': every row scope matches the source classification', JSON.stringify(wrong))
     }
+  }
+  // ---- code -> doc (R19 F-A): EVERY status() top-level key lands in the v5 table OR is an explicit
+  // exception. The exceptions list is empty today; adding one requires a reason HERE, in this file.
+  const V5_EXCEPTIONS = []
+  {
+    const v5DocRows = docRows(doc, '### v5 的字段与作用域') || []
+    const docSet5 = new Set(v5DocRows.map((r) => r.name))
+    const frozen = s5
+    const exceptions = V5_EXCEPTIONS
+    console.log('  counts: frozen=' + frozen.length + ' doc-rows=' + docSet5.size + ' exceptions=' + exceptions.length)
+    ok(frozen.length > 0 && docSet5.size > 0, '★ the three counts are non-zero (the comparison cannot pass vacuously)',
+      'frozen=' + frozen.length + ' doc-rows=' + docSet5.size + ' exceptions=' + exceptions.length)
+    const covered = new Set([...docSet5, ...exceptions])
+    const uncovered = frozen.filter((k) => !covered.has(k))
+    ok(uncovered.length === 0, '★ every status() top-level key is documented or an explicit exception (code->doc)',
+      JSON.stringify(uncovered))
+    const phantom = [...docSet5].filter((k) => frozen.indexOf(k) === -1 && exceptions.indexOf(k) === -1)
+    ok(phantom.length === 0, '★ no v5 doc row names a key status() does not return (doc->code)',
+      JSON.stringify(phantom))
   }
   // v4 must be stated as having none, and the source must agree
   const v4Rows = docRows(doc, '### v4')

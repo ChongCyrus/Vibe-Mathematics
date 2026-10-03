@@ -686,7 +686,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
   **历史（外部整进程墙钟 / 估算，均已作废，仅作对照）**：v2 ≈430 s、v3 ≈260 s（**现已实测 434 s / 255 s，见上表**）、v5 208.5 s（更早 201.9 s）、v4 88.9 s / 75 s / 86 s、v3-new 45.5 s。
   **同一台机器上不同时刻读数会差**（负载/排队；例如 v4 本次 123 s，更早 86 s / 75 s、外部读数 88.9 s）—— 这正是要引用**族自己那一行**的原因：它和该次门禁同条件。
 
-- **三种"计数"不要混为一谈**（v5 writer 的 R14 问题，逐项核查过）：① **门禁 JOB 计数**（`TOTAL 90` = 44 套件 + 46 探针，由 `--counts` 派生、`audit-readme-counts` 守着，见 D1 行）；② **变异族计数**（本行的 `N/N`，各族自报）；③ **`audit-v5-integrity` 内部的 gate 计数**（writer 本轮从 49 → 50）。**第 ③ 类没有任何随包文档引用**（逐文件 grep `gate/门` 计数：`docs/**` 我持有范围内 0 命中），所以它变动**不需要**改文档；改文档的只有 ①（跑 updater）与 ②（本行）。
+- **三种"计数"不要混为一谈**（R14 提出、R19 F-C 修正）：① **门禁 JOB 计数**（`TOTAL 100` = 44 套件 + 56 探针；**唯一权威是 `node tests/run-tests.mjs --counts`**，`audit-readme-counts` 守着，见 D1 行）；② **变异族计数**（本表的 `N/N`，各族自报）；③ **`audit-v5-integrity` 内部的 gate 计数**（本轮实测 **56**）。**三类都可以变** —— ① 变了跑 `scripts/update-doc-counts.mjs`，② 变了改本表，**③ 变了不需要改任何文档**（这一点不是"没人引用"，而是"**没有任何随包文档把它的数值当作断言**"；本节提到它只是说明区别，`audit-readme-counts` 只对 ① 做全 `docs/**` 的 `TOTAL <n>` 扫描，见该守卫的 F-C 断言）。
 - **改限的规矩**：抬高**默认值或任何覆盖值**都必须**同时更新本行的全部实测数字并在提交信息里说明**；不许为了让门禁变绿而悄悄改（上面三条覆盖用例正是为了让这条规矩可验证）。
 - **禁止**为了让门禁变绿而**悄悄抬高**这个值；确有套件变慢，请**同时**更新这里的两个数字与理由。
 - **怎么让它红一次（in-repo，两个方向）**：① `node tests/run-tests.mjs --self-check` 有一条**真实路径**用例 —— 合成 sleep 作业、`timeoutMs=1000`、走同一个 `runSuite`/`failedLine`，断言 `timedOut=true, exit=null` 且失败行 `FAILED: (synthetic-sleeper) [probe] (TIMEOUT after 1s)`；② 随包的 `tests/run-tests.mutants.mjs` 用 `GATE_SUITE_TIMEOUT_MS=1000` 对**真实套件**做**正例**（具名 TIMEOUT + 非零退出）与**反例**（默认限制下同一套件不报 TIMEOUT、exit 0），因此该判据被双向校验（§9.7 ㉗）。
@@ -711,7 +711,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
 - **计数（实测）**：`TOTAL 100`（44 套件 + 56 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 64（**文件计数**：17 个套件 + 47 个探针/脚本）。
-- **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的 TOTAL**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**10** 条断言，含"旧 `TOTAL 57` 已消失"与"文档里不再有 65 项/44+21 的 claim 形状"）。
+- **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 
 
@@ -727,7 +727,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### 补遗四：语义单元、分层的断言与"计数是线索"（v4 writer 的措辞 + R14）
 
 - **F-3 / F-4c —— 计数是线索，判决要读在"语义单元"上**：`registerTool(` 有 **36** 个调用点（本仓实测），但**注册单元只有一个** —— 它们都经 `ctx.effect(() => tools.register({…}))`（`vibe-math-v4.js:4042-4047`），所以**没有任何调用点需要自带包装**。同理，失败的 mkdir 在 **`ensureDirs()` 内部**被一次性具名（`warnedMkdir` 声明于 `:353`，置位并告警于 `:507-508`），**覆盖所有调用方**，因此**不需要**任何调用方侧的返回值检查。判决要写成"**哪个单元**被统一/包装/检查了"，并给出 `file:line`。
-- **G-6 —— 分层，不重复（字段表已交付）**：**断言级**规则在 `tests/formal-verify-v4.test.mjs` 的 **SHIPPED ASSERTION RULES (C)**；**字段级**语义归 `docs/status-report-fields.md` 的**逐预设字段作用域表**（**name / scope / which-views / meaning** 四列，由源码**按 marker 派生**：v2 **20** 行、v3 **25** 行、v5 **35** 行取自 `status()` 顶层键，v4 **明确没有** `fieldScopes` 所以**不编造行**）。两处**不重复**同一句话。守卫：`tests/audit-status-report-fields.mjs`（**16** 条，**双向**：源码→文档、文档→源码，并逐行核对 `scope` 与源码分类一致）；变异：`tests/audit-status-report-fields.mutants.mjs`（**3/3**：基线 + 删一行文档 ⇒ 具名红 + 源码加一个字段 ⇒ 具名红，**一个方向一个变异**）。计数：`TOTAL 93` = 44 套件 + 49 探针/变体（含本批两个新作业）。
+- **G-6 —— 分层，不重复（字段表已交付）**：**断言级**规则在 `tests/formal-verify-v4.test.mjs` 的 **SHIPPED ASSERTION RULES (C)**；**字段级**语义归 `docs/status-report-fields.md` 的**逐预设字段作用域表**（**name / scope / which-views / meaning** 四列，由源码**按 marker 派生**：v2 **20** 行、v3 **25** 行、v5 **43** 行取自 `status()` 的顶层键（含**简写属性**，R19 F-A），v4 **明确没有** `fieldScopes` 所以**不编造行**）。两处**不重复**同一句话。**归属（与 §14.9 同口径）**：字段级对账由 `tests/audit-status-report-fields.mjs` 拥有（doc↔source **双向**，打印 `frozen / doc-rows / exceptions` 三个计数；**简写属性感知**，否则会漏 8 个真实键）；`tests/audit-v5-integrity.mjs` 只保留 frozen-key drift 检查。变异：`tests/audit-status-report-fields.mutants.mjs`（**3/3**：基线 + 删一行文档 ⇒ 具名红 + 源码加一个字段 ⇒ 具名红）。作业计数见本文件的基线条（当前 `TOTAL 100` = 44 套件 + 56 探针/变体）。
 - **A2 —— 同样是分层**：**断言级**规则在同上 **SHIPPED ASSERTION RULES (D)**；**实现级**变异族在 `tests/v5-institute-fixes.mutants.mjs` 的 **G1/G2**（实测该文件含 G1×3、G2×2、G4×2 的族名）。
 - **V3-G2 —— 第二条"同族门禁条件"（断言已落地并绿）**：`tests/formal-verify-v3.test.mjs` 在**模块作用域**记住第一轮槽位（`:328` `let gateSlots1 = null`，round-one 的 require 轮在块里，所以必须提到模块级；`:739` `gateSlots1 = slotsOf(batch) // measured ["0","1"]`），并断言**
   `:812` `* V3-G2 the re-eligible reviews are the SAME slots that fired in round one (before=… after=…)` **与** `:813` `* V3-G2 and they are still DISTINCT slots`**（`:807` 的注释写明"`.length >= 2` 是**计数**，语义单元是**同一批槽位**"）。修复树 ALL GREEN（该套件 41.3 s）。

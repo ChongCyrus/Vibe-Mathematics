@@ -411,11 +411,15 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   }
   notes.push('plan §16 parameter rows: ' + paramRows.size)
 
-  // F3 (docs-vs-behaviour sweep): `status()`'s machine surface. The plan's §14.9 states the rule
-  // ("status() 暴露的机器面字段必须在这里有对应物"). The docs owner is completing that table, so THIS gate
-  // pins the CODE side now: the extracted key set is frozen below, and any addition/removal must be an
-  // explicit decision here (and in §14.9). The table half is deliberately NOT enabled yet — and says so,
-  // so the missing half can never be mistaken for coverage.
+  // F3 (docs-vs-behaviour sweep): `status()`'s machine surface. OWNERSHIP (agreed division, so the two
+  // guards never both claim the same job):
+  //   • FIELD-LEVEL reconciliation (field ↔ doc row, BOTH directions) is owned by
+  //     `tests/audit-status-report-fields.mjs`, which carries the table and prints the
+  //     `frozen / doc-rows / exceptions` counts;
+  //   • THIS audit keeps ONLY this frozen-key drift check: the extracted 43 keys below, the printed
+  //     `captured: N`, and the `<30` anti-vacuity floor. Any addition/removal of a top-level key must be
+  //     an explicit decision here (and in the owning guard's reconciliation).
+  // No "doc half" is promised or planned here — the note printed at the end points at the owner instead.
   const stIdx = raw.indexOf('function status() {')
   const statusKeys = []
   if (stIdx === -1) findings.push('could not locate status() — the machine-surface extraction has no anchor')
@@ -475,9 +479,10 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   const statusAdded = statusKeys.filter((k) => EXPECTED_STATUS_KEYS.indexOf(k) === -1)
   if (statusMissing.length || statusAdded.length) {
     findings.push('status() field surface changed — missing=' + JSON.stringify(statusMissing) + ' added=' + JSON.stringify(statusAdded) +
-      ': record the decision in this freeze AND add/update the row in the plan §14.9 table')
+      ': record the decision in this freeze AND let the field-level owner reconcile the documents (tests/audit-status-report-fields.mjs)')
   }
-  notes.push('§14.9 doc-table reconciliation: NOT enabled yet (the docs owner is completing the table); the code-side freeze above is the active half')
+  notes.push('status() field-surface drift: frozen=' + statusKeys.length + ' keys (this audit owns ONLY this freeze + the <30 anti-vacuity floor); ' +
+    'field-level reconciliation (field ↔ doc row, both directions) is OWNED BY tests/audit-status-report-fields.mjs, which prints frozen / doc-rows / exceptions')
 
   // F1 (docs-vs-behaviour): the README's TWO-CASE `resume` claim must stay paired with the behavioural
   // anchor that pins the in-instance case (the two CODE anchors are gates in the GATES table below). Only
