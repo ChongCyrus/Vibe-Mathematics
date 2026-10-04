@@ -1,0 +1,38 @@
+# Line endings: ONE place decides them, so the npm tarball is byte-reproducible.
+#
+# Why (measured, docs/release-playbook.md §7): this machine runs `core.autocrlf=true`, so the checkout
+# wrote CRLF while the repository stores LF. `npm pack` reads the WORKING TREE, so 2.7.3 shipped at least
+# one CRLF file in the tarball - content-equivalent, byte-different - and every diff review had to be read
+# with `--ignore-cr-at-eol` (a single 1-line change in a 6000-line file looked like a 6000-line rewrite).
+#
+# Rule: text is LF everywhere (repo, checkout and tarball); binaries are never touched.
+* text=auto eol=lf
+
+# Shipped text: stated explicitly as well, so a future `text=auto` misdetection cannot flip them.
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.txt   text eol=lf
+*.svg   text eol=lf
+*.ps1   text eol=lf
+*.tex   text eol=lf
+
+# Binaries: never normalised, never diffed as text.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.7z    binary
+*.exe   binary
+*.dll   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
