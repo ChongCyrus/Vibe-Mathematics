@@ -235,6 +235,14 @@ const FAMILIES = [
     to: 'const restarted = false',
     expect: /\[real1004-consult\] an office finalisation after a force restart NAMES the reset/,
   },
+  {
+    // real1004-stall: the meeting must NOT be abandoned while an asked speaker is still in flight — doing so is
+    // what turned ordinary speeches into "late notes" on a real host (1067 of them).
+    name: 'real1004-stall: the meeting is abandoned while an asked member is still busy',
+    from: 'if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {',
+    to: 'if (stale >= recoverStallMs()) {',
+    expect: /\[real1004-stall\] the meeting watchdog exempts ASKED-but-busy speakers/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

@@ -5040,7 +5040,13 @@ export function apply(ctx) {
       // without a heartbeat nothing would retry it once the lock clears.
       if (finalizeLock) { armHeartbeat(); return }
       const stale = now() - Number(meeting.lastInputAt || meeting.startedAt || now())
-      if (stale >= recoverStallMs()) {
+      // real1004-stall: a member's TURN can outlive the stall budget on a real host, and the old check ignored
+      // that — the meeting was abandoned while an ASKED member was still busy, so its speech could only land as
+      // a "late note" (measured on one real run: 1067 late notes and 863 refused office finalisations). Never
+      // abandon while an asked speaker is in flight — but keep the watchdog's teeth: past 3× the budget even an
+      // in-flight member no longer holds the meeting open (a genuinely wedged turn must not wedge the meeting).
+      const inFlight = meeting.order.some((id) => busy.has(id))
+      if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {
         const abandoned = meeting
         meeting = null
         await appendMeetingTail(abandoned, '⚠ 本次会议因长时间无新发言而被放弃（看门狗）；团队回到自组织推进。')

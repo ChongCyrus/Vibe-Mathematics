@@ -1495,6 +1495,40 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
     '★ [real1004-minutes] a speech arriving after the meeting closed is appended as a late note, never dropped silently')
   assert(after.includes('### '), 'the earlier speeches are still in the minutes (append-only, never clobbered)')
 }
+// real1004-stall (found on a real host with 2.8.3): the meeting watchdog measured "stall" from the last INPUT and
+// ignored whether an ASKED member was still busy. A member's turn easily outlives the budget on a real host, so
+// meetings were abandoned mid-turn and the speeches could only land as "late notes" (that run: 1067 late notes
+// and 863 refused office finalisations). A meeting must survive while an asked speaker is in flight.
+{
+  const hs = makeHost({ pluginModule })
+  await hs.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hs.settleSpawns()
+  await hs.callTool('vibe_v5_set', { activityTimeoutMs: 300 })   // soft stall = 600 ms, hard bound = 1800 ms
+  const mts = await hs.callTool('vibe_v5_meeting', { agenda: 'real1004-stall：被点名的成员仍在忙', kind: 'sync' })
+  const midS = mts && mts.meeting
+  assert(!!midS, 'precondition: the meeting is convened (' + JSON.stringify(mts).slice(0, 110) + ')')
+  // acad is asked and NOT answered, so it stays BUSY. Nobody submits an input, so `lastInputAt` keeps ageing.
+  // NOTE (why this is a SOURCE-level invariant): the watchdog branch runs from a heartbeat whose armed delay is
+  // not controllable from this harness (the plugin arms `ctx.timeout` with delays up to tens of seconds), so a
+  // runtime assertion here cannot be made to FAIL on the unfixed code — it would be a vacuous guard. The
+  // behaviour is instead pinned by (a) this source invariant and (b) the real-host re-test, which is the
+  // acceptance criterion of the board task (measured there: 1067 late notes before the fix).
+  const wA = await hs.peekWakeOf('acad', 3000)
+  assert(!!wA, 'precondition: a member was asked to speak (so it is busy) while no input has arrived')
+  await sleep(900)                                             // past the SOFT bound, inside the hard one
+  const mpathS = join(hs.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', midS + '.md')
+  assert(!readFileSync(mpathS, 'utf8').includes('因长时间无新发言而被放弃'),
+    'no input has arrived yet, so nothing may close this meeting: ' + readFileSync(mpathS, 'utf8').slice(0, 160))
+  hs.fireEnd(wA.childId, { input: 'real1004-stall：我被点名后仍在忙，现在交回我的发言。', contextPct: 20 })
+  await sleep(300)
+  const docS = readFileSync(mpathS, 'utf8')
+  assert(docS.includes('### acad') && !docS.includes('（会后补记'),
+    'a speech from an ASKED member lands in the NORMAL section (never as a late note)')
+  const v5src = readFileSync(PLUGIN, 'utf8')   // PLUGIN points at the mutated COPY when a family runs this suite
+  assert(v5src.includes('const inFlight = meeting.order.some((id) => busy.has(id))') &&
+    v5src.includes('if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {'),
+    '★ [real1004-stall] the meeting watchdog exempts ASKED-but-busy speakers up to a hard bound (a real host abandoned meetings mid-turn: 1067 late notes, 863 refused finalisations)')
+}
 
 // ---------- 28. office-only surface + id normalisation ----------
 console.log('\n[28] the final-paper surface is office-only and its directory id cannot escape Paper/')
