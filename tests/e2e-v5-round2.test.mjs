@@ -1350,6 +1350,20 @@ console.log('\n[25] paper idempotency: repeated triggers only fill missing artif
   const stF = await h.callTool('vibe_v5_status', {})
   assert(stF.paper.status === 'writing' && stF.paper.round === 1, 'the forced run restarted at round 1')
 }
+// real1004-consult (found on a real host with 2.8.2): `force` rewrites the paper, so the NEW paper starts with
+// consult={0,0} — intended — but the office was rejected ELEVEN times with no hint that its earlier meeting had
+// stopped counting (only the members could infer it). The refusal must NAME the reset and say what to do.
+{
+  const hq = makeHost({ pluginModule })
+  await hq.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hq.settleSpawns()
+  const fq = await hq.callTool('vibe_v5_paper', { force: true, editor: 'office', reason: 'real1004 复测' })
+  assert(fq.ok === true && fq.started === true, 'precondition: a forced office-editor paper starts (' + JSON.stringify(fq).slice(0, 130) + ')')
+  await drivePaper(hq)   // parts + cross-reviews land, so the office's finalisation reaches the CONSULT gate
+  const rq = await hq.callTool('vibe_v5_finalize_paper', { decision: 'deliverable', note: 'real1004：未重新征询，预期被具名拒绝' })
+  assert(rq.ok === false && rq.code === 'V5_PAPER_CONSULT_REQUIRED' && rq.restarted === true && /force/.test(String(rq.message)) && /重置/.test(String(rq.message)) && /重新/.test(String(rq.message)),
+    '★ [real1004-consult] an office finalisation after a force restart NAMES the reset (restarted=true, message explains the required re-consultation): ' + JSON.stringify(rq).slice(0, 300))
+}
 
 // ---------- 26. fake LaTeX: the success path produces paper.pdf ----------
 console.log('\n[26] fake LaTeX compiler: success path produces paper.pdf')
@@ -1451,6 +1465,35 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
   const joined = tp.filter((p) => /[\\/][A-Za-z]:[\\/]/.test(String(p).replace(/^[A-Za-z]:[\\/]/, '')))
   assert(tp.length >= 1 && joined.length === 0,
     '★ [task-17/v5] an ABSOLUTE explicit paperLatexCommand is probed ALONE — triedPaths never joins it onto a known TeX root (triedPaths=' + JSON.stringify(tp) + ')')
+}
+// real1004-minutes (found on a real host with 2.8.2): a speech that arrives AFTER the meeting closed — the
+// watchdog abandons a stalled meeting and the office may finalise early — used to be dropped SILENTLY, so the
+// minutes declared a speaking order ("r-1 → acad") that never appeared in the file (only "### r-1"). It must
+// be appended as a clearly-marked late note, and the earlier speeches must survive (append-only).
+{
+  const hm = makeHost({ pluginModule })
+  await hm.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hm.settleSpawns()
+  const mt = await hm.callTool('vibe_v5_meeting', { agenda: 'real1004 晚到发言：会议收束后仍有人发言', kind: 'sync' })
+  const mid = mt && mt.meeting
+  assert(!!mid, 'precondition: the meeting is convened (' + JSON.stringify(mt).slice(0, 120) + ')')
+  await hm.drain(40)                                  // everyone speaks -> the meeting finalises, meeting = null
+  const mpath = join(hm.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', mid + '.md')
+  const before = readFileSync(mpath, 'utf8')
+  assert(/### /.test(before), 'precondition: the closed minutes already contain at least one speech: ' + before.slice(0, 140))
+  const stc = await hm.callTool('vibe_v5_status', {})
+  assert(!stc.meeting, 'precondition: the meeting is CLOSED (meeting=' + JSON.stringify(stc.meeting) + ') so a later speech has no live meeting')
+  // A LATE speech: the member submits `input` on a LATER wake while no meeting is running (exactly what a
+  // real host showed — the member kept submitting after the meeting was already closed).
+  await hm.callTool('vibe_v5_message', { to: 'acad', content: 'real1004：请再确认一次你的意见。' })
+  const wlate = await hm.peekWakeOf('acad', 8000)
+  assert(!!wlate, 'precondition: a member is woken again after the meeting closed (so the end block is processed)')
+  hm.fireEnd(wlate.childId, { input: 'real1004 晚到发言：会议收束之后我仍提交了意见。', contextPct: 20 })
+  await sleep(200)
+  const after = readFileSync(mpath, 'utf8')
+  assert(after.includes('real1004 晚到发言') && after.includes('会后补记'),
+    '★ [real1004-minutes] a speech arriving after the meeting closed is appended as a late note, never dropped silently')
+  assert(after.includes('### '), 'the earlier speeches are still in the minutes (append-only, never clobbered)')
 }
 
 // ---------- 28. office-only surface + id normalisation ----------

@@ -990,6 +990,11 @@ export function apply(ctx) {
     const inflight = new Map()        // childId -> turn token (dedupes duplicate subagent/end)
     let heartbeatDisposer = null
     let meeting = null                // in-flight meeting round state
+    // real1004-minutes: the id of the MOST RECENT meeting. A speech can arrive AFTER the meeting was
+    // closed (the watchdog abandons a stalled meeting, and the office may finalise early); such a late
+    // submission used to be dropped SILENTLY, so the minutes claimed a speaking order that never appeared
+    // in the file. Keep the pointer so a late speech can still be appended as a clearly-marked note.
+    let lastMeetingId = ''
     let pendingMeeting = null          // parked meeting (never preempts verification)
     let digestTimer = null
     let lastProgressAt = now()
@@ -4971,6 +4976,7 @@ export function apply(ctx) {
         return idx
       } })
       const id = idx.id
+      lastMeetingId = id   // real1004-minutes: late speeches are appended to the most recent minutes
       meeting = {
         id, agenda: opts.agenda, kind: opts.kind || 'sync', target: opts.target || '',
         by: opts.by || 'office', order, inputs: {}, extras: {}, lastInputAt: now(), startedAt: now(),
@@ -5623,11 +5629,20 @@ export function apply(ctx) {
       }
       const consult = Object.assign({ messages: 0, meetings: 0 }, p.consult || {})
       if (!(Number(consult.messages) > 0) || !(Number(consult.meetings) > 0)) {
+        // real1004-consult: `force` REWRITES the paper (docs/final-paper.md: "force 重写已定稿的论文"), so the
+        // new paper starts with consult={0,0}. That is intended — but the refusal used to say nothing about it:
+        // on a real host the office was rejected ELEVEN times and only the members could infer why their
+        // earlier meeting had stopped counting. Name the reset, its reason, and what to do about it.
+        const restarted = p.forced === true
         return {
           ok: false, code: 'V5_PAPER_CONSULT_REQUIRED',
           message: 'paperEditor="office" 要求所办先与全所交流、商讨、优化、审查：至少 1 条所办消息（vibe_v5_message）+ 至少 1 次会议（vibe_v5_meeting），然后才能定稿。当前：messages=' +
-            Number(consult.messages || 0) + ', meetings=' + Number(consult.meetings || 0),
+            Number(consult.messages || 0) + ', meetings=' + Number(consult.meetings || 0) +
+            (restarted
+              ? '。注意：本论文由 force 重启（forceReason=' + String(p.forceReason || '') + '）⇒ consult 计数随新论文重置为 0，重启前的消息/会议不再计入，请**重新**征询（两个计数记录在 paper.meta.json）'
+              : ''),
           consult: { messages: Number(consult.messages || 0), meetings: Number(consult.meetings || 0) },
+          restarted,
         }
       }
       const fin = {
@@ -6808,6 +6823,20 @@ export function apply(ctx) {
         const rel = 'Shared/Meetings/' + meeting.id + '.md'
         const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + meeting.id + '\n\n')
         await writeTextRel(rel, prev + '### ' + member.id + '\n' + (text || '（无发言）') + '\n\n')
+      } else if (lastMeetingId && typeof p.input === 'string' && p.input.trim()) {
+        // real1004-minutes: no live meeting, yet the member submitted a speech (a real host showed exactly
+        // this: `input` kept arriving after the meeting had been closed/abandoned). It used to be dropped
+        // SILENTLY — the minutes then declared a speaking order that never appeared in the file (`- 发言顺序:
+        // r-1 → acad` with only `### r-1` present). Append it as a clearly marked late note instead, keyed on
+        // ANY wake (not only meeting wakes: the observed submissions arrived on later rounds), de-duplicated by
+        // text so repeated submissions do not pile up.
+        const late = String(p.input).trim()
+        const rel = 'Shared/Meetings/' + lastMeetingId + '.md'
+        const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + lastMeetingId + '\n\n')
+        if (prev.indexOf(late) === -1) {
+          await writeTextRel(rel, prev + '### ' + member.id + '（会后补记：该发言到达时会议已收束）\n' + late + '\n\n')
+          await saveChatLine('【会议 ' + lastMeetingId + '】' + member.id + ' 的发言在会议收束后到达，已作为补记写入纪要（不再静默丢弃）。')
+        }
       }
       if (p.solved !== undefined) {
         await writeTextRel('Shared/State-of-institute.md', [

@@ -121,6 +121,10 @@
   **所办必须先与全所交流、商讨、优化、审查**：至少 1 条所办消息（`vibe_v5_message`）**且**至少 1 次会议
   （`vibe_v5_meeting`），结论写进定稿说明，然后调用 `vibe_v5_finalize_paper`。
   两个计数记在 `paper.meta.json`；缺一即 `V5_PAPER_CONSULT_REQUIRED`（不是静默跳过）。
+- **`force` ＝ 一张新论文**：`/vN paper … force` **重写**已定稿的论文 ⇒ 新的 `paper` 状态以
+  `consult = {messages: 0, meetings: 0}` 开始，**重启前的消息与会议不再计入**（这是设计，不是丢状态 ✗）。
+  因此 `paperEditor="office"` 在 `force` 之后必须**重新**征询；`V5_PAPER_CONSULT_REQUIRED` 的响应会**具名**说明
+  这一点（`restarted: true` ＋ `forceReason`），不再让人靠猜。
 
 ## 8. LaTeX 检测、编译与降级
 

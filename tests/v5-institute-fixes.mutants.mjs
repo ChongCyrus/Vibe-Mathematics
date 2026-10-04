@@ -219,6 +219,22 @@ const FAMILIES = [
     to: ": ''",
     expect: /\[task-18\/v5\] the DELIVERED paper.md and paper.tex/,
   },
+  {
+    // real1004-minutes: a speech arriving after the meeting closed must be appended as a late note; dropping
+    // it silently is exactly what a real host showed (minutes declared "r-1 → acad" with only "### r-1").
+    name: 'real1004-minutes: a speech arriving after the meeting closed is dropped silently again',
+    from: "} else if (lastMeetingId && typeof p.input === 'string' && p.input.trim()) {",
+    to: '} else if (false) {',
+    expect: /\[real1004-minutes\] a speech arriving after the meeting closed/,
+  },
+  {
+    // real1004-consult: the office refusal must NAME the force reset (observed: 11 unnamed rejections on a real
+    // host). Dropping the clause must redden the guarding assertion by name.
+    name: 'real1004-consult: the office refusal stops naming the force restart',
+    from: 'const restarted = p.forced === true',
+    to: 'const restarted = false',
+    expect: /\[real1004-consult\] an office finalisation after a force restart NAMES the reset/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
