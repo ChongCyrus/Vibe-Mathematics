@@ -548,6 +548,8 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | **发布前检查（可执行化）** | 版本**三处一致**（`package.json`／lock 顶层／`packages[""]`）、当前版本的中英两份发布说明存在且**章节顺序符合模板**、两份都登记进 `files[]`、`compatNote` 提到当前版本、tarball **声明了但缺失 = 0**、开发专用文件（`.gitattributes`）**不随包**、包内**无 CRLF** | **随包** `node scripts/release-check.mjs`（对 2.8.0 实跑 `ALL CHECKS PASSED`，扫 179 个文本文件）＋ `--self-test`（**15** 条）＋ `node tests/release-check.mutants.mjs`（**4/4** 具名红：分别去掉版本一致性／章节数量／章节顺序／CRLF 扫描 ⇒ 对应自检**按名**变红）。发布后加 `--registry` 比对线上 `dist.shasum` 与本地 tarball |
 | **v4 交付物必须说明编译结果** | 论文正文在**编译之前**组装，因此"局限与未决"里那两条依赖 `ps.compile` 的 bullet 只在**重入**时才有值 ⇒ 交付的 `paper.md`／`paper.tex` 必须**各自写明**"未检测到引擎（只产出 tex+md）"或"PDF 编译失败"，且**恰好一次**（finalize 可重入 ⇒ 幂等；`.tex` 以注释插在 `\end{document}` 之前）| **随包** `node tests/v4-final-paper.test.mjs`（`★ [deliverable/v4] … (once each; md=1 tex=1)`）＋ `node tests/v4-final-paper.mutants.mjs`（**3/3** 具名红：把中文说明置空 ⇒ 该断言按名红，实测 `md=0 tex=0`）|
 
+| **维护方针（文档）** | `vibe-math-v4`／`vibe-math-v5` 是**主要维护方向**（新能力、新守卫、提示词强化、重构只落这两套）；`vibe-math-v2`／`vibe-math-v3` 已**成熟定型**，只接受**适配兼容**改动：宿主适配、共享模块的正确性/安全修复、行为不变的回归修复。共享模块（`vibe-math-v{2,3,4,5}/math-computation.js` 等）是**四份复制型** ⇒ 修复必须**同批传播**且四份**字节一致**，否则 v2/v3 会在宿主升级后腐坏；**明显的正确性/安全缺陷无论落在哪套都修**（"冻结"= 停止功能投资，不是放任缺陷）| **随包文档** `docs/maintenance-policy.md`（中英同页）＋ `README.md`／`README.en.md` 各一行指引；`node scripts/release-check.mjs` 核对随包清单与 `files[]` 一致（声明了但缺失 = 0）|
+
 > **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
 
 

@@ -24,6 +24,7 @@
     "README.en.md",
     "docs/COMPAT-AUDIT-ROUND2.md",
     "docs/AUDIT-CHECKLIST.md",
+    "docs/maintenance-policy.md",
     "tests/audit-formal-sensitivity.mjs",
     "tests/audit-persona-sensitivity.mjs",
     "tests/audit-persona-surface.test.mjs",
