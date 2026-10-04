@@ -1299,6 +1299,13 @@ console.log('\n[24] manual paper, office editor: parts → cross-review → cons
   console.log('    [task-9] v5 detection evidence: compile=' + String(meta && meta.compile && meta.compile.status) + ' triedPaths=' + JSON.stringify((meta && meta.compile && meta.compile.triedPaths) || null))
   assert(Array.isArray(meta && meta.compile && meta.compile.triedPaths) && meta.compile.triedPaths.length > 0,
     '★ [task-9] the durable meta records the probed TeX paths (triedPaths)')
+  // task-18 (v4 got this in 2.8.1): the DELIVERED artifacts must state why no PDF was produced — the body is
+  // composed before the compile runs, so the note is written afterwards, exactly once each (idempotent).
+  // The note follows paperLanguage, so the check is language-agnostic and still requires EXACTLY one.
+  const noteHits = (t) => t.split('本机未检测到 LaTeX 引擎：只产出 tex+md').length - 1
+    + t.split('No LaTeX engine detected: tex+md only').length - 1
+  assert(noteHits(md) === 1 && noteHits(tex) === 1,
+    '★ [task-18/v5] the DELIVERED paper.md and paper.tex state that no engine was detected (once each; md=' + noteHits(md) + ' tex=' + noteHits(tex) + ')')
   const warnText = (meta && Array.isArray(meta.warnings) ? meta.warnings : []).join(' | ')
   assert(warnText.indexOf('只交付 paper.tex 与 paper.md。') !== -1 && warnText.indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1,
     '★ [task-9] the not-detected warning keeps its tail AND says where it looked and how to pin an engine')

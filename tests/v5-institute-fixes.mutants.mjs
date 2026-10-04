@@ -210,6 +210,15 @@ const FAMILIES = [
     to: "explicit: '', kind: 'tex'",
     expect: /\[task-17\/v5\] an ABSOLUTE explicit paperLatexCommand is probed ALONE/,
   },
+  {
+    // task-18: the DELIVERED artifacts must say why no PDF was produced (the body is composed before the
+    // compile runs, so the note is written after it). Blunting the zh note must redden that guard BY NAME.
+    // The scenario that guards this runs with lang='en', so the ENGLISH branch is the one to blunt.
+    name: 'task-18: the delivered paper stops stating that no engine was detected',
+    from: ": 'No LaTeX engine detected: tex+md only'",
+    to: ": ''",
+    expect: /\[task-18\/v5\] the DELIVERED paper.md and paper.tex/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

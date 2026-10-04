@@ -6070,6 +6070,27 @@ export function apply(ctx) {
       // broken engine. Whatever the compile outcome, the DELIVERED tex must be the real,
       // fully-generated one (the attempts are recorded in the meta either way).
       if (p.format !== 'md') await writeTextRel(PAPER_FILE(id, 'paper.tex'), tex)
+      // task-18: the body is composed BEFORE compilation runs, so the outcome cannot live in the sections.
+      // v4 states it in the delivered artifacts since 2.8.1; v5 must too — ONCE and idempotently (finalisation
+      // can be re-entered). The marker sentence is the same family as the warning below, and the presence
+      // check keeps the two paths from ever duplicating it.
+      if (compile.status === 'failed' || compile.status === 'not-detected') {
+        const zhNote = p.lang !== 'en'
+        const note = compile.status === 'failed'
+          ? (zhNote ? 'PDF 编译失败：已保留 paper.tex 与 paper.md 并上报' : 'PDF compilation failed: paper.tex and paper.md were kept and reported')
+          : (zhNote ? '本机未检测到 LaTeX 引擎：只产出 tex+md' : 'No LaTeX engine detected: tex+md only')
+        const annotate = async (rel, file, isTex) => {
+          const cur = await readTextAbs(paperAbs(id, file))
+          if (typeof cur !== 'string' || cur.indexOf(note) !== -1) return
+          const line = (isTex ? '% ' : '- ') + note
+          const next = isTex && cur.indexOf('\\end{document}') !== -1
+            ? cur.replace('\\end{document}', line + '\n\\end{document}')
+            : cur.replace(/\s*$/, '') + '\n' + line + '\n'
+          await writeTextRel(rel, next)
+        }
+        if (p.format !== 'tex') await annotate(PAPER_FILE(id, 'paper.md'), 'paper.md', false)
+        if (p.format !== 'md') await annotate(PAPER_FILE(id, 'paper.tex'), 'paper.tex', true)
+      }
       if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) files.push('paper.pdf')
       const warnings = (p.warnings || []).slice()
       if (compile.status === 'failed') warnings.push('LaTeX 编译失败（已保留 paper.tex 与 paper.md，不阻塞定稿）：' + (compile.attempts || []).map((a) => a.engine + '/' + a.label + ' exit=' + a.exitCode + (a.message ? '(' + a.message + ')' : '')).join('；'))
