@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -114,6 +114,7 @@
     "prompt-corpus-v5/prompt-corpus-v5.md",
     "tests/prompt-v5-integrity.test.mjs",
     "tests/run-tests.mjs",
+    "tests/v4-final-paper.test.mjs",
     "tests/v4-final-paper.mutants.mjs",
     "tests/run-tests.mutants.mjs",
     "screenshots.json",
@@ -186,8 +187,10 @@
     "scripts/build-preset-rows.mjs",
     "scripts/update-doc-counts.mjs",
     "scripts/clean-temp.mjs",
+    "scripts/release-check.mjs",
     "tests/temp-hygiene.mutants.mjs",
     "tests/v2v3-interrupt.mutants.mjs",
+    "tests/release-check.mutants.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
@@ -201,7 +204,9 @@
     "docs/release-notes/RELEASE-NOTES-2.7.3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.3.en.md",
     "docs/release-notes/RELEASE-NOTES-2.8.0.md",
-    "docs/release-notes/RELEASE-NOTES-2.8.0.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.8.0.en.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.1.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.1.en.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -231,7 +236,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.8.0 功能版：显式引擎「指定即只用它」，并补齐引擎缺失时的可行动指引。① paperLatexCommand 非空时只用它：解析不到就按「未检测到」降级（v4/v5 此前会静默回落到别的引擎），与文档及 v2/v3 口径一致；想自动选择引擎请把该参数留空。② 未检测到引擎的具名警告说明已探测 PATH 与文档化的常见 TeX 根，并给出用绝对路径固定的方法；四套预设的提示词新增同一段指引（四步：有界自查 → 把绝对路径写入 paperLatexCommand 并重测 → 问用户一次 → 否则照旧降级）与三条硬边界（不自动安装、不写工作区之外、不把「未检测到」当失败）。③ 论文编译元数据新增 triedPaths（本次探测过的路径并集，成功与失败都记录；旧 meta 仍可读）。④ 宿主拒绝中断时返回具名 code 与可执行的 next；该失败路径已有回归守卫（既有行为未变）。⑤ 自行运行测试套件者：默认并发 min(2, cpus)、启动时清扫超过 6 小时的陈旧测试临时目录、临时根优先使用更宽裕的盘、疑似遗留进程只读告警；仓库新增 .gitattributes 统一 LF，npm 包逐字节可复现。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
+    "compatNote": "v2.8.1 补丁版：修掉上一版说明里如实写出的「已知限制」——v4 的最终文稿此前不说明引擎缺失/编译失败。① v4 交付的 paper.md 与 paper.tex 现在各自写明编译结果（未检测到引擎 ⇒ 只产出 tex+md；PDF 编译失败 ⇒ 已保留 tex/md），恰好一次且定稿重入不重复；论文的章节结构与其它字段未变。② 新增随包脚本 scripts/release-check.mjs：把发布前逐项核对做成一条命令（版本三处一致、当前版本两份发布说明的章节顺序与 files[] 登记、compatNote 是否提到当前版本、npm pack 声明缺失=0、开发专用文件不随包、包内无 CRLF），并配 4 条单点变异自证非空转。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",

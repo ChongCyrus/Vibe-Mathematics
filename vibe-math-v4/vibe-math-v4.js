@@ -2998,6 +2998,34 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       return await writeText(norm,content)
     }
     function paperLog(line){ const ps=paperState; if(ps) ps.log.push(fmtTime()+'｜'+String(line)) }
+    /**
+     * Compile-outcome note (docs/final-paper.md §D). The paper body is COMPOSED before compilation runs, so
+     * the spec's two conditional bullets in §7 can only fire on a re-entry (where the persisted meta already
+     * carries `compile`). State the outcome in the artifacts the user actually reads instead - ONCE and
+     * idempotently, because finalize can be re-entered. The note text is the SAME string as those bullets, so
+     * the bullet path and this path can never both add it.
+     */
+    async function paperAnnotateCompileOutcome(ps){
+      const res=ps.compile&&ps.compile.result
+      if(res!=='failed'&&res!=='not-detected') return
+      const zh=ps.cfg.language!=='en'
+      const note=res==='failed'
+        ? (zh?'PDF 编译失败：已保留 paper.tex 与 paper.md 并上报':'PDF compilation failed: paper.tex and paper.md were kept and reported')
+        : (zh?'本机未检测到 LaTeX 引擎：只产出 tex+md':'No LaTeX engine detected: tex+md only')
+      if(ps.files.indexOf('paper.md')!==-1){
+        const md=await readText(ps.dir+'/paper.md')
+        if(typeof md==='string'&&md.indexOf(note)===-1) await paperWriteRel(ps.dir+'/paper.md',md.replace(/\s*$/,'')+'\n- '+note+'\n')
+      }
+      if(ps.files.indexOf('paper.tex')!==-1){
+        const tex=await readText(ps.dir+'/paper.tex')
+        if(typeof tex==='string'&&tex.indexOf(note)===-1){
+          const line='% '+note
+          await paperWriteRel(ps.dir+'/paper.tex',tex.indexOf('\\end{document}')!==-1
+            ?tex.replace('\\end{document}',line+'\n\\end{document}')
+            :tex.replace(/\s*$/,'')+'\n'+line+'\n')
+        }
+      }
+    }
     function paperStepLimit(){ return Math.max(PAPER_WAIT_FLOOR_MS, recoverStallMs()*4) }
     function paperCfg(ov){
       const o=ov||{}
@@ -3543,6 +3571,8 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       if(ps.cfg.format!=='md'){ if(await paperWriteRel(ps.dir+'/paper.tex',composed.tex)) ps.files.push('paper.tex') }
       ps.compile=await paperCompile(ps,composed,ev)
       if(ps.compile&&ps.compile.result==='ok') ps.files.push('paper.pdf')
+      // The body was composed just above, BEFORE this compile ran, so the outcome is stated HERE (idempotent).
+      await paperAnnotateCompileOutcome(ps)
       ps.finalizedAt=now(); ps.status='done'
       await paperWriteMeta(); await paperWriteLog()
       await paperWriteMeta(); await paperWriteLog()

@@ -40,7 +40,14 @@ node -e "const p=require('./package.json'),l=require('./package-lock.json');cons
 node tests/run-tests.mjs                       # 必须全绿：TOTAL <n> PASS <n> FAIL 0
 node scripts/update-doc-counts.mjs             # 让文档里的派生计数收敛
 node scripts/update-doc-counts.mjs --check     # 退出 0 = 已收敛
+node scripts/release-check.mjs                 # 版本三处一致／两份说明与章节顺序／files[] 登记／
+                                               # tarball 声明缺失=0／开发专用文件不随包／包内无 CRLF
 ```
+
+- **`scripts/release-check.mjs` 是本手册的可执行化部分**：把 §1／§2／§6 的逐项核对做成一条命令（含一次真实
+  `npm pack` 与解包扫描）。发布前它必须退出 0；`--skip-pack` 只做静态检查，`--registry` 在发布后比对线上
+  `dist.shasum` 与本地 tarball 的字节一致性，`--self-test` 自证判据不是空转（配 `tests/release-check.mutants.mjs`
+  的 4 条单点变异，全部按名变红）。
 
 - 任何**新增作业**（新套件/新变异族/新 `--self-probe` 变体）都会改变派生计数：先跑 updater，再跑门禁，否则文档计数守卫会按设计变红。
 - **派生工件随源改动一起提交**：改了预设源/规范后，`cordis.patch.yml` 与随包语料等派生文件必须在**同一个提交**里重新生成（生成器脚本以仓库为准），不要拆成两个提交。
@@ -79,6 +86,7 @@ gh release create v<版本> --title "v<版本>" --latest --verify-tag \
 ```bash
 npm view dsh-vibe-math version dist-tags.latest dist.shasum
 npm pack --dry-run                      # 或 npm pack 后解开，核对清单
+node scripts/release-check.mjs --registry   # 一条命令做完下面 1–4 项（含线上 shasum 与本地 tarball 的比对）
 ```
 
 逐项确认：

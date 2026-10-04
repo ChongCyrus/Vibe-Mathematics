@@ -95,6 +95,14 @@ const FAMILIES = [
     to: 'const order=(prefer?[prefer]:[]).concat(base.filter(x=>x!==prefer))',
     expect: /\[task-10\/v4\]/,
   },
+  {
+    // The delivered artifacts must state WHY no PDF was produced (the body is composed BEFORE compilation,
+    // so this note is written after it). Blunting the zh note must redden that guard BY NAME.
+    name: 'deliverable/v4: the delivered paper stops stating that no engine was detected',
+    from: "zh?'本机未检测到 LaTeX 引擎：只产出 tex+md'",
+    to: "zh?''",
+    expect: /\[deliverable\/v4\]/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const t0 = Date.now(); const ok = runFamily(f); const ms = Date.now() - t0; if (ok) red++ }

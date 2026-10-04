@@ -511,6 +511,14 @@ section('9 compile branches: fake compiler success / repaired / persistent failu
   assert(st.paper.status === 'done' && (meta.compile || {}).result === 'not-detected' && /未检测到 LaTeX/.test((meta.compile || {}).reason || ''),
     '★ no LaTeX engine: compile=not-detected, tex+md kept, NO error thrown')
   assert(existsSync(join(dir, 'paper.tex')) && existsSync(join(dir, 'paper.md')), 'tex+md are still produced on the no-LaTeX branch')
+  // The paper body is composed BEFORE compilation, so the outcome cannot live in the spec: the delivered
+  // artifacts themselves must state it, exactly once (finalize can be re-entered -> idempotent).
+  const mdDelivered = readIf(join(dir, 'paper.md'))
+  const texDelivered = readIf(join(dir, 'paper.tex'))
+  const mdHits = mdDelivered.split('只产出 tex+md').length - 1
+  const texHits = texDelivered.split('只产出 tex+md').length - 1
+  assert(mdHits === 1 && texHits === 1,
+    '★ [deliverable/v4] the DELIVERED paper.md and paper.tex state that no engine was detected (once each; md=' + mdHits + ' tex=' + texHits + ')')
   const stNoTexJson = JSON.stringify(await m.callTool('vibe_v4_status', {}))
   assert(stNoTexJson.indexOf('只产出 tex+md') !== -1 && stNoTexJson.indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1,
     '★ [task-9/v4] the not-detected state WARNS with the old tail + where it looked + how to pin an engine')
