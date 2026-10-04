@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.8.2",
+  "version": "2.8.3",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -209,7 +209,9 @@
     "docs/release-notes/RELEASE-NOTES-2.8.1.md",
     "docs/release-notes/RELEASE-NOTES-2.8.1.en.md",
     "docs/release-notes/RELEASE-NOTES-2.8.2.md",
-    "docs/release-notes/RELEASE-NOTES-2.8.2.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.8.2.en.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.3.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.3.en.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -239,7 +241,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.8.2 补丁版：修 v5 的「诊断与交付物」两处。① 显式 paperLatexCommand 改为**单独探测** ⇒ paper.meta.json 的 compile.triedPaths 不再出现「已知 TeX 根 ＋ 你的绝对路径」这类不可能路径（此前该值被当命令名去和已知安装根拼候选），真机实测：坏路径 ⇒ not-detected ＋ triedPaths=[\"Z:/…\"]；真引擎 ⇒ compiled ＋ 真产出 paper.pdf。② v5 交付的 paper.md／paper.tex 现在各自写明编译结果（未检测到引擎 ⇒ 只产出 tex+md；编译失败 ⇒ 已保留 tex/md），恰好一次且定稿重入不重复 ⇒ 与 2.8.1 的 v4 对齐。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
+    "compatNote": "v2.8.3 补丁版：修 v5 的会议与定稿两处。① 会议收束后到达的成员发言不再静默丢弃 —— 看门狗放弃停滞会议（或所办提前定稿）后到达的 input 现在作为具名「会后补记」追加进纪要（按文本去重、先前发言只增不覆盖）；真机实测原症状是纪要在头部写着「发言顺序: r-1 → acad」而正文只有 ### r-1。② force 重启后 paperEditor=\"office\" 的定稿拒绝现在说明原因：响应新增 restarted 字段并在文案里写明 forceReason 与「计数随新论文重置、重启前的消息/会议不再计入、请重新征询」；docs/final-paper.md §7 明确「force ＝ 一张新论文」。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",

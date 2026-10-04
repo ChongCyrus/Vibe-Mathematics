@@ -7,6 +7,7 @@
 
 | 版本 | 关键变化 | 说明 |
 |---|---|---|
+| 2.8.3 | 补丁：会议**收束后到达的发言**不再静默丢弃（作为具名「会后补记」写入纪要、只增不覆盖）；`force` 重启后 `paperEditor="office"` 的定稿拒绝**说明原因**（新增 `restarted:true` ＋ `forceReason`，并写明"计数随新论文重置、需重新征询"）；文档明确「`force` ＝ 一张新论文」。 | [中文](./RELEASE-NOTES-2.8.3.md) · [English](./RELEASE-NOTES-2.8.3.en.md) |
 | 2.8.2 | 补丁：显式 `paperLatexCommand` 改为**单独探测** ⇒ `triedPaths` 不再出现「已知 TeX 根 ＋ 绝对路径」这类**不可能路径**；v5 交付的 `paper.md`／`paper.tex` 也**各自写明**编译结果（未检测到引擎／编译失败），恰好一次且重入不重复 ⇒ 与 2.8.1 的 v4 对齐。两处均有真机复现读数与具名红守卫。 | [中文](./RELEASE-NOTES-2.8.2.md) · [English](./RELEASE-NOTES-2.8.2.en.md) |
 | 2.8.1 | 补丁：v4 交付的 `paper.md`／`paper.tex` 现在各自写明编译结果（未检测到引擎 ⇒ 只产出 tex+md，或 PDF 编译失败并保留 tex/md），**恰好一次**且幂等 ⇒ 2.8.0 说明里的「已知限制」第 3 条已解决；新增 `scripts/release-check.mjs` 把发布前逐项核对做成一条命令（版本三处一致／两份说明章节顺序／清单登记／声明缺失=0／开发专用文件不随包／包内无 CRLF）。 | [中文](./RELEASE-NOTES-2.8.1.md) · [English](./RELEASE-NOTES-2.8.1.en.md) |
 | 2.8.0 | 功能版：显式 `paperLatexCommand` 改为「指定即只用它」（v4/v5 不再静默回落）、检测不到引擎的警告可行动并新增 `triedPaths`、四套预设新增逐字一致的引擎缺失指引；测试门禁更稳（默认并发 2、自动清扫陈旧临时目录、疑似遗留进程只读告警）；仓库行尾统一为 LF（npm 包逐字节可复现）。 | [中文](./RELEASE-NOTES-2.8.0.md) · [English](./RELEASE-NOTES-2.8.0.en.md) |
