@@ -243,6 +243,42 @@ const FAMILIES = [
     to: 'if (stale >= recoverStallMs()) {',
     expect: /\[real1004-stall\] the meeting watchdog exempts ASKED-but-busy speakers/,
   },
+  {
+    // task-24: the member-prompt statement line must MARK its cut, not hide the tail (a real host registered
+    // statements longer than the display cap and the truncated text is what voters read).
+    name: 'real1004-visibility: the member-prompt statement cut becomes silent again',
+    from: "'…（已截断；完整陈述见源卡片 '",
+    to: "''",
+    expect: /\[real1004-visibility\] the member-prompt statement line marks its 800-char cut/,
+  },
+  {
+    // task-26: the set response must keep reporting what it coerced.
+    name: 'real1004-visibility: the set response stops reporting adjusted values',
+    from: 'return { ok: true, params: visibleParams(), adjusted, dropped: droppedSet.slice() }',
+    to: 'return { ok: true, params: visibleParams(), adjusted: {}, dropped: droppedSet.slice() }',
+    expect: /\[real1004-visibility\] vibe_v5_set reports `adjusted`/,
+  },
+  {
+    // task-26: the two capacity refusals must stay machine-distinguishable.
+    name: 'real1004-visibility: the institute capacity refusal reuses the per-member scope',
+    from: "scope: 'institute'",
+    to: "scope: 'per-member'",
+    expect: /\[real1004-visibility\] the two capacity refusals carry DISTINCT/,
+  },
+  {
+    // task-25: the fieldScopes declaration must keep covering the payload fields it used to omit.
+    name: 'real1004-visibility: fieldScopes stops declaring diagnostics/backend again',
+    from: "'pendingSpawns[].attempts', 'diagnostics', 'backend'],",
+    to: "'pendingSpawns[].attempts'],",
+    expect: /\[real1004-visibility\] fieldScopes.session covers the payload fields it used to omit/,
+  },
+  {
+    // task-25: an incomplete electorate must keep naming who is still missing.
+    name: 'real1004-visibility: the verdict response stops naming the missing voters',
+    from: 'return { ok: true, voted: memberId, verdict: p, allVoted, pendingVoters: need.filter((id) => !votes[id]) }',
+    to: 'return { ok: true, voted: memberId, verdict: p, allVoted }',
+    expect: /\[real1004-visibility\] an incomplete electorate NAMES the missing voters/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

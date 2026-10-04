@@ -103,6 +103,13 @@ const FAMILIES = [
     to: "zh?''",
     expect: /\[deliverable\/v4\]/,
   },
+  {
+    // task-23: a meeting speech missing from the end block must be recorded with a NAMED placeholder.
+    name: 'real1004-minutes: a silent meeting speech is stored as an empty body again',
+    from: "'（本轮结束块未含 input/summary：框架按空发言记录，见 docs/final-paper.md）'",
+    to: "''",
+    expect: /\[real1004-minutes\] a meeting speech missing from the end block is recorded with a NAMED placeholder/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const t0 = Date.now(); const ok = runFamily(f); const ms = Date.now() - t0; if (ok) red++ }

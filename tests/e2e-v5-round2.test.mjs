@@ -2537,6 +2537,59 @@ console.log('\n[53] v5 L1 leanPathContractOk: the queued note reaches report() d
   assert(rep.indexOf('Lean path contract broken') === -1,
     '★★ [v5 L1] a HEALTHY composition surfaces no Lean path contract note in report() diagnostics')
 }
+// task-24 (real-host R2, D5'): a statement longer than a display cap used to be cut SILENTLY — at the resolve
+// step (1200 chars) and again in the member prompt (800 chars) — and the cut text is what voters read and what
+// the verified record carries. SOURCE-LEVEL invariant: both sites must keep a generous cap AND mark any cut
+// (a runtime scenario would need a >20k-char card, which is impractical here; the cut-marking itself is pinned
+// by the single-site mutation in tests/v5-institute-fixes.mutants.mjs).
+{
+  const src = readFileSync(PLUGIN, 'utf8')
+  assert(src.includes('const cap = 20000') && src.includes('（注意：陈述超过 ' + "' + cap + '" + ' 字符已截断，完整文本见 '),
+    '★ [real1004-visibility] the resolved statement keeps a generous cap (20000) and MARKS any cut in-band')
+  assert(src.includes('（已截断；完整陈述见源卡片 ') && !src.includes("'  陈述：' + String(vs.statement).slice(0, 800)"),
+    '★ [real1004-visibility] the member-prompt statement line marks its 800-char cut instead of hiding the tail')
+}
+// task-26 (real-host R2): `vibe_v5_set` used to coerce out-of-range values and drop unknown keys with NOTHING in
+// the response, and two different capacity limits shared one error code. The response must report both, and the
+// two limits must be distinguishable by a machine-readable field.
+{
+  const hz = makeHost({ pluginModule })
+  await hz.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hz.settleSpawns()
+  const set = await hz.callTool('vibe_v5_set', { quorumCap: -1, unknownKeyXyz: 5 })
+  assert(set.ok === true && Array.isArray(set.dropped) && set.dropped.indexOf('unknownKeyXyz') !== -1,
+    '★ [real1004-visibility] vibe_v5_set REPORTS the unknown key it dropped (dropped=' + JSON.stringify(set.dropped) + ')')
+  assert(set.adjusted && set.adjusted.quorumCap && Number(set.adjusted.quorumCap.from) === -1 && Number(set.adjusted.quorumCap.to) !== -1,
+    '★ [real1004-visibility] vibe_v5_set reports `adjusted` so a coerced value is visible (adjusted=' + JSON.stringify(set.adjusted) + ')')
+  // The per-member vs institute-wide distinction is pinned as a SOURCE invariant instead of by driving two
+  // refusals: `vibe_v5_hire` demands a full brief (`purpose` + `initial_task` + …) before it reaches the cap
+  // check, and assembling that brief here would only test the brief. The mutation in
+  // tests/v5-institute-fixes.mutants.mjs collapses the two scopes and reddens this assertion by name.
+  const src26 = readFileSync(PLUGIN, 'utf8')
+  assert(src26.includes("scope: 'per-member'") && src26.includes("scope: 'institute'"),
+    '★ [real1004-visibility] the two capacity refusals carry DISTINCT machine-readable scopes (both literals present)')
+}
+// task-25 (real-host R2/R3): `status().fieldScopes` must cover the fields the payload actually carries; an
+// incomplete electorate must NAME the missing voters; and v4 must name the residents that did not vote true.
+{
+  const hf = makeHost({ pluginModule })
+  await hf.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hf.settleSpawns()
+  const stf = await hf.callTool('vibe_v5_status', {})
+  const fs = stf.fieldScopes || {}
+  assert(stf.diagnostics !== undefined && stf.backend !== undefined,
+    'precondition: the payload really carries diagnostics/backend (' + JSON.stringify({ d: typeof stf.diagnostics, b: typeof stf.backend }) + ')')
+  assert(Array.isArray(fs.session) && fs.session.indexOf('diagnostics') !== -1 && fs.session.indexOf('backend') !== -1,
+    '★ [real1004-visibility] fieldScopes.session covers the payload fields it used to omit (diagnostics/backend)')
+  assert(Array.isArray(fs.durable) && fs.durable.indexOf('verdicts') !== -1 && fs.durable.indexOf('solve') !== -1,
+    '★ [real1004-visibility] fieldScopes.durable declares verdicts/solve (a reader can tell durable facts apart)')
+  const src25 = readFileSync(PLUGIN, 'utf8')
+  assert(src25.includes('pendingVoters: need.filter((id) => !votes[id])'),
+    '★ [real1004-visibility] an incomplete electorate NAMES the missing voters (pendingVoters)')
+  const v4src = readFileSync(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url), 'utf8')
+  assert(v4src.includes('；未投 true：'),
+    '★ [real1004-visibility] v4 names the residents that did not vote solved=true (no silent "no unanimous vote")')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

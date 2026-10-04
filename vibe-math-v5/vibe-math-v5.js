@@ -2523,7 +2523,12 @@ export function apply(ctx) {
       L.push('')
       L.push('本所正在对下列对象发起共识验证：')
       L.push('  对象：' + vs.target + '（类型：' + kindLabel2(vs.kind) + '）')
-      if (vs.statement) L.push('  陈述：' + String(vs.statement).slice(0, 800))
+      if (vs.statement) {
+        // task-24: this line feeds the member prompt. Cutting it with a bare `.slice(0, 800)` hid the tail of a
+        // long statement with no trace; make the cut visible instead (the full text stays in the source card).
+        const _st = String(vs.statement)
+        L.push('  陈述：' + (_st.length > 800 ? _st.slice(0, 800) + '…（已截断；完整陈述见源卡片 ' + String(vs.rel || vs.target || '') + '）' : _st))
+      }
       L.push('')
       L.push('请给出你**诚实独立的判断**：')
       L.push('  verdict = 1  表示你认为该对象**绝对为真**；')
@@ -4445,7 +4450,17 @@ export function apply(ctx) {
       if (!rel) return { rel: null, statement: '' }
       const text = (await readTextRel(rel)) || ''
       const m = /##\s*陈述\s*\n([\s\S]*?)(?:\n##\s|$)/.exec(text)
-      return { rel, statement: String(m ? m[1] : text).trim().slice(0, 1200) }
+      const full = String(m ? m[1] : text).trim()
+      // task-24 (real-host R2, D5'): this used to be `.slice(0, 1200)` with NO marker, so a long statement was
+      // cut silently — and the cut text is exactly what voters read and what the verified record carries
+      // (a real host registered statements >1200 chars). Keep a cap as generous as the paper sections
+      // (20000) and, when a cut DOES happen, say so in-band so the reader knows to open the source file.
+      const cap = 20000
+      if (full.length <= cap) return { rel, statement: full }
+      return {
+        rel, truncated: true,
+        statement: full.slice(0, cap) + '\n（注意：陈述超过 ' + cap + ' 字符已截断，完整文本见 ' + rel + '）',
+      }
     }
     // Update one `- 字段:` of a source card. Members hand-write cards in two shapes —
     // one field per line, or one line with '; '-separated fields — so the anchor may
@@ -4881,7 +4896,9 @@ export function apply(ctx) {
       const allVoted = need.length > 0 && need.every((id) => votes[id])
       if (allVoted) await continueVerifyRound(next)
       else await scheduleNext()
-      return { ok: true, voted: memberId, verdict: p, allVoted }
+      // task-25 (real-host R2): an incomplete electorate used to be reported only as `allVoted:false`, so the
+      // caller could not tell WHICH voter was still missing (members probed repeatedly to find out). Name them.
+      return { ok: true, voted: memberId, verdict: p, allVoted, pendingVoters: need.filter((id) => !votes[id]) }
     }
 
     // ---- chat log / meeting plumbing --------------------------------------
@@ -6184,8 +6201,8 @@ export function apply(ctx) {
       const perCap = Math.max(1, Math.floor(Number(params.maxTempPerMember) || 3))
       const totalCap = Math.max(1, Math.floor(Number(params.maxTempTotal) || 12))
       const mine = employedTemps().filter((m) => m.hiredBy === (office ? 'office' : callerId)).length
-      if (mine >= perCap) return { ok: false, code: 'V5_MEMBER_LIMIT', message: '你名下同时最多 ' + perCap + ' 名临时工（先在册 ' + mine + ' 名）；请先解雇不再需要的' }
-      if (employedTemps().length >= totalCap) return { ok: false, code: 'V5_MEMBER_LIMIT', message: '全所同时在册临时工已达上限 ' + totalCap }
+      if (mine >= perCap) return { ok: false, code: 'V5_MEMBER_LIMIT', scope: 'per-member', message: '你名下同时最多 ' + perCap + ' 名临时工（先在册 ' + mine + ' 名）；请先解雇不再需要的' }
+      if (employedTemps().length >= totalCap) return { ok: false, code: 'V5_MEMBER_LIMIT', scope: 'institute', message: '全所同时在册临时工已达上限 ' + totalCap }
       const member = await newMember('temp', {
         direction: purpose, hiredBy: office ? 'office' : callerId, term: String(args.term || ''), provider: pickProvider(),
       })
@@ -7070,6 +7087,17 @@ export function apply(ctx) {
     async function setParams(input) {
       const droppedSet = []
       const patch = normalizeParams(input || {}, droppedSet)
+      // task-26 (real-host R2): an out-of-range value is coerced by normalizeParams (documented) and an unknown
+      // key is dropped into `droppedSet` (recorded in diagnostics) — but the RESPONSE carried neither, so the
+      // caller could not tell "changed" from "ignored" without a second `status` read. Report both, additively.
+      const adjusted = {}
+      for (const k of Object.keys(patch)) {
+        const raw = (input || {})[k]
+        if (raw === undefined) continue
+        const before = Array.isArray(raw) ? raw.join(',') : String(raw)
+        const after = Array.isArray(patch[k]) ? patch[k].join(',') : String(patch[k])
+        if (before !== after) adjusted[k] = { from: raw, to: patch[k] }
+      }
       reportDroppedStateKeys(inst(), droppedSet, 'set')
       const merged = Object.assign({}, params, patch)
       await patchInstitute({ params: merged })
@@ -7081,7 +7109,7 @@ export function apply(ctx) {
       // activityTimeoutMs (or a raised maxParallel) would not take effect until some
       // unrelated event drove a pass. Tuning must apply immediately.
       if (running && !autoDone) await scheduleNext()
-      return { ok: true, params: visibleParams() }
+      return { ok: true, params: visibleParams(), adjusted, dropped: droppedSet.slice() }
     }
     function visibleParams() {
       return {
@@ -7450,8 +7478,8 @@ export function apply(ctx) {
         // payload, so a reader (or an operator comparing two sessions) cannot mistake them for
         // durable state. Durable = derived from the state file; session = rebuilt on load.
         fieldScopes: {
-          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts'],
-          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'undecided', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
+          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts', 'diagnostics', 'backend'],
+          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'verifiedTrue (derived from verdicts)', 'concludedFalse (derived from verdicts)', 'undecided (derived from verdicts)', 'verdicts', 'solve', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
         },
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two

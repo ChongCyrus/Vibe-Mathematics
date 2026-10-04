@@ -621,6 +621,15 @@ section('G3 a paper whose REQUIRED artifact was not written is FAILED, never don
   await finish(m)
 }
 
+// task-23 (real-host R3): all four meetings recorded correct speaker headers with EMPTY bodies, because a
+// resident's end block carried no `input`/`summary` and the collector stored '' silently. A NAMED placeholder is
+// required instead. SOURCE-LEVEL invariant: driving a full meeting with a deliberately silent resident would
+// exercise the harness more than this one line.
+{
+  const v4src = readFileSync(PLUGIN, 'utf8')   // PLUGIN points at the mutated COPY when a family runs this suite
+  assert(v4src.includes('（本轮结束块未含 input/summary：框架按空发言记录') && !v4src.includes("{input:parsed.input||parsed.summary||'',voteSolved:"),
+    '★ [real1004-minutes] a meeting speech missing from the end block is recorded with a NAMED placeholder, never as a silent empty body')
+}
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f) }
 if (failed) process.exit(1)

@@ -2319,7 +2319,10 @@ async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot
         // speaker must have produced an explicit `true`.
         const speakers=Object.values(st.inputs)
         const allSolved = allSpoke && speakers.length>0 && speakers.every(iv=>iv.voteSolved===true)
-        logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote)'))
+        // task-25 (real-host R3): the log said only "(no unanimous solved vote)", so nobody could tell WHICH
+        // resident had not voted true (a member even concluded "the vote was never registered"). Name them.
+        const notTrue = allSpoke ? Object.entries(st.inputs).filter(([,iv])=>iv.voteSolved!==true).map(([id])=>id) : []
+        logActivity('meeting', 'concluded'+(allSolved?' → ALL agree solved':' (no unanimous solved vote'+(notTrue.length?'；未投 true：'+notTrue.join('、'):'')+')'))
         if(allSolved){
           // ── FINAL PAPER ENTRY (docs/final-paper.md §A1) ─────────────────────────────────────────────────
           // The paper phase MUST start HERE, BEFORE `running=false; autoDone=true` and before the
@@ -2890,7 +2893,7 @@ try { ok = await wakeResident(r, await heartbeatPrompt(r), 'normal') } catch(e){
       // because a manually triggered paper legitimately runs on an already-concluded run.
       if(kind.indexOf('paper:')===0){ await onPaperWakeEnd(r,parsed); return }
       if(kind==='meeting' && meetingState){
-        meetingState.inputs[r.rId]={input:parsed.input||parsed.summary||'',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
+        meetingState.inputs[r.rId]={input:(parsed.input||parsed.summary||'').trim()||'（本轮结束块未含 input/summary：框架按空发言记录，见 docs/final-paper.md）',voteSolved:typeof parsed.voteSolved==='boolean'?parsed.voteSolved:null,propose_verify:parsed.propose_verify||null,propose_task:parsed.propose_task||null,task_desc:parsed.task_desc||'',claim_task:parsed.claim_task||null}
         meetingState.lastInputAt=now()
         if(parsed.propose_verify) maybeQueueVerify(parsed.propose_verify, r.rId)
         await saveAll()
