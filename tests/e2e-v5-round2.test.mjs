@@ -1437,6 +1437,13 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
   const metap = JSON.parse(readFileSync(join(dp, 'paper.meta.json'), 'utf8'))
   assert(metap.compile.status === 'not-detected',
     '★ [task-10/v5] an unresolvable explicit paperLatexCommand degrades (never falls through to another engine) — got ' + JSON.stringify(metap.compile.status))
+  // task-17 (found on a real host with 2.8.1): the explicit value must be probed ALONE. Probing it as a bare
+  // command name let the known-root stage build impossible paths like `<MiKTeX root>/Z:/…/xelatex.exe`, which
+  // made `triedPaths` — the very field that says WHERE it looked — report paths that cannot exist.
+  const tp = metap.compile.triedPaths || []
+  const joined = tp.filter((p) => /[\\/][A-Za-z]:[\\/]/.test(String(p).replace(/^[A-Za-z]:[\\/]/, '')))
+  assert(tp.length >= 1 && joined.length === 0,
+    '★ [task-17/v5] an ABSOLUTE explicit paperLatexCommand is probed ALONE — triedPaths never joins it onto a known TeX root (triedPaths=' + JSON.stringify(tp) + ')')
 }
 
 // ---------- 28. office-only surface + id normalisation ----------

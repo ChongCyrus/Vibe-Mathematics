@@ -5893,8 +5893,13 @@ export function apply(ctx) {
       }
       const engines = []
       const triedPaths = []   // task-9: union of the known-root candidates probed across THIS detection
+      // task-17: when paperLatexCommand is set, paperEngineCandidates() returns THAT VALUE ALONE. Probing it as
+      // a bare command name made resolveKnownTool join it onto every known TeX root, so `triedPaths` reported
+      // impossible paths like `<MiKTeX root>/Z:/no/such/xelatex.exe` (observed on a real host with 2.8.1).
+      // Handing it over as the EXPLICIT value probes only it (docs/final-paper.md §B); '' keeps auto-detection.
+      const forcedTex = String(params.paperLatexCommand || '').trim()
       for (const name of paperEngineCandidates(lang)) {
-        try { const _vr = await resolveKnownTool(sub, { name, explicit: '', kind: 'tex' }); triedPaths.push(..._vr.tried); const exe = _vr.exe; if (exe) engines.push({ name: String(name), exe: String(exe), via: _vr.via }) } catch (e) { /* not installed */ }
+        try { const _vr = await resolveKnownTool(sub, { name, explicit: forcedTex, kind: 'tex' }); triedPaths.push(..._vr.tried); const exe = _vr.exe; if (exe) engines.push({ name: String(name), exe: String(exe), via: _vr.via }) } catch (e) { /* not installed */ }
       }
       return { engines, triedPaths, reason: engines.length ? '' : ('未检测到 LaTeX 引擎（' + paperEngineCandidates(lang).join('/') + '）') }
     }

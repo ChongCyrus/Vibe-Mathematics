@@ -194,13 +194,21 @@ const FAMILIES = [
     to: '只交付 paper.tex 与 paper.md。',
     expect: /\[task-9\] the not-detected warning keeps its tail AND says where it looked/,
   },
+  // RETIRED (task-17, 2.8.1 real-host fix): the former entry here mutated `return [forced]` into the merged
+  // `[forced].concat(order…)`, which used to let an unresolvable explicit command fall through to a real
+  // engine. After task-17 the explicit value is ALSO handed to resolveKnownTool as `explicit` (the explicit
+  // branch probes only it and returns early), so the property is now enforced at TWO independent sites and
+  // NO single-site mutation can defeat it — the merged list merely probes dead candidates. The assertion
+  // itself stays in tests/e2e-v5-round2.test.mjs (`★ [task-10/v5] …degrades`); only the falsifier is retired
+  // (and the task-17 entry below covers the hand-off single-site).
   {
-    // task-10: restoring the merged candidate list lets an unresolvable explicit command fall through
-    // to another engine (the documented rule is "explicit ⇒ only it").
-    name: 'task-10: the explicit LaTeX command falls through to another engine again',
-    from: 'return [forced]',
-    to: 'return [forced].concat(order.filter((n) => n !== forced))',
-    expect: /\[task-10\/v5\] an unresolvable explicit paperLatexCommand degrades/,
+    // task-17 (real host, 2.8.1): probing the explicit value as a BARE COMMAND NAME lets the known-root stage
+    // join it onto every TeX root, so `triedPaths` reports impossible paths. Reverting the hand-off must
+    // redden the guarding assertion by name.
+    name: 'task-17: the explicit paperLatexCommand is probed as a bare command name again (triedPaths gets fake joins)',
+    from: "explicit: forcedTex, kind: 'tex'",
+    to: "explicit: '', kind: 'tex'",
+    expect: /\[task-17\/v5\] an ABSOLUTE explicit paperLatexCommand is probed ALONE/,
   },
 ]
 let red = 0
