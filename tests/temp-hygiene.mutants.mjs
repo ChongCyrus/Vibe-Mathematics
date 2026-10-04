@@ -27,6 +27,21 @@ const FAMILIES = [
     to: 'true',
     expect: /only exact suite prefixes are swept/,
   },
+  {
+    // task-15: "parent is gone" is the safety property - dropping it makes OUR OWN running gate look like
+    // a leftover, which is exactly the false positive that would make this tool dangerous to auto-run.
+    name: 'the parent-gone test is dropped (a live-parented gate looks like a leftover)',
+    from: 'return e.parentGone === true',
+    to: 'return true',
+    expect: /a process with a LIVE parent .* is never called a leftover/,
+  },
+  {
+    // task-15: the command-line gate is what keeps unrelated programs (editors, other stacks) out.
+    name: 'the command-line gate is dropped (any orphaned program looks like ours)',
+    from: "if (!patterns.some((re) => re.test(String(e.cmd || '')))) return false",
+    to: 'if (false) return false',
+    expect: /an unrelated program is never reported/,
+  },
 ]
 
 function runSelftest(scriptPath) {

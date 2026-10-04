@@ -72,7 +72,7 @@ const exclude = flag('exclude')
 // there is a surprising side effect (and a slow one). Only a genuine test sweep cleans up.
 if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {
   try {
-    const { suitePrefixes, sweep, preferredTempRoot, useTempRoot } = await import('../scripts/clean-temp.mjs')
+    const { suitePrefixes, sweep, preferredTempRoot, useTempRoot, listProcesses, suspectProcesses } = await import('../scripts/clean-temp.mjs')
     if (useTempRoot(preferredTempRoot())) console.error('run-tests: temp root -> ' + process.env.TEMP + ' (roomier drive preferred; D:\\_tmp when present)')
     sweep({
       prefixes: suitePrefixes(),
@@ -80,6 +80,16 @@ if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {
       dryRun: has('temp-dry-run'),
       log: (m) => console.error(m),
     })
+    // task-15 (MEASURED): a LEFTOVER process can steal a whole core and make honest suites look flaky - a
+    // leftover DSH host with 197,410 s CPU turned a 2822 s gate into 7875 s and amplified single suites
+    // 1.3x-4.5x. REPORT ONLY: the gate never kills anything it did not start (that decision belongs to a
+    // human, via `node scripts/clean-temp.mjs --ps [--kill]`).
+    const susp = suspectProcesses(listProcesses(), { selfPids: [process.pid, process.ppid] })
+    if (susp.length) {
+      console.error('run-tests: WARNING - ' + susp.length + ' suspected LEFTOVER process(es) (orphaned, project/team):')
+      for (const s of susp) console.error('  pid=' + s.pid + '  ' + String(s.cmd || '').slice(0, 110))
+      console.error('run-tests: leftover CPU load makes honest suites flaky; inspect with `node scripts/clean-temp.mjs --ps` (add --kill to stop them).')
+    }
   } catch (e) { console.error('run-tests: temp hygiene skipped (' + ((e && e.message) || e) + ')') }
 }
 const asJson = has('json')

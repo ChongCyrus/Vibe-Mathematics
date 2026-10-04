@@ -23,6 +23,7 @@
  *   node scripts/clean-temp.mjs --root=<dir>        # sweep another temp root (mainly for tests)
  *   node scripts/clean-temp.mjs --self-test         # prove the guards below (fresh dirs are NEVER swept)
  */
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -106,6 +107,55 @@ export function useTempRoot(root) {
   return true
 }
 
+/**
+ * Leftover-PROCESS detector (task-15). Measured motivation: a leftover DSH host (`--profile vmfix7`,
+ * started two days earlier, its parent gone) had burned **197,410 s of CPU** on this 4-core machine - a
+ * full core, permanently. With it, whole-gate `sum of suite times` went 2822 s -> 7875 s (x2.8) and
+ * individual suites ran 1.3x-4.5x slower, so honest suites reported failures that never reproduced
+ * standalone. The rule is deliberately NARROW: flag a process only when its command line matches THIS
+ * project/team AND its parent is gone (a process the running gate spawned has a live parent, so a healthy
+ * gate is never flagged - that property is asserted in `--self-test` and mutated by the family).
+ */
+export const DEFAULT_PROCESS_PATTERNS = [
+  /--profile\s+\S+/,              // a DSH host started against any profile (including our clones)
+  /[\\/]review[\\/][^\\/]*\.mjs/, // the dev-only harness scripts kept under _oneoff/review
+  /[\\/]tests[\\/][^\\/]*\.mjs/,  // a test/probe script (gates, mutant families)
+  /--temp-dry-run/,               // another gate run
+]
+
+export function suspectProcesses(entries, { selfPids = [], patterns = DEFAULT_PROCESS_PATTERNS } = {}) {
+  const self = new Set((selfPids || []).map((p) => String(p)))
+  return (entries || []).filter((e) => {
+    if (!e || self.has(String(e.pid))) return false
+    if (!patterns.some((re) => re.test(String(e.cmd || '')))) return false
+    return e.parentGone === true          // the safety property: a live parent means something owns it
+  })
+}
+
+/**
+ * List node processes with a `parentGone` flag. Windows-only in practice (PowerShell JSON); other
+ * platforms return [] rather than pretending. `exec` is injectable so the self-test can feed fixtures.
+ */
+export function listProcesses({ exec = null } = {}) {
+  if (process.platform !== 'win32' && !exec) return []
+  const ps = "$live=@{}; Get-Process | ForEach-Object { $live[[int]$_.Id]=1 }; " +
+    "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' } | ForEach-Object { " +
+    "[pscustomobject]@{ pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; cmd=[string]$_.CommandLine; " +
+    "parentGone=(-not $live.ContainsKey([int]$_.ParentProcessId)); created=[string]$_.CreationDate } } | ConvertTo-Json -Compress"
+  try {
+    const run = exec || ((args) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', args], { encoding: 'utf8', timeout: 30000 }))
+    const raw = String(run(ps) || '').trim()
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : [parsed]
+  } catch (e) { return [] }
+}
+
+export function formatSuspect(s) {
+  const cmd = String(s.cmd || '')
+  return '  pid=' + s.pid + '  parent=' + s.parent + (s.parentGone ? ' (GONE)' : '') + '  ' + (s.created || '') + '  ' + cmd.slice(0, 120)
+}
+
 const argv = process.argv.slice(2)
 const has = (n) => argv.includes('--' + n)
 const val = (n, d) => { const a = argv.find((x) => x.startsWith('--' + n + '=')); return a ? a.split('=').slice(1).join('=') : d }
@@ -129,6 +179,21 @@ if (has('self-test')) {
   check(!planned.includes('unrelated-stale') && !planned.includes('vibestale-nodash'), 'TEMP-HYGIENE: only exact suite prefixes are swept (no glob-like overreach)')
   const live = suitePrefixes()
   check(live.length >= 3, 'TEMP-HYGIENE: the prefix table is EXTRACTED from the suites (found ' + live.length + ': ' + live.slice(0, 4).join(', ') + ' …)')
+  // task-15: the leftover-PROCESS predicate, tested on fixtures so the property is checkable and mutable.
+  const procs = [
+    { pid: 1, parent: 999, parentGone: true, cmd: 'node tests/run-tests.mjs --temp-dry-run' },  // excluded via selfPids ONLY
+    { pid: 5, parent: 995, parentGone: false, cmd: 'node tests/run-tests.mjs --temp-dry-run' }, // LIVE parent -> never suspect
+    { pid: 2, parent: 998, parentGone: true, cmd: 'node tests/run-tests.mjs --temp-dry-run' },  // an ORPHANED gate
+    { pid: 3, parent: 997, parentGone: true, cmd: 'node bin.js --profile vmfix7 --port 7791' }, // the measured leftover
+    { pid: 4, parent: 996, parentGone: true, cmd: 'C:/apps/editor/editor.exe --open notes.md' },// unrelated program
+  ]
+  const susp = suspectProcesses(procs, { selfPids: [1] })
+  check(!susp.some((s) => s.pid === 1), 'TEMP-HYGIENE: an explicitly excluded pid (self / own parent) is never reported')
+  // This one is what the "parent-gone" mutation attacks: pid 5 is NOT excluded by selfPids, so only the
+  // live-parent property keeps it out of the report.
+  check(!susp.some((s) => s.pid === 5), 'TEMP-HYGIENE: a process with a LIVE parent (our running gate) is never called a leftover')
+  check(susp.some((s) => s.pid === 2) && susp.some((s) => s.pid === 3), 'TEMP-HYGIENE: ORPHANED project/team processes are reported (incl. a DSH host started against a clone profile)')
+  check(!susp.some((s) => s.pid === 4), 'TEMP-HYGIENE: an unrelated program is never reported (the command-line gate holds)')
   console.log('temp-hygiene self-test: ' + (failures.length ? failures.length + ' failure(s)' : 'all checks passed'))
   process.exit(failures.length ? 1 : 0)
 }
@@ -140,6 +205,22 @@ const isCli = (() => {
 })()
 
 if (isCli) {
+  // task-15: read-only leftover-process report. `--kill` must be asked for explicitly, and the current
+  // process + its parent are always excluded (a running gate must never kill itself).
+  if (has('ps')) {
+    const procs = listProcesses()
+    const susp = suspectProcesses(procs, { selfPids: [process.pid, process.ppid] })
+    console.log('temp-hygiene --ps: scanned ' + procs.length + ' node process(es); suspects=' + susp.length)
+    for (const s of susp) console.log(formatSuspect(s))
+    if (has('kill')) {
+      let killed = 0
+      for (const s of susp) { try { process.kill(Number(s.pid), 'SIGKILL'); killed++ } catch (e) { /* already gone */ } }
+      console.log('temp-hygiene --ps --kill: killed=' + killed)
+    } else if (susp.length) {
+      console.log('temp-hygiene --ps: read-only. Re-run with --kill to stop them (each one steals CPU from the gate).')
+    }
+    process.exit(0)
+  }
   const root = val('root', null)
   if (!root) { const pref = preferredTempRoot(); if (useTempRoot(pref)) console.log('temp-hygiene: using temp root ' + pref) }
   const res = sweep({
