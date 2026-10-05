@@ -32,6 +32,7 @@ process.env.DSH_HOME = EMPTY_ENGINE_ROOT
 process.env.ProgramFiles = EMPTY_ENGINE_ROOT
 process.env['ProgramFiles(x86)'] = EMPTY_ENGINE_ROOT
 process.env.LOCALAPPDATA = EMPTY_ENGINE_ROOT
+process.env.V5_TEX_ROOTS_SANDBOX = EMPTY_ENGINE_ROOT   // task-29: the documented TeX Live roots are sandboxed too (the product's own list now covers D:/C:/texlive)
 
 // V5_PLUGIN lets a sensitivity probe point this suite at a deliberately broken copy.
 // Without it every probe against this suite silently tested the UNMUTATED plugin and was

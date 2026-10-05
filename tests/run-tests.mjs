@@ -37,8 +37,8 @@
  *   node tests/run-tests.mjs --no-temp-hygiene    # skip the sweep and the roomier-drive temp root
  */
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
-import { cpus } from 'node:os'
+import { existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -92,6 +92,22 @@ if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {
     }
   } catch (e) { console.error('run-tests: temp hygiene skipped (' + ((e && e.message) || e) + ')') }
 }
+// task-29: HOST-INDEPENDENT GATE. Whether THIS machine has TeX Live installed must not decide whether the
+// suites that assert the "no LaTeX engine here" degradation are green: on this dev box `D:\texlive\...`
+// really exists and the product now FINDS it (that is the task-28 fix), so those suites would redden for a
+// reason that has nothing to do with the code under test. Point every child suite (they inherit
+// `process.env` — see runSuite's spawn, which passes no `env`) at ONE empty scratch directory through the
+// four documented-root sandbox gates: the product still probes every documented TeX root, one by one,
+// inside that empty directory, finds nothing, and `triedPaths` still NAMES what it looked at. Real-machine
+// discovery is covered by the SLV live runs, not by the gate; `audit-engine-faces` FACE 3 drives an
+// explicit `paperLatexCommand`, which the sandbox never touches (only the known-install stage is rebased).
+// Nothing else about the sweep changes; the scratch dir is removed when the runner exits.
+const TEX_ROOTS_SANDBOX_DIR = mkdtempSync(join(tmpdir(), 'vibe-gate-tex-sandbox-'))
+process.env.V2_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
+process.env.V3_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
+process.env.V4_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
+process.env.V5_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
+process.on('exit', () => { try { rmSync(TEX_ROOTS_SANDBOX_DIR, { recursive: true, force: true }) } catch (e) { /* best effort: a leftover empty scratch dir must never fail the gate */ } })
 const asJson = has('json')
 // task-13 (MEASURED): the default used to be min(4, cpus) = 4 on this 4-core box, and the heavy jobs then
 // ran 1.3x-4.5x SLOWER than standalone - the gate's own "slowest" lines recorded v2-fix-probes.mutants

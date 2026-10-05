@@ -250,8 +250,8 @@ if (!XELATEX) {
     ok(bad && typeof bad === 'object' && bad.ok === true && (bad.started === true || bad.code === undefined),
       '★ engine-faces latex: a NONEXISTENT `paperLatexCommand` neither crashes nor raises an error code (entry stays ok:true, code undefined) (' + JSON.stringify({ ok: bad && bad.ok, code: bad && bad.code, note: String(bad && bad.note || '').slice(0, 50) }) + ')')
     console.log('  note: the LaTeX COMPILE (paper writer subagent) is not reachable from this probe; it asserts the ENTRY only — crash-freedom and no error code. The named degradation for an unresolvable command is a COMPILE-time behaviour (docs/final-paper.md) and is deliberately NOT claimed here.')
-    console.log('        This probe runs the REAL xelatex only because it carries its own candidate list')
-    console.log('        (D:\\texlive\\2025\\bin\\windows) - it is NOT evidence that the product discovers a non-standard TeX installation.')
+    console.log('        This probe carries its own candidate list (D:\\texlive\\2025\\bin\\windows); since task-28 the')
+    console.log('        PRODUCT probes that documented TeX Live drive-root position too (audit-prompt-invariants I19).')
   } finally { rmSync(WS, { recursive: true, force: true }) }
 }
 

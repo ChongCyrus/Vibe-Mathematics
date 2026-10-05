@@ -119,7 +119,7 @@
           `<project root>/Formal/<id>.lean`.
         - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
           definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
-          (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+          (the framework passes -R <VibeMath root>, so VibeMath is the module root).
         - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
           necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
           with the difficulty instead of hiding uncertainty behind a formalization.
@@ -249,7 +249,7 @@
           `<project root>/Formal/<id>.lean`.
         - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
           definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
-          (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+          (the framework passes -R <VibeMath root>, so VibeMath is the module root).
         - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
           necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
           with the difficulty instead of hiding uncertainty behind a formalization.

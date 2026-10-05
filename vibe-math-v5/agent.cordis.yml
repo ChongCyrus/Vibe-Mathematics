@@ -143,7 +143,7 @@
           small lemmas/propositions/definitions into the library even in ordinary rounds).
         - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
           content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
-          gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+          gets `-R <VibeMath root>`, preceded by any leanSearchPaths), or copy the
           exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
         - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
           vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with
@@ -276,7 +276,7 @@
           small lemmas/propositions/definitions into the library even in ordinary rounds).
         - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
           content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
-          gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+          gets `-R <VibeMath root>`, preceded by any leanSearchPaths), or copy the
           exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
         - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
           vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with

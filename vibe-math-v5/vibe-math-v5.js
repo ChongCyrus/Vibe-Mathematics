@@ -56,6 +56,17 @@
 // guessed; otherwise the host resolver (PATH) is tried first, then the known install locations for this
 // platform. Provenance is returned so the caller can report \`leanFoundVia: 'explicit'|'path'|'known-install'\`,
 // and the probed list travels on failure ("I looked here too"), never just "not found on PATH".
+// ── task-28: TeX Live's DOCUMENTED typical install positions + a bounded probe budget ────────────────
+// A real-host SLV v5 run (15.2 min, candidate PASS) archived compileStatus `not-detected` on a machine
+// whose TeX Live lives at `D:\texlive\2025\bin\windows\xelatex.exe`: the known list only covered
+// `<ProgramFiles>/texlive`, so an engine that IS installed but NOT on PATH was never found and the run
+// degraded to tex+md only. These are DOCUMENTED roots, never a search: no whole-drive scan, no install,
+// no write outside the workspace (the three hard boundaries stay in the guidance text).
+const TEX_CANDIDATE_CAP = 40            // hard cap on TeX known-root candidate paths probed per detection
+const TEX_YEAR_LOOKBACK = 4             // the newest N year dirs of a TeX Live root (current year + 3)
+const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']               // Windows: TeX Live at a DRIVE ROOT
+const TEX_SYSTEM_BIN_ROOTS = ['/Library/TeX/texbin']                    // macOS: system MacTeX (already a bin dir)
+const TEX_SYSTEM_YEAR_ROOTS = ['/usr/local/texlive', '/opt/texlive']    // Unix: TeX Live (year-globbed)
 async function resolveKnownTool(sub, opts) {
   const name = String((opts && opts.name) || '')
   const explicit = String((opts && opts.explicit) || '').trim()
@@ -75,12 +86,27 @@ async function resolveKnownTool(sub, opts) {
     return null
   }
   const listDirs = async (p) => { try { const fs = await import('node:fs'); return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) } catch (err) { return [] } }
+  // task-29: TEST/DIAGNOSTIC sandbox seam (env-gated; UNSET = identity, i.e. exactly today's behaviour).
+  // When `V5_TEX_ROOTS_SANDBOX` is set, every known-install TeX candidate is REBASED under that directory
+  // (same relative tail) so a suite can pin its "no LaTeX installed here" premise on ANY host: the
+  // candidates are still probed ONE BY ONE (triedPaths stays named, TEX_CANDIDATE_CAP still bounds them,
+  // still no whole-drive scan) but a real install is never touched. It is not a product switch: it only
+  // relocates where the documented roots are looked for, and it is never set by the plugin itself.
+  const texSandbox = kind === 'tex' ? String(env.V5_TEX_ROOTS_SANDBOX || '').trim() : ''
+  const texProbeBase = (p) => {
+    if (!texSandbox) return p
+    const tail = String(p).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '').replace(/^\/+/, '')
+    return texSandbox.replace(/\\/g, '/').replace(/\/+$/, '') + '/' + tail
+  }
   const knownLean = win
     ? [elan ? elan + '/bin' : null, home + '/.elan/bin', local ? local + '/Programs/lean' : null, pf + '/lean/bin']
     : [elan ? elan + '/bin' : null, home + '/.elan/bin', home + '/.local/bin', '/usr/local/bin', '/opt/lean/bin']
+  // task-28: the DRIVE-ROOT TeX Live positions come first on Windows (the observed real-host layout);
+  // the legacy entries keep their relative order. Unix keeps the legacy order and adds the system
+  // MacTeX bin dir last (a documented root, not a guess).
   const knownTex = win
-    ? [pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64']
-    : [home + '/Library/TeX/texbin', '/usr/local/texlive', home + '/.TinyTeX/bin', '/opt/texlive']
+    ? TEX_DRIVE_YEAR_ROOTS.concat([pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64'])
+    : [home + '/Library/TeX/texbin'].concat(TEX_SYSTEM_YEAR_ROOTS, [home + '/.TinyTeX/bin'], TEX_SYSTEM_BIN_ROOTS)
   const list = kind === 'tex' ? knownTex : knownLean
   // 1) EXPLICIT: only it, never a guess.
   if (explicit) {
@@ -93,19 +119,35 @@ async function resolveKnownTool(sub, opts) {
   if (typeof sub.resolveExecutable === 'function') {
     try { const p = await sub.resolveExecutable(name); if (p) return { exe: String(p), via: 'path', tried, name } } catch (e) { /* PATH miss is expected */ }
   }
-  // 3) KNOWN INSTALL LOCATIONS (Windows TeX roots are globbed per release: <root>/<year>/bin/windows).
+  // 3) KNOWN INSTALL LOCATIONS. A TeX root WITHOUT a `bin` segment is year-globbed
+  //    (`<root>/<year>/bin/<platform>`): the years actually on disk (newest first) first, then the
+  //    recent-year window, at most TEX_YEAR_LOOKBACK of them. task-28: the whole stage is BOUNDED by
+  //    TEX_CANDIDATE_CAP candidate paths — documented roots, never a whole-drive scan.
+  const texYearSubdirs = win ? ['bin/windows'] : ['bin/x86_64-linux', 'bin/aarch64-linux', 'bin/universal-darwin', 'bin']
+  const texRecentYears = () => { const now = new Date().getFullYear(); const out = []; for (let i = 0; i < TEX_YEAR_LOOKBACK; i++) out.push(String(now - i)); return out }
+  let texProbes = 0
   for (const base of list) {
     if (!base) continue
     if (kind === 'tex' && !/bin/i.test(base)) {
-      for (const year of await listDirs(base)) {
-        for (const sub2 of ['bin/windows', 'bin/x86_64-linux', 'bin/universal-darwin', 'bin']) {
-          const p = await resolvePath(base + '/' + year + '/' + sub2 + '/' + name)
+      const onDisk = (await listDirs(texProbeBase(base))).filter((d) => /^\d{4}$/.test(d)).sort((a, b) => Number(b) - Number(a))
+      const years = onDisk.concat(texRecentYears().filter((y) => onDisk.indexOf(y) < 0)).slice(0, TEX_YEAR_LOOKBACK)
+      for (const year of years) {
+        for (const sub2 of texYearSubdirs) {
+          if (texProbes >= TEX_CANDIDATE_CAP) break
+          texProbes++
+          const p = await resolvePath(texProbeBase(base) + '/' + year + '/' + sub2 + '/' + name)
           if (p) return { exe: p, via: 'known-install', tried, name }
         }
+        if (texProbes >= TEX_CANDIDATE_CAP) break
       }
+      if (texProbes >= TEX_CANDIDATE_CAP) break
       continue
     }
-    const p = await resolvePath(base + '/' + name)
+    if (kind === 'tex') {
+      if (texProbes >= TEX_CANDIDATE_CAP) break
+      texProbes++
+    }
+    const p = await resolvePath(texProbeBase(base) + '/' + name)
     if (p) return { exe: p, via: 'known-install', tried, name }
   }
   return { exe: null, via: null, tried, name, reason: 'not found on PATH or in the known install locations' }
@@ -917,8 +959,8 @@ export function apply(ctx) {
       // today's behaviour (the reminder rides with formalVerify); 'eager' = push valuable small
       // lemmas/propositions/definitions into the library even in daily rounds.
       leanInitiative: 'normal',
-      // leanSearchPaths: extra `--search-path` roots injected BEFORE the automatic VibeMath
-      // root (deduped; an explicit --search-path/-R/--root in leanArgs wins).
+      // leanSearchPaths: extra `-R` roots injected BEFORE the automatic VibeMath
+      // root (deduped; an explicit -R/--root in leanArgs wins).
       leanSearchPaths: [],
       // leanJobsMaxParallel: how many background compiles may run at once (default 1 = serial).
       leanJobsMaxParallel: 1,
@@ -2974,7 +3016,7 @@ export function apply(ctx) {
       for (const j of leanJobs.values()) if (j.state === 'queued' && (!best || (j.enqueuedAt || 0) < (best.enqueuedAt || 0))) best = j
       return best
     }
-    // The absolute VibeMath root handed to `--search-path` (the compile runs with cwd=instRoot()).
+    // The absolute VibeMath root handed to `-R` (the compile runs with cwd=instRoot()).
     function leanSearchRootView() { return vibeRoot().replace(/\\/g, '/') }
     async function leanSearchRoot() {
       const root = vibeRoot()
@@ -3547,12 +3589,14 @@ export function apply(ctx) {
     // is the "off means zero mention" discipline).
     function mathPushLine(L) { const b = mathPromptBlock('zh'); if (b) L.push(b) }
 
-    // task-9 2b: the LaTeX-missing guidance (four bounded steps + three hard boundaries). Kept
-    // BYTE-IDENTICAL with the other presets; per-preset voice may only follow this block.
+    // task-9 2b: the LaTeX-missing guidance (four bounded steps + three hard boundaries). Those four
+    // steps and three boundaries are the shared contract; task-28 (v5 PILOT) additionally names the
+    // "installed but NOT on PATH" case and TeX Live's documented positions — v4/v2/v3 adopt the same
+    // text once v5 is verified, so the wording deliberately leads on v5.
     function paperHintBlock(lang) {
       return lang === 'en'
-        ? '\nWhen no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user (installing TeX requires the user\'s explicit approval); (4) with no answer yet, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.'
-        : '\n检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。'
+        ? '\nWhen no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; the MOST COMMON case is an engine that IS installed but NOT on PATH — TeX Live typically lives at Windows `D:\\texlive\\<year>\\bin\\windows` / `C:\\texlive\\<year>\\bin\\windows`, Unix `/usr/local/texlive/<year>/bin/*` / `/opt/texlive/<year>/bin/*`, macOS `/Library/TeX/texbin`; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user (installing TeX requires the user\'s explicit approval); (4) with no answer yet, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.'
+        : '\n检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 的典型位如 Windows `D:\\texlive\\<年>\\bin\\windows`／`C:\\texlive\\<年>\\bin\\windows`，类 Unix `/usr/local/texlive/<年>/bin/*`／`/opt/texlive/<年>/bin/*`，macOS `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。'
     }
     function paperPushLine(L) {
       const b = paperHintBlock('zh')
@@ -6146,7 +6190,7 @@ export function apply(ctx) {
       if (await fileExistsAbs(paperAbs(id, 'paper.pdf'))) files.push('paper.pdf')
       const warnings = (p.warnings || []).slice()
       if (compile.status === 'failed') warnings.push('LaTeX 编译失败（已保留 paper.tex 与 paper.md，不阻塞定稿）：' + (compile.attempts || []).map((a) => a.engine + '/' + a.label + ' exit=' + a.exitCode + (a.message ? '(' + a.message + ')' : '')).join('；'))
-      if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。')
+      if (compile.status === 'not-detected') warnings.push('未检测到 LaTeX 引擎（' + (compile.reason || '') + '）：只交付 paper.tex 与 paper.md。已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。最常见的情形是引擎已安装但不在 PATH（TeX Live 典型位 D:\\texlive\\<年>\\bin\\windows、C:\\texlive\\<年>\\bin\\windows、/usr/local|/opt/texlive/<年>/bin/*、macOS /Library/TeX/texbin 已纳入有界探测）：把引擎的绝对路径写进 paperLatexCommand 再探测一次；仍找不到就如实上报所办（由所办向用户确认安装），随后照旧安全降级。')
       // F6: the failed REQUIRED writes are named ONCE (for this finalisation), before the meta is built,
       // so the warning lands in `meta.warnings`, in the flow log, in the state and in the return value.
       if (writeFailures.length) warnings.push(paperWriteFailureWarning(writeFailures))

@@ -520,7 +520,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `leanAsync` | `true` | 四套 | Lean 编译模式：`true`（默认）= 后台队列，`lean_run` / `lean_archive{run:true}` 入队即返回 `async.jobId`，成员不阻塞；`false` = 同步 await（旧语义逐字保留） |
 | `leanJobsMaxParallel` | `1` | 四套 | 后台编译并发上限（默认 1 = 串行；调大即并行） |
 | `leanInitiative` | `'normal'` | 四套 | **日常形式化主动性**：`off` / `normal`（默认，顺手形式化）/ `eager`（更主动）。与 `formalVerify`（验证时的要求强度）**是两件事** |
-| `leanSearchPaths` | `[]` | 四套 | 额外 Lean 搜索根（先注入它们、再注入自动的 `<VibeMath 根>`；`leanArgs` 里已有 `--search-path`/`-R`/`--root` 时不注入） |
+| `leanSearchPaths` | `[]` | 四套 | 额外 Lean 搜索根（先注入它们、再注入自动的 `<VibeMath 根>`；`leanArgs` 里已有 `-R`/`--root` 时不注入） |
 | `finalPaper` | `true` | 四套 | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
 | `paperFormat` | `both` | 四套 | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
 | `paperLanguage` | `zh` | 四套 | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |

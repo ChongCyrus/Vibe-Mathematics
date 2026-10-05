@@ -520,7 +520,7 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 | `leanAsync` | `true` | all four | Lean compile mode: `true` (default) = background queue — `lean_run` / `lean_archive{run:true}` enqueue and return `async.jobId` immediately without blocking the member; `false` = synchronous await (the previous semantics, verbatim) |
 | `leanJobsMaxParallel` | `1` | all four | Background-compile concurrency cap (default 1 = serial; raise it to compile in parallel) |
 | `leanInitiative` | `'normal'` | all four | **Daily formalization eagerness**: `off` / `normal` (default, formalize along the way) / `eager` (more proactive). A **separate knob** from `formalVerify` (which only says how strong verification must be) |
-| `leanSearchPaths` | `[]` | all four | Extra Lean search roots (injected first; the automatic `<VibeMath root>` is added after them; nothing is injected when `leanArgs` already sets `--search-path`/`-R`/`--root`) |
+| `leanSearchPaths` | `[]` | all four | Extra Lean search roots (injected first; the automatic `<VibeMath root>` is added after them; nothing is injected when `leanArgs` already sets `-R`/`--root`) |
 | `finalPaper` | `true` | all four | **Final paper**: written automatically at closure (`false` disables only the automatic trigger; the manual command still works). Full contract: `docs/final-paper.md` |
 | `paperFormat` | `both` | all four | Which text versions to produce: `both` (md+tex) / `md` (skips compilation and must not warn about a missing tex) / `tex` |
 | `paperLanguage` | `zh` | all four | Paper language: `zh` (ctexart, engine prefers xelatex) / `en` (article, pdflatex first) |

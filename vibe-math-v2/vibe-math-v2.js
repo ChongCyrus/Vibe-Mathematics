@@ -125,6 +125,17 @@ function paramProps() {
 // guessed; otherwise the host resolver (PATH) is tried first, then the known install locations for this
 // platform. Provenance is returned so the caller can report \`leanFoundVia: 'explicit'|'path'|'known-install'\`,
 // and the probed list travels on failure ("I looked here too"), never just "not found on PATH".
+// ── task-28: TeX Live's DOCUMENTED typical install positions + a bounded probe budget ────────────────
+// A real-host SLV v5 run (15.2 min, candidate PASS) archived compileStatus `not-detected` on a machine
+// whose TeX Live lives at `D:\texlive\2025\bin\windows\xelatex.exe`: the known list only covered
+// `<ProgramFiles>/texlive`, so an engine that IS installed but NOT on PATH was never found and the run
+// degraded to tex+md only. These are DOCUMENTED roots, never a search: no whole-drive scan, no install,
+// no write outside the workspace (the three hard boundaries stay in the guidance text).
+const TEX_CANDIDATE_CAP = 40            // hard cap on TeX known-root candidate paths probed per detection
+const TEX_YEAR_LOOKBACK = 4             // the newest N year dirs of a TeX Live root (current year + 3)
+const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']               // Windows: TeX Live at a DRIVE ROOT
+const TEX_SYSTEM_BIN_ROOTS = ['/Library/TeX/texbin']                    // macOS: system MacTeX (already a bin dir)
+const TEX_SYSTEM_YEAR_ROOTS = ['/usr/local/texlive', '/opt/texlive']    // Unix: TeX Live (year-globbed)
 async function resolveKnownTool(sub, opts) {
   const name = String((opts && opts.name) || '')
   const explicit = String((opts && opts.explicit) || '').trim()
@@ -144,12 +155,27 @@ async function resolveKnownTool(sub, opts) {
     return null
   }
   const listDirs = async (p) => { try { const fs = await import('node:fs'); return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) } catch (err) { return [] } }
+  // task-29: TEST/DIAGNOSTIC sandbox seam (env-gated; UNSET = identity, i.e. exactly today's behaviour).
+  // When `V2_TEX_ROOTS_SANDBOX` is set, every known-install TeX candidate is REBASED under that directory
+  // (same relative tail) so a suite can pin its "no LaTeX installed here" premise on ANY host: the
+  // candidates are still probed ONE BY ONE (triedPaths stays named, TEX_CANDIDATE_CAP still bounds them,
+  // still no whole-drive scan) but a real install is never touched. It is not a product switch: it only
+  // relocates where the documented roots are looked for, and it is never set by the plugin itself.
+  const texSandbox = kind === 'tex' ? String(env.V2_TEX_ROOTS_SANDBOX || '').trim() : ''
+  const texProbeBase = (p) => {
+    if (!texSandbox) return p
+    const tail = String(p).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '').replace(/^\/+/, '')
+    return texSandbox.replace(/\\/g, '/').replace(/\/+$/, '') + '/' + tail
+  }
   const knownLean = win
     ? [elan ? elan + '/bin' : null, home + '/.elan/bin', local ? local + '/Programs/lean' : null, pf + '/lean/bin']
     : [elan ? elan + '/bin' : null, home + '/.elan/bin', home + '/.local/bin', '/usr/local/bin', '/opt/lean/bin']
+  // task-28: the DRIVE-ROOT TeX Live positions come first on Windows (the observed real-host layout);
+  // the legacy entries keep their relative order. Unix keeps the legacy order and adds the system
+  // MacTeX bin dir last (a documented root, not a guess).
   const knownTex = win
-    ? [pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64']
-    : [home + '/Library/TeX/texbin', '/usr/local/texlive', home + '/.TinyTeX/bin', '/opt/texlive']
+    ? TEX_DRIVE_YEAR_ROOTS.concat([pf + '/texlive', pf86 + '/texlive', local ? local + '/Programs/MiKTeX/miktex/bin/x64' : null, pf + '/MiKTeX/miktex/bin/x64'])
+    : [home + '/Library/TeX/texbin'].concat(TEX_SYSTEM_YEAR_ROOTS, [home + '/.TinyTeX/bin'], TEX_SYSTEM_BIN_ROOTS)
   const list = kind === 'tex' ? knownTex : knownLean
   // 1) EXPLICIT: only it, never a guess.
   if (explicit) {
@@ -162,19 +188,35 @@ async function resolveKnownTool(sub, opts) {
   if (typeof sub.resolveExecutable === 'function') {
     try { const p = await sub.resolveExecutable(name); if (p) return { exe: String(p), via: 'path', tried, name } } catch (e) { /* PATH miss is expected */ }
   }
-  // 3) KNOWN INSTALL LOCATIONS (Windows TeX roots are globbed per release: <root>/<year>/bin/windows).
+  // 3) KNOWN INSTALL LOCATIONS. A TeX root WITHOUT a `bin` segment is year-globbed
+  //    (`<root>/<year>/bin/<platform>`): the years actually on disk (newest first) first, then the
+  //    recent-year window, at most TEX_YEAR_LOOKBACK of them. task-28: the whole stage is BOUNDED by
+  //    TEX_CANDIDATE_CAP candidate paths — documented roots, never a whole-drive scan.
+  const texYearSubdirs = win ? ['bin/windows'] : ['bin/x86_64-linux', 'bin/aarch64-linux', 'bin/universal-darwin', 'bin']
+  const texRecentYears = () => { const now = new Date().getFullYear(); const out = []; for (let i = 0; i < TEX_YEAR_LOOKBACK; i++) out.push(String(now - i)); return out }
+  let texProbes = 0
   for (const base of list) {
     if (!base) continue
     if (kind === 'tex' && !/bin/i.test(base)) {
-      for (const year of await listDirs(base)) {
-        for (const sub2 of ['bin/windows', 'bin/x86_64-linux', 'bin/universal-darwin', 'bin']) {
-          const p = await resolvePath(base + '/' + year + '/' + sub2 + '/' + name)
+      const onDisk = (await listDirs(texProbeBase(base))).filter((d) => /^\d{4}$/.test(d)).sort((a, b) => Number(b) - Number(a))
+      const years = onDisk.concat(texRecentYears().filter((y) => onDisk.indexOf(y) < 0)).slice(0, TEX_YEAR_LOOKBACK)
+      for (const year of years) {
+        for (const sub2 of texYearSubdirs) {
+          if (texProbes >= TEX_CANDIDATE_CAP) break
+          texProbes++
+          const p = await resolvePath(texProbeBase(base) + '/' + year + '/' + sub2 + '/' + name)
           if (p) return { exe: p, via: 'known-install', tried, name }
         }
+        if (texProbes >= TEX_CANDIDATE_CAP) break
       }
+      if (texProbes >= TEX_CANDIDATE_CAP) break
       continue
     }
-    const p = await resolvePath(base + '/' + name)
+    if (kind === 'tex') {
+      if (texProbes >= TEX_CANDIDATE_CAP) break
+      texProbes++
+    }
+    const p = await resolvePath(texProbeBase(base) + '/' + name)
     if (p) return { exe: p, via: 'known-install', tried, name }
   }
   return { exe: null, via: null, tried, name, reason: 'not found on PATH or in the known install locations' }
@@ -1105,7 +1147,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   }
   /**
    * 已解析路径的**实际执行**（同步档与后台作业共用同一段：argv 注入、超时 terminate、输出截断）。
-   * 搜索路径注入（spec §3）：`[exe, ...用户 leanArgs, --search-path <VibeMath 根>, <file>]`；
+   * 搜索路径注入（spec §3）：`[exe, ...用户 leanArgs, -R <VibeMath 根>, <file>]`；
    * 用户已显式给过 `--search-path`/`-R`/`--root` 就不再注入（显式覆盖优先）。
    */
   async function leanExecFile(rel, abs, timeoutMs, plan, onHandle) {
@@ -3910,7 +3952,7 @@ function verifyTasksView(tasks) {
       PAPER_SKELETON.map(function (s, i) { return '    ' + (i + 1) + '. ' + s.key + ' — ' + s.spec }).join('\n') + '\n' +
       '- A section with no evidence must be exactly 「' + PAPER_NO_EVIDENCE + '」 (do not pad it).\n' +
       '- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.\n\n' +
-      'LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user (installing TeX requires the user\'s explicit approval); (4) with no answer yet, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.\n\n' +
+      'LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; the MOST COMMON case is an engine that IS installed but NOT on PATH — TeX Live typically lives at Windows `D:\\texlive\\<year>\\bin\\windows` / `C:\\texlive\\<year>\\bin\\windows`, Unix `/usr/local/texlive/<year>/bin/*` / `/opt/texlive/<year>/bin/*`, macOS `/Library/TeX/texbin`; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user (installing TeX requires the user\'s explicit approval); (4) with no answer yet, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.\n\n' +
       'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' + REPLY_KEY_STYLE_LINE +
       '{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}\n\n' +
       'MATERIAL (evidence only — do not add anything beyond it):\n' + digest
@@ -3975,7 +4017,7 @@ function verifyTasksView(tasks) {
     if (o.format === 'md') return { compile: 'skipped', reason: 'paperFormat=md（不产出 tex，跳过编译）', engine: null, attempts: attempts, pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     const det = await paperDetectLatex(o.lang)
     if (det.available.length === 0) {
-      await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。')
+      await paperAppendLog(id, 'latex', '未检测到任何 LaTeX 引擎（' + det.reason + '）→ 只保留 paper.tex + paper.md，不编译 pdf（spec §5：不阻塞定稿）已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径。最常见的情形是引擎已安装但不在 PATH（TeX Live 典型位 D:\\texlive\\<年>\\bin\\windows、C:\\texlive\\<年>\\bin\\windows、/usr/local|/opt/texlive/<年>/bin/*、macOS /Library/TeX/texbin 已纳入有界探测）：把引擎的绝对路径写进 paperLatexCommand 再探测一次；仍找不到就如实上报所办（由所办向用户确认安装），随后照旧安全降级。')
       return { compile: 'not-detected', reason: det.reason, engine: null, attempts: attempts, triedPaths: det.triedPaths || [], pdfPreserved: await paperPathExists(relDir + '/paper.pdf') }
     }
     await paperAppendLog(id, 'latex', '检测到引擎 ' + det.available.map(function (x) { return x.name }).join(', ') + (det.forced ? '（paperLatexCommand 指定）' : ('（顺序 ' + (o.lang === 'en' ? PAPER_ENGINE_ORDER_EN : PAPER_ENGINE_ORDER_ZH).join(' > ') + '）')))

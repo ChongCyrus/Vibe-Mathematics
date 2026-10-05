@@ -60,7 +60,7 @@
 | `leanAsync` | 布尔 | `true` | `true` = 编译走**后台队列**（`lean_run` / `lean_archive{run:true}` 入队后立即返回 `{async:{jobId,state:'queued'}}`）；`false` = **完全同步 await**（旧路径逐字保留）。只有 `settled(ok)` 才可能置 `passed`，见 §7.3 |
 | `leanJobsMaxParallel` | 正整数 | `1` | 后台编译并发上限（默认 1 = 串行；调大即并行，v2/v3 把合法范围夹在 1–8） |
 | `leanInitiative` | `'off'` \| `'normal'` \| `'eager'` | `'normal'` | **日常流程中的形式化主动性**：`off` 不主动（只在验证提示词里按 `formalVerify` 的要求做）/ `normal` 顺手把有价值且可能复用的东西形式化 / `eager` 更主动。**与 `formalVerify` 是两件事**：它不改变定论门禁 |
-| `leanSearchPaths` | 字符串数组 | `[]` | 额外编译搜索根：先注入它们、再注入自动的 `<VibeMath 根>`（去重、保持用户给的顺序）；`leanArgs` 里已显式给 `--search-path`/`-R`/`--root` 时**不注入任何东西**，见 §7.6 |
+| `leanSearchPaths` | 字符串数组 | `[]` | 额外编译搜索根：先注入它们、再注入自动的 `<VibeMath 根>`（去重、保持用户给的顺序）；`leanArgs` 里已显式给 `-R`/`--root` 时**不注入任何东西**，见 §7.6 |
 
 - 非法值一律**回退到默认**（`formalVerify` 非三档之一 → `'off'`；`leanInitiative` 非三档之一 → `'normal'`；
   `leanTimeoutMs` 非正 → 默认；`leanJobsMaxParallel` < 1 → 1；`leanSearchPaths` 非数组 → `[]` 并去空串/去重）。
@@ -438,18 +438,18 @@
 并把作业标为 `interrupted`、把对象停在 `attempted`——**绝不因为"进程已经不在"而当作通过**。
 `interrupted` 的作业可以重跑（重跑会 `attempts+1`）。
 
-### 7.6 `--search-path` 注入（四套一致）
+### 7.6 `-R` 注入（四套一致）
 
 编译器 argv 固定为：
 
 ```
-[exe, ...用户 leanArgs, --search-path <VibeMath 根>, <file>]
+[exe, ...用户 leanArgs, -R <VibeMath 根>, <file>]
 ```
 
 - 自动根**只有一个**：`<VibeMath 根>`（`import Formal.Lib.<name>` 的模块根），插在
-  **用户参数之后、文件名之前**——`lake env lean` 因此自然变成 `lake env lean --search-path <root> <file>`。
+  **用户参数之后、文件名之前**——`lake env lean` 因此自然变成 `lake env lean -R <root> <file>`。
 - `leanSearchPaths` 非空时，**先注入用户给的路径（按给定顺序），再注入自动根**，整体去重。
-- **用户显式给出搜索根就不注入**：`leanArgs` 里已有 `--search-path` / `-R` / `--root` 时完全尊重用户配置。
+- **用户显式给出搜索根就不注入**：`leanArgs` 里已有 `-R` / `--root` 时完全尊重用户配置。
 - **不使用环境变量**：宿主的 `spawn` 没有 env 槽位，所以"注入"只能是参数注入；
   也不依赖 `LEAN_PATH` 之类的约定。
 
@@ -589,7 +589,7 @@
     恢复扫描 `Formal/Jobs/*.json`——`queued` 重入队、`running` 标记中断（哈希匹配则重入队、`attempts+1`）、
     `settled` 只在**同一构建上下文**下补写结论。
 15. **去重与搜索路径注入**：同内容 + 同构建上下文再归档 → `deduped:true` 且不重写不重编译；
-    编译器 argv 必须是 `[exe, ...用户 leanArgs, --search-path <VibeMath 根>, <file>]`，
+    编译器 argv 必须是 `[exe, ...用户 leanArgs, -R <VibeMath 根>, <file>]`，
     用户已显式给出搜索根时**不注入**，`leanSearchPaths` 先于自动根且去重。
 
 ---

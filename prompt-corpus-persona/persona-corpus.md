@@ -599,7 +599,7 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     `<project root>/Formal/<id>.lean`.
   - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
     definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
-    (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+    (the framework passes -R <VibeMath root>, so VibeMath is the module root).
   - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
     necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
     with the difficulty instead of hiding uncertainty behind a formalization.
@@ -732,7 +732,7 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     `<project root>/Formal/<id>.lean`.
   - Reuse FIRST: call vibe_v4_lean_lib (and vibe_v4_lean_read for the verbatim text) BEFORE writing a new
     definition; reuse an archived file with `import Formal.Lib.<name>` / `import Formal.Proved.<name>`
-    (the framework passes --search-path <VibeMath root>, so VibeMath is the module root).
+    (the framework passes -R <VibeMath root>, so VibeMath is the module root).
   - Choose WHAT to formalize with three criteria: (1) valuable or likely reusable, (2) rather key or
     necessary, (3) you are confident in the statement — when you are NOT confident, record blocked
     with the difficulty instead of hiding uncertainty behind a formalization.
@@ -883,7 +883,7 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     small lemmas/propositions/definitions into the library even in ordinary rounds).
   - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
     content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
-    gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+    gets `-R <VibeMath root>`, preceded by any leanSearchPaths), or copy the
     exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
   - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
     vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with
@@ -1019,7 +1019,7 @@ LEAN FORMAL VERIFICATION (formalVerify, a tunable parameter):
     small lemmas/propositions/definitions into the library even in ordinary rounds).
   - Reuse first: check vibe_v5_lean_lib BEFORE writing a definition, reuse archived
     content via `import Formal.Lib.<name>` / `import Formal.Proved.<name>` (the compile
-    gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths), or copy the
+    gets `-R <VibeMath root>`, preceded by any leanSearchPaths), or copy the
     exact text with vibe_v5_lean_read. Re-archiving identical content is de-duplicated.
   - Compiles are ASYNC by default (leanAsync=true, leanJobsMaxParallel default 1):
     vibe_v5_lean_run / vibe_v5_lean_archive enqueue and return at once; watch them with

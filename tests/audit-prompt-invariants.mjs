@@ -22,6 +22,15 @@
  *   I14 a parameter the tool schema advertises but the parameter layer silently drops
  *   I15 the LaTeX-missing guidance drifting between presets (four steps + three hard boundaries)
  *   I16 a member prompt demanding an action the member CANNOT perform (direct user contact)
+ *   I17 the Lean-3 `--search-path` spelling surviving in an agent-facing STRING (only exception: the
+ *       guard's explicit legacy-compatibility array)
+ *   I18 the same spelling surviving in the AGENT-FACING preset text (`vibe-math-vN/agent.cordis.yml`,
+ *       checked per preset) or in its generated copy (`cordis.patch.yml`, I18b)
+ *   I19 the paper-engine detection missing TeX Live's documented install positions, or losing its
+ *       explicit BOUND on candidate probes (never a whole-drive scan) — asserted for all four presets
+ *   I20 the env-gated TeX sandbox seam (V2/V3/V4/V5_TEX_ROOTS_SANDBOX): every known-install probe site
+ *       must stay rebased through it (unset = identity), and with it set the stage finds nothing while
+ *       still naming its probes — static (I20) plus behavioural (I20b)
  *
  * Run: node tests/audit-prompt-invariants.mjs        (add --json for a machine-readable report)
  *      node tests/audit-prompt-invariants.mjs --self-probe
@@ -144,6 +153,90 @@ const SELF_PROBE_MUTATIONS = [
     from: 'REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user',
     to: 'ask the user once',
     expect: 'v3 I16: a member-visible prompt never demands an action the member cannot perform',
+  },
+  {
+    name: 'v5: a tool description teaches the Lean-3 `--search-path` again (I17 must read the string, not the comment)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'leanSearchPaths (string[]) adds extra compiler search roots',
+    to: 'leanSearchPaths (string[]) adds extra --search-path roots',
+    expect: 'v5 I17:',
+  },
+  {
+    name: 'v5: the AGENT-FACING preset text reverts to the Lean-3 `--search-path` (I18 — the real-host SLV shape)',
+    rel: 'vibe-math-v5/agent.cordis.yml',
+    from: 'gets `-R <VibeMath root>`, preceded by any leanSearchPaths',
+    to: 'gets `--search-path <VibeMath root>`, preceded by any leanSearchPaths',
+    expect: 'v5 I18:',
+  },
+  {
+    name: 'the generated bundle patch keeps the Lean-3 `--search-path` (I18b: source fixed but not regenerated)',
+    rel: 'cordis.patch.yml',
+    from: '-R <VibeMath root>',
+    to: '--search-path <VibeMath root>',
+    expect: 'I18b:',
+  },
+  {
+    name: 'v5: the DRIVE-ROOT TeX Live candidates are deleted (I19 — the real-host "installed but not on PATH" shape)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: "const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']",
+    to: 'const TEX_DRIVE_YEAR_ROOTS = []',
+    expect: 'v5 I19:',
+  },
+  {
+    name: 'v5: the TeX probe cap is removed (I19: the known-root stage must stay bounded)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'const TEX_CANDIDATE_CAP = 40',
+    to: 'const TEX_CANDIDATE_CAP = 100000',
+    expect: 'v5 I19:',
+  },
+  {
+    name: 'v5: a bare DRIVE ROOT enters the TeX candidates (I19: never a whole-drive scan)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: "const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']",
+    to: "const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive', 'D:/']",
+    expect: 'v5 I19:',
+  },
+  {
+    name: 'v5: the TeX sandbox gate is ignored (I20 — a suite can no longer pin "no LaTeX on this host")',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: "const texSandbox = kind === 'tex' ? String(env.V5_TEX_ROOTS_SANDBOX || '').trim() : ''",
+    to: "const texSandbox = ''",
+    expect: 'v5 I20:',
+  },
+  {
+    name: 'v5: one known-install TeX probe site stops rebasing into the sandbox (I20)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: "const p = await resolvePath(texProbeBase(base) + '/' + name)",
+    to: "const p = await resolvePath(base + '/' + name)",
+    expect: 'v5 I20:',
+  },
+  {
+    name: 'v4: one known-install TeX probe site stops rebasing into the sandbox (I20, second preset — not a v5-only check)',
+    rel: 'vibe-math-v4/vibe-math-v4.js',
+    from: "const p = await resolvePath(texProbeBase(base) + '/' + name)",
+    to: "const p = await resolvePath(base + '/' + name)",
+    expect: 'v4 I20:',
+  },
+  {
+    name: 'v3: one known-install TeX probe site stops rebasing into the sandbox (I20)',
+    rel: 'vibe-math-v3/vibe-math-v3.js',
+    from: "const p = await resolvePath(texProbeBase(base) + '/' + name)",
+    to: "const p = await resolvePath(base + '/' + name)",
+    expect: 'v3 I20:',
+  },
+  {
+    name: 'v2: one known-install TeX probe site stops rebasing into the sandbox (I20)',
+    rel: 'vibe-math-v2/vibe-math-v2.js',
+    from: "const p = await resolvePath(texProbeBase(base) + '/' + name)",
+    to: "const p = await resolvePath(base + '/' + name)",
+    expect: 'v2 I20:',
+  },
+  {
+    name: 'run-tests: the gate stops sandboxing the TeX install roots (X4 — the sweep becomes host-dependent again)',
+    rel: 'tests/run-tests.mjs',
+    from: 'process.env.V4_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR',
+    to: '',
+    expect: 'X4:',
   },
 ]
 
@@ -387,6 +480,73 @@ for (const P of PRESETS) {
   check(code.includes('如实上报所办') || code.includes('let the OFFICE confirm with the user'),
     P.tag + ' I16: the TeX-approval clause routes the confirmation through the OFFICE (the party that can reach the user)')
 
+  // I17 — the Lean-3 spelling `--search-path` must not survive in ANY agent-facing string. `code` has
+  // comments blanked, so a surviving occurrence is inside a string/template literal; the ONE exception a
+  // preset may keep is its explicit legacy-compatibility array (`ALSO_ACCEPTED`), and only there: that
+  // is what makes an agent-supplied old spelling still suppress injection. Everything else is the
+  // defect class task-27 removed (`lean --search-path <dir> <f>` fails at argument parsing, rc=1).
+  {
+    const hits = code.split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.includes('--search-path'))
+    const bad = hits.filter(([, l]) => !/ALSO_ACCEPTED/.test(l))
+    check(hits.length === 1 && bad.length === 0,
+      P.tag + ' I17: `--search-path` survives only in the legacy-compat array, never in agent-facing text',
+      bad.length ? 'code-stream lines ' + JSON.stringify(bad.map(([n]) => n))
+        : 'expected exactly 1 occurrence (the ALSO_ACCEPTED guard line), found ' + hits.length)
+  }
+
+  // I18 — the AGENT-FACING preset text is a prompt too. `vibe-math-vN/agent.cordis.yml` is the persona/
+  // instruction surface the MAIN agent actually receives, and the plugin NEVER contains it — so I17
+  // cannot see it. The real-host SLV v5 run (15.2 min, candidate PASS) still showed exactly ONE
+  // `--search-path <VibeMath root>` in the v5 lean_lib "reuse first" paragraph. Guarded at the SOURCE;
+  // I18b below pins the generated copy so "edited the source but forgot to regenerate" also reddens.
+  {
+    const yml = read('vibe-math-' + P.tag + '/agent.cordis.yml')
+    const hits = yml ? yml.split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.includes('--search-path')) : []
+    check(yml !== null && hits.length === 0,
+      P.tag + ' I18: the agent-facing preset text never teaches the Lean-3 `--search-path`',
+      yml === null ? 'preset text unreadable (' + P.tag + '/agent.cordis.yml)'
+        : 'lines ' + JSON.stringify(hits.map(([n]) => n)))
+  }
+
+  // I19 (all four presets carry the same candidates) — the paper-engine detection must cover TeX Live's
+  // DOCUMENTED install positions. A real-host SLV v5 run (15.2 min, candidate PASS) degraded to
+  // 'not-detected' although D:\texlive\2025\bin\windows\xelatex.exe existed, because only
+  // <ProgramFiles>/texlive was ever probed ("installed but not on PATH"). The stage must stay BOUNDED
+  // (an explicit cap plus a recent-year window) and must never become a whole-drive scan. Static check
+  // on the CODE stream: I15 guards the TEXT of the guidance, this guards the ROOTS it acts on.
+  {
+    const roots = ["'D:/texlive'", "'C:/texlive'", "'/usr/local/texlive'", "'/opt/texlive'", "'/Library/TeX/texbin'"]
+    const missing = roots.filter((s) => !code.includes(s))
+    check(missing.length === 0,
+      P.tag + ' I19: the TeX candidate roots cover the documented TeX Live install positions',
+      missing.length ? 'missing ' + JSON.stringify(missing) : '')
+    const cap = /const TEX_CANDIDATE_CAP = (\d+)/.exec(code)
+    const capEnforced = code.indexOf('texProbes++') >= 0 && code.indexOf('TEX_CANDIDATE_CAP', code.indexOf('texProbes++')) >= 0
+    check(!!cap && Number(cap[1]) >= 1 && Number(cap[1]) <= 40 && capEnforced,
+      P.tag + ' I19: the TeX known-root stage stays BOUNDED by an explicit cap <= 40',
+      (cap ? 'cap=' + cap[1] : 'no TEX_CANDIDATE_CAP declaration') + (capEnforced ? '' : '; declared but never enforced'))
+    const win = /const TEX_YEAR_LOOKBACK = (\d+)/.exec(code)
+    check(!!win && Number(win[1]) >= 1 && Number(win[1]) <= 4 && /Number\(b\) - Number\(a\)/.test(code),
+      P.tag + ' I19: the TeX Live year dirs stay bounded (on-disk newest first, then the recent-year window)',
+      win ? 'lookback=' + win[1] : 'no TEX_YEAR_LOOKBACK declaration')
+    check(!/['"][A-Za-z]:[\\/]['"]/.test(code),
+      P.tag + ' I19: no bare drive root among the candidate roots (never a whole-drive scan)')
+
+    // I20 (all four presets) — the TEST/DIAGNOSTIC sandbox seam must stay a RELOCATION of where the
+    // documented roots are looked for, never a product switch: every known-install TeX probe site goes
+    // through `texProbeBase`, and with the gate unset the helper returns its argument unchanged
+    // (identity = today's behaviour). Each preset uses its OWN gate name (V2/V3/V4/V5_TEX_ROOTS_SANDBOX).
+    // Static here; the behavioural half is I20b. The named-red proof is the probe-site mutations in
+    // SELF_PROBE_MUTATIONS: the audit's mutation mechanism is read-time, so it can redden this check but
+    // cannot reach a dynamically imported module.
+    const sandboxEnv = 'V' + P.tag.slice(1) + '_TEX_ROOTS_SANDBOX'
+    const allRebased = code.includes(sandboxEnv) && /if \(!texSandbox\) return p/.test(code) &&
+      /listDirs\(texProbeBase\(base\)\)/.test(code) && /resolvePath\(texProbeBase\(base\) \+ '\//.test(code) &&
+      !/listDirs\(base\)/.test(code) && !/resolvePath\(base \+ '\//.test(code)
+    check(allRebased,
+      P.tag + ' I20: every known-install TeX probe site is rebased through the ' + sandboxEnv + ' gate (unset = identity)')
+  }
+
   // I3 — the defect rule is in the injected text.
   check(js.includes('不要投 0'), P.tag + ' I3: injected text forbids a 0 vote on a defect')
   check(/'defect'/.test(js) || /"defect"/.test(js), P.tag + ' I3: injected text names decision=\'defect\'')
@@ -533,6 +693,48 @@ for (const P of PRESETS) {
   notes.push(P.tag + ': plugin ' + js.length + 'B · suite ' + suite.length + 'B · corpus ' + corpus.length + 'B')
 }
 
+// I20b — the sandbox seam, BEHAVIOURALLY and host-independently (ALL FOUR presets). Point each preset's
+// own gate at a fresh EMPTY directory and require the known-install stage to
+//   (a) find NOTHING                     — a suite can pin "no LaTeX here" on ANY host,
+//   (b) still report a NAMED list         — triedPaths does not go silent (task-9),
+//   (c) probe ONLY inside the sandbox     — no real install is touched, and
+//   (d) stay within the cap               — the relocation does not unbound the stage.
+// Portable by construction: on a host WITH TeX Live (a) is the property under test, on one WITHOUT it
+// is trivially true, and (c) is host-independent either way.
+{
+  const items = PRESETS.map((P) => ({
+    tag: P.tag, file: join(HERE, P.js), env: 'V' + P.tag.slice(1) + '_TEX_ROOTS_SANDBOX', sandbox: '',
+  }))
+  const dir = mkdtempSync(join(tmpdir(), 'prompt-invariants-tex-sandbox-'))
+  try {
+    for (const it of items) it.sandbox = join(dir, it.tag)
+    const probe = join(dir, 'probe.mjs')
+    writeFileSync(probe, [
+      "import { pathToFileURL } from 'node:url'",
+      'const items = JSON.parse(process.argv[2])',
+      'for (const it of items) process.env[it.env] = it.sandbox',
+      'const out = []',
+      'for (const it of items) {',
+      '  const mod = await import(pathToFileURL(it.file).href)',
+      "  const r = await mod.resolveKnownTool({ resolveExecutable: async () => { throw new Error('no PATH') } }, { name: 'xelatex', explicit: '', kind: 'tex' })",
+      '  out.push({ tag: it.tag, exe: r.exe, via: r.via, tried: r.tried })',
+      '}',
+      'console.log(JSON.stringify(out))',
+    ].join('\n'))
+    const r = spawnSync(process.execPath, [probe, JSON.stringify(items)], { encoding: 'utf8' })
+    let rows = null
+    try { rows = JSON.parse(r.stdout) } catch (e) { /* reported below */ }
+    for (const it of items) {
+      const row = rows && rows.find((x) => x.tag === it.tag)
+      const slash = (s) => String(s).split('\\').join('/')
+      const inside = !!row && row.tried.length > 0 && row.tried.every((p) => slash(p).indexOf(slash(it.sandbox)) === 0)
+      check(!!row && row.exe === null && inside && row.tried.length <= 40,
+        'I20b: ' + it.tag + ' — with ' + it.env + ' set the known-install stage finds nothing, probes only inside the sandbox, and names <= 40 paths',
+        row ? JSON.stringify({ exe: row.exe, via: row.via, triedCount: row.tried.length, inside }) : 'probe failed: ' + String(r.stderr || r.stdout || '').slice(0, 160))
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+}
+
 // Cross-preset: the probe script must refuse to report success on an empty selection (false green).
 {
   const probeSrc = read('tests/audit-formal-sensitivity.mjs') || ''
@@ -540,6 +742,29 @@ for (const P of PRESETS) {
   const runner = read('tests/run-tests.mjs') || ''
   check(/no suites matched/.test(runner), 'X2: the suite runner fails when no suite matches')
   check(/argv\[i \+ 1\]/.test(runner) && /argv\[\+\+i\]/.test(runner), 'X3: the suite runner accepts both --flag=x and --flag x')
+  // X4 (task-29) — the GATE must be independent of whether the HOST has TeX installed: the runner points
+  // every child suite's documented-root sandbox gate at ONE empty scratch dir (children inherit env), and
+  // removes it on exit. Static here; the behavioural proof is the gate itself (the "no LaTeX on this
+  // host" suites pass on a machine that really HAS TeX Live). Named red: the mutation below drops one of
+  // the four assignments.
+  const texGateVars = ['V2_TEX_ROOTS_SANDBOX', 'V3_TEX_ROOTS_SANDBOX', 'V4_TEX_ROOTS_SANDBOX', 'V5_TEX_ROOTS_SANDBOX']
+  const texGateMissing = texGateVars.filter((v) => !runner.includes(v))
+  check(texGateMissing.length === 0 && /mkdtempSync\(/.test(runner) && /rmSync\(/.test(runner) && /process\.on\('exit'/.test(runner),
+    'X4: run-tests.mjs sandboxes the documented TeX install roots for every child suite (host-independent gate)',
+    texGateMissing.length ? 'missing ' + JSON.stringify(texGateMissing) : 'no mkdtemp/exit-cleanup found')
+}
+
+// I18b — the GENERATED bundle patch repeats the preset text (`node scripts/build-preset-rows.mjs`
+// writes cordis.patch.yml from the four agent.cordis.yml). Guarding the copy catches the second failure
+// mode: the preset source is fixed but the patch was never regenerated, so the shipped prompt keeps the
+// Lean-3 spelling. tests/audit-preset-rows.test.mjs already pins byte-identity with the generator; this
+// pins the SEMANTICS (the -R text is really there, and the old spelling is not).
+{
+  const patch = read('cordis.patch.yml')
+  const hits = patch ? patch.split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.includes('--search-path')) : []
+  check(patch !== null && patch.includes('-R <VibeMath root>') && hits.length === 0,
+    'I18b: the generated cordis.patch.yml teaches no `--search-path` (regenerate: node scripts/build-preset-rows.mjs)',
+    patch === null ? 'cordis.patch.yml unreadable' : 'lines ' + JSON.stringify(hits.map(([n]) => n)))
 }
 
 // X5–X7: guard the guard. I1/I13/I14 trust stripComments(), and all four presets contain a regex
