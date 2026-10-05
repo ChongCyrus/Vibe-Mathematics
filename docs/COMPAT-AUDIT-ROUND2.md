@@ -352,3 +352,30 @@ e2e-f1-agent-detach    CONFIRMED (drives the real AgentRegistry)
 
 - 本文件的 **`### 未修（需你决策，风险与取舍已说明）`** 一节（F-1…F-11；F-7 非缺陷、F-8 已知限制、F-9 已有 `tests/audit-corrupt-file-guard.test.mjs`、F-10/F-11 待定、**F-4c 已关闭**）是唯一权威的"未修 / 需决策"清单。
 - **按标题文本定位，不写行号**：行号会随编辑漂移，标题是稳定的；链接目标在本仓库内，且本文件随包发布（`files[]`），因此指针不会指向包外。
+
+## 9. 安装与升级（插件市场 · pnpm 前置 · 显式版本）
+
+**背景**：issue #10 报告"经 DSH 插件市场安装失败（`exit 1`）"。复核结论：**两条根因都不在本插件包内**（不在本包的代码、参数或提示词里），但任何一条都会让用户卡住，所以写进本文档。
+
+### 9.1 前置：安装需要一个可用的 `pnpm`
+
+DSH 的插件管理器把安装**转交 pnpm**，并且**不自带 pnpm**：`@deepseek-ai/dsh-plugin-manager/lib/index.js` 多处 `execa(options.command ?? "pnpm", …)`（L324/517/650/694/733）、`pnpmCommand` 默认 `"pnpm"`（L1354）、`bin.js:23` 注释 "forwarding to pnpm"；`dsh/node_modules` 中含 `pnpm` 的条目为空。报告者环境 `pnpm: unknown` / `npm: unknown` ⇒ 必然失败。
+
+- **复现（本机）**：把 PATH 里的 `pnpm` 剥掉后执行安装 ⇒ 同一条报错 ＋ `exit 1`；恢复 `pnpm` 后同一命令成功。
+- **表现与取证**：失败时插件市场 UI 可能**不显示原因**，只有一个 `exit 1`。定位请附 `~/.dsh/profiles/<profile>/hub.log`（DSH 的安装日志）。
+- **修复**：装好 `pnpm`（`pnpm --version` 能跑）后重试安装。
+
+### 9.2 安装/升级：必须给**显式版本**
+
+`install-spec.js` 只**校验** spec、**不注入版本**；裸包名交给 pnpm 后按 profile 的 `package.json`（首次 `add` 时由 pnpm 写下，例如 `"dsh-vibe-math": "^2.8.1"`）与 `pnpm-lock.yaml` 解析 ⇒ **可能停在旧版**。
+
+- **实测（本机）**：`@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法全部无效**；**只有显式 `@2.8.4` 成功升级**。
+- **正确用法**：
+
+```sh
+pnpm --version                                              # 前置检查
+dsh plugin --profile <profile> add dsh-vibe-math@<版本>     # 安装与升级都写显式版本
+```
+
+- **其他排查**：怀疑装成旧版时，可先把 profile 依赖改成 `latest` 再 `install`；升级后**重启 DSH**（受管内容的替换时机见本文件其余章节与 README 安装段）。
+- **交叉引用**：README（中/英）安装段与 troubleshooting 小节给出同样的前置与显式版本要求，并由 `tests/audit-artifact-docs.mjs` 第 5 节静态守卫（含单点具名变异）。

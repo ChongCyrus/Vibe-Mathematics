@@ -168,13 +168,21 @@ Two installation methods, choose either one (they can also coexist):
 
 ### Method A: one-click install as a plugin package (recommended, installs all four presets at once)
 
-On the desktop app, install `dsh-vibe-math` from **Settings → Plugins**; on the command line, use a profile:
+On the desktop app, install `dsh-vibe-math` from **Settings → Plugins**; on the command line, use a profile (**always pin a version**):
 
 ```sh
-dsh plugin --profile <your profile> add dsh-vibe-math
+# Prerequisite: DSH forwards plugin installs to pnpm (it does not bundle pnpm) - check it first:
+pnpm --version
+
+# Install this package (with an explicit version; without one you may stay on an OLD version, see below):
+dsh plugin --profile <your profile> add dsh-vibe-math@<version>
 # Or install directly from GitHub:
 dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 ```
+
+> **Prerequisite**: `dsh plugin …` needs a working **`pnpm`** (DSH **forwards** installs to pnpm and does **not** bundle it). When it is missing the command ends with **`exit 1`**, while the **plugin market may show no reason** ⇒ attach `~/.dsh/profiles/<profile>/hub.log` (DSH's install log) so the failure can be located.
+>
+> **Why every example pins `@<version>`**: pnpm resolves a bare package name through the profile's `package.json` and `pnpm-lock.yaml` first, so **without a version you may stay on an OLD version**. Measured locally: `@latest`, `@^2`, `pnpm update --latest` and `pnpm add …@latest` **all four failed to move the install**; **only an explicit version** (e.g. `@2.8.4`) actually upgrades. Install and upgrade both use `add dsh-vibe-math@<version>` (use `add`, not `update`).
 
 Then start a new session and pick **Vibe Math V2** (v2, classic), **Vibe Math V3** (v3, classic), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — the four architectures are peers, choose according to your actual needs (see "How to choose").
 **The two DSH generations land in different places, and this package adapts to both**:
@@ -199,7 +207,14 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 - **Supported range**: `0.1.2-alpha.4` … `0.2.0-rc.2` (11 versions declared `compatible`, tested target `0.2.0-rc.2`; `engines.node` is `^22.19.0 || >=24.0.0`) — per-version declarations, the `engines.dsh` range and `peerDependencies` live in `package.json` (`dsh.compatibility.dshReleases`).
 - **Delivery form**: DSH ≥ 0.1.7 uses **composition-row declarations** (the `agentPresets` service); DSH ≤ 0.1.6 uses the `~/.dsh/.agent-presets/<id>/` directory + preset picker — one bundle covers both lines.
 - **Hard constraint**: v5 keeps its institute state **only** in `State/<institute>.v5state.json` and **never** in the host session log — on an unknown event type DSH **refuses to load the whole session**, so it will not open on the next resume.
-- **Everything else** (host rows and required services, the startup self-check and capability gate, the live-resident cap, the three 2026 fixes, the `dsh.bundle.patch` constraint, the upgrade path and `peerDependencies`): see `docs/COMPAT-AUDIT-ROUND2.md`; to upgrade this package use `dsh plugin --profile <your profile> add dsh-vibe-math@latest` (use `add`, not `update`).
+- **Everything else** (host rows and required services, the startup self-check and capability gate, the live-resident cap, the three 2026 fixes, the `dsh.bundle.patch` constraint, the upgrade path and `peerDependencies`): see `docs/COMPAT-AUDIT-ROUND2.md` (install/upgrade: its §9); to upgrade this package use `dsh plugin --profile <your profile> add dsh-vibe-math@<new version>` (**pin the version**; use `add`, not `update` — measured locally: `@latest` does not upgrade).
+
+### Install/upgrade troubleshooting (pnpm and versions)
+
+- **Cannot install (`exit 1`)**: first check that `pnpm --version` runs — DSH's installer **forwards** installs to pnpm and does **not** bundle it; when it is missing the plugin market often shows only `exit 1` and no reason. Install pnpm, retry `add`, and attach `~/.dsh/profiles/<profile>/hub.log`.
+- **Installed, but an OLD version**: measured locally, **`@latest` does not upgrade either** (all four spellings failed), because the profile's `package.json` / `pnpm-lock.yaml` win over the `latest` tag. Use an **explicit version**: `dsh plugin --profile <your profile> add dsh-vibe-math@<new version>`; or set the profile dependency to `latest` and `install`.
+- **Check which version you actually have**: look at the profile's `package.json` (or run `pnpm list --depth 0` in that profile) instead of only checking that a preset appeared.
+- **After upgrading**: **restart DSH** (see above for when the managed content is replaced).
 
 ---
 

@@ -52,6 +52,71 @@ const namedB = b.failLines.some((l) => l.indexOf('the writing presets are exactl
 ok(b.status !== 0 && namedB, '★ B: a v4 that mentions the artifact reddens the "writers are exactly v2,v3" assertion', 'exit=' + b.status)
 if (!namedB) for (const l of b.failLines.slice(0, 3)) console.log('      guard failure: ' + l.trim().slice(0, 130))
 
+// ---- issue #10: the install/upgrade docs must keep teaching the pnpm prerequisite and an EXPLICIT
+// version, and must never present `@latest` as the recipe. One single-site mutation per requirement.
+const zhAll = readFileSync(join(REPO, 'README.md'), 'utf8')
+const enAll = readFileSync(join(REPO, 'README.en.md'), 'utf8')
+const probes = [
+  {
+    tag: 'C',
+    file: 'README-c.md',
+    env: { ARTIFACT_README: null },
+    from: /^> \*\*前置\*\*：[^\n]*$/m,
+    to: '> 前置未写明。',
+    expect: 'states the `pnpm` prerequisite',
+    what: 'dropping the pnpm prerequisite',
+  },
+  {
+    tag: 'D',
+    file: 'README-d.md',
+    env: { ARTIFACT_README: null },
+    from: 'add dsh-vibe-math@<版本>',
+    to: 'add dsh-vibe-math@latest',
+    expect: 'never presents `dsh-vibe-math@latest`',
+    what: 'teaching `@latest` as the install/upgrade command',
+  },
+  {
+    tag: 'E',
+    file: 'README-e.md',
+    env: { ARTIFACT_README: null },
+    from: 'hub.log',
+    to: '安装日志',
+    expect: 'points at ~/.dsh/profiles/<profile>/hub.log',
+    what: 'dropping the hub.log pointer',
+  },
+  {
+    tag: 'F',
+    file: 'README-f.md',
+    env: { ARTIFACT_README_EN: null },
+    from: '### Install/upgrade troubleshooting (pnpm and versions)',
+    to: '### Install/upgrade notes',
+    expect: 'carries an install/upgrade troubleshooting section',
+    what: 'dropping the troubleshooting section',
+  },
+  {
+    tag: 'G',
+    file: 'compat-doc.md',
+    env: { ARTIFACT_INSTALL_DOC: null },
+    from: 'add dsh-vibe-math@<版本>',
+    to: 'add dsh-vibe-math',
+    expect: 'shows the explicit-version install/upgrade',
+    what: 'dropping the explicit version from the install/upgrade doc',
+    doc: 'docs/COMPAT-AUDIT-ROUND2.md',
+  },
+]
+for (const p of probes) {
+  const base = p.doc ? readFileSync(join(REPO, p.doc), 'utf8') : (p.tag === 'F' ? enAll : zhAll)
+  const anchor = p.from instanceof RegExp ? (base.match(p.from) || [])[0] : p.from
+  const n = anchor ? base.split(anchor).length - 1 : 0
+  if (!anchor || n < 1) { ok(false, p.tag + ': the anchor for ' + p.what + ' exists (harness and guard agree)', 'ANCHOR MISS'); continue }
+  writeFileSync(join(dir, p.file), base.split(anchor).join(p.to))
+  const envKey = Object.keys(p.env)[0]
+  const r = run({ [envKey]: join(dir, p.file) })
+  const named = r.failLines.some((l) => l.indexOf(p.expect) !== -1)
+  ok(r.status !== 0 && named, '★ ' + p.tag + ': ' + p.what + ' reddens the guard by name', 'exit=' + r.status)
+  if (!named) for (const l of r.failLines.slice(0, 3)) console.log('      guard failure: ' + l.trim().slice(0, 130))
+}
+
 rmSync(dir, { recursive: true, force: true })
 console.log('')
 console.log('=== ARTIFACT DOCS MUTANTS: ' + passed + ' passed, ' + failed + ' failed ===')

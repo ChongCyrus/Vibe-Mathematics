@@ -11,8 +11,15 @@
  * sections must list it.
  *
  * Run: node tests/audit-artifact-docs.mjs
- * Env (mutant harness): ARTIFACT_README / ARTIFACT_README_EN / ARTIFACT_DOC / ARTIFACT_V2_JS /
- * ARTIFACT_V3_JS / ARTIFACT_V4_JS / ARTIFACT_V5_JS (absolute or repo-relative).
+ * Env (mutant harness): ARTIFACT_README / ARTIFACT_README_EN / ARTIFACT_DOC / ARTIFACT_INSTALL_DOC /
+ * ARTIFACT_V2_JS / ARTIFACT_V3_JS / ARTIFACT_V4_JS / ARTIFACT_V5_JS (absolute or repo-relative).
+ *
+ * Section 5 (issue #10, plugin-market install failure) guards the INSTALL/UPGRADE docs: DSH forwards
+ * plugin installs to pnpm and does not bundle it (missing pnpm ⇒ `exit 1`), and a bare package name is
+ * resolved through the profile's package.json / pnpm-lock.yaml, so it can stay on an OLD version —
+ * measured: `@latest`, `@^2`, `pnpm update --latest` and `pnpm add …@latest` all failed to upgrade,
+ * only an explicit `@<version>` did. Both are outside this package, but the docs must not send a user
+ * into either trap (and must never claim `@latest` is the upgrade recipe).
  */
 import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -65,6 +72,35 @@ ok(docScope, '★ docs/final-paper.md scopes ' + ARTIFACT + ' to v2/v3 AND state
 // 4) the non-writer's own disclaimer must exist in code (so the doc denial is backed by the source)
 ok(/NOT IMPLEMENTED/.test(presets.v4) && /claim_write/.test(presets.v4),
   'vibe-math-v4.js still carries the explicit NOT-IMPLEMENTED shared-lock disclaimer (the source of the doc denial)')
+
+// 5) INSTALL/UPGRADE DOCS (issue #10): the plugin market forwards installs to pnpm (which DSH does not
+// bundle) and resolves a bare package name through the profile's package.json / pnpm-lock.yaml, so the
+// install can stay on an OLD version. Both traps are outside this package — but the docs must not walk a
+// user into either, and must never present `@latest` as the upgrade recipe (measured ineffective).
+const INSTALL_DOC = 'docs/COMPAT-AUDIT-ROUND2.md'
+for (const [name, envName, rel] of [['README.md', 'ARTIFACT_README', 'README.md'], ['README.en.md', 'ARTIFACT_README_EN', 'README.en.md']]) {
+  const text = read(envName, rel)
+  ok(/(\*\*前置\*\*|\*\*Prerequisite\*\*)[^\n]*pnpm/.test(text),
+    '★ ' + name + ': states the `pnpm` prerequisite (DSH forwards plugin installs to pnpm and does not bundle it)')
+  ok(/hub\.log/.test(text),
+    '★ ' + name + ': points at ~/.dsh/profiles/<profile>/hub.log (the failure the market hides)')
+  const bare = count(text, 'add dsh-vibe-math')
+  const pinned = count(text, 'add dsh-vibe-math@')
+  ok(pinned > 0 && bare === pinned,
+    '★ ' + name + ': EVERY `add dsh-vibe-math` pins an explicit version (a bare name can stay on an old version)',
+    'bare=' + (bare - pinned))
+  ok(!/dsh-vibe-math@latest/.test(text),
+    '★★ ' + name + ': never presents `dsh-vibe-math@latest` as the install/upgrade recipe (measured ineffective)')
+  ok(/^### (安装\/升级排查|Install\/upgrade troubleshooting)/m.test(text),
+    '★ ' + name + ': carries an install/upgrade troubleshooting section')
+}
+const idoc = read('ARTIFACT_INSTALL_DOC', INSTALL_DOC)
+ok(/pnpm/.test(idoc) && /hub\.log/.test(idoc),
+  '★ ' + INSTALL_DOC + ' documents the pnpm prerequisite AND the hub.log pointer')
+ok(/add dsh-vibe-math@/.test(idoc) && !/dsh-vibe-math@latest/.test(idoc),
+  '★ ' + INSTALL_DOC + ' shows the explicit-version install/upgrade (and never `@latest`)')
+ok(/pnpm-lock\.yaml|package\.json/.test(idoc),
+  '★ ' + INSTALL_DOC + ' explains WHY a bare name can stay on an old version (profile package.json / pnpm-lock.yaml wins)')
 
 console.log('')
 console.log('=== ARTIFACT DOCS: ' + passed + ' passed, ' + failed + ' failed ===')

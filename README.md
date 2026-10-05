@@ -168,13 +168,21 @@ flowchart TB
 
 ### 方式 A：作为插件包一键安装（推荐，同时装出四个预设）
 
-桌面版在「设置 → 插件」里安装 `dsh-vibe-math`；命令行 profile 用：
+桌面版在「设置 → 插件」里安装 `dsh-vibe-math`；命令行 profile 用（**务必带版本号**）：
 
 ```sh
-dsh plugin --profile <你的 profile> add dsh-vibe-math
+# 前置：DSH 的插件安装会调用 pnpm（它不自带 pnpm）——先确认它可用：
+pnpm --version
+
+# 安装本包（带显式版本；不带版本可能停在旧版，原因见下）：
+dsh plugin --profile <你的 profile> add dsh-vibe-math@<版本>
 # 或从 GitHub 直装：
 dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 ```
+
+> **前置**：`dsh plugin …` 需要一个可用的 **`pnpm`**（DSH 把安装**转交 pnpm**，且**不自带**它）。缺失时命令以 **`exit 1`** 结束，而**插件市场可能不显示原因** ⇒ 请附 `~/.dsh/profiles/<profile>/hub.log`（DSH 的安装日志）来定位。
+>
+> **为什么示例都带 `@<版本>`**：pnpm 优先按 profile 的 `package.json` 与 `pnpm-lock.yaml` 解析裸包名，**不带版本可能装到旧版**；本机实测 `@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法都拿不到新版**，**只有显式版本**（如 `@2.8.4`）会真的升级。安装与升级都用 `add dsh-vibe-math@<版本>`（用 `add` 而非 `update`）。
 
 之后新建会话，预设选择器里选择 **Vibe Math V2**（v2，经典）、**Vibe Math V3**（v3，经典）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——四个架构同级，按实际需求自选（见「怎么选」）。
 **两个 DSH 世代的落点不同，本包自动适配**：
@@ -199,7 +207,14 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 - **支持范围**：`0.1.2-alpha.4` … `0.2.0-rc.2`（11 个版本声明为 `compatible`，实测目标 `0.2.0-rc.2`；`engines.node` 为 `^22.19.0 || >=24.0.0`）——逐版本声明、`engines.dsh` 区间与 `peerDependencies` 见 `package.json`（`dsh.compatibility.dshReleases`）。
 - **交付形态**：DSH ≥ 0.1.7 走**组合行声明**（`agentPresets` 服务），DSH ≤ 0.1.6 走 `~/.dsh/.agent-presets/<id>/` 目录 + preset picker——一份 bundle 同时兼容两条线。
 - **硬约束**：v5 研究所状态**只**写 `State/<研究所>.v5state.json`，**绝不**写宿主会话日志——DSH 遇到日志里不认识的事件类型会**拒绝加载整个会话**，会话下次恢复将打不开。
-- **其余细节**（宿主插件行与必需服务、启动自检与能力门槛、常驻数量上限、2026 的三处修复、`dsh.bundle.patch` 约束、升级路径与 `peerDependencies`）：见 `docs/COMPAT-AUDIT-ROUND2.md`；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@latest`（用 `add` 而非 `update`）。
+- **其余细节**（宿主插件行与必需服务、启动自检与能力门槛、常驻数量上限、2026 的三处修复、`dsh.bundle.patch` 约束、升级路径与 `peerDependencies`）：见 `docs/COMPAT-AUDIT-ROUND2.md`（安装与升级见其 §9）；升级本包用 `dsh plugin --profile <你的 profile> add dsh-vibe-math@<新版本>`（**给显式版本**，用 `add` 而非 `update`——本机实测 `@latest` 不升级）。
+
+### 安装/升级排查（pnpm 与版本）
+
+- **装不上（`exit 1`）**：先确认 `pnpm --version` 能跑——DSH 的安装器把安装**转交 pnpm** 且**不自带**它；缺失时插件市场里往往只有 `exit 1`、没有原因。装好 pnpm 后重试 `add`，并附 `~/.dsh/profiles/<profile>/hub.log`。
+- **装上了但是旧版**：本机实测**带 `@latest` 也不升级**（四种写法都无效），因为 profile 的 `package.json` / `pnpm-lock.yaml` 优先于 `latest` 标签。改用**显式版本**：`dsh plugin --profile <你的 profile> add dsh-vibe-math@<新版本>`；或先把 profile 依赖改成 `latest` 再 `install`。
+- **确认实际版本**：看 profile 的 `package.json`（或在该 profile 下 `pnpm list --depth 0`），别只看预设选择器里有没有 preset。
+- **升级之后**：**重启 DSH**（受管内容的替换时机见上文）。
 
 ---
 
