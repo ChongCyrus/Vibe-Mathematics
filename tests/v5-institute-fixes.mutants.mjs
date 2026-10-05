@@ -294,6 +294,38 @@ const FAMILIES = [
     to: 'if (b) L.push(b)',
     expect: /\[real1004-prompt-scope\] the LaTeX block says WHEN it applies/,
   },
+  {
+    // task-30: the per-round feedback hint must actually reach the members (it is the only place that
+    // explains WHY/WHAT/the three routes); suppressing it must redden the prompt guard BY NAME.
+    name: 'task-30: the per-round feedback hint is never injected',
+    from: "if (!feedbackOn()) return\n      L.push(''",
+    to: "if (true) return\n      L.push(''",
+    expect: /\[task-30\] the per-round prompt carries the feedback hint/,
+  },
+  {
+    // task-30: `off` must be a real switch — if the gate always answers "on", the hint keeps being
+    // injected and the refusal never fires.
+    name: 'task-30: feedback=off stops suppressing the prompt hint',
+    from: "function feedbackOn() { return String(params.feedback || 'on') !== 'off' }",
+    to: 'function feedbackOn() { return true }',
+    expect: /\[task-30\] feedback=off: the per-round hint is NOT injected/,
+  },
+  {
+    // task-30: `off` must refuse BY NAME and write NOTHING (a silent write while disabled is the defect
+    // class this project keeps hitting).
+    name: 'task-30: feedback=off still accepts and writes an entry',
+    from: "if (!feedbackOn()) {\n        return { ok: false, code: 'V5_FEEDBACK_DISABLED'",
+    to: "if (false) {\n        return { ok: false, code: 'V5_FEEDBACK_DISABLED'",
+    expect: /\[task-30\] off refuses the write BY NAME/,
+  },
+  {
+    // task-30: the published counts must agree with the library — a wrong `closed` split makes the tool,
+    // the report and the overview lie together.
+    name: 'task-30: the feedback counters disagree with the library',
+    from: 'return { total: all.length, open, closed: all.length - open, byCategory, byRoute }',
+    to: 'return { total: all.length, open, closed: all.length, byCategory, byRoute }',
+    expect: /\[task-30\] summary counts match the library contents exactly/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

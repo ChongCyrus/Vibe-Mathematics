@@ -2609,6 +2609,104 @@ console.log('\n[53] v5 L1 leanPathContractOk: the queued note reaches report() d
   assert(/function paperPushLine\(L\)[\s\S]{0,600}仅在你参与论文写作或编译时适用/.test(srcP4),
     '★ [real1004-prompt-scope] the scope note is what the shared tail actually pushes (not a dangling sentence)')
 }
+// ---------- 54. task-30: the methodology/collaboration feedback library (Shared/Feedback/) ----------
+console.log('\n[54] vibe_v5_feedback: 用途＋三路由提示；add→list→状态流转；off 不注入＋具名拒绝＋不写盘；计数与库一致')
+{
+  const INSDIR = join('VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  const r1 = h.childAgent(h.childOf('r-1'))
+  const acad = h.childAgent(h.childOf('acad'))
+  const fbPath = (...p) => join(h.WS, INSDIR, 'Shared', 'Feedback', ...p)
+  const wake = async (member) => {
+    await h.callTool('vibe_v5_say', { to: member, text: '请继续推进。' }, acad)
+    const w = await h.peekWakeOf(member, 3000)
+    if (w) h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+    await sleep(25)
+    return w ? w.text : ''
+  }
+  const countsLine = (t) => (String(t).split('\n').find((l) => l.indexOf('条目 ') !== -1 && l.indexOf('未闭环 ') !== -1) || '')
+
+  // (1) 每一轮都可见：为什么记／记什么／三条路由／记了之后会怎样
+  const p1 = await wake('r-1')
+  assert(p1.indexOf('【工作经验／流程反馈') !== -1, '★ [task-30] the per-round prompt carries the feedback hint')
+  assert(p1.indexOf('为什么记') !== -1 && p1.indexOf('记什么') !== -1 && p1.indexOf('记了之后') !== -1,
+    '★ [task-30] the hint explains WHY / WHAT / what happens after')
+  assert(p1.indexOf('self＝') !== -1 && p1.indexOf('team＝') !== -1 && p1.indexOf('interpersonal＝') !== -1,
+    '★ [task-30] the hint distinguishes the THREE routes')
+  assert(p1.indexOf('自己调整，无需谁采纳') !== -1 && p1.indexOf('同样无需审批') !== -1,
+    '★★ [task-30] self/team routes are self-regulation — the hint never asks for an approval')
+  assert(p1.indexOf('缜密评估') !== -1 && p1.indexOf('事后回填验证') !== -1,
+    '★ [task-30] only the interpersonal route demands a careful assessment + written-back verification')
+  assert(p1.indexOf('Progress/') !== -1 && p1.indexOf('Verified/') !== -1,
+    '★ [task-30] the boundary against Progress//Verified/ is stated in the prompt')
+  assert(p1.indexOf('向用户问一次') === -1 && p1.indexOf('ask the user once') === -1,
+    'the hint never demands an action a member cannot perform (I16)')
+
+  // (2) add → list 可见；self/team 的状态流转无需任何审批
+  const add = await h.callTool('vibe_v5_feedback', { op: 'add', category: 'process', route: 'self', context: '每轮都在等别人回复', phenomenon: '轮次空转', impact: '进展慢', action: '我自己改成先写进度再发问' }, r1)
+  assert(add.ok === true && add.entry && add.entry.id === 'fb-1' && add.entry.status === 'open',
+    '★ [task-30] add records an entry (open, id=fb-1): ' + JSON.stringify(add.entry && add.entry.id))
+  assert(add.mirror === true && existsSync(fbPath('process.md')),
+    '★ [task-30] the human-readable mirror is really written (Shared/Feedback/process.md)')
+  const list1 = await h.callTool('vibe_v5_feedback', { op: 'list' }, r1)
+  assert(list1.count === 1 && list1.entries[0].id === 'fb-1' && list1.openOnly === true,
+    '★ [task-30] list defaults to the NOT-yet-closed entries')
+  const upd = await h.callTool('vibe_v5_feedback', { op: 'update', id: 'fb-1', status: 'adjusted', outcome: '工作流改完，空转少了' }, r1)
+  assert(upd.ok === true && upd.entry.status === 'adjusted' && /空转少了/.test(upd.entry.outcome),
+    '★ [task-30] status flows open→adjusted WITHOUT any approval step (self-regulation)')
+  const addTeam = await h.callTool('vibe_v5_feedback', { op: 'add', category: 'cooperation', route: 'team', phenomenon: '任务分配不均', impact: '有人闲置', action: '分派前先看负载' }, acad)
+  assert(addTeam.ok === true, 'the academician can record a team-route entry (organisation / workflow)')
+  const forbidden = await h.callTool('vibe_v5_feedback', { op: 'update', id: addTeam.entry.id, status: 'closed' }, r1)
+  assert(forbidden.ok === false && forbidden.code === 'V5_FEEDBACK_FORBIDDEN',
+    '★ [task-30] a member cannot update somebody else\'s entry (named refusal)')
+
+  // (3) interpersonal：必须带评估；闭环必须回填 outcome（事后验证）
+  const needA = await h.callTool('vibe_v5_feedback', { op: 'add', category: 'conflict', route: 'interpersonal', phenomenon: 'r-2 不回消息', impact: '我卡住', action: '等他回' }, r1)
+  assert(needA.ok === false && needA.code === 'V5_FEEDBACK_NEEDS_ASSESSMENT',
+    '★★ [task-30] the interpersonal route refuses to be recorded WITHOUT the assessment')
+  const inter = await h.callTool('vibe_v5_feedback', { op: 'add', category: 'conflict', route: 'interpersonal', phenomenon: 'r-2 不回消息', impact: '我卡住', action: '约会议当面问', assessment: '让他改习惯是否真更优？先约会议成本更低' }, r1)
+  assert(inter.ok === true && inter.entry.route === 'interpersonal', 'the interpersonal entry is accepted WITH the assessment')
+  const noOut = await h.callTool('vibe_v5_feedback', { op: 'update', id: inter.entry.id, status: 'closed' }, r1)
+  assert(noOut.ok === false && noOut.code === 'V5_FEEDBACK_NEEDS_OUTCOME',
+    '★★ [task-30] closing an interpersonal entry WITHOUT the written-back verification is refused')
+  const officeFix = await h.callTool('vibe_v5_feedback', { op: 'update', id: inter.entry.id, status: 'closed', outcome: '会上确认了回复习惯，之后未再发生' })
+  assert(officeFix.ok === true && officeFix.entry.status === 'closed',
+    '★ [task-30] the OFFICE may resolve ANY entry and write the result back')
+
+  // (4) off：提示词不注入 ＋ 每个 op 都具名拒绝 ＋ 一个字都不写
+  const rpBefore = (await h.callTool('vibe_v5_report', {})).report
+  const idxBefore = readFileSync(fbPath('index.json'), 'utf8')
+  await h.callTool('vibe_v5_set', { feedback: 'off' })
+  const p2 = await wake('r-1')
+  assert(p2.indexOf('【工作经验／流程反馈') === -1, '★★ [task-30] feedback=off: the per-round hint is NOT injected')
+  const offAdd = await h.callTool('vibe_v5_feedback', { op: 'add', category: 'process', route: 'self', phenomenon: 'x', impact: 'y', action: 'z' }, r1)
+  assert(offAdd.ok === false && offAdd.code === 'V5_FEEDBACK_DISABLED' && /已关闭/.test(offAdd.message),
+    '★★ [task-30] off refuses the write BY NAME (never a silent drop)')
+  const offList = await h.callTool('vibe_v5_feedback', { op: 'list', all: true }, r1)
+  assert(offList.ok === false && offList.code === 'V5_FEEDBACK_DISABLED',
+    'off refuses EVERY op, so nothing can look normal while the feature is disabled')
+  const rpAfter = (await h.callTool('vibe_v5_report', {})).report
+  assert(countsLine(rpAfter) === countsLine(rpBefore) && idxBefore === readFileSync(fbPath('index.json'), 'utf8'),
+    '★★ [task-30] off wrote NOTHING (report counts and the on-disk index are unchanged)')
+  await h.callTool('vibe_v5_set', { feedback: 'on' })
+
+  // (5) 计数与库内容一致（工具 summary ／ report ／ overview 三个面）
+  const summary = (await h.callTool('vibe_v5_feedback', { op: 'summary' }, r1)).counts
+  const allEntries = (await h.callTool('vibe_v5_feedback', { op: 'list', all: true }, r1)).entries
+  assert(summary.total === allEntries.length && summary.open + summary.closed === summary.total,
+    '★★ [task-30] summary counts match the library contents exactly (' + JSON.stringify(summary) + ')')
+  const byCat = allEntries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m }, {})
+  assert(Object.keys(summary.byCategory).every((k) => summary.byCategory[k] === (byCat[k] || 0)),
+    '★★ [task-30] the by-category counts match the entries')
+  const rp = await h.callTool('vibe_v5_report', {})
+  assert(rp.report.indexOf('## 反馈库') !== -1 && rp.report.indexOf('条目 ' + summary.total + '｜未闭环 ' + summary.open) !== -1,
+    '★★ [task-30] report() shows the SAME counts as the library')
+  const ov = await h.callTool('vibe_v5_overview', {}, acad)
+  assert(ov.overview.indexOf('## 反馈库') !== -1 && ov.overview.indexOf('条目 ' + summary.total) !== -1 && ov.overview.indexOf('未闭环 ' + summary.open) !== -1,
+    '★★ [task-30] overview shows the same counts (the academician\'s periodic summary reads this)')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

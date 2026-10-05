@@ -763,7 +763,7 @@ DISCLOSURES (existing behaviour, not rules to follow):
 
 ## vibe-math-v5
 
-- 注册工具数：**39**
+- 注册工具数：**40**
 - 斜杠命令 hint：`configure <研究所名> <问题…>|start|resume|pause|stop|status|report|members|message <收件人|all> <正文…>|meeting <议程…>|hire <用途> <初始任务…>|fire <成员id> [理由…]|add [方向…]|remove <成员id>|set <键>=<值> …|paper [lang=zh|en] [format=both|md|tex] [editor=office|academician] [force]`
 
 ### config.prefix

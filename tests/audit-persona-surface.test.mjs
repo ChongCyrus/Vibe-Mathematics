@@ -196,7 +196,7 @@ const PRESETS = [
     dir: 'vibe-math-v5',
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
-    tools: 40,
+    tools: 41,
     // Member- and academician-facing tools that the v5 persona describes GENERICALLY; the office (main
     // agent) holds only the institute-level controls plus the hiring authority. The final-paper pair is
     // an OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper), so it must
@@ -207,6 +207,9 @@ const PRESETS = [
       'vibe_v5_propose_verify', 'vibe_v5_verdict', 'vibe_v5_task_create',
       'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update',
       'vibe_v5_overview', 'vibe_v5_assign', 'vibe_v5_prioritize', 'vibe_v5_nudge',
+      // task-30: the methodology/collaboration feedback tool is member-facing and described GENERICALLY
+      // by the persona; the plugin's per-round hint names it and explains the three routes.
+      'vibe_v5_feedback',
     ],
     required: [],
     lean: { tools: ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job'], extra: [] },

@@ -67,6 +67,29 @@ const TEX_YEAR_LOOKBACK = 4             // the newest N year dirs of a TeX Live 
 const TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']               // Windows: TeX Live at a DRIVE ROOT
 const TEX_SYSTEM_BIN_ROOTS = ['/Library/TeX/texbin']                    // macOS: system MacTeX (already a bin dir)
 const TEX_SYSTEM_YEAR_ROOTS = ['/usr/local/texlive', '/opt/texlive']    // Unix: TeX Live (year-globbed)
+// ── feedback library (Shared/Feedback/) ──────────────────────────────────────────────────────────────
+// The METHODOLOGY / COLLABORATION layer: how the institute WORKS (organisation, workflow, cooperation,
+// obstacles, friction). Deliberately separate from Progress/ (research progress) and Verified/
+// (established results) — an entry here is never evidence for a mathematical claim.
+const FEEDBACK_CATEGORIES = ['cooperation', 'management', 'process', 'obstacle', 'conflict']
+const FEEDBACK_CATEGORY_LABELS = { cooperation: '合作', management: '管理', process: '流程', obstacle: '障碍', conflict: '矛盾' }
+// The three ROUTES decide what "handling" an entry means — and, crucially, WHO has to do anything:
+//   self          — my own way of working / habits / pitfalls ⇒ I adjust it MYSELF; nobody's approval,
+//                   at most a share so colleagues do not hit the same wall.
+//   team          — how the institute is organised/run (task assignment, workflow, organisation model)
+//                   ⇒ also self-regulation: no approval, change it as soon as it looks wrong.
+//   interpersonal — the problem is caused by SOMEONE ELSE and only they can fix it ⇒ the ONLY route that
+//                   needs a careful assessment first ("should anything change, and would the change
+//                   really be better?") and a written-back verification afterwards.
+const FEEDBACK_ROUTES = ['self', 'team', 'interpersonal']
+// `open` = recorded, not yet handled; `adjusted` = the initiator adjusted their own way of working
+// (for self/team this IS the closing record — no approval step exists); `closed` = a result was written
+// back (interpersonal REQUIRES that write-back); `dropped` = evaluated and deliberately NOT changed
+// (needs a reason). list's default "not yet closed" filter = open|adjusted.
+const FEEDBACK_STATUSES = ['open', 'adjusted', 'closed', 'dropped']
+const FEEDBACK_OPEN_STATUSES = ['open', 'adjusted']
+const FEEDBACK_DIR = 'Shared/Feedback'
+const FEEDBACK_DISABLED_MESSAGE = '反馈库已关闭（params.feedback = \'off\'）：本条未写入、也未改动任何条目'
 async function resolveKnownTool(sub, opts) {
   const name = String((opts && opts.name) || '')
   const explicit = String((opts && opts.explicit) || '').trim()
@@ -461,6 +484,9 @@ export function apply(ctx) {
       // The final-paper flow (stage machine + its artifacts state). Durable like everything
       // else, so a restart resumes the same stage instead of writing a second paper.
       paper: null,
+      // Methodology/collaboration feedback (Shared/Feedback/). Durable like `verdicts`, so a restart
+      // keeps the loop closed instead of losing what the institute learned about working together.
+      feedback: [],
     }
   }
   // LOW (deep review): `state.order` used to be maintained here and preserved in the diagnostics
@@ -556,6 +582,15 @@ export function apply(ctx) {
               ? patch.paper(n.paper === undefined ? null : n.paper)
               : patch.paper
             if (next !== undefined) n.paper = next
+          }
+          // Durable methodology/collaboration feedback (Shared/Feedback/). A FUNCTION is a mutation
+          // applied INSIDE the fold (the same trick `paper` uses): several members may add or update
+          // entries between two commits, and a read-modify-write outside the fold would lose one.
+          if (patch.feedback !== undefined) {
+            const next = typeof patch.feedback === 'function'
+              ? patch.feedback(Array.isArray(n.feedback) ? n.feedback : [])
+              : patch.feedback
+            if (next !== undefined) n.feedback = Array.isArray(next) ? next : []
           }
           return n
         })
@@ -996,6 +1031,12 @@ export function apply(ctx) {
       paperCompilePdf: true,
       paperEditor: 'academician',
       paperLatexCommand: '',
+      // ── methodology / collaboration feedback (Shared/Feedback/) ──
+      // feedback — 'on' (default: the tool works AND the short per-round hint is injected) |
+      //            'off' (the hint is NOT injected and every write is refused BY NAME, never
+      //            silently dropped). It is a switch, not a severity: recording is encouraged,
+      //            never mandatory.
+      feedback: 'on',
       // ── model / tools ────────────────────────────────────────────────────
       provider: '',
       model: '',
@@ -2484,6 +2525,7 @@ export function apply(ctx) {
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
       mathPushLine(L)
       paperPushLine(L)
+      feedbackPushLine(L)
       L.push('------------')
       L.push(stateBlock(member, roundNo))
       L.push('------------')
@@ -2504,6 +2546,7 @@ export function apply(ctx) {
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
       paperPushLine(L)
+      feedbackPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2522,6 +2565,7 @@ export function apply(ctx) {
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
       paperPushLine(L)
+      feedbackPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2558,6 +2602,7 @@ export function apply(ctx) {
       L.push('一致认为是真时，本所才会停下来。')
       mathPushLine(L)
       paperPushLine(L)
+      feedbackPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2609,6 +2654,7 @@ export function apply(ctx) {
       L.push('本所宁可留下未定论，也不要一个骗人的结论。')
       mathPushLine(L)
       paperPushLine(L)
+      feedbackPushLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -3606,6 +3652,176 @@ export function apply(ctx) {
       // so removing it here would lose it entirely) but SAY WHEN IT APPLIES. The block itself stays byte-identical
       // across presets; only this per-preset wrapper changes.
       if (b) L.push('\n（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）' + b)
+    }
+
+    // ---- feedback library (Shared/Feedback/): methodology / collaboration, never research -----------
+    // Entries live in the DURABLE `feedback` array and are written through the fold (patchInstitute with
+    // an UPDATER), so two concurrent adds/updates cannot lose one. The human-readable mirror (one file per
+    // category + a JSON index) is WRITE-ONLY like Shared/TaskBoard.md; the state file stays authoritative.
+    function feedbackOn() { return String(params.feedback || 'on') !== 'off' }
+    function feedbackEntries() { const s = inst(); if (!Array.isArray(s.feedback)) s.feedback = []; return s.feedback }
+    function feedbackCounts() {
+      const all = feedbackEntries()
+      const byCategory = {}, byRoute = {}
+      for (const c of FEEDBACK_CATEGORIES) byCategory[c] = 0
+      for (const r of FEEDBACK_ROUTES) byRoute[r] = 0
+      let open = 0
+      for (const e of all) {
+        if (byCategory[e.category] !== undefined) byCategory[e.category] += 1
+        if (byRoute[e.route] !== undefined) byRoute[e.route] += 1
+        if (FEEDBACK_OPEN_STATUSES.indexOf(e.status) !== -1) open += 1
+      }
+      return { total: all.length, open, closed: all.length - open, byCategory, byRoute }
+    }
+    function feedbackView(e) {
+      return { id: e.id, at: e.at, by: e.by, category: e.category, route: e.route, status: e.status,
+        context: e.context || '', phenomenon: e.phenomenon || '', impact: e.impact || '',
+        action: e.action || '', assessment: e.assessment || '', outcome: e.outcome || '',
+        note: e.note || '', updatedAt: e.updatedAt || '', updatedBy: e.updatedBy || '' }
+    }
+    /** The human-readable mirror + structured index. A failure is REPORTED (mirror:false), never thrown
+     *  and never logged: it must not disturb the existing write-failure accounting (F6). */
+    async function feedbackMirror() {
+      const all = feedbackEntries()
+      let ok = true
+      for (const c of FEEDBACK_CATEGORIES) {
+        const rows = all.filter((e) => e.category === c)
+        const md = ['# 反馈库 · ' + FEEDBACK_CATEGORY_LABELS[c] + '（' + c + '）', '',
+          '> 方法论／协作层记录：怎么一起工作（组织、流程、合作、障碍、摩擦）。**不是研究结论**——研究进展见 Progress/，已确立结论见 Verified/。', '']
+        for (const e of rows) {
+          md.push('## ' + e.id + '｜' + e.route + '｜' + e.status + '｜' + (e.at || ''), '',
+            '- 发起人：' + (e.by || '') + '｜类别：' + c + '｜路由：' + e.route + '｜状态：' + e.status,
+            '- 情境：' + (e.context || '（未写）'),
+            '- 现象：' + (e.phenomenon || ''),
+            '- 影响：' + (e.impact || ''),
+            '- 已做的调整或建议：' + (e.action || ''))
+          if (e.route === 'interpersonal') md.push('- 评估（要不要改／改了是否真更优）：' + (e.assessment || ''))
+          if (e.outcome) md.push('- 事后验证／结果：' + e.outcome)
+          if (e.note) md.push('- 备注：' + e.note)
+          if (e.updatedAt) md.push('- 最近更新：' + e.updatedAt + '（' + (e.updatedBy || '') + '）')
+          md.push('')
+        }
+        if (!rows.length) md.push('（本类暂无条目）', '')
+        try { if (!(await writeTextRel(FEEDBACK_DIR + '/' + c + '.md', md.join('\n')))) ok = false } catch (err) { ok = false }
+      }
+      try {
+        if (!(await writeTextRel(FEEDBACK_DIR + '/index.json', JSON.stringify({ counts: feedbackCounts(), entries: all }, null, 2) + '\n'))) ok = false
+      } catch (err) { ok = false }
+      return ok
+    }
+    async function feedbackTool(caller, a) {
+      const op = String((a && a.op) || '').trim()
+      // `off` is NEVER a silent write: the call is refused BY NAME with the reason and the remedy.
+      if (!feedbackOn()) {
+        return { ok: false, code: 'V5_FEEDBACK_DISABLED', message: FEEDBACK_DISABLED_MESSAGE,
+          next: { kind: 'note', tool: 'vibe_v5_set', hint: '由所办把 feedback 设回 \'on\' 后重试（本条没有被静默写入）' } }
+      }
+      if (op === 'add') {
+        const category = String(a.category || '').trim()
+        const route = String(a.route || '').trim()
+        if (FEEDBACK_CATEGORIES.indexOf(category) < 0) {
+          return { ok: false, code: 'V5_FEEDBACK_BAD_CATEGORY', message: 'category 必须是 ' + FEEDBACK_CATEGORIES.join('|'),
+            next: { kind: 'note', hint: '合作=cooperation｜管理=management｜流程=process｜障碍=obstacle｜矛盾=conflict' } }
+        }
+        if (FEEDBACK_ROUTES.indexOf(route) < 0) {
+          return { ok: false, code: 'V5_FEEDBACK_BAD_ROUTE', message: 'route 必须是 ' + FEEDBACK_ROUTES.join('|'),
+            next: { kind: 'note', hint: 'self=自己的做法（自己调整即可）｜team=组织/工作流（自我调节，无需审批）｜interpersonal=别人造成的、要别人改变（须评估＋事后回填）' } }
+        }
+        const phenomenon = String(a.phenomenon || '').trim()
+        const impact = String(a.impact || '').trim()
+        const action = String(a.action || '').trim()
+        if (!phenomenon || !impact || !action) {
+          return { ok: false, code: 'V5_FEEDBACK_INCOMPLETE', message: 'add 需要 phenomenon／impact／action（现象、影响、已做的调整或建议）',
+            next: { kind: 'note', hint: '写清"看到了什么／造成什么／我已经或打算怎么调整"' } }
+        }
+        const assessment = String(a.assessment || '').trim()
+        // ONLY the interpersonal route gates on the careful evaluation: self/team are self-regulation
+        // (the user ruling: no approval step, adjust as soon as it looks wrong).
+        if (route === 'interpersonal' && !assessment) {
+          return { ok: false, code: 'V5_FEEDBACK_NEEDS_ASSESSMENT', message: 'interpersonal 路由必须带 assessment：先想清楚"要不要让别人改、改了是否真的更优"',
+            next: { kind: 'note', hint: '若发现只能靠自己调整，请改记 self；确实需要别人改变时，写完评估再跟进事后验证' } }
+        }
+        const base = { at: now(), by: caller, category, route, status: 'open',
+          context: String(a.context || ''), phenomenon, impact, action, assessment,
+          outcome: '', note: String(a.note || ''), updatedAt: '', updatedBy: '' }
+        let entry = null
+        await patchInstitute({ feedback: (cur) => {
+          const list = Array.isArray(cur) ? cur.slice() : []
+          entry = Object.assign({ id: 'fb-' + (list.length + 1) }, base)
+          list.push(entry)
+          return list
+        } })
+        const mirror = await feedbackMirror()
+        return { ok: true, entry: feedbackView(entry), mirror, counts: feedbackCounts(),
+          routeHint: route === 'interpersonal'
+            ? 'interpersonal：已记录。请按评估结论处理，并用 update 回填 outcome（事后验证）才算闭环。'
+            : 'self/team：无需任何人采纳——自己调整即可，并用 update 把状态/结果记下来（self/team 的记录本身就是闭环凭据）。' }
+      }
+      if (op === 'update') {
+        const id = String(a.id || '').trim()
+        if (!id) return { ok: false, code: 'V5_FEEDBACK_NO_ID', message: 'update 需要 id', next: { kind: 'note', hint: '先用 op=list（默认只看未闭环）确认 id（形如 fb-1）' } }
+        const cur = feedbackEntries().find((x) => x.id === id)
+        if (!cur) return { ok: false, code: 'V5_FEEDBACK_NOT_FOUND', message: '没有条目 ' + id, next: { kind: 'note', hint: '先用 op=list 确认 id' } }
+        // Permission: the INITIATOR updates their own entry; the OFFICE may update any (mark it resolved /
+        // write the result back). Anyone else is refused BY NAME — never silently ignored.
+        if (caller !== 'office' && caller !== cur.by) {
+          return { ok: false, code: 'V5_FEEDBACK_FORBIDDEN', message: '只有发起人（' + cur.by + '）或所办可以更新 ' + id,
+            next: { kind: 'note', hint: '别人的问题请自己另记一条（你只能更新自己发起的条目）' } }
+        }
+        const status = a.status === undefined ? '' : String(a.status).trim()
+        if (status && FEEDBACK_STATUSES.indexOf(status) < 0) {
+          return { ok: false, code: 'V5_FEEDBACK_BAD_STATUS', message: 'status 必须是 ' + FEEDBACK_STATUSES.join('|'),
+            next: { kind: 'note', hint: 'open=未处理｜adjusted=已自我调整｜closed=已回填结果｜dropped=评估后决定不改（需理由）' } }
+        }
+        const outcome = a.outcome === undefined ? '' : String(a.outcome).trim()
+        const note = a.note === undefined ? '' : String(a.note).trim()
+        // The interpersonal route is the ONLY one that must PROVE the change helped: closing it without
+        // the written-back verification is refused (that is exactly why the route exists).
+        if (cur.route === 'interpersonal' && status === 'closed' && !outcome) {
+          return { ok: false, code: 'V5_FEEDBACK_NEEDS_OUTCOME', message: 'interpersonal 条目闭环必须回填 outcome（事后验证：改了什么、结果如何）',
+            next: { kind: 'note', hint: '若评估结论是"不需要别人改"，请用 status=dropped ＋ note 写明理由' } }
+        }
+        if (status === 'dropped' && !outcome && !note) {
+          return { ok: false, code: 'V5_FEEDBACK_NEEDS_REASON', message: 'status=dropped 需要 note 或 outcome 说明"为什么不改"',
+            next: { kind: 'note', hint: '评估结论也要留痕，否则下一轮会重新提同一件事' } }
+        }
+        const changes = { updatedAt: now(), updatedBy: caller }
+        if (status) changes.status = status
+        if (outcome) changes.outcome = outcome
+        if (a.action !== undefined) changes.action = String(a.action)
+        if (a.assessment !== undefined) changes.assessment = String(a.assessment)
+        if (a.note !== undefined) changes.note = note
+        await patchInstitute({ feedback: (list) => (Array.isArray(list) ? list : []).map((x) => (x.id === id ? Object.assign({}, x, changes) : x)) })
+        const after = feedbackEntries().find((x) => x.id === id) || cur
+        const mirror = await feedbackMirror()
+        return { ok: true, entry: feedbackView(after), mirror, counts: feedbackCounts() }
+      }
+      if (op === 'list') {
+        const category = a.category === undefined ? '' : String(a.category).trim()
+        const route = a.route === undefined ? '' : String(a.route).trim()
+        const all = a.all === true
+        const rows = feedbackEntries()
+          .filter((e) => (!category || e.category === category) && (!route || e.route === route))
+          .filter((e) => all || FEEDBACK_OPEN_STATUSES.indexOf(e.status) !== -1)
+          .map(feedbackView)
+        return { ok: true, openOnly: !all, count: rows.length, entries: rows, counts: feedbackCounts(),
+          note: all ? '全部条目（含已闭环）' : '默认只列未闭环（open|adjusted）；要看全部用 all:true' }
+      }
+      if (op === 'summary') return { ok: true, counts: feedbackCounts() }
+      return { ok: false, code: 'V5_FEEDBACK_BAD_OP', message: 'op 必须是 add|update|list|summary',
+        next: { kind: 'note', hint: 'add=写一条；update=状态流转＋回填；list=看未闭环；summary=按类别/路由计数' } }
+    }
+    /** The per-round line. Deliberately SHORT (P4's lesson: every wake already carries the tool/paper
+     *  tails) and it answers WHY / WHAT / the three routes / what happens next, so recording is explained
+     *  rather than commanded. */
+    function feedbackPushLine(L) {
+      if (!feedbackOn()) return
+      L.push(''
+        + '\n【工作经验／流程反馈（鼓励积极记录）】' + FEEDBACK_DIR + '/'
+        + '\n· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。'
+        + '\n· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。'
+        + '\n· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。'
+        + '\n· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。')
     }
 
     function formalPromptBlock(target) {
@@ -7029,7 +7245,7 @@ export function apply(ctx) {
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
-      const strs = ['quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
+      const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
         'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative',
         'mathComputation', 'mathMode', 'mathInstallScope']
       const arrs = ['toolAllow', 'toolDeny', 'tempToolAllow', 'tempToolDeny', 'leanArgs', 'leanSearchPaths',
@@ -7064,6 +7280,11 @@ export function apply(ctx) {
       // documented default ('normal') rather than becoming an unreachable fourth mode.
       if (out.leanInitiative !== undefined) {
         out.leanInitiative = ['off', 'normal', 'eager'].indexOf(String(out.leanInitiative)) !== -1 ? String(out.leanInitiative) : 'normal'
+      }
+      // `feedback` is a CLOSED enum too: a typo must keep the documented default ('on') rather than
+      // becoming an unreachable third mode that silently disables the recording hint.
+      if (out.feedback !== undefined) {
+        out.feedback = ['on', 'off'].indexOf(String(out.feedback).trim()) !== -1 ? String(out.feedback).trim() : 'on'
       }
       // Concurrency floor, same discipline as quorumCap/verdictMaxRounds.
       if (out.leanJobsMaxParallel !== undefined && out.leanJobsMaxParallel < 1) out.leanJobsMaxParallel = 1
@@ -7191,6 +7412,8 @@ export function apply(ctx) {
         mathComputation: params.mathComputation, mathMode: params.mathMode,
         mathEngines: (params.mathEngines || []).slice(), mathTimeoutMs: params.mathTimeoutMs,
         mathPackages: (params.mathPackages || []).slice(), mathInstallScope: params.mathInstallScope,
+        // 'on' | 'off' — methodology/collaboration feedback (Shared/Feedback/).
+        feedback: params.feedback,
         // ── final paper ──────────────────────────────────────────────────────
         finalPaper: params.finalPaper, paperFormat: params.paperFormat,
         paperLanguage: params.paperLanguage, paperCompilePdf: params.paperCompilePdf,
@@ -7780,6 +8003,25 @@ export function apply(ctx) {
       // not a refusal: v5 cannot change the host's fence, and refusing would stop persisting work.
       if (sandboxPolicyMismatch) L.push('- ⚠ 沙箱策略根与会话工作目录不一致：策略=' + sandboxPolicyMismatch.policyRoot + '｜会话=' + sandboxPolicyMismatch.expected
         + '（v5 用会话工作目录拼所有路径；若宿主按策略根解析写操作，产物可能落在预期之外的那棵树——请核对 sandbox 策略的 workspaceRoot）')
+      // Methodology/collaboration feedback: the numbers an operator (and the academician's periodic
+      // summary) needs to see whether the loop is actually being USED and closed — not just collected.
+      L.push('')
+      L.push('## 反馈库（方法论／协作层；不是研究结论）')
+      {
+        const fc = feedbackCounts()
+        L.push('- 条目 ' + fc.total + '｜未闭环 ' + fc.open + '｜已闭环 ' + fc.closed
+          + '｜按类别：' + FEEDBACK_CATEGORIES.map((c) => c + '=' + fc.byCategory[c]).join('、')
+          + '（' + FEEDBACK_CATEGORIES.map((c) => FEEDBACK_CATEGORY_LABELS[c]).join('/') + '）'
+          + '｜按路由：' + FEEDBACK_ROUTES.map((r) => r + '=' + fc.byRoute[r]).join('、'))
+        if (!feedbackOn()) {
+          L.push('- 反馈开关：off（提示词不注入该段；写入请求会被具名拒绝）')
+        } else {
+          const openRows = feedbackEntries().filter((e) => FEEDBACK_OPEN_STATUSES.indexOf(e.status) !== -1)
+          const inter = openRows.filter((e) => e.route === 'interpersonal')
+          L.push('- 未闭环 ' + openRows.length + ' 条' + (inter.length ? '｜其中 interpersonal（需评估＋事后回填）：' + inter.map((e) => e.id + '(by ' + e.by + ')').join('、') : ''))
+          L.push('- 文件镜像：' + FEEDBACK_DIR + '/（按类别分文件）｜明细：vibe_v5_feedback {op:\'list\'}')
+        }
+      }
       return { ok: true, report: L.join('\n'), quorum: qv }
     }
     // Adding/removing a PERMANENT researcher is a change to the institute's public
@@ -7856,6 +8098,8 @@ export function apply(ctx) {
       maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
+      // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
+      feedbackOn, feedbackCounts, feedbackTool,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
       // diagnosis helpers (defects 1/2 of the architecture self-test)
@@ -7979,7 +8223,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default.', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default. feedback (default "on") = the methodology/collaboration feedback library (Shared/Feedback/): "on" records entries and injects a short per-round hint; "off" injects nothing and refuses every write BY NAME (a switch, not a severity).', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
@@ -7993,6 +8237,7 @@ export function apply(ctx) {
     mathMode: { type: 'string', enum: ['typed', 'typed+shell'] },
     mathEngines: SA, mathTimeoutMs: I, mathPackages: SA,
     mathInstallScope: { type: 'string', enum: ['user', 'system'] },
+    feedback: { type: 'string', enum: ['on', 'off'] },
     finalPaper: B, paperFormat: { type: 'string', enum: ['both', 'md', 'tex'] },
     paperLanguage: { type: 'string', enum: ['zh', 'en'] },
     paperCompilePdf: B, paperEditor: { type: 'string', enum: ['office', 'academician'] }, paperLatexCommand: S,
@@ -8070,6 +8315,7 @@ export function apply(ctx) {
   })
   registerTool('vibe_v5_record_progress', '(member) Append to YOUR progress.md — your research log. Include what you tried, the routes and their obstacles, your current state, your plans, and failed/dead ends (they save the institute from repeating them).', objParams({ content: S }, ['content']), (s, a, x) => s.publishProgress(s.memberIdOfAgent(x), a.content))
   registerTool('vibe_v5_record_proposition', '(member) Record a proposition/lemma in your library. REQUIRES value (价值程度), motive (动机用途计划) and p (your probability that it is true).', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'proposition', a))
+  registerTool('vibe_v5_feedback', '(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。', objParams({ op: S, id: S, category: S, route: S, context: S, phenomenon: S, impact: S, action: S, assessment: S, outcome: S, status: S, note: S, all: B }, ['op']), (s, a, x) => withCaller(s, x, '使用反馈库', (caller) => s.feedbackTool(caller, a)))
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
@@ -8114,6 +8360,19 @@ export function apply(ctx) {
       const todo = s.formalTodo()
       if (todo.length) parts.push('- 形式化待办（定论被搁置）：' + todo.map((t) => t.id).join('、') + '（见 Formal/TODO.md）')
       parts.push('- 可复用库：vibe_v5_lean_lib 可列出 Formal/Lib 与 Formal/Proved')
+    }
+    // Methodology/collaboration feedback: the academician's periodic summary needs the SAME numbers the
+    // report shows, so "what did we learn about working together" is one glance away (and open
+    // interpersonal entries — the only route that needs a written-back verification — are named).
+    parts.push('## 反馈库（方法论／协作层）')
+    {
+      const fc = s.feedbackCounts()
+      parts.push('- 条目 ' + fc.total + '｜未闭环 ' + fc.open + '｜已闭环 ' + fc.closed
+        + '｜按类别：' + Object.keys(fc.byCategory).map((k) => k + '=' + fc.byCategory[k]).join('、')
+        + '｜按路由：' + Object.keys(fc.byRoute).map((k) => k + '=' + fc.byRoute[k]).join('、'))
+      parts.push(s.feedbackOn()
+        ? '- 未闭环明细用 vibe_v5_feedback {op:\'list\'}；interpersonal 条目必须回填 outcome 才算闭环'
+        : '- 反馈开关：off（提示词不注入该段；写入请求会被具名拒绝）')
     }
     parts.push('## 停滞提示')
     const idleFor = Date.now() - st.lastProgressAt
