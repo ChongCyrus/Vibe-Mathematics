@@ -182,7 +182,7 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 > **前置**：`dsh plugin …` 需要一个可用的 **`pnpm`**（DSH 把安装**转交 pnpm**，且**不自带**它）。缺失时命令以 **`exit 1`** 结束，而**插件市场可能不显示原因** ⇒ 请附 `~/.dsh/profiles/<profile>/hub.log`（DSH 的安装日志）来定位。
 >
-> **为什么示例都带 `@<版本>`**：pnpm 优先按 profile 的 `package.json` 与 `pnpm-lock.yaml` 解析裸包名，**不带版本可能装到旧版**；本机实测 `@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法都拿不到新版**，**只有显式版本**（如 `@2.8.4`）会真的升级。安装与升级都用 `add dsh-vibe-math@<版本>`（用 `add` 而非 `update`）。
+> **为什么示例都带 `@<版本>`**：pnpm 优先按 profile 的 `package.json` 与 `pnpm-lock.yaml` 解析裸包名，**不带版本可能装到旧版**；本机实测 `@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法都拿不到新版**，**只有显式版本**（如 `@2.8.5`）会真的升级。安装与升级都用 `add dsh-vibe-math@<版本>`（用 `add` 而非 `update`）。
 
 之后新建会话，预设选择器里选择 **Vibe Math V2**（v2，经典）、**Vibe Math V3**（v3，经典）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——四个架构同级，按实际需求自选（见「怎么选」）。
 **两个 DSH 世代的落点不同，本包自动适配**：
