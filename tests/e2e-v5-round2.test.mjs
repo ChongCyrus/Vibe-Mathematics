@@ -2707,6 +2707,48 @@ console.log('\n[54] vibe_v5_feedback: 用途＋三路由提示；add→list→�
   assert(ov.overview.indexOf('## 反馈库') !== -1 && ov.overview.indexOf('条目 ' + summary.total) !== -1 && ov.overview.indexOf('未闭环 ' + summary.open) !== -1,
     '★★ [task-30] overview shows the same counts (the academician\'s periodic summary reads this)')
 }
+// ---------- 55. task-31: three prompt-review follow-ups (P1 receipt background / P3 empty engine table / P4 frame) ----
+console.log('\n[55] task-31: P1 首次提回执处给背景＋字段最小注解；P3 空引擎表"可用引擎 无"；P4 面向代理不再自称"框架"')
+{
+  // P3/P1 at the SOURCE of the line: the shared module builds it, so call it for real with an empty probe.
+  // The sibling is resolved THROUGH the same seam as the plugin, so a deliberately broken copy is the
+  // module actually under test (otherwise a mutation here could never redden this guard).
+  const mc = await import(new URL('./math-computation.js', PLUGIN))
+  const emptyZh = mc.mathAvailabilityLine({ engines: [] }, 'zh', 'typed+shell')
+  const emptyEn = mc.mathAvailabilityLine({ engines: [] }, 'en', 'typed+shell')
+  // P1: the archive→edit→re-run section explains WHAT a receipt is at its FIRST mention, and the bare
+  // field name carries its own minimal context (only the necessary ones - the section must stay short).
+  assert(emptyZh.indexOf('回执＝一次 math_computation 调用的 JSON 结果') !== -1,
+    '★★ [task-31] P1: 归档→编辑→重跑 段首次提到回执处解释了"回执是什么"')
+  assert(emptyZh.indexOf('（脚本内容相对上一份回执变过）') !== -1,
+    '★ [task-31] P1: 裸字段名 scriptChanged 自带最小上下文')
+  assert(emptyEn.indexOf('a RECEIPT is the JSON result of ONE math_computation call') !== -1
+    && emptyEn.indexOf('(the script content differs from the previous receipt)') !== -1,
+    '★ [task-31] P1: en 段同步给出回执背景与字段上下文')
+  // P3: an empty engine table must not read as "可用的东西：无".
+  assert(emptyZh.indexOf('math_computation：可用引擎 无') !== -1 && emptyZh.indexOf('本机可用') === -1,
+    '★★ [task-31] P3: 空引擎表渲染为「可用引擎 无」: ' + JSON.stringify((/math_computation：[^\n]{0,30}/.exec(emptyZh) || ['<none>'])[0]))
+  assert(emptyEn.indexOf('math_computation: available engines none') !== -1,
+    '★ [task-31] P3: en 空表同步为「available engines none」')
+  // …and the SAME text really reaches a member (end-to-end, not only at the module boundary).
+  const h = makeHost({ pluginModule })
+  await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h.settleSpawns()
+  await h.callTool('vibe_v5_say', { to: 'r-1', text: '请继续推进。' }, h.childAgent(h.childOf('acad')))
+  const w = await h.peekWakeOf('r-1', 3000)
+  const p = w ? w.text : ''
+  if (w) h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
+  assert(p.indexOf('回执＝一次 math_computation 调用的 JSON 结果') !== -1,
+    '★★ [task-31] P1: 成员那一轮真正读到的提示词就带这段背景')
+  assert(p.indexOf('math_computation：可用引擎 无') !== -1 && p.indexOf('本机可用') === -1,
+    '★★ [task-31] P3: 成员提示词里是「可用引擎 无」')
+  // P4: agent-facing text must not call the plugin "框架" (ambiguous from an agent's point of view:
+  // plugin? host? DSH?). The one class fixed here is the notice frame.
+  const src31 = readFileSync(PLUGIN, 'utf8')
+  assert(src31.indexOf('【框架提示】') === -1, '★★ [task-31] P4: 面向代理文本里不再出现【框架提示】')
+  assert(src31.indexOf("return '【研究所提示】' + m.text") !== -1,
+    '★ [task-31] P4: 研究所回执帧改用【研究所提示】')
+}
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

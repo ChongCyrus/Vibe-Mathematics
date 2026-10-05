@@ -87,13 +87,13 @@ export const MATH_PERSONA_TOOL_LINE = '- math_computation {op: probe|run|receipt
 // P2a: the archive -> edit -> re-run workflow. Injected into every preset's rule block (and appended
 // to both persona blocks) so an agent cannot miss that (a) the script is archived, (b) it may edit
 // it, and (c) re-running is what produces evidence for the edited code.
-export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；'
+export const MATH_ARCHIVE_WORKFLOW_LINE = '- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:\'code\' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；'
   + '**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。'
-  + '要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:\'file\' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。'
+  + '要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:\'file\' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。'
   + '**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。'
   + '**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。'
 
-export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run: for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>, **relative to the project root**); member file tools resolve paths against the SESSION CWD, so READ it via the ABSOLUTE `receipt.scriptAbs`, or join `receipt.cwd` with `receipt.scriptPath` (both are in the receipt). To produce evidence for EDITED code, edit the SOURCE FILE you originally ran and re-run mode:\'file\' pointing at THAT SAME PATH: the archive id is keyed by the SOURCE PATH, so this lands on the SAME archive as attempt >= 2, with `scriptChanged:true` and `previousReceipt` pointing at the previous attempt. Pointing mode:\'file\' at the ARCHIVED COPY itself (the `receipt.scriptAbs` path) is a DIFFERENT archive BY DESIGN - a new id, attempt 1, no `previousReceipt`, `scriptChanged:false`: the earlier attempt is never overwritten, but it is NOT "a new attempt of the same archive", and the tool says so via `fileIsArchivedScript` and the `ARCHIVED_SCRIPT_RERUN` warning. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
+export const MATH_ARCHIVE_WORKFLOW_LINE_EN = '- Archive -> edit -> re-run (a RECEIPT is the JSON result of ONE math_computation call - run `probe` or `run` once and the fields below are right there in front of you): for mode:\'code\' the script original is at the receipt\'s scriptPath (Computation/<id>/script.<ext>, **relative to the project root**); member file tools resolve paths against the SESSION CWD, so READ it via the ABSOLUTE `receipt.scriptAbs`, or join `receipt.cwd` with `receipt.scriptPath` (both are in the receipt). To produce evidence for EDITED code, edit the SOURCE FILE you originally ran and re-run mode:\'file\' pointing at THAT SAME PATH: the archive id is keyed by the SOURCE PATH, so this lands on the SAME archive as attempt >= 2, with `scriptChanged:true` (the script content differs from the previous receipt) and `previousReceipt` pointing at the previous attempt. Pointing mode:\'file\' at the ARCHIVED COPY itself (the `receipt.scriptAbs` path) is a DIFFERENT archive BY DESIGN - a new id, attempt 1, no `previousReceipt`, `scriptChanged:false`: the earlier attempt is never overwritten, but it is NOT "a new attempt of the same archive", and the tool says so via `fileIsArchivedScript` and the `ARCHIVED_SCRIPT_RERUN` warning. **An old receipt is NOT evidence for edited code** - cite the receipt whose scriptHash matches the current code; the tool warns explicitly via scriptChanged / scriptChangedDuringRun.'
 
 // Round-6 (A): honesty about SUBSTITUTIONS. An alternative that weakens exactness or conclusion
 // strength must be declared, and the conclusion must never read as if the requested (exact) result
@@ -1468,13 +1468,13 @@ export function mathAvailabilityLine(probe, lang, mathMode) {
   const mode = mathMode || MATH_PARAM_DEFAULTS.mathMode
   const list = (probe && probe.engines ? probe.engines : []).map((e) => e.name + ' ' + (e.version || '?')).join('、')
   if (lang === 'en') {
-    const head = '- math_computation: available ' + (list || '(none)') + '. Probe first, then run'
+    const head = '- math_computation: available engines ' + (list || 'none') + '. Probe first, then run'
       + ' (the tool path leaves a re-runnable receipt - cite it). If a package is missing, say so and offer a fallback or an install plan;'
       + ' installing requires a plan plus confirmation.'
     const shell = mode === 'typed+shell' ? '\n' + MATH_SHELL_RULE_LINE_EN : ''
     return head + shell + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN + '\n' + MATH_RULE_LINES_EN.join('\n')
   }
-  const head = '- math_computation：本机可用 ' + (list || '（无）') + '。需要数值/符号/统计计算时先 probe 再 run'
+  const head = '- math_computation：可用引擎 ' + (list || '无') + '。需要数值/符号/统计计算时先 probe 再 run'
     + '（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。'
   const shell = mode === 'typed+shell' ? '\n' + MATH_SHELL_RULE_LINE : ''
   return head + shell + '\n' + MATH_ARCHIVE_WORKFLOW_LINE + '\n' + MATH_RULE_LINES.join('\n')

@@ -2096,7 +2096,7 @@ export function apply(ctx) {
       // someone who never asked.
       if (m.kind === 'assign') return (m.from === 'office' ? '【所办分派】' : '【院士分派】') + m.text
       if (m.kind === 'nudge') return '【督办 from ' + m.from + '】' + m.text
-      if (m.kind === 'notice') return '【框架提示】' + m.text
+      if (m.kind === 'notice') return '【研究所提示】' + m.text
       return '【研究所·' + m.kind + ' from ' + m.from + '】' + m.text
     }
     // Batch plain chat so a chatty institute cannot cause a wake storm; anything
@@ -4447,7 +4447,7 @@ export function apply(ctx) {
       const expected = Number(args.expected_revision !== undefined ? args.expected_revision : args.expectedRevision)
       if (!Number.isFinite(expected)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'expected_revision is required' }
       if (expected !== task.revision) {
-        // F6 (deep-review 5): this message is routed into Chinese frames (`【框架提示】…`), where a
+        // F6 (deep-review 5): this message is routed into Chinese frames (`【研究所提示】…`), where a
         // raw English diagnostic reads as noise. The CODE stays (`V5_TASK_STALE_REVISION`) and the
         // revision numbers stay, but the sentence is Chinese now for the member reading it.
         return { ok: false, code: 'V5_TASK_STALE_REVISION', message: '任务 ' + id + ' 当前 revision 是 ' + task.revision + '，不是 ' + expected + ' —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）' }

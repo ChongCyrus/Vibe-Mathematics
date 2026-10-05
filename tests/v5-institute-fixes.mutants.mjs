@@ -326,6 +326,30 @@ const FAMILIES = [
     to: 'return { total: all.length, open, closed: all.length, byCategory, byRoute }',
     expect: /\[task-30\] summary counts match the library contents exactly/,
   },
+  {
+    // task-31/P1: the archive→edit→re-run section must SAY what a receipt is at its first mention,
+    // otherwise a member that never produced one can only guess (A/R2: members probed around for it).
+    name: 'task-31: the archive-workflow line drops the receipt background again',
+    editFile: 'math-computation.js',
+    from: '- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:',
+    to: '- 归档→编辑→重跑：mode:',
+    expect: /\[task-31\] P1: (归档→编辑→重跑|成员那一轮真正读到)/,
+  },
+  {
+    // task-31/P3: with no engine the line must not render "本机可用 （无）" (available + none).
+    name: 'task-31: the empty engine table reads "本机可用 （无）" again',
+    editFile: 'math-computation.js',
+    from: "const head = '- math_computation：可用引擎 ' + (list || '无')",
+    to: "const head = '- math_computation：本机可用 ' + (list || '（无）')",
+    expect: /\[task-31\] P3: (空引擎表渲染为|成员提示词里是)/,
+  },
+  {
+    // task-31/P4: agent-facing text must not call the plugin "框架" (ambiguous to an agent: plugin? host?).
+    name: 'task-31: the notice frame calls the plugin 框架 again',
+    from: "if (m.kind === 'notice') return '【研究所提示】' + m.text",
+    to: "if (m.kind === 'notice') return '【框架提示】' + m.text",
+    expect: /\[task-31\] P4: 面向代理文本里不再出现/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

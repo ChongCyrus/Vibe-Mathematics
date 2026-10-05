@@ -19,16 +19,16 @@
 
 ```text
 [新到的消息]
-  【框架提示】task_update 未生效（V5_TASK_STALE_REVISION）：任务 t-1 当前 revision 是 1，不是 99 —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）
+  【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：任务 t-1 当前 revision 是 1，不是 99 —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）
 
 【第 6 轮 —— 常驻研究员 r-1】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -38,6 +38,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 6｜法定票数 m=3｜有表决权者 3 人
@@ -92,9 +98,9 @@
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -104,6 +110,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 10｜法定票数 m=3｜有表决权者 3 人
@@ -162,9 +174,9 @@
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -174,6 +186,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 12｜法定票数 m=3｜有表决权者 3 人
@@ -229,9 +247,9 @@
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -241,6 +259,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 11｜法定票数 m=3｜有表决权者 3 人
@@ -298,9 +322,9 @@
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -310,6 +334,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 9｜法定票数 m=3｜有表决权者 3 人
@@ -544,9 +574,9 @@
 给你的起点方向：统领全所：统筹全局、拆解并分派工作、设定优先级、督导进度。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -556,6 +586,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=1｜有表决权者 1 人
 [在册] acad
@@ -781,9 +817,9 @@
 给你的起点方向：从最基础的定义与已知结论出发，寻找可用的经典工具与已有定理。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -793,6 +829,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
 [在册] acad、r-1
@@ -1014,9 +1056,9 @@
 给你的起点方向：尝试构造反例或极端情形，界定命题的适用范围与边界。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1026,6 +1068,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
@@ -1247,9 +1295,9 @@
 给你的起点方向：把它归约到一个更小、更本质的核心里程，先攻这个核心。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1259,6 +1307,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-3（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 4 人
 [在册] acad、r-1、r-2、r-3
@@ -1460,9 +1514,9 @@
 给你的起点方向：核对文献引理
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1472,6 +1526,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 t-1（临时工）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2、t-1
@@ -1521,9 +1581,9 @@
 给你的起点方向：从最基础的定义与已知结论出发，寻找可用的经典工具与已有定理。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1533,6 +1593,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=1｜有表决权者 1 人
 [在册] r-1
@@ -1585,9 +1651,9 @@
 给你的起点方向：尝试构造反例或极端情形，界定命题的适用范围与边界。
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1597,6 +1663,12 @@
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
 [在册] r-1、r-2
@@ -1654,9 +1726,9 @@ acad：初始见解。
 
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1666,6 +1738,12 @@ acad：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 acad（院士）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
@@ -1727,9 +1805,9 @@ r-1：初始见解。
 
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1739,6 +1817,12 @@ r-1：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
@@ -1796,9 +1880,9 @@ r-2：初始见解。
 
 
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1808,6 +1892,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
 [在册] acad、r-1、r-2
@@ -1859,9 +1949,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1871,6 +1961,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -1927,9 +2023,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -1939,6 +2035,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -1995,9 +2097,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2007,6 +2109,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2063,9 +2171,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2075,6 +2183,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 4｜法定票数 m=3｜有表决权者 3 人
@@ -2131,9 +2245,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2143,6 +2257,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -2195,9 +2315,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2207,6 +2327,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -2259,9 +2385,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2271,6 +2397,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2324,9 +2456,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2336,6 +2468,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -2388,9 +2526,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2400,6 +2538,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -2452,9 +2596,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2464,6 +2608,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2516,9 +2666,9 @@ r-2：初始见解。
 或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。
 如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2528,6 +2678,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=1｜有表决权者 1 人
@@ -2588,9 +2744,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2600,6 +2756,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -2633,9 +2795,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2645,6 +2807,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -2678,9 +2846,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2690,6 +2858,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -2729,9 +2903,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2741,6 +2915,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2780,9 +2960,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2792,6 +2972,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2831,9 +3017,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2843,6 +3029,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -2873,9 +3065,9 @@ r-2：初始见解。
 如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
 一致认为是真时，本所才会停下来。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2885,6 +3077,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
@@ -2946,9 +3144,9 @@ r-2：初始见解。
 如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
 一致认为是真时，本所才会停下来。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -2958,6 +3156,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=2｜有表决权者 2 人
@@ -3014,9 +3218,9 @@ r-2：初始见解。
 作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、
 哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3026,6 +3230,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 2｜法定票数 m=2｜有表决权者 2 人
@@ -3083,9 +3293,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3095,6 +3305,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -3151,9 +3367,9 @@ r-2：初始见解。
 作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、
 哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3163,6 +3379,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -3220,9 +3442,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3232,6 +3454,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -3288,9 +3516,9 @@ r-2：初始见解。
 作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、
 哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3300,6 +3528,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -3357,9 +3591,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3369,6 +3603,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -3425,9 +3665,9 @@ r-2：初始见解。
 作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、
 哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3437,6 +3677,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
@@ -3494,9 +3740,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3506,6 +3752,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -3559,9 +3811,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3571,6 +3823,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 4｜法定票数 m=3｜有表决权者 3 人
@@ -3624,9 +3882,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3636,6 +3894,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 6｜法定票数 m=3｜有表决权者 3 人
@@ -3689,9 +3953,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3701,6 +3965,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 5｜法定票数 m=3｜有表决权者 3 人
@@ -3759,9 +4029,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3771,6 +4041,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 8｜法定票数 m=3｜有表决权者 3 人
@@ -3828,9 +4104,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3840,6 +4116,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人
@@ -3891,16 +4173,16 @@ r-2：初始见解。
 
 ```text
 [新到的消息]
-  【框架提示】verdict 必须是 0-1 的数值；本轮的票未被记录。
+  【研究所提示】verdict 必须是 0-1 的数值；本轮的票未被记录。
 
 【第 2 轮 —— 常驻研究员 r-1】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3910,6 +4192,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -3956,16 +4244,16 @@ r-2：初始见解。
 
 ```text
 [新到的消息]
-  【框架提示】认领失败：没有任务 t-999
+  【研究所提示】认领失败：没有任务 t-999
 
 【第 4 轮 —— 常驻研究员 r-1】
 
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -3975,6 +4263,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 4｜法定票数 m=3｜有表决权者 3 人
@@ -4028,9 +4322,9 @@ r-2：初始见解。
 请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的
 结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4040,6 +4334,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4099,9 +4399,9 @@ r-2：初始见解。
   · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4111,6 +4411,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4191,9 +4497,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4203,6 +4509,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4256,9 +4568,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4268,6 +4580,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 2｜法定票数 m=3｜有表决权者 3 人
@@ -4321,9 +4639,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4333,6 +4651,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4381,9 +4705,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4393,6 +4717,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4441,9 +4771,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4453,6 +4783,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4501,9 +4837,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4513,6 +4849,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4570,9 +4912,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4582,6 +4924,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 acad（院士）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4639,9 +4987,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4651,6 +4999,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4708,9 +5062,9 @@ r-2：初始见解。
 **不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**
 本所宁可留下未定论，也不要一个骗人的结论。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4720,6 +5074,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-2（常驻研究员）｜轮次 1｜法定票数 m=3｜有表决权者 3 人
@@ -4754,9 +5114,9 @@ r-2：初始见解。
   · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。
   · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**这会让后续的验证与证明省掉大量重复工作。
 
-- math_computation：本机可用 （无）。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
+- math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
-- 归档→编辑→重跑：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true` 与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
+- 归档→编辑→重跑（**回执＝一次 math_computation 调用的 JSON 结果**：先 probe 或 run 一次，它有哪些字段就一目了然）：mode:'code' 的脚本原件在回执的 scriptPath（Computation/<id>/script.<ext>，**相对项目根**）；**成员的文件工具是按会话 cwd 解析的**，所以读它要用**绝对路径** `receipt.scriptAbs`，或把 `receipt.cwd` 与 `receipt.scriptPath` 拼起来（回执两个字段都有）。要拿到"改过代码"的证据，请**编辑你最初运行的那个源文件**，再用 mode:'file' 指向**同一个源路径**重跑：归档 id 以**源路径**为键，因此这落在**同一归档**的 **attempt ≥ 2**，并给出 `scriptChanged:true`（脚本内容相对上一份回执变过）与 `previousReceipt`（指向上一次）。**指向归档副本本身**（`receipt.scriptAbs` 那个路径）按设计是**另一份新归档**：新 id、attempt 1、没有 `previousReceipt`、`scriptChanged:false`；旧 attempt 绝不会被覆盖，但它**不是**"同一归档的新 attempt"——工具会用 `fileIsArchivedScript` 与 `ARCHIVED_SCRIPT_RERUN` 警告明确说明。**旧回执对修改后的代码无效**——报告里必须引用与当前代码哈希一致的那份回执；工具会在 scriptChanged / scriptChangedDuringRun 为 true 时显式告警。
 - 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。
 - 复核他人的数值结论时用 op:'receipt'（或 op:'run', mode:'file' 指向同一脚本）重跑，并把回执路径写进报告。
 - 归档即引用：报告里带 Computation/<id>/receipt.json；这是"支撑材料"的用法。
@@ -4766,6 +5126,12 @@ r-2：初始见解。
 
 （**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）
 检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。
+
+【工作经验／流程反馈（鼓励积极记录）】Shared/Feedback/
+· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。
+· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。
+· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。
+· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。
 
 ------------
 [状态] 你是 r-1（常驻研究员）｜轮次 3｜法定票数 m=3｜有表决权者 3 人
