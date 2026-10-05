@@ -238,6 +238,13 @@ const SELF_PROBE_MUTATIONS = [
     to: '',
     expect: 'X4:',
   },
+  {
+    name: 'v5: a drive-letter absolute path is written back into the agent-facing guidance (I9b — reddens before any corpus regeneration)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: 'macOS at `/Library/TeX/texbin`',
+    to: 'macOS at `C:/TeX/texbin`',
+    expect: 'v5 I9b:',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -597,6 +604,37 @@ for (const P of PRESETS) {
   check(!/[A-Za-z]:[\\/]/.test(corpus), P.tag + ' I9: corpus leaks no absolute path')
   check(!/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(corpus), P.tag + ' I9: corpus carries no timestamp (deterministic)')
   check(!/vibe-v[0-9]-[a-z]+-[A-Za-z0-9]{4,}/.test(corpus), P.tag + ' I9: corpus leaks no temp-dir name')
+
+  // I9b (task-29 follow-up) — the SOURCE-LEVEL early warning that I9 lacks: a drive-letter absolute path
+  // written into AGENT-FACING text must redden HERE, immediately, not only after the corpus is
+  // regenerated (I9 is the later, mirror-level net). It reads the comment-blanked `code` stream, so a
+  // comment may still quote a real host path as evidence (task-28's `D:\texlive\2025\...` line, and v5's
+  // task-17 `Z:/no/such/xelatex.exe` comment): "assertions read code, not comments".
+  // CRITERION — I9's `[A-Za-z]:[\\/]` is a CORPUS-level test (the corpus holds DECODED text). Applied to
+  // SOURCE it false-positives on every escape sequence that merely looks like `<letter>:\`
+  // (`'…:\n'`, `/…limit:\s*/`; measured on this tree: 24 / 27 / 15 / 11 such lines in v2/v3/v4/v5). The
+  // source SPELLING of the same path is `D:/…` or `D:\\…`, so the equivalent criterion is
+  // `/[A-Za-z]:(?:\/|\\\\)/` — a bare `:\n` escape never matches it.
+  // EXCLUSIONS (documented, auditable; PURE CODE constructs that never reach a prompt):
+  //   1. `TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']` — the candidate-root list the detector
+  //      walks; resolveKnownTool reads it, nothing concatenates it into agent text.
+  //   2. resolveKnownTool's PATH-fallback defaults `'C:/Users/Default'`, `'C:/Program Files'`,
+  //      `'C:/Program Files (x86)'` — used only when the host env vars are absent.
+  // Where they live today: v2 L136/146/148/149 · v3 L169/179/181/182 · v4 L57/67/69/70 · v5 L67/77/79/80.
+  // The anti-vacuity check re-derives them on every run, so a refactor that drops them is CAUGHT instead
+  // of silently widening the exclusion.
+  {
+    const DRIVE_ABS = /[A-Za-z]:(?:\/|\\\\)/
+    const CODE_ONLY = /TEX_DRIVE_YEAR_ROOTS|env\.ProgramFiles|ProgramFiles\(x86\)|env\.USERPROFILE/
+    const flagged = [], excluded = []
+    code.split(/\r?\n/).forEach((l, i) => { if (DRIVE_ABS.test(l)) (CODE_ONLY.test(l) ? excluded : flagged).push(i + 1) })
+    check(flagged.length === 0,
+      P.tag + ' I9b: no drive-letter absolute path in agent-facing text (guidance, warnings, tool/param descriptions)',
+      flagged.length ? 'lines ' + JSON.stringify(flagged) + ' — ' + JSON.stringify(code.split(/\r?\n/)[flagged[0] - 1].trim().slice(0, 120)) : '')
+    check(excluded.length >= 3,
+      P.tag + ' I9b: the documented code-only exclusions are still present (the guard is not vacuous)',
+      'excluded lines ' + JSON.stringify(excluded))
+  }
 
   // I10 — the prompt-rule probes exist for this preset (a guard nobody can prove is a guard nobody has).
   const probeSrc = read('tests/audit-formal-sensitivity.mjs') || ''
