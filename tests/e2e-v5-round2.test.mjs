@@ -1776,9 +1776,9 @@ console.log('\n[35] async Lean: enqueue returns at once, settle(ok) is the only 
     'the proof is archived under Verified/Lean/<id>.lean')
   const argv = fake.calls[0].argv
   const root = join(h.WS, 'VibeMath').replace(/\\/g, '/')
-  const si = argv.indexOf('--search-path')
+  const si = argv.indexOf('-R')
   assert(si > 0 && argv[si + 1] === root && si + 2 === argv.length - 1 && /\.lean$/.test(argv[argv.length - 1]),
-    '★ argv carries `--search-path <ABSOLUTE VibeMath root>` right before the file (' + JSON.stringify(argv) + ')')
+    '★ argv carries `-R <ABSOLUTE VibeMath root>` (Lean 4 root; the Lean-3 --search-path made lean fail at parsing) right before the file (' + JSON.stringify(argv) + ')')
   assert(fake.calls.length === 1, 'exactly one compile ran for the settle (got ' + fake.calls.length + ')')
 }
 
@@ -2589,6 +2589,24 @@ console.log('\n[53] v5 L1 leanPathContractOk: the queued note reaches report() d
   const v4src = readFileSync(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url), 'utf8')
   assert(v4src.includes('；未投 true：'),
     '★ [real1004-visibility] v4 names the residents that did not vote solved=true (no silent "no unanimous vote")')
+}
+// task-27 (real-host A round + local reproduction): Lean 4 accepts -R/--root (or LEAN_PATH); the Lean-3 spelling
+// `--search-path` makes `lean` fail at ARGUMENT PARSING (rc=1) before it ever reads the file — every compile failed.
+{
+  const src27 = readFileSync(PLUGIN, 'utf8')
+  assert(src27.includes("const LEAN_SEARCH_PATH_FLAG = '-R'"),
+    '★ [real1004-lean-flag] the injected Lean search root uses -R (Lean 4), not the Lean-3 --search-path')
+  assert(!src27.includes('--search-path <VibeMath root>') && !/registerTool\(\s*'[^']+'\s*,\s*'[^']*--search-path/.test(src27),
+    '★ [real1004-lean-flag] no agent-facing tool description still teaches --search-path')
+}
+// Iron-rules P4: the LaTeX-missing block was pushed into EVERY wake (founding/verify/meeting included) with no
+// statement of when it applies, so an agent that has nothing to do with the paper met unexplained noise.
+{
+  const srcP4 = readFileSync(PLUGIN, 'utf8')
+  assert(srcP4.includes('仅在你参与论文写作或编译时适用'),
+    '★ [real1004-prompt-scope] the LaTeX block says WHEN it applies instead of appearing as unexplained noise')
+  assert(/function paperPushLine\(L\)[\s\S]{0,600}仅在你参与论文写作或编译时适用/.test(srcP4),
+    '★ [real1004-prompt-scope] the scope note is what the shared tail actually pushes (not a dangling sentence)')
 }
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)

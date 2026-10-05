@@ -630,6 +630,15 @@ section('G3 a paper whose REQUIRED artifact was not written is FAILED, never don
   assert(v4src.includes('（本轮结束块未含 input/summary：框架按空发言记录') && !v4src.includes("{input:parsed.input||parsed.summary||'',voteSolved:"),
     '★ [real1004-minutes] a meeting speech missing from the end block is recorded with a NAMED placeholder, never as a silent empty body')
 }
+// task-27: the same Lean-4 flag correction as v5 — the injected search root must be `-R`, and no agent-facing
+// tool description may still teach the Lean-3 `--search-path` (which makes `lean` fail at argument parsing).
+{
+  const v4s = readFileSync(PLUGIN, 'utf8')
+  assert(v4s.includes("const LEAN_SEARCH_PATH_FLAG = '-R'"),
+    '★ [real1004-lean-flag] v4 injects -R (Lean 4 root), not the Lean-3 --search-path')
+  assert(!v4s.includes('--search-path <VibeMath root>') && !/registerTool\(\s*'[^']+'\s*,\s*'[^']*--search-path/.test(v4s),
+    '★ [real1004-lean-flag] no v4 tool description still teaches --search-path')
+}
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f) }
 if (failed) process.exit(1)

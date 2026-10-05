@@ -279,6 +279,21 @@ const FAMILIES = [
     to: 'return { ok: true, voted: memberId, verdict: p, allVoted }',
     expect: /\[real1004-visibility\] an incomplete electorate NAMES the missing voters/,
   },
+  {
+    // task-27: the injected Lean search root must stay on Lean 4's -R (the Lean-3 spelling fails argument parsing).
+    name: 'real1004-lean-flag: the injected search root falls back to the Lean-3 --search-path',
+    from: "const LEAN_SEARCH_PATH_FLAG = '-R'",
+    to: "const LEAN_SEARCH_PATH_FLAG = '--search-path'",
+    expect: /\[real1004-lean-flag\] the injected Lean search root uses -R/,
+  },
+  {
+    // Iron-rules P4: the shared LaTeX tail must say when it applies (otherwise it is unexplained noise in
+    // founding/verify/meeting wakes).
+    name: 'real1004-prompt-scope: the LaTeX tail loses its scope note again',
+    from: "if (b) L.push('\\n（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）' + b)",
+    to: 'if (b) L.push(b)',
+    expect: /\[real1004-prompt-scope\] the LaTeX block says WHEN it applies/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }

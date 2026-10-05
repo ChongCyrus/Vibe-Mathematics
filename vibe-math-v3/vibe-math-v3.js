@@ -62,7 +62,7 @@ const LEAN_INITIATIVE_MODES = ['off', 'normal', 'eager']
     { name: 'leanAsync', type: 'boolean', description: 'Lean 编译模式：true（默认）= 后台队列，vibe_math_lean_run / vibe_math_lean_archive{run:true} 立即返回 async.jobId 入队，成员不阻塞，结果由下一轮提示的【形式化结果】行与 vibe_math_lean_job 公告（**只有作业落地为 ok 才会置 passed 并写归档证明**）；false = 完全同步 await（与旧行为逐字一致）', suggestion: true },
     { name: 'leanJobsMaxParallel', type: 'integer', description: '后台 Lean 编译的并发上限（默认 1 = 串行，保持可预测的资源占用；调大可并行编译多个作业）', suggestion: 1 },
     { name: 'leanInitiative', type: 'enum', options: ['off', 'normal', 'eager'], description: '日常流程中的形式化主动性：off（不主动，只在验证提示词按 formalVerify 的要求做）| normal（默认：顺手把有价值且可能复用的东西形式化）| eager（更主动：日常就主动把有价值的小引理/命题/定义形式化）。注意它与 formalVerify（验证时的要求强度：off|encourage|require）是**两件事**', suggestion: 'normal' },
-    { name: 'leanSearchPaths', type: 'string[]', description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 --search-path/-R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
+    { name: 'leanSearchPaths', type: 'string[]', description: '额外 Lean 搜索路径（默认空数组 = 只用框架自动注入的 VibeMath 根）。非空时按顺序先注入这里给的路径、再注入自动根（去重）；若 leanArgs 里已显式给了 -R/--root，则完全尊重用户配置、不注入任何东西', suggestion: [] },
     { name: 'finalPaper', type: 'boolean', description: '收口（checkTermination 的完整收口分支：无未解决问题、无待验证对象、无任务/计划/门）时自动撰写最终论文：派遣一名专职「论文撰写」子代理，把已定论命题/解法/方法整理成 Paper/<项目>/{paper.md,paper.tex,paper.meta.json,paper.log.md}。false = 只关自动触发，/vibe paper 手动命令仍可用', suggestion: true },
     { name: 'paperFormat', type: 'enum', options: ['both', 'md', 'tex'], description: '论文产出格式：both = markdown + latex；md = 只写 paper.md（跳过编译）；tex = 只写 paper.tex（tex 才会尝试编译 pdf）', suggestion: 'both' },
     { name: 'paperLanguage', type: 'enum', options: ['zh', 'en'], description: '论文语言：zh = 中文（LaTeX 用 ctexart，引擎优先 xelatex）；en = 英文（article，引擎优先 pdflatex/latexmk）', suggestion: 'zh' },
@@ -4514,7 +4514,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
       PAPER_SKELETON.map(function (s, i) { return '    ' + (i + 1) + '. ' + s.key + ' — ' + s.spec }).join('\n') + '\n' +
       '- A section with no evidence must be exactly 「' + PAPER_NO_EVIDENCE + '」 (do not pad it).\n' +
       '- Markdown subset only: `#`/`##`/`###`, `- ` lists, `**bold**`, `*em*`, `` `code` ``, and inline math as `$...$`. No tables, images, footnotes or raw HTML.\n\n' +
-      'LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, ask the user once (installing TeX requires the user\'s explicit approval); (4) with no answer, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.\n\n' +
+      'LATEX-MISSING GUIDANCE: When no LaTeX engine is detected: (1) probe only the documented common TeX roots and PATH (e.g. where xelatex, latexmk --version) - never scan whole drives; (2) once the absolute path is found, write it into paperLatexCommand, re-detect, then continue; (3) if it is still missing, REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user (installing TeX requires the user\'s explicit approval); (4) with no answer yet, degrade exactly as today (deliver paper.tex and paper.md only). Hard boundaries: never auto-install; never write outside the workspace; never treat "not detected" as a failure.\n\n' +
       'OUTPUT CONTRACT — respond with ONLY one ```json code fence, no prose:\n' +
       '{"title":"<paper title>","abstract":"<original problem + main results>","sections":[{"name":"<one of the 9 headings>","body":"<markdown>"}, ...]}\n\n' +
       'MATERIAL (evidence only — do not add anything beyond it):\n' + digest
@@ -5816,13 +5816,20 @@ function paperTitleFromMd(md) {
   return m ? m[1].trim() : ''
 }
 
-/** 搜索路径 flag：收敛成一个常量（不同 Lean 版本拼写可能不同，改这里即可，接口不变）。 */
-const LEAN_SEARCH_PATH_FLAG = '--search-path'
-/** 用户已显式给出搜索路径就不再注入（显式覆盖优先）。 */
+/** 搜索路径 flag：收敛成一个常量（不同 Lean 版本拼写可能不同，改这里即可，接口不变）。
+ *  task-27（真机 A 轮 + 本机复现）：Lean 4 只认 `-R`/`--root`（或 LEAN_PATH）；`--search-path` 是 **Lean 3**
+ *  的拼写，会让 `lean` 在**参数解析阶段**就失败（rc=1），文件根本读不到——默认每次编译都失败。
+ *  本机在 Lean 4.34.0 上复现：`lean --search-path <dir> <f>` ⇒ rc=1；`lean -R <dir> <f>` ⇒ 通过（随后正常读文件）。 */
+const LEAN_SEARCH_PATH_FLAG = '-R'
+/** 用户已显式给出搜索路径就不再注入（显式覆盖优先）。
+ *  task-27：我们注入的是 `-R`（Lean 4）；用户在 leanArgs 里给出旧拼写（Lean 3 的 `--search-path`）或 `--root`
+ *  也算已声明——本守卫的唯一职责是“绝不注入第二个搜索根”。 */
 function hasLeanSearchFlag(args) {
+  const ALSO_ACCEPTED = ['--search-path', '--root']
   return (Array.isArray(args) ? args : []).some(function (a) {
     const s = String(a)
-    return s === LEAN_SEARCH_PATH_FLAG || s.indexOf(LEAN_SEARCH_PATH_FLAG + '=') === 0 || s === '-R' || s === '--root'
+    return s === LEAN_SEARCH_PATH_FLAG || s.indexOf(LEAN_SEARCH_PATH_FLAG + '=') === 0 ||
+      ALSO_ACCEPTED.some(function (f) { return s === f || s.indexOf(f + '=') === 0 })
   })
 }
 /**
@@ -5954,7 +5961,7 @@ const TOOL_DESC = {
   vibe_math_set_mode: 'Switch between manual and auto (preset) mode. Switching to auto auto-resolves any pending manual decisions.',
   // set_params 的 schema 现在也收 mode（M10）：同一能力既有专用工具 vibe_math_set_mode，也可用这个键；
   // 两条注册路径共用这一份描述，`--self-probe` 会证明漂移能被抓到。
-  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 --search-path <VibeMath 根>，用户已显式给出就不注入；leanSearchPaths 可附加额外搜索路径，先注入它们再注入自动根）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）；leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。',
+  vibe_math_set_params: 'Update scheduler parameters (partial). Lean 形式化验证：formalVerify = off（默认，不额外要求）| encourage（按实现难度自行决定是否形式化；一旦 Lean 通过，验证转为对 Lean 陈述的「忠实性审查」）| require（同上，且加门禁：对象未达到 Lean 已通过或已记录显式阻塞原因之前，真/假裁定记为未定论、原因 formal-required，并进入 Formal/TODO.md）；leanCommand/leanArgs/leanTimeoutMs 控制 Lean 工具链的调用方式（框架会在用户 leanArgs 之后、文件名之前自动追加 -R <VibeMath 根>，用户已显式给出就不注入；leanSearchPaths 可附加额外搜索路径，先注入它们再注入自动根）；leanAsync = true（默认，后台队列：入队即返回，只有作业落地 ok 才置 passed 并写归档证明）| false（同步 await 的旧语义）；leanJobsMaxParallel = 后台编译并发上限（默认 1 = 串行）；leanInitiative = off|normal|eager 控制**日常的**形式化主动性（与 formalVerify 的验证要求强度是两件事）。最终论文：finalPaper（默认 true；收口时自动派遣一名「论文撰写」子代理）/ paperFormat = both|md|tex / paperLanguage = zh|en / paperCompilePdf（检测到 LaTeX 时编译 paper.pdf）/ paperLatexCommand（指定引擎，空 = 自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic），产物在 Paper/<项目>/。数学计算（工具 math_computation，回执落在 Computation/<id>/）：mathComputation = off|auto|on（默认 auto；off 时提示词零提及）· mathMode = typed|typed+shell（默认 typed+shell；typed 时提示词不含 shell 兜底段且 cli 返回 REFUSED{reason:policy}）· mathEngines = 允许的引擎列表（默认含 cli，cli 默认开启）· mathTimeoutMs（默认 60000，最小 1000；到时主动 terminate）· mathPackages（需预检的包，缺包只报告+给安装计划）· mathInstallScope = user|system（默认 user；system 只对当次显式调用生效、永不记忆）。',
   vibe_math_setup: 'Return the interactive parameter schema for guided configuration.',
   vibe_math_save_settings: 'Write the current params to vibe_math_setting.json (JSON with comments) as new defaults.',
   vibe_math_template: 'Create a fresh vibe_math_setting.json template (with defaults + comments) in the workspace (global) or current project folder.',

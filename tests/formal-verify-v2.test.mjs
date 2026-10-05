@@ -1362,9 +1362,10 @@ section('15d Lean 增量 + 异步（spec §1–§4 + 修订 §1–§5）：参�
   assert(JSON.stringify(planDefault.paths) === JSON.stringify(['/root/vm']) && planDefault.inject.length === 2, '★ default plan injects exactly the automatic VibeMath root')
   const planExtra = H.leanSearchPathPlan(['env', 'lean'], ['/a', '/b'], '/root/vm')
   assert(JSON.stringify(planExtra.paths) === JSON.stringify(['/a', '/b', '/root/vm']), '★★ user leanSearchPaths come FIRST, then the automatic root')
-  assert(JSON.stringify(planExtra.inject) === JSON.stringify(['--search-path', '/a', '--search-path', '/b', '--search-path', '/root/vm']), 'and each path is injected with its own --search-path flag')
-  assert(H.leanSearchPathPlan(['--search-path', '/x'], ['/a'], '/root/vm').inject.length === 0, '★ an explicit --search-path in leanArgs suppresses all injection (user wins)')
+  assert(JSON.stringify(planExtra.inject) === JSON.stringify(['-R', '/a', '-R', '/b', '-R', '/root/vm']), 'and each path is injected with its own -R (Lean 4) flag')
+  assert(H.leanSearchPathPlan(['--search-path', '/x'], ['/a'], '/root/vm').inject.length === 0, '★ an explicit legacy Lean-3 --search-path in leanArgs suppresses all injection (user wins)')
   assert(H.leanSearchPathPlan(['-R', '/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--root', '/x'], ['/a'], '/root/vm').inject.length === 0, '★ -R / --root are honoured too')
+  assert(H.leanSearchPathPlan(['-R=/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--search-path=/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--root=/x'], ['/a'], '/root/vm').inject.length === 0, '★ the = forms of -R / legacy --search-path / --root are honoured too')
 
   // ── argv：注入位置在用户参数之后、文件名之前 ──────────────────────────────────────
   const b = await makeCase('lean-argv')
@@ -1377,15 +1378,15 @@ section('15d Lean 增量 + 异步（spec §1–§4 + 修订 §1–§5）：参�
   const argv1 = leanRuns[leanRuns.length - 1].argv
   assert(leanRuns.length === runsBefore + 1, 'the sync run really reached the compiler')
   assert(JSON.stringify(argv1.slice(0, 2)) === JSON.stringify(['lean', 'env']), 'the user leanArgs are preserved in order')
-  assert(argv1[argv1.length - 2] === '--search-path' && SAME(argv1[argv1.length - 1], vibeRoot(b)), '★★ --search-path + the VibeMath root are injected AFTER the user args and immediately BEFORE the file (argv=' + JSON.stringify(argv1) + ')')
+  assert(argv1[argv1.length - 2] === '-R' && SAME(argv1[argv1.length - 1], vibeRoot(b)), '★★ -R + the VibeMath root are injected AFTER the user args and immediately BEFORE the file (argv=' + JSON.stringify(argv1) + ')')
   await b.call('vibe_math_set_params', { leanArgs: ['env', 'lean', '--search-path', '/explicit'] })
   await b.call('vibe_math_lean_run', { file: 'Formal/srch.lean' })
   const argv2 = leanRuns[leanRuns.length - 1].argv
-  assert(argv2.indexOf('--search-path') === 3 && argv2[4] === '/explicit' && argv2.filter((x) => x === '--search-path').length === 1, '★ an explicit --search-path is respected verbatim (no second injection) — got ' + JSON.stringify(argv2))
+  assert(argv2.indexOf('--search-path') === 3 && argv2[4] === '/explicit' && argv2.filter((x) => x === '--search-path').length === 1 && argv2.indexOf('-R') === -1, '★ an explicit legacy --search-path is respected verbatim: nothing is injected (no -R) — got ' + JSON.stringify(argv2))
   await b.call('vibe_math_set_params', { leanArgs: ['env', 'lean'], leanSearchPaths: ['/extra1', '/extra2'] })
   await b.call('vibe_math_lean_run', { file: 'Formal/srch.lean' })
   const argv3 = leanRuns[leanRuns.length - 1].argv
-  assert(JSON.stringify(argv3.slice(-6)) === JSON.stringify(['--search-path', '/extra1', '--search-path', '/extra2', '--search-path', slash(vibeRoot(b))]), '★★ leanSearchPaths are injected first, then the automatic root (got ' + JSON.stringify(argv3.slice(-6)) + ')')
+  assert(JSON.stringify(argv3.slice(-6)) === JSON.stringify(['-R', '/extra1', '-R', '/extra2', '-R', slash(vibeRoot(b))]), '★★ leanSearchPaths are injected first, then the automatic root (got ' + JSON.stringify(argv3.slice(-6)) + ')')
 
   // ── 异步状态机：入队立即返回 → 心跳排空 → 只有 settled(ok) 才是通过 ────────────────
   const c = await makeCase('lean-async')

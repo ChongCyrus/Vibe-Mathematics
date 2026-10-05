@@ -110,6 +110,13 @@ const FAMILIES = [
     to: "''",
     expect: /\[real1004-minutes\] a meeting speech missing from the end block is recorded with a NAMED placeholder/,
   },
+  {
+    // task-27: v4 must inject Lean 4's -R, not the Lean-3 --search-path.
+    name: 'real1004-lean-flag: v4 falls back to the Lean-3 --search-path',
+    from: "const LEAN_SEARCH_PATH_FLAG = '-R'",
+    to: "const LEAN_SEARCH_PATH_FLAG = '--search-path'",
+    expect: /\[real1004-lean-flag\] v4 injects -R/,
+  },
 ]
 let red = 0
 for (const f of FAMILIES) { const t0 = Date.now(); const ok = runFamily(f); const ms = Date.now() - t0; if (ok) red++ }

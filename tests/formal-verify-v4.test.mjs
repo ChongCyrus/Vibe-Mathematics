@@ -1507,14 +1507,14 @@ section('22 leanSearchPaths/leanJobsMaxParallel/leanInitiative + build-context j
   writeIn(N, 'Projects/default/Formal/a-sp.lean', 'theorem a_sp : True := by trivial\n')
   await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
   let last = leanRuns[leanRuns.length - 1]
-  const spIdx = last.argv.indexOf('--search-path')
-  assert(last.argv.filter(a => a === '--search-path').length === 3, '★ one --search-path per DISTINCT root (user paths first, then the automatic VibeMath root)')
+  const spIdx = last.argv.indexOf('-R')
+  assert(last.argv.filter(a => a === '-R').length === 3, '★ one -R (Lean 4 root) per DISTINCT root (user paths first, then the automatic VibeMath root)')
   assert(last.argv[spIdx + 1] === '/extra/one' && last.argv[spIdx + 3] === '/extra/two' && last.argv[spIdx + 5] === N.vibeRoot.replace(/\\/g, '/'), '★ order + de-duplication: user paths in order, automatic root last')
-  assert(last.argv.indexOf('--search-path') < last.argv.length - 1 && /\.lean$/.test(String(last.argv[last.argv.length - 1])), 'the roots stay BEFORE the file name')
+  assert(last.argv.indexOf('-R') < last.argv.length - 1 && /\.lean$/.test(String(last.argv[last.argv.length - 1])), 'the roots stay BEFORE the file name')
   await N.callTool('vibe_v4_set', { leanArgs: ['--search-path', '/user/own'] })
   await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
   last = leanRuns[leanRuns.length - 1]
-  assert(last.argv.filter(a => a === '--search-path').length === 1 && last.argv[last.argv.indexOf('--search-path') + 1] === '/user/own', '★ an explicit --search-path in leanArgs wins outright: nothing is injected')
+  assert(last.argv.filter(a => a === '--search-path').length === 1 && last.argv[last.argv.indexOf('--search-path') + 1] === '/user/own' && last.argv.indexOf('-R') === -1, '★ an explicit legacy --search-path in leanArgs wins outright: nothing is injected (no -R)')
   await N.callTool('vibe_v4_set', { leanArgs: ['-R', '/user/root'] })
   await N.callTool('vibe_v4_lean_run', { file: 'Formal/a-sp.lean' }, N.resAgent(N.childOf('r-1')))
   assert(leanRuns[leanRuns.length - 1].argv.indexOf('--search-path') === -1, '★ -R/--root count as a user-stated root too')

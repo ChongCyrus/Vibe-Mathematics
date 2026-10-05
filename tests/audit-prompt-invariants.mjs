@@ -20,6 +20,8 @@
  *   I13 the Lean switch unreachable THROUGH the closed tool schema (v3 2.3.1: all four params
  *       missing from vibe_math_set_params, invisible to every suite because suites call handlers)
  *   I14 a parameter the tool schema advertises but the parameter layer silently drops
+ *   I15 the LaTeX-missing guidance drifting between presets (four steps + three hard boundaries)
+ *   I16 a member prompt demanding an action the member CANNOT perform (direct user contact)
  *
  * Run: node tests/audit-prompt-invariants.mjs        (add --json for a machine-readable report)
  *      node tests/audit-prompt-invariants.mjs --self-probe
@@ -128,6 +130,20 @@ const SELF_PROBE_MUTATIONS = [
     from: ', re-detect, then continue',
     to: ', then continue',
     expect: 'v2 I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries',
+  },
+  {
+    name: 'v5: the member prompt sends the TeX approval back to the USER instead of the OFFICE (I16)',
+    rel: 'vibe-math-v5/vibe-math-v5.js',
+    from: '如实上报所办（或群聊）**，由**所办**向用户确认',
+    to: '向用户问一次',
+    expect: 'v5 I16: a member-visible prompt never demands an action the member cannot perform',
+  },
+  {
+    name: 'v3: the member prompt sends the TeX approval back to the USER instead of the OFFICE (I16)',
+    rel: 'vibe-math-v3/vibe-math-v3.js',
+    from: 'REPORT IT TO THE OFFICE (or the group chat) and let the OFFICE confirm with the user',
+    to: 'ask the user once',
+    expect: 'v3 I16: a member-visible prompt never demands an action the member cannot perform',
   },
 ]
 
@@ -352,13 +368,24 @@ for (const P of PRESETS) {
   // redden: requiring "either language" would have made the zh mutations no-ops once both exist).
   const I15_LANG = { v4: 'zh', v5: 'zh', v3: 'en', v2: 'en' }
   const I15_MARKERS = {
-    zh: ['检测不到 LaTeX 引擎时', '有界核查', '不要全盘扫描', '并重新检测', '向用户问一次', '照旧降级', '绝不自动安装', '绝不写工作区之外', '当失败'],
-    en: ['When no LaTeX engine is detected', 'never scan whole drives', 're-detect', 'ask the user once', 'degrade exactly as today', 'never auto-install', 'never write outside the workspace'],
+    zh: ['检测不到 LaTeX 引擎时', '有界核查', '不要全盘扫描', '并重新检测', '如实上报所办', '照旧降级', '绝不自动安装', '绝不写工作区之外', '当失败'],
+    en: ['When no LaTeX engine is detected', 'never scan whole drives', 're-detect', 'REPORT IT TO THE OFFICE', 'degrade exactly as today', 'never auto-install', 'never write outside the workspace'],
   }
   if (I15_LANG[P.tag]) {
     check(I15_MARKERS[I15_LANG[P.tag]].every((s) => js.includes(s)),
       P.tag + ' I15: the LaTeX-missing guidance carries the four steps + the three hard boundaries')
   }
+
+  // I16 — a MEMBER-VISIBLE prompt must never demand an action the member cannot perform. A member's
+  // only channels are its own tools (the group chat / private messages): it cannot reach the user
+  // directly, so the TeX-install approval must be REPORTED to the OFFICE, which DOES own that channel.
+  // Reads the CODE stream (a comment may legitimately quote the old wording as history) and requires
+  // the reworded clause POSITIVELY, so putting the old instruction back reddens this invariant BY NAME
+  // (two self-probe mutations below: the zh clause on v5 and the en clause on v3).
+  check(!code.includes('向用户问一次') && !code.includes('ask the user once'),
+    P.tag + ' I16: a member-visible prompt never demands an action the member cannot perform (no direct user contact)')
+  check(code.includes('如实上报所办') || code.includes('let the OFFICE confirm with the user'),
+    P.tag + ' I16: the TeX-approval clause routes the confirmation through the OFFICE (the party that can reach the user)')
 
   // I3 — the defect rule is in the injected text.
   check(js.includes('不要投 0'), P.tag + ' I3: injected text forbids a 0 vote on a defect')

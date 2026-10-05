@@ -564,7 +564,7 @@ writeFileSync(join(toolProj, 'Formal', 'hang.lean'), '-- HANG\ntheorem t : 1 = 1
   assert(/ok/.test(runGood.stdout), 'the compiler stdout is returned')
   const last = leanRuns[leanRuns.length - 1]
   assert(last.cwd.replace(/\\/g, '/') === toolProj.replace(/\\/g, '/'), 'the toolchain runs with the PROJECT root as cwd')
-  assert(last.argv.join(' ') === 'lean --search-path ' + VIBE.replace(/\\/g, '/'), 'by default the argv is the executable + the injected search path (got ' + last.argv.join(' ') + ')')
+  assert(last.argv.join(' ') === 'lean -R ' + VIBE.replace(/\\/g, '/'), 'by default the argv is the executable + the injected -R (Lean 4) search root (got ' + last.argv.join(' ') + ')')
   assert(last.graceMs === 120000, 'the default leanTimeoutMs is passed down as graceMs (' + last.graceMs + ')')
 }
 {
@@ -645,7 +645,7 @@ try {
   await callTool('vibe_math_set_params', { leanCommand: 'lake', leanArgs: ['env', 'lean'] }, RE)
   const runLake = await callTool('vibe_math_lean_run', { file: 'Formal/good.lean' }, RE)
   assert(runLake.ok === true, 'lake env lean works through leanCommand/leanArgs')
-  assert(leanRuns[leanRuns.length - 1].argv.join(' ') === 'lake env lean --search-path ' + VIBE.replace(/\\/g, '/'), 'the argv is [exe, ...leanArgs, injected --search-path] (got ' + leanRuns[leanRuns.length - 1].argv.join(' ') + ')')
+  assert(leanRuns[leanRuns.length - 1].argv.join(' ') === 'lake env lean -R ' + VIBE.replace(/\\/g, '/'), 'the argv is [exe, ...leanArgs, injected -R (Lean 4)] (got ' + leanRuns[leanRuns.length - 1].argv.join(' ') + ')')
   await callTool('vibe_math_set_params', { leanCommand: 'lean', leanArgs: [] }, RE)
 }
 
@@ -1324,6 +1324,7 @@ section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性
   const planExtra = H.leanSearchPathPlan(['env', 'lean'], ['/a', '/b'], '/root/vm')
   assert(JSON.stringify(planExtra.paths) === JSON.stringify(['/a', '/b', '/root/vm']), '★★ user leanSearchPaths come FIRST, then the automatic root')
   assert(H.leanSearchPathPlan(['--search-path', '/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['-R', '/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--root', '/x'], ['/a'], '/root/vm').inject.length === 0, '★ an explicit --search-path/-R/--root in leanArgs suppresses all injection (user wins)')
+  assert(H.leanSearchPathPlan(['-R=/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--search-path=/x'], ['/a'], '/root/vm').inject.length === 0 && H.leanSearchPathPlan(['--root=/x'], ['/a'], '/root/vm').inject.length === 0, '★ the = forms of -R / legacy --search-path / --root are honoured too')
   const ctxA = H.leanBuildContext('lean', ['a'], ['/p'])
   const ctxB = H.leanBuildContext('lean', ['b'], ['/p'])
   assert(H.leanJobFingerprint('x\n', ctxA) !== H.leanJobFingerprint('x\n', ctxB), '★ the job fingerprint covers the build context (engine/args/search paths)')
@@ -1339,15 +1340,15 @@ section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性
   await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
   const argv1 = leanRuns[leanRuns.length - 1].argv
   assert(leanRuns.length === runs0 + 1 && JSON.stringify(argv1.slice(0, 3)) === JSON.stringify(['lake', 'env', 'lean']), 'the user leanArgs are preserved in order (lake env lean)')
-  assert(argv1[argv1.length - 2] === '--search-path' && SAME(argv1[argv1.length - 1], VIBE), '★★ --search-path + the VibeMath root are injected AFTER the user args and immediately BEFORE the file (' + JSON.stringify(argv1) + ')')
+  assert(argv1[argv1.length - 2] === '-R' && SAME(argv1[argv1.length - 1], VIBE), '★★ -R + the VibeMath root are injected AFTER the user args and immediately BEFORE the file (' + JSON.stringify(argv1) + ')')
   await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean', '--search-path', '/explicit'] }, ra)
   await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
   const argv2 = leanRuns[leanRuns.length - 1].argv
-  assert(argv2.filter((x) => x === '--search-path').length === 1 && argv2[4] === '/explicit', '★ an explicit --search-path is respected verbatim (no second injection) — got ' + JSON.stringify(argv2))
+  assert(argv2.filter((x) => x === '--search-path').length === 1 && argv2[4] === '/explicit' && argv2.indexOf('-R') === -1, '★ an explicit legacy --search-path is respected verbatim: nothing is injected (no -R) — got ' + JSON.stringify(argv2))
   await callTool('vibe_math_set_params', { leanArgs: ['env', 'lean'], leanSearchPaths: ['/extra1', '/extra2'] }, ra)
   await callTool('vibe_math_lean_run', { file: 'Formal/srch.lean' }, ra)
   const argv3 = leanRuns[leanRuns.length - 1].argv
-  assert(JSON.stringify(argv3.slice(-6)) === JSON.stringify(['--search-path', '/extra1', '--search-path', '/extra2', '--search-path', slash(VIBE)]), '★★ leanSearchPaths are injected first, then the automatic root (got ' + JSON.stringify(argv3.slice(-6)) + ')')
+  assert(JSON.stringify(argv3.slice(-6)) === JSON.stringify(['-R', '/extra1', '-R', '/extra2', '-R', slash(VIBE)]), '★★ leanSearchPaths are injected first, then the automatic root (got ' + JSON.stringify(argv3.slice(-6)) + ')')
 
   // ── 异步状态机：入队立即返回 → 心跳排空 → 只有 settled(ok) 才是通过 ───────────────
   const rq = makeRoot()
