@@ -10,7 +10,7 @@
 
 - **规范名唯一**：命令一律 `meeting_*` + `snake_case`；参数一律 `snake_case`。
 - **旧名仅文档别名**：A 稿的裸动词名（如 `convene`、`invite_speech`）与 B 稿建议名仅用于对照，**不注册第二套工具**。
-- **表列义**：`★`＝用户点名；`内容`＝是否必须携带正文或结构化内容；`回执`＝成功返回的关键字段（`ok:true` 之外）；`状态影响`＝对会议阶段/实体的可观察变化；`权限`＝无临时授权时的默认；`可授`＝可临时授予的对象；`实现`＝`现状`（今天已有行为，注明承载面）或 `待实现`。
+- **表列义**：`★`＝用户点名；`内容`＝是否必须携带正文或结构化内容；`回执`＝成功返回的关键字段（`ok:true` 之外）；`状态影响`＝对会议阶段/实体的可观察变化；`权限`＝无临时授权时的默认；`可授`＝可临时授予的对象（**S6 起由 #47／#48 落地**：可授集合有界、事件型失效）；`实现`＝`现状`（今天已有行为，注明承载面）或 `待实现`。
 - **命名空间**：会议动作＝`meeting_*`；机构/成员/研究动作仍沿用既有 `vibe_v5_*`（本章不改名，只做边界说明）。
 
 ---
@@ -34,7 +34,7 @@
 
 ---
 
-## 3. 命令契约总表（**42 条平台命令** ＋ **4 条 v5r 运行时工具 #43–#46**）
+## 3. 命令契约总表（**42 条平台命令** ＋ **6 条 v5r 运行时工具 #43–#48**）
 
 > 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
 
@@ -52,8 +52,8 @@
 | 10 | 复会 `meeting_resume` | 从休会恢复 | — | 否 | 复会记录 | `recessed→in_session` | 院士 | 代行（须显式指定） | 待实现 |
 | 11★ | 延长 `meeting_extend` | 延长发言/投票/整场 | `target:string`、`by_ms:int` | 否 | 新截止 | 改时长（受双上限，D4） | 院士 | 代行（须显式指定） | 待实现 |
 | 12★ | 散会 `meeting_adjourn` | 结束会议（产物保留，可归档） | `note?:string`、`archive?:bool=false` | 可选 | 散会记录+产物路径 | `→adjourned`（可选 `archived`） | 院士 | — | 待实现 |
-| 13★ | 临时授权 `meeting_grant` | 授某人某命令（含范围与过期） | `to:string`、`command:string`、`scope{}`、`expires_at?`、`expires_on?`、`reason:string` | 是（理由） | 授权记录 | 不改阶段，只改权限 | 院士 | — | 待实现 |
-| 14 | 撤回/撤销 `meeting_revoke` | 撤回动议/邀请/任务/授权 | `target_kind:string`、`target_id:string`、`reason:string` | 是（理由） | 撤回记录 | 依对象而定 | 院士 | — | 待实现 |
+| 13★ | 临时授权 `meeting_grant` | 授某人某命令（含范围与过期） | `to:string`、`command:string`、`scope{}`、`expires_at?`、`expires_on?`、`reason:string`（**v5r 落地面有意偏离**：只收**事件型** `grant_scope`，**不收** `expires_at?`／`expires_on?` —— 见 #47 行） | 是（理由） | 授权记录 | 不改阶段，只改权限 | 院士 | — | **已实现**（v5r 运行时工具 **#47／#48**） |
+| 14 | 撤回/撤销 `meeting_revoke` | 撤回动议/邀请/任务/授权 | `target_kind:string`、`target_id:string`、`reason:string` | 是（理由） | 撤回记录 | 依对象而定 | 院士 | — | **已实现（部分覆盖）**：v5r 的 **#48** 只覆盖"**授权**"这一类；动议/邀请/任务的撤回仍待实现 |
 | 15★ | 邀请发言 `meeting_invite` | **邀请内容＋邀请一体**：带正文的邀请 | `to:string`、`content:string`、`expect?:string`、`timebox_ms?` | **是**（`content`） | 邀请回执+被邀者通知 | 进入 `speech`，加入发言队列 | 院士 | 代行（须显式指定） | **现状**（`meeting_invite` 标识+`V5_ALREADY_INVITED`/`V5_INVITE_NOT_TEMP`） |
 | 16★ | 设定发言顺序 `meeting_speak_order_set` | 指定谁先谁后 | `order:string[]` | 否 | 顺序快照 | 改 `speech_policy.order` | 院士 | 代行（须显式指定） | 待实现 |
 | 17★ | 按顺序点名发言 `meeting_speak_next` | 请下一位发言（可附提示） | `next?:string`、`note?:string` | 可选 | 点名回执 | 进入 `speech(call_on)`，记录机会 | 院士 | 代行（须显式指定） | 待实现 |
@@ -86,8 +86,12 @@
 | 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`｜`academician`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
 | 45 | 主持代行（v5r 运行时工具）`vibe_v5_chair_proxy` | **仅院士**可**显式指定**代行收束（D1/R4/R5）；代行**不产生新票权**、主持**不额外加权** | `member`（代行者 id，必填；亦可用别名 `proxy`）、`scope`（**唯一取值** `'close'`）、`why`（**必填**）；**一切 `…At`／`…Ms`／`until` 一律拒绝**（**时间由框架设置**） | 否（只落记录，不产生会议内容） | `{ok,chair{id,since,proxy,scope,why},chairProxy,scope,meetingId,deduped?}`（幂等 ⇒ `deduped:true` 且**不刷新** `since`） | 写入耐久 `chair` 记录＋当次会议 `meeting.chair`（`{id,since,proxy?}`）；**不改阶段、不改票面** | **仅院士** | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 | 46 | 程序异议（v5r 运行时工具）`vibe_v5_procedural_objection` | **在册成员**（院士/常驻研究员）可对进行中的会议提程序异议并要求主持给出理由（D2 救济通道；**不设**"全体推翻主持"） | `why`（**必填**） | **是**（`why`） | `{ok,objection{by,at,why,chairReply:null,chairReplyPending:true},chairReplyPending,meetingId,deduped?}` | 入档 `meeting.objections[]`＋当次会议纪要（耐久）；**只记录不驱动**（不改阶段/票面/收束时点） | **在册成员**（列席/受邀/临时工 ⇒ `V5_NOT_VOTER`） | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 47★ | 临时授权（v5r 运行时工具）`vibe_v5_grant` | **仅院士**把**一条被默认保留的命令**按**事件范围**临时授予**一个在册成员**（D1/D2/D6/D8）；**可授集合有界＝4**（`assign`／`prioritize`／`nudge`／`convene`）；**授权只改"默认权限表"这一层**，**绝不**改票权/阶段/票面 | `to`（被授权者 id，必填；**必须是在册成员**）、`command`（必填；四选一）、`grant_scope`（必填；`meeting`｜`verify`｜`once`；亦接受别名 `grantScope`）、`why`（**必填**）；**一切 `…At`／`…Ms`（含 `expires_at`）一律拒绝**（**时间由框架设置**；失效只由**事件**表达——**有意偏离 SPEC #13 的字面参数表**） | 是（`why`） | `{ok,grant{id,by,to,command,grantScope,at,expiresOn,revokedAt:null},deduped?}`（同值仍在生效 ⇒ `deduped:true`，**不追加台账**） | 追加**耐久台账** `grants[]`（append-only；`EV.institute` fold 白名单）＋广播一句；**不产生新票权**（`voters()`／`quorum` 不变） | **仅院士** | 否（**不可转授**，GAPS 22） | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 48 | 撤回授权（v5r 运行时工具）`vibe_v5_revoke` | **仅院士**撤回一条临时授权 ⇒ 权限**立即**回到默认表口径；**写事件并广播**（SPEC P6） | `grant_id?`（或 `to`＋`command`）、`why`（**必填**） | 是（`why`） | `{ok,revoked{id,by,to,command,grantScope,at,revokedAt,revokedBy},deduped?}` | 台账写 `revokedAt`／`revokedBy` ＋广播；**不改阶段/票面** | **仅院士** | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 
-**计数**：**现状 15 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**、**#45**、**#46**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **22 处**（院士侧 16、成员侧 6），与 SPEC 一致。**#43–#46 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
+**#47 的不可授清单**（拒绝文案，与实现**逐字一致**）：`end_verify`（**R10-2a** 仅院士）／主持与代行（**D1**；S4 的 `vibe_v5_chair_proxy` 是**唯一入口**）／**票权与代表态**（R2／R3／D3／D8）／**私密与引用面**（D6）／**授权本身**（GAPS 22 **不可转授**）。**判据＝凡由裁定级身份保证把守的命令不可授**。
+
+**计数**：**现状 17 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**、**#45**、**#46**、**#47**、**#48**）／**待实现 29 条**；其中 #27、#32、#35 与 **#14** 标注了"部分覆盖"（见上表备注）。★ 共 **23 处**（院士侧 **17**、成员侧 6），与 SPEC 一致（**#47★ 镜像 SPEC #13 的 ★**）。**#43–#48 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
 
 **查看权（G6）**：**在册成员**可查看**全体在册成员**的**工作状态字段**（`overall`／`subgoal`／`plan`／`status` ＋ 各自 `overallAt`／`subgoalAt`／`planAt` 与最近更新者）；**不再是院士专属**。**G5 的边界**：只开放上述工作状态字段，**私聊内容永不进入**（他人私密永不进入）；**默认只读**；**查看留痕**（谁在何时看了谁）；列席／受邀／临时工**单列并标注**，不冒充表决成员。
 
@@ -115,9 +119,9 @@
 
 ### 4.3 `status` / `report` / `overview` 稳定字段
 - **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。
-- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）。
-- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5）。
-- **`status` 顶层不加键**：「静止提示」只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
+- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）＋ **「临时授权」节**（S6：台账＋生效/失效状态；**只读**）。
+- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5） ＋ 「临时授权（N 条生效／M 条台账）」（S6）。
+- **`status` 顶层不加键**：「静止提示」（S5）与「临时授权」（S6）都只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
 - **顶层键冻结**：上述键一经发布不得改名/改类型；新增只能加新键。
 
 ---
@@ -203,6 +207,9 @@
 - **时间字段由框架设置**：请求里出现任何 `…At`／`…Ms` 字段（如 `updatedAt`／`subgoalAt`）**一律拒绝**，回执说明「**时间由框架设置**」（防伪造/防漂移，见 G6 §7.1）。
 - **主持代行（`vibe_v5_chair_proxy`）**：同值重复（同 `{id, proxy, scope}`）⇒ `{ok:true, deduped:true, …}`（**不报错**、不追加历史、**不刷新 `since`**）；不同值 ⇒ 覆盖并刷新 `since`。
 - **程序异议（`vibe_v5_procedural_objection`）**：同 `by + why` 重复 ⇒ `{ok:true, deduped:true, …}`（不追加）；`chairReply:null` 与 `chairReplyPending:true` 保持可见（**不得假装已回填**）。
+- **临时授权（`vibe_v5_grant`）**：同 `{to, command, grant_scope}` 且**仍在生效** ⇒ `{ok:true, deduped:true, …}`（**不报错**、不追加台账、**不刷新 `at`**）；失效/撤回后同值再授 ⇒ **新增一条**（新生命周期；台账 **append-only**、不覆盖历史）。
+- **撤回授权（`vibe_v5_revoke`）**：对**已撤回/已失效**的同一 `grantId` ⇒ `{ok:true, deduped:true, …}`（**不报错**）；撤回**必须写事件并广播**（SPEC P6）。
+- **一次授权＝一次动作（`grant_scope='once'`）**：授权在**获批的那一刻**消费（写 `usedAt`）；同一命令内部的多步（如 `vibe_v5_assign` → 内部 `reassign`）**属同一次动作**，靠内部位置参数沿用同一次判定——**不是**"命令成功后才消费"。
 - **主持代行的时间也由框架设置**：请求里出现任何 `…At`／`…Ms`（**含 `until`**）一律拒绝，回执说明「**时间由框架设置**」；代行**不自设时限**（`chair.since` 由框架写入），与上一条 G6 的时间纪律同源。
 
 ## 6. 硬约束（接口层）
@@ -220,6 +227,7 @@
 | H9 | **主持不额外加权** | 程序救济失效（R5/定稿 C5） |
 | H10 | **真值不越界**：平台只产出"判定结果+概率估计+依据" | 架空验证制度（R6/D9） |
 | H11 | **框架只推荐、不驱动（静止）**：静止（无会议、无验证在飞、无人在飞）时**最多提示一次**（列出「谁在等谁」），**不得**自动召集会议、自动散会、自动收束或推进阶段（**R1／D10 ＋ R4／H2**）；**也不得**代替成员表态——票面／解决票／自述都不由框架写（**R2／R3／D3／D8**） | 框架替所里开会/收束/推进 ⇒ 出现"无人主持的决议"（R1/D10、R4/H2）；框架替成员表态 ⇒ 沉默被折算成票、结论不可审计（R2/R3、D3/D8） |
+| H12 | **授权只改"默认权限表"这一层**：临时授权**不得**产生票权、不得改阶段/票面/收束时点，也不得打开私密与引用面；**凡由裁定级身份保证把守的命令一律不可授**（`end_verify`、主持与代行、票权与代表态、私密与引用面、授权本身）；**不可转授**（GAPS 22） | 授权变成"第二张票"或"绕过裁定级身份" ⇒ 架空 D1/D8/R2/R3/R10 与 D6；转授 ⇒ 授权链失控、不可追责 |
 
 ---
 
