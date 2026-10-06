@@ -48,9 +48,26 @@
  *   · Long jobs are started FIRST (LPT: static measured weights + file-name tiebreak, deterministic).
  *     Measured effect at concurrency 2: wall 1878.1 s -> ~1447.6 s (simulated from that run's own per-job
  *     timings), with NO change to which jobs run, no assertion removed and no semantics relaxed.
+ *
+ * INCREMENTAL FULL (`GATE_INCREMENTAL=1`, default OFF => today's behaviour byte-for-byte):
+ *   · It SKIPS a mutant family only when every source file that family reads/copies/mutates (its target
+ *     set) is outside the changed set since the recorded baseline. The JOB LIST NEVER SHRINKS: skipped
+ *     families still count in TOTAL and are reported as `SKIP <family> (incremental: targets unchanged …)`.
+ *   · BASELINE: a file OUTSIDE the repository, `GATE_BASELINE_FILE` (default
+ *     `D:\_tmp\gate-full-baseline.txt`), holding the commit of the last GREEN FULL sweep. This runner only
+ *     READS it. It is written by the gate flow after a green full sweep
+ *     (`git rev-parse HEAD > D:\_tmp\gate-full-baseline.txt`) or by `--write-baseline`, which REFUSES to
+ *     write unless the sweep is FULL and GREEN - a red or partial tree must never become a baseline.
+ *   · RELEASE RULE (hard): before a commit/release/tag the FULL, non-incremental sweep is REQUIRED.
+ *     `GATE_RELEASE=1` ignores `GATE_INCREMENTAL` entirely and runs everything.
+ *   · NEVER SILENTLY UNDERRUN: an unreadable baseline, a baseline that is not an ancestor of HEAD, a
+ *     failing `git diff`/`status`, a family with no declared targets, or ANY disagreement between the
+ *     declared targets and what the harness's own source touches => that family RUNS (named reason on
+ *     stderr). Declaring a SUPERSET of targets is safe; declaring a SUBSET is not - hence the re-derivation.
+ *   · ROLLBACK: delete the `planIncremental(suites)` call (and its two consumers) to restore a full sweep.
  */
-import { spawn } from 'node:child_process'
-import { existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { spawn, execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -236,6 +253,154 @@ function applyScope(list, scope) {
     .filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
     .filter((j) => QUICK_ONLY.some((x) => label(j).includes(x)))
 }
+// Scope is parsed HERE (not next to the job list) so every helper below - including the ones the
+// `--self-check` block calls - sees an initialised value. `full` is the identity.
+const GATE_SCOPE = String(process.env.GATE_SCOPE || flag('scope')[0] || 'full').toLowerCase()
+if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'full') {
+  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|full)')
+  process.exit(2)
+}
+
+// ── INCREMENTAL FULL: a family's TARGETS are the repo files it reads/copies/mutates ────────────────
+// DERIVED FROM EACH HARNESS'S OWN SOURCE (never guessed): `const PRESET`/`const MAIN` fields, `editFile:`
+// entries, `const SRC = join(REPO, …)` copy roots, the per-family `preset:` fields, and explicit repo
+// paths in the harness. Families that are NOT listed are B-tier and ALWAYS run: this table deliberately
+// omits every family whose target set could not be read off its source with confidence, because declaring
+// a SUPERSET is safe (fewer skips) while declaring a SUBSET would skip a family that really changed.
+const FAMILY_TARGETS = {
+  'v2-fix-probes.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js'],
+  'v3-fix-probes.mutants.mjs': ['vibe-math-v3/vibe-math-v3.js'],
+  'formal-verify-v3.mutants.mjs': ['vibe-math-v3/vibe-math-v3.js'],
+  'formal-verify-v4.mutants.mjs': ['vibe-math-v4/vibe-math-v4.js'],
+  'v4-final-paper.mutants.mjs': ['vibe-math-v4/vibe-math-v4.js'],
+  'math-computation-v4.mutants.mjs': ['vibe-math-v4/vibe-math-v4.js', 'vibe-math-v4/math-engines.js'],
+  'selfdrive-v5.mutants.mjs': ['vibe-math-v5/vibe-math-v5.js'],
+  'v5-institute-fixes.mutants.mjs': ['vibe-math-v5/vibe-math-v5.js', 'vibe-math-v5/math-computation.js'],
+  'math-computation-archive-rerun.mutants.mjs': ['vibe-math-v2/math-engines.js', 'vibe-math-v2/math-computation.js'],
+  'math-computation-discovery.mutants.mjs': ['vibe-math-v2/math-engines.js', 'vibe-math-v2/math-computation.js'],
+  'audit-installer-assertions.mutants.mjs': ['installer.js'],
+  'release-check.mutants.mjs': ['scripts/release-check.mjs'],
+  'temp-hygiene.mutants.mjs': ['scripts/clean-temp.mjs'],
+  'run-tests.mutants.mjs': ['tests/run-tests.mjs'],
+  'audit-v5-prompt-duplication.mutants.mjs': ['vibe-math-v5/agent.cordis.yml'],
+  // Multi-preset families whose harness carries a per-family `preset:`/`file:` list: the declared set is a
+  // measured SUPERSET of the presets they can touch, so a newly added preset is never skipped by accident.
+  'v2v3-interrupt.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js', 'vibe-math-v3/vibe-math-v3.js'],
+  'e2e-identity-a6.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js', 'vibe-math-v3/vibe-math-v3.js',
+    'vibe-math-v4/vibe-math-v4.js', 'vibe-math-v5/vibe-math-v5.js'],
+  'audit-path-discipline.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js', 'vibe-math-v3/vibe-math-v3.js',
+    'vibe-math-v4/vibe-math-v4.js', 'vibe-math-v5/vibe-math-v5.js'],
+  'math-computation-a1.mutants.mjs': ['vibe-math-v2/math-computation.js', 'vibe-math-v3/math-computation.js',
+    'vibe-math-v4/math-computation.js', 'vibe-math-v5/math-computation.js'],
+  'audit-v5-lean-abstention.mutants.mjs': ['vibe-math-v5/vibe-math-v5.js', 'vibe-math-v5/math-computation.js',
+    'vibe-math-v5/math-engines.js'],
+  'audit-persona-surface.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js'],
+  'v2-list-agents-and-next-step.mutants.mjs': ['vibe-math-v2/vibe-math-v2.js'],
+  'audit-status-report-fields.mutants.mjs': ['docs/status-report-fields.md', 'vibe-math-v2/vibe-math-v2.js'],
+  'audit-artifact-docs.mutants.mjs': ['docs/COMPAT-AUDIT-ROUND2.md', 'README.md', 'vibe-math-v4/vibe-math-v4.js'],
+  'audit-readme-counts.mutants.mjs': ['README.md', 'README.en.md', 'package.json'],
+  'audit-package-membership.mutants.mjs': ['package.json'],
+}
+/**
+ * Re-derive a family's targets from its OWN source text. Returns a Set, or null when nothing could be
+ * derived (=> the family always runs). Only the patterns above are used, so a harness that changes shape
+ * simply stops participating in skipping instead of being skipped on a stale assumption.
+ */
+function deriveFamilyTargets(file) {
+  let text
+  try { text = readFileSync(join(HERE, file), 'utf8') } catch (e) { return null }
+  const out = new Set()
+  const preset = /const PRESET = '([^']+)'/.exec(text)
+  if (preset) out.add(preset[1] + '/' + preset[1] + '.js')
+  for (const e of text.matchAll(/editFile: '([^']+)'/g)) {
+    out.add(preset ? preset[1] + '/' + e[1] : e[1])
+  }
+  for (const s of text.matchAll(/join\(REPO,\s*'([^']+)',\s*'([^']+)'\)/g)) out.add(s[1] + '/' + s[2])
+  for (const s of text.matchAll(/join\(REPO,\s*'([^']+)'\)/g)) out.add(s[1].replace(/\\/g, '/'))
+  for (const p of text.matchAll(/preset: '(vibe-math-v\d)'/g)) out.add(p[1] + '/' + p[1] + '.js')
+  for (const p of text.matchAll(/'(docs\/[^']+)'/g)) out.add(p[1])
+  for (const p of text.matchAll(/'(README(?:\.[a-z]{2})?\.md)'/g)) out.add(p[1])
+  if (/run-tests\.mjs/.test(text) && /RUNNER/.test(text)) out.add('tests/run-tests.mjs')
+  if (/'installer\.js'/.test(text)) out.add('installer.js')
+  if (/'package\.json'/.test(text)) out.add('package.json')
+  return out.size ? out : null
+}
+/** A family may be skipped only when the declared targets COVER everything its source touches. */
+function familySkippable(file) {
+  if (!file.endsWith('.mutants.mjs')) return false
+  const declared = FAMILY_TARGETS[file]
+  if (!declared) return false                       // B-tier: no declared targets => always run
+  const derived = deriveFamilyTargets(file)
+  if (!derived) return false                        // nothing derivable => never skip blindly
+  for (const d of derived) {
+    if (!declared.some((t) => d === t || d.startsWith(t + '/'))) return false
+  }
+  return true
+}
+// ── Baseline + changed set (read-only; the baseline file lives OUTSIDE the repository) ─────────────
+// A FUNCTION (not a constant) so the self-check can point it at a deliberately unreadable path and prove
+// that an unreadable baseline skips nothing.
+const baselineFilePath = () => String(process.env.GATE_BASELINE_FILE || 'D:\\_tmp\\gate-full-baseline.txt')
+/** Read a commit id from a baseline file; null when missing/unreadable/unparseable (=> run everything). */
+function readBaselineFrom(file) {
+  let raw
+  try { raw = readFileSync(file, 'utf8') } catch (e) { return null }
+  const m = /^[0-9a-f]{7,40}$/m.exec(String(raw).trim())
+  return m ? m[0] : null
+}
+function gitOut(args) {
+  try { return execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) }
+  catch (e) { return null }
+}
+/** Committed changes since `base` UNION the uncommitted working-tree paths. null => "cannot tell". */
+function changedFilesSince(base) {
+  const committed = gitOut(['diff', '--name-only', base + '..HEAD'])
+  if (committed === null) return null
+  const out = new Set(committed.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))
+  const dirty = gitOut(['status', '--porcelain'])
+  if (dirty === null) return null
+  for (const line of dirty.split(/\r?\n/)) {
+    const p = line.slice(3).trim()
+    if (p) out.add(p.includes(' -> ') ? p.split(' -> ').pop() : p)
+  }
+  return out
+}
+const isChanged = (changed, target) => changed.has(target) || [...changed].some((c) => c === target || c.startsWith(target + '/'))
+/**
+ * The incremental decision. `enabled:false` means "run everything" and always carries a named reason.
+ * Skipped families are returned as FILE NAMES; the job list itself is never filtered.
+ */
+function planIncremental(list) {
+  if (String(process.env.GATE_INCREMENTAL || '') !== '1') {
+    return { enabled: false, reason: 'GATE_INCREMENTAL not set (default = full sweep)', skipped: [] }
+  }
+  if (GATE_SCOPE !== 'full') {
+    return { enabled: false, reason: 'GATE_SCOPE=' + GATE_SCOPE + ' (incremental applies to full only)', skipped: [] }
+  }
+  if (String(process.env.GATE_RELEASE || '') === '1') {
+    return { enabled: false, reason: 'GATE_RELEASE=1 (release/tag => forced full sweep)', skipped: [] }
+  }
+  const baseline = readBaselineFrom(baselineFilePath())
+  if (!baseline) {
+    return { enabled: false, reason: 'no readable baseline at ' + baselineFilePath() + ' => running everything', skipped: [] }
+  }
+  if (gitOut(['merge-base', '--is-ancestor', baseline, 'HEAD']) === null) {
+    return { enabled: false, reason: 'baseline ' + baseline + ' is not an ancestor of HEAD => running everything', skipped: [] }
+  }
+  const changed = changedFilesSince(baseline)
+  if (!changed) {
+    return { enabled: false, reason: 'git diff/status failed => running everything', skipped: [] }
+  }
+  const skipped = []
+  const ranBecause = []
+  for (const j of list) {
+    if (!j.file.endsWith('.mutants.mjs')) continue
+    if (!familySkippable(j.file)) { ranBecause.push(j.file); continue }
+    if (FAMILY_TARGETS[j.file].some((t) => isChanged(changed, t))) continue
+    skipped.push(j.file)
+  }
+  return { enabled: true, reason: '', baseline, changed, skipped, ranBecause }
+}
 /**
  * DIAGNOSABILITY (protocol: every red must name an assertion): a failing suite's assertion NAMES are
  * what a reader needs, and they must appear under the FAILED line - not only in the suite's own last
@@ -325,7 +490,22 @@ if (process.argv.includes('--self-check')) {
   console.log((overrideOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a named override is resolved for its suite and nothing else')
   console.log((extended ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a job that would die at 1 s SURVIVES under the override (real runSuite)')
   console.log((namesOverride ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a timed-out override reports its own limit (' + overrideLine.trim() + ')')
-  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride ? 0 : 1)
+  // INCREMENTAL baseline guard: an unreadable/absent baseline must skip NOTHING and must say why. The
+  // env vars are restored immediately, so this cannot leak into the sweep that follows in the same process.
+  const savedInc = process.env.GATE_INCREMENTAL
+  const savedBase = process.env.GATE_BASELINE_FILE
+  const savedRel = process.env.GATE_RELEASE
+  process.env.GATE_INCREMENTAL = '1'
+  process.env.GATE_BASELINE_FILE = join(tmpdir(), 'no-such-baseline-' + Date.now() + '.txt')
+  delete process.env.GATE_RELEASE
+  const noBaseline = planIncremental([{ file: 'selfdrive-v5.mutants.mjs', args: [], expectExit: 0, kind: 'probe' }])
+  const noBaselineOk = noBaseline.enabled === false && noBaseline.skipped.length === 0
+    && /no readable baseline/.test(String(noBaseline.reason))
+  if (savedInc === undefined) delete process.env.GATE_INCREMENTAL; else process.env.GATE_INCREMENTAL = savedInc
+  if (savedBase === undefined) delete process.env.GATE_BASELINE_FILE; else process.env.GATE_BASELINE_FILE = savedBase
+  if (savedRel === undefined) delete process.env.GATE_RELEASE; else process.env.GATE_RELEASE = savedRel
+  console.log((noBaselineOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': an unreadable baseline skips NOTHING (' + noBaseline.reason + ')')
+  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride && noBaselineOk ? 0 : 1)
 }
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
@@ -402,12 +582,8 @@ function deriveJobs() {
   return jobs.sort((a, b) => (label(a) < label(b) ? -1 : 1))
 }
 // Scope first (curated subset), then the CLI filters, then scheduling. `full` is the identity, i.e. the
-// default behaviour is byte-for-byte what it was before this change.
-const GATE_SCOPE = String(process.env.GATE_SCOPE || flag('scope')[0] || 'full').toLowerCase()
-if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'full') {
-  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|full)')
-  process.exit(2)
-}
+// default behaviour is byte-for-byte what it was before this change. (GATE_SCOPE itself is parsed above,
+// beside the scope helpers, so the incremental planner and the self-check can both use it.)
 let suites = applyScope(deriveJobs(), GATE_SCOPE)
 if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))
 if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
@@ -435,11 +611,42 @@ console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  
   if (!asJson) console.error('run-tests: quick-scope self-check ok (' + quickN + ' jobs, no mutant family)')
 }
 
+// INCREMENTAL PLAN: computed ONCE here, before --counts, so the count line, the skip report and the run
+// can never disagree about what is skipped. The job list is NOT filtered - only the execution is skipped.
+const incremental = planIncremental(suites)
+const skippedLabels = new Set(incremental.skipped)
+if (incremental.enabled) {
+  console.error('run-tests: incremental ENABLED (baseline ' + incremental.baseline
+    + ', changed files ' + incremental.changed.size + ')')
+  for (const f of incremental.skipped) {
+    console.error('SKIP  ' + f + '  (incremental: targets unchanged vs ' + incremental.baseline + ')')
+  }
+  console.error('run-tests: incremental: skipped ' + incremental.skipped.length + ' mutant families (targets unchanged)'
+    + (incremental.ranBecause.length ? '; always-run families: ' + incremental.ranBecause.length : ''))
+} else {
+  console.error('run-tests: incremental disabled -> running everything (' + incremental.reason + ')')
+}
+// SELF-CHECK (a): every skipped family's targets must be OUTSIDE the changed set (recomputed here, so a
+// wrong skip can never pass silently). A violation is a NAMED red and stops the sweep before any job runs.
+if (incremental.enabled) {
+  for (const f of incremental.skipped) {
+    const hit = (FAMILY_TARGETS[f] || []).find((t) => isChanged(incremental.changed, t))
+    if (hit) {
+      console.error('FAIL - * gate incremental: skipped ' + f + ' although ' + hit + ' changed since ' + incremental.baseline)
+      process.exit(1)
+    }
+  }
+}
+
 // --counts: print the DERIVED suite/probe totals (the same job list the gate runs) as JSON, then
 // exit. Docs quote these numbers, so they must be derived and checked rather than typed by hand.
+// The job TOTAL never shrinks under incremental: the skipped families are reported in their own field.
 if (process.argv.includes('--counts')) {
   const suiteN = suites.filter((j) => j.kind === 'suite').length
-  console.log(JSON.stringify({ total: suites.length, suites: suiteN, probes: suites.length - suiteN }))
+  console.log(JSON.stringify({
+    total: suites.length, suites: suiteN, probes: suites.length - suiteN,
+    incremental: incremental.enabled, incrementalSkipped: incremental.skipped.length,
+  }))
   process.exit(0)
 }
 
@@ -467,7 +674,18 @@ async function worker(id) {
   for (;;) {
     const i = cursor++
     if (i >= suites.length) return
-    const r = await runSuite(suites[i])
+    const job = suites[i]
+    if (skippedLabels.has(job.file)) {
+      // Incremental skip: the family is NOT executed, but it still counts in TOTAL and is reported by name
+      // (stdout line + stderr list) so a reader can always see WHAT was skipped and WHY.
+      results[i] = { job, code: 0, ms: 0, out: '', err: '', timedOut: false, skipped: true, ok: true }
+      if (!asJson) {
+        console.log('SKIP  ' + job.file.padEnd(34)
+          + ' exit=  0          0.0s  (incremental: targets unchanged vs ' + incremental.baseline + ')')
+      }
+      continue
+    }
+    const r = await runSuite(job)
     const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
     r.ok = r.code === r.job.expectExit
     results[i] = r
@@ -496,6 +714,14 @@ const sum = results.reduce((a, r) => a + r.ms, 0) / 1000
 const bad = results.filter((r) => !r.ok)
 const slowest = results.slice().sort((a, b) => b.ms - a.ms).slice(0, 5)
 const suiteCount = results.filter((r) => r.job.kind === 'suite').length
+const skippedResults = results.filter((r) => r.skipped)
+// SELF-CHECK (c): the number of families this sweep skipped must equal the planner's number - the same
+// number `--counts` reports as `incrementalSkipped`. A divergence is a NAMED red, never a quiet mismatch.
+if (skippedResults.length !== incremental.skipped.length) {
+  console.error('FAIL - * gate incremental: the sweep skipped ' + skippedResults.length
+    + ' families but the plan/--counts said ' + incremental.skipped.length)
+  process.exit(1)
+}
 
 if (asJson) {
   console.log(JSON.stringify({
@@ -504,9 +730,13 @@ if (asJson) {
     suites: suiteCount, probes: results.length - suiteCount,
     devCheckout: DEV_CHECKOUT,
     skippedNeedsArgs: NEEDS_ARGS,
+    incremental: incremental.enabled,
+    incrementalSkipped: skippedResults.length,
+    incrementalBaseline: incremental.enabled ? incremental.baseline : null,
     runs: results.map((r) => ({
       file: r.job.file, args: r.job.args, expectExit: r.job.expectExit, exit: r.code,
       seconds: Number((r.ms / 1000).toFixed(1)),
+      ...(r.skipped ? { skipped: 'incremental: targets unchanged vs ' + incremental.baseline } : {}),
       ...(r.tailDetail ? { detail: r.tailDetail } : {}),
     })),
   }, null, 2))
@@ -516,13 +746,47 @@ if (asJson) {
     + '  ·  speed-up x' + (sum / Math.max(wall, 0.001)).toFixed(2))
   console.log('slowest: ' + slowest.map((r) => r.job.file.replace('.test.mjs', '') + ' ' + (r.ms / 1000).toFixed(1) + 's').join('  ·  '))
   console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
+    + (skippedResults.length ? '  SKIP ' + skippedResults.length + ' (incremental)' : '')
     + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')')
   for (const b of bad) {
     console.log(failedLine(b))
     for (const l of failureDetail(b)) console.log('      ' + l)
   }
+  if (skippedResults.length) {
+    console.log('skipped by incremental (targets unchanged vs ' + incremental.baseline + '): '
+      + skippedResults.map((r) => r.job.file).join(', '))
+  }
   for (const [f, why] of Object.entries(NEEDS_ARGS)) {
     console.log('  SKIPPED (needs CLI args): ' + f + ' — ' + why + (presentSet.has(f) ? '' : '  [not present in this checkout]'))
   }
 }
-process.exit(bad.length === 0 ? 0 : 1)
+
+// --write-baseline: only a FULL, GREEN sweep may record the baseline. A red or partial tree must never
+// become the reference for a later incremental run (that is how "not yet verified" would be laundered
+// into "unchanged"), so both refusals are named and turn the exit code red.
+let exitCode = bad.length === 0 ? 0 : 1
+if (has('write-baseline')) {
+  if (GATE_SCOPE !== 'full') {
+    console.error('refusing --write-baseline: GATE_SCOPE=' + GATE_SCOPE + ' (baselines come from a FULL green sweep)')
+    exitCode = 1
+  } else if (bad.length) {
+    console.error('refusing --write-baseline: this sweep is RED (' + bad.length + ' failing) - a red tree must never become the baseline')
+    exitCode = 1
+  } else {
+    const sha = String(gitOut(['rev-parse', 'HEAD']) || '').trim()
+    if (!sha) {
+      console.error('could not read HEAD; baseline NOT written')
+      exitCode = 1
+    } else {
+      try {
+        writeFileSync(baselineFilePath(), sha + '\n# written by tests/run-tests.mjs --write-baseline on a GREEN FULL sweep\n')
+        console.log('baseline written: ' + baselineFilePath() + ' = ' + sha
+          + (skippedResults.length ? '  (NOTE: this sweep skipped ' + skippedResults.length + ' families; a baseline should normally come from a NON-incremental sweep)' : ''))
+      } catch (e) {
+        console.error('could not write the baseline file: ' + String((e && e.message) || e))
+        exitCode = 1
+      }
+    }
+  }
+}
+process.exit(exitCode)
