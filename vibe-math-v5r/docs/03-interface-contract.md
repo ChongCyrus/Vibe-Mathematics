@@ -1,0 +1,205 @@
+# 第 03 章 · 统一接口契约（Interface Contract）
+
+> **本章地位**：本章是会议平台**唯一**的接口权威 —— 命令名、参数、回执、错误码、状态字段、硬约束，**同一件事只有一个说法**。
+> **上游（只读，不得违反）**：`MEETING-PLATFORM-RULINGS.md`（定稿：D1–D10／**R1–R10**／C1–C7／G1–G5／U3–U5）、`MEETING-PLATFORM-SPEC.md`（§2 统一命名表 42 条、§3 K1–K14 裁决）、`MEETING-PLATFORM-A-model.md`（命令目录 8 字段）、`MEETING-PLATFORM-PHILOSOPHY.md`、`MEETING-PLATFORM-VOTING.md`、`MEETING-PLATFORM-OVERSIGHT-TIME.md`。
+> **凡与定稿冲突**：**以定稿为准**，并在文末「判定留痕」记一条；**不得**让两个说法并存。
+
+---
+
+## 1. §0 约定与阅读方法
+
+- **规范名唯一**：命令一律 `meeting_*` + `snake_case`；参数一律 `snake_case`。
+- **旧名仅文档别名**：A 稿的裸动词名（如 `convene`、`invite_speech`）与 B 稿建议名仅用于对照，**不注册第二套工具**。
+- **表列义**：`★`＝用户点名；`内容`＝是否必须携带正文或结构化内容；`回执`＝成功返回的关键字段（`ok:true` 之外）；`状态影响`＝对会议阶段/实体的可观察变化；`权限`＝无临时授权时的默认；`可授`＝可临时授予的对象；`实现`＝`现状`（今天已有行为，注明承载面）或 `待实现`。
+- **命名空间**：会议动作＝`meeting_*`；机构/成员/研究动作仍沿用既有 `vibe_v5_*`（本章不改名，只做边界说明）。
+
+---
+
+## 2. §1 统一命名与约定
+
+### §1.1 命名规则
+1. **前缀**：会议平台动作一律 `meeting_` 前缀；机构级动作（启动/暂停/成员/研究）保持既有前缀，**不重复**。
+2. **风格**：全小写 `snake_case`；名词用单数（`meeting_task_assign`，不用 `tasks`）。
+3. **动词表**：`open/start/set/roll_call/recess/resume/extend/adjourn/grant/revoke/invite/speak/mute/settle/motion/poll/result/minutes/task/raise/say/challenge/answer/vote/abstain/second/material/claim/request/leave/stop`。
+4. **参数命名**：`target`（对象）、`to`（收件人/执行者）、`mode`（枚举）、`options[]`（选项）、`rules{}`（规则聚合）、`note`（正文摘要）、`reason`（理由，**必填项时**不可省）、`deadline`（截止）、`visibility`（可见性）。
+5. **枚举值**：一律小写英文（`present/absent/late/left_early/excused`；`single/open/round_robin/hands/call_on/directed`；`single/multi`）。
+
+### §1.2 名称与别名
+- **文档别名**：`convene→meeting_open`、`invite_speech→meeting_invite`、`call_on→meeting_speak_next`、`create_ballot+open_ballot→meeting_poll_open`、`close_ballot+tally+announce_result→meeting_poll_close`、`set_speech_mode+set_chat_policy+single_statement_round→meeting_chat_mode_set`、`quote_speech→meeting_say.quote_ref`、`mute/unmute` 拆两条。
+- **别名规则**：别名**只出现在文档对照**中；实现**只注册**规范名；别名不得出现在提示词、回执或错误码里。
+
+### §1.3 版本与兼容
+- **接口版本**：`meeting.*` 语义版本随产品版本走；**新增**字段＝小版本（向后兼容）；**改名/删除**字段＝大版本，且必须在本章「迁移」小节登记（第 10 章执行）。
+- **冻结承诺**：`status` / `report` / `overview` 的**顶层键**一经发布即冻结；新增一律加成**新键**，不得改变既有键的语义或类型。
+
+---
+
+## 3. §2 命令契约总表（42 条）
+
+> 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
+
+| # | 命令（中/英） | 语义 | 参数（类型/默认） | 内容 | 回执 | 状态影响 | 权限 | 可授 | 实现 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1★ | 召集开会 `meeting_open` | 建会：题目、议程、类型、名册 | `title:string`／`agenda:string[]`／`type:string`／`roster:string[]` | 是（题目+议程） | `meeting_id`、`phase` | 建会：`draft→summoned` | 院士 | 所办（显式） | **现状**（`vibe_v5_meeting`+建会逻辑） |
+| 2 | 开场 `meeting_start` | 重申题目/议程/规则并宣布开始 | `note?:string` | 否 | `phase` | `summoned→in_session`（首阶段 `opening`） | 院士 | — | 待实现 |
+| 3★ | 设定类型 `meeting_type_set` | 换类型 ⇒ 换旋钮组合与权限 | `type:string` | 否 | `type`、启用机制清单 | 不改阶段，**只改使能** | 院士 | — | 待实现 |
+| 4 | 设定议程 `meeting_agenda_set` | 增删改议程条目 | `agenda:string[]`、`op?:add/remove/update` | 是（条目文本） | 议程快照 | 原地修改 | 院士 | 代行（须显式指定） | 待实现 |
+| 5 | 采用/重排流程 `meeting_flow_set` | 采用推荐流程或自排步骤 | `steps:string[]` | 是（步骤文本） | 流程快照 | 不改阶段，只改建议序列 | 院士 | — | 待实现 |
+| 6 | 点名 `meeting_roll_call` | 逐人确认在场 | `roster?:string[]` | 否 | 出席表 | 进入/重申 `roll_call` | 院士 | 纪要人 | 待实现 |
+| 7★ | 设定时长 `meeting_time_set` | 设单步/单机制/发言/投票窗口时长与硬界 | `target:string`、`ms:int` | 否 | 生效时长 | 不改阶段 | 院士 | 代行（须显式指定） | 待实现 |
+| 8★ | 停止 `meeting_stop` | 停当前动作/发言窗口（**不改阶段**） | `target:string`、`reason:string` | 是（理由） | 停止回执 | **相位不变**；不得据此推进/收束（R10） | 院士 | — | 待实现 |
+| 9 | 休会 `meeting_recess` | 暂时中止，保留产物 | `reason?:string`、`expected_resume?:ts` | 可选 | 休会记录 | `in_session→recessed` | 院士 | 代行（须显式指定） | 待实现 |
+| 10 | 复会 `meeting_resume` | 从休会恢复 | — | 否 | 复会记录 | `recessed→in_session` | 院士 | 代行（须显式指定） | 待实现 |
+| 11★ | 延长 `meeting_extend` | 延长发言/投票/整场 | `target:string`、`by_ms:int` | 否 | 新截止 | 改时长（受双上限，D4） | 院士 | 代行（须显式指定） | 待实现 |
+| 12★ | 散会 `meeting_adjourn` | 结束会议（产物保留，可归档） | `note?:string`、`archive?:bool=false` | 可选 | 散会记录+产物路径 | `→adjourned`（可选 `archived`） | 院士 | — | 待实现 |
+| 13★ | 临时授权 `meeting_grant` | 授某人某命令（含范围与过期） | `to:string`、`command:string`、`scope{}`、`expires_at?`、`expires_on?`、`reason:string` | 是（理由） | 授权记录 | 不改阶段，只改权限 | 院士 | — | 待实现 |
+| 14 | 撤回/撤销 `meeting_revoke` | 撤回动议/邀请/任务/授权 | `target_kind:string`、`target_id:string`、`reason:string` | 是（理由） | 撤回记录 | 依对象而定 | 院士 | — | 待实现 |
+| 15★ | 邀请发言 `meeting_invite` | **邀请内容＋邀请一体**：带正文的邀请 | `to:string`、`content:string`、`expect?:string`、`timebox_ms?` | **是**（`content`） | 邀请回执+被邀者通知 | 进入 `speech`，加入发言队列 | 院士 | 代行（须显式指定） | **现状**（`meeting_invite` 标识+`V5_ALREADY_INVITED`/`V5_INVITE_NOT_TEMP`） |
+| 16★ | 设定发言顺序 `meeting_speak_order_set` | 指定谁先谁后 | `order:string[]` | 否 | 顺序快照 | 改 `speech_policy.order` | 院士 | 代行（须显式指定） | 待实现 |
+| 17★ | 按顺序点名发言 `meeting_speak_next` | 请下一位发言（可附提示） | `next?:string`、`note?:string` | 可选 | 点名回执 | 进入 `speech(call_on)`，记录机会 | 院士 | 代行（须显式指定） | 待实现 |
+| 18★ | 发言机制与群聊参数 `meeting_chat_mode_set` | 切模式＋配额/禁言/并行 | `mode:string`、`policy{quota?,mute[]?,allow_parallel?}` | 否 | 生效策略 | 改 `speech_policy` | 院士 | — | 待实现 |
+| 19 | 举手管理 `meeting_hands_set` | 允许/暂停举手、优先、清空 | `allow?:bool`、`prioritize?:string`、`clear?:bool` | 否 | 举手队列 | 维持 `speech(hands)` | 院士 | 代行（须显式指定） | 待实现 |
+| 20 | 静默 `meeting_mute` | 单人静默（可听不可说） | `who:string`、`reason?:string` | 否 | 静默名单 | 改策略 | 院士 | 代行（须显式指定） | 待实现 |
+| 21 | 解除静默 `meeting_unmute` | 解除静默 | `who:string` | 否 | 静默名单 | 改策略 | 院士 | 代行（须显式指定） | 待实现 |
+| 22★ | 沉淀等待 `meeting_settle` | 等在飞成员把活跑完（报 x/y） | `cap_ms?:int`、`on_timeout?:continue/defer/absent` | 否 | 等待清单与结果 | 进入 `settling` | 院士 | 代行（须显式指定） | **现状**（`vibe_v5_wait`+settle 逻辑） |
+| 23 | 提出动议 `meeting_motion` | 提动议（议题/程序/决议） | `kind:string`、`text:string` | **是** | 动议记录 | 进入/保持 `motion` | 院士；成员需授权 | 在册成员 | 待实现 |
+| 24★ | 创办投票板 `meeting_poll_open` | 建并开放：选项＋单选/多选＋上下限＋**最少收集票** | `mode:option/boolean`、`question:string`、`options:string[]`、`rules{single/multi,max?,min?,min_votes?,secret?,rounds?,tie_rule?}` | **是** | `ballot_id`、规则快照 | `→voting` | 院士 | 代行（须显式指定） | 待实现（选项式）；布尔轮已有行为 |
+| 25 | 截止并计票 `meeting_poll_close` | 截止→计票→判定→广播 | `ballot_id?` | 否 | 计票表、判定、广播文本 | `voting→tally→resolution` | 院士 | 纪要人 | 待实现（选项式）；布尔聚合已有行为 |
+| 26 | 记录决议 `meeting_result_record` | 结论写成决议（含责任人与期限） | `text:string`、`actions[{who,due}]` | **是** | 决议 id | `resolution` 内落库 | 院士 | 纪要人 | 待实现 |
+| 27 | 生成纪要 `meeting_minutes` | 依事件流与议程生成纪要 | `detail?:brief/normal/full` | 否 | 纪要草稿/路径 | `→minutes` | 院士/纪要人 | 纪要人 | **现状**（纪要在写；需按新议程结构扩展） |
+| 28 | 指定纪要人 `meeting_secretary_appoint` | 指定谁写纪要 | `who:string` | 否 | 授权记录 | 改权限表 | 院士 | — | 待实现 |
+| 29★ | 创办任务板 `meeting_taskboard_open` | 把产物变成**可认领**任务清单 | `tasks[{subject,detail,accept,priority}]` | **是** | 任务板快照 | 建 `task_board` | 院士 | 代行（须显式指定） | 待实现 |
+| 30★ | 分派任务 `meeting_task_assign` | 把任务**直接派给**某人 | `task_id`、`to`、`why?`、`due?` | 可选 | 派单回执 | 任务板 `assigned` | 院士 | 代行（须显式指定） | **现状**（`vibe_v5_assign`） |
+| 31★ | 举手发言 `meeting_raise_hand` | 请求发言机会（可再次举手） | `about?:string`、`retract?:bool=false` | 可选 | 队列位置 | 入队/撤回（**不改阶段**） | 在册成员 | — | **现状**（`meeting_hand` 回复字段） |
+| 32★ | 发言（含引用）`meeting_say` | 发言并可引用过去某条 | `text:string`、`quote_ref?:string`、`quote_excerpt?`、`visibility?` | **是**（`text`） | 发言 id、引用关系 | 记发言；可能推进配额 | 在册成员（受策略） | — | **现状**（`vibe_v5_say`；`quote_ref` 待补） |
+| 33 | 定向质询 `meeting_challenge` | 向某人提必须回答的问题 | `to:string`、`text:string`、`timebox_ms?` | **是** | 质询记录 | `debate(directed)` 排队 | 辩论参与方 | 见第 05 章 | 待实现 |
+| 34 | 回答质询 `meeting_answer` | 回应质询 | `challenge_id:string`、`text:string` | **是** | 回答记录 | 关闭该质询或标待答 | 被质询者 | — | 待实现 |
+| 35★ | 投票板投票 `meeting_poll_vote` | 在选项式投票板投票（可带理由） | `ballot_id`、`choices[]`、`note?` | 可选 | 投票回执 | 记票；可触发兜底截止 | 有表决权者 | — | **现状**（布尔票已存在；选项式待实现） |
+| 36★ | 布尔概率＋理由 `meeting_boolean_vote` | 提交概率估计（0…1）＋理由 | `value:number(0..1)`、`reason:string` | **是**（理由） | 票面回执 | 记票（R10 第 4 条后方可终局） | 有表决权者 | — | **现状**（`vibe_v5_verdict`+聚合） |
+| 37 | 弃权 `meeting_abstain` | 明确弃权（计入已投、不计选项） | `ballot_id`、`reason?` | 可选 | 弃权回执 | 记弃权 | 有表决权者 | — | **现状**（计票含 `abstain`） |
+| 38 | 附议 `meeting_second` | 附议动议使其成立 | `motion_id:string` | 否 | 附议回执 | `motion` 计数 +1 | 在册成员 | — | 待实现 |
+| 39 | 提交材料 `meeting_material_submit` | 材料挂到议程条目/议题 | `agenda_item?`、`kind:string`、`text?:string`、`path?:string` | **是**（text 或 path） | 材料 id | 材料列表更新 | 在册成员 | — | 待实现 |
+| 40★ | 请求认领任务 `meeting_task_claim` | **请求**认领（需批准） | `task_id`、`plan?` | 可选 | `pending`/`granted` | 任务板 `claim_pending` | 在册成员 | — | **现状**（任务认领+CAS 修订号） |
+| 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
+| 42 | 请假/离席 `meeting_leave` | 通报缺席/提前离席 | `until?:ts`、`reason?` | 可选 | 出席表更新 | `attendance` 更新 | 在册成员 | — | 待实现 |
+
+**计数**：**现状 11 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **20 处**（院士侧 15、成员侧 5），与 SPEC 一致。
+
+---
+
+## 4. §3 状态与观测字段
+
+### §3.1 会议实体字段（规范）
+`meeting_id`、`title`、`agenda[]`、`type`、`phase`、`chair`、`roster[]`、`attendance{}`、`speech_policy{}`、`ballot{}`、`task_board{}`、`permissions[]`、`timeline[]`、`started_at`、`ended_at`、`duration_ms`、`recess{}`、`minutes{}`、`artifacts{}`、`status`。
+
+### §3.2 `phase` 各态与允许迁移
+| phase | 含义 | 允许的下一态（默认） |
+|---|---|---|
+| `draft` | 筹备 | `summoned`（召集） |
+| `summoned` | 已召集 | `in_session`（开场）；`adjourned`（取消） |
+| `in_session` | 进行中（含子阶段） | `recessed`、`adjourned` |
+| `recessed` | 休会 | `in_session`、`adjourned` |
+| `adjourned` | 散会 | `archived` |
+| `archived` | 归档 | — |
+| 子阶段 | `opening/roll_call/speech/discussion/settling/motion/debate/voting/tally/resolution/minutes` | 由院士显式动作迁移；**不得**由类型字段、计时器或过程票数触发（R10） |（注意：**计时器不得推进阶段**；而**有界触界**是 R10 第 2 条允许的停止来源，须**具名广播**且**可撤销/续期**——二者不同。）
+
+### §3.3 `status` / `report` / `overview` 稳定字段
+- **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。
+- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]`。
+- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]`。
+- **顶层键冻结**：上述键一经发布不得改名/改类型；新增只能加新键。
+
+---
+
+## 5. §4 回执与错误码规范
+
+### §4.1 回执通用形状
+- **成功**：`{ ok:true, ...业务字段 }`（关键业务字段必须可直接引用：id、phase、快照）。
+- **具名拒绝**：`{ ok:false, code:'V5_*', message:'人可读中文/英文一句', retryable:bool }`；**不得**用异常穿透到调用方。
+- **过程数字**：若回执携带"过程票数/计时"，必须带 `provisional:true`（尚未生效，R10 第 3 条）。
+
+### §4.2 错误码总表（**现有**为基线，**新增**为本章登记）
+| 码 | 触发 | 可重试 | 文案要点 |
+|---|---|---|---|
+| `V5_NO_OPEN_MEETING` | 无进行中的会议 | 否 | 先开会 |
+| `V5_NOT_ACADEMICIAN` | 非院士执行主持类命令 | 否 | 仅院士（或获临时授权者） |
+| `V5_NOT_VOTER` | 无表决权者投票 | 否 | 列席/临时工无表决权 |
+| `V5_NOT_OFFICE` | 需要所办身份的机构动作 | 否 | 由所办执行 |
+| `V5_ALREADY_INVITED` | 重复邀请同一人 | 否 | 已邀请（幂等提示） |
+| `V5_INVITE_NOT_TEMP` | 邀请非临时工对象 | 否 | 邀请对象受限 |
+| `V5_INVALID_ARGUMENT` | 参数缺失/类型错 | **是**（修正后） | 指出缺失字段与期望类型 |
+| `V5_INVALID_TIMEOUT` | 时长非法 | 是 | 时长范围 |
+| `V5_INVALID_VERDICT` | 概率/选项非法 | 是 | 0…1 或选项范围 |
+| `V5_MEMBER_NOT_FOUND` | 目标成员不存在 | 否 | 成员 id |
+| `V5_MEMBER_LIMIT` | 编制/临时工上限 | 否 | 上限值与释放方式 |
+| `V5_TASK_NOT_FOUND`、`V5_TASK_ALREADY_CLAIMED`、`V5_TASK_STALE_REVISION`、`V5_TASK_INVALID_TRANSITION`、`V5_TASK_BLOCKED`、`V5_TASK_DEPENDENCY_CYCLE`、`V5_TASK_UNAUTHORIZED`、`V5_TASK_HAS_DEPENDENTS`、`V5_TASK_DELETED` | 任务与认领 | 视情形 | 与任务系统既有语义一致 |
+| `V5_INSTITUTE_STATE` | 机构状态不允许（未运行/已结题） | 否 | 当前状态与允许动作 |
+| `V5_PAPER_STATE`、`V5_PAPER_CONSULT_REQUIRED` | 论文流程前置不满足 | 否 | 需先咨询/会议 |
+| `V5_STATE_NOT_LOADED`、`V5_WRITE_FAILED` | 持久化 | **是** | 状态未就绪/写入失败（文件为权威） |
+| **新增** `MEETING_PHASE_NOT_ALLOWED` | 当前 `phase` 不允许该命令 | 是（等阶段） | 当前阶段 + 允许的动作 |
+| **新增** `MEETING_TYPE_NOT_ENABLED` | 类型字段未启用该机制 | 否 | 启用的机制清单（"使能而非驱动"） |
+| **新增** `MEETING_QUORUM_NOT_MET` | 最少收集票/法定人数不足 | 是（重开） | 缺票数与是否可重开；**不得**据此给结论 |
+| **新增** `MEETING_PROVISIONAL` | 过程观察被误当结论 | 否 | 标注"尚未生效"（R10） |
+
+### §4.3 幂等与去重
+- **同参重复命令**：返回既有结果并带 `deduped:true`（例如重复邀请、重复启动同一后台作业）。
+- **任务/授权类并发**：以修订号（CAS）为准，冲突返回 `V5_TASK_STALE_REVISION`，**不得**静默覆盖。
+
+---
+
+## 6. §5 硬约束（接口层）
+
+| # | 约束 | 违反会发生什么 |
+|---|---|---|
+| C1 | **类型字段＝使能而非驱动**：决定"能做什么"，不决定"现在做什么" | 出现按类型自动进入阶段/自动收束 ⇒ 架空 R1/R4，决议来源不清 |
+| C2 | **chair-first**：阶段迁移与收束只能由院士显式动作触发（或**具名广播触界**，可撤销/续期） | 出现"无人主持的推进/停止"，无法追责（R4/R10） |
+| C3 | **票与发言分离**：发言不产生票权，票不因发言改变权重 | 辩论变拉票，列席者获得事实表决权（R3） |
+| C4 | **沉默≠同意**：只记"未表态"，**禁止任何折算** | 门槛被"不说话的人数"注水，结论不可审计（R2/C1） |
+| C5 | **过程判定 vs 结束裁定分离（R10）**：过程票数只是"当时票数的描述" | 过程数字变自动收束器，辩论被掐断（R10） |
+| C6 | **时间字段两类**：墙钟（含时区）用于计划/记录；单调时长用于成本（定义见第 09 章） | 用时长当时刻或反之 ⇒ 时间线与审计被污染（R7/G2） |
+| C7 | **私聊不进入引用**：引用限同一会议；跨会议只引上次决议 | 引用链爆炸、语境丢失、不可审计（D6） |
+| C8 | **未达门槛＝未决**：程序性表决不得用平均替代 | 决议成立与否不可审计（R9/C3） |
+| C9 | **主持不额外加权** | 程序救济失效（R5/C5） |
+| C10 | **真值不越界**：平台只产出"判定结果+概率估计+依据" | 架空验证制度（R6/D9） |
+
+---
+
+## 7. §6 验收判据（可写成断言）
+
+| # | 判据（断言形式） | 建议的具名变异 |
+|---|---|---|
+| A1 | **命令表与注册面一一对应**：42 条规范名全部注册，且注册面无未登记的 `meeting_*` | 注册一个未登记名 ⇒ 断言红 |
+| A2 | **每个错误码都可达且都登记**：表中每个码在实现里能被 raise，且实现 raise 的码都在表中 | 删掉某码的触发分支 ⇒ 断言红 |
+| A3 | **每个 `status` 字段都有消费者**：字段被文档或消费者引用，无"只写不读" | 移除字段消费者 ⇒ 断言红 |
+| A4 | **阶段迁移合法性**：非法迁移返回 `MEETING_PHASE_NOT_ALLOWED`，且相位不变 | 去掉相位校验 ⇒ 断言红 |
+| A5 | **过程数字必须 `provisional`**：过程回执缺 `provisional:true` 即失败 | 去掉标注 ⇒ 断言红 |
+| A6 | **未达标不给结论**：票数不足时不得返回任何"通过/否决"字段 | 放行结论 ⇒ 断言红 |
+| A7 | **幂等可重放**：同参重复命令返回 `deduped:true` 且不产生第二次副作用 | 去掉去重 ⇒ 断言红 |
+
+---
+
+## 8. §7 判定留痕（与定稿冲突处理的记录）
+
+| # | 事项 | 处置（**以定稿为准**） |
+|---|---|---|
+| L1 | A 稿使用裸动词名（`convene`/`create_ballot`/`call_on`…） | 以 SPEC §2 的 `meeting_*` 为准；旧名**仅文档别名**，不注册第二套 |
+| L2 | A 稿把"发言"与"引用发言"写成两条命令 | 以 SPEC 为准：**合并为 `meeting_say` + `quote_ref` 字段**（`meeting_quote` 并入） |
+| L3 | A 稿把 `mute / unmute` 写在同一行 | 以 SPEC 为准：**拆为** `meeting_mute` 与 `meeting_unmute` |
+| L4 | A 稿无 `meeting_flow_set`、`meeting_stop`、`meeting_time_set` | 以 SPEC 为准：**三条均为最终命令**（前两条源自 B，第三条为合并后新增） |
+| L5 | SPEC #8 `meeting_stop` 措辞"停当前步/整场动作（不改阶段）"与 R10 的"停止只可能来自院士显式操作或触界" | 一致，但**明确**：`meeting_stop` 只停**动作/窗口**，**相位不变**；**不得**被用作推进或收束的替代（R10 第 2 条） |
+| L6 | SPEC #23 `meeting_motion` 默认权限写作"院士；成员需授权"，而 A 稿把 `motion` 列为成员命令之一 | 一致：**成员侧需临时授权**（`meeting_grant`）；默认表为院士 |
+| L7 | A 稿 `create_ballot`（创建）与 `open_ballot`（开放）分开；SPEC 合并为 `meeting_poll_open` | 以 SPEC 为准（合并）；"创建但不开放"用 `phase` 不变 + `poll.open=false` 表达 |
+| L8 | `meeting_leave`(#42)/`meeting_request`(#41) 与 D8"非成员无表决权" | 一致：两者都**不产生表决权**，只更新出席/请求队列 |
+
+---
+
+## 9. §8 与其它章的引用关系
+
+- **第 04 章**：`phase` 迁移图与推荐流程（本章只定义 phase 名与合法迁移方向）。
+- **第 03 章**：权限表与临时授权矩阵（本章只给默认权限与"可授"列）。
+- **第 05 章**：投票聚合与门槛（本章只给命令与回执形状）。
+- **第 07 章**：观测与纪要（本章只给字段名）。
+- **第 08 章**：任务与行动项（本章只给 `meeting_taskboard_open`/`meeting_task_assign`/`meeting_task_claim` 的契约）。
+- **第 09 章**：时间字段（墙钟/单调时长的**定义**在本章只引用，不重复定义）。
+- **第 08 章**：迁移与兼容（别名映射、字段冻结、版本升级路径）。
+- **[编号归一] 本次单点归一：章号引用按"章号＝文件名前缀"保义改正；本文件相关改动见编制记录。**
