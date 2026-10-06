@@ -619,13 +619,92 @@ const V5R_FAMILIES = [
     to: 'return { ok: true, chair: cur, chairProxy: proxyId,',
     expect: /S4-idempotent：代行同值重复/,
   },
+  // ── S5 family (R1/D10；docs/09 §12 的 S5 行) ───────────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s5-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R29–R33，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 一次性判据去掉 ⇒ 同一静止片段内每轮都重发提示 ⇒ s5-notice-once 的"不得重发"断言必红。
+    name: 'S5: the stall notice loses its per-episode key (it repeats every scheduling pass)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-notice-once' },
+    from: 'if (prev && Number(prev.sinceAt) === sinceAt) return false',
+    to: 'if (false) return false',
+    expect: /S5-notice-once：同一静止片段内不得重发/,
+  },
+  {
+    // ② 恢复"静止自动召集会议"（R1/D10 违规的正身）⇒ s5-stall-notice 的"会议不变"断言必红。
+    name: 'S5: the stalled path goes back to convening a meeting on its own (R1/D10)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-stall-notice' },
+    from: 'await emitStallNotice()',
+    to: "await startMeeting('office', { agenda: 'MUTANT: 静止自动召集', kind: 'sync', auto: true })",
+    expect: /S5-stall-notice：会议不变/,
+  },
+  {
+    // ③ 静止路径自己写"收束记录"（防回归 R32 的**活体**形态）⇒ s5-no-auto-close 的 undecided 不变断言必红。
+    //    用**累积**写入（每轮一个新 id）而不只写一次：单次写入可能落在 before 快照之前而变成空变异。
+    name: 'S5: the stalled path starts writing closure records on its own (顺手收束)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-no-auto-close' },
+    from: 'const noticeMs = stallNoticeMs()',
+    to: "const noticeMs = stallNoticeMs(); if (noticeMs > 0) await putVerdict('p-s5m-' + String(Object.keys(inst().verdicts || {}).length), { closed: true, outcome: 'undecided', m: 0, P: 0 })",
+    expect: /S5-no-auto-close：静止期间 undecided 不变/,
+  },
+  {
+    // ④ 「谁在等谁」清单置空 ⇒ s5-waiting-graph 的"含被挡者 id"断言必红。
+    name: 'S5: the notice stops listing who is waiting for whom',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-waiting-graph' },
+    from: 'return out.slice(0, 3)',
+    to: 'return []',
+    expect: /S5-waiting-graph：提示须列出被挡者与阻挡者 id/,
+  },
+  {
+    // ⑤ 静止路径代成员表态（防回归 R33 的**活体**形态）⇒ s5-no-auto-close 的 solveVotes 不变断言必红。
+    //    同样是**累积**写入（每轮加一个新 key）：单次写入可能先于 before 快照 ⇒ 空变异。
+    name: 'S5: the stalled path starts speaking for a member (it writes solve votes)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-no-auto-close' },
+    from: 'const noticeMs = stallNoticeMs()',
+    to: "const noticeMs = stallNoticeMs(); if (noticeMs > 0) await putSolve({ member: 'p-s5m-' + String(Object.keys(inst().solve || {}).length), value: true })",
+    expect: /S5-no-auto-close：静止期间 solveVotes 不变/,
+  },
+  {
+    // ⑥ 耐久标记不走 fold 白名单（丢失）⇒ 每轮都当"新片段"重发 ⇒ s5-notice-once 的"不得重发"必红。
+    name: 'S5: the durable stall marker stops passing the fold whitelist (the key is lost)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-notice-once' },
+    from: 'if (patch.stallNotice !== undefined) n.stallNotice = patch.stallNotice === null ? null : Object.assign({}, patch.stallNotice)',
+    to: 'if (false) n.stallNotice = patch.stallNotice',
+    expect: /S5-notice-once：同一静止片段内不得重发/,
+  },
+  {
+    // ⑦ "负值＝关闭"被静默吃掉（回到"非正即删"守卫）⇒ 负值进不了参数 ⇒ s5-stall-notice 的
+    //    "负值须真的写进参数"断言必红（**最外层承载行**：applyParams 的非正守卫；短路 stallNoticeMs()
+    //    的负值分支是内层替代，但被外层先吃掉才是历史真缺陷的形态）。
+    name: 'S5: the threshold stops accepting a negative value (the OFF switch is silently dropped again)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's5-stall-notice' },
+    from: "for (const k of ['activityTimeoutMs', 'chatDigestMs', 'leanTimeoutMs']) {",
+    to: "for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {",
+    expect: /S5-stall-notice：负值须真的写进参数/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
 // workspace (V5_SCENARIO mode). A positive must be GREEN; its family above must redden by name.
 const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S4（D1/D2/R4/R5）：每个 s4-* 场景一个**正控**——原始树的该场景必须绿，对应的族才可能"按名红"。
-  's4-proxy-acad', 's4-proxy-denied', 's4-proxy-time', 's4-objection', 's4-no-weight', 's4-idempotent']
+  's4-proxy-acad', 's4-proxy-denied', 's4-proxy-time', 's4-objection', 's4-no-weight', 's4-idempotent',
+  // S5（R1/D10）：每个 s5-* 场景一个正控（静止提示的一次性/不召集/不收束/谁在等谁）。
+  's5-stall-notice', 's5-notice-once', 's5-no-auto-close', 's5-waiting-graph']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

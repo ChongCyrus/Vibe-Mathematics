@@ -537,6 +537,41 @@ async function runScenario(name) {
     }
     return recOf(target)
   }
+  // ── S5 场景的驱动：**中性回复**（只有 contextPct）结束一轮 ⇒ `onMemberEnd` 末尾的 `scheduleNext()`
+  // 驱动下一次调度轮次；但它**不**写 progress、不发言、不投票 ⇒ `lastProgressAt` **不动**，静止片段
+  // 保持开启 ⇒ "是否再提示"完全由**一次性判据**决定（这正是 s5-notice-once 与族①要咬住的行为）。
+  const answerNeutral = async () => {
+    let n = 0
+    for (let sweep = 0; sweep < 3; sweep++) {
+      while (wakes.length && n < 12) {
+        const w = wakes.shift()
+        fireEnd(w.childId, { contextPct: 10 })
+        n++
+        await settleAll()
+      }
+      await sleep(20)
+    }
+    return n
+  }
+  const stallNoticeCount = () => (chatTextR10().match(/【研究所提示/g) || []).length
+  const driveUntilNotice = async (want, rounds) => {
+    for (let i = 0; i < (rounds || 60); i++) {
+      if (stallNoticeCount() >= want) break
+      await answerNeutral()
+      await sleep(120)
+    }
+    return stallNoticeCount()
+  }
+  const durableNotice = () => {
+    const s = readV5State() || {}
+    const inst = (s.institutes || {})['default::institute'] || {}
+    return inst.stallNotice || null
+  }
+  // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
+  if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
+    return
+  }
   await callTool('vibe_v5_set', { activityTimeoutMs: 120000, verdictMaxRounds: 3 }, ROOT)
   let prop = null
   // G6 场景只在 v5r 预设下可跑（能力由 vibe-math-v5r.js 提供）；v5 路径下**显式 skip**，
@@ -828,6 +863,103 @@ async function runScenario(name) {
     const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
     const hits = (mtText.match(/幂等异议/g) || []).length
     assert(hits === 1, 'S4-idempotent：幂等异议在会议纪要里只出现一次（got ' + hits + '）')
+  } else if (name === 's5-stall-notice') {
+    // S5-stall-notice：静止 ⇒ **会议不变**（status.meeting 仍 null ⇒ 框架不自动召集）＋ **恰一条**
+    // 「研究所提示」（含「谁在等谁」）＋ report() 有该节 ＋ 耐久 stallNotice={at,sinceAt,waiting}。
+    await callTool('vibe_v5_set', { stallAutoMeetingMs: 1000, activityTimeoutMs: 120000, chatDigestMs: 150 }, ROOT)
+    await sleep(1300)
+    const n1 = await driveUntilNotice(1, 120)
+    const stDiag = await callTool('vibe_v5_status', {})
+    assert(n1 === 1, 'S5-stall-notice：静止提示恰一条（got ' + n1
+      + '；phase=' + String(stDiag.phase) + ' meeting=' + JSON.stringify(stDiag.meeting)
+      + ' parkedMeeting=' + JSON.stringify(stDiag.parkedMeeting) + ' verify=' + JSON.stringify(stDiag.verify)
+      + ' 距上次进展ms=' + (Date.now() - Number(stDiag.lastProgressAt))
+      + ' busy=[' + (stDiag.members || []).filter((m) => m.busy).map((m) => m.id).join(',') + ']'
+      + ' wakes=' + wakes.length + '）')
+    const chat = chatTextR10()
+    assert(/谁在等谁/.test(chat), 'S5-stall-notice：提示须列出谁在等谁（got=' + JSON.stringify(String(chat).slice(-260)) + '）')
+    const st = await callTool('vibe_v5_status', {})
+    assert(st.meeting === null, 'S5-stall-notice：会议不变（框架不自动召集；got meeting=' + JSON.stringify(st.meeting) + '）')
+    const rep = await callTool('vibe_v5_report', {})
+    const repText = String((rep && rep.report) || '')
+    assert(/静止提示/.test(repText) && /谁在等谁/.test(repText),
+      'S5-stall-notice：report() 须含静止提示节（got len=' + repText.length + '）')
+    const notice = durableNotice()
+    assert(!!notice && Number(notice.at) > 0 && Number(notice.sinceAt) > 0 && Array.isArray(notice.waiting),
+      'S5-stall-notice：耐久 stallNotice={at,sinceAt,waiting}（got ' + JSON.stringify(notice) + '）')
+    // 负值＝关闭（D10 可调政策）：先制造**真实进展**开启新片段，再关闭提示 ⇒ 不得出现第二条。
+    const offSet = await callTool('vibe_v5_set', { stallAutoMeetingMs: -1 }, ROOT)
+    assert(Number((offSet.params || {}).stallAutoMeetingMs) === -1,
+      'S5-stall-notice：负值须真的写进参数（不得被"非正即删"守卫静默丢弃；got ' + JSON.stringify((offSet.params || {}).stallAutoMeetingMs) + '）')
+    await callTool('vibe_v5_task_create', { subject: 'S5 关闭开关探测', description: '制造新片段以检验关闭' }, childAgent(childOf('r-1')))
+    await sleep(1300)
+    const offCount = await driveUntilNotice(2, 30)
+    assert(offCount === 1, 'S5-stall-notice：stallAutoMeetingMs 负值＝关闭（got ' + offCount + ' 条）')
+  } else if (name === 's5-notice-once') {
+    // S5-notice-once：同一静止片段**只提示一次**（多轮心跳都不重发、`at` 不刷新）；
+    // 真实进展（`markProgress`）之后 ⇒ 新片段允许**第 2 条**（证明"每片段一次"，不是"全生命周期一次"）。
+    await callTool('vibe_v5_set', { stallAutoMeetingMs: 1000, activityTimeoutMs: 120000, chatDigestMs: 150 }, ROOT)
+    await sleep(1300)
+    assert(await driveUntilNotice(1, 120) === 1, 'S5-notice-once：第一条提示已出现')
+    const at1 = Number((durableNotice() || {}).at || 0)
+    const c1 = await driveUntilNotice(2, 40)
+    assert(c1 === 1, 'S5-notice-once：同一静止片段内不得重发（got ' + c1 + '）')
+    const at2 = Number((durableNotice() || {}).at || 0)
+    assert(at2 === at1, 'S5-notice-once：提示不得被刷新（at 不变；' + at1 + ' → ' + at2 + '）')
+    const lp1 = Number((await callTool('vibe_v5_status', {})).lastProgressAt)
+    const tp = await callTool('vibe_v5_task_create', { subject: 'S5 进展探测', description: '为证明"每片段一次"而制造的真实进展' }, childAgent(childOf('r-1')))
+    assert(tp.ok === true, 'S5-notice-once：须能制造真实进展（task_create ok；got ' + JSON.stringify(tp).slice(0, 140) + '）')
+    const lp2 = Number((await callTool('vibe_v5_status', {})).lastProgressAt)
+    assert(lp2 > lp1, 'S5-notice-once：真实进展须推进 lastProgressAt（' + lp1 + ' → ' + lp2 + '）')
+    await sleep(1300)
+    const c2 = await driveUntilNotice(2, 120)
+    const dn2 = durableNotice() || {}
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(c2 === 2, 'S5-notice-once：真实进展之后允许第二条（got ' + c2
+      + '；notice.sinceAt=' + Number(dn2.sinceAt || 0) + ' at=' + Number(dn2.at || 0)
+      + ' 距上次进展ms=' + (Date.now() - Number(st2.lastProgressAt))
+      + ' busy=[' + (st2.members || []).filter((m) => m.busy).map((m) => m.id).join(',') + ']'
+      + ' wakes=' + wakes.length + '）')
+  } else if (name === 's5-no-auto-close') {
+    // S5-no-auto-close（防回归 R32/R33）：静止期间**不自动收束/不散会/不推进阶段/不代成员表态**。
+    await callTool('vibe_v5_set', { stallAutoMeetingMs: 1000, activityTimeoutMs: 120000, chatDigestMs: 150 }, ROOT)
+    const snap = async () => {
+      const s = await callTool('vibe_v5_status', {})
+      const st = readV5State() || {}
+      const inst = (st.institutes || {})['default::institute'] || {}
+      return {
+        meeting: JSON.stringify(s.meeting), verify: JSON.stringify(s.verify), phase: String(s.phase),
+        verified: JSON.stringify(s.verified), verifiedTrue: JSON.stringify(s.verifiedTrue),
+        undecided: JSON.stringify(s.undecided), solveVotes: JSON.stringify(s.solveVotes),
+        verdictKeys: JSON.stringify(Object.keys(inst.verdicts || {}).sort()),
+        solveKeys: JSON.stringify(Object.keys(inst.solve || {}).sort()),
+      }
+    }
+    const before = await snap()
+    await sleep(1300)
+    await driveUntilNotice(1, 120)
+    await driveUntilNotice(1, 40)
+    const after = await snap()
+    for (const k of Object.keys(before)) {
+      assert(after[k] === before[k], 'S5-no-auto-close：静止期间 ' + k + ' 不变（' + before[k] + ' ⇒ ' + after[k] + '）')
+    }
+  } else if (name === 's5-waiting-graph') {
+    // S5-waiting-graph：等待清单来自**真实依赖** ⇒ 提示文本含被挡者 id 与阻挡者 id。
+    const board = await callTool('vibe_v5_task_list', {})
+    const preBlocked = (board.tasks || []).filter((t) => Array.isArray(t.blockedBy) && t.blockedBy.length)
+    assert(preBlocked.length === 0, 'S5-waiting-graph：前置＝板上还没有被挡任务（got ' + JSON.stringify(preBlocked.map((t) => t.id)) + '）')
+    const tA = await callTool('vibe_v5_task_create', { subject: 'S5 前置任务 A', description: '被 B 依赖' }, childAgent(childOf('r-1')))
+    const tAid = String((tA.task || {}).id)
+    const tB = await callTool('vibe_v5_task_create', { subject: 'S5 被挡任务 B', description: '等 A 完成', blocked_by: [tAid] }, childAgent(childOf('r-1')))
+    const tBid = String((tB.task || {}).id)
+    assert(tA.ok === true && tB.ok === true && !!tAid && !!tBid,
+      'S5-waiting-graph：依赖对已建（got ' + JSON.stringify([tA.ok, tAid, tB.ok, tBid]) + '）')
+    await callTool('vibe_v5_set', { stallAutoMeetingMs: 1000, activityTimeoutMs: 120000, chatDigestMs: 150 }, ROOT)
+    await sleep(1300)
+    assert(await driveUntilNotice(1, 120) >= 1, 'S5-waiting-graph：静止提示已出现')
+    const waited = JSON.stringify((durableNotice() || {}).waiting || [])
+    assert(waited.indexOf(tBid) !== -1 && waited.indexOf(tAid) !== -1,
+      'S5-waiting-graph：提示须列出被挡者与阻挡者 id（want ' + tBid + '/' + tAid + '；got=' + waited + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

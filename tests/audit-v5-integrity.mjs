@@ -249,6 +249,41 @@ const SELF_PROBE_MUTATIONS = [
     to: 'return { ok: true, chair: cur, chairProxy: proxyId,',
     expect: 'R28',
   },
+  {
+    name: 'S5: the stalled path goes back to convening a meeting on its own (R1/D10)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'await emitStallNotice()',
+    to: "await startMeeting('office', {})",
+    expect: 'R29',
+  },
+  {
+    name: 'S5: the stall notice loses its per-episode key (it would repeat every pass)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'if (prev && Number(prev.sinceAt) === sinceAt) return false',
+    to: 'if (false) return false',
+    expect: 'R30',
+  },
+  {
+    name: 'S5: the notice stops listing who is waiting for whom',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'return out.slice(0, 3)',
+    to: 'return []',
+    expect: 'R31',
+  },
+  {
+    name: 'S5: the stalled path starts closing things on its own (顺手收束)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'busy.size === 0 && (now() - lastProgressAt) >= noticeMs) {',
+    to: 'busy.size === 0 && (now() - lastProgressAt) >= noticeMs) { if (false) await closeVerify(vs, true, {})',
+    expect: 'R32',
+  },
+  {
+    name: 'S5: the stalled path starts speaking for a member (writes a solve vote)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'const noticeMs = stallNoticeMs()',
+    to: 'const noticeMs = stallNoticeMs(); if (false) await putSolve({})',
+    expect: 'R33',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1013,6 +1048,35 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; judgeVerdict reads chair/proxy=' + /\bchair\b|\bproxy\b/.test(judgeBody)
     + '; proxy touches electorate=' + /voters\(|quorum|members\s*[.=]|\.push\(/.test(chairBody))
   notes.push('D3/L4 (v5r): participation gate=' + /if \(base\.silent\.length\) \{/.test(v5rRaw) + '; abstain channel=' + /raw === 'abstain'/.test(v5rRaw) + '; unable-out-of-denominator=' + /unableMap\[id\]/.test(v5rRaw) + '; end_verify(R10-2a)=' + /vibe_v5_end_verify/.test(v5rRaw))
+  // ---- S5 (R1/D10): the framework only RECOMMENDS — it never drives -------------------------------
+  // The stalled path gets ONE notice per stall episode ("who is waiting for whom"); it must never
+  // convene / close / advance anything and must never speak for a member. R29 is the behaviour this
+  // step CHANGED; R32/R33 are defence-in-depth (the pre-S5 tree did not violate them either). Each
+  // gate has its own single-site self-probe mutation above.
+  const passBody = bodyOf('async function schedulePass() {')
+  const waitBody = bodyOf('function stallWaitingList() {')
+  const noticeBody = bodyOf('async function emitStallNotice() {')
+  const clampLoops = v5rRaw.match(/for \(const k of \[[^\]]*\]\) \{/g) || []
+  gate(!!passBody && passBody.length > 800 && !/startMeeting\(/.test(passBody) && /emitStallNotice\(\)/.test(passBody)
+    && !clampLoops.some((l) => l.indexOf('stallAutoMeetingMs') !== -1),
+    'R29', 'S5/R1+D10: the stalled path must only NOTICE (once) — never convene — and the threshold must stay switchable OFF (a negative value must not be silently dropped by the non-positive clamp)')
+  gate(!!noticeBody && /Number\(prev\.sinceAt\) === sinceAt\) return false/.test(noticeBody)
+    && /if \(patch\.stallNotice !== undefined\) n\.stallNotice = /.test(v5rRaw),
+    'R30', 'S5/D10: the stall notice must be ONE per stall episode (keyed on sinceAt) and its durable marker must pass the fold whitelist')
+  gate(!!waitBody && /blocked\[0\]\.id/.test(waitBody) && /等有人认领/.test(waitBody) && /下一步等 /.test(waitBody) && /slice\(0, 3\)/.test(waitBody),
+    'R31', 'S5/D10: the notice must list WHO IS WAITING FOR WHOM (blocked task / unclaimed task / longest-idle member, capped at 3 — the two in-flight classes are structurally unreachable in this branch)')
+  gate(!!passBody && !/finalizeMeeting\(|closeVerify\(|finalizeUndecided\(|patchInstitute\(\{ phase/.test(passBody),
+    'R32', 'S5/R1+D10+R4/H2: the stalled path must never close, adjourn or advance anything (no 顺手收束; defence-in-depth)')
+  gate(!!passBody && !/castVerdict\(|putSolve\(|selfReport\(/.test(passBody),
+    'R33', 'S5/R2+R3+D3/D8: the stalled path must never speak for a member (no ballot / solve vote / self-report; defence-in-depth)')
+  notes.push('S5 (v5r): schedulePass len=' + passBody.length
+    + '; stall path convenes=' + /startMeeting\(/.test(passBody)
+    + '; one-shot key=' + /Number\(prev\.sinceAt\) === sinceAt\) return false/.test(noticeBody)
+    + '; waiting sources=' + ['blocked[0].id', '等有人认领', '下一步等 '].filter((x) => waitBody.indexOf(x) !== -1).length + '/3'
+    + '; in-flight classes in wait list=' + /busy|currentVerify\(/.test(waitBody)
+    + '; off-switch reachable=' + !clampLoops.some((l) => l.indexOf('stallAutoMeetingMs') !== -1)
+    + '; closes/advances=' + /finalizeMeeting\(|closeVerify\(|finalizeUndecided\(|patchInstitute\(\{ phase/.test(passBody)
+    + '; speaks for member=' + /castVerdict\(|putSolve\(|selfReport\(/.test(passBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

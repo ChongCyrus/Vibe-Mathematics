@@ -596,6 +596,9 @@ export function apply(ctx) {
           // 这份耐久副本让"代行须在会议记录中明确写明"在收束之后仍可查，也让判定面能证明它**不读**代行
           // （R5：代行不产生新票权、主持不额外加权）。
           if (patch.chair !== undefined) n.chair = patch.chair === null ? null : Object.assign({}, patch.chair)
+          // S5 (R1/D10)：静止提示的耐久标记。同一静止片段**最多提示一次** ⇒ 必须跨重启记住"这一
+          // 片段已经提示过"（纯内存标记在重启后会丢，静止的 run 会重发第二条，违反"最多一次"）。
+          if (patch.stallNotice !== undefined) n.stallNotice = patch.stallNotice === null ? null : Object.assign({}, patch.stallNotice)
           return n
         })
       }
@@ -1406,6 +1409,56 @@ export function apply(ctx) {
     const markProgress = async () => {
       lastProgressAt = now()
       await commit(EV.progress, { at: lastProgressAt, artifactCount: inst().artifactCount })
+    }
+
+    // ── S5（R1/D10）：框架角色＝**只推荐、不驱动** ────────────────────────────────────────────
+    // 静止时框架**最多提示一次**并列出「谁在等谁」；**不召集会议、不散会、不收束、不推进阶段、
+    // 不代成员表态**。提示＝"事实陈述 ＋ 一句可拒绝的建议"，**不是**程序动作（chair-first 仍归 R4/H2；
+    // 票与表态仍归 R2/R3/D3/D8；具名可撤销触界仍归 R10/S3，且静止提示**不是**触界）。
+    // 阈值：`stallAutoMeetingMs` 的**语义＝静止提示阈值**（键名保留，避免破坏用户配置与文档计数）；
+    // **负值＝关闭**（不能用 0：`posMs(0)` 会落回默认值）。
+    function stallNoticeMs() {
+      const n = Number(params.stallAutoMeetingMs)
+      if (Number.isFinite(n) && n < 0) return 0
+      return posMs(params.stallAutoMeetingMs, 360000)
+    }
+    const stallNoticeView = () => inst().stallNotice || null
+    /** 「谁在等谁」＝**三类可达来源**、最多 3 条；**只陈述事实**（不施压、不折算成票、不自动关闭；07 §9-2／X5）。
+     *  注意（S5 实测教训）：提示只在"无人在飞、无验证在飞"时发（这正是不可抢占回合的守卫）⇒ 因此
+     *  **不能**把"在飞交付/未表态表决"当成提示的来源——那两类在这个分支里**结构上不可达**（空变异）。
+     *  真正可达的三类＝① 被挡任务 ② 无人认领任务 ③ 最久没有动作的在册成员（"下一步等它推进"）。 */
+    function stallWaitingList() {
+      const out = []
+      const openTasks = inst().tasks.filter((t) => t && t.status !== 'done' && t.status !== 'deleted')
+      const blocked = openTasks.filter((t) => Array.isArray(t.blockedBy) && t.blockedBy.length)
+      if (blocked.length) out.push('任务 ' + blocked[0].id + ' 等 ' + blocked[0].blockedBy.join('、') + ' 完成')
+      const unclaimed = openTasks.filter((t) => !t.ownerId && !(Array.isArray(t.blockedBy) && t.blockedBy.length))
+      if (unclaimed.length) out.push('任务 ' + unclaimed[0].id + ' 等有人认领')
+      const active = activeMembers().filter((m) => m.kind !== 'temp')
+      if (active.length) {
+        const sorted = active.slice().sort((a, b) => (lastActiveAt.get(a.id) || 0) - (lastActiveAt.get(b.id) || 0))
+        const pick = sorted[0]
+        if (pick) {
+          const since = Number(lastActiveAt.get(pick.id) || lastProgressAt) || now()
+          const idleS = Math.max(0, Math.round((now() - since) / 1000))
+          out.push('下一步等 ' + pick.id + ' 推进' + (pick.direction ? '（方向：' + pick.direction + '）' : '') + '（已闲置 ' + idleS + ' 秒）')
+        }
+      }
+      if (!out.length) out.push('暂无阻塞项：等院士分派任务或发起验证')
+      return out.slice(0, 3)
+    }
+    /** 每个静止片段**最多一次**：幂等键＝`sinceAt`（本片段起点 `lastProgressAt`）。耐久 ⇒ 重启不重发。 */
+    async function emitStallNotice() {
+      const sinceAt = Number(lastProgressAt) || 0
+      const prev = inst().stallNotice
+      if (prev && Number(prev.sinceAt) === sinceAt) return false
+      const waiting = stallWaitingList()
+      const at = now()
+      await patchInstitute({ stallNotice: { at, sinceAt, waiting } })
+      await saveChatLine('【研究所提示｜静止】已有一段时间没有新进展（框架**只提示、不驱动**）。'
+        + (waiting.length ? ('谁在等谁：' + waiting.join('；') + '。') : '')
+        + '框架不自动开会、不自动收束，也不替任何人表态；是否推进、由谁推进，由院士与成员决定。')
+      return true
     }
 
     // ---- roster helpers ---------------------------------------------------
@@ -7383,14 +7436,20 @@ export function apply(ctx) {
         if (filled) { armHeartbeat(); return }
         armDigest()
       }
-      // (d) stalled institute -> convene a coordination meeting (the framework only
-      // CONVENES; it never assigns). Guarded on busy.size===0 so an in-flight round is
-      // never pre-empted.
-      const stallMs = posMs(params.stallAutoMeetingMs, 360000)
-      if (!meeting && !pendingMeeting && !hasVerifyInFlight() && phase === 'active' &&
-        busy.size === 0 && (now() - lastProgressAt) >= stallMs) {
-        await startMeeting('office', { agenda: '本所较长时间没有新进展。请你们自行讨论：现在最该推进的是什么？谁来做？是否需要发起验证？', kind: 'sync', auto: true })
-        return
+      // (d) stalled institute -> ONE notice per stall episode (S5 / R1+D10): the framework only
+      // RECOMMENDS and never acts for the institute. It does NOT convene a meeting, does NOT
+      // adjourn/close anything, does NOT advance a stage and does NOT speak for a member
+      // (chair-first stays R4/H2; ballots stay R2/R3/D3/D8). Guarded on busy.size===0 so an
+      // in-flight round is never pre-empted. The episode key is `sinceAt` (= lastProgressAt), so a
+      // long stall is announced ONCE and never repeated (D10: 不反复重申).
+      const noticeMs = stallNoticeMs()
+      if (noticeMs > 0 && !meeting && !pendingMeeting && !hasVerifyInFlight() && phase === 'active' &&
+        busy.size === 0 && (now() - lastProgressAt) >= noticeMs) {
+        // NO `return` here: a pass that emits the one-shot notice must still fall through to the
+        // tail (`armDigest()`/`armHeartbeat()`). The pass began with `clearHeartbeat()`, so
+        // returning would leave the scheduler with NO timer at all — measured: the institute
+        // froze after its own notice and the next stall episode never fired.
+        await emitStallNotice()
       }
       // (e) heartbeat: push the longest-idle member to make progress rather than just
       // asking "are we done" (v4's original heartbeat invited stagnation). A member that
@@ -7884,9 +7943,13 @@ export function apply(ctx) {
       if (out.paperLatexCommand !== undefined) out.paperLatexCommand = String(out.paperLatexCommand).trim()
       // Guard every duration against a negative/NaN value: such a value would make a
       // watchdog fire instantly and abandon all consensus (v4 §30-T41).
-      for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {
+      for (const k of ['activityTimeoutMs', 'chatDigestMs', 'leanTimeoutMs']) {
         if (out[k] !== undefined && !(out[k] > 0)) delete out[k]
       }
+      // S5 (D10 可调政策)：`stallAutoMeetingMs` 是**唯一**允许负值的时长 —— 负值＝**关闭静止提示**。
+      // 它刻意不放进上面的"非正即删"守卫：否则"负值＝关闭"这个开关**永远设不进去**（静默忽略，
+      // 用户以为关了其实还在提示）。0 仍＝默认值（`posMs(0)` 落默认），NaN／非数字仍被丢弃。
+      if (out.stallAutoMeetingMs !== undefined && !Number.isFinite(Number(out.stallAutoMeetingMs))) delete out.stallAutoMeetingMs
       // 2.9.0: 会议硬界与唤醒重试都是**有界**参数（不提供无界）——越界即钳制。
       if (out.meetingHardLimitMs !== undefined) out.meetingHardLimitMs = Math.min(7200000, Math.max(300000, Math.floor(out.meetingHardLimitMs)))
       if (out.meetingWakeRetries !== undefined) out.meetingWakeRetries = Math.min(10, Math.max(0, Math.floor(out.meetingWakeRetries)))
@@ -8527,6 +8590,22 @@ export function apply(ctx) {
         }
       }
       L.push('- 解决票：' + (solveVotesList().length ? solveVotesList().join('、') : '（无）'))
+      // S5 (R1/D10): the framework's ONE stall notice — a FACT ("who is waiting for whom"), never a
+      // procedural act: no meeting is convened, nothing is closed, no member is spoken for.
+      {
+        L.push('## 静止提示（框架只提示、不驱动）')
+        L.push('- 阈值：' + (stallNoticeMs() > 0
+          ? Math.round(stallNoticeMs() / 1000) + ' 秒（`stallAutoMeetingMs`；**负值＝关闭**）'
+          : '已关闭（`stallAutoMeetingMs` 为负值）'))
+        const sn = s.stallNotice || null
+        if (sn && Number(sn.sinceAt) > 0) {
+          L.push('- 本片段已提示一次：' + fmtTime(sn.at) + '｜谁在等谁：'
+            + (Array.isArray(sn.waiting) && sn.waiting.length ? sn.waiting.join('；') : '（无明确等待项：无人被挡、无人未表态）'))
+        } else {
+          L.push('- 本片段尚未提示（有实质进展，或未达阈值）')
+        }
+      }
+      L.push('')
       // F1 (status/report review, HIGH): the section must read the sources its heading advertises —
       // (a) skipped/malformed EVENTS (top-level `state.diagnostics`, written by `applyV5Event`'s
       // catch), (b) state-FILE problems (the session log `loadProblemLog` / `lastLoadProblem`), and
@@ -8697,7 +8776,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -8984,6 +9063,17 @@ export function apply(ctx) {
     parts.push('## 停滞提示')
     const idleFor = Date.now() - st.lastProgressAt
     parts.push('- 距上次实质进展：' + Math.round(idleFor / 1000) + ' 秒')
+    // S5 (R1/D10): the ONE notice already sent in this stall episode + who is waiting for whom.
+    // The framework states the fact and RECOMMENDS; it never convenes/closes/advances on its own.
+    {
+      const sn = s.stallNoticeView()
+      if (sn && Number(sn.sinceAt) > 0) {
+        parts.push('- 本片段已提示一次：' + fmtTime(sn.at) + '｜谁在等谁：'
+          + (Array.isArray(sn.waiting) && sn.waiting.length ? sn.waiting.join('；') : '（无明确等待项）'))
+      } else {
+        parts.push('- 本片段尚未提示（框架不自动开会/不自动收束；是否推进由院士与成员决定）')
+      }
+    }
     return { ok: true, overview: parts.join('\n') }
   })
   registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
