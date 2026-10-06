@@ -168,7 +168,7 @@ const SELF_PROBE_MUTATIONS = [
   {
     name: 'G6: the framework-sets-time refusal is dropped (a user …At would be accepted)',
     rel: 'vibe-math-v5r/vibe-math-v5r.js',
-    from: 'const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))',
+    from: 'const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)))',
     to: 'const timeKeys = []',
     expect: 'R18',
   },
@@ -283,6 +283,41 @@ const SELF_PROBE_MUTATIONS = [
     from: 'const noticeMs = stallNoticeMs()',
     to: 'const noticeMs = stallNoticeMs(); if (false) await putSolve({})',
     expect: 'R33',
+  },
+  {
+    name: 'S6: the authorization ledger stops passing the fold whitelist (grants are silently dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'if (patch.grants !== undefined) {',
+    to: 'if (false) {',
+    expect: 'R34',
+  },
+  {
+    name: 'S6: the grantable set is widened to a command guarded by an adjudication-level identity',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "const GRANTABLE_COMMANDS = ['assign', 'prioritize', 'nudge', 'convene']",
+    to: "const GRANTABLE_COMMANDS = ['assign', 'prioritize', 'nudge', 'convene', 'end_verify']",
+    expect: 'R35',
+  },
+  {
+    name: 'S6: the grant path starts touching the electorate (a grant would look like vote power)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "const dup = grantsList().filter((g) => g && String(g.to || '') === toId",
+    to: "void voters().length; const dup = grantsList().filter((g) => g && String(g.to || '') === toId",
+    expect: 'R36',
+  },
+  {
+    name: 'S6: the D8 roster gate on the grantee is gone (a non-member could be authorized)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "if (!(target.kind === 'academician' || target.kind === 'researcher')) {",
+    to: 'if (false) {',
+    expect: 'R37',
+  },
+  {
+    name: 'S6: a once-scope grant stays effective after it was used (expiry is no longer event-derived)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "if (g.grantScope === 'once') return Number(g.usedAt || 0) === 0",
+    to: "if (g.grantScope === 'once') return true",
+    expect: 'R38',
   },
 ]
 
@@ -1001,8 +1036,9 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R16', 'L4: the member turn-reply channel must accept abstain/unable exactly like the tool (no second-class channel)')
   gate(/registerTool\('vibe_v5_self_report'/.test(v5rRaw) && /selfReportTool/.test(v5rRaw),
     'R17', 'G6: the self-report command must be registered (update + audited read)')
-  gate(/const timeKeys = Object\.keys\(args\)\.filter/.test(v5rRaw) && /时间由框架设置（G6 §7\.1）/.test(v5rRaw),
-    'R18', 'G6: any user-supplied …At/…Ms must be refused with the framework-sets-time message')
+  gate(/const timeKeys = Object\.keys\(args\)\.filter/.test(v5rRaw) && /时间由框架设置（G6 §7\.1）/.test(v5rRaw)
+    && /\(At\|Ms\)\$\/i/.test(v5rRaw),
+    'R18', 'G6: any user-supplied …At/…Ms must be refused with the framework-sets-time message — CASE-INSENSITIVELY (/(At|Ms)$/i; a lower-case expires_at/subgoal_at must not slip through)')
   gate(/history\.push\(\{ at, by: m\.id, field: c\.field, old: c\.old/.test(v5rRaw),
     'R19', 'G6: writing must append history with the OLD value (nothing silently dropped)')
   gate(/next\.deviation = \{ at, by: m\.id, keptAcademicianValue: ov\.old/.test(v5rRaw) && /已偏离院士设定/.test(v5rRaw),
@@ -1077,6 +1113,49 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; off-switch reachable=' + !clampLoops.some((l) => l.indexOf('stallAutoMeetingMs') !== -1)
     + '; closes/advances=' + /finalizeMeeting\(|closeVerify\(|finalizeUndecided\(|patchInstitute\(\{ phase/.test(passBody)
     + '; speaks for member=' + /castVerdict\(|putSolve\(|selfReport\(/.test(passBody))
+  // ---- S6 (D1/D2/D6/D8): temporary authorization — the ONE predicate + the event-typed ledger ---------
+  // The grantable set is bounded to the four commands whose guard is the DEFAULT table; a command guarded
+  // by an ADJUDICATION-LEVEL identity can never be delegated (end_verify / the chair / ballots / the
+  // private face / authorization itself). Expiry is event-derived, never a "marked for collection" flag.
+  const grantBody = bodyOf('async function grantTool(memberId, a)')
+  const canDoBody = bodyOf('function canDo(callerId, command)')
+  const defaultBody = bodyOf('function defaultAllowed(callerId, command)')
+  const activeBody = bodyOf('function grantActive(g)')
+  gate(/registerTool\('vibe_v5_grant'/.test(v5rRaw) && /registerTool\('vibe_v5_revoke'/.test(v5rRaw)
+    && /if \(patch\.grants !== undefined\)/.test(v5rRaw)
+    && /expiresOn:/.test(grantBody) && /revokedAt: 0/.test(grantBody),
+    'R34', 'S6: the authorization ledger (#47/#48) must be registered, must pass the fold whitelist (patch.grants), and must carry expiresOn/revokedAt')
+  gate(!!canDoBody && !!defaultBody && /const g = grantEffective\(callerId, command\)/.test(canDoBody)
+    && /function grantEffective\(callerId, command\)/.test(v5rRaw)
+    && /await gateDo\(memberId, 'assign'/.test(v5rRaw)
+    && /await gateDo\(memberId, 'prioritize'/.test(v5rRaw)
+    && /await gateDo\(callerId, 'nudge'/.test(v5rRaw)
+    && /await gateDo\(member\.id, 'end_verify'/.test(v5rRaw)
+    && /canDo\(callerId, 'convene'\)/.test(v5rRaw)
+    && /canDo\(memberId, 'board'\)/.test(v5rRaw)
+    && /authorized: true/.test(v5rRaw)
+    && /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw),
+    'R35', 'S6: ONE predicate (canDo = default table ∩ stage ∩ active grant − revoked) must gate all SIX permission points (assign/prioritize/nudge/end_verify/convene + the board plane), and the grantable set must stay the bounded four (assign/prioritize/nudge/convene) — the criterion: a command guarded by an ADJUDICATION-LEVEL identity can never be delegated')
+  gate(!!grantBody && !/\bvoters\(|quorum|\bmembers\b/.test(grantBody),
+    'R36', 'S6/D8: an authorization must NEVER add vote power (the grant path touches no electorate)')
+  gate(!!grantBody && /V5_NOT_VOTER/.test(grantBody)
+    && grantBody.indexOf('V5_NOT_VOTER') < grantBody.indexOf('patchInstitute({ grants:')
+    && /target\.kind === 'academician' \|\| target\.kind === 'researcher'/.test(grantBody),
+    'R37', 'S6/D8: only roster members may be authorized — a non-member must be refused BY NAME, and that check must run BEFORE anything is written to the ledger')
+  gate(!!activeBody && /Number\(g\.revokedAt \|\| 0\) > 0\) return false/.test(activeBody)
+    && /Number\(g\.expiredAt \|\| 0\) > 0\) return false/.test(activeBody)
+    && /g\.grantScope === 'once'/.test(activeBody) && /Number\(g\.usedAt \|\| 0\) === 0/.test(activeBody)
+    && /g\.grantScope === 'meeting'/.test(activeBody) && /String\(g\.meetingId \|\| ''\) === String\(meeting\.id\)/.test(activeBody)
+    && /g\.grantScope === 'verify'/.test(activeBody) && /String\(g\.verifyTarget \|\| ''\) === String\(cv\.target\)/.test(activeBody)
+    && /expiredAt: now\(\)/.test(v5rRaw),
+    'R38', 'S6: expiry must be EVENT-derived and automatic (revoked / recorded-expired / once-used / the meeting or the verification is no longer the one it was granted for) — a grant must never stay effective merely because nobody marked it')
+  notes.push('S6 (v5r): grant tools=' + ['vibe_v5_grant', 'vibe_v5_revoke'].filter((n) => new RegExp("registerTool\\('" + n + "'").test(v5rRaw)).length + '/2'
+    + '; grantable=' + (v5rRaw.match(/GRANTABLE_COMMANDS = \[([^\]]*)\]/) || ['', ''])[1].replace(/['\s]/g, '')
+    + '; predicate=canDo(' + /const g = grantEffective\(callerId, command\)/.test(canDoBody) + ')'
+    + '; grant path touches electorate=' + /\bvoters\(|quorum|\bmembers\b/.test(grantBody)
+    + '; D8 before ledger=' + (grantBody.indexOf('V5_NOT_VOTER') < grantBody.indexOf('patchInstitute({ grants:'))
+    + '; event-derived expiry=' + /g\.grantScope === 'once'/.test(activeBody) + '/' + /g\.grantScope === 'meeting'/.test(activeBody) + '/' + /g\.grantScope === 'verify'/.test(activeBody)
+    + '; meeting-close marks expired=' + /expiredAt: now\(\)/.test(v5rRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

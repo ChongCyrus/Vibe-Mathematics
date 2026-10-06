@@ -599,6 +599,12 @@ export function apply(ctx) {
           // S5 (R1/D10)：静止提示的耐久标记。同一静止片段**最多提示一次** ⇒ 必须跨重启记住"这一
           // 片段已经提示过"（纯内存标记在重启后会丢，静止的 run 会重发第二条，违反"最多一次"）。
           if (patch.stallNotice !== undefined) n.stallNotice = patch.stallNotice === null ? null : Object.assign({}, patch.stallNotice)
+          // S6（D1/D2/D6/D8）：临时授权**台账**。append-only（不覆盖历史），授权与撤回都留痕；
+          // fold 是显式白名单 ⇒ 不加这行 `patchInstitute({grants})` 会被**静默丢弃**（S4/S5 已证）。
+          if (patch.grants !== undefined) {
+            const next = typeof patch.grants === 'function' ? patch.grants(Array.isArray(n.grants) ? n.grants : []) : patch.grants
+            if (next !== undefined) n.grants = Array.isArray(next) ? next : []
+          }
           return n
         })
       }
@@ -1459,6 +1465,160 @@ export function apply(ctx) {
         + (waiting.length ? ('谁在等谁：' + waiting.join('；') + '。') : '')
         + '框架不自动开会、不自动收束，也不替任何人表态；是否推进、由谁推进，由院士与成员决定。')
       return true
+    }
+
+    // ── S6（D1/D2/D6/D8）：临时授权＝**只改"默认权限表"这一层** ──────────────────────────────
+    // 定稿口径（SPEC P6／B-protocol L236／04-flows L249）：默认范围＝**本次会议收束即失效**；
+    // 另可 `verify`（本次验证结束即失效）与 `once`（用一次即失效）；**失效是自动的**（事件到即不再
+    // 生效），回收＝① 事件到期 ② 显式 `vibe_v5_revoke`（**必须写事件并广播**）。
+    // **不可授**（判据＝"凡由**裁定级身份保证**把守的命令不可授"）：`end_verify`（R10-2a 仅院士）、
+    // 主持/代行（S4 唯一入口）、票权与代表态（R2/R3/D3/D8）、私密与引用面（D6）、授权本身（GAPS 22 不可转授）。
+    const GRANTABLE_COMMANDS = ['assign', 'prioritize', 'nudge', 'convene']
+    const GRANT_SCOPES = ['meeting', 'verify', 'once']
+    const grantsList = () => (Array.isArray(inst().grants) ? inst().grants : [])
+    const grantsView = () => grantsList().map((g) => ({
+      id: String(g.id || ''), by: String(g.by || ''), to: String(g.to || ''), command: String(g.command || ''),
+      grantScope: String(g.grantScope || ''), at: Number(g.at || 0), expiresOn: String(g.expiresOn || ''),
+      usedAt: Number(g.usedAt || 0), revokedAt: Number(g.revokedAt || 0), revokedBy: String(g.revokedBy || ''),
+      expiredAt: Number(g.expiredAt || 0), why: String(g.why || ''), active: grantActive(g),
+    }))
+    /** 生效判定＝**事件派生**（不靠定时器）：已撤回/已记账失效/一次性已用/会议或验证已不是"当时那个" ⇒ 不生效。 */
+    function grantActive(g) {
+      if (!g || !g.id) return false
+      if (Number(g.revokedAt || 0) > 0) return false
+      if (Number(g.expiredAt || 0) > 0) return false
+      if (g.grantScope === 'once') return Number(g.usedAt || 0) === 0
+      if (g.grantScope === 'meeting') return !!meeting && String(g.meetingId || '') === String(meeting.id)
+      if (g.grantScope === 'verify') { const cv = currentVerify(); return !!cv && String(g.verifyTarget || '') === String(cv.target) }
+      return false
+    }
+    function grantEffective(callerId, command) {
+      for (const g of grantsList()) {
+        if (!g || String(g.to || '') !== String(callerId) || String(g.command || '') !== String(command)) continue
+        if (grantActive(g)) return g
+      }
+      return null
+    }
+    /** 默认权限表＝**唯一**一处静态角色判断（office 全权；院士按既有 `academicianLeads` 口径；
+     *  `end_verify` 是**裁定级**：仅院士，永不因授权而开）。 */
+    function defaultAllowed(callerId, command) {
+      if (isOffice(callerId)) return true
+      const acad = isAcademician(callerId)
+      if (command === 'end_verify') return acad
+      if (command === 'board') return acad   // 板上组织动作（既有 `lead` 口径：不受 `academicianLeads` 影响）
+      if (command === 'assign' || command === 'prioritize' || command === 'nudge' || command === 'convene') return !!(acad && params.academicianLeads)
+      return false
+    }
+    /** **单一谓词**：`canDo = 默认表 ∩ 阶段允许 ∩ 生效授权 − 撤回`（阶段允许由各自权限点的前置守卫承担）。 */
+    function canDo(callerId, command) {
+      if (defaultAllowed(callerId, command)) return { ok: true, via: 'default', grant: null }
+      const g = grantEffective(callerId, command)
+      if (g) return { ok: true, via: 'grant', grant: g }
+      return { ok: false, via: 'default', grant: null }
+    }
+    /** `once` 授权在**获批的那一刻**消费（用一次即失效）。 */
+    async function consumeGrant(g) {
+      if (!g || g.grantScope !== 'once' || Number(g.usedAt || 0) > 0) return
+      await patchInstitute({ grants: (list) => (Array.isArray(list) ? list : []).map((x) => (x && x.id === g.id ? Object.assign({}, x, { usedAt: now() }) : x)) })
+    }
+    /** 权限点统一入口：返回 `null`＝放行（并消费一次性授权），否则返回**具名拒绝**对象。 */
+    async function gateDo(callerId, command, message) {
+      const perm = canDo(callerId, command)
+      if (!perm.ok) return { ok: false, code: 'V5_NOT_ACADEMICIAN', message }
+      await consumeGrant(perm.grant)
+      return null
+    }
+    /** #47 `vibe_v5_grant`：**仅院士**；`to` 必须是在册成员（**D8**：非成员 ⇒ 具名拒绝，且校验先于写台账）；
+     *  `command` 有界枚举；`grantScope` 只有事件型三档；**不收任何 `…At`/`…Ms`（有意偏离 SPEC #13 的字面参数表）**。 */
+    async function grantTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('临时授权（vibe_v5_grant）', memberId)
+      if (me.kind !== 'academician') {
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以临时授权（D1）；所办按其默认权限行事，无需授权' }
+      }
+      const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)))
+      if (stampKeys.length) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（S6）：不接受 ' + stampKeys.join('、') + '；失效条件一律用事件表达（grant_scope=meeting／verify／once）' }
+      }
+      if (args.expires_on !== undefined || args.expiresOn !== undefined) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '失效条件用 grant_scope 表达（meeting／verify／once），不接受 expires_on（S6）' }
+      }
+      const command = String(args.command || '').trim()
+      if (GRANTABLE_COMMANDS.indexOf(command) === -1) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '可授命令有界枚举：' + GRANTABLE_COMMANDS.join('／') + '。判据：**凡由裁定级身份保证把守的命令不可授** —— `end_verify`（R10-2a 仅院士）／主持与代行（D1，S4 的 `vibe_v5_chair_proxy` 是唯一入口）／票权与代表态（R2/R3/D3/D8）／私密与引用面（D6）／授权本身（GAPS 22 不可转授）' }
+      }
+      const grantScope = String(args.grant_scope || args.grantScope || '').trim()
+      if (GRANT_SCOPES.indexOf(grantScope) === -1) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'grant_scope 只接受 ' + GRANT_SCOPES.join('／') + '（事件型；时间由框架设置，不接受任何 …At/…Ms）' }
+      }
+      const why = String(args.why || '').trim()
+      if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'why is required：临时授权必须写明理由（01 §4.4）' }
+      const toId = String(args.to || '').trim()
+      const target = memberById(toId)
+      if (!target) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'member "' + toId + '" not found' }
+      if (!(target.kind === 'academician' || target.kind === 'researcher')) {
+        return { ok: false, code: 'V5_NOT_VOTER', message: '列席／受邀／临时工不可被授权（D8：非成员一律无表决权，也不得代行程序权）' }
+      }
+      if (target.phase !== 'active') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'member "' + toId + '" is not active' }
+      let meetingId = ''
+      let verifyTarget = ''
+      if (grantScope === 'meeting') {
+        if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: 'grant_scope=meeting 需要一场进行中的会议（收束即自动失效）' }
+        meetingId = String(meeting.id)
+      } else if (grantScope === 'verify') {
+        const cv = currentVerify()
+        if (!cv) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'grant_scope=verify 需要一个进行中的验证（结束即自动失效）' }
+        verifyTarget = String(cv.target)
+      }
+      const dup = grantsList().filter((g) => g && String(g.to || '') === toId && String(g.command || '') === command
+        && String(g.grantScope || '') === grantScope && String(g.meetingId || '') === meetingId
+        && String(g.verifyTarget || '') === verifyTarget && grantActive(g))[0]
+      if (dup) return { ok: true, deduped: true, grant: dup, message: '同值授权仍在生效（幂等）：未重复入账' }
+      const at = now()
+      const got = { entry: null }
+      await patchInstitute({ grants: (list) => {
+        const arr = Array.isArray(list) ? list : []
+        const n = arr.filter((g) => g && /^g-\d+$/.test(String(g.id || '')))
+          .reduce((mx, g) => Math.max(mx, Number(String(g.id).slice(2)) || 0), 0) + 1
+        const entry = {
+          id: 'g-' + n, by: me.id, to: toId, command, grantScope, at, why,
+          expiresOn: grantScope === 'once' ? 'once' : (grantScope === 'meeting' ? 'meeting:' + meetingId : 'verify:' + verifyTarget),
+          meetingId, verifyTarget, usedAt: 0, revokedAt: 0, revokedBy: '', expiredAt: 0,
+        }
+        got.entry = entry
+        return arr.concat([entry])
+      } })
+      await saveChatLine('【临时授权】' + me.id + ' 授予 ' + toId + ' 执行 `' + command + '`（范围 ' + grantScope + '＝'
+        + (grantScope === 'once' ? '用一次即失效'
+          : grantScope === 'meeting' ? '本次会议收束即失效（' + meetingId + '）' : '本次验证结束即失效（' + verifyTarget + '）')
+        + '；理由：' + why + '）。**不产生新票权**；授权只改"默认权限表"这一层，不改阶段/票面。')
+      return { ok: true, grant: got.entry }
+    }
+    /** #48 `vibe_v5_revoke`：**仅院士**；`grant_id`（或 `to`+`command`）；**写事件并广播**（SPEC P6）；重复撤回幂等。 */
+    async function revokeTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('撤回授权（vibe_v5_revoke）', memberId)
+      if (me.kind !== 'academician') return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以撤回授权（D1）' }
+      const why = String(args.why || '').trim()
+      if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'why is required：撤回授权必须写明理由（01 §4.4）' }
+      const gid = String(args.grant_id || args.grantId || '').trim()
+      const toId = String(args.to || '').trim()
+      const command = String(args.command || '').trim()
+      const list = grantsList()
+      const hit = gid
+        ? list.filter((g) => g && String(g.id || '') === gid)[0]
+        : list.filter((g) => g && String(g.to || '') === toId && String(g.command || '') === command && grantActive(g))[0]
+      if (!hit) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: gid ? ('grant "' + gid + '" not found') : '没有匹配的生效授权（给 grant_id，或 to + command）' }
+      }
+      if (Number(hit.revokedAt || 0) > 0) return { ok: true, deduped: true, revoked: hit, message: '该授权已撤回（幂等）' }
+      const at = now()
+      await patchInstitute({ grants: (l) => (Array.isArray(l) ? l : []).map((g) => (g && g.id === hit.id ? Object.assign({}, g, { revokedAt: at, revokedBy: me.id, revokeWhy: why }) : g)) })
+      await saveChatLine('【临时授权·撤回】' + me.id + ' 撤回 ' + hit.to + ' 的 `' + hit.command + '` 授权（' + hit.id
+        + '；理由：' + why + '）。**写事件并广播**：该权限立即回到默认表口径。')
+      return { ok: true, revoked: Object.assign({}, hit, { revokedAt: at, revokedBy: me.id, revokeWhy: why }) }
     }
 
     // ---- roster helpers ---------------------------------------------------
@@ -4535,8 +4695,10 @@ export function apply(ctx) {
       }
       const action = String(args.action || '')
       const office = isOffice(memberId)
-      const acad = isAcademician(memberId)
-      const lead = office || acad
+      // S6（D1/D2/D6/D8）：板上"组织动作"＝默认表的 `board` 面；持 `assign` 授权时**同一权限面**随之生效
+      // （`vibe_v5_assign` 内部正是靠 reassign 落地它的分派）。授权只改"默认权限表"这一层。
+      // `meta.authorized` 是**内部**位置参数：同一命令内部沿用其已经确立的判定（见 `taskAssign` 的注释）。
+      const lead = !!(meta && meta.authorized === true) || canDo(memberId, 'board').ok || canDo(memberId, 'assign').ok
       const owner = task.ownerId === memberId
       const requireOwnerOrLead = () => {
         if (!lead && !owner) throw v5err('V5_TASK_UNAUTHORIZED', 'task mutation requires its owner, the academician, or the office')
@@ -4629,9 +4791,8 @@ export function apply(ctx) {
     // (the objection is broadcast, not silently swallowed).
     async function taskAssign(memberId, o) {
       if (!memberId) return memberDiagnosis('分派任务（vibe_v5_assign）', memberId)
-      if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
-        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can assign tasks' }
-      }
+      const denyAssign = await gateDo(memberId, 'assign', 'only the academician (or the office) can assign tasks')
+      if (denyAssign) return denyAssign
       const args = o || {}
       const to = String(args.to || '').trim()
       const target = memberById(to)
@@ -4656,7 +4817,10 @@ export function apply(ctx) {
         return { ok: false, code: 'V5_TASK_BLOCKED', message: 'task ' + taskId + ' still has incomplete blockers' }
       }
       const r = await taskUpdate(memberId, { task_id: taskId, expected_revision: (cur ? cur.revision : 1), action: 'reassign', owner: to },
-        { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance })
+        // S6（D1/D2/D6/D8）：`authorized` 是**内部**位置参数（不在工具 args 面上）：`vibe_v5_assign` 已经把
+        // 权限判定做过了（含 `once` 授权在获批时即被消费）⇒ 它自己的这次板上写入必须**沿用**该判定，
+        // 否则"被授权者调用 assign"会在内部 reassign 处再次被判为无权。
+        { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance, authorized: true })
       if (!r.ok) return r
       // G4: NO second write here — the metadata went into the CAS write above (one task commit, so an
       // interleaved task_update can neither be swallowed nor silently lose its revision).
@@ -4673,9 +4837,8 @@ export function apply(ctx) {
     }
     async function taskPrioritize(memberId, o) {
       if (!memberId) return memberDiagnosis('设置任务优先级（vibe_v5_task_prioritize）', memberId)
-      if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
-        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can set priorities' }
-      }
+      const denyPrio = await gateDo(memberId, 'prioritize', 'only the academician (or the office) can set priorities')
+      if (denyPrio) return denyPrio
       const order = (o && o.order) || []
       if (!Array.isArray(order) || !order.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'order must be a non-empty array of {task_id, priority}' }
       const applied = []
@@ -5401,7 +5564,9 @@ export function apply(ctx) {
         return { ok: false, code: 'V5_NOT_VOTER', message: '列席／受邀／临时工不可写自述（G6；与 D8 一致）；你仍可查看工作状态' }
       }
       const a = patch || {}
-      const timeKeys = Object.keys(a).filter((k) => /(At|Ms)$/.test(String(k)))
+      // G6 §7.1：时间由框架设置 —— 大小写不敏感（`/i`）：`/(At|Ms)$/` 会漏掉 `subgoal_at`／`expires_at`
+      // 这类全小写写法，用户自带时间就被**静默接受**（与 S4/S6 同源；每处都有按名红的族守着）。
+      const timeKeys = Object.keys(a).filter((k) => /(At|Ms)$/i.test(String(k)))
       if (timeKeys.length) {
         // G6 §7.1：时间由框架设置（防伪造/防漂移）
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（G6 §7.1）：不接受 ' + timeKeys.join('、') + '；每个字段的 …At 由框架写入' }
@@ -5473,8 +5638,9 @@ export function apply(ctx) {
           return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '不得改他人自述（G6）：只能更新自己的 overall/subgoal/plan/status；院士仅可为他人设定 overall（' + otherKeys.join('/') + ' 指向 ' + targetId + '，本次字段 ' + JSON.stringify(patchKeys) + '）' }
         }
       }
-      // G6 §7.1：时间由框架设置 —— 客户端自带的**任何** …At／…Ms 一律显式拒绝（不得静默忽略）
-      const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))
+      // G6 §7.1：时间由框架设置 —— 客户端自带的**任何** …At／…Ms 一律显式拒绝（不得静默忽略）。
+      // **大小写不敏感（`/i`）**：同 S4/S6 加固，堵住全小写 `expires_at`／`subgoal_at` 的静默通过。
+      const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)))
       if (timeKeys.length) {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（G6 §7.1）：不接受 ' + timeKeys.join('、') + '；每个字段的 …At／…Ms 由框架写入' }
       }
@@ -5504,7 +5670,9 @@ export function apply(ctx) {
       }
       // S4（沿用 G6 §7.1 的**最外层**做法）：客户端自带的任何 …At／…Ms（含 until）一律显式拒绝。
       // 变量名刻意不同于 selfReportTool 的 `timeKeys`：那条锚点是 R18 的自检变异点，必须保持全局唯一。
-      const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)) || String(k) === 'until')
+      // **大小写不敏感（`/i`）**：`/(At|Ms)$/` 会漏掉 `expires_at`／`timeout_ms` 这类全小写/混合写法，
+      // 用户自带时间就被**静默接受**（S6 实测同源漏洞；与"时间由框架设置"这条硬纪律冲突）。
+      const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)) || String(k) === 'until')
       if (stampKeys.length) {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（S4/D1）：不接受 ' + stampKeys.join('、') + '；代行不设自定时限，时间一律由框架写入' }
       }
@@ -5569,9 +5737,8 @@ export function apply(ctx) {
     async function endVerify(memberId, target, reason) {
       const member = memberById(memberId)
       if (!member) return memberDiagnosis('结束辩论（vibe_v5_end_verify）', memberId)
-      if (member.kind !== 'academician') {
-        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以显式结束辩论（R10-2a）；其它成员请继续投票、弃权或声明无法判断' }
-      }
+      const denyEnd = await gateDo(member.id, 'end_verify', '只有院士可以显式结束辩论（R10-2a）；其它成员请继续投票、弃权或声明无法判断')
+      if (denyEnd) return denyEnd
       const vs = currentVerify()
       if (!vs) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'no verification in progress' }
       if (String(target) && String(target) !== vs.target) {
@@ -5638,9 +5805,9 @@ export function apply(ctx) {
       const agenda = String(o.agenda || '').trim()
       if (!agenda) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'agenda is required' }
       const kind = String(o.kind || 'sync')
-      const academician = isAcademician(callerId)
       const office = isOffice(callerId)
-      if (!office && !(academician && params.academicianLeads)) {
+      const convened = canDo(callerId, 'convene')
+      if (!convened.ok) {
         // Everyone else may only PROPOSE; the request is relayed to the academician
         // and the office instead of silently doing nothing.
         //
@@ -5655,6 +5822,7 @@ export function apply(ctx) {
         }
         return { ok: true, proposed: true, message: '已向院士/所办提议开会（只有院士或所办可以直接召开；所办会在 status/report 的 officeRequests 里看到该提议）' }
       }
+      await consumeGrant(convened.grant)   // S6：一次性授权在获批这一刻消费（用一次即失效）
       if (autoDone) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute has already concluded; start a new run to convene again' }
       if (!running) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'the institute is not running' }
       const inFounding = activeMembers().some((m) => !m.direction && m.kind !== 'temp' && (rounds.get(m.id) || 0) === 0)
@@ -5953,6 +6121,13 @@ export function apply(ctx) {
     }
     async function finalizeMeeting(mn) {
       meeting = null
+      // S6（D1/D2/D6/D8）：会议收束 ⇒ 该会议的 `grantScope='meeting'` 授权在**账上**标记失效
+      // （生效判定本身已是事件派生的；这一步只是把"为何失效"写进台账，便于审计与回收核对）。
+      try {
+        await patchInstitute({ grants: (list) => (Array.isArray(list) ? list : []).map((g) => (
+          g && g.grantScope === 'meeting' && String(g.meetingId || '') === String(mn.id) && !Number(g.revokedAt || 0) && !Number(g.expiredAt || 0)
+            ? Object.assign({}, g, { expiredAt: now() }) : g)) })
+      } catch (e) { /* 台账标记失败不得影响收束 */ }
       // F6: the meeting is closed ⇒ clear the durable OPEN marker (see `beginMeeting`).
       try { await patchInstitute({ meetingOpen: null }) } catch (e) { /* the minutes below matter more */ }
       const lines = []
@@ -7181,9 +7356,8 @@ export function apply(ctx) {
     }
     async function nudge(callerId, o) {
       if (!callerId) return memberDiagnosis('督办（vibe_v5_nudge）', callerId)
-      if (!isOffice(callerId) && !(isAcademician(callerId) && params.academicianLeads)) {
-        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can nudge members' }
-      }
+      const denyNudge = await gateDo(callerId, 'nudge', 'only the academician (or the office) can nudge members')
+      if (denyNudge) return denyNudge
       const args = o || {}
       const to = String(args.to || '').trim()
       const target = memberById(to)
@@ -8606,6 +8780,18 @@ export function apply(ctx) {
         }
       }
       L.push('')
+      // S6（D1/D2/D6/D8）：临时授权台账 —— **只读呈现**（授权/撤回复核用；不改票权、不驱动流程）。
+      {
+        const gs = grantsView()
+        L.push('## 临时授权（可授：' + GRANTABLE_COMMANDS.join('／') + '；不可授：end_verify／主持代行／票权／私密与引用面）')
+        if (!gs.length) L.push('- （无）')
+        for (const g of gs) {
+          L.push('- ' + g.id + '｜' + g.by + ' → ' + g.to + '｜`' + g.command + '`｜' + g.grantScope + '｜'
+            + (g.active ? '**生效中**（' + g.expiresOn + '）'
+              : (g.revokedAt ? '已撤回（' + fmtTime(g.revokedAt) + '）' : '已失效（' + g.expiresOn + '）')))
+        }
+      }
+      L.push('')
       // F1 (status/report review, HIGH): the section must read the sources its heading advertises —
       // (a) skipped/malformed EVENTS (top-level `state.diagnostics`, written by `applyV5Event`'s
       // catch), (b) state-FILE problems (the session log `loadProblemLog` / `lastLoadProblem`), and
@@ -8776,7 +8962,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -9005,6 +9191,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_self_report', '(member) Update YOUR OWN self-report (G6): overall/subgoal/plan/status. Any roster member may read every member\'s work-status fields; private messages never enter this view. Times (…At/…Ms) are set by the framework and are rejected if supplied. Same-value resubmission is idempotent (deduped:true). Call with no field to READ the view (the read is audited).', objParams({ overall: {}, subgoal: {}, plan: {}, status: S, reason: S, source: S }), (s, a, x) => s.selfReportTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_chair_proxy', '(academician) #45 — appoint a PROXY for the chair (D1/R4/R5). Only the academician may call it (a non-academician is refused by name). scope accepts exactly one value, "close" (the proxy may only close the meeting); why is required. Any client-supplied …At/…Ms or until is refused (times are set by the framework). Same-value resubmission is idempotent (deduped:true) and does not refresh since. A proxy NEVER adds a vote: voters()/quorum are untouched and the chair is not weighted (R5).', objParams({ member: S, scope: S, why: S }), (s, a, x) => s.chairProxyTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_procedural_objection', '(member) #46 — raise a PROCEDURAL OBJECTION on the meeting in progress (D2, the relief channel for a chair ruling). Any roster member may raise one (attending/invited/temp workers are refused by name); why is required. The objection is filed durably with chairReply:null and chairReplyPending:true — the pending flag stays VISIBLE (a reply is never faked) — and only RECORDS: it changes no ballot, no stage and postpones no closure. Same-value resubmission is idempotent (deduped:true).', objParams({ why: S }), (s, a, x) => s.proceduralObjectionTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_grant', '(academician) #47 — TEMPORARY AUTHORIZATION (D1/D2/D6/D8): let one roster member run ONE enumerated command, only within an event scope. Grantable commands: assign | prioritize | nudge | convene. NEVER grantable (the criterion: a command guarded by an adjudication-level identity can never be delegated): end_verify (R10-2a is academician-only), the chair itself / proxy (D1; S4 vibe_v5_chair_proxy is the only entry), any ballot or representation of a member (R2/R3/D3/D8), the private/quoting face (D6), and authorization itself (no re-delegation). grant_scope is EVENT-typed: meeting (expires the moment this meeting closes) | verify (expires when this verification ends) | once (expires after one use). Times are set by the framework: any …At/…Ms (including expires_at) is refused. The grantee must be a roster member (attending/invited/temp ⇒ V5_NOT_VOTER, checked before anything is written). A grant NEVER adds vote power. Same-value re-grant while still active is idempotent (deduped:true).', objParams({ to: S, command: S, grant_scope: S, grantScope: S, why: S }), (s, a, x) => s.grantTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_revoke', '(academician) #48 — REVOKE a temporary authorization (D1). Pass grant_id (or to + command); why is required. The revocation WRITES AN EVENT AND IS BROADCAST (the spec requires it), and the revoked permission immediately falls back to the default permission table. Revoking an already-revoked/expired grant is idempotent (deduped:true).', objParams({ grant_id: S, to: S, command: S, why: S }), (s, a, x) => s.revokeTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
@@ -9073,6 +9261,14 @@ export function apply(ctx) {
       } else {
         parts.push('- 本片段尚未提示（框架不自动开会/不自动收束；是否推进由院士与成员决定）')
       }
+    }
+    // S6 (D1/D2/D6/D8): the temporary-authorization ledger — read-only; grants never add vote power.
+    {
+      const gs = s.grantsView()
+      const live = gs.filter((g) => g.active)
+      parts.push('## 临时授权（' + live.length + ' 条生效／' + gs.length + ' 条台账；可授：assign／prioritize／nudge／convene）')
+      for (const g of live) parts.push('- ' + g.id + '｜' + g.to + '｜`' + g.command + '`｜' + g.grantScope + '｜至 ' + g.expiresOn)
+      if (!live.length) parts.push('- （当前没有生效中的授权）')
     }
     return { ok: true, overview: parts.join('\n') }
   })

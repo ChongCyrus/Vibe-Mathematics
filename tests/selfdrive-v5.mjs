@@ -567,6 +567,17 @@ async function runScenario(name) {
     const inst = (s.institutes || {})['default::institute'] || {}
     return inst.stallNotice || null
   }
+  // S6 场景的台账读取（授权/撤回的耐久证据）。
+  const durableGrants = () => {
+    const s = readV5State() || {}
+    const inst = (s.institutes || {})['default::institute'] || {}
+    return Array.isArray(inst.grants) ? inst.grants : []
+  }
+  // S6 场景只在 v5r 下可跑（临时授权是 v5r 的能力）；v5 路径**显式 skip**。
+  if (name.startsWith('s6-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S6 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_grant / vibe_v5_revoke）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -686,6 +697,10 @@ async function runScenario(name) {
     // 收紧：断言**说明文案**含规格原文，而不是靠回执里恰好出现 times 字段（上一轮就是那样误过的）。
     assert(/时间由框架设置/.test(String(repTime.message || '')),
       'G6-time：回执说明含「时间由框架设置」（got message=' + JSON.stringify(repTime.message) + '）')
+    // 大小写不敏感（S4/S6 同源加固）：`/(At|Ms)$/` 会漏掉全小写的 `expires_at` ⇒ 必须按 `/i` 拒。
+    const repLower = await callTool('vibe_v5_self_report', { subgoal: 'G6 全小写时间戳', expires_at: 1234567890 }, g6TimeAgent)
+    assert(repLower.ok === false && repLower.code === 'V5_INVALID_ARGUMENT' && /时间由框架设置/.test(String(repLower.message || '')),
+      'G6-time：全小写 expires_at 也不得静默通过（须拒＋「时间由框架设置」；got ' + JSON.stringify(repLower).slice(0, 160) + '）')
   } else if (name === 'g6-nonmember') {
     // G6-nonmember：临时工（t-1）不可写入 ⇒ **具名拒绝 V5_NOT_VOTER**（与 D8 一致）。
     const g6NonAgent = childAgent(childOf('t-1'))
@@ -798,6 +813,10 @@ async function runScenario(name) {
     const repMs = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '带 …Ms', timeoutMs: 1000 }, childAgent(childOf('acad')))
     assert(repMs.ok === false && repMs.code === 'V5_INVALID_ARGUMENT',
       'S4-proxy-time：请求自带 …Ms 同样一律拒绝（got ' + JSON.stringify(repMs).slice(0, 180) + '）')
+    // 大小写不敏感（S6 同源加固）：`/(At|Ms)$/` 会漏掉全小写的 `expires_at` ⇒ 必须按 `/i` 拒。
+    const repLower = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '带全小写 expires_at', expires_at: 1234567890 }, childAgent(childOf('acad')))
+    assert(repLower.ok === false && repLower.code === 'V5_INVALID_ARGUMENT' && /时间由框架设置/.test(String(repLower.message || '')),
+      'S4-proxy-time：全小写 expires_at 也不得静默通过（须拒＋「时间由框架设置」；got ' + JSON.stringify(repLower).slice(0, 180) + '）')
   } else if (name === 's4-objection') {
     // S4-objection：在册成员提程序异议 ⇒ 入档（by/at/why）且 chairReplyPending:true **可见**（不得假装已回填）；
     // 留痕落在群聊与会议纪要（耐久）；列席/临时工 ⇒ 具名 V5_NOT_VOTER。
@@ -960,6 +979,127 @@ async function runScenario(name) {
     const waited = JSON.stringify((durableNotice() || {}).waiting || [])
     assert(waited.indexOf(tBid) !== -1 && waited.indexOf(tAid) !== -1,
       'S5-waiting-graph：提示须列出被挡者与阻挡者 id（want ' + tBid + '/' + tAid + '；got=' + waited + '）')
+  } else if (name === 's6-grant-ok') {
+    // S6-grant-ok：院士可把有界枚举里的命令授给在册成员 ⇒ 被授权者真的能调用；台账耐久可见；**票权不变**。
+    const votersBefore = JSON.stringify(((await callTool('vibe_v5_status', {})).quorum || {}).voters)
+    const g1 = await callTool('vibe_v5_grant', { to: 'r-1', command: 'assign', grant_scope: 'once', why: 'S6 授权探测' }, childAgent(childOf('acad')))
+    assert(g1.ok === true && !!g1.grant && /^g-\d+$/.test(String(g1.grant.id)),
+      'S6-grant-ok：院士可授（once；got ' + JSON.stringify(g1).slice(0, 200) + '）')
+    assert(g1.grant.grantScope === 'once' && g1.grant.expiresOn === 'once' && Number(g1.grant.revokedAt) === 0,
+      'S6-grant-ok：回执 grantScope=once／expiresOn=once／revokedAt=0（got ' + JSON.stringify(g1.grant) + '）')
+    const asg = await callTool('vibe_v5_assign', { to: 'r-2', why: '被授权者分派', acceptance: '完成并回报' }, childAgent(childOf('r-1')))
+    assert(asg.ok === true, 'S6-grant-ok：被授权者调用 assign 成功（基线会 V5_NOT_ACADEMICIAN；got ' + JSON.stringify(asg).slice(0, 160) + '）')
+    const g2 = await callTool('vibe_v5_grant', { to: 'r-2', command: 'convene', grant_scope: 'once', why: 'S6 召集授权' }, childAgent(childOf('acad')))
+    assert(g2.ok === true, 'S6-grant-ok：convene 也可授（got ' + JSON.stringify(g2).slice(0, 160) + '）')
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S6 被授权者召集', kind: 'sync' }, childAgent(childOf('r-2')))
+    assert(mt.ok === true && !!mt.meeting, 'S6-grant-ok：被授权者真的能召集会议（got ' + JSON.stringify(mt).slice(0, 160) + '）')
+    const ledger = durableGrants()
+    assert(ledger.some((x) => x.id === g1.grant.id && x.to === 'r-1' && x.command === 'assign')
+      && ledger.some((x) => x.command === 'convene' && x.to === 'r-2'),
+      'S6-grant-ok：台账耐久入档（got ' + JSON.stringify(ledger.map((x) => [x.id, x.to, x.command])) + '）')
+    const st = await callTool('vibe_v5_status', {})
+    assert(JSON.stringify(st.quorum.voters) === votersBefore && st.quorum.voterCount === 4,
+      'S6-grant-ok：授权不产生新票权（voters 不变；got ' + JSON.stringify(st.quorum.voters) + '）')
+    const rep = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(rep.indexOf('临时授权') !== -1 && rep.indexOf(String(g1.grant.id)) !== -1,
+      'S6-grant-ok：report() 呈现授权台账（got len=' + rep.length + '）')
+  } else if (name === 's6-not-granted') {
+    // S6-not-granted：**基线不被放宽**——未授权成员仍被具名拒绝；非院士**不能**授权。
+    const asg = await callTool('vibe_v5_assign', { to: 'r-2', why: '未授权尝试', acceptance: 'x' }, childAgent(childOf('r-1')))
+    assert(asg.ok === false && asg.code === 'V5_NOT_ACADEMICIAN',
+      'S6-not-granted：未授权 assign ⇒ V5_NOT_ACADEMICIAN（got ' + JSON.stringify(asg).slice(0, 160) + '）')
+    const nud = await callTool('vibe_v5_nudge', { to: 'r-2', why: '未授权督办' }, childAgent(childOf('r-1')))
+    assert(nud.ok === false && nud.code === 'V5_NOT_ACADEMICIAN',
+      'S6-not-granted：未授权 nudge ⇒ V5_NOT_ACADEMICIAN（got ' + JSON.stringify(nud).slice(0, 160) + '）')
+    const endv = await callTool('vibe_v5_end_verify', { target: 'p-r-1', reason: '未授权尝试' }, childAgent(childOf('r-1')))
+    assert(endv.ok === false && endv.code === 'V5_NOT_ACADEMICIAN',
+      'S6-not-granted：end_verify 仍仅院士（R10-2a；got ' + JSON.stringify(endv).slice(0, 160) + '）')
+    const byMember = await callTool('vibe_v5_grant', { to: 'r-2', command: 'assign', grant_scope: 'once', why: '非院士尝试' }, childAgent(childOf('r-1')))
+    assert(byMember.ok === false && byMember.code === 'V5_NOT_ACADEMICIAN',
+      'S6-not-granted：非院士不能授权（D1；got ' + JSON.stringify(byMember).slice(0, 160) + '）')
+    assert(durableGrants().length === 0, 'S6-not-granted：拒绝无副作用（台账仍空；got ' + JSON.stringify(durableGrants()) + '）')
+  } else if (name === 's6-scope-expire') {
+    // S6-scope-expire：**自动失效**——once 用一次即失效；meeting 会议收束即失效（并在账上标 expiredAt）。
+    const gOnce = await callTool('vibe_v5_grant', { to: 'r-1', command: 'nudge', grant_scope: 'once', why: 'S6 once 到期' }, childAgent(childOf('acad')))
+    assert(gOnce.ok === true, 'S6-scope-expire：once 授权成功（got ' + JSON.stringify(gOnce).slice(0, 160) + '）')
+    const n1 = await callTool('vibe_v5_nudge', { to: 'r-3', why: '用掉一次性授权' }, childAgent(childOf('r-1')))
+    assert(n1.ok === true, 'S6-scope-expire：once 授权第一次可用（got ' + JSON.stringify(n1).slice(0, 160) + '）')
+    const used = durableGrants().filter((x) => x.id === gOnce.grant.id)[0] || {}
+    assert(Number(used.usedAt) > 0, 'S6-scope-expire：一次性授权在获批那一刻被消费（usedAt>0；got ' + JSON.stringify(used) + '）')
+    const n2 = await callTool('vibe_v5_nudge', { to: 'r-3', why: '再用一次' }, childAgent(childOf('r-1')))
+    assert(n2.ok === false && n2.code === 'V5_NOT_ACADEMICIAN',
+      'S6-scope-expire：once 用掉后自动失效（got ' + JSON.stringify(n2).slice(0, 160) + '）')
+    const mt = await openMeeting('S6 授权到期探测')
+    assert(!!mt && !!mt.id, 'S6-scope-expire：前置会议已开启（got ' + JSON.stringify(mt && mt.id) + '）')
+    const gMeet = await callTool('vibe_v5_grant', { to: 'r-2', command: 'prioritize', grant_scope: 'meeting', why: 'S6 会议范围' }, childAgent(childOf('acad')))
+    assert(gMeet.ok === true && String(gMeet.grant.expiresOn).indexOf('meeting:') === 0,
+      'S6-scope-expire：meeting 授权记录 expiresOn=meeting:<id>（got ' + JSON.stringify(gMeet.grant) + '）')
+    const tk = await callTool('vibe_v5_task_create', { subject: 'S6 优先级标的', description: '供被授权者改优先级' }, childAgent(childOf('acad')))
+    const tkid = String((tk.task || {}).id)
+    const p1 = await callTool('vibe_v5_prioritize', { order: [{ task_id: tkid, priority: 5 }], why: '被授权者排序' }, childAgent(childOf('r-2')))
+    assert(p1.ok === true, 'S6-scope-expire：meeting 授权在会议进行中可用（got ' + JSON.stringify(p1).slice(0, 160) + '）')
+    await waitMeetingClosed()
+    const p2 = await callTool('vibe_v5_prioritize', { order: [{ task_id: tkid, priority: 9 }], why: '会后再说' }, childAgent(childOf('r-2')))
+    assert(p2.ok === false && p2.code === 'V5_NOT_ACADEMICIAN',
+      'S6-scope-expire：会议收束后自动失效（got ' + JSON.stringify(p2).slice(0, 160) + '）')
+    const closed = durableGrants().filter((x) => x.id === gMeet.grant.id)[0] || {}
+    assert(Number(closed.expiredAt) > 0, 'S6-scope-expire：收束在账上标记 expiredAt（got ' + JSON.stringify(closed) + '）')
+  } else if (name === 's6-revoke') {
+    // S6-revoke：显式撤回 ⇒ 立即失效 ＋ **写事件并广播**（SPEC P6）；重复撤回幂等。
+    const mt = await openMeeting('S6 撤回探测')
+    assert(!!mt && !!mt.id, 'S6-revoke：前置会议已开启')
+    const g = await callTool('vibe_v5_grant', { to: 'r-3', command: 'prioritize', grant_scope: 'meeting', why: 'S6 撤回对象' }, childAgent(childOf('acad')))
+    assert(g.ok === true, 'S6-revoke：授权成功（got ' + JSON.stringify(g).slice(0, 160) + '）')
+    const tk = await callTool('vibe_v5_task_create', { subject: 'S6 撤回标的', description: '供撤回前后对照' }, childAgent(childOf('acad')))
+    const tkid = String((tk.task || {}).id)
+    const okBefore = await callTool('vibe_v5_prioritize', { order: [{ task_id: tkid, priority: 3 }], why: '撤回前可用' }, childAgent(childOf('r-3')))
+    assert(okBefore.ok === true, 'S6-revoke：撤回前被授权者可用（got ' + JSON.stringify(okBefore).slice(0, 160) + '）')
+    const rv = await callTool('vibe_v5_revoke', { grant_id: String(g.grant.id), why: 'S6 撤回理由' }, childAgent(childOf('acad')))
+    assert(rv.ok === true && Number(rv.revoked.revokedAt) > 0,
+      'S6-revoke：撤回成功且写 revokedAt（got ' + JSON.stringify(rv).slice(0, 200) + '）')
+    assert(/【临时授权·撤回】/.test(chatTextR10()), 'S6-revoke：撤回写事件并广播（群聊含【临时授权·撤回】）')
+    const okAfter = await callTool('vibe_v5_prioritize', { order: [{ task_id: tkid, priority: 7 }], why: '撤回后应被拒' }, childAgent(childOf('r-3')))
+    assert(okAfter.ok === false && okAfter.code === 'V5_NOT_ACADEMICIAN',
+      'S6-revoke：撤回后立即回到默认表（got ' + JSON.stringify(okAfter).slice(0, 160) + '）')
+    const rv2 = await callTool('vibe_v5_revoke', { grant_id: String(g.grant.id), why: '重复撤回' }, childAgent(childOf('acad')))
+    assert(rv2.ok === true && rv2.deduped === true, 'S6-revoke：重复撤回幂等 deduped（got ' + JSON.stringify(rv2).slice(0, 160) + '）')
+  } else if (name === 's6-no-vote-power') {
+    // S6-no-vote-power（D8）：授权**不产生票权**、**不写票面**；列席/受邀/临时工不可被授权（校验先于写台账）。
+    const before = await callTool('vibe_v5_status', {})
+    const g = await callTool('vibe_v5_grant', { to: 'r-2', command: 'assign', grant_scope: 'once', why: 'S6 票权探测' }, childAgent(childOf('acad')))
+    assert(g.ok === true, 'S6-no-vote-power：授权成功（got ' + JSON.stringify(g).slice(0, 160) + '）')
+    const after = await callTool('vibe_v5_status', {})
+    assert(after.quorum.voterCount === before.quorum.voterCount && JSON.stringify(after.quorum.voters) === JSON.stringify(before.quorum.voters),
+      'S6-no-vote-power：票权集合不变（' + JSON.stringify(before.quorum.voters) + ' ⇒ ' + JSON.stringify(after.quorum.voters) + '，voterCount=' + after.quorum.voterCount + '）')
+    assert(JSON.stringify(after.solveVotes) === JSON.stringify(before.solveVotes)
+      && JSON.stringify(after.undecided) === JSON.stringify(before.undecided)
+      && JSON.stringify(after.verified) === JSON.stringify(before.verified),
+      'S6-no-vote-power：授权不写任何票面/结论（solveVotes／undecided／verified 全不变）')
+    const temp = await callTool('vibe_v5_grant', { to: 't-1', command: 'assign', grant_scope: 'once', why: '临时工尝试' }, childAgent(childOf('acad')))
+    assert(temp.ok === false && temp.code === 'V5_NOT_VOTER',
+      'S6-no-vote-power：临时工不可被授权（D8 ⇒ V5_NOT_VOTER；got ' + JSON.stringify(temp).slice(0, 180) + '）')
+    assert(!durableGrants().some((x) => x.to === 't-1'),
+      'S6-no-vote-power：D8 校验先于写台账（台账里没有 t-1；got ' + JSON.stringify(durableGrants().map((x) => x.to)) + '）')
+  } else if (name === 's6-d6-boundary') {
+    // S6-d6-boundary（D6/D8＋判据）：可授集合＝有界四命令；**裁定级身份保证**把守的命令一律不可授；
+    // 私密/引用面不在集合里；**不可转授**；自带时间一律拒。
+    const endv = await callTool('vibe_v5_grant', { to: 'r-1', command: 'end_verify', grant_scope: 'once', why: '想拿裁定权' }, childAgent(childOf('acad')))
+    assert(endv.ok === false && endv.code === 'V5_INVALID_ARGUMENT' && /裁定级/.test(String(endv.message)),
+      'S6-d6-boundary：end_verify 不可授（裁定级身份保证；got ' + JSON.stringify(endv).slice(0, 220) + '）')
+    const lib = await callTool('vibe_v5_grant', { to: 'r-1', command: 'read_library', grant_scope: 'once', why: '想读私密' }, childAgent(childOf('acad')))
+    assert(lib.ok === false && lib.code === 'V5_INVALID_ARGUMENT',
+      'S6-d6-boundary：私密/引用面不在可授集合（got ' + JSON.stringify(lib).slice(0, 160) + '）')
+    const badScope = await callTool('vibe_v5_grant', { to: 'r-1', command: 'assign', grant_scope: 'forever', why: '永久' }, childAgent(childOf('acad')))
+    assert(badScope.ok === false && badScope.code === 'V5_INVALID_ARGUMENT',
+      'S6-d6-boundary：grant_scope 只有事件型三档（got ' + JSON.stringify(badScope).slice(0, 160) + '）')
+    const timeArg = await callTool('vibe_v5_grant', { to: 'r-1', command: 'assign', grant_scope: 'once', why: '带时间', expires_at: 1234567890 }, childAgent(childOf('acad')))
+    assert(timeArg.ok === false && timeArg.code === 'V5_INVALID_ARGUMENT' && /时间由框架设置/.test(String(timeArg.message)),
+      'S6-d6-boundary：自带 expires_at ⇒ 被拒＋「时间由框架设置」（got ' + JSON.stringify(timeArg).slice(0, 220) + '）')
+    const g = await callTool('vibe_v5_grant', { to: 'r-1', command: 'assign', grant_scope: 'once', why: 'S6 转授探测' }, childAgent(childOf('acad')))
+    assert(g.ok === true, 'S6-d6-boundary：对照授权成功')
+    const re = await callTool('vibe_v5_grant', { to: 'r-2', command: 'assign', grant_scope: 'once', why: '被授权者转授' }, childAgent(childOf('r-1')))
+    assert(re.ok === false && re.code === 'V5_NOT_ACADEMICIAN',
+      'S6-d6-boundary：被授权者不可转授（GAPS 22；got ' + JSON.stringify(re).slice(0, 160) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

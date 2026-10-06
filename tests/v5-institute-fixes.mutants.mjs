@@ -510,12 +510,13 @@ const V5R_FAMILIES = [
     expect: /G6-self：同值再提交 ⇒ deduped:true/,
   },
   {
-    // G6 family 2：**最外层承载行**（工具入口 L5420 的时键检查；下游 L5347 被它短路，故锚内层＝空变异）。
+    // G6 family 2：**最外层承载行**（工具入口的时键检查；下游被它短路，故锚内层＝空变异）。
+    // 锚点内容与产品同步：时键检查已加固为大小写不敏感（`/(At|Ms)$/i`）；本条只把 `At` **收窄掉**（`to`）。
     name: 'G6: the entry-level time-key guard narrows to Ms (a client-supplied subgoalAt slips through)',
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 'g6-time' },
-    from: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))",
+    from: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)))",
     to: "const timeKeys = Object.keys(args).filter((k) => /Ms$/.test(String(k)))",
     expect: /G6-time：请求自带 subgoalAt/,
   },
@@ -551,8 +552,10 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 'r3-speech' },
-    from: "if (member.kind !== 'academician') {",
-    to: "if (member.kind !== 'academician' && false) {",
+    // 锚点内容与产品同步：end_verify 的院士门在 S6 起走**单一谓词**（`gateDo(…, 'end_verify', …)`），
+    // 旧锚 `if (member.kind !== 'academician') {` 已不存在 ⇒ 改为锚新承载行（整行 → `denyEnd = null`）。
+    from: "const denyEnd = await gateDo(member.id, 'end_verify', '只有院士可以显式结束辩论（R10-2a）；其它成员请继续投票、弃权或声明无法判断')",
+    to: 'const denyEnd = null',
     expect: /仅院士可结束辩论/,
   },
   // ── S4 family (D1/D2/R4/R5; docs/09 §12 的 S4 行) ─────────────────────────────────────────────
@@ -564,8 +567,14 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's4-proxy-denied' },
-    from: "      if (me.kind !== 'academician') {",
-    to: "      if (me.kind !== 'academician' && false) {",
+    // 锚点必须**全局唯一**：S6 的 `grantTool` 也含 `if (me.kind !== 'academician') {` ⇒ 单行锚已 x2。
+    // 故改用**三行块**（含 D1 的具名文案，唯一）⇒ 仍是"最外层承载块"、单点。
+    from: `      if (me.kind !== 'academician') {
+        // D1 硬约束：非院士不得自任主持，也不得指定代行。
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以指定代行（D1）：非院士不得自任主持或代行他人主持' }`,
+    to: `      if (me.kind !== 'academician' && false) {
+        // D1 硬约束：非院士不得自任主持，也不得指定代行。
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以指定代行（D1）：非院士不得自任主持或代行他人主持' }`,
     expect: /S4-proxy-denied：非院士指定代行/,
   },
   {
@@ -580,11 +589,12 @@ const V5R_FAMILIES = [
   },
   {
     // ③ 时键接受（最外层承载行）⇒ 自带 until 的请求通过 ⇒ s4-proxy-time 的拒绝断言必红。
+    // 锚点内容与产品同步（`/(At|Ms)$/i`，S4 同源加固后）；本条把整条检查**清空**（`to`）。
     name: 'S4: the chair-proxy entry-level time-key guard accepts a client-supplied …At/…Ms/until',
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's4-proxy-time' },
-    from: "const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)) || String(k) === 'until')",
+    from: "const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)) || String(k) === 'until')",
     to: 'const stampKeys = []',
     expect: /S4-proxy-time：请求自带 until/,
   },
@@ -696,6 +706,98 @@ const V5R_FAMILIES = [
     to: "for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {",
     expect: /S5-stall-notice：负值须真的写进参数/,
   },
+  // ── S6 family (D1/D2/D6/D8；docs/09 §12 的 S6 行) ─────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s6-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R34–R38，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 过期判据去掉（once 用掉仍生效）⇒ s6-scope-expire 的"用掉后自动失效"必红。
+    name: 'S6: a once-scope grant stays effective after it was used (expiry is no longer event-derived)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-scope-expire' },
+    from: "if (g.grantScope === 'once') return Number(g.usedAt || 0) === 0",
+    to: "if (g.grantScope === 'once') return true",
+    expect: /S6-scope-expire：once 用掉后自动失效/,
+  },
+  {
+    // ② revoke 不落台账（撤回不生效）⇒ s6-revoke 的"撤回后立即回到默认表"必红。
+    name: 'S6: revoke stops writing the ledger (the permission is not actually taken back)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-revoke' },
+    from: 'await patchInstitute({ grants: (l) => (Array.isArray(l) ? l : []).map((g) => (g && g.id === hit.id ? Object.assign({}, g, { revokedAt: at, revokedBy: me.id, revokeWhy: why }) : g)) })',
+    to: 'void hit',
+    expect: /S6-revoke：撤回后立即回到默认表/,
+  },
+  {
+    // ③ 票权可授（把生效授权的对象算成**额外票权**）⇒ s6-no-vote-power 的"票权集合不变"必红。
+    name: 'S6: an active grant is counted as extra vote power (the grantee is pushed into the electorate)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-no-vote-power' },
+    from: "const voters = () => activeMembers().filter((m) => m.kind === 'academician' || m.kind === 'researcher')",
+    to: "const voters = () => activeMembers().filter((m) => m.kind === 'academician' || m.kind === 'researcher').concat(grantsList().filter((g) => grantActive(g)).map((g) => ({ id: g.to, kind: 'researcher', phase: 'active' })))",
+    expect: /S6-no-vote-power：票权集合不变/,
+  },
+  {
+    // ④ D8 守卫去掉（非成员可被授权）⇒ s6-no-vote-power 的"临时工不可被授权"必红。
+    name: 'S6: the D8 roster gate on the grantee is gone (a non-member could be authorized)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-no-vote-power' },
+    from: "if (!(target.kind === 'academician' || target.kind === 'researcher')) {",
+    to: 'if (false) {',
+    expect: /S6-no-vote-power：临时工不可被授权/,
+  },
+  {
+    // ⑤ meeting 范围不再跟会议走（**最外层承载块**：`expiredAt` 判定 ＋ `meetingId` 判定两行一起改，
+    //    单点＝一个连续块）⇒ 会议收束后仍生效 ⇒ s6-scope-expire 的"会议收束后自动失效"必红。
+    name: 'S6: a meeting-scoped grant ignores the live meeting (it survives the meeting it was granted for)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-scope-expire' },
+    from: `      if (Number(g.expiredAt || 0) > 0) return false
+      if (g.grantScope === 'once') return Number(g.usedAt || 0) === 0
+      if (g.grantScope === 'meeting') return !!meeting && String(g.meetingId || '') === String(meeting.id)`,
+    to: `      if (g.grantScope === 'once') return Number(g.usedAt || 0) === 0
+      if (g.grantScope === 'meeting') return true`,
+    expect: /S6-scope-expire：会议收束后自动失效/,
+  },
+  {
+    // ⑥ 台账不走 fold 白名单（静默丢弃）⇒ `got.entry` 永远为 null ⇒ s6-grant-ok 的**首条**断言
+    //    "院士可授（once）"先红（实测红名即此条）。
+    name: 'S6: the authorization ledger stops passing the fold whitelist (the grant is silently dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's6-grant-ok' },
+    from: 'if (patch.grants !== undefined) {',
+    to: 'if (false) {',
+    expect: /S6-grant-ok：院士可授/,
+  },
+  {
+    // ⑧ S4 同源加固的**回归族**（Lead 追加）：把代行的时键检查改回**大小写敏感** ⇒
+    //    全小写 `expires_at` 被静默接受 ⇒ s4-proxy-time 的新断言必红。
+    //    锚点含 `|| String(k) === 'until'` ⇒ 与 `grantTool` 的同类行**不同文**，全局唯一。
+    name: 'S4: the proxy time-key check becomes case-sensitive again (a lower-case expires_at slips through)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-proxy-time' },
+    from: "const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)) || String(k) === 'until')",
+    to: "const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)) || String(k) === 'until')",
+    expect: /S4-proxy-time：全小写 expires_at 也不得静默通过/,
+  },
+  {
+    // ⑨ G6 同源加固的**回归族**（Lead 追加）：把**自述工具**的时键检查改回**大小写敏感** ⇒
+    //    全小写 `expires_at` 被静默接受 ⇒ g6-time 的新断言必红。
+    //    锚点用 `Object.keys(args)`（工具面）⇒ 与 `selfReport` 内部的 `Object.keys(a)` 行**不同文**，全局唯一。
+    name: 'G6: the self-report time-key check becomes case-sensitive again (a lower-case expires_at slips through)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'g6-time' },
+    from: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(String(k)))",
+    to: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))",
+    expect: /G6-time：全小写 expires_at 也不得静默通过/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -704,7 +806,11 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S4（D1/D2/R4/R5）：每个 s4-* 场景一个**正控**——原始树的该场景必须绿，对应的族才可能"按名红"。
   's4-proxy-acad', 's4-proxy-denied', 's4-proxy-time', 's4-objection', 's4-no-weight', 's4-idempotent',
   // S5（R1/D10）：每个 s5-* 场景一个正控（静止提示的一次性/不召集/不收束/谁在等谁）。
-  's5-stall-notice', 's5-notice-once', 's5-no-auto-close', 's5-waiting-graph']
+  's5-stall-notice', 's5-notice-once', 's5-no-auto-close', 's5-waiting-graph',
+  // S6（D1/D2/D6/D8）：每个 s6-* 场景一个正控（授权/撤回复核/到期/票权/私密面边界）。
+  's6-grant-ok', 's6-not-granted', 's6-scope-expire', 's6-revoke', 's6-no-vote-power', 's6-d6-boundary',
+  // 时间纪律（G6 §7.1＋S4/S6 同源加固）：g6-time 的"大小写不敏感"新断言的正控。
+  'g6-time']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
