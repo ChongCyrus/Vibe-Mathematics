@@ -34,7 +34,7 @@
 
 ---
 
-## 3. 命令契约总表（42 条）
+## 3. 命令契约总表（**42 条平台命令** ＋ **1 条 v5r 运行时工具 #43**）
 
 > 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
 
@@ -82,8 +82,9 @@
 | 40★ | 请求认领任务 `meeting_task_claim` | **请求**认领（需批准） | `task_id`、`plan?` | 可选 | `pending`/`granted` | 任务板 `claim_pending` | 在册成员 | — | **现状**（任务认领+CAS 修订号） |
 | 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
 | 42 | 请假/离席 `meeting_leave` | 通报缺席/提前离席 | `until?:ts`、`reason?` | 可选 | 出席表更新 | `attendance` 更新 | 在册成员 | — | 待实现 |
+| 43★ | 显式结束辩论（v5r 运行时工具）`vibe_v5_end_verify` | 院士显式结束对当前验证对象的辩论，使其进入**结束裁定**（R10-2a） | `target?`、`reason?`（**无 `memberId` 参数：调用者身份由调用上下文推导**） | 否 | `{ok,target,endedBy:'academician',endedByMember,endedAt,endReason,outcome,reason,process{…provisional:true},provisional:false}` | 关闭/置未定论该验证对象（写 `verdicts[target]`） | **仅院士** | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
 
-**计数**：**现状 11 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **20 处**（院士侧 15、成员侧 5），与 SPEC 一致。
+**计数**：**现状 12 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **21 处**（院士侧 16、成员侧 5），与 SPEC 一致。**#43 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
 
 ---
 
@@ -186,6 +187,8 @@
 - **任务/授权类并发**：以修订号（CAS）为准，冲突返回 `V5_TASK_STALE_REVISION`，**不得**静默覆盖。
 
 ---
+- **显式结束辩论（`vibe_v5_end_verify`）**：**同一 `target` 重复结束 ⇒ `{ok:true, deduped:true, …}`**（**不报错**）；第二次请求不改变任何状态，`endedBy/endedByMember/endedAt` 保持**第一次**的值。
+- **不新增错误码**：`vibe_v5_end_verify` 复用 `V5_NOT_ACADEMICIAN`（非院士）与 `V5_INVALID_ARGUMENT`（当前无进行中的验证／`target` 与在验证对象不匹配），故 §4.2 码表无需新增行。
 
 ## 6. 硬约束（接口层）
 
