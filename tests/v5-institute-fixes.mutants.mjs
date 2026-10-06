@@ -460,6 +460,66 @@ const V5R_FAMILIES = [
     expect: /R10：空闲兜底是/,
   },
   {
+    // G6 family 1（首族）：去掉 D8「非表决者不可写」守卫 ⇒ 临时工的自述写入不再被拒，
+    // 场景 g6-nonmember 的具名拒绝断言必红。锚点＝vibe-math-v5r.js 的 L5342-L5345 逐字块。
+    name: 'G6: the D8 non-voter guard is gone (a temp can write a self-report)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'g6-nonmember' },
+    from: `      if (!(m.kind === 'academician' || m.kind === 'researcher')) {
+        // D8：列席／受邀／临时工不可写（可读工作状态）
+        return { ok: false, code: 'V5_NOT_VOTER', message: '列席／受邀／临时工不可写自述（G6；与 D8 一致）；你仍可查看工作状态' }
+      }`,
+    to: `    // MUTANT (G6 family 1): the D8 non-voter guard is gone`,
+    expect: /G6-nonmember：临时工写入被拒/,
+  },
+  {
+    name: "G6: the ownership check is gone (another member becomes writable)",
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: "g6-other" },
+    from: "if (targetId && targetId !== String(memberId || '')) {",
+    to: "if (false) {",
+    expect: /G6-other：试图修改他人/,
+  },
+  {
+    name: "G6: the deviation label disappears (the view no longer marks a deviation)",
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: "g6-history-deviation" },
+    from: "deviationLabel: r.deviation ? '已偏离院士设定' : '',",
+    to: "deviationLabel: '',",
+    expect: /G6-history-deviation：查看面标注 deviationLabel/,
+  },
+  {
+    name: "G6: the view surface leaks a private field (the whitelist must catch it)",
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: "g6-view" },
+    from: "deviation: r.deviation || null,",
+    to: "deviation: r.deviation || null, privateNote: 'MUTANT',",
+    expect: /G6-view：roster 成员字段/,
+  },
+  {
+    name: "G6: the idempotent self-report stops reporting deduped",
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: "g6-self" },
+    from: "return { ok: true, deduped: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),",
+    to: "return { ok: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),",
+    expect: /G6-self：同值再提交 ⇒ deduped:true/,
+  },
+  {
+    // G6 family 2：**最外层承载行**（工具入口 L5420 的时键检查；下游 L5347 被它短路，故锚内层＝空变异）。
+    name: 'G6: the entry-level time-key guard narrows to Ms (a client-supplied subgoalAt slips through)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'g6-time' },
+    from: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))",
+    to: "const timeKeys = Object.keys(args).filter((k) => /Ms$/.test(String(k)))",
+    expect: /G6-time：请求自带 subgoalAt/,
+  },
+  {
     name: 'SCEN d3-silence: the participation gate is short-circuited (silence no longer blocks a chaired end)',
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
@@ -501,6 +561,11 @@ const V5R_FAMILIES = [
 // workspace (V5_SCENARIO mode). A positive must be GREEN; its family above must redden by name.
 const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech']
 let posRed = 0
+// MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
+// 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
+const ONLY = String(process.env.MUTANTS_ONLY || '').trim()
+if (ONLY) console.error('mutants: only=' + ONLY + ' (DIRECTED run - 本次为定向运行，非全量证据)')
+if (!ONLY) {
 for (const sc of SCENARIOS) {
   const dest = join(tmpdir(), 'v5r-scen-' + Math.random().toString(36).slice(2, 10))
   mkdirSync(dest, { recursive: true })
@@ -521,17 +586,23 @@ for (const sc of SCENARIOS) {
   rmSync(dest, { recursive: true, force: true })
 }
 console.log('scenario positive controls green: ' + (SCENARIOS.length - posRed) + '/' + SCENARIOS.length)
+}
 let red = 0
 const ALL_FAMILIES = FAMILIES.concat(V5R_FAMILIES)
-for (const f of ALL_FAMILIES) { const ok = runFamily(f); if (ok) red++ }
+const SELECTED = ONLY ? ALL_FAMILIES.filter((f) => String(f.name).includes(ONLY)) : ALL_FAMILIES
+if (ONLY) {
+  if (!SELECTED.length) { console.error('mutants: only=' + ONLY + ' matched 0/' + ALL_FAMILIES.length + ' families - named abort (nothing was run)'); process.exit(2) }
+  console.error('mutants: only=' + ONLY + ' families=' + SELECTED.length + '/' + ALL_FAMILIES.length)
+}
+for (const f of SELECTED) { const ok = runFamily(f); if (ok) red++ }
 const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
 console.log('')
-console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + ALL_FAMILIES.length)
+console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + SELECTED.length + (ONLY ? '  (DIRECTED: only=' + ONLY + ' - 非全量证据)' : ''))
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
 // R15: the audit-checklist row says EVERY family prints this line, and override decisions must quote it
 // rather than an external estimate. Same shape as tests/formal-verify-v3.mutants.mjs.
 console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
-if (red !== ALL_FAMILIES.length || skipped.length || hangs.length || posRed) process.exit(1)
+if (red !== SELECTED.length || skipped.length || hangs.length || (!ONLY && posRed)) process.exit(1)
 console.log('ALL MUTANTS RED AS REQUIRED')

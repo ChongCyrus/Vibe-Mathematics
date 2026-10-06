@@ -65,6 +65,18 @@
  *     declared targets and what the harness's own source touches => that family RUNS (named reason on
  *     stderr). Declaring a SUPERSET of targets is safe; declaring a SUBSET is not - hence the re-derivation.
  *   · ROLLBACK: delete the `planIncremental(suites)` call (and its two consumers) to restore a full sweep.
+ *
+ * HEADSTART (`GATE_HEADSTART_MIN_MS`, default 600000 ms = 10 min; `0` disables it):
+ *   · When the longest EXECUTED job's estimate is >= `GATE_HEADSTART_MIN_MS`, that job is started FIRST and
+ *     ALONE for up to `GATE_HEADSTART_MS` (default 180000 ms = 3 min) - or until it finishes, whichever
+ *     comes first. Only the SECOND slot's start time changes: this is for load-sensitive heavy families
+ *     (measured: the 907 s family needs ~920 s alone, but ran 969 s beside a heavy peer in the gate).
+ *   · It changes NO semantics: the job list, the criteria, the timeouts, `--counts`, `GATE_SCOPE`,
+ *     `GATE_INCREMENTAL`, the LPT order and the reports all stay as they are. `0` (for either variable)
+ *     turns the behaviour off; `GATE_HEADSTART_MS=0` releases the second slot immediately.
+ *   · The two stderr diagnostics and the named post-run assertion (see runSpanCheck) make it verifiable:
+ *     a deferred job that started BEFORE the release would RED BY NAME.
+ *   · ROLLBACK: set `GATE_HEADSTART_MIN_MS=0` (no code change needed).
  */
 import { spawn, execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
@@ -401,6 +413,55 @@ function planIncremental(list) {
   }
   return { enabled: true, reason: '', baseline, changed, skipped, ranBecause }
 }
+
+// ── HEADSTART: give the longest job a head start alone, then open the second slot ──────────────────
+// Fixes a LOAD-SENSITIVE flake, not a product bug: the heaviest family measured 920 s alone and 969 s
+// beside a heavy peer under the default 2-way gate. Nothing about what runs changes - only WHEN the
+// second slot starts. `GATE_HEADSTART_MIN_MS=0` (or `GATE_HEADSTART_MS=0`) turns it off.
+const HEADSTART_DEFAULT_MIN_MS = 600000   // the longest job must be at least this heavy to be isolated
+const HEADSTART_DEFAULT_HOLD_MS = 180000  // how long the second slot waits (at most) for that head start
+/** Estimate in ms: an explicit `weightMs` (synthetic jobs / tests) or the measured weight in seconds. */
+const weightMsOf = (j) => (j.weightMs != null ? j.weightMs : Math.round(weightOf(j) * 1000))
+function headstartMinMs() {
+  const raw = process.env.GATE_HEADSTART_MIN_MS
+  if (raw === undefined || raw === '') return HEADSTART_DEFAULT_MIN_MS   // DEFAULT: ON (see file header)
+  return Math.max(0, Number(raw) || 0)                                   // 0 => disabled
+}
+function headstartHoldMs() {
+  const raw = process.env.GATE_HEADSTART_MS
+  if (raw === undefined || raw === '') return HEADSTART_DEFAULT_HOLD_MS
+  return Math.max(0, Number(raw) || 0)                                   // 0 => release immediately
+}
+/** Index of the longest EXECUTED job (skipped families cost nothing => they are not isolated). */
+function headstartJobIndex(list, skippedSet) {
+  let best = -1
+  for (let i = 0; i < list.length; i++) {
+    if (skippedSet && skippedSet.has(list[i].file)) continue
+    if (best < 0 || weightMsOf(list[i]) > weightMsOf(list[best])) best = i
+  }
+  return best
+}
+/**
+ * The named proof for the head start: when it is active, every deferred start must be at/after the
+ * release, at least one start must actually have been deferred, and (when released by the timer) the
+ * release must not have happened before the hold expired. Returns a list of violated invariant names.
+ */
+function headstartViolations(hs) {
+  if (!hs) return []
+  const bad = []
+  const TOLERANCE_MS = 100
+  if (!hs.releasedAt) bad.push('the head start never reported a release (' + hs.file + ')')
+  for (const t of hs.deferredStarts) {
+    if (hs.releasedAt && t < hs.releasedAt - TOLERANCE_MS) {
+      bad.push('a deferred job started at ' + t + ' BEFORE the release at ' + hs.releasedAt)
+    }
+  }
+  if (hs.deferredStarts.length === 0 && hs.expected) bad.push('nothing was deferred although a second slot existed')
+  if (hs.releasedBy === 'timer' && hs.releasedAt - hs.startedAt < headstartHoldMs() - 250) {
+    bad.push('released by the timer after only ' + (hs.releasedAt - hs.startedAt) + 'ms of a ' + headstartHoldMs() + 'ms hold')
+  }
+  return bad
+}
 /**
  * DIAGNOSABILITY (protocol: every red must name an assertion): a failing suite's assertion NAMES are
  * what a reader needs, and they must appear under the FAILED line - not only in the suite's own last
@@ -505,7 +566,31 @@ if (process.argv.includes('--self-check')) {
   if (savedBase === undefined) delete process.env.GATE_BASELINE_FILE; else process.env.GATE_BASELINE_FILE = savedBase
   if (savedRel === undefined) delete process.env.GATE_RELEASE; else process.env.GATE_RELEASE = savedRel
   console.log((noBaselineOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': an unreadable baseline skips NOTHING (' + noBaseline.reason + ')')
-  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride && noBaselineOk ? 0 : 1)
+  // HEADSTART proof (synthetic pool, the REAL machinery): with T=1 s and a 300 ms hold, the 1.5 s "longest"
+  // job must start alone and the 50 ms job must not start until the release. Timestamps, not intentions.
+  const savedHsMin = process.env.GATE_HEADSTART_MIN_MS
+  const savedHsHold = process.env.GATE_HEADSTART_MS
+  process.env.GATE_HEADSTART_MIN_MS = '1000'
+  process.env.GATE_HEADSTART_MS = '300'
+  const hsJobs = [
+    { file: '(synthetic-longest)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 1500)', timeoutMs: 5000, weightMs: 900000 },
+    { file: '(synthetic-deferred)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 50)', timeoutMs: 5000, weightMs: 1 },
+  ]
+  const hsOut = []
+  const hsPool = await runPool(hsJobs, hsOut, new Set(), '(synthetic)')
+  const hsBad = headstartViolations(hsPool.headstart)
+  const hsOk = !!hsPool.headstart && hsBad.length === 0 && hsPool.headstart.releasedBy === 'timer'
+    && hsPool.headstart.deferredStarts.length === 1
+  if (savedHsMin === undefined) delete process.env.GATE_HEADSTART_MIN_MS; else process.env.GATE_HEADSTART_MIN_MS = savedHsMin
+  if (savedHsHold === undefined) delete process.env.GATE_HEADSTART_MS; else process.env.GATE_HEADSTART_MS = savedHsHold
+  console.log((hsOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL')
+    + ': the head start runs the longest job alone and defers the second slot ('
+    + (hsPool.headstart
+      ? 'released by ' + hsPool.headstart.releasedBy + ' after ' + (hsPool.headstart.releasedAt - hsPool.headstart.startedAt)
+        + 'ms; deferred=' + hsPool.headstart.deferredStarts.length
+      : 'INACTIVE')
+    + ')')
+  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride && noBaselineOk && hsOk ? 0 : 1)
 }
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
@@ -667,49 +752,124 @@ function runSuite(job) {
   })
 }
 
-const results = []
-let cursor = 0
-const started = Date.now()
-async function worker(id) {
-  for (;;) {
-    const i = cursor++
-    if (i >= suites.length) return
-    const job = suites[i]
-    if (skippedLabels.has(job.file)) {
-      // Incremental skip: the family is NOT executed, but it still counts in TOTAL and is reported by name
-      // (stdout line + stderr list) so a reader can always see WHAT was skipped and WHY.
-      results[i] = { job, code: 0, ms: 0, out: '', err: '', timedOut: false, skipped: true, ok: true }
-      if (!asJson) {
-        console.log('SKIP  ' + job.file.padEnd(34)
-          + ' exit=  0          0.0s  (incremental: targets unchanged vs ' + incremental.baseline + ')')
-      }
-      continue
-    }
-    const r = await runSuite(job)
-    const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
-    r.ok = r.code === r.job.expectExit
-    results[i] = r
+let results = []
+let gateStarted = 0
+/**
+ * Run ONE job into `out[i]` (skip-aware). Every dependency is a parameter, so the synthetic self-check can
+ * exercise this exact machinery without touching the real job list.
+ */
+async function runOne(i, list, out, skippedSet, baselineLabel) {
+  const job = list[i]
+  if (skippedSet && skippedSet.has(job.file)) {
+    // Incremental skip: the family is NOT executed, but it still counts in TOTAL and is reported by name
+    // (stdout line + stderr list) so a reader can always see WHAT was skipped and WHY.
+    out[i] = { job, code: 0, ms: 0, out: '', err: '', timedOut: false, skipped: true, ok: true }
     if (!asJson) {
-      const mark = r.ok ? 'PASS' : 'FAIL'
-      console.log(
-        mark + '  ' + r.job.file.padEnd(34) +
-        ' exit=' + String(r.code).padStart(3) + (r.job.expectExit ? '(want ' + r.job.expectExit + ')' : '    ') +
-        '  ' + (r.ms / 1000).toFixed(1).padStart(6) + 's' +
-        (r.job.args.length ? '  [' + r.job.args.join(' ').slice(0, 40) + ']' : '') +
-        (tail ? '  ' + tail.slice(0, 60) : '')
-      )
-      if (!r.ok) {
-        for (const l of failureDetail(r)) console.log('      ' + l)
-      }
-    } else if (!r.ok) {
-      // In --json mode keep stdout machine-readable: the failure detail travels in the JSON.
-      r.tailDetail = failureDetail(r).join('\n')
+      console.log('SKIP  ' + job.file.padEnd(34)
+        + ' exit=  0          0.0s  (incremental: targets unchanged vs ' + baselineLabel + ')')
     }
+    return
+  }
+  const r = await runSuite(job)
+  const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+  r.ok = r.code === r.job.expectExit
+  out[i] = r
+  if (!asJson) {
+    const mark = r.ok ? 'PASS' : 'FAIL'
+    console.log(
+      mark + '  ' + r.job.file.padEnd(34) +
+      ' exit=' + String(r.code).padStart(3) + (r.job.expectExit ? '(want ' + r.job.expectExit + ')' : '    ') +
+      '  ' + (r.ms / 1000).toFixed(1).padStart(6) + 's' +
+      (r.job.args.length ? '  [' + r.job.args.join(' ').slice(0, 40) + ']' : '') +
+      (tail ? '  ' + tail.slice(0, 60) : '')
+    )
+    if (!r.ok) {
+      for (const l of failureDetail(r)) console.log('      ' + l)
+    }
+  } else if (!r.ok) {
+    // In --json mode keep stdout machine-readable: the failure detail travels in the JSON.
+    r.tailDetail = failureDetail(r).join('\n')
   }
 }
-await Promise.all(Array.from({ length: Math.min(concurrency, suites.length) }, (_, i) => worker(i)))
+/**
+ * The worker pool, with the optional HEAD START for the longest EXECUTED job (see the file header). Only the
+ * second slot's start time changes: worker 0 runs that job first and alone, the other workers wait for the
+ * release (its completion, or `GATE_HEADSTART_MS`) before starting anything. Returns `{ headstart }`, which
+ * is null when the behaviour was inactive and otherwise carries the timings the named proof checks.
+ */
+async function runPool(list, out, skippedSet, baselineLabel) {
+  const minMs = headstartMinMs()
+  const holdMs = headstartHoldMs()
+  const hsIdx = minMs > 0 ? headstartJobIndex(list, skippedSet) : -1
+  const executed = list.filter((j) => !(skippedSet && skippedSet.has(j.file))).length
+  let hs = null
+  if (hsIdx >= 0 && holdMs > 0 && executed >= 2 && weightMsOf(list[hsIdx]) >= minMs) {
+    hs = {
+      index: hsIdx, file: list[hsIdx].file, estMs: weightMsOf(list[hsIdx]), holdMs,
+      startedAt: 0, releasedAt: 0, releasedBy: '', deferredStarts: [], expected: executed > 1,
+    }
+  }
+  let cursor = 0
+  let releaseHs = () => {}
+  const hsReleased = new Promise((res) => { releaseHs = res })
+  const release = (why) => {
+    if (hs && !hs.releasedAt) { hs.releasedAt = Date.now(); hs.releasedBy = why; releaseHs() }
+  }
+  const takeIndex = () => {
+    for (;;) {
+      if (cursor >= list.length) return -1
+      const i = cursor++
+      if (hs && i === hs.index) continue        // reserved for worker 0
+      return i
+    }
+  }
+  async function worker(id) {
+    if (hs) {
+      if (id === 0) {
+        hs.startedAt = Date.now()
+        console.error('gate: headstart job=' + hs.file + ' est=' + hs.estMs + ' hold=' + hs.holdMs
+          + ' (longest-job isolation)')
+        const timer = setTimeout(() => release('timer'), hs.holdMs)
+        try {
+          await runOne(hs.index, list, out, skippedSet, baselineLabel)
+        } finally {
+          clearTimeout(timer)
+          release('longest job finished')
+          console.error('gate: headstart released ' + (hs.releasedBy === 'timer'
+            ? 'after ' + (hs.releasedAt - hs.startedAt) + 'ms'
+            : '(longest job finished after ' + (hs.releasedAt - hs.startedAt) + 'ms)'))
+        }
+      } else {
+        await hsReleased
+        hs.deferredStarts.push(Date.now())
+      }
+    }
+    for (;;) {
+      const i = takeIndex()
+      if (i < 0) return
+      await runOne(i, list, out, skippedSet, baselineLabel)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, list.length)) }, (_, i) => worker(i)))
+  return { headstart: hs }
+}
+gateStarted = Date.now()
+const poolInfo = await runPool(suites, results, skippedLabels, incremental.baseline)
+// HEADSTART proof (named): a deferred job that started before the release, a hold that ended early, or an
+// active head start that deferred nobody REDS BY NAME instead of passing quietly.
+{
+  const violations = headstartViolations(poolInfo.headstart)
+  if (violations.length) {
+    for (const v of violations) console.error('FAIL - * gate headstart: ' + v)
+    process.exit(1)
+  }
+  if (!asJson && poolInfo.headstart) {
+    console.error('gate: headstart proof ok (released by ' + poolInfo.headstart.releasedBy
+      + '; deferred starts: ' + poolInfo.headstart.deferredStarts.length + ')')
+  }
+}
 
-const wall = (Date.now() - started) / 1000
+const wall = (Date.now() - gateStarted) / 1000
 const sum = results.reduce((a, r) => a + r.ms, 0) / 1000
 const bad = results.filter((r) => !r.ok)
 const slowest = results.slice().sort((a, b) => b.ms - a.ms).slice(0, 5)

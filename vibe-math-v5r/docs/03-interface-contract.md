@@ -83,13 +83,13 @@
 | 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
 | 42 | 请假/离席 `meeting_leave` | 通报缺席/提前离席 | `until?:ts`、`reason?` | 可选 | 出席表更新 | `attendance` 更新 | 在册成员 | — | 待实现 |
 | 43★ | 显式结束辩论（v5r 运行时工具）`vibe_v5_end_verify` | 院士显式结束对当前验证对象的辩论，使其进入**结束裁定**（R10-2a） | `target?`、`reason?`（**无 `memberId` 参数：调用者身份由调用上下文推导**） | 否 | `{ok,target,endedBy:'academician',endedByMember,endedAt,endReason,outcome,reason,process{…provisional:true},provisional:false}` | 关闭/置未定论该验证对象（写 `verdicts[target]`） | **仅院士** | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
-| 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **待实现**（P2 第 3 步） |
+| 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`｜`academician`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **待实现**（P2 第 3 步） |
 
 **计数**：**现状 13 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **22 处**（院士侧 16、成员侧 6），与 SPEC 一致。**#43／#44 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
 
 **查看权（G6）**：**在册成员**可查看**全体在册成员**的**工作状态字段**（`overall`／`subgoal`／`plan`／`status` ＋ 各自 `overallAt`／`subgoalAt`／`planAt` 与最近更新者）；**不再是院士专属**。**G5 的边界**：只开放上述工作状态字段，**私聊内容永不进入**（他人私密永不进入）；**默认只读**；**查看留痕**（谁在何时看了谁）；列席／受邀／临时工**单列并标注**，不冒充表决成员。
 
-**G6 成员自述字段（查看与编辑共用）**：`member`（标识）｜`overall`（总任务/总目的：**院士设定或成员本人可改**；成员改动若原值为院士设定 ⇒ 记 `deviation` 并**保留院士原值与旧时间**，总览显著标注「**已偏离院士设定**」）｜`subgoal`（当下子目的，本人可改）｜`plan`（计划流程，有序步骤数组，本人可改）｜`status`（`planning/working/blocked/done`，可选）｜`updatedAt`/`updatedBy`（系统）＋ `overallAt`/`subgoalAt`/`planAt`（**框架自动**，见 `09` §7.0 的两类时间规范）。**写入即留痕**：`who/at/旧值/新值/reason?/source ∈ {self,negotiated}`，**旧值与旧时间不得静默丢弃**（历史可展开）。**框架不得据此自动推进流程**（R1／D10）。
+**G6 成员自述字段（查看与编辑共用）**：`member`（标识）｜`overall`（总任务/总目的：**本人可改；院士可为他人设定**〔仅此字段〕；**判据＝当前 `overall` 的作者 ≠ 本次调用者** ⇒ 记 `deviation={at,by,keptValue,keptAt,keptBy}` 并**保留作者原值与旧时间**，查看面该行输出 `deviationLabel=「已偏离院士设定」`（**由 `deviation` 驱动**））｜`subgoal`（当下子目的，本人可改）｜`plan`（计划流程，有序步骤数组，本人可改）｜`status`（`planning/working/blocked/done`，可选）｜`updatedAt`/`updatedBy`（系统）＋ `overallAt`/`subgoalAt`/`planAt`（**框架自动**，见 `09` §7.0 的两类时间规范）。**写入即留痕**：`who/at/旧值/新值/reason?/source ∈ {self,negotiated}`，**旧值与旧时间不得静默丢弃**（历史可展开）。**框架不得据此自动推进流程**（R1／D10）。
 
 ---
 

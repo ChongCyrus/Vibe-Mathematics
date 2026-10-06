@@ -496,6 +496,12 @@ async function runScenario(name) {
   }
   await callTool('vibe_v5_set', { activityTimeoutMs: 120000, verdictMaxRounds: 3 }, ROOT)
   let prop = null
+  // G6 场景只在 v5r 预设下可跑（能力由 vibe-math-v5r.js 提供）；v5 路径下**显式 skip**，
+  // 绝不能落进"未知场景即红"（否则 v5 验收 94/1 会被污染）。
+  if (name.startsWith('g6-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - G6 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_self_report）')
+    return
+  }
   if (name === 'd3-silence') {
     prop = await fresh('p-s1', '未表态阻塞结题。')
     assert(prop.ok === true, 'D3：探测对象进入验证（propose ok）')
@@ -558,6 +564,114 @@ async function runScenario(name) {
     assert(bad4.ok === false && bad4.code === 'V5_NOT_ACADEMICIAN', 'R10-2a：仅院士可结束辩论（非院士 ⇒ 具名拒绝 V5_NOT_ACADEMICIAN）')
     const end = await callTool('vibe_v5_end_verify', { target: 'p-s4', reason: 'R3 场景收尾' }, childAgent(childOf('acad')))
     assert(end.ok === true && end.outcome === 'undecided', 'R2/C1：发言之后仍未表态 ⇒ 结束辩论只能得到未定论（沉默不折算为赞成）')
+  } else if (name === 'g6-self') {
+    const g6Agent = childAgent(childOf('r-1'))
+    const rep1 = await callTool('vibe_v5_self_report', { subgoal: 'G6 自报子目标', plan: 'G6 自报计划', status: 'G6 自报状态', reason: 'g6-self 场景' }, g6Agent)
+    assert(rep1.ok === true, 'G6-self：在册成员更新自己的 subgoal/plan/status ⇒ ok:true（got ' + JSON.stringify(rep1).slice(0, 120) + '）')
+    // fields.plan 是**数组**（实现口径）；fields.overall 允许为空串 ⇒ 不要求非空。
+    assert(!!rep1.fields && rep1.fields.subgoal === 'G6 自报子目标' && rep1.fields.status === 'G6 自报状态'
+      && Array.isArray(rep1.fields.plan) && rep1.fields.plan.join('|').indexOf('G6 自报计划') !== -1,
+      'G6-self：回执 fields 反映新值（subgoal/status 字符串、plan 数组含新计划；fields=' + JSON.stringify(rep1.fields) + '）')
+    assert(!!rep1.times && Number(rep1.times.subgoalAt) > 0 && Number(rep1.times.planAt) > 0,
+      'G6-self：时间由框架写入（times.subgoalAt/planAt > 0；times=' + JSON.stringify(rep1.times) + '）')
+    const hist1 = Array.isArray(rep1.history) ? rep1.history.length : -1
+    assert(hist1 >= 1, 'G6-self：首次提交后 receipt.history 有记录（got ' + hist1 + '）')
+    // 同值再提交 ⇒ 幂等：deduped:true；且（实现口径）deduped 回执**不带 history** ⇒ 用"真变更才增长"证明它没被计入。
+    const rep2 = await callTool('vibe_v5_self_report', { subgoal: 'G6 自报子目标', plan: 'G6 自报计划', status: 'G6 自报状态' }, g6Agent)
+    assert(rep2.deduped === true, 'G6-self：同值再提交 ⇒ deduped:true（幂等；got ' + JSON.stringify(rep2.deduped) + '）')
+    assert(rep2.history === undefined || !Array.isArray(rep2.history) || rep2.history.length === hist1,
+      'G6-self：幂等提交不追加 history（' + hist1 + ' → ' + (Array.isArray(rep2.history) ? rep2.history.length : 'n/a') + '）')
+    const rep3 = await callTool('vibe_v5_self_report', { subgoal: 'G6 自报子目标（变更后）' }, g6Agent)
+    const hist3 = Array.isArray(rep3.history) ? rep3.history.length : -1
+    assert(rep3.deduped !== true && hist3 > hist1,
+      'G6-self：真变更才增长 history（' + hist1 + ' → ' + hist3 + ' ⇒ 幂等提交确未计入，旧值不丢）')
+  } else if (name === 'g6-other') {
+    // G6-other：成员只能改自己；改他人 ⇒ **具名拒绝**。必须要求 code 存在（否则会漏掉"无具名码"的缺陷）。
+    const g6OtherAgent = childAgent(childOf('r-1'))
+    const repOther = await callTool('vibe_v5_self_report', { member: 'r-2', subgoal: 'G6 越权子目标', plan: 'G6 越权计划', status: 'G6 越权状态', reason: 'g6-other 场景' }, g6OtherAgent)
+    assert(repOther.ok === false, 'G6-other：试图修改他人（r-2）⇒ 被拒（ok:false；got ' + JSON.stringify(repOther).slice(0, 140) + '）')
+    assert(repOther.code === 'V5_INVALID_ARGUMENT',
+      'G6-other：拒绝必须是**具名码** V5_INVALID_ARGUMENT（got code=' + JSON.stringify(repOther.code) + '，不是 error/静默；got ' + JSON.stringify(repOther).slice(0, 140) + '）')
+  } else if (name === 'g6-time') {
+    // G6-time：时间由框架设置；客户端自带 …At／…Ms ⇒ **显式拒绝**（具名码 ＋ 说明文案），不得静默忽略。
+    const g6TimeAgent = childAgent(childOf('r-1'))
+    const repTime = await callTool('vibe_v5_self_report', { subgoalAt: 1234567890, subgoal: 'G6 自带时间戳' }, g6TimeAgent)
+    assert(repTime.ok === false, 'G6-time：请求自带 subgoalAt ⇒ 被拒（ok:false；got ' + JSON.stringify(repTime).slice(0, 140) + '）')
+    assert(repTime.code === 'V5_INVALID_ARGUMENT',
+      'G6-time：拒绝必须是**具名码** V5_INVALID_ARGUMENT（got code=' + JSON.stringify(repTime.code) + '）')
+    // 收紧：断言**说明文案**含规格原文，而不是靠回执里恰好出现 times 字段（上一轮就是那样误过的）。
+    assert(/时间由框架设置/.test(String(repTime.message || '')),
+      'G6-time：回执说明含「时间由框架设置」（got message=' + JSON.stringify(repTime.message) + '）')
+  } else if (name === 'g6-nonmember') {
+    // G6-nonmember：临时工（t-1）不可写入 ⇒ **具名拒绝 V5_NOT_VOTER**（与 D8 一致）。
+    const g6NonAgent = childAgent(childOf('t-1'))
+    const repNon = await callTool('vibe_v5_self_report', { subgoal: 'G6 临时工越权自述' }, g6NonAgent)
+    assert(repNon.ok === false, 'G6-nonmember：临时工写入被拒（ok:false；got ' + JSON.stringify(repNon).slice(0, 160) + '）')
+    assert(repNon.code === 'V5_NOT_VOTER', 'G6-nonmember：拒绝必须是具名码 V5_NOT_VOTER（got code=' + JSON.stringify(repNon.code) + '）')
+  } else if (name === 'g6-view') {
+    // G6-view：在册成员查看**全体**。实测形状：顶层 {ok,view}；view 键＝roster/nonVoting/viewAuditTail/note；
+    // roster[*] 为**扁平**字段；nonVoting 是**成员对象数组**（先归一化取 member/id）；留痕＝viewAuditTail。
+    const g6ViewAgent = childAgent(childOf('r-1'))
+    const repView = await callTool('vibe_v5_self_report', { view: true }, g6ViewAgent)
+    const vw = repView.view || repView
+    const roster = vw.roster || vw.members || []
+    assert(repView.ok === true && Array.isArray(roster) && roster.length >= 4,
+      'G6-view：在册成员可查看全体（ok:' + repView.ok + ' roster=' + roster.length + '）')
+    const mine = roster.find((m) => m && (m.member === 'r-2' || m.id === 'r-2')) || roster[0] || {}
+    assert('overall' in mine && 'subgoal' in mine && 'plan' in mine && 'status' in mine,
+      'G6-view：每名成员带工作状态字段（got keys=' + JSON.stringify(Object.keys(mine)) + '）')
+    assert('overallAt' in mine && 'subgoalAt' in mine && 'planAt' in mine,
+      'G6-view：每名成员带 overallAt/subgoalAt/planAt（got keys=' + JSON.stringify(Object.keys(mine)) + '）')
+    const memberAllowed = ['member', 'id', 'kind', 'voting', 'nonVoting', 'overall', 'overallAt', 'subgoal',
+      'subgoalAt', 'plan', 'planAt', 'status', 'updatedAt', 'updatedBy', 'deviation', 'role']
+    const memberExtra = []
+    for (const m of roster) for (const k of Object.keys(m || {})) if (memberAllowed.indexOf(k) === -1 && memberExtra.indexOf(k) === -1) memberExtra.push(k)
+    assert(memberExtra.length === 0,
+      'G6-view：roster 成员字段**不含私聊/消息字段**（白名单外键=' + JSON.stringify(memberExtra) + '）')
+    const tail = vw.viewAuditTail !== undefined ? vw.viewAuditTail : repView.viewAuditTail
+    assert(tail !== undefined, 'G6-view：留痕存在（view.viewAuditTail；keys=' + JSON.stringify(Object.keys(vw)) + '）')
+    const tailArr = Array.isArray(tail) ? tail : [tail]
+    assert(JSON.stringify(tailArr[tailArr.length - 1]).indexOf('r-1') !== -1,
+      'G6-view：留痕尾部含本次查看者 r-1（got=' + JSON.stringify(tail).slice(0, 160) + '）')
+    const nv = Array.isArray(vw.nonVoting) ? vw.nonVoting : (Array.isArray(repView.nonVoting) ? repView.nonVoting : [])
+    const nvIds = (Array.isArray(nv) ? nv : []).map((v) => (typeof v === 'string' ? v : (v && (v.member || v.id)) || ''))
+    assert(Array.isArray(nv) && nvIds.indexOf('t-1') !== -1,
+      'G6-view：列席/受邀/临时工单列并标注（含 t-1；got ' + JSON.stringify(nv).slice(0, 200) + '）')
+  } else if (name === 'g6-history-deviation') {
+    // G6-history-deviation：院士以 source:'academician' **为 r-1 设定** overall（基线）⇒ r-1 改自己的 overall
+    // ⇒ "作者≠调用者" ⇒ deviation（keptValue/keptAt）＋ deviationLabel='已偏离院士设定' ＋ history 两条。
+    const g6DevAgent = childAgent(childOf('r-1'))
+    const setAcad = await callTool('vibe_v5_self_report', { member: 'r-1', overall: 'G6 院士总览（原始）', source: 'academician' }, childAgent(childOf('acad')))
+    console.log('  dev4-setacad: ' + JSON.stringify(setAcad).slice(0, 400))
+    assert(setAcad.ok === true, 'G6-history-deviation：院士可为他人（r-1）设定 overall（source:academician；got ' + JSON.stringify(setAcad).slice(0, 160) + '）')
+    const ch1 = await callTool('vibe_v5_self_report', { overall: 'G6 成员总览（第一次偏离）' }, g6DevAgent)
+    assert(ch1.ok === true, 'G6-history-deviation：成员可改自己的 overall（got ' + JSON.stringify(ch1).slice(0, 140) + '）')
+    const view1 = await callTool('vibe_v5_self_report', { view: true }, g6DevAgent)
+    const vw1 = view1.view || view1
+    const roster1 = vw1.roster || []
+    const row1 = roster1.find((m) => m && (m.member === 'r-1' || m.id === 'r-1')) || {}
+    const dev1 = ch1.deviation || row1.deviation || null
+    console.log('  dev4-receipt: ' + JSON.stringify(ch1).slice(0, 520))
+    console.log('  dev4-row1: ' + JSON.stringify(row1).slice(0, 420))
+    assert(!!dev1, 'G6-history-deviation：成员改 overall ⇒ deviation 出现（回执=' + JSON.stringify(ch1.deviation) + ' 查看面行=' + JSON.stringify(row1.deviation) + '）')
+    const flat = JSON.stringify(dev1)
+    assert(flat.indexOf('G6 院士总览（原始）') !== -1,
+      'G6-history-deviation：保留院士原值 keptValue（got ' + flat.slice(0, 220) + '）')
+    assert(/keptAt|keptAcademicianAt|at/.test(flat),
+      'G6-history-deviation：保留院士旧时间 keptAt（got ' + flat.slice(0, 220) + '）')
+    const label = vw1.deviationLabel || row1.deviationLabel || (dev1 && dev1.label) || ''
+    assert(String(label) === '已偏离院士设定' || /已偏离院士设定/.test(JSON.stringify(view1)),
+      'G6-history-deviation：查看面标注 deviationLabel＝「已偏离院士设定」（got ' + JSON.stringify(label) + '）')
+    const h1 = Array.isArray(ch1.history) ? ch1.history.length : -1
+    const ch2 = await callTool('vibe_v5_self_report', { overall: 'G6 成员总览（第二次偏离）' }, g6DevAgent)
+    const h2 = Array.isArray(ch2.history) ? ch2.history.length : -1
+    assert(h2 === h1 + 1, 'G6-history-deviation：连续两次修改 ⇒ history +1（' + h1 + ' → ' + h2 + '）')
+    assert(JSON.stringify(ch2.history || []).indexOf('第一次偏离') !== -1,
+      'G6-history-deviation：旧值不丢（history 含第一次的值；got ' + JSON.stringify(ch2.history).slice(0, 200) + '）')
+    const view2 = await callTool('vibe_v5_self_report', { view: true }, g6DevAgent)
+    const row1b = ((view2.view || view2).roster || []).find((m) => m && (m.member === 'r-1' || m.id === 'r-1')) || {}
+    assert(!!(ch2.deviation || row1b.deviation),
+      'G6-history-deviation：第二次修改后 deviation 仍在（回执=' + JSON.stringify(ch2.deviation) + ' 查看面行=' + JSON.stringify(row1b.deviation) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

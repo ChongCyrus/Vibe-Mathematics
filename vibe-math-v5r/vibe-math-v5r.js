@@ -5319,6 +5319,7 @@ export function apply(ctx) {
         plan: Array.isArray(r.plan) ? r.plan : [], planAt: Number(r.planAt || 0),
         status: r.status || '', updatedAt: Number(r.updatedAt || 0), updatedBy: r.updatedBy || '',
         deviation: r.deviation || null,
+        deviationLabel: r.deviation ? '已偏离院士设定' : '',
       }
     }
     // 查看面：**在册成员全列**（在册＝院士/常驻研究员）；列席/受邀/临时工**单列并标注**；默认只读；**查看留痕**。
@@ -5348,7 +5349,8 @@ export function apply(ctx) {
         // G6 §7.1：时间由框架设置（防伪造/防漂移）
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（G6 §7.1）：不接受 ' + timeKeys.join('、') + '；每个字段的 …At 由框架写入' }
       }
-      const src = (String(source || 'self').trim() === 'negotiated') ? 'negotiated' : 'self'
+      const srcRaw = String(source || 'self').trim()
+      const src = (srcRaw === 'negotiated' || srcRaw === 'academician') ? srcRaw : 'self'
       const cur = (await selfReportRead(m.id)) || { history: [] }
       const next = Object.assign({}, cur, { history: Array.isArray(cur.history) ? cur.history.slice() : [] })
       const changes = []
@@ -5381,11 +5383,12 @@ export function apply(ctx) {
       }
       const ov = changes.filter((c) => c.field === 'overall')[0]
       if (ov) {
-        if (cur.overallBy === 'academician' && m.kind !== 'academician') {
-          // 偏离：**保留院士原值与旧时间**（可取回），并在总览显著标注
-          next.deviation = { at, by: m.id, keptAcademicianValue: ov.old, keptAt: Number(cur.overallAt || 0) }
+        const authorOfOverall = String(cur.overallBy || '')
+        if (authorOfOverall && authorOfOverall !== m.id) {
+          // 偏离（作者≠调用者）：**保留作者原值与旧时间**（可取回）；`keptAcademicianValue` 为既有门的兼容别名
+          next.deviation = { at, by: m.id, keptAcademicianValue: ov.old, keptValue: ov.old, keptAt: Number(cur.overallAt || 0), keptBy: authorOfOverall }
         }
-        if (!next.overallBy) next.overallBy = (m.kind === 'academician') ? 'academician' : src
+        next.overallBy = (src === 'academician') ? 'academician' : m.id
       }
       next.updatedAt = at
       next.updatedBy = m.id
@@ -5397,11 +5400,31 @@ export function apply(ctx) {
         history: next.history.slice(-10), deviation: next.deviation || null }
     }
     async function selfReportTool(memberId, a) {
+      // ORDER MATTERS (TDZ lesson): every binding is initialised BEFORE it is read — never insert a
+      // guard between a `const` declaration and its first use (that produced "Cannot access … before
+      // initialization", which the tool wrapper surfaced as {ok:false,error:…} with NO code).
       const args = a || {}
+      const otherKeys = Object.keys(args).filter((k) => k === 'member' || k === 'memberId' || k === 'for' || k === 'target')
+      const targetId = otherKeys.length ? String(args[otherKeys[0]] || '') : String(memberId || '')
+      const patchKeys = SELF_FIELDS.filter((k) => args[k] !== undefined)
+      if (targetId && targetId !== String(memberId || '')) {
+        // G6：他人自述**只允许院士设定 `overall`**（任务/总目的设定）；其余一律具名拒绝（复用既有码）
+        const actor = memberById(memberId)
+        const isAcad = !!(actor && actor.kind === 'academician')
+        const onlyOverall = patchKeys.length === 1 && patchKeys[0] === 'overall'
+        if (!(isAcad && onlyOverall)) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '不得改他人自述（G6）：只能更新自己的 overall/subgoal/plan/status；院士仅可为他人设定 overall（' + otherKeys.join('/') + ' 指向 ' + targetId + '，本次字段 ' + JSON.stringify(patchKeys) + '）' }
+        }
+      }
+      // G6 §7.1：时间由框架设置 —— 客户端自带的**任何** …At／…Ms 一律显式拒绝（不得静默忽略）
+      const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))
+      if (timeKeys.length) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（G6 §7.1）：不接受 ' + timeKeys.join('、') + '；每个字段的 …At／…Ms 由框架写入' }
+      }
       const patch = {}
-      for (const k of SELF_FIELDS) if (args[k] !== undefined) patch[k] = args[k]
+      for (const k of patchKeys) patch[k] = args[k]
       if (!Object.keys(patch).length) return { ok: true, view: await selfReportView(memberId) }   // 只读查看（记录留痕）
-      return await selfReport(memberId, patch, args.reason, args.source)
+      return await selfReport(targetId || memberId, patch, args.reason, args.source)
     }
     // R10-2a：**院士显式结束辩论** —— 产 outcome 的合法来源之一（与 round-complete、具名可撤销触界并列）。
     // 它**不**绕过 D3 参与门（未表态仍阻塞结题），也**不**让过程票数变成裁定。

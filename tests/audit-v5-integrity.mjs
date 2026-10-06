@@ -168,8 +168,8 @@ const SELF_PROBE_MUTATIONS = [
   {
     name: 'G6: the framework-sets-time refusal is dropped (a user …At would be accepted)',
     rel: 'vibe-math-v5r/vibe-math-v5r.js',
-    from: 'if (timeKeys.length) {',
-    to: 'if (false) {',
+    from: 'const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))',
+    to: 'const timeKeys = []',
     expect: 'R18',
   },
   {
@@ -924,7 +924,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R16', 'L4: the member turn-reply channel must accept abstain/unable exactly like the tool (no second-class channel)')
   gate(/registerTool\('vibe_v5_self_report'/.test(v5rRaw) && /selfReportTool/.test(v5rRaw),
     'R17', 'G6: the self-report command must be registered (update + audited read)')
-  gate(/if \(timeKeys\.length\) \{/.test(v5rRaw) && /时间由框架设置（G6 §7\.1）/.test(v5rRaw),
+  gate(/const timeKeys = Object\.keys\(args\)\.filter/.test(v5rRaw) && /时间由框架设置（G6 §7\.1）/.test(v5rRaw),
     'R18', 'G6: any user-supplied …At/…Ms must be refused with the framework-sets-time message')
   gate(/history\.push\(\{ at, by: m\.id, field: c\.field, old: c\.old/.test(v5rRaw),
     'R19', 'G6: writing must append history with the OLD value (nothing silently dropped)')
