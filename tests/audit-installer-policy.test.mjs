@@ -62,6 +62,7 @@ function buildPackage(version, dir, transform) {
       const marker = f.endsWith('.js') ? '\n// version ' + version + '\n'
         : f.endsWith('.yml') ? '\n# version ' + version + '\n'
           : '\n<!-- version ' + version + ' -->\n'
+      mkdirSync(dirname(join(dir, p.src, f)), { recursive: true })
       writeFileSync(join(dir, p.src, f), text + marker)
     }
   }

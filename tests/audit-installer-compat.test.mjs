@@ -18,7 +18,7 @@
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, cpSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { satisfiesDshRange, dshVersionVerdict, detectDshVersion, PRESETS } from '../installer.js'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
@@ -156,7 +156,7 @@ console.log('=== 4. a pluginManager that never answers must not hold the row ===
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', version: '9.9.9', type: 'module' }, null, 2))
   for (const p of PRESETS) {
     mkdirSync(join(pkg, p.src), { recursive: true })
-    for (const f of p.files) cpSync(join(HERE, p.src, f), join(pkg, p.src, f))
+    for (const f of p.files) { mkdirSync(dirname(join(pkg, p.src, f)), { recursive: true }); cpSync(join(HERE, p.src, f), join(pkg, p.src, f)) }
   }
   const home = join(tmp, 'dshhome')
   mkdirSync(home, { recursive: true })

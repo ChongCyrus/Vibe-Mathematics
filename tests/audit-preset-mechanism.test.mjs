@@ -94,7 +94,7 @@ function buildPackage(dir) {
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', version: '9.9.9', type: 'module' }, null, 2))
   for (const p of PRESETS) {
     mkdirSync(join(dir, p.src), { recursive: true })
-    for (const f of p.files) cpSync(join(REPO, p.src, f), join(dir, p.src, f))
+    for (const f of p.files) { mkdirSync(dirname(join(dir, p.src, f)), { recursive: true }); cpSync(join(REPO, p.src, f), join(dir, p.src, f)) }
   }
   return dir
 }

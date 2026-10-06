@@ -82,7 +82,7 @@ export const PRESETS = [
     // v5r is the refactor preview of v5 (they coexist for an on-machine A/B comparison): the same
     // runtime files, plus the design basis (MEETING-PLATFORM-*.md) and the two navigation/legacy docs,
     // so every shipped behaviour can be traced back to a shipped design decision.
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5r.js', 'LEGACY-v5-实现方案（仅供参考）.md', '设计总览.md', '架构图.md', 'math-computation.js', 'math-engines.js', 'MEETING-PLATFORM-PHILOSOPHY.md', 'MEETING-PLATFORM-RULINGS.md', 'MEETING-PLATFORM-VOTING.md', 'MEETING-PLATFORM-EXPANSION.md', 'MEETING-PLATFORM-OVERSIGHT-TIME.md', 'MEETING-PLATFORM-SPEC.md', 'MEETING-PLATFORM-A-model.md', 'MEETING-PLATFORM-B-protocol.md', 'MEETING-PLATFORM-C-landing.md', 'MEETING-PLATFORM-DECISIONS.md', 'MEETING-PLATFORM-GAPS.md'],
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5r.js', 'LEGACY-v5-实现方案（仅供参考）.md', '设计总览.md', '架构图.md', 'math-computation.js', 'math-engines.js', 'MEETING-PLATFORM-PHILOSOPHY.md', 'MEETING-PLATFORM-RULINGS.md', 'MEETING-PLATFORM-VOTING.md', 'MEETING-PLATFORM-EXPANSION.md', 'MEETING-PLATFORM-OVERSIGHT-TIME.md', 'MEETING-PLATFORM-SPEC.md', 'MEETING-PLATFORM-A-model.md', 'MEETING-PLATFORM-B-protocol.md', 'MEETING-PLATFORM-C-landing.md', 'MEETING-PLATFORM-DECISIONS.md', 'MEETING-PLATFORM-GAPS.md', 'docs/00-README.md', 'docs/01-philosophy.md', 'docs/02-rulings.md', 'docs/03-interface-contract.md', 'docs/04-flows-and-protocols.md', 'docs/05-voting.md', 'docs/06-expansion-mechanisms.md', 'docs/07-oversight-and-time.md', 'docs/08-landing-plan.md', 'docs/09-implementation-manual.md', 'docs/10-guards-and-acceptance.md', 'docs/11-appendix-drafts.md', 'docs/12-traceability.md'],
   },
 ]
 
@@ -106,6 +106,7 @@ let presetTmpSeq = 0
 function writePresetFile(dest, buf) {
   const tmp = dest + '.' + process.pid + '.' + (presetTmpSeq++) + '.vibe-math-tmp'
   try {
+    mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(tmp, buf)
     renameSync(tmp, dest)
   } catch (e) {
