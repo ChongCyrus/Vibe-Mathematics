@@ -626,6 +626,11 @@ async function runScenario(name) {
     console.log('  skip - S8 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有表决期禁言与纪要分区）')
     return
   }
+  // S9 场景只在 v5r 下可跑（少数意见入档＋复议是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s9-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S9 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_reconsider 与少数意见入档）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1463,6 +1468,152 @@ async function runScenario(name) {
     assert(closed.ok === true, 'S8-exception-path：收束表决')
     const ok2 = await callTool('vibe_v5_say', { text: 'S8 解冻后成员发言' }, childAgent(childOf('r-2')))
     assert(ok2.ok === true, 'S8-exception-path：解冻后成员发言恢复（got ' + JSON.stringify(ok2).slice(0, 160) + '）')
+  } else if (name === 's9-minority-archive') {
+    // S9-minority-archive（D5 硬约束）：**少数意见一律入档**为一等记录（`minority[]`＋渲染），
+    // 而**弃权／无法判断**不算少数意见（单列，R2/D3）。
+    const p1 = await fresh('p-s9a', 'S9 少数意见入档探测。')
+    assert(p1.ok === true, 'S9：探测对象进入验证（propose ok）')
+    await waitVerify('p-s9a')
+    for (const id of ['r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9a', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    await callTool('vibe_v5_verdict', { target: 'p-s9a', verdict: 0.7, reason: '我有保留：0.7' }, childAgent(childOf('acad')))
+    await settleAll()
+    let sv1 = await callTool('vibe_v5_status', {})
+    if (sv1.verified.indexOf('p-s9a') === -1) { await drainWakes(8); await settleAll(); sv1 = await callTool('vibe_v5_status', {}) }
+    const rec1 = recOf('p-s9a')
+    assert(!!rec1 && rec1.closed === true && rec1.outcome === 'true',
+      'S9：3 名布尔真达到 m=3 ⇒ 结论为真（got ' + JSON.stringify(rec1 && rec1.outcome) + '）')
+    assert(Array.isArray(rec1.minority) && rec1.minority.length === 1 && rec1.minority[0].by === 'acad' && Number(rec1.minority[0].prob) === 0.7
+      && /0\.7/.test(String(rec1.minority[0].reason)),
+      'S9/D5：**少数意见一等入档**（minority[] 含 acad＝0.7＋理由；got ' + JSON.stringify(rec1.minority) + '）')
+    assert(Number(rec1.minorityCount) === 1 && rec1.sealed === true && Number(rec1.effectiveAt) > 0 && !!rec1.threshold,
+      'S9/D5：盖章齐全（minorityCount/sealed/effectiveAt/threshold；got ' + JSON.stringify([rec1.minorityCount, rec1.sealed, rec1.effectiveAt, rec1.threshold]) + '）')
+    const rep1 = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(/少数意见（1 人）：acad＝0\.70/.test(rep1), 'S9/D5：report() 渲染「少数意见」节（逐人＋理由；got len=' + rep1.length + '）')
+    const p2 = await fresh('p-s9b', 'S9 弃权不计少数意见探测。')
+    assert(p2.ok === true, 'S9：第二个探测对象进入验证')
+    await waitVerify('p-s9b')
+    for (const id of ['r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9b', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    await callTool('vibe_v5_verdict', { target: 'p-s9b', verdict: 'abstain', reason: '明确弃权' }, childAgent(childOf('acad')))
+    await settleAll()
+    let sv2 = await callTool('vibe_v5_status', {})
+    if (sv2.verified.indexOf('p-s9b') === -1) { await drainWakes(8); await settleAll(); sv2 = await callTool('vibe_v5_status', {}) }
+    const rec2 = recOf('p-s9b')
+    assert(!!rec2 && rec2.outcome === 'true' && Number(rec2.abstain) === 1, 'S9：弃权计入已投但不计选项（abstain=1）')
+    assert(Array.isArray(rec2.minority) && rec2.minority.length === 0,
+      'S9/D5：**弃权不算少数意见**（minority 为空；got ' + JSON.stringify(rec2.minority) + '）')
+    const rep2 = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(/少数意见：无（弃权 1/.test(rep2), 'S9/D5：弃权被**单列**（"少数意见：无（弃权 1…"；got ' + rep2.slice(0, 200) + '）')
+  } else if (name === 's9-reconsider-winner-only') {
+    // S9-reconsider-winner-only（D5）：有明确胜方 ⇒ **只有当初胜方之一**可提；**弃权者**不是胜方 ⇒ 具名拒。
+    const p1 = await fresh('p-s9a', 'S9 胜方资格探测。')
+    assert(p1.ok === true, 'S9：探测对象进入验证')
+    await waitVerify('p-s9a')
+    for (const id of ['r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9a', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    await callTool('vibe_v5_verdict', { target: 'p-s9a', verdict: 0.7, reason: '我有保留' }, childAgent(childOf('acad')))
+    await settleAll()
+    let sv = await callTool('vibe_v5_status', {})
+    if (sv.verified.indexOf('p-s9a') === -1) { await drainWakes(8); await settleAll(); sv = await callTool('vibe_v5_status', {}) }
+    const rec = recOf('p-s9a')
+    assert(!!rec && rec.outcome === 'true', 'S9：结论为真（有明确胜方；前置）')
+    const lose = await callTool('vibe_v5_reconsider', { target: 'p-s9a', why: 'S9 非胜方尝试' }, childAgent(childOf('acad')))
+    assert(lose.ok === false && lose.code === 'V5_NOT_VOTER' && /胜方之一/.test(String(lose.message)),
+      'S9/D5：**非胜方（少数意见者）被具名拒绝**（got ' + JSON.stringify(lose).slice(0, 240) + '）')
+    const win = await callTool('vibe_v5_reconsider', { target: 'p-s9a', why: 'S9 胜方之一可提' }, childAgent(childOf('r-1')))
+    assert(win.ok === true && win.eligibility === 'winner' && win.reconsideration.onlyUp === true
+      && Number(win.threshold.after) >= Number(win.threshold.before),
+      'S9/D5：**当初胜方之一**可提请复议（eligibility=winner；门槛只升不降；got ' + JSON.stringify(win).slice(0, 240) + '）')
+  } else if (name === 's9-reconsider-undecided') {
+    // S9-reconsider-undecided（D5a **硬约束**）：无胜方（未决/取平均）⇒ **任一参与者**可提，
+    // **不得**以"无胜方"为由拒绝受理。
+    const p1 = await fresh('p-s9c', 'S9 无胜方复议探测。')
+    assert(p1.ok === true, 'S9：探测对象进入验证')
+    await waitVerify('p-s9c')
+    for (const id of ['r-1', 'r-2']) await callTool('vibe_v5_verdict', { target: 'p-s9c', verdict: 0.5, reason: '不确定' }, childAgent(childOf(id)))
+    const end = await callTool('vibe_v5_end_verify', { target: 'p-s9c', reason: 'S9 构造无胜方（未定论）' }, childAgent(childOf('acad')))
+    assert(end.ok === true && end.outcome === 'undecided', 'S9：构造**无胜方**结论（未定论；got ' + JSON.stringify(end.outcome) + '）')
+    const rec = recOf('p-s9c')
+    assert(!!rec && rec.closed === true && rec.outcome === 'undecided', 'S9：无胜方记录已收束')
+    const any1 = await callTool('vibe_v5_reconsider', { target: 'p-s9c', why: 'S9 无胜方 ⇒ 任一参与者可提（D5a 硬约束）' }, childAgent(childOf('r-1')))
+    assert(any1.ok === true && any1.eligibility === 'any-participant',
+      'S9/D5a：**无胜方 ⇒ 任一参与者可提**（不得以"无胜方"拒收；got ' + JSON.stringify(any1).slice(0, 240) + '）')
+  } else if (name === 's9-threshold-only-up') {
+    // S9-threshold-only-up（U3）：生效门槛 `after = max(before, reconsiderFloor, quorumCap)` —— **只升不降**，
+    // 且**写进记录**（可审计）；把 floor 归零后，下一轮**也不得**把门槛降回去。
+    const p1 = await fresh('p-s9d', 'S9 门槛只升不降探测。')
+    assert(p1.ok === true, 'S9：探测对象进入验证')
+    await waitVerify('p-s9d')
+    for (const id of ['r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9d', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    await callTool('vibe_v5_verdict', { target: 'p-s9d', verdict: 0.7, reason: '保留' }, childAgent(childOf('acad')))
+    await settleAll()
+    let sv = await callTool('vibe_v5_status', {})
+    if (sv.verified.indexOf('p-s9d') === -1) { await drainWakes(8); await settleAll(); sv = await callTool('vibe_v5_status', {}) }
+    const before0 = recOf('p-s9d')
+    assert(!!before0 && before0.outcome === 'true', 'S9：结论为真（前置）')
+    await callTool('vibe_v5_set', { reconsiderFloor: 4 }, ROOT)
+    const up = await callTool('vibe_v5_reconsider', { target: 'p-s9d', why: 'S9 提高复议门槛（floor=4）' }, childAgent(childOf('r-1')))
+    assert(up.ok === true && Number(up.threshold.after) >= 4 && Number(up.threshold.after) >= Number(up.threshold.before)
+      && Number(up.reconsideration.raisedBy) === Number(up.threshold.after) - Number(up.threshold.before) && up.reconsideration.onlyUp === true,
+      'S9/U3：生效门槛 after = max(before, floor, quorumCap)（floor=4 ⇒ after≥4；只在升；got ' + JSON.stringify(up.threshold) + '）')
+    const recD = recOf('p-s9d')
+    assert(!!recD && Number(recD.threshold.m) === Number(up.threshold.after) && Number(recD.threshold.floor) === 4,
+      'S9/U3：门槛**写进记录**（threshold{m,floor}；可审计；got ' + JSON.stringify(recD && recD.threshold) + '）')
+    await callTool('vibe_v5_set', { reconsiderFloor: 0 }, ROOT)
+    for (const id of ['acad', 'r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9d', verdict: 1, reason: '复议后新一轮：全票真' }, childAgent(childOf(id)))
+    await settleAll()
+    let sv2 = await callTool('vibe_v5_status', {})
+    if (sv2.verified.indexOf('p-s9d') === -1) { await drainWakes(8); await settleAll(); sv2 = await callTool('vibe_v5_status', {}) }
+    const recD2 = recOf('p-s9d')
+    assert(!!recD2 && recD2.closed === true && Number(recD2.m) >= 4,
+      'S9/U3：复议后的门槛**真的被用上**（新一轮 m≥4 才定论；got ' + JSON.stringify(recD2 && recD2.m) + '）')
+    const up2 = await callTool('vibe_v5_reconsider', { target: 'p-s9d', why: 'S9 第二轮复议（floor 归零后也不得降）' }, childAgent(childOf('r-1')))
+    assert(up2.ok === true ? Number(up2.threshold.after) >= Number(up.threshold.after) : /轮次上限/.test(String(up2.message)),
+      'S9/U3：floor 归零后门槛**仍不得下降**（got ' + JSON.stringify(up2.threshold || up2.message).slice(0, 160) + '）')
+  } else if (name === 's9-secret-no-identity') {
+    // S9×S7（B10）：**不记名板**的复议 ⇒ 只给**聚合面**（票数/门槛），**逐人选择永不解密**；
+    // 兑现 `03` §5.3 的"close 后只能走复议"，门槛**只升不降**，旧计票留档。
+    await openMeeting('S9 不记名复议探测')
+    await settleAll()
+    const sop = await callTool('vibe_v5_poll_open', { question: 'S9 不记名板', options: ['甲', '乙'], min_votes: 1, secret: true }, childAgent(childOf('acad')))
+    assert(sop.ok === true && sop.ballot.rules.secret === true, 'S9：不记名板建立（secret=true）')
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('r-2')))
+    const scl = await callTool('vibe_v5_poll_close', { ballot_id: String(sop.ballot.id), reason: 'S9 不记名计票' }, childAgent(childOf('acad')))
+    assert(scl.ok === true, 'S9：不记名板已截止')
+    const srec = await callTool('vibe_v5_reconsider', { target: 'ballot:' + String(sop.ballot.id), why: 'S9 不记名板复议' }, childAgent(childOf('r-1')))
+    assert(srec.ok === true && srec.secretSource === true && srec.reconsideration.secretSource === true,
+      'S9×S7：不记名板的复议被受理且**标记 secretSource**（got ' + JSON.stringify(srec).slice(0, 240) + '）')
+    const sjson = JSON.stringify(srec)
+    assert(sjson.indexOf('choices') === -1 && sjson.indexOf('o-1') === -1 && sjson.indexOf('votes') === -1,
+      'S9/R54：复议回执**只带聚合面**（无逐人选择；got ' + sjson.slice(0, 220) + '）')
+    assert(/本板不记名/.test(chatTextR10()) && !/r-1＝o-1/.test(chatTextR10()),
+      'S9/R54：广播**只回显"本板不记名"这一事实**、不含逐人选择')
+    const bro = ballotRow(String(sop.ballot.id))
+    assert(!!bro && bro.phase === 'open' && Array.isArray(bro.reconsiderations) && bro.reconsiderations.length === 1
+      && Number(bro.threshold.m) >= Number(bro.reconsiderations[0].thresholdBefore) && !!bro.priorResult,
+      'S9/U3：板已重新开启＋门槛**只升不降**＋旧计票留档（priorResult；got ' + JSON.stringify([bro && bro.phase, bro && bro.threshold, bro && bro.priorResult && bro.priorResult.cast]) + '）')
+  } else if (name === 's9-audit-append-only') {
+    // S9-audit-append-only（R7）：复议**不改写历史** —— 旧结论/旧票面/旧少数意见进 `previousRounds`，
+    // 旧结论带 `supersededBy` 标记；新一轮从**空票面**开始、轮次 +1。
+    const p1 = await fresh('p-s9e', 'S9 append-only 探测。')
+    assert(p1.ok === true, 'S9：探测对象进入验证')
+    await waitVerify('p-s9e')
+    for (const id of ['r-1', 'r-2', 'r-3']) await callTool('vibe_v5_verdict', { target: 'p-s9e', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    await callTool('vibe_v5_verdict', { target: 'p-s9e', verdict: 0.7, reason: '保留 0.7' }, childAgent(childOf('acad')))
+    await settleAll()
+    let sv = await callTool('vibe_v5_status', {})
+    if (sv.verified.indexOf('p-s9e') === -1) { await drainWakes(8); await settleAll(); sv = await callTool('vibe_v5_status', {}) }
+    const before = recOf('p-s9e')
+    assert(!!before && before.outcome === 'true' && Number(before.round || 0) >= 1, 'S9：结论为真（前置）')
+    const rc = await callTool('vibe_v5_reconsider', { target: 'p-s9e', why: 'S9 append-only 探测' }, childAgent(childOf('r-1')))
+    assert(rc.ok === true && rc.eligibility === 'winner', 'S9：复议受理（前置；got ' + JSON.stringify(rc).slice(0, 160) + '）')
+    const after = recOf('p-s9e')
+    assert(Array.isArray(after.previousRounds) && after.previousRounds.length === 1
+      && after.previousRounds[0].outcome === 'true' && after.previousRounds[0].minority.length === 1
+      && Object.keys(after.previousRounds[0].votes).length === 4,
+      'S9/R7：旧结论／旧票面／旧少数意见**全部留档**（previousRounds[0]；append-only；got ' + JSON.stringify(after.previousRounds).slice(0, 260) + '）')
+    assert(after.previousOutcome === 'true' && String(after.supersededBy || '').length > 0 && after.closed === false
+      && Object.keys(after.votes).length === 0 && Number(after.round) === Number(before.round || 0) + 1,
+      'S9/R7：旧结论带"已被复议"标记（supersededBy）＋新一轮**空票面**＋轮次 +1（got ' + JSON.stringify([after.previousOutcome, after.supersededBy, after.closed, after.round]) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

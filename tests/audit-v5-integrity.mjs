@@ -389,6 +389,48 @@ const SELF_PROBE_MUTATIONS = [
     to: "    async function say(from, opts) {\n      if (speechFrozen().frozen) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 系统消息也被挡' }\n      const text = String((opts && opts.text) || '').trim()",
     expect: 'R48',
   },
+  {
+    name: 'S9: the seal point stops sealing (closed records carry no minority archive)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '    const putVerdict = (target, record) => commit(EV.verdict, { target, record: sealRecord(record) })',
+    to: '    const putVerdict = (target, record) => commit(EV.verdict, { target, record })',
+    expect: 'R49',
+  },
+  {
+    name: 'S9: eligibility collapses to a role (the winner-only rule stops being read from the record)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      const hasWinner = outcome === 'true' || outcome === 'false'",
+    to: '      const hasWinner = true',
+    expect: 'R50',
+  },
+  {
+    name: 'S9: the reconsideration threshold can be lowered (the only-up rule becomes a min)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const after = Math.max(before, floor, cap)',
+    to: '      const after = Math.min(before, floor, cap)',
+    expect: 'R51',
+  },
+  {
+    name: 'S9: the reconsideration path invents a brand-new error code',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '本轮已复议过（每轮只受理一次）：请等本轮结论' }",
+    to: "        return { ok: false, code: 'V5_RECONSIDER_ALREADY', message: 'MUTANT: 新错误码' }",
+    expect: 'R52',
+  },
+  {
+    name: 'S9: a reconsideration starts closing the verification itself (no longer passive)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const done = Array.isArray(rec.reconsiderations) ? rec.reconsiderations : []',
+    to: '      const done = Array.isArray(rec.reconsiderations) ? rec.reconsiderations : []\n      if (rec.closed) void closeVerify(rec, true, { m: 1, P: 1, bTrue: 1, bFalse: 0, abstain: 0, mean: 1, voters: [] })',
+    expect: 'R53',
+  },
+  {
+    name: 'S9: a SECRET board starts leaking who chose what through the reconsideration receipt',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "          secretSource: bSecret, eligibility: 'board-participant',",
+    to: "          secretSource: bSecret, eligibility: 'board-participant', choices: bVotes.map((v) => v.choices),",
+    expect: 'R54',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1307,6 +1349,54 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; touches ballot=' + /putSolve\(|castVerdict\(|putVerdict\(|patchInstitute\(\{ ballots/.test(speechGateBody)
     + '; zones=' + (/lines\.push\('## 发言区'\)/.test(finalizeBody) && /lines\.push\('## 投票区'\)/.test(finalizeBody) ? 'both' : 'MISSING')
     + '; structured minutes=' + /minutes: \{ at: now\(\), speechZone, voteZone \}/.test(finalizeBody))
+  // ---- S9 (D5/D5a/U3): minority archiving + reconsideration -----------------------------------------
+  // Minority opinions are FIRST-CLASS (sealed `minority[]` + a rendered section; abstain/unable/silent
+  // never count); eligibility is DERIVED FROM THE RECORD (winner-only / any participant — never a role);
+  // the threshold can only RISE; no new error code; nothing closes/settles or arms a timer; and a SECRET
+  // board's reconsideration exposes aggregates only.
+  const minorityBody = bodyOf('function minorityOf(rec) {')
+  const sealBody = bodyOf('function sealRecord(rec) {')
+  const reconsiderBody = bodyOf('async function reconsiderTool(memberId, a) {')
+  const judgeVerdictBody = bodyOf('function judgeVerdict(vs, endedBy) {')
+  gate(!!minorityBody && /if \(v\.abstain\) continue/.test(minorityBody)
+    && /outcome === 'true'\) isMinority = p < 1/.test(minorityBody)
+    && /outcome === 'false'\) isMinority = p > 0/.test(minorityBody)
+    && /minority,/.test(sealBody) && /minorityCount: minority\.length/.test(sealBody)
+    && /record: sealRecord\(record\)/.test(v5rRaw) && /mins\.length/.test(v5rRaw),
+    'R49', 'S9/D5: minority opinions must be FIRST-CLASS (a sealed `minority[]` on every closed record + a rendered section) — abstain/unable/silent never count as minority')
+  gate(/const hasWinner = outcome === 'true' \|\| outcome === 'false'/.test(reconsiderBody)
+    && /const wanted = outcome === 'true' \? 1 : 0/.test(reconsiderBody)
+    && /const participated = !!\(mine \|\| \(rec\.unable && rec\.unable\[memberId\]\)\)/.test(reconsiderBody)
+    && /if \(hasWinner\) \{/.test(reconsiderBody)
+    && /当初胜方之一\*\*提出/.test(reconsiderBody)
+    && /let eligibility = 'any-participant'/.test(reconsiderBody)
+    && !/academician/.test(reconsiderBody),
+    'R50', 'S9/D5+D5a: eligibility is DERIVED FROM THE RECORD (winner-only with a clear winner; ANY participant when there is no winner, which may not be refused for "having no winner") — never from a role')
+  gate(/const after = Math\.max\(before, floor, cap\)/.test(reconsiderBody)
+    && /raisedBy: after - before, onlyUp: after >= before/.test(reconsiderBody)
+    && /const raisedM = raisedThresholdOf\(vs\)/.test(judgeVerdictBody)
+    && /if \(raisedM > Number\(base\.m \|\| 0\)\) base\.m = raisedM/.test(judgeVerdictBody)
+    && /params\.reconsiderFloor\) \|\| 0\)\)/.test(v5rRaw),
+    'R51', 'S9/U3: the reconsideration threshold can only RISE — after = max(before, reconsiderFloor, quorumCap), the raise is recorded, and judgeVerdict clamps to threshold.m')
+  gate(!!reconsiderBody && /code: 'V5_INVALID_ARGUMENT'/.test(reconsiderBody)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|MEMBER_NOT_FOUND|NOT_ACADEMICIAN|INVALID_VERDICT|NO_OPEN_MEETING)[A-Z_]+/.test(reconsiderBody),
+    'R52', 'S9: the reconsideration path introduces NO new error code (it reuses the existing V5_INVALID_ARGUMENT / V5_NOT_VOTER / …)')
+  gate(!!reconsiderBody && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(/.test(reconsiderBody),
+    'R53', 'S9: a reconsideration never changes the phase, never closes/settles anything, writes no ballot and arms no timer (R1/D10)')
+  gate(/const bSecret = !!\(b\.rules && b\.rules\.secret\)/.test(reconsiderBody)
+    && /secretSource: bSecret/.test(reconsiderBody)
+    && !/choices/.test(reconsiderBody)
+    && /不记名\*\*：只给聚合票数与门槛/.test(v5rRaw),
+    'R54', 'S9×S7+B10: for a SECRET board the reconsideration exposes AGGREGATES ONLY (tally + threshold) — per-person choices are never decrypted')
+  notes.push('S9 (v5r): minority sealed=' + /minorityCount: minority\.length/.test(sealBody)
+    + '; seal point=' + /record: sealRecord\(record\)/.test(v5rRaw)
+    + '; abstain excluded=' + /if \(v\.abstain\) continue/.test(minorityBody)
+    + '; eligibility record-derived=' + (/const hasWinner = outcome === 'true' \|\| outcome === 'false'/.test(reconsiderBody) && /let eligibility = 'any-participant'/.test(reconsiderBody))
+    + '; threshold only-up=' + /const after = Math\.max\(before, floor, cap\)/.test(reconsiderBody)
+    + '; judge clamps=' + /if \(raisedM > Number\(base\.m \|\| 0\)\) base\.m = raisedM/.test(judgeVerdictBody)
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|MEMBER_NOT_FOUND|NOT_ACADEMICIAN|INVALID_VERDICT|NO_OPEN_MEETING)[A-Z_]+/.test(reconsiderBody)
+    + '; board branch=' + /const bSecret = !!\(b\.rules && b\.rules\.secret\)/.test(reconsiderBody)
+    + '; secret aggregates only=' + !/choices/.test(reconsiderBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

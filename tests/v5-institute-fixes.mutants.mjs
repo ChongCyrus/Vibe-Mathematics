@@ -934,6 +934,69 @@ const V5R_FAMILIES = [
     to: '      if (isOffice(callerId)) return null',
     expect: /S8-exception-path：院士\/所办不受限/,
   },
+  // ── S9 family (D5/D5a/U3；docs/09 §12 的 S9 行) ─────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s9-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R49–R54，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 少数意见**不入档**（盖章点失效）⇒ s9-minority-archive 的"少数意见一等入档"必红。
+    name: 'S9: the seal point stops sealing (closed records carry no minority archive)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-minority-archive' },
+    from: '    const putVerdict = (target, record) => commit(EV.verdict, { target, record: sealRecord(record) })',
+    to: '    const putVerdict = (target, record) => commit(EV.verdict, { target, record })',
+    expect: /S9\/D5：\*\*少数意见一等入档\*\*/,
+  },
+  {
+    // ② 资格**只看角色面**（胜方规则不再从记录派生；有胜方时也放行任何参与者）⇒ 非胜方拒绝必红。
+    name: 'S9: eligibility stops being derived from the record (a non-winner is accepted)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-reconsider-winner-only' },
+    from: "      const hasWinner = outcome === 'true' || outcome === 'false'",
+    to: '      const hasWinner = false',
+    expect: /S9\/D5：\*\*非胜方（少数意见者）被具名拒绝\*\*/,
+  },
+  {
+    // ③ **无胜方时拒绝受理**（违反 D5a 硬约束）⇒ s9-reconsider-undecided 的"任一参与者可提"必红。
+    name: 'S9: a winnerless verdict refuses reconsideration (the D5a hard constraint is broken)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-reconsider-undecided' },
+    from: "      let eligibility = 'any-participant'",
+    to: "      let eligibility = 'any-participant'\n      if (!hasWinner) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 无胜方不受理' }",
+    expect: /S9\/D5a：\*\*无胜方 ⇒ 任一参与者可提\*\*/,
+  },
+  {
+    // ④ 门槛**被降低**（max 变 min）⇒ s9-threshold-only-up 的"只升不降"必红。
+    name: 'S9: the reconsideration threshold can be lowered (the only-up rule becomes a min)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-threshold-only-up' },
+    from: '      const after = Math.max(before, floor, cap)',
+    to: '      const after = Math.min(before, floor, cap)',
+    expect: /S9\/U3：生效门槛/,
+  },
+  {
+    // ⑤ **不记名板**的复议漏出逐人选择 ⇒ s9-secret-no-identity 的"只带聚合面"必红。
+    name: 'S9: a SECRET board starts leaking who chose what through the reconsideration receipt',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-secret-no-identity' },
+    from: "          secretSource: bSecret, eligibility: 'board-participant',",
+    to: "          secretSource: bSecret, eligibility: 'board-participant', choices: bVotes.map((v) => v.choices),",
+    expect: /S9\/R54：复议回执\*\*只带聚合面\*\*/,
+  },
+  {
+    // ⑥ 复议**覆盖**旧结论（历史不留档）⇒ s9-audit-append-only 的"全部留档"必红。
+    name: 'S9: a reconsideration overwrites the previous round (the history is not append-only)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's9-audit-append-only' },
+    from: '        previousRounds: (Array.isArray(rec.previousRounds) ? rec.previousRounds : []).concat([previous]),',
+    to: '        previousRounds: [],',
+    expect: /S9\/R7：旧结论／旧票面／旧少数意见\*\*全部留档\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -950,7 +1013,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S7（D3/D4/R9/K13）：每个 s7-* 场景一个正控（六项/单选多选/最少收集票/两门槛/弃权改票/不记名）。
   's7-open-six', 's7-single-multi', 's7-min-votes', 's7-two-thresholds', 's7-abstain-revote', 's7-secret-nonvoter',
   // S8（R3/K12/B9）：每个 s8-* 场景一个正控（禁言/系统消息/不改阶段/票面/纪要分区/例外通道）。
-  's8-freeze-say', 's8-system-not-blocked', 's8-no-phase-change', 's8-ballot-unaffected', 's8-minutes-zones', 's8-exception-path']
+  's8-freeze-say', 's8-system-not-blocked', 's8-no-phase-change', 's8-ballot-unaffected', 's8-minutes-zones', 's8-exception-path',
+  // S9（D5/D5a/U3）：每个 s9-* 场景一个正控（少数意见/胜方资格/无胜方/门槛只升/不记名聚合/append-only）。
+  's9-minority-archive', 's9-reconsider-winner-only', 's9-reconsider-undecided', 's9-threshold-only-up', 's9-secret-no-identity', 's9-audit-append-only']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

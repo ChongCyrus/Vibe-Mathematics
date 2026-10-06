@@ -990,6 +990,7 @@ export function apply(ctx) {
       researcherCount: 3,
       quorumCap: 3,                 // m = min(quorumCap, |voters|)
       quorumMode: 'm-unanimous',    // 'm-unanimous' (v5) | 'all-unanimous' (v4 legacy)
+      reconsiderFloor: 0,           // S9/U3：复议门槛的**下限**（缺省 0＝只保证"不降"；生效门槛 = max(本对象标准, 它, quorumCap)）
       verdictMaxRounds: 3,
       // ── staffing ─────────────────────────────────────────────────────────
       maxTempPerMember: 3,          // simultaneously employed temps per academician/researcher
@@ -1423,7 +1424,9 @@ export function apply(ctx) {
     const putSolve = (patch) => commit(EV.solve, patch || {})
     const ackDelivered = (ids) => commit(EV.delivered, { ids })
     const putDebate = (index) => commit(EV.debate, { index })
-    const putVerdict = (target, record) => commit(EV.verdict, { target, record })
+    // S9（D5）：**任何收束记录都必须盖少数意见章** —— 盖章点收敛到这一处（`sealRecord` 幂等），
+    // 所以四条收束路径 ＋ "所办停止"都自动覆盖，**不会漏**。
+    const putVerdict = (target, record) => commit(EV.verdict, { target, record: sealRecord(record) })
     // The verify queue has NO whole-array setter any more: both of its mutations go through
     // `appendToQueue`/`takeQueueHead` below, which hand a FUNCTION to the event fold so the
     // read-modify-write is atomic (the lost-proposal race). Counters are bumped by the object
@@ -1882,6 +1885,181 @@ export function apply(ctx) {
         + (rules.secret ? '｜**不记名**（逐人选择仅供计票；"这次是不记名"已留档）' : '｜记名（逐人选择见 report()）')
         + '。由 ' + me.id + ' **显式**截止；不存在"到点自动结算"。')
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
+    }
+
+    // ── S9（D5/D5a/U3）：**少数意见入档 ＋ 复议** ──────────────────────────────────────────────
+    // 收束的记录**一律**盖上少数意见（`minority[]`）、门槛（`threshold{m,floor}`）与生效时点
+    // （`effectiveAt`）——**唯一的盖章点**是 `putVerdict`，因而四条收束路径（触界/形式化推迟/未定论/
+    // 真伪）与"所办停止"都自动覆盖，**不会漏**。
+    // 少数意见的定义：与最终 `outcome` 不一致的表态者；**无胜方**（未定论/取平均）时＝与"多数侧"
+    // 不一致者；**弃权／无法判断／未表态都不算少数意见**（单列，R2/D3）。
+    function minorityOf(rec) {
+      const votes = (rec && rec.votes) || {}
+      const outcome = String((rec && rec.outcome) || '')
+      const mean = Number((rec && rec.mean) || 0)
+      const out = []
+      for (const id of Object.keys(votes)) {
+        const v = votes[id] || {}
+        if (v.abstain) continue                                  // 弃权：单列，不进少数意见
+        const p = Number(v.prob)
+        if (!Number.isFinite(p)) continue
+        let isMinority = false
+        if (outcome === 'true') isMinority = p < 1
+        else if (outcome === 'false') isMinority = p > 0
+        else isMinority = mean >= 0.5 ? p < mean : p > mean      // 无胜方：与多数侧不一致
+        if (isMinority) out.push({ by: id, prob: p, reason: String(v.reason || ''), at: Number(v.at || 0) })
+      }
+      return out
+    }
+    const reconsiderFloor = () => Math.max(0, Math.floor(Number(params.reconsiderFloor) || 0))
+    /** 收束记录的**盖章**（幂等：已盖过就原样返回）。 */
+    function sealRecord(rec) {
+      if (!rec || !rec.closed || rec.sealed) return rec
+      const minority = minorityOf(rec)
+      return Object.assign({}, rec, {
+        minority,
+        minorityCount: minority.length,
+        sealed: true,
+        threshold: { m: Number(rec.m || 0) || Number(quorumM() || 0), floor: reconsiderFloor() },
+        effectiveAt: Number(rec.closedAt || now()),
+        reconsiderations: Array.isArray(rec.reconsiderations) ? rec.reconsiderations : [],
+      })
+    }
+    /** U3：复议后的门槛**只升不降** —— 记录里的门槛与当轮口径取较大者（判定入口在此收紧）。 */
+    const raisedThresholdOf = (vs) => Math.max(0, Math.floor(Number((vs && vs.threshold && vs.threshold.m) || 0)))
+    /**
+     * S9 #52：提请**复议**（记录级救济；D5/D5a/U3）。
+     * 资格＝**记录派生**（有胜方 ⇒ 当初胜方之一；无胜方 ⇒ 任一参与者，**不得**以"无胜方"拒收）；
+     * 生效门槛 `after = max(before, reconsiderFloor, quorumCap)`（只升不降）；同一轮**只受理一次**；
+     * 旧结论/旧票面/旧少数意见**全部留档**（append-only，R7）＋旧结论标 `supersededBy`；
+     * **不产生新票权、不改分母、不改阶段、无定时器**。
+     */
+    async function reconsiderTool(memberId, a) {
+      const member = memberById(memberId)
+      if (!member) return memberDiagnosis('复议（vibe_v5_reconsider）', memberId)
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTime.join('、') }
+      }
+      const target = String(args.target || args.target_id || '').trim()
+      if (!target) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target is required：复议必须指明判定对象' }
+      const why = String(args.why || '').trim()
+      if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'why is required：复议必须写明理由（D5）' }
+      // ── S9 × S7：**投票板的复议**（兑现 `03` §5.3 的"close 后只能走复议"）─────────────────────
+      // **不记名**（`rules.secret`）⇒ 复议只带**聚合面**（票数/门槛/是否成立），**逐人选择永不解密**（B10/R54）。
+      const ballotTarget = /^ballot:/.test(target) ? target.slice(7) : String(args.ballot_id || '')
+      if (ballotTarget) {
+        const b = ballotById(ballotTarget)
+        if (!b) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '没有投票板 ' + ballotTarget }
+        if (b.phase !== 'closed') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '投票板 ' + b.id + ' 尚未截止：复议只针对**已生效**的结论（G2）' }
+        const bVotes = Array.isArray(b.votes) ? b.votes : []
+        if (!bVotes.some((v) => v && String(v.by) === String(memberId))) {
+          return { ok: false, code: 'V5_NOT_VOTER', message: '复议只能由该次表决的**参与者**提出（D5/D5a）：该板上没有 ' + memberId + ' 的票' }
+        }
+        const bDone = Array.isArray(b.reconsiderations) ? b.reconsiderations : []
+        const sameW = bDone.filter((x) => String((x || {}).why) === why)[0]
+        if (sameW) return { ok: true, deduped: true, reconsideration: sameW, message: '复议已是同值（幂等）：未重复入档' }
+        if (bDone.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '本板已复议过（每板只受理一次）：请等新一轮结论' }
+        const bSecret = !!(b.rules && b.rules.secret)
+        const bCap = Math.max(1, Math.floor(Number(params.quorumCap) || 3))
+        const bBefore = Math.max(1, Number((b.rules && b.rules.minVotes) || 0) || bCap)
+        const bAfter = Math.max(bBefore, reconsiderFloor(), bCap)
+        const bAt = now()
+        const bEntry = {
+          id: 'rc-ballot-' + b.id + '-1', by: memberId, at: bAt, round: 1, nextRound: 2, why,
+          evidence: String(args.evidence || ''), eligibility: 'board-participant',
+          thresholdBefore: bBefore, thresholdAfter: bAfter, raisedBy: bAfter - bBefore, onlyUp: bAfter >= bBefore,
+          secretSource: bSecret,
+        }
+        await patchInstitute({ ballots: (list) => (Array.isArray(list) ? list : []).map((x) => (x && String(x.id) === String(b.id)
+          ? Object.assign({}, x, {
+            reconsiderations: bDone.concat([bEntry]), supersededBy: bEntry.id, supersededAt: bAt,
+            threshold: { m: bAfter, floor: reconsiderFloor() }, reopenedAt: bAt,
+            reopening: true, priorResult: x.result || null,             // 旧结果**留档**（append-only，R7）
+            phase: 'open', closedAt: 0, closedBy: '', result: null,
+          }) : x)) })
+        await saveChatLine('【复议｜板 ' + b.id + '】' + memberId + ' 提请复议：' + why
+          + '｜门槛 ' + bBefore + ' ⇒ ' + bAfter + '（**只升不降**，U3）｜旧计票结果已留档，板重新开启'
+          + (bSecret ? '｜**本板不记名**：只给聚合票数与门槛，逐人选择按留档口径**不公开**' : ''))
+        return {
+          ok: true, ballot_id: b.id, reconsideration: bEntry, threshold: { before: bBefore, after: bAfter },
+          secretSource: bSecret, eligibility: 'board-participant',
+          message: '复议已受理：板已重新开启（门槛只升不降）' + (bSecret ? '；本板不记名 ⇒ 只给聚合面（逐人选择不公开）' : ''),
+        }
+      }
+      const rec = inst().verdicts[target]
+      if (!rec) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '没有判定对象 ' + target }
+      if (!rec.closed) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '对象 ' + target + ' 尚未收束：复议只针对**已生效**的结论（G2）' }
+      // 资格（D5/D5a）：**记录派生**，不是角色；院士不额外加权（R5）。
+      const votes = rec.votes || {}
+      const outcome = String(rec.outcome || '')
+      const hasWinner = outcome === 'true' || outcome === 'false'
+      const mine = votes[memberId]
+      const participated = !!(mine || (rec.unable && rec.unable[memberId]))
+      if (!participated) {
+        return { ok: false, code: 'V5_NOT_VOTER', message: '复议只能由该次表决的**参与者**提出（D5/D5a）：' + memberId + ' 不是本对象的表决参与者' }
+      }
+      let eligibility = 'any-participant'
+      if (hasWinner) {
+        const wanted = outcome === 'true' ? 1 : 0
+        const myP = Number((mine || {}).prob)
+        if (!Number.isFinite(myP) || myP !== wanted) {
+          return { ok: false, code: 'V5_NOT_VOTER', message: '复议只能由**当初胜方之一**提出（D5）：本对象已有明确胜方（' + outcome + '）；无胜方情形才允许任一参与者（D5a）' }
+        }
+        eligibility = 'winner'
+      }
+      const done = Array.isArray(rec.reconsiderations) ? rec.reconsiderations : []
+      const curRound = Number(rec.round || 0)
+      const sameWhy = done.filter((x) => Number((x || {}).round) === curRound && String((x || {}).why) === why)[0]
+      if (sameWhy) return { ok: true, deduped: true, reconsideration: sameWhy, message: '复议已是同值（幂等）：未重复入档' }
+      if (done.some((x) => Number((x || {}).round) === curRound)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '本轮已复议过（每轮只受理一次）：请等本轮结论' }
+      }
+      const maxRounds = Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))
+      if (curRound >= maxRounds) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '已达轮次上限 verdictMaxRounds=' + maxRounds + '：不得无限复算' }
+      }
+      // 门槛**只升不降**（U3）。
+      const cap = Math.max(1, Math.floor(Number(params.quorumCap) || 3))
+      const floor = reconsiderFloor()
+      const before = Math.max(1, Number((rec.threshold && rec.threshold.m) || rec.m || cap) || cap)
+      const after = Math.max(before, floor, cap)
+      const at = now()
+      const entry = {
+        id: 'rc-' + target + '-' + (curRound + 1), by: memberId, at, round: curRound, nextRound: curRound + 1,
+        why, evidence: String(args.evidence || ''), eligibility,
+        thresholdBefore: before, thresholdAfter: after, raisedBy: after - before, onlyUp: after >= before,
+        secretSource: !!(rec.secretSource),
+      }
+      const previous = {
+        round: curRound, outcome, reason: String(rec.reason || ''), mean: Number(rec.mean || 0),
+        votes: rec.votes || {}, unable: rec.unable || {}, minority: rec.minority || [],
+        closedAt: Number(rec.closedAt || 0), m: before, endedBy: String(rec.endedBy || ''),
+      }
+      const next = Object.assign({}, rec, {
+        reconsiderations: done.concat([entry]),
+        previousRounds: (Array.isArray(rec.previousRounds) ? rec.previousRounds : []).concat([previous]),
+        previousOutcome: outcome,          // 旧结论**保留**（append-only，R7）
+        supersededBy: entry.id,            // (g) 旧结论带"已被复议"标记
+        supersededAt: at,
+        threshold: { m: after, floor },
+        round: curRound + 1,
+        votes: {},                          // 新一轮从**空票面**开始（旧票面在 previousRounds 里留档）
+        unable: {},
+        minority: [], minorityCount: 0,
+        sealed: false, closed: false, reopenedAt: at, lastVoteAt: at,
+      })
+      delete next.outcome
+      delete next.reason
+      delete next.closedAt
+      await putVerdict(target, next)
+      await saveChatLine('【复议｜' + target + '】' + memberId + ' 提请复议（资格：' + eligibility + '）：' + why
+        + '｜门槛 ' + before + ' ⇒ ' + after + '（**只升不降**，U3）｜旧结论与旧少数意见已留档；新结论生效前旧结论仍可引用（带"已被复议"标记）')
+      return {
+        ok: true, reconsideration: entry, threshold: { before, after }, eligibility,
+        previousOutcome: outcome, message: '复议已受理：已为同一对象开启第 ' + (curRound + 1) + ' 轮（门槛只升不降；旧结论留档）',
+      }
     }
 
     // ── S8（R3/K12/B9）：票与发言的**时序分离** ────────────────────────────────────────────────
@@ -5347,6 +5525,9 @@ export function apply(ctx) {
     // 能应答却没表态者进 `silent` ⇒ **一律未定论并列出名单**。
     function judgeVerdict(vs, endedBy) {
       const base = aggregateOpinion(vs)
+      // S9（U3）：**复议后的门槛只升不降** —— 记录里存的门槛（`threshold.m`）与当轮口径取较大者。
+      const raisedM = raisedThresholdOf(vs)
+      if (raisedM > Number(base.m || 0)) base.m = raisedM
       if (!endedBy) return Object.assign(base, { outcome: 'undecided', reason: 'R10: 辩论尚未结束（过程票数不构成裁定）' })
       const E = base.voters
       const P = base.Peff
@@ -8395,7 +8576,7 @@ export function apply(ctx) {
       // prompt-invariants self-probe mutates the exact TAIL of this array (dropping
       // leanTimeoutMs from the accept-set), so appending a key after it would silently
       // disarm that guard.
-      const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
+      const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'reconsiderFloor', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'meetingHardLimitMs', 'meetingWakeRetries',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
@@ -8481,6 +8662,8 @@ export function apply(ctx) {
       if (out.leanTimeoutMs !== undefined) out.leanTimeoutMs = Math.max(1000, out.leanTimeoutMs)
       if (out.researcherCount !== undefined && out.researcherCount < 0) out.researcherCount = 0
       if (out.quorumCap !== undefined && out.quorumCap < 1) out.quorumCap = 1
+      // S9/U3：复议门槛的**下限**不得为负（负值等于"降门槛"，直接违反"只升不降"）。
+      if (out.reconsiderFloor !== undefined && out.reconsiderFloor < 0) out.reconsiderFloor = 0
       // NOT every non-positive number is harmless (audit L3). `compactThreshold <= 0` makes
       // EVERY round look over the threshold (a permanent compaction directive), so it falls back
       // to the default like a bad duration; `chatDigestMax < 1` would empty the digest bucket and
@@ -8996,7 +9179,11 @@ export function apply(ctx) {
           speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
-        verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
+        verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount(),
+          // S9（D5/D5a/U3）：**只读**子键（**不加 `status()` 顶层键**）。
+          minority_count: Array.isArray(cv.minority) ? cv.minority.length : 0,
+          reconsiderable: !!reconsiderTool, last_reconsideration_at: (Array.isArray(cv.reconsiderations) && cv.reconsiderations.length ? Number(cv.reconsiderations[cv.reconsiderations.length - 1].at || 0) : 0),
+          threshold_m: raisedThresholdOf(cv) || quorumM() } : null,
         // S7（D3/D4/R9/K13）：投票板 —— 只用 §4.3 **已声明的冻结键**（open/question/options/cast/
         // quorum_reached），另加**子键**（rules/min_votes_reached/settled）：**不加 `status()` 顶层键**。
         // 两个门槛**并列**：`quorum_reached`＝法定人数（结题门：未投票者是否已清空）；`min_votes_reached`
@@ -9086,7 +9273,22 @@ export function apply(ctx) {
         const v = s.verdicts[k]
         L.push('- ' + k + '｜' + (v.outcome === 'true' ? '**真**' : v.outcome === 'false' ? '**假**' : '未定论') +
           '（m=' + v.m + '｜真' + (v.bTrue || 0) + '/假' + (v.bFalse || 0) + '/弃权' + (v.abstain || 0) +
-          '｜平均概率 ' + Number(v.mean || 0).toFixed(2) + '｜' + (v.reason || '') + '）')
+          '｜平均概率 ' + Number(v.mean || 0).toFixed(2) + '｜' + (v.reason || '') + '）' +
+          (v.supersededBy ? '｜**已被复议**（' + v.supersededBy + '；旧结论仍可引用）' : ''))
+        // S9（D5 硬约束）：**少数意见一律入档** —— 逐人列（弃权/无法判断/未表态**单列**，不算少数意见）。
+        const mins = Array.isArray(v.minority) ? v.minority : []
+        if (v.secretSource) {
+          // S9（B10/R54）：**不记名**来源 ⇒ 公开面**只给聚合**，逐人选择与理由**永不解密**。
+          L.push('  - 少数意见：**本结论源自不记名** ⇒ 只给聚合（' + mins.length + ' 人持少数意见）；逐人选择与理由按留档口径**不公开**')
+        } else if (mins.length) {
+          L.push('  - 少数意见（' + mins.length + ' 人）：' + mins.map((m) => m.by + '＝' + Number(m.prob).toFixed(2) + '（' + (m.reason || '（未说明）') + '）').join('；'))
+        } else {
+          L.push('  - 少数意见：无（弃权 ' + (v.abstain || 0) + '／无法判断 ' + Object.keys(v.unable || {}).length + '／未表态 ' + ((v.silent || []).length) + ' 已单列，不计入少数意见）')
+        }
+        const rcs = Array.isArray(v.reconsiderations) ? v.reconsiderations : []
+        if (rcs.length) {
+          L.push('  - 复议记录：' + rcs.map((x) => x.id + '（' + x.by + '，' + x.eligibility + '，门槛 ' + x.thresholdBefore + '⇒' + x.thresholdAfter + '）').join('；'))
+        }
       }
       const cv = currentVerify()
       if (cv) L.push('- 进行中：' + cv.target + '｜' + cv.stage + ' 第 ' + cv.round + ' 轮' + (Object.keys(cv.votes).length ? '｜已投 ' + Object.keys(cv.votes).join('、') : '｜尚无人投票'))
@@ -9357,7 +9559,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -9594,6 +9796,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_poll_open', '(academician) #49 — OPEN AN OPTION-TYPE POLL BOARD inside the meeting in progress (rulings §7.1: the six items the academician sets and that are visible BEFORE the vote opens): question; options[] (>=2, texts set by the academician); mode single|multi; max/min (multi only); min_votes REQUIRED — the threshold for THIS poll counting at all; it deliberately has NO default, because defaulting it to the quorum m would MIX the two thresholds (K13 forbids it); secret (default false = named; a secret board is still durably recorded as such); allow_abstain/allow_revote (default true). The two thresholds stay separate: min_votes = "does this poll count", quorum m = the closure gate. A board must be attached to a LIVE meeting (V5_NO_OPEN_MEETING). No times are accepted (any …At/…Ms, lower-case included, is refused: the framework writes times). Same-value board while one is still open is idempotent (deduped:true).', objParams({ question: S, options: SA, mode: S, max: I, min: I, min_votes: I, minVotes: I, secret: B, allow_abstain: B, allowAbstain: B, allow_revote: B, allowRevote: B }, ['question', 'options', 'min_votes']), (s, a, x) => s.pollOpenTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_poll_vote', '(member with a vote) #50 — VOTE on the open option-type poll board (SPEC #35; the explicit abstention of #37 rides on this tool). Params: ballot_id? (defaults to the open board), choices[] (option ids or exact texts; must satisfy the board min/max), abstain:true (an EXPLICIT abstention: counted as having voted, NEVER as an option — the same semantics as the verify ballot), note/reason. A non-voter (attending/invited/temp) is refused BY NAME with V5_NOT_VOTER: vote power can NEVER be delegated (H12/R36). Revoting is allowed until closure when the board allows it (revotedAt is recorded); after closure it is refused (only a review/reconsideration can follow). Same-value resubmission is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, choices: SA, abstain: B, note: S, reason: S }), (s, a, x) => s.pollVoteTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_poll_close', '(academician) #51 — CLOSE AND TALLY the poll board and broadcast the result (SPEC #25/K4). Params: ballot_id? (defaults to the open board), reason?. The poll counts ONLY IF cast >= min_votes (settled:false / outcome:"unsettled" otherwise — the remaining votes are never used to infer a conclusion); the quorum m (closure gate) is computed SEPARATELY and reported NEXT TO it. The unvoted are named publicly. Closure is an EXPLICIT academician action: nothing closes "on time" (no automatic settlement anywhere). Repeated closure is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, reason: S }), (s, a, x) => s.pollCloseTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_reconsider', '(participant) #52 — REQUEST A RECONSIDERATION of an already-closed verdict (D5/D5a; the "review" that SPEC #19 and the poll board\'s "after closure only a reconsideration can follow" both point at). Params: target (required; the closed object), why (required; the reason is archived), evidence? (must come from the same object/meeting — D6). ELIGIBILITY IS DERIVED FROM THE RECORD, never from a role: with a clear winner only one of the ORIGINAL WINNERS may ask; with NO winner (undecided / mean-only) ANY participant may ask and the request may NOT be refused for "having no winner" (D5a hard constraint). The threshold can only RISE: after = max(before, reconsiderFloor, quorumCap) (U3) and the raise is recorded (thresholdBefore/After, raisedBy). One reconsideration per round; the total rounds stay bounded by verdictMaxRounds. The old conclusion, the old ballot and the old minority are all preserved (append-only) and the old conclusion is marked supersededBy. No vote power is created and the denominator never changes. No time may be supplied: every …At/…Ms is rejected (the framework writes the times) and nothing ever happens "on time".', objParams({ target: S, target_id: S, why: S, evidence: S }, ['why']), (s, a, x) => s.reconsiderTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
