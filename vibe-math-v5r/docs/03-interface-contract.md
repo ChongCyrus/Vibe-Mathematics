@@ -115,8 +115,9 @@
 
 ### 4.3 `status` / `report` / `overview` 稳定字段
 - **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。
-- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]`。
-- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]`。
+- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）。
+- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5）。
+- **`status` 顶层不加键**：「静止提示」只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
 - **顶层键冻结**：上述键一经发布不得改名/改类型；新增只能加新键。
 
 ---
@@ -218,6 +219,7 @@
 | H8 | **未达门槛＝未决**：程序性表决不得用平均替代 | 决议成立与否不可审计（R9/定稿 C3） |
 | H9 | **主持不额外加权** | 程序救济失效（R5/定稿 C5） |
 | H10 | **真值不越界**：平台只产出"判定结果+概率估计+依据" | 架空验证制度（R6/D9） |
+| H11 | **框架只推荐、不驱动（静止）**：静止（无会议、无验证在飞、无人在飞）时**最多提示一次**（列出「谁在等谁」），**不得**自动召集会议、自动散会、自动收束或推进阶段（**R1／D10 ＋ R4／H2**）；**也不得**代替成员表态——票面／解决票／自述都不由框架写（**R2／R3／D3／D8**） | 框架替所里开会/收束/推进 ⇒ 出现"无人主持的决议"（R1/D10、R4/H2）；框架替成员表态 ⇒ 沉默被折算成票、结论不可审计（R2/R3、D3/D8） |
 
 ---
 
