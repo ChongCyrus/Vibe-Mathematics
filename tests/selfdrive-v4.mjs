@@ -126,12 +126,21 @@ assert(final.autoDone === true, 'v4 stops only when all residents agree solved (
 assert(final.running === false, 'scheduler halted after unanimous solved (running=' + final.running + ')')
 assert(final.residentCount === 3, '3 residents alive')
 console.log('residents:', final.residents.map(r=>r.id+'@'+r.status).join(', '))
-// check a Verified card exists for the verify target (unanimous TRUE)
+// check a Verified card exists for the verify target (unanimous TRUE).
+// The card is written by the ASYNCHRONOUS conclusion path, so an instant check is a load-sensitive race:
+// under a loaded gate `autoDone` had already reported true while the file had not landed yet (that was
+// the only gate failure of this suite; it passed standalone). Poll with a bounded wait instead - the
+// assertion semantics are unchanged ("unanimous TRUE ⇒ the card MUST exist"; it still fails, with the
+// same message, if it never appears).
+const verifiedPath = join(WS,'VibeMath','Projects','default','Verified','命题', verifyTarget + '.md')
+await waitFor(()=>{ try { return existsSync(verifiedPath) } catch(e){ return false } }, 10000)
 let verifiedExists = false
-try { verifiedExists = existsSync(join(WS,'VibeMath','Projects','default','Verified','命题', verifyTarget + '.md')) } catch(e){}
+try { verifiedExists = existsSync(verifiedPath) } catch(e){}
 assert(verifiedExists, 'unanimous TRUE → Verified/命题/' + verifyTarget + '.md written')
-// check per-resident proposition library (target resident)
-const prop = readFileSync(join(WS,'VibeMath','Projects','default','Propos','r-3','p-r-3.md'),'utf8')
+// check per-resident proposition library (target resident) - same bounded wait, same reason.
+const propPath = join(WS,'VibeMath','Projects','default','Propos','r-3','p-r-3.md')
+await waitFor(()=>{ try { return existsSync(propPath) } catch(e){ return false } }, 10000)
+const prop = readFileSync(propPath,'utf8')
 assert(prop.includes('- 价值程度: 0.6') && prop.includes('- 动机用途计划'), 'resident proposition carries 价值程度 + 动机用途计划')
 // task board: a resident proposed a task → it lands on the board (open)
 const tasks = await callTool('vibe_v4_list_tasks', {})
@@ -198,10 +207,12 @@ for(const sp of spawns.slice(sc5Base)){ fireEnd({ id: sp.childId, runId:'br-'+sp
 await sleep(250)
 const beforeBroadcast = followups.length
 const bres = await callTool('vibe_v4_message', { to:'all', content:'全体注意' })
-await sleep(250)
+// Same class of fragility: a fixed sleep then an instant assertion. Wait (bounded) for EITHER delivery
+// effect (a wake or the mailbox copy) instead of sleeping a guessed duration.
+const mailboxHasBroadcast = () => { try { const mb = JSON.parse(readFileSync(join(WS,'VibeMath','Projects','default','State','mailboxes.json'),'utf8')); return Object.values(mb).some(arr=>Array.isArray(arr)&&arr.some(m=>String(m.content||'').includes('全体注意'))) } catch(e){ return false } }
+await waitFor(()=> followups.length - beforeBroadcast >= 1 || mailboxHasBroadcast(), 4000)
 const newFollowups = followups.length - beforeBroadcast
-let mailboxHit = false
-try { const mb = JSON.parse(readFileSync(join(WS,'VibeMath','Projects','default','State','mailboxes.json'),'utf8')); mailboxHit = Object.values(mb).some(arr=>Array.isArray(arr)&&arr.some(m=>String(m.content||'').includes('全体注意'))) } catch(e){}
+let mailboxHit = mailboxHasBroadcast()
 assert(bres.ok===true && /to 2 resident\(s\)/.test(bres.message) && (newFollowups>=1 || mailboxHit), 'B1: broadcast(all) actually delivered (message='+bres.message+', wake='+newFollowups+', mailboxHit='+mailboxHit+')')
 
 console.log('-- V4 self-drive: C1 addMember after removeMember has no id collision --')

@@ -132,15 +132,19 @@ const SUITE_TIMEOUT_MS = Math.max(1000, Number(process.env.GATE_SUITE_TIMEOUT_MS
 // Both report hangs=[] with their own 120 s child cap, i.e. they are slow, not hung - so the 180 s
 // default would misreport them. Everything else keeps the 180 s default.
 const TIMEOUT_OVERRIDES = {
-  'v2-fix-probes.mutants.mjs': 900000,
-  'v3-fix-probes.mutants.mjs': 900000,
+  'v2-fix-probes.mutants.mjs': 1200000,   // MEASURED 464.8 s standalone => 2.58x; 900 s was only 1.94x (below the 2x rule)
+  'v3-fix-probes.mutants.mjs': 900000,    // MEASURED 267.9 s standalone => 3.36x (ample)
   // v5-institute-fixes.mutants.mjs: MEASURED 201.9 s wall (hangs=[], skipped=[], ALL MUTANTS RED
   // AS REQUIRED) - i.e. OVER the 180 s default, so it gets the same 900 s as the v2/v3 families.
   // History worth keeping: a writer CLAIMED this family fitted its override when it did not, and the
   // gate caught it as "FAILED: v5-institute-fixes.mutants.mjs [probe] (TIMEOUT after 180s)" - the
   // named-timeout mechanism doing its job. (The older note here claimed formal-verify-v4.mutants.mjs
   // MEASURED 70.9 s with ample headroom - that became STALE as the family grew; see its own entry below.)
-  'v5-institute-fixes.mutants.mjs': 900000,
+  // (Re-measured in the 44-family sweep: 1032.6 s standalone, exit 0, skipped=[], hangs=[] — the 900 s
+  //  that gate #10 killed it with was BELOW its own measurement. Budget set to 1500000 (25 min) by the
+  //  maintainer: the known standalone figure is 1054 s and the same sweep measured 1157.7/1157.9 s with
+  //  two copies running concurrently, so the extra headroom absorbs gate-load amplification.)
+  'v5-institute-fixes.mutants.mjs': 1500000,
   // e2e-v4-fixes.test.mjs: MEASURED, not guessed (task-13). Its cases script an institute and pump
   // member followups; the pump loops used FIXED iteration caps (i<300 etc.) which, under a loaded gate,
   // ran out BEFORE the plugin's next scheduling tick produced the verification/debate wakes.
@@ -150,13 +154,22 @@ const TIMEOUT_OVERRIDES = {
   // loop, reached only in that pathological case, so healthy runs are unchanged), and the suite honestly
   // needs more than the 180 s default: it MEASURED 160.2 s wall under the gate before this change.
   // 420 s = that measurement + headroom for the bounded deadlines. Never raise this silently.
-  'e2e-v4-fixes.test.mjs': 420000,
+  'e2e-v4-fixes.test.mjs': 420000,        // MEASURED 98.0 s standalone => 4.3x (its 160.2 s gate figure is the binding one)
   // formal-verify-v4.mutants.mjs: the family grew after the 70.9 s note above was written. Re-measured
   // for task-13: 146.2 s standalone and 212.7 s with three heavy peers in parallel (ALL MUTANTS RED AS
   // REQUIRED in both) - i.e. it legitimately exceeds the 180 s default under gate load, where a killed
   // family then reports its children's F-5/N15/N18 assertions as failures (which reads like a regression
   // but is only the timeout). 900 s matches the sibling families' convention.
-  'formal-verify-v4.mutants.mjs': 900000,
+  'formal-verify-v4.mutants.mjs': 900000,   // MEASURED 100.5 s standalone => 9x (the 212.7 s gate figure is the binding one)
+  // run-tests.mutants.mjs: MEASURED ~23 s silently standalone, yet the certified gate has now reported
+  // it as "FAILED: run-tests.mutants.mjs [probe] (TIMEOUT after 180s)" THREE times, every time with its
+  // own counts still green - i.e. amplified by gate concurrency, not hung. It is legitimately heavy: the
+  // suite embeds several full `run-tests.mjs` runs and scans large directories, so its wall time scales
+  // with peer load. 900 s matches the sibling families' convention (the assertion set and semantics are
+  // untouched - only the time budget moves).
+  'run-tests.mutants.mjs': 900000,        // MEASURED 62.7 s / 93.0 s / 128.3 s standalone and 225.3 s with two
+                                          // copies concurrent; the gate killed it at the 180 s default three
+                                          // times (it embeds several full run-tests runs + scans large dirs) => 900 s
 }
 /** One place decides a job limit: explicit job value, then the named override, then the default. */
 function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
@@ -242,7 +255,10 @@ if (process.argv.includes('--self-check')) {
   const survived = await runSuite({ file: '(synthetic-ok)', args: [], expectExit: 0, kind: 'probe', eval: 'setTimeout(() => {}, 1500)', timeoutMs: 900000 })
   const extended = survived.timedOut === false && survived.code === 0
   const overrideLine = failedLine({ job: { file: 'v2-fix-probes.mutants.mjs', args: [], kind: 'probe', expectExit: 0 }, code: null, timedOut: true })
-  const namesOverride = /TIMEOUT after 900s/.test(overrideLine)
+  // Derived from the table (not hardcoded): the point of this check is that a timed-out override reports
+  // ITS OWN limit, so it must move with TIMEOUT_OVERRIDES. (It was hardcoded to 900s and went stale the
+  // moment v2-fix-probes.mutants.mjs was re-measured at 464.8 s and raised to 1200 s.)
+  const namesOverride = new RegExp('TIMEOUT after ' + (TIMEOUT_OVERRIDES['v2-fix-probes.mutants.mjs'] / 1000) + 's').test(overrideLine)
   console.log((overrideOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a named override is resolved for its suite and nothing else')
   console.log((extended ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a job that would die at 1 s SURVIVES under the override (real runSuite)')
   console.log((namesOverride ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a timed-out override reports its own limit (' + overrideLine.trim() + ')')

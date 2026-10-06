@@ -1496,39 +1496,216 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
     '★ [real1004-minutes] a speech arriving after the meeting closed is appended as a late note, never dropped silently')
   assert(after.includes('### '), 'the earlier speeches are still in the minutes (append-only, never clobbered)')
 }
-// real1004-stall (found on a real host with 2.8.3): the meeting watchdog measured "stall" from the last INPUT and
-// ignored whether an ASKED member was still busy. A member's turn easily outlives the budget on a real host, so
-// meetings were abandoned mid-turn and the speeches could only land as "late notes" (that run: 1067 late notes
-// and 863 refused office finalisations). A meeting must survive while an asked speaker is in flight.
+// meeting-speak (2.9.0): the meeting is now "机会 + 举手"（两阶段）. Closing looks ONLY at the chance
+// position (`asked`) and at "still has a hand up / still in flight" — never at whether someone SPOKE, and
+// never at the votes. Silence triggers NO deadline at all; the only bound is the parameterised hard limit.
 {
   const hs = makeHost({ pluginModule })
   await hs.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
   await hs.settleSpawns()
-  await hs.callTool('vibe_v5_set', { activityTimeoutMs: 300 })   // soft stall = 600 ms, hard bound = 1800 ms
-  const mts = await hs.callTool('vibe_v5_meeting', { agenda: 'real1004-stall：被点名的成员仍在忙', kind: 'sync' })
+  await hs.callTool('vibe_v5_set', { meetingHardLimitMs: 300000, meetingWakeRetries: 5 })
+  const mts = await hs.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：机会、沉默与举手', kind: 'sync' })
   const midS = mts && mts.meeting
   assert(!!midS, 'precondition: the meeting is convened (' + JSON.stringify(mts).slice(0, 110) + ')')
-  // acad is asked and NOT answered, so it stays BUSY. Nobody submits an input, so `lastInputAt` keeps ageing.
-  // NOTE (why this is a SOURCE-level invariant): the watchdog branch runs from a heartbeat whose armed delay is
-  // not controllable from this harness (the plugin arms `ctx.timeout` with delays up to tens of seconds), so a
-  // runtime assertion here cannot be made to FAIL on the unfixed code — it would be a vacuous guard. The
-  // behaviour is instead pinned by (a) this source invariant and (b) the real-host re-test, which is the
-  // acceptance criterion of the board task (measured there: 1067 late notes before the fix).
-  const wA = await hs.peekWakeOf('acad', 3000)
-  assert(!!wA, 'precondition: a member was asked to speak (so it is busy) while no input has arrived')
-  await sleep(900)                                             // past the SOFT bound, inside the hard one
   const mpathS = join(hs.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', midS + '.md')
-  assert(!readFileSync(mpathS, 'utf8').includes('因长时间无新发言而被放弃'),
-    'no input has arrived yet, so nothing may close this meeting: ' + readFileSync(mpathS, 'utf8').slice(0, 160))
-  hs.fireEnd(wA.childId, { input: 'real1004-stall：我被点名后仍在忙，现在交回我的发言。', contextPct: 20 })
+  // (1) 机会位：只征询常驻表决者；征询名单/阶段对外可见。
+  const wA = await hs.peekWakeOf('acad', 3000)
+  assert(!!wA, 'precondition: a resident member received the chance to speak')
+  const st1 = await hs.callTool('vibe_v5_status', {})
+  assert(!!st1.meeting && Array.isArray(st1.meeting.roster) && st1.meeting.roster.indexOf('acad') !== -1
+    && Array.isArray(st1.meeting.asked) && st1.meeting.asked.length >= 1
+    && (st1.meeting.phase === 'round-robin' || st1.meeting.phase === 'open-floor'),
+    '★ [meeting-speak] the chance position is published (phase, roster=residents, asked=[…]): ' + JSON.stringify(st1.meeting && { p: st1.meeting.phase, a: st1.meeting.asked }))
+  assert(Array.isArray(st1.meeting.silent) && Array.isArray(st1.meeting.unreached) && Array.isArray(st1.meeting.hands),
+    '★ [meeting-speak] 沉默/未送达/举手三个集合各自公布（与"已发言"分开）')
+  assert(st1.meeting.roster.every((id) => String(id).indexOf('t-') !== 0),
+    '★★ [meeting-speak] 临时工默认不在征询名单（roster 只含常驻表决者）')
+  assert(typeof st1.meeting.hardLimitMs === 'number' && st1.meeting.hardLimitMs === 300000,
+    '★ [meeting-speak] the hard limit is published and configurable: ' + JSON.stringify(st1.meeting && st1.meeting.hardLimitMs))
+  // (2) 沉默：被征询后不带 input 的回复 = "已获机会、选择不发言" ⇒ **不触发任何截止**。
+  hs.fireEnd(wA.childId, { contextPct: 20 })
   await sleep(300)
-  const docS = readFileSync(mpathS, 'utf8')
-  assert(docS.includes('### acad') && !docS.includes('（会后补记'),
-    'a speech from an ASKED member lands in the NORMAL section (never as a late note)')
-  const v5src = readFileSync(PLUGIN, 'utf8')   // PLUGIN points at the mutated COPY when a family runs this suite
-  assert(v5src.includes('const inFlight = meeting.order.some((id) => busy.has(id))') &&
-    v5src.includes('if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {'),
-    '★ [real1004-stall] the meeting watchdog exempts ASKED-but-busy speakers up to a hard bound (a real host abandoned meetings mid-turn: 1067 late notes, 863 refused finalisations)')
+  assert(!readFileSync(mpathS, 'utf8').includes('因长时间无新发言而被放弃') && !readFileSync(mpathS, 'utf8').includes('超过硬界'),
+    'silence never triggers a deadline (no stall-abandon, no hard-limit abandon)')
+  // (3) 另一位常驻成员同样沉默 ⇒ 无人举手、无人在飞 ⇒ **会议收束**。
+  const wR = await hs.peekWakeOf('r-1', 3000)
+  assert(!!wR, 'precondition: the second resident received the chance too')
+  hs.fireEnd(wR.childId, { contextPct: 20 })
+  await sleep(400)
+  const stC = await hs.callTool('vibe_v5_status', {})
+  assert(stC.meeting === null, '★★ [meeting-speak] 沉默不阻塞收束：全员获机会且无人举手 ⇒ 会议收束')
+  const docC = readFileSync(mpathS, 'utf8')
+  assert(docC.includes('## 发言机会（征询）') && docC.includes('选择不发言') && docC.includes('acad') && docC.includes('r-1'),
+    '★★ [meeting-speak] 沉默被具名记录（"选择不发言"点名到人）')
+  assert(docC.includes('## 举手记录') && docC.includes('（无人举手）'),
+    '★ [meeting-speak] 纪要含"举手记录"块（本轮无人举手）')
+  assert(docC.includes('## 表决') && docC.includes('**未表态**'),
+    '★ [meeting-speak] 表决块区分三态（true / false / 未表态）')
+  // (4) 票与发言分离：全员沉默 ⇒ 未表态 ⇒ **绝不结题**（沉默不是同意）。
+  assert(stC.autoDone === false && stC.phase !== 'solved',
+    '★★★ [meeting-speak] 未投票仍阻塞结题：未表态 ⇒ autoDone=false、phase!==solved')
+  const svC = stC.solveVotes && typeof stC.solveVotes === 'object' ? stC.solveVotes : {}
+  assert(!Object.keys(svC).some((k) => svC[k] === true),
+    '★★★ [meeting-speak] 沉默没有被写成票：无人被记为 vote_solved=true（实测 ' + JSON.stringify(svC) + '）')
+  assert(!existsSync(join(hs.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Problems', 'conclusion.md')),
+    '★★★ [meeting-speak] 沉默没有被当成同意：没有写出 Problems/conclusion.md')
+  // (5) 源码级不变量（不依赖宿主心跳）：闸门只读机会位/举手；唯一兜底是硬界；会议路径不再用 recoverStallMs；
+  //     沉默只写 silent 集合；票只由 recordSolveVote 写。
+  const v5src = readFileSync(PLUGIN, 'utf8')
+  const meetingFn = (v5src.split('async function continueMeetingRound')[1] || '').split('async function appendMeetingTail')[0] || ''
+  assert(v5src.includes('const notYetAsked = meeting.roster.filter') && v5src.includes('const handsUp = meetingHandsUp(meeting)'),
+    '★ [meeting-speak] 收束闸门只读机会位与举手集合')
+  assert(!/const missing = need\.filter\(\(id\) => meeting\.inputs\[id\] === undefined\)/.test(v5src) && !/stale >= recoverStallMs\(\)/.test(meetingFn),
+    '★★ [meeting-speak] 闸门不再以"是否发过言"为判据；会议路径不再用 recoverStallMs()')
+  assert(v5src.includes('if (elapsed >= hard) {') && v5src.includes('const hard = Number(meeting.hardLimitMs || meetingHardLimitMs())'),
+    '★★ [meeting-speak] 会议的唯一兜底是参数化硬界（沉默不触发任何截止）')
+  assert(v5src.includes('if (notYetAsked.length || inFlight.length || unanswered.length || handsUp.length) {'),
+    '★★ [meeting-speak] 有人举手时闸门不放过：举手是收束判据之一')
+  assert(v5src.includes('meeting.silent[id] === undefined && meeting.unreached[id] === undefined && busy.has(id))'),
+    '★★ [meeting-speak] 在飞集合排除"已获机会但选择不发言/未送达"的人（沉默永不续命）')
+  assert(v5src.includes('meeting.hands[member.id] = now()') && v5src.includes('delete meeting.hands[member.id]'),
+    '★ [meeting-speak] 举手入口与交付后清除都在（meeting_hand，可再次举手）')
+  assert(v5src.includes('meeting.silent[member.id] = now()') && !/recordSolveVote\([^)]*,\s*true\)/.test(v5src),
+    '★★★ [meeting-speak] 沉默只写 silent 集合，绝不被写成票（无 recordSolveVote(…, true) 路径）')
+  assert(v5src.includes('if (target.kind !== \'temp\') return await refuse(\'V5_INVITE_NOT_TEMP\'') && v5src.includes('if (meeting.invited[id]) return await refuse(\'V5_ALREADY_INVITED\''),
+    '★ [meeting-speak] 受邀临时工：只允许邀请临时工、重复邀请幂等（具名拒绝）')
+  assert(v5src.includes('meetingHardLimitMs: 1800000') && v5src.includes('meetingWakeRetries: 5') &&
+    v5src.includes('Math.min(7200000, Math.max(300000, Math.floor(out.meetingHardLimitMs)))') &&
+    v5src.includes('Math.min(10, Math.max(0, Math.floor(out.meetingWakeRetries)))'),
+    '★ [meeting-speak] 两个新参数有界可配且钳制正确（1800000/[300000,7200000]、5/[0,10]）')
+  // ── A4/A5/A6/A7：举手 / 举手再发言 / 阶段切换（同一所内再开一场会议）────────────────────────────
+  const m2 = await hs.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：举手与再发言', kind: 'sync' })
+  const mid2 = m2 && m2.meeting
+  assert(!!mid2, 'precondition: a second meeting is convened for the hand tests (' + JSON.stringify(m2).slice(0, 100) + ')')
+  const mpath2 = join(hs.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', mid2 + '.md')
+  const wA2 = await hs.peekWakeOf('acad', 3000)
+  assert(!!wA2, 'precondition: acad received the chance in the second meeting')
+  // A7：机会给齐（两位常驻同轮被征询）⇒ 立刻 open-floor —— **不靠计时器**。
+  const stPh = await hs.callTool('vibe_v5_status', {})
+  assert(!!stPh.meeting && stPh.meeting.phase === 'open-floor',
+    '★★ [meeting-speak] A7 阶段切换：机会给齐即进入 open-floor（不依赖计时器）: ' + JSON.stringify(stPh.meeting && stPh.meeting.phase))
+  // acad 交付第 1 次发言并同时举手；随后 r-1 以沉默落定 ⇒ 唯一吊住会议的就是"有人举着手"。
+  hs.fireEnd(wA2.childId, { input: '第一次发言：先汇报进展。', meeting_hand: true, contextPct: 20 })
+  await sleep(60)
+  const wR2 = await hs.peekWakeOf('r-1', 3000)
+  assert(!!wR2, 'precondition: r-1 received the chance in the second meeting')
+  hs.fireEnd(wR2.childId, { contextPct: 20 })          // 沉默
+  await sleep(250)
+  const stHand = await hs.callTool('vibe_v5_status', {})
+  assert(!!stHand.meeting && Array.isArray(stHand.meeting.hands) && stHand.meeting.hands.indexOf('acad') !== -1,
+    '★ [meeting-speak] 举手被登记（status().meeting.hands）')
+  assert(stHand.meeting !== null,
+    '★★ [meeting-speak] A4 有人举手 ⇒ 会议**不收束**（全员已获机会、其余人已沉默，唯一阻塞项就是举手）')
+  // A5：举手但**未交付** ⇒ 收束被推迟（闸门等它；不发 input 的那一轮不算交付）。
+  const wH1 = await hs.peekWakeOf('acad', 3000)
+  if (wH1) hs.fireEnd(wH1.childId, { contextPct: 20 })
+  await sleep(200)
+  assert(!!(await hs.callTool('vibe_v5_status', {})).meeting,
+    '★★ [meeting-speak] A5 举手未交付 ⇒ 收束被推迟（会议仍在进行）')
+  // A6：举手再发言 ⇒ 纪标注"（第 2 次发言）"。
+  const wH2 = await hs.peekWakeOf('acad', 3000)
+  if (wH2) hs.fireEnd(wH2.childId, { input: '第二次发言：补充证据链。', contextPct: 20 })
+  await sleep(250)
+  assert(readFileSync(mpath2, 'utf8').includes('第 2 次发言'),
+    '★★ [meeting-speak] A6 举手再发言 ⇒ 纪要标注次数（第 2 次发言）')
+  // ── C1–C3：受邀临时工端到端（只进纪要、不进成果库、不计票、不延后收束）────────────────────────
+  // 顺序很重要：先腾位→雇佣临时工（宿主在活子代理上限 2），**再开会**，会议一开就立刻邀请
+  // （否则会议可能在邀请前就收束了）。
+  const fired = await hs.callTool('vibe_v5_fire', { id: 'r-1', reason: 'meeting-speak 测试：腾出在活子代理名额给受邀临时工' })
+  assert(fired && fired.ok !== false, 'precondition: a slot was freed for the temp worker (' + JSON.stringify(fired).slice(0, 90) + ')')
+  const hired = await hs.callTool('vibe_v5_hire', { kind: 'temp', purpose: '数值实验', initial_task: '跑一组数值实验并回报数值' }, hs.childAgent(hs.childOf('acad')))
+  assert(hired && hired.ok !== false, 'precondition: a temp worker was hired (' + JSON.stringify(hired).slice(0, 90) + ')')
+  await hs.settleSpawns()
+  const tempId = String((hired && (hired.id || hired.member)) || '').trim()
+  assert(!!tempId && tempId.indexOf('t-') === 0, 'precondition: the temp has an id (' + tempId + ')')
+  const instDir = join(hs.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  const membersBefore = readdirSync(join(instDir, 'Members'))
+  const mC = await hs.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：邀请临时工发言', kind: 'sync' })
+  const midC = mC && mC.meeting
+  assert(!!midC, 'precondition: an open meeting exists for the invite test (' + JSON.stringify(mC).slice(0, 100) + ')')
+  const mpathC = join(instDir, 'Shared', 'Meetings', midC + '.md')
+  const wInv = await hs.peekWakeWhere((t) => t.indexOf(midC) !== -1, 3000)
+  assert(!!wInv, 'precondition: a wake of THIS meeting exists (the invite test needs an open meeting round)')
+  const stPre = await hs.callTool('vibe_v5_status', {})
+  const tempRow = (stTemp) => ((stTemp.members || []).find((m) => m.id === tempId) || {})
+  assert(tempRow(stPre).phase === 'active',
+    'precondition: the temp worker is on the ACTIVE roster before the invite: ' + JSON.stringify(tempRow(stPre)))
+  // B1（行为级）：临时工**默认不被征询**——本场会议的任何一轮唤醒都不发给它。
+  assert(hs.wakes.every((w) => String((w.blocks && w.blocks[0] && w.blocks[0].text) || '').indexOf(tempId) === -1
+    || !/【研究所会议/.test(String((w.blocks && w.blocks[0] && w.blocks[0].text) || ''))),
+    '★★ [meeting-speak] B1 临时工默认不被征询（会议轮从不发给它）')
+  assert(Array.isArray((stPre.meeting || {}).roster) && (stPre.meeting.roster || []).indexOf(tempId) === -1,
+    '★★ [meeting-speak] C2 受邀资格存在、但临时工**不进征询名单**（roster 只含常驻表决者）')
+  assert(readdirSync(join(instDir, 'Members')).join(',') === membersBefore.join(','),
+    '★★ [meeting-speak] C3 受邀机制不落任何成果库文件（Members/ 目录无新条目）')
+  // ⚠️ 覆盖缺口（如实记录，见交付说明）：`meeting_invite` 的**端到端**行为级断言（受理→广播→真唤醒→
+  // 发言只进纪要/不计票/不延后收束）在本 harness 里尚未跑通——邀请必须落在**仍开着**的会议轮上，而本
+  // 套件的 wakes 队列会残留已关闭会议的唤醒，导致邀请落在 `meeting === null` 的轮次上被忽略。该路径由
+  // 下面的**源码级**断言 + `tests/v5-institute-fixes.mutants.mjs` 的 M7/M11 具名变异钉住；真机复验
+  // （SLV）是它的验收口径。**不要**把它误读为"已行为级覆盖"。
+  const inviteSrc = v5src.split('async function meetingInvite')[1] || ''
+  assert(inviteSrc.includes('V5_NO_OPEN_MEETING') && inviteSrc.includes('V5_NOT_VOTER') &&
+    inviteSrc.includes('V5_INVITE_NOT_TEMP') && inviteSrc.includes('V5_ALREADY_INVITED') &&
+    inviteSrc.includes('saveChatLine') && inviteSrc.includes('meeting.invited[id] = {'),
+    '★★ [meeting-speak] C1（源码级）邀请的四个具名拒绝码 + 群聊广播 + 登记都在（端到端见交付说明的缺口）')
+  assert(v5src.includes('if (p.meeting_invite && typeof p.meeting_invite === \'object\') await meetingInvite(member.id, p.meeting_invite)'),
+    '★★ [meeting-speak] C1（源码级）邀请入口挂在结构化回复契约上（meeting_invite）')
+  assert(v5src.includes('const live = voters().map((m) => m.id)') && v5src.includes('meeting.roster = live.slice()'),
+    '★ [meeting-speak] C2（源码级）征询名单只由 voters() 生成（受邀临时工无法进入 roster）')
+  assert(!/meeting\.invited\[id\][^\n]*meeting\.(hands|roster)/.test(v5src),
+    '★★ [meeting-speak] C2（源码级）受邀者不进 hands/roster（不进任何阻塞集合）')
+  // ── E5：unreached 行为级（唤醒失败 + meetingWakeRetries 耗尽 ⇒ 不阻塞收束，且 ≠ silent）─────
+  const hE = makeHost({ pluginModule })
+  await hE.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await hE.settleSpawns()
+  await hE.callTool('vibe_v5_set', { meetingWakeRetries: 1, activityTimeoutMs: 200 })
+  hE.setFailSend(true)                                  // 所有唤醒发送都失败
+  const mE = await hE.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：唤醒失败', kind: 'sync' })
+  assert(!!(mE && mE.meeting), 'precondition: the meeting is convened (wakes will fail)')
+  await sleep(1000)                                     // 短心跳（200ms）反复 tick，直到重试耗尽
+  const stE = await hE.callTool('vibe_v5_status', {})
+  assert(stE.meeting === null, '★★ [meeting-speak] E5 唤醒重试耗尽 ⇒ 记 unreached 且**不阻塞收束**（会议已收束）')
+  const mpathE = join(hE.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', String((mE && mE.meeting) || '') + '.md')
+  const docE = existsSync(mpathE) ? readFileSync(mpathE, 'utf8') : ''
+  assert(docE.includes('未能送达/未落定') && !docE.includes('选择不发言：acad'),
+    '★★ [meeting-speak] E5 unreached 与 silent 严格区分（纪要记"未能送达/未落定"，不当作"选择不发言"）')
+  // ── E5b：`meetingWakeRetries: 0` ⇒ **恰好尝试 1 次**（"0 次重试" ≠ "不尝试"）────────────────────
+  const h0 = makeHost({ pluginModule })
+  await h0.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h0.settleSpawns()
+  await h0.callTool('vibe_v5_set', { meetingWakeRetries: 0, activityTimeoutMs: 200 })
+  h0.setFailSend(true)                                   // 每次尝试都失败
+  const m0 = await h0.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：0 次重试＝只尝试一次', kind: 'sync' })
+  assert(!!(m0 && m0.meeting), 'precondition: the meeting is convened for the N=0 boundary test')
+  const st0a = await h0.callTool('vibe_v5_status', {})
+  const att0 = (st0a.meeting && st0a.meeting.attempts) || {}
+  assert(att0.acad === 1 && att0['r-1'] === 1,
+    '★★ [meeting-speak] E5b meetingWakeRetries:0 ⇒ 每位常驻**恰好尝试 1 次**（"0 次重试"≠"不尝试"；实测 ' + JSON.stringify(att0) + '）')
+  await sleep(900)
+  const st0 = await h0.callTool('vibe_v5_status', {})
+  assert(st0.meeting === null,
+    '★★ [meeting-speak] E5b 0 次重试耗尽后记 unreached 且**不阻塞收束**（会议已收束）')
+  // ── E3：硬界放弃行为级（测试侧推进墙钟：`now()` = Date.now()，**无产品改动**）────────────────────
+  const h3 = makeHost({ pluginModule })
+  await h3.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  await h3.settleSpawns()
+  await h3.callTool('vibe_v5_set', { meetingHardLimitMs: 300000, activityTimeoutMs: 200 })   // 下限 5 分钟 + 短心跳
+  const m3 = await h3.callTool('vibe_v5_meeting', { agenda: 'meeting-speak：硬界放弃', kind: 'sync' })
+  assert(!!(m3 && m3.meeting), 'precondition: the meeting is convened for the hard-limit test')
+  const w3 = await h3.peekWakeOf('acad', 3000)
+  assert(!!w3, 'precondition: a member is in flight (so the meeting cannot close)')
+  const realNow = Date.now
+  try {
+    Date.now = () => realNow() + 300001                          // 推过 5 分钟硬界
+    h3.fireEnd(h3.childOf('r-1'), { contextPct: 20 })            // 触发一轮会议 tick
+    await sleep(300)
+  } finally { Date.now = realNow }
+  const st3 = await h3.callTool('vibe_v5_status', {})
+  assert(st3.meeting === null, '★★ [meeting-speak] E3 超过硬界 ⇒ 会议被放弃（针对在飞却永不交付的一轮）')
+  const mpath3 = join(h3.WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Shared', 'Meetings', String((m3 && m3.meeting) || '') + '.md')
+  const doc3 = existsSync(mpath3) ? readFileSync(mpath3, 'utf8') : ''
+  assert(doc3.includes('超过硬界') && doc3.includes('## 发言机会（征询）') && doc3.includes('## 表决'),
+    '★★ [meeting-speak] E3 放弃时仍写全明细（发言机会/举手记录/表决三块）')
 }
 
 // ---------- 28. office-only surface + id normalisation ----------

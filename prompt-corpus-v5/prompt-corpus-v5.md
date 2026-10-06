@@ -71,6 +71,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -147,6 +149,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -223,6 +227,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -298,6 +304,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -373,6 +381,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -621,6 +631,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -860,6 +872,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1099,6 +1113,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1338,6 +1354,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1554,6 +1572,8 @@
   "reject_assign": {"task_id":"t-3","why":"你对这项分派的异议理由"}   ← 有异议时填；理由会被广播给
              全体表决者（任务仍会执行，但你的理由不会被埋掉），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1624,6 +1644,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1694,6 +1716,8 @@
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1773,6 +1797,8 @@ acad：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1848,6 +1874,8 @@ r-1：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1923,6 +1951,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -1997,6 +2027,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2071,6 +2103,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2145,6 +2179,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2219,6 +2255,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2289,6 +2327,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2359,6 +2399,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2429,6 +2471,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2500,6 +2544,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2570,6 +2616,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2640,6 +2688,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -2710,6 +2760,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3058,12 +3110,14 @@ r-2：初始见解。
 议程：分工与下一步（类型：sync）
 
 （你是本次会议的第一位发言者，目前还没有别人发言。）
-（流程：框架**每轮最多同时征询 maxParallel 名成员**（默认 3），把**已经收集到的**发言附在唤醒提示里，直到所有在册成员都发过言；卡住的成员由会议看门狗处理。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）
+（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）
 
 请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
-（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
-如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
-一致认为是真时，本所才会停下来。
+（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）
+**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。
+**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。
+**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；
+只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。
 
 - math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
@@ -3113,6 +3167,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3137,12 +3193,14 @@ r-2：初始见解。
 议程：分工与下一步（类型：sync）
 
 （你是本次会议的第一位发言者，目前还没有别人发言。）
-（流程：框架**每轮最多同时征询 maxParallel 名成员**（默认 3），把**已经收集到的**发言附在唤醒提示里，直到所有在册成员都发过言；卡住的成员由会议看门狗处理。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）
+（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）
 
 请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。
-（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）
-如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都
-一致认为是真时，本所才会停下来。
+（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）
+**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。
+**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。
+**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；
+只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。
 
 - math_computation：可用引擎 无。需要数值/符号/统计计算时先 probe 再 run（工具路径会留下可复核回执，结论请引用回执路径）；缺包时如实说明并给替代方案或安装计划（不要假装），安装需先出计划并征得确认。
 - shell 兜底标注：工具不可用而改用宿主 shell 时，结论必须写"未经工具归档（shell 路径）"，且不得与工具回执混同（shell 无回执、无超时/输出上限保证）。
@@ -3188,6 +3246,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3266,6 +3326,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3337,6 +3399,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3415,6 +3479,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3486,6 +3552,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3564,6 +3632,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3635,6 +3705,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3713,6 +3785,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3784,6 +3858,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3855,6 +3931,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -3929,6 +4007,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4002,6 +4082,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4076,6 +4158,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4153,6 +4237,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4224,6 +4310,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4295,6 +4383,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4367,6 +4457,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -4446,6 +4538,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态
@@ -5161,6 +5255,8 @@ r-2：初始见解。
   "hire": {"purpose":"…","initial_task":"…","direction":"…"}   ← 雇佣一名临时工（说明用途与初始任务），
   "fire": {"id":"t-2","reason":"…"}                             ← 解雇临时工（仅三种人：雇它的雇主本人、所办、以及 academicianLeads=true 时的院士；**常驻研究员只能由所办解聘**，成员只能向所办提议），
   "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；只有全体有表决权者都 true 时才会停止。
+  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。
+  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。
   "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）
   "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）
   "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态

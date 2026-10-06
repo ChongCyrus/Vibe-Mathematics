@@ -975,6 +975,15 @@ export function apply(ctx) {
       chatDigestMs: 45000,
       chatDigestMax: 12,
       meetingKeepEvery: 5,
+      // ── meeting speaking model（2.9.0）────────────────────────────────────
+      // 会议两阶段（轮流发言 → 举手发言）；沉默**不触发任何截止**，只看"机会是否给完"与"是否还在举手/在飞"。
+      // meetingHardLimitMs — 会议墙钟硬界（**唯一兜底**）：默认 1800000（30 分钟），钳制到 [300000, 7200000]
+      //                      （5 分钟–2 小时）；**不提供无界**（0/∞ 无特殊语义）。旧的 recoverStallMs()（2×
+      //                      activityTimeoutMs）**不再用于会议收束/放弃**。
+      // meetingWakeRetries — 同一成员在同一阶段的唤醒重试次数：默认 5，钳制到 [0, 10]；耗尽后记 `unreached`
+      //                      （**当作"已获得机会"**：不阻塞收束，且与"选择不发言"严格区分）。
+      meetingHardLimitMs: 1800000,
+      meetingWakeRetries: 5,
       // ── Lean formal verification (§ docs/formal-verification.md) ─────────
       // 'off'       — 不额外进行任何要求（默认）
       // 'encourage' — 鼓励：验证时按实现难度决定是否用 Lean 形式化；平时顺手形式化可复用对象
@@ -2486,6 +2495,8 @@ export function apply(ctx) {
       L.push('  "vote_solved": true|false,   ← 你是否认为**原问题已解决**（会议/结题表决用；必须诚实）。'
         + '**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**——本所继续推进；'
         + '只有全体有表决权者都 true 时才会停止。')
+      L.push('  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。')
+      L.push('  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。')
       L.push('  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）')
       L.push('  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）')
       L.push('  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态')
@@ -2573,12 +2584,18 @@ export function apply(ctx) {
       L.push(replySpec(member.kind))
       return L.join('\n')
     }
-    function meetingPrompt(member, mn) {
+    function meetingPrompt(member, mn, opts) {
+      const invited = opts && opts.invited
       const L = []
       L.push('【研究所会议 ' + mn.id + ' 进行中 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('')
       L.push('议程：' + mn.agenda + '（类型：' + mn.kind + '）')
       L.push('')
+      if (invited) {
+        L.push('（你是**受邀发言**的临时工：' + invited.by + ' 邀请你发言，理由：' + invited.why + '。'
+          + '你的发言只记入会议纪要与群聊、**不计票**；你不发言也不会阻塞会议。）')
+        L.push('')
+      }
       const others = Object.keys(mn.inputs || {}).filter((k) => k !== member.id)
       if (others.length) {
         L.push('### 其他成员本次会议已发表的意见（框架已转发给你，请参考、补充或反驳）')
@@ -2586,20 +2603,23 @@ export function apply(ctx) {
         L.push('')
       } else {
         L.push('（你是本次会议的第一位发言者，目前还没有别人发言。）')
-        // F3 (deep-review 5; v4's counterpart states this): "first speaker" alone left two things
-        // unsaid — when the others' opinions arrive, and how the meeting ends. Both statements below
-        // match the code: `askMeetingRound` wakes up to `maxParallel` members per round and
-        // `continueMeetingRound` keeps collecting until nobody is missing (the stall watchdog
-        // handles a member that never answers), then `finalizeMeeting` writes the minutes.
-        L.push('（流程：框架**每轮最多同时征询 maxParallel 名成员**（默认 3），把**已经收集到的**发言'
-          + '附在唤醒提示里，直到所有在册成员都发过言；卡住的成员由会议看门狗处理。'
+        // F3 (deep-review 5) + 2.9.0: state the speaking model exactly as the code implements it —
+        // 轮流发言（不强求）→ 举手发言（可多轮）→ 无人举手即收束；沉默不触发任何截止。
+        L.push('（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；'
+          + '随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。'
+          + '**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。'
+          + '框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。'
           + '收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）')
         L.push('')
       }
       L.push('请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。')
-      L.push('（会议轮请把你的发言同时填进 JSON 的 "input" 字段，框架据此写会议纪要。）')
-      L.push('如果你认为原问题已解决，请填 "vote_solved": true —— 只有当**全体有表决权者**都')
-      L.push('一致认为是真时，本所才会停下来。')
+      L.push('（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）')
+      L.push('**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——'
+        + '不会因此被追问，也不会阻塞会议。')
+      L.push('**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；'
+        + '给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。')
+      L.push('**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；')
+      L.push('只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。')
       mathPushLine(L)
       paperPushLine(L)
       feedbackPushLine(L)
@@ -5251,8 +5271,26 @@ export function apply(ctx) {
     function phaseFactLine() {
       return '阶段：' + phase + '｜运行中：' + (running ? '是' : '否') + '｜已结题：' + (autoDone ? '是' : '否')
     }
+    // ── meeting speaking model (2.9.0): 机会位 / 发言位 / 票位 三个位置互不继承 ────────────────────
+    // 阶段一"轮流发言"：每个**常驻**成员获得一次"要不要发言"的机会（可以不发言）；阶段二"举手发言"：
+    // 想发言的人主动举手（含已发言者，可多轮）。收束只看：① 所有常驻成员都已获机会；② 无人还在举手/
+    // 还在飞。**沉默本身不触发任何截止**（既不续命、也不算"卡死"）；唯一兜底是参数化硬界。
+    // 票与发言彻底分离：`inputs` 只记发言，`solve` 只由 recordSolveVote 写（沉默绝不等于同意）。
+    function meetingHardLimitMs() {
+      const v = posMs(params.meetingHardLimitMs, 1800000)
+      return Math.min(7200000, Math.max(300000, v))
+    }
+    function meetingWakeRetries() {
+      const n = Number(params.meetingWakeRetries)
+      return Number.isFinite(n) ? Math.min(10, Math.max(0, Math.floor(n))) : 5
+    }
+    function meetingHandsUp(mn) {
+      if (!mn || !mn.hands) return []
+      return Object.keys(mn.hands).filter((id) => mn.hands[id])
+    }
     async function beginMeeting(opts) {
-      const order = activeMembers().map((m) => m.id)
+      // 只征询**常驻表决者**：临时工默认不进名单（它们只能被邀请，见 `meeting_invite`）。
+      const order = voters().map((m) => m.id)
       // Rotate who speaks first: with a fixed order the same member always speaks
       // before it can see the others (v4 §24.1-④).
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t }
@@ -5268,9 +5306,12 @@ export function apply(ctx) {
       } })
       const id = idx.id
       lastMeetingId = id   // real1004-minutes: late speeches are appended to the most recent minutes
+      const hardLimitMs = meetingHardLimitMs()
       meeting = {
         id, agenda: opts.agenda, kind: opts.kind || 'sync', target: opts.target || '',
-        by: opts.by || 'office', order, inputs: {}, extras: {}, lastInputAt: now(), startedAt: now(),
+        by: opts.by || 'office', order, roster: order.slice(), phase: 'round-robin',
+        inputs: {}, speeches: {}, extras: {}, asked: {}, silent: {}, unreached: {}, hands: {}, spokeCount: {},
+        invited: {}, retries: {}, history: [], hardLimitMs, lastInputAt: now(), startedAt: now(),
       }
       // F6 (status/report review): mark the meeting OPEN durably. `finalizeMeeting` clears it, so a
       // meeting that never finished (crash/restart/stop) stays visible as "未收束" instead of
@@ -5293,6 +5334,7 @@ export function apply(ctx) {
         '- 召集人: ' + meeting.by,
         '- 开始时间: ' + fmtTime(meeting.startedAt),
         '- 发言顺序: ' + order.join(' → '),
+        '- 硬界: ' + Math.round(hardLimitMs / 60000) + ' 分钟（沉默本身不触发任何截止；只兜底卡死的一轮）',
         '',
         '## 各成员发言',
         '',
@@ -5305,19 +5347,77 @@ export function apply(ctx) {
       // Reconcile the speaking order with the LIVE roster. A member who joins during a
       // meeting must be asked, and a dismissed one must stop being waited for — the
       // original v4 defect kept polling a ghost and deadlocked the meeting until the
-      // watchdog abandoned it.
-      const live = activeMembers().map((m) => m.id)
+      // watchdog abandoned it. ONLY resident voters are asked: a temp worker enters the
+      // meeting solely through an explicit invitation.
+      const live = voters().map((m) => m.id)
+      meeting.roster = live.slice()
       meeting.order = meeting.order.filter((id) => live.indexOf(id) !== -1)
       for (const id of live) { if (meeting.order.indexOf(id) === -1) meeting.order.push(id) }
+      for (const id of Object.keys(meeting.asked)) {
+        if (live.indexOf(id) !== -1) continue
+        delete meeting.asked[id]; delete meeting.silent[id]; delete meeting.unreached[id]
+        delete meeting.hands[id]; delete meeting.inputs[id]; delete meeting.extras[id]
+        delete meeting.spokeCount[id]; delete meeting.retries[id]
+      }
+      const budget = Math.max(1, Math.floor(Number(params.maxParallel) || 3))
+      const maxTries = Math.max(0, meetingWakeRetries())
+      const roundRobin = meeting.phase === 'round-robin'
       let asked = 0
+      // `meeting.retries[id]` 记的是**已经尝试过的次数**。语义（2.9.0 用户裁决）：
+      // `meetingWakeRetries = N` ⇒ 先尝试 1 次，失败/未落定后再**重试 N 次** ⇒ **总共 N+1 次尝试**；
+      // `N = 0` ⇒ **只尝试一次**。允许再次尝试的条件是 `已尝试次数 <= N`；超过才记 `unreached`
+      // （当作"已获机会"：不阻塞收束，且与 `silent` 严格区分）。
+      const attemptOne = async (m, invited) => {
+        if (!m || m.phase !== 'active' || busy.has(m.id)) return false
+        if (!invited) meeting.retries[m.id] = Number(meeting.retries[m.id] || 0) + 1   // 计一次尝试
+        const ok = await wakeMember(m, meetingPrompt(m, meeting, invited ? { invited } : null), 'meeting')
+        // 只有"获得机会"才写 asked；被邀请的临时工永远不进机会位（也不阻塞收束）。
+        if (ok) { if (!invited) meeting.asked[m.id] = now(); asked += 1 }
+        else if (!invited && !meeting.hands[m.id] && Number(meeting.retries[m.id] || 0) > maxTries) {
+          meeting.unreached[m.id] = now()
+          meeting.history.push({ at: now(), id: m.id, what: 'unreached', tries: meeting.retries[m.id] })
+        }
+        return ok
+      }
       for (const id of meeting.order) {
-        if (meeting.inputs[id] !== undefined) continue
-        const m = memberById(id)
-        if (!m || m.phase !== 'active') continue
-        if (busy.has(id)) continue
-        const ok = await wakeMember(m, meetingPrompt(m, meeting), 'meeting')
-        if (ok) asked += 1
-        if (asked >= Math.max(1, Math.floor(Number(params.maxParallel) || 3))) break
+        if (asked >= budget) break
+        if (meeting.silent[id] !== undefined || meeting.unreached[id] !== undefined) continue
+        const alreadyAsked = meeting.asked[id] !== undefined
+        const tries = Number(meeting.retries[id] || 0)
+        // 尝试次数用尽（已试 N+1 次）⇒ 记 unreached 且不再问。**注意不是"不尝试"**：N=0 时也先试一次。
+        if (tries > maxTries && !meeting.hands[id]) {
+          meeting.unreached[id] = now()
+          meeting.history.push({ at: now(), id, what: 'unreached', tries })
+          continue
+        }
+        if (alreadyAsked) {
+          if (meeting.inputs[id] !== undefined) continue        // 已交付发言
+          if (busy.has(id)) continue                            // 仍在飞 ⇒ 等它（见 continueMeetingRound）
+        } else if (!roundRobin) continue                         // 阶段二不再补发第一阶段的机会
+        await attemptOne(memberById(id), null)
+      }
+      if (!roundRobin) {
+        // 阶段二的两类唤醒：① 举手者（含已发言者 ⇒ "举手再发言"，可多轮）；② 被邀请的临时工（各只问一次）。
+        for (const id of meetingHandsUp(meeting)) {
+          if (asked >= budget) break
+          if (await attemptOne(memberById(id), null)) meeting.history.push({ at: now(), id, what: 'hand-asked' })
+        }
+        for (const id of Object.keys(meeting.invited)) {
+          if (asked >= budget) break
+          const inv = meeting.invited[id]
+          if (!inv || inv.askedOnce) continue
+          inv.askedOnce = true
+          if (await attemptOne(memberById(id), inv)) { asked += 1; meeting.history.push({ at: now(), id, what: 'invited-asked', by: inv.by }) }
+        }
+      }
+      // 阶段切换：所有常驻成员都"获得过机会"（发言 / 沉默 / 未送达 都算）⇒ 进入举手阶段。无计时器。
+      if (meeting.phase === 'round-robin') {
+        const done = meeting.roster.every((id) => meeting.asked[id] !== undefined || meeting.silent[id] !== undefined || meeting.unreached[id] !== undefined)
+        if (done) {
+          meeting.phase = 'open-floor'
+          meeting.history.push({ at: now(), what: 'phase', phase: 'open-floor' })
+          await saveChatLine('【会议 ' + meeting.id + '】轮流发言结束（' + meeting.roster.length + ' 位常驻成员都已获得机会），进入**举手发言**阶段：想发言的成员请举手（meeting_hand:true）；已发言者也可以再次举手。')
+        }
       }
       if (!asked) armHeartbeat()
       return asked
@@ -5330,29 +5430,39 @@ export function apply(ctx) {
       // Re-arm on the way out: a pass that bails here does no work of its own, so
       // without a heartbeat nothing would retry it once the lock clears.
       if (finalizeLock) { armHeartbeat(); return }
-      const stale = now() - Number(meeting.lastInputAt || meeting.startedAt || now())
-      // real1004-stall: a member's TURN can outlive the stall budget on a real host, and the old check ignored
-      // that — the meeting was abandoned while an ASKED member was still busy, so its speech could only land as
-      // a "late note" (measured on one real run: 1067 late notes and 863 refused office finalisations). Never
-      // abandon while an asked speaker is in flight — but keep the watchdog's teeth: past 3× the budget even an
-      // in-flight member no longer holds the meeting open (a genuinely wedged turn must not wedge the meeting).
-      const inFlight = meeting.order.some((id) => busy.has(id))
-      if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {
+      // 唯一兜底：参数化硬界（自会议开始起的墙钟）。**沉默本身不触发任何截止**——只有真正卡死的一轮
+      // （在飞却永不交付）才会被它收掉，且放弃时同样写全明细（发言机会/举手记录/表决）。
+      const elapsed = now() - Number(meeting.startedAt || now())
+      const hard = Number(meeting.hardLimitMs || meetingHardLimitMs())
+      if (elapsed >= hard) {
         const abandoned = meeting
         meeting = null
-        await appendMeetingTail(abandoned, '⚠ 本次会议因长时间无新发言而被放弃（看门狗）；团队回到自组织推进。')
-        await saveChatLine('【会议 ' + abandoned.id + '】因卡死被放弃（' + Math.round(stale / 1000) + 's 无新发言）。')
+        await appendMeetingTail(abandoned, meetingMinutesTail(abandoned, { abandoned: true }).join('\n'))
+        await saveChatLine('【会议 ' + abandoned.id + '】超过硬界（' + Math.round(hard / 60000) + ' 分钟）被放弃；团队回到自组织推进。')
         await scheduleNext()
         return
       }
-      const need = activeMembers().map((m) => m.id)
-      const missing = need.filter((id) => meeting.inputs[id] === undefined)
-      if (missing.length) {
-        // Collect from the members who have not spoken yet. Never break a member that
-        // is genuinely still working; the watchdog handles a truly stuck one.
+      // 收束判据（只看机会位与"还在举手/在飞"，**不看是否发过言、更不看票**）：
+      //   (a) 还有常驻成员没获得机会              ⇒ 继续征询（"还没轮到它"，不是卡死）
+      //   (b) 已获机会、仍在飞、尚未落定          ⇒ 等它交付（不设计时器；硬界兜底）
+      //   (c) 有人举着手且还没交付（含已发言者再次举手）⇒ 等它发言
+      //   (d) 已获机会、答复始终没落定、当前空闲且重试未耗尽 ⇒ 有限次再问
+      const notYetAsked = meeting.roster.filter((id) => meeting.asked[id] === undefined && meeting.silent[id] === undefined && meeting.unreached[id] === undefined)
+      const inFlight = meeting.roster.filter((id) => meeting.asked[id] !== undefined && meeting.inputs[id] === undefined && meeting.silent[id] === undefined && meeting.unreached[id] === undefined && busy.has(id))
+      const unanswered = meeting.roster.filter((id) => meeting.asked[id] !== undefined && meeting.inputs[id] === undefined && meeting.silent[id] === undefined && meeting.unreached[id] === undefined && !busy.has(id) && Number(meeting.retries[id] || 0) < meetingWakeRetries())
+      const handsUp = meetingHandsUp(meeting)
+      if (notYetAsked.length || inFlight.length || unanswered.length || handsUp.length) {
         const asked = await askMeetingRound()
         if (!asked) armHeartbeat()
         return
+      }
+      // 收束前的诚实化：把"已获机会、重试耗尽、始终没答复"的成员具名记为 `unreached`
+      // （**与"选择不发言"严格区分**；两者都不阻塞收束）。
+      for (const id of meeting.roster) {
+        if (meeting.asked[id] === undefined || meeting.inputs[id] !== undefined) continue
+        if (meeting.silent[id] !== undefined || meeting.unreached[id] !== undefined) continue
+        meeting.unreached[id] = now()
+        meeting.history.push({ at: now(), id, what: 'unreached', reason: 'no answer after retries' })
       }
       finalizeLock = 'meeting'
       try {
@@ -5366,37 +5476,104 @@ export function apply(ctx) {
       const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + mn.id + '\n\n')
       await writeTextRel(rel, prev + '\n' + text + '\n')
     }
+    /** 邀请一名**临时工**在本次会议上发言（结构化字段 `meeting_invite:{member,why}`）。
+     *  权限：表决者（院士/常驻研究员）或所办。受邀者的发言**只进纪要＋广播**：不进成果库、不计票、
+     *  不进机会位/举手集合 ⇒ **永不延后收束**。重复邀请幂等（具名 `V5_ALREADY_INVITED`）。 */
+    async function meetingInvite(callerId, inv) {
+      const refuse = async (code, msg) => {
+        await notice(callerId, msg + '（' + code + '）')
+        return { ok: false, code, message: msg }
+      }
+      if (!meeting) return await refuse('V5_NO_OPEN_MEETING', '邀请发言失败：当前没有进行中的会议')
+      const caller = memberById(callerId)
+      const voter = !!caller && (caller.kind === 'academician' || caller.kind === 'researcher')
+      if (!voter && !isOffice(callerId)) return await refuse('V5_NOT_VOTER', '邀请发言失败：只有表决者（院士/常驻研究员）或所办可以邀请')
+      const id = String(inv.member || '').trim()
+      const target = memberById(id)
+      if (!target || target.phase !== 'active') return await refuse('V5_INVITE_NOT_TEMP', '邀请发言失败：' + (id || '(未指明)') + ' 不是本所在册成员')
+      if (target.kind !== 'temp') return await refuse('V5_INVITE_NOT_TEMP', '邀请发言失败：' + id + ' 是常驻成员，本来就在会议的征询名单里')
+      const why = String(inv.why || '').trim()
+      if (!why) return await refuse('V5_INVALID_ARGUMENT', '邀请发言失败：请写明理由（why）')
+      if (meeting.invited[id]) return await refuse('V5_ALREADY_INVITED', '邀请发言失败：' + id + ' 已被 ' + meeting.invited[id].by + ' 邀请过（同一会议只记第一次）')
+      meeting.invited[id] = { by: callerId, why, at: now(), askedOnce: false }
+      meeting.history.push({ at: now(), id, what: 'invited', by: callerId })
+      await saveChatLine('【会议 ' + meeting.id + '】' + callerId + ' 邀请 ' + id + ' 发言：' + why + '（受邀发言只记纪要，不计票）')
+      return { ok: true, invited: id, by: callerId }
+    }
+    /** 纪要的"发言机会（征询）／举手记录／表决"三块——**收束与"被硬界放弃"两条路径共用**，
+     *  因此放弃时也留下可审计的明细。表决块**严格区分 投 true／投 false／未表态**：
+     *  沉默不是票，未表态者照旧阻止结题（`checkSolved` 只读 `solve`）。 */
+    function meetingMinutesTail(mn, opts) {
+      const lines = []
+      const roster = Array.isArray(mn.roster) ? mn.roster : []
+      const askedIds = roster.filter((id) => mn.asked[id] !== undefined || mn.silent[id] !== undefined || mn.unreached[id] !== undefined)
+      const silentIds = roster.filter((id) => mn.silent[id] !== undefined)
+      const unreachedIds = roster.filter((id) => mn.unreached[id] !== undefined)
+      lines.push('## 发言机会（征询）')
+      lines.push('- 常驻成员（征询名单）：' + (roster.length ? roster.join('、') : '（无）'))
+      lines.push('- 已获得发言机会：' + askedIds.length + '/' + roster.length + (askedIds.length ? '（' + askedIds.join('、') + '）' : ''))
+      lines.push('- 已获机会·**选择不发言**：' + (silentIds.length ? silentIds.join('、') : '（无）'))
+      if (unreachedIds.length) lines.push('- 已获机会·**未能送达/未落定**（与"选择不发言"区分）：' + unreachedIds.join('、'))
+      lines.push('- **沉默不等于投票**：未表态者仍会阻止结题（见下方"表决"）。')
+      lines.push('')
+      const hands = (Array.isArray(mn.history) ? mn.history : []).filter((h) => h && /^hand/.test(String(h.what)))
+      lines.push('## 举手记录')
+      lines.push(hands.length ? hands.map((h) => '- ' + (h.id || '(全所)') + '｜' + h.what + '｜' + fmtTime(h.at)).join('\n') : '- （无人举手）')
+      lines.push('')
+      const invitedIds = Object.keys(mn.invited || {})
+      lines.push('## 受邀临时工（只记纪要，不计票）')
+      lines.push(invitedIds.length
+        ? invitedIds.map((id) => '- ' + id + '｜邀请人 ' + mn.invited[id].by + '｜理由 ' + mn.invited[id].why + (mn.inputs[id] !== undefined ? '｜已发言' : '｜未发言（不阻塞收束）')).join('\n')
+        : '- （无）')
+      lines.push('')
+      lines.push(...meetingVoteBlock(mn))
+      if (opts && opts.abandoned) { lines.push(''); lines.push('⚠ 本次会议超过硬界被放弃（看门狗）；以上明细据实记录。') }
+      return lines
+    }
+    /** 表决块（现状口径 + 三态拆分）：票只来自 `extras[*].voteSolved`（`recordSolveVote` 写入）。 */
+    function meetingVoteBlock(mn) {
+      const voterIds = voters().map((m) => m.id)
+      const vote = (id) => { const e = mn.extras[id]; return e ? e.voteSolved : undefined }
+      const solvedTrue = voterIds.filter((id) => vote(id) === true)
+      const solvedFalse = voterIds.filter((id) => vote(id) === false)
+      const noVote = voterIds.filter((id) => vote(id) === undefined)
+      const lines = []
+      lines.push('## 表决')
+      lines.push('- 有表决权者：' + (voterIds.length ? voterIds.join('、') : '（无）'))
+      lines.push('- 认为原问题已解决（投 true）：' + (solvedTrue.length ? solvedTrue.join('、') : '（无人）'))
+      lines.push('- 认为未解决（投 false）：' + (solvedFalse.length ? solvedFalse.join('、') : '（无人）'))
+      lines.push('- **未表态**（既未投 true 也未投 false）：' + (noVote.length ? noVote.join('、') : '（无）'))
+      const temps = (Array.isArray(mn.order) ? mn.order : []).filter((id) => voterIds.indexOf(id) === -1)
+      lines.push('- 临时工/受邀意见（无表决权）：' + (temps.length ? temps.map((id) => id + '=' + (vote(id) === true)).join('、') : '（无）'))
+      lines.push('- 结论：' + (voterIds.length > 0 && solvedTrue.length === voterIds.length
+        ? '**全体有表决权者一致认为原问题已解决**'
+        : '未达成全体一致（' + solvedTrue.length + '/' + voterIds.length + '），本所继续推进'))
+      return lines
+    }
     async function finalizeMeeting(mn) {
       meeting = null
       // F6: the meeting is closed ⇒ clear the durable OPEN marker (see `beginMeeting`).
       try { await patchInstitute({ meetingOpen: null }) } catch (e) { /* the minutes below matter more */ }
       const lines = []
-      for (const id of mn.order) {
+      // 逐人小节：**保持"有发言才写"**；同一人的多次发言（举手再发言）按次数标注。
+      for (const id of mn.order.concat(Object.keys(mn.invited || {}))) {
+        const all = mn.speeches && Array.isArray(mn.speeches[id]) ? mn.speeches[id] : null
         const text = mn.inputs[id]
-        if (text === undefined) continue
-        lines.push('### ' + id)
-        lines.push(String(text || '（无发言）'))
+        if (text === undefined && !(all && all.length)) continue
+        const invited = mn.invited && mn.invited[id]
+        lines.push('### ' + id + (invited ? '（受邀：' + invited.by + '／' + invited.why + '；仅记录，不计票）' : ''))
+        if (all && all.length > 1) for (let i = 0; i < all.length; i++) lines.push('（第 ' + (i + 1) + ' 次发言）\n' + String(all[i] || '（无发言）'))
+        else lines.push(String(text || (all && all[0]) || '（无发言）'))
         lines.push('')
       }
-      // Count solve votes over VOTERS ONLY: a temp worker's opinion is welcome but it
-      // holds no vote, and counting it here would inflate the numerator and make the
-      // unanimity comparison against the voter count impossible to satisfy.
-      const voterIds = voters().map((m) => m.id)
-      const solvedTrue = voterIds.filter((id) => { const e = mn.extras[id]; return e && e.voteSolved === true })
-      const solvedNot = voterIds.filter((id) => !(mn.extras[id] && mn.extras[id].voteSolved === true))
-      lines.push('## 表决')
-      lines.push('- 有表决权者：' + (voterIds.length ? voterIds.join('、') : '（无）'))
-      lines.push('- 认为原问题已解决：' + (solvedTrue.length ? solvedTrue.join('、') : '（无人）'))
-      lines.push('- 尚未认为已解决/未表态：' + (solvedNot.length ? solvedNot.join('、') : '（无人）'))
-      lines.push('- 临时工意见（无表决权）：' + (mn.order.filter((id) => !voterIds.includes(id)).map((id) => id + '=' + ((mn.extras[id] && mn.extras[id].voteSolved) === true)).join('、') || '（无）'))
-      lines.push('- 结论：' + (voterIds.length > 0 && solvedTrue.length === voterIds.length
-        ? '**全体有表决权者一致认为原问题已解决**'
-        : '未达成全体一致（' + solvedTrue.length + '/' + voterIds.length + '），本所继续推进'))
+      lines.push(...meetingMinutesTail(mn, null))
       lines.push('')
       const rel = 'Shared/Meetings/' + mn.id + '.md'
       const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + mn.id + '\n\n')
       await writeTextRel(rel, prev + '\n' + lines.join('\n'))
-      await saveChatLine('【会议 ' + mn.id + '】结束。已解决票 ' + solvedTrue.length + '/' + voterCount() + '。纪要见 ' + rel)
+      const vIds = voters().map((m) => m.id)
+      const solvedTrueCount = vIds.filter((id) => { const e = mn.extras[id]; return e && e.voteSolved === true }).length
+      await saveChatLine('【会议 ' + mn.id + '】结束。已解决票 ' + solvedTrueCount + '/' + voterCount() + '。纪要见 ' + rel)
       await markProgress()
       await checkSolved()
       // A parked meeting is resumed only once nothing else is in flight.
@@ -6575,7 +6752,16 @@ export function apply(ctx) {
       if (meeting) {
         delete meeting.inputs[id]
         delete meeting.extras[id]
+        delete meeting.speeches[id]
+        delete meeting.asked[id]
+        delete meeting.silent[id]
+        delete meeting.unreached[id]
+        delete meeting.hands[id]
+        delete meeting.spokeCount[id]
+        delete meeting.retries[id]
+        delete meeting.invited[id]      // 受邀临时工被解雇 ⇒ 撤销邀请（其已写发言保留在纪要里）
         meeting.order = meeting.order.filter((x) => x !== id)
+        meeting.roster = meeting.roster.filter((x) => x !== id)
       }
       // Drop its queued mail: a dismissed member must never be messaged again.
       const ids = inst().messages.filter((m) => m.to === id).map((m) => m.id)
@@ -7106,20 +7292,53 @@ export function apply(ctx) {
       if (p.paper_part && typeof p.paper_part === 'object') await paperRecordPart(member.id, p.paper_part)
       if (p.paper_review && typeof p.paper_review === 'object') await paperRecordReview(member.id, p.paper_review)
       if (p.paper_final && typeof p.paper_final === 'object') await paperRecordFinal(member.id, p.paper_final)
-      // (11) meeting input collection (keyed on the LIVE member set, so a member who
-      // joined mid-meeting still has to speak and a dismissed one stops blocking it)
+      // (11) meeting input collection. **三个位置互不继承**（2.9.0）：
+      //   · 发言位 `inputs`/`speeches` —— 真的说了话（可多次：举手再发言）
+      //   · 机会位 `asked`/`silent`/`unreached` —— "要不要发言"的机会与结果（沉默**不是票**、也不阻塞收束）
+      //   · 票位 `solve` —— 只由上面的 (10) `recordSolveVote` 写；这里**绝不写票**。
       if (kind === 'meeting' && meeting) {
         const text = (typeof p.input === 'string' && p.input.trim())
           ? p.input
           : (typeof p.say === 'string' && p.say.trim() ? p.say : (typeof p.summary === 'string' ? p.summary : ''))
-        meeting.inputs[member.id] = text || '（无发言）'
-        meeting.extras[member.id] = p
-        meeting.lastInputAt = now()
-        // APPEND to the transcript (never clobber it): the file is a human artifact and
-        // must stay readable even if the process dies in the middle of a meeting.
-        const rel = 'Shared/Meetings/' + meeting.id + '.md'
-        const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + meeting.id + '\n\n')
-        await writeTextRel(rel, prev + '### ' + member.id + '\n' + (text || '（无发言）') + '\n\n')
+        // ① 举手：任意阶段有效、**含已发言者**（"举手再发言"可多轮）；`meeting_hand:false` 撤回。
+        // `pendingHand` = 本次回复**之前**就已经举着手（那是一次"待交付的发言请求"）。若本回复既交付发言
+        // 又重新举手，新举的手必须**保留**——否则"发言后再举手"会被自己的交付清掉（守卫 A4/A6 抓到的缺陷）。
+        const pendingHand = !!meeting.hands[member.id]
+        if (p.meeting_hand === true) {
+          if (!meeting.hands[member.id]) {
+            meeting.hands[member.id] = now()
+            meeting.history.push({ at: now(), id: member.id, what: 'hand' })
+            if (!text) await saveChatLine('【会议 ' + meeting.id + '】' + member.id + ' 举手请求发言（可多轮）。')
+          }
+        } else if (p.meeting_hand === false && meeting.hands[member.id]) {
+          delete meeting.hands[member.id]
+          meeting.history.push({ at: now(), id: member.id, what: 'hand-withdrawn' })
+        }
+        if (text) {
+          // ② 交付发言：只在"这次交付是在还上一次举手"时清除举手；不交付/撤回都不清。按次数累积发言。
+          if (pendingHand) delete meeting.hands[member.id]
+          if (!Array.isArray(meeting.speeches[member.id])) meeting.speeches[member.id] = []
+          meeting.speeches[member.id].push(text)
+          meeting.spokeCount[member.id] = (Number(meeting.spokeCount[member.id]) || 0) + 1
+          meeting.inputs[member.id] = text
+          meeting.extras[member.id] = p
+          meeting.lastInputAt = now()
+          const n = meeting.spokeCount[member.id]
+          // APPEND to the transcript (never clobber it): the file is a human artifact and
+          // must stay readable even if the process dies in the middle of a meeting.
+          const rel = 'Shared/Meetings/' + meeting.id + '.md'
+          const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + meeting.id + '\n\n')
+          await writeTextRel(rel, prev + '### ' + member.id + (n > 1 ? '（第 ' + n + ' 次发言）' : '') + '\n' + text + '\n\n')
+        } else if (meeting.asked[member.id] !== undefined
+          && meeting.inputs[member.id] === undefined && meeting.silent[member.id] === undefined
+          && meeting.unreached[member.id] === undefined && !meeting.hands[member.id]) {
+          // ③ 已获机会、这一轮没有发言 ⇒ 记"选择不发言"。**与阶段无关**（第一阶段的机会可能在同一轮里
+          //    就全部发放完毕，此时 phase 已是 open-floor）。只写 silent 集合——不写 inputs、更不写票。
+          meeting.silent[member.id] = now()
+          meeting.history.push({ at: now(), id: member.id, what: 'silent' })
+        }
+        // ④ 邀请临时工发言：结构化字段 `meeting_invite:{member,why}`（只进纪要＋广播；不计票、不阻塞收束）。
+        if (p.meeting_invite && typeof p.meeting_invite === 'object') await meetingInvite(member.id, p.meeting_invite)
       } else if (lastMeetingId && typeof p.input === 'string' && p.input.trim()) {
         // real1004-minutes: no live meeting, yet the member submitted a speech (a real host showed exactly
         // this: `input` kept arriving after the meeting had been closed/abandoned). It used to be dropped
@@ -7243,6 +7462,7 @@ export function apply(ctx) {
       // disarm that guard.
       const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
+        'meetingHardLimitMs', 'meetingWakeRetries',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
       const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
@@ -7316,6 +7536,9 @@ export function apply(ctx) {
       for (const k of ['activityTimeoutMs', 'stallAutoMeetingMs', 'chatDigestMs', 'leanTimeoutMs']) {
         if (out[k] !== undefined && !(out[k] > 0)) delete out[k]
       }
+      // 2.9.0: 会议硬界与唤醒重试都是**有界**参数（不提供无界）——越界即钳制。
+      if (out.meetingHardLimitMs !== undefined) out.meetingHardLimitMs = Math.min(7200000, Math.max(300000, Math.floor(out.meetingHardLimitMs)))
+      if (out.meetingWakeRetries !== undefined) out.meetingWakeRetries = Math.min(10, Math.max(0, Math.floor(out.meetingWakeRetries)))
       if (out.leanTimeoutMs !== undefined) out.leanTimeoutMs = Math.max(1000, out.leanTimeoutMs)
       if (out.researcherCount !== undefined && out.researcherCount < 0) out.researcherCount = 0
       if (out.quorumCap !== undefined && out.quorumCap < 1) out.quorumCap = 1
@@ -7402,6 +7625,8 @@ export function apply(ctx) {
         compactThreshold: params.compactThreshold, compactAfterRounds: params.compactAfterRounds,
         maxParallel: params.maxParallel, activityTimeoutMs: params.activityTimeoutMs,
         stallAutoMeetingMs: params.stallAutoMeetingMs, chatDigestMs: params.chatDigestMs,
+        // 会议两阶段（2.9.0）：硬界是唯一兜底；唤醒重试决定何时记 `unreached`。
+        meetingHardLimitMs: params.meetingHardLimitMs, meetingWakeRetries: params.meetingWakeRetries,
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
         formalVerify: params.formalVerify, leanCommand: params.leanCommand,
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
@@ -7814,7 +8039,21 @@ export function apply(ctx) {
         // F2/F9 (status/report review): both counters are SESSION-scoped (a restart resets them), so
         // the scope is stated here too, not only in the report line.
         persistence: { writeFailures: stateWriteFailures, prematureReads: prematureReads, loadSettled: loadSettled, loadProblem: lastLoadProblem, scope: 'session（重启后归零）', sandboxPolicyMismatch: sandboxPolicyMismatch },
-        meeting: meeting ? { id: meeting.id, agenda: meeting.agenda, kind: meeting.kind, spoke: Object.keys(meeting.inputs), order: meeting.order } : null,
+        // 会议的两个位置分开公布：**机会位**（asked/silent/unreached）与**举手**决定能否收束；
+        // 发言位（spoke/spokeCount）只描述"谁说了话"；票位在 solve 里（互不继承）。
+        meeting: meeting ? {
+          id: meeting.id, agenda: meeting.agenda, kind: meeting.kind,
+          phase: meeting.phase,
+          hardLimitMs: Number(meeting.hardLimitMs || meetingHardLimitMs()),
+          elapsedMs: now() - Number(meeting.startedAt || now()),
+          roster: meeting.roster.slice(), order: meeting.order.slice(),
+          asked: Object.keys(meeting.asked || {}), silent: Object.keys(meeting.silent || {}),
+          unreached: Object.keys(meeting.unreached || {}), hands: meetingHandsUp(meeting),
+          // 每个常驻成员**已经尝试唤醒过几次**（`meetingWakeRetries = N` ⇒ 最多 N+1 次尝试；0 ⇒ 恰好 1 次）。
+          attempts: Object.assign({}, meeting.retries || {}),
+          invited: Object.keys(meeting.invited || {}),
+          spoke: Object.keys(meeting.inputs), spokeCount: Object.assign({}, meeting.spokeCount || {}),
+        } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
         verifyQueue: s.queue.map((q) => q.target),
@@ -7905,7 +8144,19 @@ export function apply(ctx) {
           ? '显示最新 ' + reqs.length + ' 条' + (dropped ? '（上限 ' + OFFICE_REQUEST_CAP + '，累计已丢弃最旧 ' + dropped + ' 条）' : '') + '；最新：' + String(reqs[reqs.length - 1].text || '').slice(0, 120)
           : '（无）'))
       }
-      if (meeting) L.push('- 进行中会议：' + meeting.id + '｜' + meeting.agenda + (Object.keys(meeting.inputs).length ? '｜已发言 ' + Object.keys(meeting.inputs).join('、') : '｜尚无人发言'))
+      if (meeting) {
+        const m = meeting
+        const askedIds = (m.roster || []).filter((id) => m.asked[id] !== undefined || m.silent[id] !== undefined || m.unreached[id] !== undefined)
+        const handsUp = meetingHandsUp(m)
+        L.push('- 进行中会议：' + m.id + '｜' + m.agenda
+          + '｜阶段＝' + (m.phase === 'open-floor' ? '举手发言' : '轮流发言')
+          + '｜已获机会 ' + askedIds.length + '/' + (m.roster || []).length
+          + (Object.keys(m.silent || {}).length ? '｜选择不发言 ' + Object.keys(m.silent).join('、') : '')
+          + (handsUp.length ? '｜举手 ' + handsUp.join('、') : '')
+          + (Object.keys(m.invited || {}).length ? '｜受邀 ' + Object.keys(m.invited).join('、') : '')
+          + '｜已开 ' + Math.round((now() - Number(m.startedAt || now())) / 60000) + ' 分／硬界 ' + Math.round(Number(m.hardLimitMs || 0) / 60000) + ' 分'
+          + (Object.keys(m.inputs).length ? '｜已发言 ' + Object.keys(m.inputs).join('、') : '｜尚无人发言'))
+      }
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
       // F6 (status/report review): a meeting whose index entry exists but which never FINALIZED is
       // not history. `meetingOpen` is durable (set in `beginMeeting`, cleared in `finalizeMeeting`),
@@ -8223,12 +8474,13 @@ export function apply(ctx) {
   registerTool('vibe_v5_stop', 'Stop the institute: interrupt every member, clear coordination state, and release their child sessions.', objParams({}), (s, a, x) => withOffice(s, x, 'stop the institute', () => s.initStop()))
   registerTool('vibe_v5_status', 'Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).', objParams({}), (s) => s.status())
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
-  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default. feedback (default "on") = the methodology/collaboration feedback library (Shared/Feedback/): "on" records entries and injects a short per-round hint; "off" injects nothing and refuses every write BY NAME (a switch, not a severity).', objParams({
+  registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default. feedback (default "on") = the methodology/collaboration feedback library (Shared/Feedback/): "on" records entries and injects a short per-round hint; "off" injects nothing and refuses every write BY NAME (a switch, not a severity). MEETING SPEAKING (2.9.0): meetings run in two phases — a non-mandatory round-robin (every resident gets ONE chance to decide whether to speak; choosing not to speak is recorded by name and never blocks closing) and then an open floor where anyone (including someone who already spoke) raises a hand with meeting_hand:true and may speak again; the meeting closes when everybody has had the chance AND nobody still has a hand up / is in flight. Silence never triggers any deadline; meetingHardLimitMs (default 1800000 ms, clamped to [300000,7200000]) is the ONLY bound and abandons a genuinely wedged turn (the abandoned minutes still record the full detail); meetingWakeRetries (default 5, clamped to [0,10]) counts RETRIES, so N retries means at most N+1 wake attempts (N=0 still makes exactly ONE attempt - never zero); once attempts are exhausted the member is recorded as unreached, which still counts as having had the chance and does not block closing. Votes are untouched: vote_solved still needs EVERY voter true, so silence still blocks conclusion.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
     quorumCap: I, quorumMode: S, verdictMaxRounds: I,
     maxTempPerMember: I, maxTempTotal: I,
     compactThreshold: I, compactAfterRounds: I, maxParallel: I,
     activityTimeoutMs: I, stallAutoMeetingMs: I, chatDigestMs: I, chatDigestMax: I, meetingKeepEvery: I,
+    meetingHardLimitMs: I, meetingWakeRetries: I,
     formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
     leanCommand: S, leanArgs: SA, leanTimeoutMs: I, leanAsync: B,
     leanInitiative: { type: 'string', enum: ['off', 'normal', 'eager'] },

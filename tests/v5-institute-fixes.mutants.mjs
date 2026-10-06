@@ -236,12 +236,89 @@ const FAMILIES = [
     expect: /\[real1004-consult\] an office finalisation after a force restart NAMES the reset/,
   },
   {
-    // real1004-stall: the meeting must NOT be abandoned while an asked speaker is still in flight — doing so is
-    // what turned ordinary speeches into "late notes" on a real host (1067 of them).
-    name: 'real1004-stall: the meeting is abandoned while an asked member is still busy',
-    from: 'if (stale >= recoverStallMs() && (!inFlight || stale >= recoverStallMs() * 3)) {',
-    to: 'if (stale >= recoverStallMs()) {',
-    expect: /\[real1004-stall\] the meeting watchdog exempts ASKED-but-busy speakers/,
+    // meeting-speak (2.9.0) 最坏情形防线：收束时把"沉默"写成票 = "沉默即同意"（绝不允许）。
+    name: 'meeting-speak: silence is written as a true solve vote when the meeting closes',
+    from: "      finalizeLock = 'meeting'\n      try {\n        await finalizeMeeting(meeting)",
+    to: "      for (const id of meeting.roster) { if (meeting.silent[id] !== undefined && meeting.inputs[id] === undefined) await recordSolveVote(id, true) }\n      finalizeLock = 'meeting'\n      try {\n        await finalizeMeeting(meeting)",
+    expect: /\[meeting-speak\] (沉默没有被写成票|沉默只写 silent 集合|未投票仍阻塞结题)/,
+  },
+  {
+    // meeting-speak: 举手必须参与收束判据——有人举手却被收束 ⇒ 发言被丢。
+    name: 'meeting-speak: a raised hand no longer holds the meeting open',
+    from: 'if (notYetAsked.length || inFlight.length || unanswered.length || handsUp.length) {',
+    to: 'if (notYetAsked.length || inFlight.length || unanswered.length) {',
+    expect: /\[meeting-speak\] 有人举手时闸门不放过/,
+  },
+  {
+    // meeting-speak: "沉默"绝不允许续命（旧行为：任何 busy 的人都能把会议吊住）。
+    name: 'meeting-speak: a silent member keeps the meeting alive again',
+    from: 'const inFlight = meeting.roster.filter((id) => meeting.asked[id] !== undefined && meeting.inputs[id] === undefined && meeting.silent[id] === undefined && meeting.unreached[id] === undefined && busy.has(id))',
+    to: 'const inFlight = meeting.roster.filter((id) => busy.has(id))',
+    expect: /\[meeting-speak\] 在飞集合排除/,
+  },
+  {
+    // meeting-speak: 硬界必须**有界**（无界 ⇒ 卡死的一轮永远收不掉，run 被拖住）。
+    name: 'meeting-speak: the meeting hard limit loses its bounds',
+    from: 'Math.min(7200000, Math.max(300000, Math.floor(out.meetingHardLimitMs)))',
+    to: 'out.meetingHardLimitMs',
+    expect: /\[meeting-speak\] 两个新参数有界可配/,
+  },
+  {
+    // M1：收束闸门改回"是否发过言"（沉默者被永久追问 ⇒ 沉默重新阻塞收束）。
+    name: 'meeting-speak M1: the closing gate goes back to the SPEECH position',
+    from: 'const notYetAsked = meeting.roster.filter((id) => meeting.asked[id] === undefined && meeting.silent[id] === undefined && meeting.unreached[id] === undefined)',
+    to: 'const notYetAsked = meeting.roster.filter((id) => meeting.inputs[id] === undefined)',
+    expect: /\[meeting-speak\] (沉默不阻塞收束|沉默被具名记录|闸门只读机会位)/,
+  },
+  {
+    // M4：收束时不再等待"举着手但未交付"的人（发言被丢）。
+    name: 'meeting-speak M4: a raised hand is no longer waited for',
+    from: 'const handsUp = meetingHandsUp(meeting)',
+    to: 'const handsUp = []',
+    expect: /\[meeting-speak\] (A4|A5|举手被登记)/,
+  },
+  {
+    // M6：征询名单含临时工（默认参会 ⇒ 与"默认不参与发言"相反）。
+    name: 'meeting-speak M6: the ask roster includes temp workers again',
+    from: 'const live = voters().map((m) => m.id)',
+    to: 'const live = activeMembers().map((m) => m.id)',
+    expect: /\[meeting-speak\] (B1|临时工默认不在征询名单)/,
+  },
+  {
+    // M7：受邀者被塞进阻塞集合（受邀不回复就把会议吊住）。
+    name: 'meeting-speak M7: an invited temp enters the blocking set',
+    from: 'meeting.invited[id] = { by: callerId, why, at: now(), askedOnce: false }',
+    to: 'meeting.invited[id] = { by: callerId, why, at: now(), askedOnce: false }; meeting.hands[id] = now()',
+    expect: /\[meeting-speak\] C2（源码级）受邀者不进 hands\/roster/,
+  },
+  {
+    // M9：忽略 meeting_hand（举手机制整体失效）。
+    name: 'meeting-speak M9: meeting_hand is ignored',
+    from: 'if (p.meeting_hand === true) {',
+    to: 'if (false) {',
+    expect: /\[meeting-speak\] (举手被登记|A4|A5|A6)/,
+  },
+  {
+    // M10：沉默不入 silent 集合（不可审计 ⇒ 无"选择不发言"记录）。
+    name: 'meeting-speak M10: silence is no longer recorded',
+    from: '          meeting.silent[member.id] = now()',
+    to: '          void 0',
+    expect: /\[meeting-speak\] (沉默被具名记录|沉默不阻塞收束)/,
+  },
+  {
+    // M11：受邀发言被算成票（只记纪要/不计票的边界被破坏）。
+    name: 'meeting-speak M11: an invited speech is counted as a vote',
+    from: '          meeting.inputs[member.id] = text',
+    to: '          meeting.inputs[member.id] = text\n          if (meeting.invited[member.id]) await recordSolveVote(member.id, true)',
+    expect: /\[meeting-speak\] 沉默只写 silent 集合/,
+  },
+  {
+    // M12（用户裁决的 0 边界）：把 `meetingWakeRetries: 0` 当成"一次都不尝试"。
+    // 正确语义是"先尝试 1 次、再重试 N 次（共 N+1 次）"，所以 0 ⇒ **恰好尝试一次**。
+    name: 'meeting-speak M12: meetingWakeRetries:0 skips the single attempt',
+    from: 'if (tries > maxTries && !meeting.hands[id]) {',
+    to: 'if (tries >= maxTries && !meeting.hands[id]) {',
+    expect: /\[meeting-speak\] E5b meetingWakeRetries:0 ⇒ 每位常驻/,
   },
   {
     // task-24: the member-prompt statement line must MARK its cut, not hide the tail (a real host registered
