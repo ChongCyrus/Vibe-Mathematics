@@ -319,6 +319,41 @@ const SELF_PROBE_MUTATIONS = [
     to: "if (g.grantScope === 'once') return true",
     expect: 'R38',
   },
+  {
+    name: 'S7: the poll-board ledger stops passing the fold whitelist (boards are silently dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'if (patch.ballots !== undefined) {',
+    to: 'if (false) {',
+    expect: 'R39',
+  },
+  {
+    name: 'S7: the closure gate is folded into `settled` (the two thresholds are mixed)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'const settled = ballotSettled(b)',
+    to: 'const settled = cast >= quorumM()',
+    expect: 'R40',
+  },
+  {
+    name: 'S7: an unmet min_votes still reports the poll as settled (a truth value would be inferred)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "outcome: settled ? 'recorded' : 'unsettled'",
+    to: "outcome: 'recorded'",
+    expect: 'R41',
+  },
+  {
+    name: 'S7: the vote path starts consulting the grant ledger (vote power could be delegated)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (!voters().some((m) => m.id === memberId)) {",
+    to: "      if (!voters().some((m) => m.id === memberId) && !grantEffective(memberId, 'poll_vote')) {",
+    expect: 'R42',
+  },
+  {
+    name: 'S7: a secret board starts exposing who chose what (the tally is no longer the only public face)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '        ballot: named ? (b.votes || []).map((v) => ({',
+    to: '        ballot: (b.votes || []).map((v) => ({',
+    expect: 'R43',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1156,6 +1191,50 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; D8 before ledger=' + (grantBody.indexOf('V5_NOT_VOTER') < grantBody.indexOf('patchInstitute({ grants:'))
     + '; event-derived expiry=' + /g\.grantScope === 'once'/.test(activeBody) + '/' + /g\.grantScope === 'meeting'/.test(activeBody) + '/' + /g\.grantScope === 'verify'/.test(activeBody)
     + '; meeting-close marks expired=' + /expiredAt: now\(\)/.test(v5rRaw))
+  // ---- S7 (D3/D4/R9/K13): the poll board — six ruling §7.1 items + the TWO separate thresholds --------
+  // `settled` reads ONLY min_votes+cast; the closure gate (quorum m / no pending voters) never reads
+  // min_votes; an unmet min_votes leaves the poll UNSETTLED and writes no truth value; vote power comes
+  // only from the electorate (never from a grant); nothing settles "on time"; a secret board exposes
+  // the tally only.
+  const pollOpenBody = bodyOf('async function pollOpenTool(memberId, a)')
+  const pollVoteBody = bodyOf('async function pollVoteTool(memberId, a)')
+  const pollCloseBody = bodyOf('async function pollCloseTool(memberId, a)')
+  const ballotViewBody = bodyOf('function ballotView(b) {')
+  const grantableLine = (v5rRaw.match(/const GRANTABLE_COMMANDS = \[[^\]]*\]/) || [''])[0]
+  gate(/registerTool\('vibe_v5_poll_open'/.test(v5rRaw) && /registerTool\('vibe_v5_poll_vote'/.test(v5rRaw)
+    && /registerTool\('vibe_v5_poll_close'/.test(v5rRaw)
+    && /if \(patch\.ballots !== undefined\)/.test(v5rRaw)
+    && /rules: \{ mode, max, min, minVotes, secret, allowAbstain, allowRevote \}/.test(v5rRaw)
+    && /min_votes: I/.test(v5rRaw) && /secret: B/.test(v5rRaw),
+    'R39', 'S7/§7.1: the poll board must be registered (open/vote/close), must pass the fold whitelist (patch.ballots), and must snapshot ALL six academician-set items (options/mode/max/min/min_votes/secret+abstain+revote) BEFORE the vote opens')
+  gate(/const ballotSettled = \(b\) => !!b && ballotCast\(b\) >= Number\(\(\(b \|\| \{\}\)\.rules \|\| \{\}\)\.minVotes \|\| 0\)/.test(v5rRaw)
+    && /const ballotQuorumReached = \(b\) => !!b && ballotPending\(b\)\.length === 0/.test(v5rRaw)
+    && /const settled = ballotSettled\(b\)/.test(v5rRaw)
+    && !/settled = [^\n]*quorumM\(\)/.test(v5rRaw)
+    && !/(ballotPending|quorumReached|quorum_reached)[^\n]*minVotes/.test(v5rRaw),
+    'R40', 'S7/K13: the two thresholds must stay separate and BIDIRECTIONAL — `settled` reads ONLY min_votes+cast, while the closure gate (no pending voters / quorum m) never reads min_votes')
+  gate(!!pollCloseBody && /outcome: settled \? 'recorded' : 'unsettled'/.test(pollCloseBody)
+    && /satisfied: settled, settled/.test(pollCloseBody)
+    && !/putVerdict\(|putSolve\(|selfReport\(|patchInstitute\(\{ verdicts/.test(pollCloseBody)
+    && !/putVerdict\(|putSolve\(|selfReport\(/.test(pollOpenBody)
+    && !/putVerdict\(|putSolve\(/.test(pollVoteBody),
+    'R41', 'S7/R9: an unmet min_votes must leave the poll UNSETTLED (outcome "unsettled") and the poll path must never write a truth value (no verdicts / no solve / no self-report) — the remaining votes are never used to infer a conclusion')
+  gate(!!pollVoteBody && /voters\(\)\.some\(/.test(pollVoteBody) && /V5_NOT_VOTER/.test(pollVoteBody)
+    && grantableLine.indexOf('poll_vote') === -1
+    && !/grantEffective\(|grantsList\(/.test(pollVoteBody),
+    'R42', 'S7/D8+H12: vote power comes ONLY from the electorate (voters()) — a non-member is refused by name, the poll path never consults the grant ledger, and poll_vote is NOT in the grantable set')
+  gate(!/setTimeout\([^)]*pollCloseTool|armHeartbeat\([^)]*poll[Cc]lose/.test(v5rRaw)
+    && /const secret = args\.secret === true/.test(pollOpenBody)
+    && /named \? \(b\.votes \|\| \[\]\)\.map/.test(ballotViewBody)
+    && /secret: !named/.test(ballotViewBody),
+    'R43', 'S7/D10+D3: nothing settles a poll "on time" (closure is an EXPLICIT academician action only), `secret` defaults to false (named), and a secret board exposes the TALLY only — never who chose what')
+  notes.push('S7 (v5r): poll tools=' + ['vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close'].filter((n) => new RegExp("registerTool\\('" + n + "'").test(v5rRaw)).length + '/3'
+    + '; ledger whitelist=' + /if \(patch\.ballots !== undefined\)/.test(v5rRaw)
+    + '; settled reads only minVotes+cast=' + !/settled = [^\n]*quorumM\(\)/.test(v5rRaw)
+    + '; closure gate reads minVotes=' + /(ballotPending|quorumReached|quorum_reached)[^\n]*minVotes/.test(v5rRaw)
+    + '; poll_vote in grantable=' + (grantableLine.indexOf('poll_vote') !== -1)
+    + '; secret default=' + /const secret = args\.secret === true/.test(pollOpenBody)
+    + '; secret board hides choices=' + !/ballot: \(b\.votes/.test(ballotViewBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

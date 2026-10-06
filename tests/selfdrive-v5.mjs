@@ -578,6 +578,18 @@ async function runScenario(name) {
     console.log('  skip - S6 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_grant / vibe_v5_revoke）')
     return
   }
+  // S7 场景的投票板台账读取（板与每一票的耐久证据）。
+  const durableBallots = () => {
+    const s = readV5State() || {}
+    const inst = (s.institutes || {})['default::institute'] || {}
+    return Array.isArray(inst.ballots) ? inst.ballots : []
+  }
+  const ballotRow = (id) => durableBallots().filter((b) => String(b.id) === String(id))[0] || {}
+  // S7 场景只在 v5r 下可跑（投票板是 v5r 的能力）；v5 路径**显式 skip**。
+  if (name.startsWith('s7-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S7 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_poll_open / _vote / _close）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1100,6 +1112,166 @@ async function runScenario(name) {
     const re = await callTool('vibe_v5_grant', { to: 'r-2', command: 'assign', grant_scope: 'once', why: '被授权者转授' }, childAgent(childOf('r-1')))
     assert(re.ok === false && re.code === 'V5_NOT_ACADEMICIAN',
       'S6-d6-boundary：被授权者不可转授（GAPS 22；got ' + JSON.stringify(re).slice(0, 160) + '）')
+  } else if (name === 's7-open-six') {
+    // S7-open-six：定稿 §7.1 **六项**逐条可设、**开票前可见**；`min_votes` **必填无默认**；
+    // 时间键一律拒（含全小写）；同值幂等；一张 open 板规则。
+    const mt = await openMeeting('S7 六项探测')
+    assert(!!mt && !!mt.id, 'S7-open-six：前置会议已开启（got ' + JSON.stringify(mt && mt.id) + '）')
+    const noMin = await callTool('vibe_v5_poll_open', { question: 'S7 缺 min_votes', options: ['甲', '乙'] }, childAgent(childOf('acad')))
+    assert(noMin.ok === false && noMin.code === 'V5_INVALID_ARGUMENT' && /min_votes 必填/.test(String(noMin.message)),
+      'S7-open-six：min_votes 必填、**无默认**（got ' + JSON.stringify(noMin).slice(0, 200) + '）')
+    const singleMax = await callTool('vibe_v5_poll_open', { question: 'S7 单选带 max', options: ['甲', '乙'], mode: 'single', max: 2, min_votes: 1 }, childAgent(childOf('acad')))
+    assert(singleMax.ok === false && singleMax.code === 'V5_INVALID_ARGUMENT',
+      'S7-open-six：单选不接受 max/min（got ' + JSON.stringify(singleMax).slice(0, 160) + '）')
+    const stamp = await callTool('vibe_v5_poll_open', { question: 'S7 时间键', options: ['甲', '乙'], min_votes: 1, expires_at: 123 }, childAgent(childOf('acad')))
+    assert(stamp.ok === false && stamp.code === 'V5_INVALID_ARGUMENT' && /时间由框架设置/.test(String(stamp.message)),
+      'S7-open-six：自带全小写 expires_at ⇒ 拒＋「时间由框架设置」（got ' + JSON.stringify(stamp).slice(0, 200) + '）')
+    const bad = await callTool('vibe_v5_grant', { to: 'r-1', command: 'poll_open', grant_scope: 'once', why: '想授开板' }, childAgent(childOf('acad')))
+    assert(bad.ok === false && bad.code === 'V5_INVALID_ARGUMENT',
+      'S7-open-six：开板**不可授**（S6 可授集合不含 poll_open；got ' + JSON.stringify(bad).slice(0, 200) + '）')
+    const op = await callTool('vibe_v5_poll_open', { question: 'S7 六项板', options: ['甲', '乙', '丙'], mode: 'multi', min: 2, max: 3, min_votes: 2, secret: false, allow_abstain: true, allow_revote: true }, childAgent(childOf('acad')))
+    assert(op.ok === true && !!op.ballot && op.ballot.rules.mode === 'multi' && op.ballot.rules.min === 2 && op.ballot.rules.max === 3
+      && op.ballot.rules.minVotes === 2 && op.ballot.rules.secret === false && op.ballot.rules.allowAbstain === true && op.ballot.rules.allowRevote === true,
+      'S7-open-six：六项规则快照齐全（got ' + JSON.stringify(op).slice(0, 300) + '）')
+    const bid = String(op.ballot.id)
+    const st = await callTool('vibe_v5_status', {})
+    assert(st.poll && st.poll.open === true && String(st.poll.question) === 'S7 六项板'
+      && JSON.stringify(st.poll.options) === JSON.stringify(['甲', '乙', '丙'])
+      && st.poll.rules.minVotes === 2 && st.poll.min_votes_reached === false && st.poll.quorum_reached === false,
+      'S7-open-six：**开票前可见**（status.poll 的既有冻结键＋子键；got ' + JSON.stringify(st.poll).slice(0, 300) + '）')
+    const rep = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(rep.indexOf('投票板') !== -1 && rep.indexOf('最少收集票 2') !== -1 && rep.indexOf('法定人数') !== -1,
+      'S7-open-six：report() 呈现规则与两个门槛（got len=' + rep.length + '）')
+    const row = ballotRow(bid)
+    assert(row.id === bid && row.rules && row.rules.minVotes === 2 && Array.isArray(row.options) && row.options.length === 3,
+      'S7-open-six：板耐久入档（fold 白名单；got ' + JSON.stringify(row).slice(0, 200) + '）')
+    const dup = await callTool('vibe_v5_poll_open', { question: 'S7 六项板', options: ['甲', '乙', '丙'], mode: 'multi', min: 2, max: 3, min_votes: 2, secret: false, allow_abstain: true, allow_revote: true }, childAgent(childOf('acad')))
+    assert(dup.ok === true && dup.deduped === true, 'S7-open-six：同值重开幂等 deduped（got ' + JSON.stringify(dup).slice(0, 200) + '）')
+    const other = await callTool('vibe_v5_poll_open', { question: 'S7 另一张板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(other.ok === false && other.code === 'V5_INVALID_ARGUMENT',
+      'S7-open-six：同一时刻只允许一张 open 板（got ' + JSON.stringify(other).slice(0, 200) + '）')
+  } else if (name === 's7-single-multi') {
+    // S7-single-multi：单选／多选与「最多/至少选几票」的边界（越界与未知选项都被具名拒）。
+    await openMeeting('S7 单选多选探测')
+    const s1 = await callTool('vibe_v5_poll_open', { question: 'S7 单选', options: ['甲', '乙'], mode: 'single', min_votes: 1 }, childAgent(childOf('acad')))
+    assert(s1.ok === true && s1.ballot.rules.mode === 'single' && s1.ballot.rules.max === 1, 'S7-single-multi：单选板建立（got ' + JSON.stringify(s1).slice(0, 200) + '）')
+    const twoOnSingle = await callTool('vibe_v5_poll_vote', { choices: ['o-1', 'o-2'] }, childAgent(childOf('r-1')))
+    assert(twoOnSingle.ok === false && twoOnSingle.code === 'V5_INVALID_ARGUMENT',
+      'S7-single-multi：单选板投两项 ⇒ 拒（got ' + JSON.stringify(twoOnSingle).slice(0, 200) + '）')
+    const unknown = await callTool('vibe_v5_poll_vote', { choices: ['不存在的选项'] }, childAgent(childOf('r-1')))
+    assert(unknown.ok === false && unknown.code === 'V5_INVALID_ARGUMENT', 'S7-single-multi：未知选项 ⇒ 拒（got ' + JSON.stringify(unknown).slice(0, 200) + '）')
+    const one = await callTool('vibe_v5_poll_vote', { choices: ['乙'] }, childAgent(childOf('r-1')))
+    assert(one.ok === true && one.vote.choices[0] === 'o-2' && one.cast === 1,
+      'S7-single-multi：单选恰好 1 项（文本也接受）⇒ 记票（got ' + JSON.stringify(one).slice(0, 200) + '）')
+    await callTool('vibe_v5_poll_close', { ballot_id: String(s1.ballot.id), reason: 'S7 收板' }, childAgent(childOf('acad')))
+    const m1 = await callTool('vibe_v5_poll_open', { question: 'S7 多选', options: ['甲', '乙', '丙'], mode: 'multi', min: 2, max: 2, min_votes: 2 }, childAgent(childOf('acad')))
+    assert(m1.ok === true && m1.ballot.rules.min === 2 && m1.ballot.rules.max === 2, 'S7-single-multi：多选板（至少 2、至多 2）建立（got ' + JSON.stringify(m1).slice(0, 200) + '）')
+    const few = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    assert(few.ok === false && few.code === 'V5_INVALID_ARGUMENT', 'S7-single-multi：低于「至少」⇒ 拒（got ' + JSON.stringify(few).slice(0, 200) + '）')
+    const many = await callTool('vibe_v5_poll_vote', { choices: ['o-1', 'o-2', 'o-3'] }, childAgent(childOf('r-1')))
+    assert(many.ok === false && many.code === 'V5_INVALID_ARGUMENT', 'S7-single-multi：高于「至多」⇒ 拒（got ' + JSON.stringify(many).slice(0, 200) + '）')
+    const ok2 = await callTool('vibe_v5_poll_vote', { choices: ['o-1', 'o-3'] }, childAgent(childOf('r-1')))
+    assert(ok2.ok === true && ok2.vote.choices.length === 2, 'S7-single-multi：恰在区间内 ⇒ 记票（got ' + JSON.stringify(ok2).slice(0, 200) + '）')
+  } else if (name === 's7-min-votes') {
+    // S7-min-votes：**不满足「最少收集票」⇒ 该次投票不形成结论**（且不产生任何真值）；补足则成立。
+    await openMeeting('S7 最少收集票探测')
+    const a = await callTool('vibe_v5_poll_open', { question: 'S7 门槛 3', options: ['甲', '乙'], min_votes: 3 }, childAgent(childOf('acad')))
+    assert(a.ok === true, 'S7-min-votes：板（min_votes=3）建立（got ' + JSON.stringify(a).slice(0, 200) + '）')
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('r-2')))
+    const before = await callTool('vibe_v5_status', {})
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(a.ballot.id), reason: 'S7 计票' }, childAgent(childOf('acad')))
+    assert(closed.ok === true && closed.ballot.result.cast === 2 && closed.ballot.result.minVotes === 3
+      && closed.ballot.result.satisfied === false && closed.ballot.result.settled === false && closed.ballot.result.outcome === 'unsettled',
+      'S7-min-votes：未达最少收集票 ⇒ **不形成结论**（got ' + JSON.stringify(closed.ballot.result).slice(0, 300) + '）')
+    const after = await callTool('vibe_v5_status', {})
+    assert(JSON.stringify(after.solveVotes) === JSON.stringify(before.solveVotes)
+      && JSON.stringify(after.undecided) === JSON.stringify(before.undecided)
+      && JSON.stringify(after.verified) === JSON.stringify(before.verified),
+      'S7-min-votes：不形成结论时**不写**任何真值（solveVotes/undecided/verified 全不变）')
+    assert(/不形成结论/.test(chatTextR10()), 'S7-min-votes：广播写明「不形成结论、不得据剩余票推断」')
+    const b = await callTool('vibe_v5_poll_open', { question: 'S7 门槛 2', options: ['甲', '乙'], min_votes: 2 }, childAgent(childOf('acad')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-2')))
+    const closed2 = await callTool('vibe_v5_poll_close', { ballot_id: String(b.ballot.id), reason: 'S7 计票 2' }, childAgent(childOf('acad')))
+    assert(closed2.ok === true && closed2.ballot.result.cast === 2 && closed2.ballot.result.satisfied === true
+      && closed2.ballot.result.outcome === 'recorded' && closed2.ballot.tally['o-1'] === 2,
+      'S7-min-votes：达到最少收集票 ⇒ 本次投票成立＋计票（got ' + JSON.stringify(closed2.ballot.result).slice(0, 300) + '）')
+  } else if (name === 's7-two-thresholds') {
+    // S7-two-thresholds（K13）：**两个门槛各算各的** —— `min_votes` 已成立而**结题门**（法定人数：
+    // 未投票者阻塞）仍未解除；两种状态**同时可见**、互不冒充。
+    await openMeeting('S7 两门槛探测')
+    const a = await callTool('vibe_v5_poll_open', { question: 'S7 两门槛', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    const st = await callTool('vibe_v5_status', {})
+    assert(st.poll.min_votes_reached === true && st.poll.settled === true && st.poll.quorum_reached === false,
+      'S7-two-thresholds：最少收集票已成立而法定人数（结题门）仍被阻塞（got ' + JSON.stringify(st.poll).slice(0, 300) + '）')
+    assert(Array.isArray(st.poll.pending) && st.poll.pending.indexOf('acad') !== -1,
+      'S7-two-thresholds：未投票者**公开点名**（P12；got ' + JSON.stringify(st.poll.pending) + '）')
+    const rep = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(rep.indexOf('已成立') !== -1 && rep.indexOf('仍被未投票者阻塞') !== -1,
+      'S7-two-thresholds：report() 里两个门槛**并列**（got len=' + rep.length + '）')
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(a.ballot.id), reason: 'S7 两门槛计票' }, childAgent(childOf('acad')))
+    assert(closed.ok === true && closed.ballot.result.settled === true && closed.ballot.result.quorum_reached === false
+      && closed.ballot.result.m === 3 && closed.ballot.result.pending.length === 3,
+      'S7-two-thresholds：结果里 settled（min_votes）与 quorum_reached（结题门）同时成立/未成立（got ' + JSON.stringify(closed.ballot.result).slice(0, 300) + '）')
+  } else if (name === 's7-abstain-revote') {
+    // S7-abstain-revote：**弃权**计入已投、**不计选项**；**截止前可改票**（记 revotedAt）；同值幂等；
+    // 截止后拒绝；`allow_revote=false` 的板不得改票。
+    await openMeeting('S7 弃权改票探测')
+    const a = await callTool('vibe_v5_poll_open', { question: 'S7 弃权改票', options: ['甲', '乙'], min_votes: 1, allow_abstain: true, allow_revote: true }, childAgent(childOf('acad')))
+    const ab = await callTool('vibe_v5_poll_vote', { abstain: true, reason: 'S7 弃权' }, childAgent(childOf('r-1')))
+    assert(ab.ok === true && ab.vote.abstain === true && ab.cast === 1 && ab.vote.choices.length === 0,
+      'S7-abstain-revote：弃权计入已投、无选项（got ' + JSON.stringify(ab).slice(0, 220) + '）')
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(st1.poll.cast === 1 && st1.poll.rules.allowAbstain === true,
+      'S7-abstain-revote：弃权**计入已投**（cast=1）（got ' + JSON.stringify(st1.poll).slice(0, 220) + '）')
+    const rev = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    assert(rev.ok === true && Number(rev.vote.revotedAt) > 0 && rev.vote.choices[0] === 'o-1',
+      'S7-abstain-revote：截止前**改票**成功并记 revotedAt（got ' + JSON.stringify(rev).slice(0, 220) + '）')
+    const same = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    assert(same.ok === true && same.deduped === true, 'S7-abstain-revote：同值重投 ⇒ deduped（got ' + JSON.stringify(same).slice(0, 200) + '）')
+    await callTool('vibe_v5_poll_close', { ballot_id: String(a.ballot.id), reason: 'S7 截止' }, childAgent(childOf('acad')))
+    const after = await callTool('vibe_v5_poll_vote', { ballot_id: String(a.ballot.id), choices: ['o-2'] }, childAgent(childOf('r-1')))
+    assert(after.ok === false && after.code === 'V5_INVALID_ARGUMENT' && /已截止/.test(String(after.message)),
+      'S7-abstain-revote：截止后拒绝（只能走复议）（got ' + JSON.stringify(after).slice(0, 220) + '）')
+    const b = await callTool('vibe_v5_poll_open', { question: 'S7 不允许改票', options: ['甲', '乙'], min_votes: 1, allow_revote: false }, childAgent(childOf('acad')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-2')))
+    const noRev = await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('r-2')))
+    assert(b.ok === true && noRev.ok === false && noRev.code === 'V5_INVALID_ARGUMENT',
+      'S7-abstain-revote：allow_revote=false ⇒ 改票被拒（got ' + JSON.stringify(noRev).slice(0, 220) + '）')
+  } else if (name === 's7-secret-nonvoter') {
+    // S7-secret-nonvoter：**默认记名**；`secret` 板**留档但公开面只给聚合**（逐人选择仅供计票）；
+    // 列席／受邀／临时工 ⇒ `V5_NOT_VOTER`（**授权也不能**给票权），且不计入分母。
+    await openMeeting('S7 不记名探测')
+    const a = await callTool('vibe_v5_poll_open', { question: 'S7 不记名板', options: ['甲', '乙'], min_votes: 1, secret: true }, childAgent(childOf('acad')))
+    assert(a.ok === true && a.ballot.rules.secret === true && a.ballot.ballot === undefined,
+      'S7-secret-nonvoter：不记名板建立且回执不含逐人选择（got ' + JSON.stringify(a).slice(0, 240) + '）')
+    const v1 = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    assert(v1.ok === true, 'S7-secret-nonvoter：不记名板照常投票')
+    const st = await callTool('vibe_v5_status', {})
+    assert(st.poll.secret === true && st.poll.ballot === undefined && st.poll.cast === 1,
+      'S7-secret-nonvoter：公开面只给聚合（status.poll 无 ballot、无逐人选择；got ' + JSON.stringify(st.poll).slice(0, 260) + '）')
+    const rep = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(rep.indexOf('不记名') !== -1 && rep.indexOf('r-1＝o-1') === -1,
+      'S7-secret-nonvoter：report() 标明不记名且**不暴露**逐人选择（got len=' + rep.length + '）')
+    const row = ballotRow(String(a.ballot.id))
+    assert(Array.isArray(row.votes) && row.votes.length === 1 && row.votes[0].by === 'r-1' && row.votes[0].choices[0] === 'o-1',
+      'S7-secret-nonvoter：**留档**仍在（"谁何时设为不记名"与逐人选择仅供计票；got ' + JSON.stringify(row.votes) + '）')
+    const temp = await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('t-1')))
+    assert(temp.ok === false && temp.code === 'V5_NOT_VOTER',
+      'S7-secret-nonvoter：临时工 ⇒ V5_NOT_VOTER（票权不可授；got ' + JSON.stringify(temp).slice(0, 220) + '）')
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(st2.poll.cast === 1 && Array.isArray(st2.poll.pending) && st2.poll.pending.indexOf('t-1') === -1,
+      'S7-secret-nonvoter：临时工**不计入**已投/分母（got cast=' + st2.poll.cast + ' pending=' + JSON.stringify(st2.poll.pending) + '）')
+    await callTool('vibe_v5_poll_close', { ballot_id: String(a.ballot.id), reason: 'S7 不记名计票' }, childAgent(childOf('acad')))
+    const named = await callTool('vibe_v5_poll_open', { question: 'S7 记名板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('r-3')))
+    const stN = await callTool('vibe_v5_status', {})
+    assert(named.ok === true && named.ballot.rules.secret === false && stN.poll.secret === false,
+      'S7-secret-nonvoter：**默认记名**（secret 缺省 false；got ' + JSON.stringify(stN.poll).slice(0, 200) + '）')
+    const repN = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
+    assert(repN.indexOf('r-3＝o-2') !== -1, 'S7-secret-nonvoter：记名板在 report() 里公开逐人选择（got len=' + repN.length + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

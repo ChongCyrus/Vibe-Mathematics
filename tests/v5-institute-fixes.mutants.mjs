@@ -798,6 +798,74 @@ const V5R_FAMILIES = [
     to: "const timeKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)))",
     expect: /G6-time：全小写 expires_at 也不得静默通过/,
   },
+  // ── S7 family (D3/D4/R9/K13；docs/09 §12 的 S7 行) ───────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s7-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R39–R43，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 门槛混用：把**结题门**（quorumM）折进 `settled` ⇒ s7-two-thresholds 的"结果里 settled 与
+    //    quorum_reached 同时成立/未成立"必红（K13 禁止两门槛混用）。
+    name: 'S7: the closure gate (quorum m) is folded into `settled` (the two thresholds are mixed)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-two-thresholds' },
+    from: 'const settled = ballotSettled(b)',
+    to: 'const settled = cast >= quorumM()',
+    expect: /S7-two-thresholds：结果里 settled/,
+  },
+  {
+    // ② 未达门槛仍报成立（outcome 恒 recorded）⇒ s7-min-votes 的"未达最少收集票 ⇒ 不形成结论"必红。
+    name: 'S7: an unmet min_votes still reports the poll as settled (a conclusion would be inferred)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-min-votes' },
+    from: "outcome: settled ? 'recorded' : 'unsettled'",
+    to: "outcome: 'recorded'",
+    expect: /S7-min-votes：未达最少收集票/,
+  },
+  {
+    // ③ 票权可扩（去掉在册票权门）⇒ 临时工也能投票 ⇒ s7-secret-nonvoter 的"临时工 ⇒ V5_NOT_VOTER"必红。
+    name: 'S7: the electorate gate on the poll vote is gone (a non-member could vote)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-secret-nonvoter' },
+    from: '      if (!voters().some((m) => m.id === memberId)) {',
+    to: '      if (false) {',
+    expect: /S7-secret-nonvoter：临时工 ⇒ V5_NOT_VOTER/,
+  },
+  {
+    // ④ **自动结算**（板不等院士显式动作，自己把自己关掉）⇒ s7-open-six 的"**开票前可见**"
+    //    （status.poll.open=true）必红。注：**定时器变体**由 R43 的静态门覆盖（任何"到点调用
+    //    `pollCloseTool`"都会被它抓住）；族这里用**同步**自动结算，避免 5 ms 定时器落在场景之后而变成空变异。
+    name: 'S7: the board is settled automatically instead of waiting for the academician (automatic settlement)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-open-six' },
+    from: '      return { ok: true, ballot: ballotView(got.entry) }',
+    to: "      await pollCloseTool(me.id, { ballot_id: got.entry.id, reason: 'MUTANT: 自动结算' }); return { ok: true, ballot: ballotView(got.entry) }",
+    expect: /S7-open-six：\*\*开票前可见\*\*/,
+  },
+  {
+    // ⑤ secret 泄漏（不管记名与否都带上逐人选择）⇒ s7-secret-nonvoter 的**首条**断言
+    //    "不记名板建立且回执不含逐人选择"先红（实测红名即此条；`(true) ?` 保持语法有效）。
+    name: 'S7: a secret board exposes who chose what (the tally is no longer the only public face)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-secret-nonvoter' },
+    from: '        ballot: named ? (b.votes || []).map((v) => ({',
+    to: '        ballot: (true) ? (b.votes || []).map((v) => ({',
+    expect: /S7-secret-nonvoter：不记名板建立且回执不含逐人选择/,
+  },
+  {
+    // ⑥ 板不走 fold 白名单（静默丢弃）⇒ `got.entry` 恒为 null ⇒ s7-open-six 的**首条**断言
+    //    "六项规则快照齐全"先红（实测红名即此条）。
+    name: 'S7: the poll-board ledger stops passing the fold whitelist (boards and votes are dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's7-open-six' },
+    from: 'if (patch.ballots !== undefined) {',
+    to: 'if (false) {',
+    expect: /S7-open-six：六项规则快照齐全/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -810,7 +878,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S6（D1/D2/D6/D8）：每个 s6-* 场景一个正控（授权/撤回复核/到期/票权/私密面边界）。
   's6-grant-ok', 's6-not-granted', 's6-scope-expire', 's6-revoke', 's6-no-vote-power', 's6-d6-boundary',
   // 时间纪律（G6 §7.1＋S4/S6 同源加固）：g6-time 的"大小写不敏感"新断言的正控。
-  'g6-time']
+  'g6-time',
+  // S7（D3/D4/R9/K13）：每个 s7-* 场景一个正控（六项/单选多选/最少收集票/两门槛/弃权改票/不记名）。
+  's7-open-six', 's7-single-multi', 's7-min-votes', 's7-two-thresholds', 's7-abstain-revote', 's7-secret-nonvoter']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

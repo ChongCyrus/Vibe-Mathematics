@@ -605,6 +605,12 @@ export function apply(ctx) {
             const next = typeof patch.grants === 'function' ? patch.grants(Array.isArray(n.grants) ? n.grants : []) : patch.grants
             if (next !== undefined) n.grants = Array.isArray(next) ? next : []
           }
+          // S7（D3/D4/R9/K13）：投票板**台账**（append-only：板与每一票都留痕）。同样走 fold 白名单
+          // ⇒ 不写这行 `patchInstitute({ballots})` 会被**静默丢弃**（S4/S5/S6 已证）。
+          if (patch.ballots !== undefined) {
+            const nextB = typeof patch.ballots === 'function' ? patch.ballots(Array.isArray(n.ballots) ? n.ballots : []) : patch.ballots
+            if (nextB !== undefined) n.ballots = Array.isArray(nextB) ? nextB : []
+          }
           return n
         })
       }
@@ -1506,6 +1512,9 @@ export function apply(ctx) {
       const acad = isAcademician(callerId)
       if (command === 'end_verify') return acad
       if (command === 'board') return acad   // 板上组织动作（既有 `lead` 口径：不受 `academicianLeads` 影响）
+      // S7（D3/D4/R9/K13）：开/关投票板（#24/#25，权限＝院士）—— 与 `board` 同属**默认表**，
+      // **不在** `GRANTABLE_COMMANDS` ⇒ 永不可授（S6 的可授集合保持四命令不变）。
+      if (command === 'poll_open' || command === 'poll_close') return acad
       if (command === 'assign' || command === 'prioritize' || command === 'nudge' || command === 'convene') return !!(acad && params.academicianLeads)
       return false
     }
@@ -1619,6 +1628,250 @@ export function apply(ctx) {
       await saveChatLine('【临时授权·撤回】' + me.id + ' 撤回 ' + hit.to + ' 的 `' + hit.command + '` 授权（' + hit.id
         + '；理由：' + why + '）。**写事件并广播**：该权限立即回到默认表口径。')
       return { ok: true, revoked: Object.assign({}, hit, { revokedAt: at, revokedBy: me.id, revokeWhy: why }) }
+    }
+
+    // ── S7（D3/D4/R9/K13）：投票板「支持性确认」六项 ────────────────────────────────────────────
+    // 定稿 §7.1：院士**自行设定**六项（① 选项内容 ② 单选/多选 ③ 最多选几票 ④ 至少选几票
+    // ⑤ **最少收集几票**＝本次投票是否成立的门槛 ⑥ 记名/不记名＋是否允许弃权＋是否允许改票），
+    // 且**投票开始前对外可见**。**分层语义**：法定人数（结题门）与「最少收集票」是**两个不同的
+    // 门槛，不得混用**；不满足「最少收集票」⇒ **该次投票不形成结论**，**不得**据剩余票推断。
+    // 弃权/改票**复用** `castVerdict` 的同款语义（D3：弃权计入已投、**不计选项**；截止前可改）。
+    // **没有任何"到点自动结算"**（D10/R10/S5）：截止只能是院士的**显式**动作。
+    const POLL_MODES = ['single', 'multi']
+    const ballotsList = () => (Array.isArray(inst().ballots) ? inst().ballots : [])
+    const openBallot = () => ballotsList().filter((b) => b && b.phase === 'open')[0] || null
+    const ballotById = (id) => ballotsList().filter((b) => b && String(b.id) === String(id))[0] || null
+    const ballotCast = (b) => (Array.isArray(b && b.votes) ? b.votes.length : 0)
+    const ballotVotedIds = (b) => (Array.isArray(b && b.votes) ? b.votes.map((v) => v.by) : [])
+    const ballotPending = (b) => voters().map((m) => m.id).filter((id) => ballotVotedIds(b).indexOf(id) === -1)
+    // **生效判据只读 `minVotes` 与已投数**：法定人数 m 属**另一个**门槛（结题门），不得折进来（K13）。
+    const ballotSettled = (b) => !!b && ballotCast(b) >= Number(((b || {}).rules || {}).minVotes || 0)
+    const ballotQuorumReached = (b) => !!b && ballotPending(b).length === 0
+    function ballotRulesView(b) {
+      const r = (b && b.rules) || {}
+      return {
+        mode: String(r.mode || 'single'), max: Number(r.max || 1), min: Number(r.min || 1),
+        minVotes: Number(r.minVotes || 0), secret: !!r.secret,
+        allowAbstain: !!r.allowAbstain, allowRevote: !!r.allowRevote,
+      }
+    }
+    const ballotOptionsView = (b) => (Array.isArray(b && b.options) ? b.options.map((o) => ({ id: String(o.id || ''), text: String(o.text || '') })) : [])
+    /** 公开视图：**secret 板只给聚合**（逐人选择仅供计票，永不进公开面）；记名板才带 `ballot[]`。 */
+    function ballotView(b) {
+      if (!b) return null
+      const opts = ballotOptionsView(b)
+      const tally = {}
+      for (const o of opts) tally[o.id] = 0
+      let abstained = 0
+      let valid = 0
+      for (const v of (b.votes || [])) {
+        if (v && v.abstain) { abstained++; continue }
+        valid++
+        for (const c of ((v && v.choices) || [])) if (tally[c] !== undefined) tally[c] = tally[c] + 1
+      }
+      const named = !(b.rules && b.rules.secret)
+      const rec = b.result || null
+      const cast = ballotCast(b)
+      const minV = Number(((b.rules || {}).minVotes) || 0)
+      return {
+        id: String(b.id || ''), by: String(b.by || ''), question: String(b.question || ''), options: opts,
+        rules: ballotRulesView(b), at: Number(b.at || 0), meetingId: String(b.meetingId || ''),
+        phase: String(b.phase || 'open'), closedAt: Number(b.closedAt || 0), closedBy: String(b.closedBy || ''),
+        cast, valid, abstained, tally,
+        minVotes: minV, min_votes_reached: b.phase === 'open' ? ballotSettled(b) : !!(rec && rec.satisfied),
+        m: quorumM(), quorum_reached: b.phase === 'open' ? ballotQuorumReached(b) : !!(rec && rec.quorum_reached),
+        pending: b.phase === 'open' ? ballotPending(b) : ((rec && rec.pending) || []),
+        settled: b.phase === 'open' ? ballotSettled(b) : !!(rec && rec.settled),
+        outcome: b.phase === 'open' ? (ballotSettled(b) ? 'recorded' : 'unsettled') : String((rec && rec.outcome) || ''),
+        // 截止后**原样带回**结果对象（两个门槛并列：`satisfied`/`settled`（min_votes）与 `m`/`quorum_reached`）。
+        result: rec ? Object.assign({}, rec, { pending: ((rec && rec.pending) || []).slice() }) : undefined,
+        secret: !named,
+        ballot: named ? (b.votes || []).map((v) => ({
+          by: String(v.by || ''), choices: ((v && v.choices) || []).slice(), abstain: !!(v && v.abstain),
+          at: Number((v && v.at) || 0), revotedAt: Number((v && v.revotedAt) || 0),
+        })) : undefined,
+      }
+    }
+    /** 时间纪律（S4/S5/S6 同源）：**大小写不敏感** `/(At|Ms)$/i`（`expires_at` 这类全小写也要拒）。 */
+    function rejectStampKeys(args, what) {
+      const keys = Object.keys(args || {}).filter((k) => /(At|Ms)$/i.test(String(k)))
+      if (!keys.length) return null
+      return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（S7）：' + what + '不接受 ' + keys.join('、') + '；开票与截止只由院士**显式**动作触发，**没有**任何"到点自动结算"' }
+    }
+    async function pollOpenTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('创办投票板（vibe_v5_poll_open）', memberId)
+      const perm = canDo(memberId, 'poll_open')
+      if (!perm.ok) return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士（或所办）可以创办投票板（#24）；开板**不可授**（S6 的可授集合不含它）' }
+      const stamp = rejectStampKeys(args, '创办投票板')
+      if (stamp) return stamp
+      if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '投票板必须挂在一场进行中的会议下（SPEC #24：创办投票板 ⇒ voting）' }
+      const question = String(args.question || '').trim()
+      if (!question) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'question 必填（这次投票要问什么）' }
+      const rawOptions = Array.isArray(args.options) ? args.options.map((x) => String(x === undefined || x === null ? '' : x).trim()) : []
+      if (rawOptions.length < 2 || rawOptions.some((x) => !x)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'options 必填且至少 2 项、每项非空（选项内容由院士定）' }
+      }
+      const seen = {}
+      for (const t of rawOptions) {
+        if (seen[t]) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'options 不得重复（"' + t + '"）' }
+        seen[t] = true
+      }
+      const mode = String(args.mode || 'single').trim()
+      if (POLL_MODES.indexOf(mode) === -1) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'mode 只接受 single／multi' }
+      const minVotesRaw = args.min_votes !== undefined ? args.min_votes : args.minVotes
+      const minVotes = Number(minVotesRaw)
+      if (minVotesRaw === undefined || !Number.isFinite(minVotes) || Math.floor(minVotes) !== minVotes || minVotes < 1) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'min_votes 必填（正整数）＝**本次投票是否成立**的门槛（定稿 §7.1 第 5 项）；它**不是**法定人数，且**没有默认值**（默认成 m 就等于把两个门槛混用，K13 禁止）' }
+      }
+      if (minVotes > voterCount()) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'min_votes（' + minVotes + '）超过有表决权者人数（' + voterCount() + '）⇒ 该板永远无法成立' }
+      }
+      let max = Number(args.max !== undefined ? args.max : (mode === 'single' ? 1 : rawOptions.length))
+      let min = Number(args.min !== undefined ? args.min : 1)
+      if (mode === 'single') {
+        if (args.max !== undefined || args.min !== undefined) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'single（单选）不接受 max／min（固定每人 1 票）' }
+        max = 1
+        min = 1
+      }
+      if (!Number.isFinite(min) || !Number.isFinite(max) || Math.floor(min) !== min || Math.floor(max) !== max
+        || min < 1 || max < min || max > rawOptions.length) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '多选须满足 1 ≤ min ≤ max ≤ 选项数（got min=' + min + '／max=' + max + '／选项 ' + rawOptions.length + '）' }
+      }
+      const secret = args.secret === true
+      const allowAbstain = args.allow_abstain !== false && args.allowAbstain !== false
+      const allowRevote = args.allow_revote !== false && args.allowRevote !== false
+      const open = openBallot()
+      if (open) {
+        const same = open.question === question
+          && JSON.stringify(ballotOptionsView(open).map((o) => o.text)) === JSON.stringify(rawOptions)
+          && JSON.stringify(ballotRulesView(open)) === JSON.stringify({ mode, max, min, minVotes, secret, allowAbstain, allowRevote })
+        if (same) return { ok: true, deduped: true, ballot: ballotView(open), message: '同值投票板仍在进行中（幂等）：未重复建板' }
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '已有一张进行中的投票板（' + open.id + '）：同一时刻只允许一张 open 板' }
+      }
+      const at = now()
+      const got = { entry: null }
+      await patchInstitute({ ballots: (list) => {
+        const arr = Array.isArray(list) ? list : []
+        const n = arr.filter((b) => b && /^b-\d+$/.test(String(b.id || '')))
+          .reduce((mx, b) => Math.max(mx, Number(String(b.id).slice(2)) || 0), 0) + 1
+        const entry = {
+          id: 'b-' + n, by: me.id, question,
+          options: rawOptions.map((t, i) => ({ id: 'o-' + (i + 1), text: t })),
+          rules: { mode, max, min, minVotes, secret, allowAbstain, allowRevote },
+          at, meetingId: String(meeting.id), phase: 'open', votes: [], closedAt: 0, closedBy: '', result: null,
+        }
+        got.entry = entry
+        return arr.concat([entry])
+      } })
+      await saveChatLine('【投票板·开票】' + me.id + ' 创办 `' + got.entry.id + '`：' + question
+        + '｜选项：' + rawOptions.map((t, i) => 'o-' + (i + 1) + '＝' + t).join('；')
+        + '｜规则：' + (mode === 'single' ? '单选' : '多选（至少 ' + min + '、至多 ' + max + '）')
+        + '｜**最少收集票 ' + minVotes + '**（本次投票是否成立）｜法定人数 m＝' + quorumM() + '（**另一个**门槛：结题门）'
+        + '｜' + (secret ? '**不记名**（该事实留档；逐人选择仅供计票）' : '记名')
+        + '｜弃权 ' + (allowAbstain ? '允许' : '不允许') + '｜改票 ' + (allowRevote ? '允许（截止前）' : '不允许')
+        + '。规则**开票前可见**；**没有**任何"到点自动结算"。')
+      return { ok: true, ballot: ballotView(got.entry) }
+    }
+    async function pollVoteTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('投票板投票（vibe_v5_poll_vote）', memberId)
+      const stamp = rejectStampKeys(args, '投票')
+      if (stamp) return stamp
+      if (!voters().some((m) => m.id === memberId)) {
+        if (me.kind === 'temp') {
+          await say(memberId, { to: 'voters', kind: 'voters', text: '（临时工 ' + memberId + ' 的参考意见，无表决权）对投票板：' + String(args.note || args.reason || '') })
+        }
+        return { ok: false, code: 'V5_NOT_VOTER', message: '列席／受邀／临时工没有表决权（D8）；**授权也不能**把票权授出去（H12/R36）；你的意见已转达给表决者' }
+      }
+      const wantId = String(args.ballot_id || args.ballotId || '').trim()
+      const b = wantId ? ballotById(wantId) : openBallot()
+      if (!b) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: wantId ? ('投票板 "' + wantId + '" not found') : '当前没有进行中的投票板' }
+      if (b.phase !== 'open') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '投票板 ' + b.id + ' 已截止：截止后只能走**复议**（S9），不得再投/改票' }
+      const rules = ballotRulesView(b)
+      const opts = ballotOptionsView(b)
+      const prev = (b.votes || []).filter((v) => v && v.by === memberId)[0] || null
+      if (prev && !rules.allowRevote) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '本板**不允许改票**（allow_revote=false）：你的票已记录' }
+      const abstain = args.abstain === true
+      let choices = []
+      if (abstain) {
+        if (!rules.allowAbstain) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '本板**不允许弃权**（allow_abstain=false）' }
+      } else {
+        const picked = []
+        for (const c of (Array.isArray(args.choices) ? args.choices : [])) {
+          const key = String(c === undefined || c === null ? '' : c).trim()
+          const hit = opts.filter((o) => o.id === key || o.text === key)[0]
+          if (!hit) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '无效选项 "' + key + '"（可用：' + opts.map((o) => o.id + '＝' + o.text).join('；') + '）' }
+          if (picked.indexOf(hit.id) !== -1) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '重复选项 "' + hit.id + '"' }
+          picked.push(hit.id)
+        }
+        if (picked.length < rules.min || picked.length > rules.max) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '选择数越界：本板要求 ' + (rules.min === rules.max ? ('恰好 ' + rules.min) : (rules.min + '～' + rules.max)) + ' 项（got ' + picked.length + '）' }
+        }
+        choices = picked
+      }
+      const sameAsPrev = !!prev && !!prev.abstain === abstain
+        && JSON.stringify(((prev.choices || []).slice()).sort()) === JSON.stringify(choices.slice().sort())
+      if (sameAsPrev) {
+        return { ok: true, deduped: true, vote: { by: memberId, choices: (prev.choices || []).slice(), abstain: !!prev.abstain, at: Number(prev.at || 0), revotedAt: Number(prev.revotedAt || 0) }, cast: ballotCast(b), minVotes: rules.minVotes, m: quorumM() }
+      }
+      const at = now()
+      const got = { vote: null }
+      await patchInstitute({ ballots: (list) => (Array.isArray(list) ? list : []).map((x) => {
+        if (!x || x.id !== b.id) return x
+        const others = (x.votes || []).filter((v) => v && v.by !== memberId)
+        const entry = prev
+          ? Object.assign({}, prev, { choices, abstain, note: String(args.note || args.reason || ''), revotedAt: at })
+          : { by: memberId, choices, abstain, note: String(args.note || args.reason || ''), at, revotedAt: 0 }
+        got.vote = entry
+        return Object.assign({}, x, { votes: others.concat([entry]) })
+      }) })
+      const after = ballotById(b.id) || b
+      const cast = ballotCast(after)
+      const pending = ballotPending(after)
+      await saveChatLine('【投票板·' + (prev ? '改票' : '投票') + '】' + memberId + ' 对 `' + b.id + '` '
+        + (abstain ? '**弃权**（计入已投、不计选项）' : '已投票')
+        + '（已投 ' + cast + '／' + voterCount() + '；**最少收集票 ' + rules.minVotes + '**：' + (cast >= rules.minVotes ? '已成立' : '未成立')
+        + '；法定人数 m＝' + quorumM() + '：' + (pending.length ? '仍有未投票者 ' + pending.join('、') : '阻塞已解除') + '）')
+      return { ok: true, vote: got.vote, cast, minVotes: rules.minVotes, m: quorumM(), pending }
+    }
+    async function pollCloseTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('截止并计票（vibe_v5_poll_close）', memberId)
+      const perm = canDo(memberId, 'poll_close')
+      if (!perm.ok) return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士（或所办）可以截止并计票（#25）；关板**不可授**（S6 的可授集合不含它）' }
+      const stamp = rejectStampKeys(args, '截止计票')
+      if (stamp) return stamp
+      const wantId = String(args.ballot_id || args.ballotId || '').trim()
+      const b = wantId ? ballotById(wantId) : openBallot()
+      if (!b) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: wantId ? ('投票板 "' + wantId + '" not found') : '当前没有进行中的投票板' }
+      if (b.phase !== 'open') return { ok: true, deduped: true, ballot: ballotView(b), message: '该板已截止（幂等）：不重算、不重播' }
+      const rules = ballotRulesView(b)
+      const cast = ballotCast(b)
+      const settled = ballotSettled(b)          // **只读 minVotes 与已投数**（法定人数 m 是**另一个**门槛）
+      const pending = ballotPending(b)
+      const result = {
+        cast, valid: (b.votes || []).filter((v) => v && !v.abstain).length,
+        abstained: (b.votes || []).filter((v) => v && v.abstain).length, invalid: 0,
+        minVotes: rules.minVotes, satisfied: settled, settled,
+        outcome: settled ? 'recorded' : 'unsettled',
+        // 两个门槛**并列**呈现（K13）：本次投票是否成立 vs 结题门（法定人数）是否满足。
+        m: quorumM(), quorum_reached: pending.length === 0, pending: pending.slice(),
+        secret: rules.secret, tally: (ballotView(b) || {}).tally || {},
+      }
+      const at = now()
+      await patchInstitute({ ballots: (list) => (Array.isArray(list) ? list : []).map((x) => (
+        x && x.id === b.id ? Object.assign({}, x, { phase: 'closed', closedAt: at, closedBy: me.id, result }) : x)) })
+      await saveChatLine('【投票板·计票】`' + b.id + '`（' + b.question + '）截止：已投 ' + cast + '／' + voterCount()
+        + '（有效 ' + result.valid + '、弃权 ' + result.abstained + '）'
+        + '｜**最少收集票 ' + rules.minVotes + '** ⇒ ' + (settled ? '**本次投票成立**（选项计票见 report()）' : '**本次投票不形成结论**（未达最少收集票；不得据剩余票推断）')
+        + '｜法定人数 m＝' + result.m + '：' + (result.quorum_reached ? '阻塞已解除' : '仍被未投票者阻塞（' + pending.join('、') + '）')
+        + (rules.secret ? '｜**不记名**（逐人选择仅供计票；"这次是不记名"已留档）' : '｜记名（逐人选择见 report()）')
+        + '。由 ' + me.id + ' **显式**截止；不存在"到点自动结算"。')
+      return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
     }
 
     // ---- roster helpers ---------------------------------------------------
@@ -8644,6 +8897,24 @@ export function apply(ctx) {
         } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
+        // S7（D3/D4/R9/K13）：投票板 —— 只用 §4.3 **已声明的冻结键**（open/question/options/cast/
+        // quorum_reached），另加**子键**（rules/min_votes_reached/settled）：**不加 `status()` 顶层键**。
+        // 两个门槛**并列**：`quorum_reached`＝法定人数（结题门：未投票者是否已清空）；`min_votes_reached`
+        // ＝**本次投票是否成立**（只读 minVotes 与已投数）。**secret 板的逐人选择不进任何公开面**。
+        poll: (() => {
+          const b = openBallot()
+          if (!b) return { open: false, question: '', options: [], cast: 0, quorum_reached: false }
+          const cast = ballotCast(b)
+          const pending = ballotPending(b)
+          const minV = Number(((b.rules || {}).minVotes) || 0)
+          const reached = ballotSettled(b)     // 只读 minVotes 与已投数；与 `quorum_reached`（结题门）**各算各的**
+          return {
+            open: true, question: String(b.question || ''), options: ballotOptionsView(b).map((o) => o.text),
+            cast, quorum_reached: pending.length === 0,
+            rules: ballotRulesView(b), min_votes_reached: reached, settled: reached,
+            pending: pending.slice(), ballot_id: String(b.id || ''), secret: !!(b.rules && b.rules.secret),
+          }
+        })(),
         verifyQueue: s.queue.map((q) => q.target),
         // F7 (status/report review): the old `verified` meant "concluded (真 OR 假)" while its name
         // said "verified". It is kept for compatibility but the honest split is published next to it.
@@ -8789,6 +9060,30 @@ export function apply(ctx) {
           L.push('- ' + g.id + '｜' + g.by + ' → ' + g.to + '｜`' + g.command + '`｜' + g.grantScope + '｜'
             + (g.active ? '**生效中**（' + g.expiresOn + '）'
               : (g.revokedAt ? '已撤回（' + fmtTime(g.revokedAt) + '）' : '已失效（' + g.expiresOn + '）')))
+        }
+      }
+      L.push('')
+      // S7（D3/D4/R9/K13）：投票板 —— 规则快照（**开票前可见**）＋ 两个门槛**并列**（K13）＋
+      // 未投票者**公开点名**（P12）；**secret 板只给聚合**（逐人选择仅供计票，永不进公开面）。
+      {
+        const b = openBallot()
+        L.push('## 投票板（S7；定稿 §7.1 六项）')
+        if (!b) {
+          L.push('- （当前没有进行中的投票板）')
+        } else {
+          const v = ballotView(b)
+          L.push('- `' + v.id + '`：' + v.question + '｜由 ' + v.by + ' 创办于 ' + fmtTime(v.at) + '（会议 ' + (v.meetingId || '—') + '）')
+          L.push('- 选项：' + v.options.map((o) => '`' + o.id + '`＝' + o.text).join('；'))
+          L.push('- 规则：' + (v.rules.mode === 'single' ? '单选' : '多选（至少 ' + v.rules.min + '、至多 ' + v.rules.max + '）')
+            + '｜**最少收集票 ' + v.rules.minVotes + '**（本次投票是否成立）｜法定人数 m＝' + v.m + '（**另一个**门槛：结题门）'
+            + '｜' + (v.secret ? '**不记名**（逐人选择仅供计票；"这次是不记名"已留档）' : '记名')
+            + '｜弃权 ' + (v.rules.allowAbstain ? '允许' : '不允许') + '｜改票 ' + (v.rules.allowRevote ? '允许（截止前）' : '不允许'))
+          L.push('- 进度：已投 ' + v.cast + '／' + voterCount() + '（有效 ' + v.valid + '、弃权 ' + v.abstained + '）'
+            + '｜**最少收集票**：' + (v.min_votes_reached ? '已成立' : '未成立（**本次投票不形成结论**，不得据剩余票推断）')
+            + '｜**法定人数**：' + (v.quorum_reached ? '阻塞已解除' : '仍被未投票者阻塞'))
+          L.push('- 未投票者：' + (v.pending.length ? v.pending.join('、') : '（无）'))
+          if (v.secret) L.push('- 逐人选择：**不记名** ⇒ 不公开（计票照常；身份与选择仅供计票）')
+          else L.push('- 逐人选择：' + ((v.ballot || []).map((x) => x.by + '＝' + (x.abstain ? '弃权' : ((x.choices || []).join('＋') || '—'))).join('；') || '（尚无）'))
         }
       }
       L.push('')
@@ -8962,7 +9257,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -9193,6 +9488,9 @@ export function apply(ctx) {
   registerTool('vibe_v5_procedural_objection', '(member) #46 — raise a PROCEDURAL OBJECTION on the meeting in progress (D2, the relief channel for a chair ruling). Any roster member may raise one (attending/invited/temp workers are refused by name); why is required. The objection is filed durably with chairReply:null and chairReplyPending:true — the pending flag stays VISIBLE (a reply is never faked) — and only RECORDS: it changes no ballot, no stage and postpones no closure. Same-value resubmission is idempotent (deduped:true).', objParams({ why: S }), (s, a, x) => s.proceduralObjectionTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_grant', '(academician) #47 — TEMPORARY AUTHORIZATION (D1/D2/D6/D8): let one roster member run ONE enumerated command, only within an event scope. Grantable commands: assign | prioritize | nudge | convene. NEVER grantable (the criterion: a command guarded by an adjudication-level identity can never be delegated): end_verify (R10-2a is academician-only), the chair itself / proxy (D1; S4 vibe_v5_chair_proxy is the only entry), any ballot or representation of a member (R2/R3/D3/D8), the private/quoting face (D6), and authorization itself (no re-delegation). grant_scope is EVENT-typed: meeting (expires the moment this meeting closes) | verify (expires when this verification ends) | once (expires after one use). Times are set by the framework: any …At/…Ms (including expires_at) is refused. The grantee must be a roster member (attending/invited/temp ⇒ V5_NOT_VOTER, checked before anything is written). A grant NEVER adds vote power. Same-value re-grant while still active is idempotent (deduped:true).', objParams({ to: S, command: S, grant_scope: S, grantScope: S, why: S }), (s, a, x) => s.grantTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_revoke', '(academician) #48 — REVOKE a temporary authorization (D1). Pass grant_id (or to + command); why is required. The revocation WRITES AN EVENT AND IS BROADCAST (the spec requires it), and the revoked permission immediately falls back to the default permission table. Revoking an already-revoked/expired grant is idempotent (deduped:true).', objParams({ grant_id: S, to: S, command: S, why: S }), (s, a, x) => s.revokeTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_poll_open', '(academician) #49 — OPEN AN OPTION-TYPE POLL BOARD inside the meeting in progress (rulings §7.1: the six items the academician sets and that are visible BEFORE the vote opens): question; options[] (>=2, texts set by the academician); mode single|multi; max/min (multi only); min_votes REQUIRED — the threshold for THIS poll counting at all; it deliberately has NO default, because defaulting it to the quorum m would MIX the two thresholds (K13 forbids it); secret (default false = named; a secret board is still durably recorded as such); allow_abstain/allow_revote (default true). The two thresholds stay separate: min_votes = "does this poll count", quorum m = the closure gate. A board must be attached to a LIVE meeting (V5_NO_OPEN_MEETING). No times are accepted (any …At/…Ms, lower-case included, is refused: the framework writes times). Same-value board while one is still open is idempotent (deduped:true).', objParams({ question: S, options: SA, mode: S, max: I, min: I, min_votes: I, minVotes: I, secret: B, allow_abstain: B, allowAbstain: B, allow_revote: B, allowRevote: B }, ['question', 'options', 'min_votes']), (s, a, x) => s.pollOpenTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_poll_vote', '(member with a vote) #50 — VOTE on the open option-type poll board (SPEC #35; the explicit abstention of #37 rides on this tool). Params: ballot_id? (defaults to the open board), choices[] (option ids or exact texts; must satisfy the board min/max), abstain:true (an EXPLICIT abstention: counted as having voted, NEVER as an option — the same semantics as the verify ballot), note/reason. A non-voter (attending/invited/temp) is refused BY NAME with V5_NOT_VOTER: vote power can NEVER be delegated (H12/R36). Revoting is allowed until closure when the board allows it (revotedAt is recorded); after closure it is refused (only a review/reconsideration can follow). Same-value resubmission is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, choices: SA, abstain: B, note: S, reason: S }), (s, a, x) => s.pollVoteTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_poll_close', '(academician) #51 — CLOSE AND TALLY the poll board and broadcast the result (SPEC #25/K4). Params: ballot_id? (defaults to the open board), reason?. The poll counts ONLY IF cast >= min_votes (settled:false / outcome:"unsettled" otherwise — the remaining votes are never used to infer a conclusion); the quorum m (closure gate) is computed SEPARATELY and reported NEXT TO it. The unvoted are named publicly. Closure is an EXPLICIT academician action: nothing closes "on time" (no automatic settlement anywhere). Repeated closure is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, reason: S }), (s, a, x) => s.pollCloseTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
@@ -9269,6 +9567,18 @@ export function apply(ctx) {
       parts.push('## 临时授权（' + live.length + ' 条生效／' + gs.length + ' 条台账；可授：assign／prioritize／nudge／convene）')
       for (const g of live) parts.push('- ' + g.id + '｜' + g.to + '｜`' + g.command + '`｜' + g.grantScope + '｜至 ' + g.expiresOn)
       if (!live.length) parts.push('- （当前没有生效中的授权）')
+    }
+    // S7 (D3/D4/R9/K13): the poll board — the two thresholds side by side (min_votes vs quorum m);
+    // a secret board exposes the tally only, never who chose what.
+    {
+      const b = s.ballotView(s.openBallot())
+      parts.push('## 投票板' + (b ? '' : '（无进行中的板）'))
+      if (b) {
+        parts.push('- ' + b.question + '｜已投 ' + b.cast + '／' + s.voterCount()
+          + '｜**最少收集票 ' + b.rules.minVotes + '**：' + (b.min_votes_reached ? '成立' : '未成立')
+          + '｜**法定人数 m＝' + b.m + '**：' + (b.quorum_reached ? '已解除阻塞' : '仍阻塞')
+          + '｜' + (b.secret ? '不记名' : '记名'))
+      }
     }
     return { ok: true, overview: parts.join('\n') }
   })
