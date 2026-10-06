@@ -35,6 +35,19 @@
  *   node tests/run-tests.mjs --temp-age-hours=12  # temp hygiene: stale-scratch threshold (default 6 h)
  *   node tests/run-tests.mjs --temp-dry-run       # temp hygiene: print the plan, delete nothing
  *   node tests/run-tests.mjs --no-temp-hygiene    # skip the sweep and the roomier-drive temp root
+ *
+ * GATE DISCIPLINE (measured 2026-10 on a 4-core box; the numbers are why these defaults exist):
+ *   · DEFAULT CONCURRENCY STAYS 2. `--concurrency=4` is faster but noisier (per-job inflation ~+15%);
+ *     `--concurrency=6` is NOT VIABLE: at k=6 this sweep was RED with one 180 s TIMEOUT and one real
+ *     failure. Never raise a TIMEOUT to fit oversubscription - fix the load, not the budget.
+ *   · `GATE_SCOPE=quick` (or `--scope quick`) is the ITERATION subset: v5 work + shared parity/contract +
+ *     the registration surface, with EVERY `*.mutants.mjs` excluded and the 135 s shared sensitivity probe
+ *     left to `full`. It is for the edit loop only and is NOT a substitute for the full sweep.
+ *   · The FULL sweep (the default, `GATE_SCOPE=full`) is REQUIRED before every commit and release. It
+ *     cannot be skipped, shortened or cancelled for speed, and it runs the same jobs as before this change.
+ *   · Long jobs are started FIRST (LPT: static measured weights + file-name tiebreak, deterministic).
+ *     Measured effect at concurrency 2: wall 1878.1 s -> ~1447.6 s (simulated from that run's own per-job
+ *     timings), with NO change to which jobs run, no assertion removed and no semantics relaxed.
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -173,6 +186,56 @@ const TIMEOUT_OVERRIDES = {
 }
 /** One place decides a job limit: explicit job value, then the named override, then the default. */
 function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
+
+// ── Scheduling: longest-processing-time first (LPT) ────────────────────────────────────────────────
+// MEASURED WEIGHTS: per-job seconds from the 2026-10 full sweep at concurrency 2 (the run whose summary
+// was `wall 1878.1s · sum of suite times 2895.3s · speed-up x1.54`, TOTAL 106 PASS 106 FAIL 0). Starting
+// the long poles FIRST is what removes the "the 907 s job only begins near the end" tail: re-simulating
+// that same run with this order gives ~1447.6 s (about -23%) WITHOUT changing which jobs run.
+// STALENESS IS SAFE: if a weight goes stale (a suite grew or shrank), only the ORDER is suboptimal -
+// correctness is untouched, because the job list itself is DERIVED and the file-name tiebreak keeps the
+// order fully deterministic (no randomness anywhere). Unknown/new files get DEFAULT_WEIGHT and run last.
+// ROLLBACK: deleting the single `suites = lptOrder(suites)` line restores plain alphabetical order.
+const DURATION_WEIGHTS = {
+  'v5-institute-fixes.mutants.mjs': 906.9,
+  'v2-fix-probes.mutants.mjs': 453.6,
+  'v3-fix-probes.mutants.mjs': 249.5,
+  'audit-math-computation-sensitivity.mjs': 127.6,
+  'e2e-v4-fixes.test.mjs': 96.1,
+  'v4-final-paper.mutants.mjs': 96.1,
+  'v2-list-agents-and-next-step.mutants.mjs': 92.3,
+  'formal-verify-v4.mutants.mjs': 91.5,
+  'formal-verify-v2.test.mjs': 58.1,
+  'run-tests.mutants.mjs': 52.1,
+  'e2e-v5-round2.test.mjs': 47.0,
+  'v2-fix-probes.test.mjs': 40.3,
+}
+const DEFAULT_WEIGHT = 2
+const weightOf = (j) => DURATION_WEIGHTS[j.file] || DEFAULT_WEIGHT
+/** Deterministic LPT: measured duration DESC, then label ASC. No randomness, ever. */
+function lptOrder(list) {
+  return list.slice().sort((a, b) => (weightOf(b) - weightOf(a)) || (label(a) < label(b) ? -1 : 1))
+}
+
+// ── Gate scopes (GATE_SCOPE=quick|full; default full = exactly today's sweep) ──────────────────────
+// `quick` is the ITERATION subset: v5 work + the shared parity/contract surfaces + the registration
+// surface, with EVERY `*.mutants.mjs` excluded (the 26 families are ~2/3 of the sweep's sum) and the
+// 135 s shared sensitivity probe left to `full`. MEASURED with the probe still included at concurrency 2:
+// `wall 144.1s · sum 287.1s` and `TOTAL 24 PASS 24 FAIL 0`; without it the subset is 23 jobs.
+// `quick` is for the edit loop ONLY and is NOT a substitute for the full sweep, which stays REQUIRED
+// before every commit and release (see the GATE DISCIPLINE note at the top of this file).
+const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
+  'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
+  'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs']
+const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
+const QUICK_EXPECTED_JOBS = 23
+/** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
+function applyScope(list, scope) {
+  if (scope !== 'quick') return list
+  return list
+    .filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
+    .filter((j) => QUICK_ONLY.some((x) => label(j).includes(x)))
+}
 /**
  * DIAGNOSABILITY (protocol: every red must name an assertion): a failing suite's assertion NAMES are
  * what a reader needs, and they must appear under the FAILED line - not only in the suite's own last
@@ -298,39 +361,79 @@ const VARIANTS = [
   },
 ]
 
-const present = readdirSync(HERE).filter((f) => f.endsWith('.mjs')).sort()
-const presentSet = new Set(present)
 // A published tarball ships only a SUBSET of `tests/` (see docs/test-timing.md §1), so the
 // scripts that stay behind are simply ABSENT there. The skip/variant lists are therefore
 // enforced strictly in a development checkout (a `.git` entry marks one) and merely REPORTED —
 // never silently dropped, they still appear in every run's output — in a partial tree.
-const DEV_CHECKOUT = existsSync(join(REPO, '.git'))
-const stale = Object.keys(NEEDS_ARGS).filter((f) => !presentSet.has(f))
-if (stale.length && DEV_CHECKOUT) {
-  console.error('NEEDS_ARGS names a script that no longer exists: ' + stale.join(', ') + ' — fix the skip list, do not delete the entry blindly')
+let present = []
+let presentSet = new Set()
+let DEV_CHECKOUT = false
+function label(j) { return j.file + (j.args.length ? ' ' + j.args.join(' ') : '') }
+/**
+ * The ONE place that derives the job list (the gate, `--counts` and `--self-check` all use it, so a
+ * curated scope can never drift away from what actually runs). Deterministic base order = label ASC;
+ * LPT reorders it afterwards.
+ */
+function deriveJobs() {
+  present = readdirSync(HERE).filter((f) => f.endsWith('.mjs')).sort()
+  presentSet = new Set(present)
+  DEV_CHECKOUT = existsSync(join(REPO, '.git'))
+  const stale = Object.keys(NEEDS_ARGS).filter((f) => !presentSet.has(f))
+  if (stale.length && DEV_CHECKOUT) {
+    console.error('NEEDS_ARGS names a script that no longer exists: ' + stale.join(', ') + ' — fix the skip list, do not delete the entry blindly')
+    process.exit(2)
+  }
+  const replacedBare = new Set(VARIANTS.filter((v) => v.replaceBare).map((v) => v.file))
+  const jobs = []
+  for (const file of present) {
+    if (file === SELF || NEEDS_ARGS[file] || replacedBare.has(file)) continue
+    jobs.push({ file, args: [], expectExit: 0, kind: file.endsWith('.test.mjs') ? 'suite' : 'probe' })
+  }
+  for (const v of VARIANTS) {
+    if (!presentSet.has(v.file)) {
+      if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
+      continue
+    }
+    // A VARIANT is an EXTRA instrumented run of the SAME script (argument variants), never an additional
+    // suite: the counting unit for `suites` is "the suites proper", one per script. Classifying by file name
+    // here would inflate `suites` whenever a suite gains a `--self-probe` job (R18: it did, 44 -> 45).
+    jobs.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: 'probe' })
+  }
+  return jobs.sort((a, b) => (label(a) < label(b) ? -1 : 1))
+}
+// Scope first (curated subset), then the CLI filters, then scheduling. `full` is the identity, i.e. the
+// default behaviour is byte-for-byte what it was before this change.
+const GATE_SCOPE = String(process.env.GATE_SCOPE || flag('scope')[0] || 'full').toLowerCase()
+if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'full') {
+  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|full)')
   process.exit(2)
 }
-function label(j) { return j.file + (j.args.length ? ' ' + j.args.join(' ') : '') }
-const replacedBare = new Set(VARIANTS.filter((v) => v.replaceBare).map((v) => v.file))
-let suites = []
-for (const file of present) {
-  if (file === SELF || NEEDS_ARGS[file] || replacedBare.has(file)) continue
-  suites.push({ file, args: [], expectExit: 0, kind: file.endsWith('.test.mjs') ? 'suite' : 'probe' })
-}
-for (const v of VARIANTS) {
-  if (!presentSet.has(v.file)) {
-    if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
-    continue
-  }
-  // A VARIANT is an EXTRA instrumented run of the SAME script (argument variants), never an additional
-  // suite: the counting unit for `suites` is "the suites proper", one per script. Classifying by file name
-  // here would inflate `suites` whenever a suite gains a `--self-probe` job (R18: it did, 44 -> 45).
-  suites.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: 'probe' })
-}
-suites.sort((a, b) => (label(a) < label(b) ? -1 : 1))
+let suites = applyScope(deriveJobs(), GATE_SCOPE)
 if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))
 if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
+suites = lptOrder(suites)
 if (!suites.length) { console.error('no suites matched'); process.exit(2) }
+// The scope/concurrency header goes to STDERR so `--counts` and `--json` keep stdout machine-readable.
+console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
+// SCOPE GUARDS (checked on EVERY run, not only under --self-check, because the gate is where a curated
+// filter would hurt): the quick subset must resolve to a FIXED number of jobs and must contain NO mutant
+// family. A drifted filter therefore REDS BY NAME instead of silently changing what the edit loop covers.
+// Update QUICK_EXPECTED_JOBS only when the curated list changes ON PURPOSE (and say so in the commit).
+{
+  const quickList = applyScope(deriveJobs(), 'quick')
+  const quickN = quickList.length
+  const quickMutants = quickList.filter((j) => j.file.endsWith('.mutants.mjs')).map((j) => j.file)
+  if (quickN !== QUICK_EXPECTED_JOBS) {
+    console.error('FAIL - * gate scope: the quick subset must resolve to exactly ' + QUICK_EXPECTED_JOBS
+      + ' jobs (got ' + quickN + ') - update QUICK_EXPECTED_JOBS only when the curated list changes on purpose')
+    process.exit(1)
+  }
+  if (quickMutants.length) {
+    console.error('FAIL - * gate scope: the quick subset must contain NO mutant family (got ' + quickMutants.join(', ') + ')')
+    process.exit(1)
+  }
+  if (!asJson) console.error('run-tests: quick-scope self-check ok (' + quickN + ' jobs, no mutant family)')
+}
 
 // --counts: print the DERIVED suite/probe totals (the same job list the gate runs) as JSON, then
 // exit. Docs quote these numbers, so they must be derived and checked rather than typed by hand.
