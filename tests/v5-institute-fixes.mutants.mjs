@@ -66,7 +66,7 @@ if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not E
       // task-13: a mutated CHILD only has to redden BY NAME, so it runs with a SMALL wait floor - the patient
     // default (E2E_V5_WAIT_FLOOR_MS = 30 s inside the suite) belongs to the real gate run. Without this the
     // 15 families x (patient suite) exceeded even the family's 900 s override and timed the family out.
-    env: Object.assign({}, process.env, { [ENV]: join(dest, main), E2E_V5_WAIT_FLOOR_MS: '2000' }),
+    env: Object.assign({}, process.env, { [ENV]: join(dest, main), E2E_V5_WAIT_FLOOR_MS: '2000' }, f.env || {}),
     })
   } catch (e) {
     if (e && (e.killed || e.signal === 'SIGKILL')) hang = true
@@ -459,7 +459,68 @@ const V5R_FAMILIES = [
     to: "endedBy: 'abandoned (stuck)', closedAt: now(),",
     expect: /R10：空闲兜底是/,
   },
+  {
+    name: 'SCEN d3-silence: the participation gate is short-circuited (silence no longer blocks a chaired end)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'd3-silence' },
+    from: 'if (base.silent.length) {',
+    to: 'if (false) {',
+    expect: /D3：未表态名单被列出/,
+  },
+  {
+    name: 'SCEN l4-abstain: an explicit abstention is recorded as a FALSE vote (silence-as-opposition shape)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'l4-abstain' },
+    from: "votes[memberId] = { abstain: true, reason: String(reason || ''), at: now() }",
+    to: "votes[memberId] = { prob: 0, reason: String(reason || ''), at: now() }",
+    expect: /显式弃权\*\*计入已投\*\*/,
+  },
+  {
+    name: 'SCEN d3-unable: the unable channel is removed (cannot-judge is rejected instead of leaving the denominator)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'd3-unable' },
+    from: "if (raw === 'unable' || raw === '无法判断') {",
+    to: 'if (false) {',
+    expect: /无法判断者\*\*退出分母\*\*/,
+  },
+  {
+    name: 'SCEN r3-speech: the end-of-debate tool loses its academician gate',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 'r3-speech' },
+    from: "if (member.kind !== 'academician') {",
+    to: "if (member.kind !== 'academician' && false) {",
+    expect: /仅院士可结束辩论/,
+  },
 ]
+
+// ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
+// workspace (V5_SCENARIO mode). A positive must be GREEN; its family above must redden by name.
+const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech']
+let posRed = 0
+for (const sc of SCENARIOS) {
+  const dest = join(tmpdir(), 'v5r-scen-' + Math.random().toString(36).slice(2, 10))
+  mkdirSync(dest, { recursive: true })
+  copyGraph('vibe-math-v5r.js', dest, 'vibe-math-v5r')
+  const t0 = Date.now()
+  let out = '', code = 0
+  try {
+    out = execFileSync(process.execPath, ['tests/selfdrive-v5.mjs'], {
+      cwd: REPO, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL',
+      env: Object.assign({}, process.env, { [ENV]: join(dest, 'vibe-math-v5r.js'), V5_SCENARIO: sc }),
+    })
+  } catch (e) { code = (e && e.status) || 1; out = String((e && e.stdout) || '') + String((e && e.stderr) || '') }
+  const ms = Date.now() - t0
+  const green = code === 0 && /SCENARIO GREEN: /.test(out)
+  if (!green) posRed++
+  console.log((green ? '  ok   ' : '  FAIL ') + 'positive v5r scenario ' + sc + ' [' + ms + 'ms]' + (green ? '' : ' :: exit=' + code))
+  TIMES.push(['positive:' + sc, ms])
+  rmSync(dest, { recursive: true, force: true })
+}
+console.log('scenario positive controls green: ' + (SCENARIOS.length - posRed) + '/' + SCENARIOS.length)
 let red = 0
 const ALL_FAMILIES = FAMILIES.concat(V5R_FAMILIES)
 for (const f of ALL_FAMILIES) { const ok = runFamily(f); if (ok) red++ }
@@ -472,5 +533,5 @@ console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[
 console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
-if (red !== ALL_FAMILIES.length || skipped.length || hangs.length) process.exit(1)
+if (red !== ALL_FAMILIES.length || skipped.length || hangs.length || posRed) process.exit(1)
 console.log('ALL MUTANTS RED AS REQUIRED')

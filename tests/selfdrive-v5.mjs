@@ -469,6 +469,115 @@ if (!IS_V5R) {
   console.log('  R10 block (v5r) done; failures so far=' + failed)
 }
 
+// ---- V5_SCENARIO mode (A2): switch AFTER the main flow's preparation, at the position that is
+// already proven to work, then exit -- so the later phases never run in this child process.
+// Insertion-point causal note (kept for the record): the SAME propose made BEFORE the main
+// verification section left status.verify null for 1.5 s (bounded wait timed out) while the same
+// call after this point starts normally; the scenario therefore also captures a diagnosis object.
+const SCENARIO = String(process.env.V5_SCENARIO || '').trim()
+async function runScenario(name) {
+  const instDir = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+  const cardOf = (id) => { const p = join(instDir, 'Verified', '命题', id + '.md'); return existsSync(p) ? readFileSync(p, 'utf8') : '' }
+  const recOf = (id) => { const s = readV5State(); return s && s.institutes['default::institute'].verdicts[id] }
+  const waitVerify = async (id) => {
+    for (let i = 0; i < 60; i++) {
+      const sv = await callTool('vibe_v5_status', {})
+      if (sv.verify && sv.verify.target === id) return sv
+      await settleAll()
+      await sleep(25)
+    }
+    assert(false, 'V5_SCENARIO 超时：验证未在 1.5s 内起跑（status.verify.target 仍不是 ' + id + '）——起跑条件不成立，按红线即红')
+    return await callTool('vibe_v5_status', {})
+  }
+  const fresh = async (id, statement) => {
+    await callTool('vibe_v5_record_proposition', { id, title: id, statement, value: 0.5, motive: 'R10/D3 场景', p: 0.5 }, childAgent(childOf('r-1')))
+    const prop = await callTool('vibe_v5_propose_verify', { target: id, kind: 'proposition', reason: 'D3 场景探测' }, childAgent(childOf('r-1')))
+    return prop
+  }
+  await callTool('vibe_v5_set', { activityTimeoutMs: 120000, verdictMaxRounds: 3 }, ROOT)
+  let prop = null
+  if (name === 'd3-silence') {
+    prop = await fresh('p-s1', '未表态阻塞结题。')
+    assert(prop.ok === true, 'D3：探测对象进入验证（propose ok）')
+    await waitVerify('p-s1')
+    const bad = await callTool('vibe_v5_end_verify', { target: 'p-s1', reason: '非院士尝试' }, childAgent(childOf('r-1')))
+    assert(bad.ok === false && bad.code === 'V5_NOT_ACADEMICIAN', 'R10-2a：仅院士可结束辩论（非院士 ⇒ 具名拒绝 V5_NOT_ACADEMICIAN）')
+    const still = await callTool('vibe_v5_status', {})
+    assert(!!still.verify && still.verify.target === 'p-s1', 'R10-2a：拒绝无副作用（验证仍开启）')
+    const end = await callTool('vibe_v5_end_verify', { target: 'p-s1', reason: 'D3 参与门探测' }, childAgent(childOf('acad')))
+    assert(end.ok === true && end.endedBy === 'academician', 'R10-2a：院士可显式结束辩论（endedBy=academician）')
+    assert(end.outcome === 'undecided', 'D3：未表态阻塞结题——院士显式结束也**不得**给出真/假结论')
+    assert(/未表态名单/.test(String(end.reason)) && Array.isArray(end.process && end.process.silent) && end.process.silent.length === 4,
+      'D3：未表态名单被列出（process.silent＝全部 4 名可表决者）')
+    const rec = recOf('p-s1')
+    assert(!!rec && rec.endedBy === 'academician' && rec.endedByMember === 'acad' && rec.outcome === 'undecided',
+      'R10-2a：结束辩论在耐久记录里具名且结论为未定论')
+  } else if (name === 'l4-abstain') {
+    prop = await fresh('p-s2', '显式弃权计入已投不计选项。')
+    assert(prop.ok === true, 'L4：探测对象进入验证（propose ok）')
+    await waitVerify('p-s2')
+    for (const id of ['acad', 'r-1', 'r-2']) await callTool('vibe_v5_verdict', { target: 'p-s2', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    const ab = await callTool('vibe_v5_verdict', { target: 'p-s2', verdict: 'abstain', reason: '明确弃权' }, childAgent(childOf('r-3')))
+    assert(ab.ok === true && ab.abstain === true, 'L4：显式弃权被投票通道接受（计入已投）')
+    await settleAll()
+    let sv = await callTool('vibe_v5_status', {})
+    if (!sv.verified.includes('p-s2')) { await drainWakes(8); await settleAll(); sv = await callTool('vibe_v5_status', {}) }
+    assert(sv.verified.indexOf('p-s2') !== -1, 'L4：显式弃权**计入已投**（3 名布尔真者达到 m=3 ⇒ 定为真）')
+    const card = cardOf('p-s2')
+    assert(/显式弃权: 1/.test(card) && /中间估计: 0/.test(card), 'L4：弃权**不计选项**（卡片记 显式弃权: 1、中间估计: 0）')
+    assert(!/弃权\/存疑/.test(card), 'L4：不再把 0<p<1 的估计写成「弃权/存疑」')
+  } else if (name === 'd3-unable') {
+    prop = await fresh('p-s3', '无法判断退出分母。')
+    assert(prop.ok === true, 'D3：探测对象进入验证（propose ok）')
+    await waitVerify('p-s3')
+    for (const id of ['acad', 'r-1', 'r-2']) await callTool('vibe_v5_verdict', { target: 'p-s3', verdict: 1, reason: '布尔真' }, childAgent(childOf(id)))
+    const un = await callTool('vibe_v5_verdict', { target: 'p-s3', verdict: 'unable', reason: '我无法判断这个命题' }, childAgent(childOf('r-3')))
+    assert(un.ok === true && un.unable === true, 'D3：无法判断被投票通道接受（退出分母）')
+    await settleAll()
+    let sv = await callTool('vibe_v5_status', {})
+    if (!sv.verified.includes('p-s3')) { await drainWakes(8); await settleAll(); sv = await callTool('vibe_v5_status', {}) }
+    const rec = recOf('p-s3')
+    assert(!!rec && rec.outcome === 'true' && rec.m === 3 && rec.voters.length === 3 && rec.voters.indexOf('r-3') === -1,
+      'D3：无法判断者**退出分母**（m=3 只覆盖 3 名有效表决者），且其判断**不算反对**')
+    assert(Array.isArray(sv.quorum && sv.quorum.voters) && sv.quorum.voters.indexOf('r-3') !== -1,
+      'D3：无法判断者**仍在册列出**（quorum.voters 仍含 r-3，名单必列）')
+  } else if (name === 'r3-speech') {
+    prop = await fresh('p-s4', '发言不投票。')
+    assert(prop.ok === true, 'R3：探测对象进入验证（propose ok）')
+    await waitVerify('p-s4')
+    const said = await callTool('vibe_v5_say', { text: '我口头表示赞成这个命题（但这只是发言，不是投票）。' }, childAgent(childOf('r-1')))
+    assert(said.ok === true, 'R3：表决期内发言被正常记录（不被静默丢弃）')
+    await settleAll()
+    await drainWakes(2)
+    await settleAll()
+    const sv = await callTool('vibe_v5_status', {})
+    const voted = sv.verify && Array.isArray(sv.verify.voted) ? sv.verify.voted.length : -1
+    assert(!!sv.verify && sv.verify.target === 'p-s4' && voted === 0,
+      'R3：发言不产生票（verification 的 voted 仍为空 ⇒ 票面不被发言改变；got ' + voted + '）')
+    const bad4 = await callTool('vibe_v5_end_verify', { target: 'p-s4', reason: '非院士尝试' }, childAgent(childOf('r-1')))
+    assert(bad4.ok === false && bad4.code === 'V5_NOT_ACADEMICIAN', 'R10-2a：仅院士可结束辩论（非院士 ⇒ 具名拒绝 V5_NOT_ACADEMICIAN）')
+    const end = await callTool('vibe_v5_end_verify', { target: 'p-s4', reason: 'R3 场景收尾' }, childAgent(childOf('acad')))
+    assert(end.ok === true && end.outcome === 'undecided', 'R2/C1：发言之后仍未表态 ⇒ 结束辩论只能得到未定论（沉默不折算为赞成）')
+  } else {
+    assert(false, 'V5_SCENARIO 未知：' + name)
+  }
+  // diagnosis for the record (A1): why did the earlier insertion point fail? Capture the same facts here.
+  try {
+    const st = await callTool('vibe_v5_status', {})
+    const diag = { scenario: name, propose: prop, verify: st.verify || null, verifyQueue: st.verifyQueue || null, meetingLive: !!st.meeting, running: st.running, autoDone: st.autoDone }
+    writeFileSync(join(WS, 'scenario-diag-' + name + '.json'), JSON.stringify(diag, null, 1))
+    console.log('  diag(' + name + '): verify=' + JSON.stringify(diag.verify) + ' queue=' + JSON.stringify(diag.verifyQueue) + ' meeting=' + diag.meetingLive)
+  } catch (e) { /* diagnosis is best-effort; never fails the scenario */ }
+}
+if (SCENARIO) {
+  await runScenario(SCENARIO)
+  console.log('')
+  console.log('passed=' + passed + ' failed=' + failed)
+  if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }
+  console.log('SCENARIO GREEN: ' + SCENARIO)
+  process.exit(0)
+}
+
 // ---------- the academician's organization powers ----------
 const asg = await callTool('vibe_v5_assign', { subject: '核验 n=3 的情形', to: 'r-2', why: '你在同余方向最强', acceptance: '给出完整的模 9 分析' }, childAgent(childOf('acad')))
 assert(asg.ok === true && asg.task && asg.task.ownerId === 'r-2', 'the academician CAN assign a task to a member')

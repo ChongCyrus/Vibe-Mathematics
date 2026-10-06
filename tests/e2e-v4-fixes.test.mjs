@@ -17,7 +17,7 @@ const LOOP_CAP_MS = Number(process.env.E2E_V4_LOOP_CAP_MS || 120000)   // budget
 // window=15000ms" for T2 A2 while the same case passes standalone). Every window therefore gets this
 // FLOOR, which is only reached when the artifact is genuinely late - a healthy run settles in
 // milliseconds. It is bounded (and the suite's own 420 s budget covers the pathological case).
-const WAIT_FLOOR_MS = Number(process.env.E2E_V4_WAIT_FLOOR_MS || 40000)
+const WAIT_FLOOR_MS = Number(process.env.E2E_V4_WAIT_FLOOR_MS || 120000)
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; console.error('  FAIL - ' + m) } }
  // Class-B protection (protocol 搂6.4): EVERY red must name an assertion. An abort under load must

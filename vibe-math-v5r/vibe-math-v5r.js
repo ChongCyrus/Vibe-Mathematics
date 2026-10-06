@@ -2646,8 +2646,12 @@ export function apply(ctx) {
       L.push('请给出你**诚实独立的判断**：')
       L.push('  verdict = 1  表示你认为该对象**绝对为真**；')
       L.push('  verdict = 0  表示你认为该对象**绝对为假**；')
-      L.push('  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，')
-      L.push('  不计入法定票数 m，但会计入全组平均概率。')
+      L.push('  介于 0 与 1 之间（例如 0.9）表示**不确定的中间估计**（计入平均概率，不计入法定票数 m）；')
+      L.push('  verdict = ' + String.fromCharCode(39) + 'abstain' + String.fromCharCode(39) + '（弃权）表示**明确弃权**：计入已投，但**不计选项**（既不算赞成也不算反对）；')
+      L.push('  verdict = ' + String.fromCharCode(39) + 'unable' + String.fromCharCode(39) + '（无法判断）表示你**无法给出判断**：你会退出本次分母（不计分母），但**仍列在名单中**。')
+      L.push('')
+      L.push('**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；')
+      L.push('**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。')
       L.push('')
       if (formalOn()) {
         const rec = formalOf(vs.target)
@@ -4787,54 +4791,71 @@ export function apply(ctx) {
     const R10 = { separation: 1, provisional: 1, namedBound: 1 }
     const boundOf = (name, why) => ({ name: String(name), why: String(why || ''), at: now(), revocable: true })
     const R10_PROVISIONAL_NOTE = '（过程票数：尚未生效·仅供参考）'
+    // ── R10（§7.2）＋ D3/R9（§1 D3、§3 R9）＋ L4：计量与裁定分离 ──────────────────────────
+    // `aggregateOpinion()` 只是"当时票数的描述"（`provisional: true`，永不产出结论）：
+    //   · E0 = **在册可表决者**（名单口径，永远列出）
+    //   · E  = **有效分母**：E0 去掉"明确无法判断/不能应答"者（D3：未答不计分母）
+    //   · silent = E 中尚未表态者（D3：**沉默阻塞结题、不算反对、也不折算为同意**）
+    //   · abstain = **显式弃权**（计入已投、不计选项）；estimates = 0<p<1 的**中间概率估计**
+    //     —— 两者**不同名同义**（L4：术语不得同名不同义）
     function aggregateOpinion(vs) {
-      // E = the LIVE voter set (roster, recomputed on every call). A ballot cast by someone
-      // who is no longer in E — a dismissed member whose entry survived in `vs.votes` — is
-      // NOT counted, in either mode: `Verified/` may only ever be reached by current voters.
-      const E = voters().map((m) => m.id)
-      const P = E.length
-      const m = quorumM()
+      const E0 = voters().map((m) => m.id)
+      const unableMap = (vs.unable && typeof vs.unable === 'object') ? vs.unable : {}
+      const E = E0.filter((id) => !unableMap[id])
+      const P = E0.length
+      const Peff = E.length
+      const m = quorumMFrom(Peff)
       const votes = vs.votes || {}
-      let bTrue = 0, bFalse = 0, abstain = 0
+      let bTrue = 0, bFalse = 0, abstain = 0, estimates = 0
       const all = []
+      const silent = []
+      const answered = []
       for (const id of E) {
         const v = votes[id]
-        if (!v) continue
+        if (!v) { silent.push(id); continue }
+        if (v.abstain === true) { answered.push(id); abstain += 1; continue }
         const p = Number(v.prob)
+        if (!Number.isFinite(p)) { silent.push(id); continue }
+        answered.push(id)
         all.push(p)
         if (p === 1) bTrue += 1
         else if (p === 0) bFalse += 1
-        else abstain += 1
+        else estimates += 1
       }
       const mean = all.length ? all.reduce((a, x) => a + x, 0) / all.length : 0.5
-      const base = { m, P, bTrue, bFalse, abstain, mean, votedCount: all.length, voters: E, provisional: true }
-      return base
+      return {
+        m, P, Peff, bTrue, bFalse, abstain, estimates, mean,
+        votedCount: answered.length, answered, silent, unable: Object.keys(unableMap),
+        voters: E, votersAll: E0, provisional: true,
+      }
     }
-    // R10（docs/02-rulings.md §7.2）：**结束裁定**是唯一能产出布尔结论的路径，且必须显式说明"辩论为何结束"。
-    //   · 'round-complete' —— 每位表决者都已作答（这一轮辩论单位已结束）
-    //   · 'bound:idle' / 'bound:round-cap' —— **具名、可撤销**的有界兜底触界
-    // 任何其它情况（含调用方忘记传参）一律 `undecided`：过程票数永远不构成裁定（fail-safe）。
+    // **结束裁定**：唯一能产出布尔结论的路径（R10），且必须显式说明"辩论为何结束"：
+    //   endedBy ∈ 'round-complete'（每位有效表决者都已表态）｜'academician'（院士显式结束，R10-2a）
+    //           ｜'bound:idle'／'bound:round-cap'（具名、可撤销的有界触界）
+    // D3 参与门与"未答不计分母"**同时成立**：不能应答者不进分母（E 去掉），
+    // 能应答却没表态者进 `silent` ⇒ **一律未定论并列出名单**。
     function judgeVerdict(vs, endedBy) {
       const base = aggregateOpinion(vs)
       if (!endedBy) return Object.assign(base, { outcome: 'undecided', reason: 'R10: 辩论尚未结束（过程票数不构成裁定）' })
       const E = base.voters
-      const P = base.P
+      const P = base.Peff
       const m = base.m
       const bTrue = base.bTrue
       const bFalse = base.bFalse
-      const votes = vs.votes || {}
-      // DEFECT 2 hardening: with NO voters there is nothing to conclude — every `>= m` test
-      // below would be trivially satisfiable if m were ever 0. Consensus needs voters.
       if (P === 0) return Object.assign(base, { outcome: 'undecided', reason: 'no voters: the institute has no voting members yet' })
+      if (base.silent.length) {
+        return Object.assign(base, {
+          outcome: 'undecided',
+          reason: 'D3 参与门：未表态阻塞结题（未表态名单：' + base.silent.join('、') + '；已表态 ' + base.answered.length + '/' + base.Peff + '）',
+        })
+      }
       if (params.quorumMode === 'all-unanimous') {
-        const allVoted = E.length > 0 && E.every((id) => votes[id])
-        if (!allVoted) return Object.assign(base, { outcome: 'undecided', reason: 'not every voter has voted' })
         if (bTrue === E.length && bFalse === 0) return Object.assign(base, { outcome: 'true', reason: 'unanimous true' })
         if (bFalse === E.length && bTrue === 0) return Object.assign(base, { outcome: 'false', reason: 'unanimous false' })
         return Object.assign(base, { outcome: 'undecided', reason: 'not unanimous' })
       }
       if (bTrue + bFalse < m) {
-        return Object.assign(base, { outcome: 'undecided', reason: 'only ' + (bTrue + bFalse) + ' boolean vote(s); m=' + m + ' required' })
+        return Object.assign(base, { outcome: 'undecided', reason: 'only ' + (bTrue + bFalse) + ' boolean vote(s); m=' + m + ' required（显式弃权 ' + base.abstain + ' 计入已投但不计选项）' })
       }
       if (bTrue > 0 && bFalse > 0) {
         return Object.assign(base, { outcome: 'undecided', reason: 'conflicting assertions (true=' + bTrue + ', false=' + bFalse + ')' })
@@ -5150,7 +5171,7 @@ export function apply(ctx) {
       const lines = ['# 验证辩论｜' + vs.target + '（' + kindLabel2(vs.kind) + '）｜' + fmtTime(), '']
       if (done) lines.push('**结论**：全体一致为' + (val === 1 || val === 'true' ? '真' : '假') + '（写入 Verified/）')
       else lines.push('**过程记录（尚未生效·仅供参考）**：未达门槛｜平均概率 ' + Number(j ? j.mean : val).toFixed(2) + '｜原因：' + (j ? j.reason : '') +
-        '｜m=' + (j ? j.m : '?') + '｜布尔票 真' + (j ? j.bTrue : '?') + '/假' + (j ? j.bFalse : '?') + '/弃权' + (j ? j.abstain : '?'))
+        '｜m=' + (j ? j.m : '?') + '｜布尔票 真' + (j ? j.bTrue : '?') + '/假' + (j ? j.bFalse : '?') + '/显式弃权' + (j ? j.abstain : '?') + '/中间估计' + (j ? j.estimates : '?'))
       lines.push('')
       lines.push('- 提出者：' + (vs.proposer || '(office)'))
       lines.push('- 类型：' + vs.kind)
@@ -5182,7 +5203,7 @@ export function apply(ctx) {
         '- 概率: ' + (isTrue ? 1 : 0),
         '- 来源: ' + (isTrue ? j.bTrue : j.bFalse) + ' 名有表决权者一致判' + (isTrue ? '真' : '假') + '（m=' + j.m + '）',
         '- 表决者: ' + j.voters.join('、'),
-        '- 弃权: ' + j.abstain + '｜全组平均概率: ' + Number(j.mean).toFixed(2),
+        '- 显式弃权: ' + j.abstain + '｜中间估计: ' + (j.estimates === undefined ? '?' : j.estimates) + '｜全组平均概率: ' + Number(j.mean).toFixed(2),
         // The formal record travels WITH the conclusion: a reader of the card must be able
         // to see how strong the result really is (machine-checked vs consensus-only).
         ...(formalOn() ? ['- 形式化: ' + formalStatusLine(vs.target) + (formalOf(vs.target).proof ? '（证明：' + formalOf(vs.target).proof + '）' : '')] : []),
@@ -5212,14 +5233,40 @@ export function apply(ctx) {
       if (String(target) && String(target) !== vs.target) {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'the object under verification is ' + vs.target }
       }
-      const p = Number(verdict)
-      if (!Number.isFinite(p) || p < 0 || p > 1) return { ok: false, code: 'V5_INVALID_VERDICT', message: 'verdict must be a number in [0,1]' }
+      const raw = (verdict === undefined || verdict === null) ? '' : String(verdict).trim().toLowerCase()
       const votes = Object.assign({}, vs.votes)
+      const unableNow = Object.assign({}, vs.unable || {})
+      if (raw === 'unable' || raw === '无法判断') {
+        // D3：**明确无法判断/不能应答** ⇒ 退出本次分母（不计分母），但**名单必列**且可追溯（谁/何时/为何）
+        unableNow[memberId] = { why: String(reason || ''), by: memberId, at: now() }
+        const nextU = Object.assign({}, vs, { unable: unableNow, lastVoteAt: now() })
+        await putVerdict(vs.target, nextU)
+        await saveChatLine('【求真表决】' + memberId + ' 声明**无法判断**对象 ' + vs.target + '（原因：' + String(reason || '（未说明）')
+          + '）：按 D3 **退出本次分母**（不计分母），但仍列在名单中；此声明**不改票、不算反对**。')
+        const needU = voters().map((m) => m.id)
+        const allU = needU.length > 0 && needU.every((id) => (unableNow[id] || votes[id]))
+        if (allU) await continueVerifyRound(nextU)
+        else await scheduleNext()
+        return { ok: true, voted: memberId, unable: true, allVoted: allU, pendingVoters: needU.filter((id) => !(unableNow[id] || votes[id])) }
+      }
+      if (raw === 'abstain' || raw === '弃权') {
+        // D3/L4：**显式弃权** ＝ 明确表态（计入已投），但**不计选项**、不进 m 的布尔计数
+        votes[memberId] = { abstain: true, reason: String(reason || ''), at: now() }
+        const nextA = Object.assign({}, vs, { votes, unable: unableNow, lastVoteAt: now() })
+        await putVerdict(vs.target, nextA)
+        const needA = voters().map((m) => m.id)
+        const allA = needA.length > 0 && needA.every((id) => (unableNow[id] || votes[id]))
+        if (allA) await continueVerifyRound(nextA)
+        else await scheduleNext()
+        return { ok: true, voted: memberId, abstain: true, allVoted: allA, pendingVoters: needA.filter((id) => !(unableNow[id] || votes[id])) }
+      }
+      const p = Number(verdict)
+      if (!Number.isFinite(p) || p < 0 || p > 1) return { ok: false, code: 'V5_INVALID_VERDICT', message: 'verdict must be a number in [0,1], or the word abstain (弃权) / unable (无法判断)' }
       votes[memberId] = { prob: p, reason: String(reason || ''), at: now() }
-      const next = Object.assign({}, vs, { votes, lastVoteAt: now() })
+      const next = Object.assign({}, vs, { votes, unable: unableNow, lastVoteAt: now() })
       await putVerdict(vs.target, next)
       const need = voters().map((m) => m.id)
-      const allVoted = need.length > 0 && need.every((id) => votes[id])
+      const allVoted = need.length > 0 && need.every((id) => (unableNow[id] || votes[id]))
       if (allVoted) await continueVerifyRound(next)
       else await scheduleNext()
       // task-25 (real-host R2): an incomplete electorate used to be reported only as `allVoted:false`, so the
@@ -5227,6 +5274,38 @@ export function apply(ctx) {
       return { ok: true, voted: memberId, verdict: p, allVoted, pendingVoters: need.filter((id) => !votes[id]) }
     }
 
+    // R10-2a：**院士显式结束辩论** —— 产 outcome 的合法来源之一（与 round-complete、具名可撤销触界并列）。
+    // 它**不**绕过 D3 参与门（未表态仍阻塞结题），也**不**让过程票数变成裁定。
+    async function endVerify(memberId, target, reason) {
+      const member = memberById(memberId)
+      if (!member) return memberDiagnosis('结束辩论（vibe_v5_end_verify）', memberId)
+      if (member.kind !== 'academician') {
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以显式结束辩论（R10-2a）；其它成员请继续投票、弃权或声明无法判断' }
+      }
+      const vs = currentVerify()
+      if (!vs) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'no verification in progress' }
+      if (String(target) && String(target) !== vs.target) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'the object under verification is ' + vs.target }
+      }
+      const j = judgeVerdict(vs, 'academician')
+      const ended = Object.assign({}, vs, { endedBy: 'academician', endedByMember: memberId, endedAt: now(), endReason: String(reason || '') })
+      await saveChatLine('【求真结束辩论】院士 ' + memberId + ' 显式结束对 ' + vs.target + ' 的辩论（R10-2a）'
+        + (reason ? ('，理由：' + String(reason)) : '') + '；结论：'
+        + (j.outcome === 'true' ? '真' : j.outcome === 'false' ? '假' : '未定论（' + j.reason + '）') + '。')
+      if (j.outcome === 'true' || j.outcome === 'false') {
+        const rec = formalOf(vs.target)
+        if (formalMode() === 'require' && !formalGateOk(rec)) await deferForFormal(ended, j, isTrueVote(j))
+        else await closeVerify(ended, j.outcome === 'true', j)
+      } else {
+        await finalizeUndecided(ended, j, { endedBy: 'academician', bound: null })
+      }
+      return {
+        ok: true, target: vs.target, endedBy: 'academician', endedByMember: memberId, outcome: j.outcome, reason: j.reason,
+        process: { m: j.m, Peff: j.Peff, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, estimates: j.estimates,
+          votedCount: j.votedCount, answered: j.answered, silent: j.silent, unable: j.unable, mean: j.mean, provisional: true },
+        provisional: false,
+      }
+    }
     // ---- chat log / meeting plumbing --------------------------------------
     // LOW (deep review): the day's chat MIRROR was an unsynchronized read-modify-write — two lines
     // produced in the same tick both read `prev`, and the second write dropped the first. Appends
@@ -7250,8 +7329,11 @@ export function apply(ctx) {
         }
       }
       if (p.verdict && typeof p.verdict === 'object') {
-        const declared = normVerdictNumber(p.verdict.verdict)
-        if (declared === undefined) await notice(member.id, 'verdict 必须是 0-1 的数值；本轮的票未被记录。')
+        const declaredRaw = p.verdict.verdict
+        const declaredWord = (declaredRaw === undefined || declaredRaw === null) ? '' : String(declaredRaw).trim().toLowerCase()
+        const isVerdictWord = (declaredWord === 'abstain' || declaredWord === '弃权' || declaredWord === 'unable' || declaredWord === '无法判断')
+        const declared = normVerdictNumber(declaredRaw)
+        if (declared === undefined && !isVerdictWord) await notice(member.id, 'verdict 必须是 0-1 的数值，或 abstain（弃权）/ unable（无法判断）；本轮的票未被记录。')
         else {
           const vTarget = idSafe(String(p.verdict.target || ''))
           // L2 option A: the same reply declared a fidelity defect for this object ⇒ this member's
@@ -7263,7 +7345,7 @@ export function apply(ctx) {
           // (that would claim the framework changed a vote that never existed).
           const isVoterHere = voters().some((m) => m.id === member.id)
           const enforced = isVoterHere && defectTargetsThisReply.has(vTarget) && (declared === 0 || declared === 1)
-          const n = enforced ? 0.5 : declared
+          const n = enforced ? 0.5 : (declared === undefined ? declaredWord : declared)
           if (enforced) {
             try {
               await putFormal(vTarget, (prev0) => {
@@ -8378,7 +8460,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -8604,7 +8686,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
   registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
-  registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = abstention (not counted toward m, counted in the mean).', objParams({ target: S, verdict: N, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
+  registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
+  registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
   registerTool('vibe_v5_task_list', '(member) List shared tasks with readiness, owner, revision, blockers and write-scope warnings.', objParams({ status: S, owner: S, ready: B }), (s, a) => ({ ok: true, tasks: s.taskList(a) }))
   registerTool('vibe_v5_task_get', '(member) Read one task\'s latest value BEFORE changing it (the revision is the CAS precondition).', objParams({ task_id: S }, ['task_id']), (s, a) => ({ ok: true, task: s.getTask(a.task_id) }))

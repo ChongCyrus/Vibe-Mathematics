@@ -98,7 +98,7 @@ const SELF_PROBE_MUTATIONS = [
   {
     name: 'R10[1]: aggregateOpinion loses its provisional marking (process tallies look like verdicts)',
     rel: "vibe-math-v5r/vibe-math-v5r.js",
-    from: 'voters: E, provisional: true }',
+    from: 'voters: E, votersAll: E0, provisional: true,',
     to: 'voters: E }',
     expect: 'R10[1]',
   },
@@ -122,6 +122,48 @@ const SELF_PROBE_MUTATIONS = [
     from: "endedBy: 'bound:idle', bound, closedAt: now(),",
     to: "endedBy: 'bound:idle', closedAt: now(),",
     expect: 'R10[6]',
+  },
+  {
+    name: 'D3: the participation gate is short-circuited (silence would no longer block)',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: 'if (base.silent.length) {',
+    to: 'if (false) {',
+    expect: 'R11',
+  },
+  {
+    name: 'L4: the explicit abstention channel is removed (0<p<1 would be the only middle ground)',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: "if (raw === 'abstain' || raw === '弃权') {",
+    to: 'if (false) {',
+    expect: 'R12',
+  },
+  {
+    name: 'D3: the unable declaration no longer leaves the denominator',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: 'const E = E0.filter((id) => !unableMap[id])',
+    to: 'const E = E0',
+    expect: 'R13',
+  },
+  {
+    name: 'R10-2a: the academician end-of-debate tool is unregistered',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: "registerTool('vibe_v5_end_verify'",
+    to: "registerTool('vibe_v5_end_verify_DISABLED'",
+    expect: 'R14',
+  },
+  {
+    name: 'R2/C1: the prompt text folds silence into consent again',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: '**沉默不是同意，也不是反对**',
+    to: '**沉默视为无异议**',
+    expect: 'R15',
+  },
+  {
+    name: 'L4: the reply channel drops the abstain/unable words again (reply path becomes second-class)',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: 'const n = enforced ? 0.5 : (declared === undefined ? declaredWord : declared)',
+    to: 'const n = enforced ? 0.5 : declared',
+    expect: 'R16',
   },
 ]
 
@@ -809,7 +851,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   const gate = (cond, key, msg) => { gateCount += 1; if (!cond) findings.push(key + ': ' + msg) }
   const countOf = (re) => (v5rRaw.match(re) || []).length
   gate(/function aggregateOpinion\(vs\)/.test(v5rRaw)
-    && /const base = \{[^}]*provisional: true[^}]*\}/.test(v5rRaw),
+    && /voters: E, votersAll: E0, provisional: true,/.test(v5rRaw),
     'R10[1]', 'aggregateOpinion() must exist and carry provisional: true (a process tally is never a verdict)')
   gate(/function judgeVerdict\(vs, endedBy\)/.test(v5rRaw)
     && /if \(!endedBy\) return Object\.assign\(base, \{ outcome: 'undecided'/.test(v5rRaw),
@@ -826,6 +868,19 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R10[6]', "a fallback close no longer records its named bound (or the implicit 'abandoned (stuck)' settle is back)")
   gate(countOf(/尚未生效·仅供参考/g) >= 3 && countOf(/provisional: true/g) >= 2,
     'R10[7]', 'process tallies are exposed without the provisional marking (尚未生效·仅供参考 / provisional: true)')
+  gate(/if \(base\.silent\.length\) \{/.test(v5rRaw) && /D3 参与门：未表态阻塞结题/.test(v5rRaw),
+    'R11', 'D3: the participation gate must be present (silence blocks the conclusion AND is named in the reason)')
+  gate(/raw === 'abstain'/.test(v5rRaw) && /v\.abstain === true/.test(v5rRaw) && /estimates \+= 1/.test(v5rRaw),
+    'R12', 'L4: an EXPLICIT abstention channel must exist and stay separate from the 0<p<1 estimate')
+  gate(/const E = E0\.filter\(\(id\) => !unableMap\[id\]\)/.test(v5rRaw) && /退出本次分母/.test(v5rRaw),
+    'R13', 'D3: an explicit unable/不能应答 declaration must leave the denominator (and still be listed)')
+  gate(/registerTool\('vibe_v5_end_verify'/.test(v5rRaw) && /async function endVerify\(memberId, target, reason\)/.test(v5rRaw) && /judgeVerdict\(vs, 'academician'\)/.test(v5rRaw),
+    'R14', 'R10-2a: the academician explicit end-of-debate channel must exist and aggregate with endedBy=academician')
+  gate(/沉默不是同意/.test(v5rRaw) && /阻塞结题/.test(v5rRaw) && !/沉默[^。\n]{0,10}(视为|等同|算作)[^。\n]{0,8}(同意|赞成|无异议)/.test(v5rRaw),
+    'R15', 'R2/C1: agent-facing text must state silence is neither consent nor opposition, and must not fold silence into consent')
+  gate(/const declaredWord =/.test(v5rRaw) && /isVerdictWord/.test(v5rRaw) && /declared === undefined \? declaredWord : declared/.test(v5rRaw),
+    'R16', 'L4: the member turn-reply channel must accept abstain/unable exactly like the tool (no second-class channel)')
+  notes.push('D3/L4 (v5r): participation gate=' + /if \(base\.silent\.length\) \{/.test(v5rRaw) + '; abstain channel=' + /raw === 'abstain'/.test(v5rRaw) + '; unable-out-of-denominator=' + /unableMap\[id\]/.test(v5rRaw) + '; end_verify(R10-2a)=' + /vibe_v5_end_verify/.test(v5rRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
