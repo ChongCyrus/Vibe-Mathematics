@@ -34,7 +34,7 @@
 
 ---
 
-## 3. 命令契约总表（**42 条平台命令** ＋ **6 条 v5r 运行时工具 #43–#48**）
+## 3. 命令契约总表（**42 条平台命令** ＋ **9 条 v5r 运行时工具 #43–#51**）
 
 > 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
 
@@ -63,8 +63,8 @@
 | 21 | 解除静默 `meeting_unmute` | 解除静默 | `who:string` | 否 | 静默名单 | 改策略 | 院士 | 代行（须显式指定） | 待实现 |
 | 22★ | 沉淀等待 `meeting_settle` | 等在飞成员把活跑完（报 x/y） | `cap_ms?:int`、`on_timeout?:continue/defer/absent` | 否 | 等待清单与结果 | 进入 `settling` | 院士 | 代行（须显式指定） | **现状**（`vibe_v5_wait`+settle 逻辑） |
 | 23 | 提出动议 `meeting_motion` | 提动议（议题/程序/决议） | `kind:string`、`text:string` | **是** | 动议记录 | 进入/保持 `motion` | 院士；成员需授权 | 在册成员 | 待实现 |
-| 24★ | 创办投票板 `meeting_poll_open` | 建并开放：选项＋单选/多选＋上下限＋**最少收集票** | `mode:option/boolean`、`question:string`、`options:string[]`、`rules{single/multi,max?,min?,min_votes?,secret?,rounds?,tie_rule?}` | **是** | `ballot_id`、规则快照 | `→voting` | 院士 | 代行（须显式指定） | 待实现（选项式）；布尔轮已有行为 |
-| 25 | 截止并计票 `meeting_poll_close` | 截止→计票→判定→广播 | `ballot_id?` | 否 | 计票表、判定、广播文本 | `voting→tally→resolution` | 院士 | 纪要人 | 待实现（选项式）；布尔聚合已有行为 |
+| 24★ | 创办投票板 `meeting_poll_open` | 建并开放：选项＋单选/多选＋上下限＋**最少收集票** | `mode:option/boolean`、`question:string`、`options:string[]`、`rules{single/multi,max?,min?,min_votes?,secret?,rounds?,tie_rule?}`（**v5r 落地面**：#49 的 `min_votes` **必填、无默认**；**不收**任何 `…At`／`…Ms`） | **是** | `ballot_id`、规则快照 | `→voting` | 院士 | **—（S6 可授集合＝4 不含开板；代行仅限收束，见 #45）** | **已实现**（v5r 运行时工具 **#49／#50／#51**；布尔轮原已可用） |
+| 25 | 截止并计票 `meeting_poll_close` | 截止→计票→判定→广播 | `ballot_id?` | 否 | 计票表、判定、广播文本 | `voting→tally→resolution` | 院士 | 纪要人 | **已实现**（v5r 运行时工具 **#51**；布尔聚合原已可用） |
 | 26 | 记录决议 `meeting_result_record` | 结论写成决议（含责任人与期限） | `text:string`、`actions[{who,due}]` | **是** | 决议 id | `resolution` 内落库 | 院士 | 纪要人 | 待实现 |
 | 27 | 生成纪要 `meeting_minutes` | 依事件流与议程生成纪要 | `detail?:brief/normal/full` | 否 | 纪要草稿/路径 | `→minutes` | 院士/纪要人 | 纪要人 | **现状**（纪要在写；需按新议程结构扩展） |
 | 28 | 指定纪要人 `meeting_secretary_appoint` | 指定谁写纪要 | `who:string` | 否 | 授权记录 | 改权限表 | 院士 | — | 待实现 |
@@ -74,9 +74,9 @@
 | 32★ | 发言（含引用）`meeting_say` | 发言并可引用过去某条 | `text:string`、`quote_ref?:string`、`quote_excerpt?`、`visibility?` | **是**（`text`） | 发言 id、引用关系 | 记发言；可能推进配额 | 在册成员（受策略） | — | **现状**（`vibe_v5_say`；`quote_ref` 待补） |
 | 33 | 定向质询 `meeting_challenge` | 向某人提必须回答的问题 | `to:string`、`text:string`、`timebox_ms?` | **是** | 质询记录 | `debate(directed)` 排队 | 辩论参与方 | 本章第 3 节（命令契约总表）的权限列 | 待实现 |
 | 34 | 回答质询 `meeting_answer` | 回应质询 | `challenge_id:string`、`text:string` | **是** | 回答记录 | 关闭该质询或标待答 | 被质询者 | — | 待实现 |
-| 35★ | 投票板投票 `meeting_poll_vote` | 在选项式投票板投票（可带理由） | `ballot_id`、`choices[]`、`note?` | 可选 | 投票回执 | 记票；可触发兜底截止 | 有表决权者 | — | **现状**（布尔票已存在；选项式待实现） |
+| 35★ | 投票板投票 `meeting_poll_vote` | 在选项式投票板投票（可带理由） | `ballot_id`、`choices[]`、`note?` | 可选 | 投票回执 | 记票；可触发兜底截止 | 有表决权者 | — | **已实现**（v5r 运行时工具 **#50**：布尔票 ＋ 选项式板；**票权只认 `voters()`、不可授**） |
 | 36★ | 布尔概率＋理由 `meeting_boolean_vote` | 提交概率估计（0…1）＋理由 | `value:number(0..1)`、`reason:string` | **是**（理由） | 票面回执 | 记票（R10 第 4 条后方可终局） | 有表决权者 | — | **现状**（`vibe_v5_verdict`+聚合） |
-| 37 | 弃权 `meeting_abstain` | 明确弃权（计入已投、不计选项） | `ballot_id`、`reason?` | 可选 | 弃权回执 | 记弃权 | 有表决权者 | — | **现状**（计票含 `abstain`） |
+| 37 | 弃权 `meeting_abstain` | 明确弃权（计入已投、不计选项） | `ballot_id`、`reason?` | 可选 | 弃权回执 | 记弃权 | 有表决权者 | — | **现状**（由 **#50** 的 `abstain` 参数承载：计入已投、**不计选项**） |
 | 38 | 附议 `meeting_second` | 附议动议使其成立 | `motion_id:string` | 否 | 附议回执 | `motion` 计数 +1 | 在册成员 | — | 待实现 |
 | 39 | 提交材料 `meeting_material_submit` | 材料挂到议程条目/议题 | `agenda_item?`、`kind:string`、`text?:string`、`path?:string` | **是**（text 或 path） | 材料 id | 材料列表更新 | 在册成员 | — | 待实现 |
 | 40★ | 请求认领任务 `meeting_task_claim` | **请求**认领（需批准） | `task_id`、`plan?` | 可选 | `pending`/`granted` | 任务板 `claim_pending` | 在册成员 | — | **现状**（任务认领+CAS 修订号） |
@@ -88,10 +88,13 @@
 | 46 | 程序异议（v5r 运行时工具）`vibe_v5_procedural_objection` | **在册成员**（院士/常驻研究员）可对进行中的会议提程序异议并要求主持给出理由（D2 救济通道；**不设**"全体推翻主持"） | `why`（**必填**） | **是**（`why`） | `{ok,objection{by,at,why,chairReply:null,chairReplyPending:true},chairReplyPending,meetingId,deduped?}` | 入档 `meeting.objections[]`＋当次会议纪要（耐久）；**只记录不驱动**（不改阶段/票面/收束时点） | **在册成员**（列席/受邀/临时工 ⇒ `V5_NOT_VOTER`） | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 | 47★ | 临时授权（v5r 运行时工具）`vibe_v5_grant` | **仅院士**把**一条被默认保留的命令**按**事件范围**临时授予**一个在册成员**（D1/D2/D6/D8）；**可授集合有界＝4**（`assign`／`prioritize`／`nudge`／`convene`）；**授权只改"默认权限表"这一层**，**绝不**改票权/阶段/票面 | `to`（被授权者 id，必填；**必须是在册成员**）、`command`（必填；四选一）、`grant_scope`（必填；`meeting`｜`verify`｜`once`；亦接受别名 `grantScope`）、`why`（**必填**）；**一切 `…At`／`…Ms`（含 `expires_at`）一律拒绝**（**时间由框架设置**；失效只由**事件**表达——**有意偏离 SPEC #13 的字面参数表**） | 是（`why`） | `{ok,grant{id,by,to,command,grantScope,at,expiresOn,revokedAt:null},deduped?}`（同值仍在生效 ⇒ `deduped:true`，**不追加台账**） | 追加**耐久台账** `grants[]`（append-only；`EV.institute` fold 白名单）＋广播一句；**不产生新票权**（`voters()`／`quorum` 不变） | **仅院士** | 否（**不可转授**，GAPS 22） | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 | 48 | 撤回授权（v5r 运行时工具）`vibe_v5_revoke` | **仅院士**撤回一条临时授权 ⇒ 权限**立即**回到默认表口径；**写事件并广播**（SPEC P6） | `grant_id?`（或 `to`＋`command`）、`why`（**必填**） | 是（`why`） | `{ok,revoked{id,by,to,command,grantScope,at,revokedAt,revokedBy},deduped?}` | 台账写 `revokedAt`／`revokedBy` ＋广播；**不改阶段/票面** | **仅院士** | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 49★ | 创办投票板（v5r 运行时工具）`vibe_v5_poll_open` | **仅院士**（所办同权）在**进行中的会议**下建并开放一张选项式投票板（定稿 §7.1）：**六项一次设齐**——选项内容／单选多选／最多几票／至少几票／**最少收集票**／记名不记名＋是否允许弃权＋是否允许改票；规则**开票前可见** | `question`（必填）、`options[]`（≥2，文本由院士定）、`mode`（`single`｜`multi`）、`max?`、`min?`（多选）、**`min_votes`（必填正整数；＝本次投票是否成立的门槛，`无默认`）**、`secret?`（默认 `false`＝记名）、`allow_abstain?`、`allow_revote?`（默认 `true`）；**一切 `…At`／`…Ms`（含 `expires_at`）一律拒绝**（**时间由框架设置**；**无"到点自动结算"**） | 是（`question`／`options`／`min_votes`） | `{ok,ballot{id,by,question,options[],rules{mode,max,min,minVotes,secret,allowAbstain,allowRevote},at,meetingId,phase:'open'},deduped?}` | 追加耐久台账 `ballots[]`（append-only；`EV.institute` fold 白名单）＋广播开票（规则快照）；**不改阶段/票面/真值** | **仅院士**（所办同权） | 否（**不在** S6 可授集合；代行仅限收束） | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 50★ | 投票板投票（v5r 运行时工具）`vibe_v5_poll_vote` | **有表决权者**在选项式板上投票；**弃权**＝明确表态（计入已投、**不计选项**）；**截止前可改票** | `ballot_id?`（**缺省只作用于当前 open 板**）、`choices[]`（选项 id 或原文；受 `min`/`max` 约束）、`abstain?`（须 `allow_abstain`）、`note?`／`reason?` | 否 | `{ok,vote{by,choices[],abstain,at,revotedAt?},cast,minVotes,m,deduped?}` | 记票入 `ballots[].votes[]`（append-only 台账；**同值幂等**、不同值＝改票写 `revotedAt`）＋广播进度（已投 x/y；**不广播逐人选择**） | **有表决权者**（列席/受邀/临时工 ⇒ `V5_NOT_VOTER`） | 否（**票权永不可授**，H12/R36） | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 51 | 截止并计票（v5r 运行时工具）`vibe_v5_poll_close` | **仅院士**（所办同权）**显式**截止并计票＋**带依据广播**（票数／门槛／是否成立；**不取平均**）；**公开点名未投票者** | `ballot_id?`（缺省＝当前 open 板）、`reason?` | 否 | `{ok,ballot{…phase:'closed',closedAt,closedBy,result{cast,valid,abstained,invalid,minVotes,satisfied,settled,outcome,m,quorum_reached,pending[],secret,tally}},deduped?}` | 写 `phase:'closed'`＋`result`（**两门槛并列**：`settled`＝min_votes 是否成立；`quorum_reached`＝结题门（未投票者是否已清空））＋广播 | **仅院士**（所办同权） | 否（不在 S6 可授集合） | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 
 **#47 的不可授清单**（拒绝文案，与实现**逐字一致**）：`end_verify`（**R10-2a** 仅院士）／主持与代行（**D1**；S4 的 `vibe_v5_chair_proxy` 是**唯一入口**）／**票权与代表态**（R2／R3／D3／D8）／**私密与引用面**（D6）／**授权本身**（GAPS 22 **不可转授**）。**判据＝凡由裁定级身份保证把守的命令不可授**。
 
-**计数**：**现状 17 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**、**#45**、**#46**、**#47**、**#48**）／**待实现 29 条**；其中 #27、#32、#35 与 **#14** 标注了"部分覆盖"（见上表备注）。★ 共 **23 处**（院士侧 **17**、成员侧 6），与 SPEC 一致（**#47★ 镜像 SPEC #13 的 ★**）。**#43–#48 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
+**计数**：**现状 24 条**（#1、#13、#14、#15、#22、**#24**、**#25**、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**、**#45**、**#46**、**#47**、**#48**、**#49**、**#50**、**#51**）／**待实现 27 条**；其中 **#14、#27、#32** 标注了"部分覆盖"（见上表备注）。★ 共 **25 处**（院士侧 **18**、成员侧 **7**），与 SPEC 一致（**#47★／#49★／#50★ 分别镜像 SPEC #13★／#24★／#35★**）。**#43–#51 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
 
 **查看权（G6）**：**在册成员**可查看**全体在册成员**的**工作状态字段**（`overall`／`subgoal`／`plan`／`status` ＋ 各自 `overallAt`／`subgoalAt`／`planAt` 与最近更新者）；**不再是院士专属**。**G5 的边界**：只开放上述工作状态字段，**私聊内容永不进入**（他人私密永不进入）；**默认只读**；**查看留痕**（谁在何时看了谁）；列席／受邀／临时工**单列并标注**，不冒充表决成员。
 
@@ -118,10 +121,10 @@
 | 子阶段 | `opening/roll_call/speech/discussion/settling/motion/debate/voting/tally/resolution/minutes` | 由院士显式动作迁移；**不得**由类型字段、计时器或过程票数触发（R10） |（注意：**计时器不得推进阶段**；而**有界触界**是 R10 第 2 条允许的停止来源，须**具名广播**且**可撤销/续期**——二者不同。）
 
 ### 4.3 `status` / `report` / `overview` 稳定字段
-- **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。
-- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）＋ **「临时授权」节**（S6：台账＋生效/失效状态；**只读**）。
-- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5） ＋ 「临时授权（N 条生效／M 条台账）」（S6）。
-- **`status` 顶层不加键**：「静止提示」（S5）与「临时授权」（S6）都只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
+- **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。（**S7 起填充**：`poll` 沿用上述**既有冻结键**，**只新增子键** `rules`／`min_votes_reached`／`settled`／`pending`／`ballot_id`／`secret`；其中 `quorum_reached`＝**法定人数（结题门）**、`min_votes_reached`＝**本次投票是否成立**——**两个门槛各算各的**，**不加 `status()` 顶层键**。）
+- **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）＋ **「临时授权」节**（S6：台账＋生效/失效状态；**只读**）＋ **「投票板」节**（S7：规则快照／两门槛对照／未投票者点名；**secret 板不公开逐人选择**）。
+- **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5） ＋ 「临时授权（N 条生效／M 条台账）」（S6） ＋ 「投票板（已投 x/y｜最少收集票 k｜法定人数 m｜记名/不记名）」（S7）。
+- **`status` 顶层不加键**：「静止提示」（S5）、「临时授权」（S6）与「投票板」（S7 只加 `poll` 子键）都只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
 - **顶层键冻结**：上述键一经发布不得改名/改类型；新增只能加新键。
 
 ---
@@ -211,6 +214,9 @@
 - **撤回授权（`vibe_v5_revoke`）**：对**已撤回/已失效**的同一 `grantId` ⇒ `{ok:true, deduped:true, …}`（**不报错**）；撤回**必须写事件并广播**（SPEC P6）。
 - **一次授权＝一次动作（`grant_scope='once'`）**：授权在**获批的那一刻**消费（写 `usedAt`）；同一命令内部的多步（如 `vibe_v5_assign` → 内部 `reassign`）**属同一次动作**，靠内部位置参数沿用同一次判定——**不是**"命令成功后才消费"。
 - **主持代行的时间也由框架设置**：请求里出现任何 `…At`／`…Ms`（**含 `until`**）一律拒绝，回执说明「**时间由框架设置**」；代行**不自设时限**（`chair.since` 由框架写入），与上一条 G6 的时间纪律同源。
+- **投票板开板（`vibe_v5_poll_open`）**：同值（同 `question`＋`options`＋全部规则）且板**仍 open** ⇒ `{ok:true, deduped:true, …}`（不重复建板）；**同一时刻只允许一张 open 板**（第二张不同内容 ⇒ `V5_INVALID_ARGUMENT`）；板必须挂**进行中的会议**（否则 `V5_NO_OPEN_MEETING`）。
+- **投票／改票（`vibe_v5_poll_vote`）**：同值重投 ⇒ `{ok:true, deduped:true, …}`（不刷新 `at`）；不同值 ⇒ **改票**（须 `allow_revote=true` 且未 close，写 `revotedAt`）；**close 后**再投/改票 ⇒ `V5_INVALID_ARGUMENT`（只能走复议）。
+- **截止计票（`vibe_v5_poll_close`）**：对**已 close** 的同一张板 ⇒ `{ok:true, deduped:true, …}`（**不重算、不重播**）；未达「最少收集票」⇒ `result.settled:false`／`outcome:'unsettled'`（**不形成结论**，**不得**据剩余票推断）。
 
 ## 6. 硬约束（接口层）
 
@@ -228,6 +234,7 @@
 | H10 | **真值不越界**：平台只产出"判定结果+概率估计+依据" | 架空验证制度（R6/D9） |
 | H11 | **框架只推荐、不驱动（静止）**：静止（无会议、无验证在飞、无人在飞）时**最多提示一次**（列出「谁在等谁」），**不得**自动召集会议、自动散会、自动收束或推进阶段（**R1／D10 ＋ R4／H2**）；**也不得**代替成员表态——票面／解决票／自述都不由框架写（**R2／R3／D3／D8**） | 框架替所里开会/收束/推进 ⇒ 出现"无人主持的决议"（R1/D10、R4/H2）；框架替成员表态 ⇒ 沉默被折算成票、结论不可审计（R2/R3、D3/D8） |
 | H12 | **授权只改"默认权限表"这一层**：临时授权**不得**产生票权、不得改阶段/票面/收束时点，也不得打开私密与引用面；**凡由裁定级身份保证把守的命令一律不可授**（`end_verify`、主持与代行、票权与代表态、私密与引用面、授权本身）；**不可转授**（GAPS 22） | 授权变成"第二张票"或"绕过裁定级身份" ⇒ 架空 D1/D8/R2/R3/R10 与 D6；转授 ⇒ 授权链失控、不可追责 |
+| H13 | **两个门槛不得混用**：**「最少收集票」`min_votes`**（本次投票**是否成立**）与**法定人数 `m`**（**结题门**：未投票者是否已清空；`m = min(quorumCap, |voters|)`）**各算各的**；不满足 `min_votes` ⇒ **该次投票不形成结论**，**不得**据剩余票推断；**票权只认 `voters()`、永不可授**（H12）；**没有任何"到点自动结算"**（D10） | 把 `m` 折进 `min_votes`（或反之）⇒ 票少也能结题、结论不可审计（R9/K13）；授权扩票权 ⇒ 表决权被外包（D8/H12）；到点自动结算 ⇒ 出现"无人主持的收束"（R1/R10） |
 
 ---
 
