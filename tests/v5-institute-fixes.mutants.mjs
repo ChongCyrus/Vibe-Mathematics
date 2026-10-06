@@ -555,11 +555,77 @@ const V5R_FAMILIES = [
     to: "if (member.kind !== 'academician' && false) {",
     expect: /仅院士可结束辩论/,
   },
+  // ── S4 family (D1/D2/R4/R5; docs/09 §12 的 S4 行) ─────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s4-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R23–R28，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 院士门去掉：非院士也能指定代行 ⇒ s4-proxy-denied 的具名拒绝断言必红。
+    name: 'S4: the academician gate on chair_proxy is gone (anyone may appoint a proxy)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-proxy-denied' },
+    from: "      if (me.kind !== 'academician') {",
+    to: "      if (me.kind !== 'academician' && false) {",
+    expect: /S4-proxy-denied：非院士指定代行/,
+  },
+  {
+    // ② `scope` 放开（唯一取值 'close' 不设防）⇒ 非 close 的请求会被接受 ⇒ s4-proxy-acad 的具名拒绝断言必红。
+    name: 'S4: the single-value scope guard on chair_proxy is short-circuited (any scope accepted)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-proxy-acad' },
+    from: "if (String(args.scope || '') !== CHAIR_SCOPE_CLOSE) {",
+    to: 'if (false) {',
+    expect: /S4-proxy-acad：scope 只接受 close/,
+  },
+  {
+    // ③ 时键接受（最外层承载行）⇒ 自带 until 的请求通过 ⇒ s4-proxy-time 的拒绝断言必红。
+    name: 'S4: the chair-proxy entry-level time-key guard accepts a client-supplied …At/…Ms/until',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-proxy-time' },
+    from: "const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)) || String(k) === 'until')",
+    to: 'const stampKeys = []',
+    expect: /S4-proxy-time：请求自带 until/,
+  },
+  {
+    // ④ `chairReplyPending` 抹掉（假装已回填）⇒ s4-objection 的可见性断言必红。
+    name: 'S4: the objection stops marking its reply as pending (it would look already answered)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-objection' },
+    from: 'const rec = { by: me.id, at: now(), why, chairReply: null, chairReplyPending: true }',
+    to: 'const rec = { by: me.id, at: now(), why, chairReply: null, chairReplyPending: false }',
+    expect: /S4-objection：chairReplyPending:true 必须可见/,
+  },
+  {
+    // ⑤ 主持权重接入判定（R5 违规）：代行被算成一张**真票** ⇒ 边界票型从"未定论"翻成"真" ⇒
+    //    s4-no-weight 的"同一票型结论相同"断言必红（锚在承载可观测行为的最外层：票数聚合的返回值）。
+    name: 'S4/R5: the chair proxy is counted as an extra TRUE vote in aggregateOpinion (the chair is weighted)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-no-weight' },
+    from: '        m, P, Peff, bTrue, bFalse, abstain, estimates, mean,',
+    to: '        m, P, Peff, bTrue: bTrue + (inst().chair ? 1 : 0), bFalse, abstain, estimates, mean,',
+    expect: /S4-no-weight：主持\/代行不改变结论/,
+  },
+  {
+    // ⑥ 幂等分支去掉（代行）⇒ 同值重复不再 deduped ⇒ s4-idempotent 的幂等断言必红。
+    name: 'S4: the chair-proxy idempotent branch stops reporting deduped',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's4-idempotent' },
+    from: 'return { ok: true, deduped: true, chair: cur, chairProxy: proxyId,',
+    to: 'return { ok: true, chair: cur, chairProxy: proxyId,',
+    expect: /S4-idempotent：代行同值重复/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
 // workspace (V5_SCENARIO mode). A positive must be GREEN; its family above must redden by name.
-const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech']
+const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
+  // S4（D1/D2/R4/R5）：每个 s4-* 场景一个**正控**——原始树的该场景必须绿，对应的族才可能"按名红"。
+  's4-proxy-acad', 's4-proxy-denied', 's4-proxy-time', 's4-objection', 's4-no-weight', 's4-idempotent']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

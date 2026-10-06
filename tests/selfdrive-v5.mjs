@@ -494,12 +494,61 @@ async function runScenario(name) {
     const prop = await callTool('vibe_v5_propose_verify', { target: id, kind: 'proposition', reason: 'D3 场景探测' }, childAgent(childOf('r-1')))
     return prop
   }
+  // ── S4 场景的前置与观测（主持/异议场景共用；每个场景仍各自独立工作区）─────────────────
+  // 会议必须先**真的开起来**（`status.meeting` 非空）主持代行才有意义；收束要能真的走完，
+  // 否则"有/无代行同一票型"的比较就没法做（会议与验证互斥：会议在跑时验证起不来）。
+  const openMeeting = async (agenda) => {
+    const mt = await callTool('vibe_v5_meeting', { agenda, kind: 'sync' }, ROOT)
+    assert(mt.ok === true && mt.parked !== true,
+      'S4 前置：所办可召开会议（ok:true 且未被暂存；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+    for (let i = 0; i < 60; i++) {
+      const sv = await callTool('vibe_v5_status', {})
+      if (sv.meeting) return sv.meeting
+      await settleAll()
+      await sleep(25)
+    }
+    assert(false, 'S4 前置：会议未在 1.5s 内开启（status.meeting 仍为空）')
+    return null
+  }
+  const waitMeetingClosed = async () => {
+    for (let i = 0; i < 60; i++) {
+      await drainWakes(8)
+      await settleAll()
+      const sv = await callTool('vibe_v5_status', {})
+      if (!sv.meeting) return sv
+      await sleep(25)
+    }
+    assert(false, 'S4-no-weight 前置：会议未收束（status.meeting 仍在 ⇒ 验证起不来）')
+    return null
+  }
+  const castAll = async (target, pattern) => {
+    for (const id of ['acad', 'r-1', 'r-2', 'r-3']) {
+      const r = await callTool('vibe_v5_verdict', { target, verdict: pattern[id], reason: 'S4 同票型探测' }, childAgent(childOf(id)))
+      assert(r.ok === true, 'S4-no-weight：' + id + ' 的票被接受（got ' + JSON.stringify(r).slice(0, 140) + '）')
+    }
+  }
+  const closedRecOf = async (target) => {
+    for (let i = 0; i < 60; i++) {
+      const r = recOf(target)
+      if (r && r.closed) return r
+      await drainWakes(6)
+      await settleAll()
+      await sleep(25)
+    }
+    return recOf(target)
+  }
   await callTool('vibe_v5_set', { activityTimeoutMs: 120000, verdictMaxRounds: 3 }, ROOT)
   let prop = null
   // G6 场景只在 v5r 预设下可跑（能力由 vibe-math-v5r.js 提供）；v5 路径下**显式 skip**，
   // 绝不能落进"未知场景即红"（否则 v5 验收 94/1 会被污染）。
   if (name.startsWith('g6-') && !process.env.V5_PLUGIN) {
     console.log('  skip - G6 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_self_report）')
+    return
+  }
+  // S4 场景同理：主持代行/程序异议是 v5r 运行时工具（#45/#46），v5 预设根本没有这两个工具；
+  // v5 路径下**显式 skip**（绝不能落进"未知场景即红"，否则 v5 验收会被污染）。
+  if (name.startsWith('s4-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S4 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_chair_proxy / vibe_v5_procedural_objection）')
     return
   }
   if (name === 'd3-silence') {
@@ -672,6 +721,113 @@ async function runScenario(name) {
     const row1b = ((view2.view || view2).roster || []).find((m) => m && (m.member === 'r-1' || m.id === 'r-1')) || {}
     assert(!!(ch2.deviation || row1b.deviation),
       'G6-history-deviation：第二次修改后 deviation 仍在（回执=' + JSON.stringify(ch2.deviation) + ' 查看面行=' + JSON.stringify(row1b.deviation) + '）')
+  } else if (name === 's4-proxy-acad') {
+    // S4-proxy-acad：**仅院士**可指定代行；成功 ⇒ chair={id,since,proxy} 入档（耐久）；`scope` **唯一**
+    // 取值 `'close'`（其它值具名拒绝）；代行**不产生新票权**（票权集合与 voterCount 不变）。
+    const mt = await openMeeting('S4 主持代行探测')
+    assert(!!mt && !!mt.id, 'S4-proxy-acad：会议已开启（status.meeting=' + JSON.stringify(mt && mt.id) + '）')
+    const before = await callTool('vibe_v5_status', {})
+    const votersBefore = (before.quorum && Array.isArray(before.quorum.voters)) ? before.quorum.voters.map(String).sort().join(',') : ''
+    const set = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '院士外出，授权 r-2 收束' }, childAgent(childOf('acad')))
+    assert(set.ok === true && !!set.chair, 'S4-proxy-acad：院士指定代行 ⇒ ok:true（got ' + JSON.stringify(set).slice(0, 180) + '）')
+    assert(!!set.chair && set.chair.id === 'acad' && set.chair.proxy === 'r-2' && Number(set.chair.since) > 0,
+      'S4-proxy-acad：chair={id,since,proxy} 入档（got ' + JSON.stringify(set.chair) + '）')
+    const stFile = await waitV5State((s) => !!(s.institutes['default::institute'].chair))
+    const chairDurable = stFile && stFile.institutes['default::institute'].chair
+    assert(!!chairDurable && chairDurable.id === 'acad' && chairDurable.proxy === 'r-2',
+      'S4-proxy-acad：代行写入耐久 State（chair.proxy=r-2；got ' + JSON.stringify(chairDurable) + '）')
+    const badScope = await callTool('vibe_v5_chair_proxy', { member: 'r-3', scope: 'all', why: '想拿全部权限' }, childAgent(childOf('acad')))
+    assert(badScope.ok === false && badScope.code === 'V5_INVALID_ARGUMENT',
+      'S4-proxy-acad：scope 只接受 close（其它值 ⇒ 具名拒绝 V5_INVALID_ARGUMENT；got ' + JSON.stringify(badScope).slice(0, 180) + '）')
+    const after = await callTool('vibe_v5_status', {})
+    const votersAfter = (after.quorum && Array.isArray(after.quorum.voters)) ? after.quorum.voters.map(String).sort().join(',') : ''
+    assert(after.quorum.voterCount === before.quorum.voterCount && votersAfter === votersBefore,
+      'S4-proxy-acad：代行不产生新票权（票权集合 ' + votersBefore + ' ⇒ ' + votersAfter + '，voterCount=' + after.quorum.voterCount + '）')
+  } else if (name === 's4-proxy-denied') {
+    // S4-proxy-denied：常驻研究员尝试指定代行 ⇒ 具名拒绝 V5_NOT_ACADEMICIAN，且**无副作用**（不入档）。
+    await openMeeting('S4 非院士代行探测')
+    const denied = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '常驻研究员尝试自任' }, childAgent(childOf('r-1')))
+    assert(denied.ok === false && denied.code === 'V5_NOT_ACADEMICIAN',
+      'S4-proxy-denied：非院士指定代行 ⇒ 具名拒绝 V5_NOT_ACADEMICIAN（got ' + JSON.stringify(denied).slice(0, 180) + '）')
+    const stFile = await waitV5State()
+    const chair = stFile && stFile.institutes['default::institute'].chair
+    assert(!chair, 'S4-proxy-denied：拒绝无副作用（耐久 State 里没有 chair 记录；got ' + JSON.stringify(chair) + '）')
+  } else if (name === 's4-proxy-time') {
+    // S4-proxy-time：用户自带任何 …At／…Ms（含 until）⇒ 被拒（V5_INVALID_ARGUMENT）＋ 文案含「时间由框架设置」。
+    await openMeeting('S4 用户自带时间探测')
+    const repTime = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '带 until 的请求', until: 1234567890 }, childAgent(childOf('acad')))
+    assert(repTime.ok === false && repTime.code === 'V5_INVALID_ARGUMENT',
+      'S4-proxy-time：请求自带 until ⇒ 被拒（具名码 V5_INVALID_ARGUMENT；got ' + JSON.stringify(repTime).slice(0, 180) + '）')
+    assert(/时间由框架设置/.test(String(repTime.message || '')),
+      'S4-proxy-time：回执说明含「时间由框架设置」（got message=' + JSON.stringify(repTime.message) + '）')
+    const repMs = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '带 …Ms', timeoutMs: 1000 }, childAgent(childOf('acad')))
+    assert(repMs.ok === false && repMs.code === 'V5_INVALID_ARGUMENT',
+      'S4-proxy-time：请求自带 …Ms 同样一律拒绝（got ' + JSON.stringify(repMs).slice(0, 180) + '）')
+  } else if (name === 's4-objection') {
+    // S4-objection：在册成员提程序异议 ⇒ 入档（by/at/why）且 chairReplyPending:true **可见**（不得假装已回填）；
+    // 留痕落在群聊与会议纪要（耐久）；列席/临时工 ⇒ 具名 V5_NOT_VOTER。
+    const mt = await openMeeting('S4 程序异议探测')
+    const obj = await callTool('vibe_v5_procedural_objection', { why: '我觉得收束流程跳过了边界情形' }, childAgent(childOf('r-1')))
+    assert(obj.ok === true && !!obj.objection, 'S4-objection：在册成员提异议 ⇒ ok:true（got ' + JSON.stringify(obj).slice(0, 200) + '）')
+    const o = obj.objection || {}
+    assert(o.by === 'r-1' && String(o.why).indexOf('边界情形') !== -1 && Number(o.at) > 0,
+      'S4-objection：异议入档（by=r-1、why、at>0；got ' + JSON.stringify(o) + '）')
+    assert(o.chairReply === null && o.chairReplyPending === true && obj.chairReplyPending === true,
+      'S4-objection：chairReplyPending:true 必须可见（不得假装已回填；got ' + JSON.stringify({ chairReply: o.chairReply, objectionPending: o.chairReplyPending, receiptPending: obj.chairReplyPending }) + '）')
+    const chat = chatTextR10()
+    assert(/【程序异议/.test(chat) && /待主持回应/.test(chat),
+      'S4-objection：异议留痕可见（群聊含【程序异议】与「待主持回应」）')
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt && mt.id) + '.md')
+    const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(/程序异议/.test(mtText) && /chairReplyPending=true/.test(mtText),
+      'S4-objection：异议写入会议纪要（耐久；got=' + JSON.stringify(String(mtText).slice(-160)) + '）')
+    const nonVoter = await callTool('vibe_v5_procedural_objection', { why: '临时工也想提' }, childAgent(childOf('t-1')))
+    assert(nonVoter.ok === false && nonVoter.code === 'V5_NOT_VOTER',
+      'S4-objection：临时工提异议 ⇒ 具名拒绝 V5_NOT_VOTER（got ' + JSON.stringify(nonVoter).slice(0, 180) + '）')
+  } else if (name === 's4-no-weight') {
+    // S4-no-weight：**同一票型**在"无主持"与"有代行"两种情形下结论必须相同（R5：主持不额外加权）。
+    // 票型取 m 的边界：2 张布尔真 + 2 张显式弃权（m=3 ⇒ 无主持时**未定论**；若代行被加权 ⇒ 会翻成"真"）。
+    await callTool('vibe_v5_set', { verdictMaxRounds: 1, activityTimeoutMs: 120000 }, ROOT)
+    const pattern = { acad: 1, 'r-1': 1, 'r-2': 'abstain', 'r-3': 'abstain' }
+    const ctrlProp = await fresh('p-s4n1', 'S4 主持不加权对照：同一票型。')
+    assert(ctrlProp.ok === true, 'S4-no-weight：对照组对象进入验证（got ' + JSON.stringify(ctrlProp).slice(0, 140) + '）')
+    await waitVerify('p-s4n1')
+    await castAll('p-s4n1', pattern)
+    const ctrl = await closedRecOf('p-s4n1')
+    assert(!!ctrl && ctrl.outcome === 'undecided',
+      'S4-no-weight：对照组（无主持）边界票型 ⇒ 未定论（got outcome=' + JSON.stringify(ctrl && ctrl.outcome) + '）')
+    const mt = await openMeeting('S4 主持不加权探测')
+    assert(!!mt, 'S4-no-weight：会议已开启（为指定代行）')
+    const set = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '同一票型比较用代行' }, childAgent(childOf('acad')))
+    assert(set.ok === true, 'S4-no-weight：代行已指定（got ' + JSON.stringify(set).slice(0, 160) + '）')
+    await waitV5State((s) => !!(s.institutes['default::institute'].chair))
+    await waitMeetingClosed()
+    const testProp = await fresh('p-s4n2', 'S4 主持不加权：同一票型（有代行）。')
+    assert(testProp.ok === true, 'S4-no-weight：实验组对象进入验证（got ' + JSON.stringify(testProp).slice(0, 140) + '）')
+    await waitVerify('p-s4n2')
+    await castAll('p-s4n2', pattern)
+    const test = await closedRecOf('p-s4n2')
+    assert(!!test && test.outcome === ctrl.outcome,
+      'S4-no-weight：主持/代行不改变结论（同一票型：无主持=' + ctrl.outcome + '，有代行=' + (test && test.outcome) + '）')
+  } else if (name === 's4-idempotent') {
+    // S4-idempotent：两工具的同值重复 ⇒ deduped:true 且**不追加历史**（代行不刷新 since；异议在纪要里只出现一次）。
+    const mt = await openMeeting('S4 幂等探测')
+    const c1 = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '幂等探测' }, childAgent(childOf('acad')))
+    const c2 = await callTool('vibe_v5_chair_proxy', { member: 'r-2', scope: 'close', why: '幂等探测' }, childAgent(childOf('acad')))
+    assert(c1.ok === true && c1.deduped !== true, 'S4-idempotent：第一次代行 ⇒ 真入档（deduped 不出现；got ' + JSON.stringify(c1).slice(0, 160) + '）')
+    assert(c2.ok === true && c2.deduped === true,
+      'S4-idempotent：代行同值重复 ⇒ deduped:true（got ' + JSON.stringify(c2).slice(0, 160) + '）')
+    assert(!!c2.chair && Number(c2.chair.since) === Number(c1.chair.since),
+      'S4-idempotent：代行幂等不刷新 since、不追加历史（got ' + JSON.stringify(c2.chair) + '）')
+    const o1 = await callTool('vibe_v5_procedural_objection', { why: '幂等异议' }, childAgent(childOf('r-2')))
+    const o2 = await callTool('vibe_v5_procedural_objection', { why: '幂等异议' }, childAgent(childOf('r-2')))
+    assert(o1.ok === true && o1.deduped !== true, 'S4-idempotent：第一次异议 ⇒ 真入档（got ' + JSON.stringify(o1).slice(0, 160) + '）')
+    assert(o2.ok === true && o2.deduped === true && !!o2.objection && Number(o2.objection.at) === Number((o1.objection || {}).at),
+      'S4-idempotent：异议同值重复 ⇒ deduped:true 且不追加历史（at 不变；got ' + JSON.stringify(o2).slice(0, 180) + '）')
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt && mt.id) + '.md')
+    const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    const hits = (mtText.match(/幂等异议/g) || []).length
+    assert(hits === 1, 'S4-idempotent：幂等异议在会议纪要里只出现一次（got ' + hits + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

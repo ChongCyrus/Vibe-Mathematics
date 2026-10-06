@@ -592,6 +592,10 @@ export function apply(ctx) {
               : patch.feedback
             if (next !== undefined) n.feedback = Array.isArray(next) ? next : []
           }
+          // S4 (D1/R4)：主持代行记录。`meeting.chair` 只活在**当次会议**的内存对象里，会议一收束就没了；
+          // 这份耐久副本让"代行须在会议记录中明确写明"在收束之后仍可查，也让判定面能证明它**不读**代行
+          // （R5：代行不产生新票权、主持不额外加权）。
+          if (patch.chair !== undefined) n.chair = patch.chair === null ? null : Object.assign({}, patch.chair)
           return n
         })
       }
@@ -5426,6 +5430,87 @@ export function apply(ctx) {
       if (!Object.keys(patch).length) return { ok: true, view: await selfReportView(memberId) }   // 只读查看（记录留痕）
       return await selfReport(targetId || memberId, patch, args.reason, args.source)
     }
+    // ── S4：主持（D1/R4/R5）与程序异议（D2）──────────────────────────────────────────────
+    // 三条红线在这里落地：① **只记录不驱动**（代行与异议都不改票面、不改会议阶段、不延后收束）；
+    // ② **主持不额外加权**（R5）——代行者**不进** `voters()`，`judgeVerdict`/`aggregateOpinion`
+    // 都不读 `chair`；③ 异议的 `chairReplyPending:true` **必须可见**（不得假装已回填）。
+    const CHAIR_SCOPE_CLOSE = 'close'
+    function chairRecordOf() {
+      const c = inst().chair
+      return (c && typeof c === 'object' && c.id) ? c : null
+    }
+    /** #45 `vibe_v5_chair_proxy`：**仅院士**可指定代行；`scope` 唯一取值 `'close'`；`why` 必填；
+     *  任何用户自带的 `…At`／`…Ms`（含 `until`）一律拒绝（时间由框架设置）；同值重复 ⇒ `deduped`。 */
+    async function chairProxyTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('指定代行（vibe_v5_chair_proxy）', memberId)
+      if (me.kind !== 'academician') {
+        // D1 硬约束：非院士不得自任主持，也不得指定代行。
+        return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以指定代行（D1）：非院士不得自任主持或代行他人主持' }
+      }
+      // S4（沿用 G6 §7.1 的**最外层**做法）：客户端自带的任何 …At／…Ms（含 until）一律显式拒绝。
+      // 变量名刻意不同于 selfReportTool 的 `timeKeys`：那条锚点是 R18 的自检变异点，必须保持全局唯一。
+      const stampKeys = Object.keys(args).filter((k) => /(At|Ms)$/.test(String(k)) || String(k) === 'until')
+      if (stampKeys.length) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（S4/D1）：不接受 ' + stampKeys.join('、') + '；代行不设自定时限，时间一律由框架写入' }
+      }
+      if (!meeting) {
+        return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '指定代行失败：当前没有进行中的会议（主持代行只对当次会议生效）' }
+      }
+      if (String(args.scope || '') !== CHAIR_SCOPE_CLOSE) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "scope 只接受 '" + CHAIR_SCOPE_CLOSE + "'（唯一取值）：代行仅限收束授权（D1/R4）" }
+      }
+      const why = String(args.why || '').trim()
+      if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'why is required：指定代行必须显式说明理由（D1）' }
+      const proxyId = String(args.member || args.proxy || '').trim()
+      const proxy = memberById(proxyId)
+      if (!proxy || proxy.phase !== 'active') {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '代行者必须是本所在册成员（' + (proxyId || '(未指明)') + '）；代行须显式指定（D1）' }
+      }
+      const cur = chairRecordOf()
+      if (cur && cur.id === me.id && cur.proxy === proxyId && cur.scope === CHAIR_SCOPE_CLOSE) {
+        // 幂等：同值重复 ⇒ deduped，且**不追加历史、不刷新 since**。
+        return { ok: true, deduped: true, chair: cur, chairProxy: proxyId, scope: CHAIR_SCOPE_CLOSE, message: '代行已是同值（幂等）：未重复入档、未刷新时间' }
+      }
+      const rec = { id: me.id, since: now(), proxy: proxyId, scope: CHAIR_SCOPE_CLOSE, why }
+      // **入档**：耐久副本（会议收束/重启后仍可查）＋当次会议记录 `meeting.chair`。
+      await patchInstitute({ chair: rec })
+      if (meeting) meeting.chair = rec
+      // **不产生新票权**：这里不碰名册与票权集合 —— 代行只是收束授权，不是第二张票。
+      await saveChatLine('【主持代行｜' + String(meeting.id) + '】院士 ' + me.id + ' 指定 ' + proxyId
+        + ' 代行**收束**（scope=' + CHAIR_SCOPE_CLOSE + '，理由：' + why + '）；代行**不产生新票权**、主持**不额外加权**。')
+      return { ok: true, chair: rec, chairProxy: proxyId, scope: CHAIR_SCOPE_CLOSE, meetingId: meeting.id }
+    }
+    /** #46 `vibe_v5_procedural_objection`：**在册成员**可提（列席/受邀/临时工 ⇒ `V5_NOT_VOTER`）；
+     *  `why` 必填；入档后 `chairReplyPending:true` **必须可见**；同值重复 ⇒ `deduped`；只记录不驱动。 */
+    async function proceduralObjectionTool(memberId, a) {
+      const args = a || {}
+      const me = memberById(memberId)
+      if (!me) return memberDiagnosis('提出程序异议（vibe_v5_procedural_objection）', memberId)
+      if (!(me.kind === 'academician' || me.kind === 'researcher')) {
+        // D2：程序异议是**在册成员**的救济通道（列席／受邀／临时工不在册）。
+        return { ok: false, code: 'V5_NOT_VOTER', message: '程序异议只能由在册成员提出（D2）；列席／受邀／临时工不可提' }
+      }
+      if (!meeting) {
+        return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '程序异议失败：当前没有进行中的会议（异议随当次会议入档）' }
+      }
+      const why = String(args.why || '').trim()
+      if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'why is required：程序异议必须写明理由（D2）' }
+      const list = Array.isArray(meeting.objections) ? meeting.objections : []
+      const same = list.filter((o) => o && o.by === me.id && o.why === why)[0]
+      if (same) {
+        // 幂等：同值重复 ⇒ deduped，且不追加历史；`chairReply` 仍为 null（不得假装已回填）。
+        return { ok: true, deduped: true, objection: same, chairReplyPending: same.chairReplyPending, meetingId: meeting.id, message: '异议已是同值（幂等）：未重复入档' }
+      }
+      const rec = { by: me.id, at: now(), why, chairReply: null, chairReplyPending: true }
+      // **入档**：`meeting.objections[]`（当次会议）＋纪要尾部（耐久）。**只记录不驱动**：
+      // 不改票面、不改阶段、不延后收束；主持尚未回应 ⇒ `chairReplyPending` 必须保持可见。
+      meeting.objections = list.concat([rec])
+      await appendMeetingTail(meeting, '- 程序异议｜' + me.id + '：' + why + '（chairReplyPending=true：待主持回应）')
+      await saveChatLine('【程序异议｜' + String(meeting.id) + '】' + me.id + '：' + why + '（chairReplyPending=true：待主持回应；只记录不驱动）')
+      return { ok: true, objection: rec, chairReplyPending: rec.chairReplyPending, meetingId: meeting.id, message: '程序异议已入档（chairReplyPending=true：待主持回应）' }
+    }
     // R10-2a：**院士显式结束辩论** —— 产 outcome 的合法来源之一（与 round-complete、具名可撤销触界并列）。
     // 它**不**绕过 D3 参与门（未表态仍阻塞结题），也**不**让过程票数变成裁定。
     async function endVerify(memberId, target, reason) {
@@ -8612,7 +8697,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -8839,6 +8924,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
   registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
   registerTool('vibe_v5_self_report', '(member) Update YOUR OWN self-report (G6): overall/subgoal/plan/status. Any roster member may read every member\'s work-status fields; private messages never enter this view. Times (…At/…Ms) are set by the framework and are rejected if supplied. Same-value resubmission is idempotent (deduped:true). Call with no field to READ the view (the read is audited).', objParams({ overall: {}, subgoal: {}, plan: {}, status: S, reason: S, source: S }), (s, a, x) => s.selfReportTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_chair_proxy', '(academician) #45 — appoint a PROXY for the chair (D1/R4/R5). Only the academician may call it (a non-academician is refused by name). scope accepts exactly one value, "close" (the proxy may only close the meeting); why is required. Any client-supplied …At/…Ms or until is refused (times are set by the framework). Same-value resubmission is idempotent (deduped:true) and does not refresh since. A proxy NEVER adds a vote: voters()/quorum are untouched and the chair is not weighted (R5).', objParams({ member: S, scope: S, why: S }), (s, a, x) => s.chairProxyTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_procedural_objection', '(member) #46 — raise a PROCEDURAL OBJECTION on the meeting in progress (D2, the relief channel for a chair ruling). Any roster member may raise one (attending/invited/temp workers are refused by name); why is required. The objection is filed durably with chairReply:null and chairReplyPending:true — the pending flag stays VISIBLE (a reply is never faked) — and only RECORDS: it changes no ballot, no stage and postpones no closure. Same-value resubmission is idempotent (deduped:true).', objParams({ why: S }), (s, a, x) => s.proceduralObjectionTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))

@@ -207,6 +207,48 @@ const SELF_PROBE_MUTATIONS = [
     to: 'return { ok: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),',
     expect: 'R22',
   },
+  {
+    name: 'S4: the chair-proxy runtime tool (#45) is unregistered',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "registerTool('vibe_v5_chair_proxy'",
+    to: "registerTool('vibe_v5_chair_proxy_DISABLED'",
+    expect: 'R23',
+  },
+  {
+    name: 'S4/D1: the single-value scope guard is short-circuited (any scope would be accepted)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "if (String(args.scope || '') !== CHAIR_SCOPE_CLOSE) {",
+    to: 'if (false) {',
+    expect: 'R24',
+  },
+  {
+    name: 'S4/D2: the objection stops marking its reply as PENDING (the reply would look filled in)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'const rec = { by: me.id, at: now(), why, chairReply: null, chairReplyPending: true }',
+    to: 'const rec = { by: me.id, at: now(), why, chairReply: null, chairReplyPending: false }',
+    expect: 'R25',
+  },
+  {
+    name: 'S4/R5: the chair proxy is added to the true-count inside judgeVerdict (the chair carries weight)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "if (bTrue >= m && bFalse === 0) return Object.assign(base, { outcome: 'true', reason: bTrue + ' >= m=' + m + ', all assert true' })",
+    to: "if (bTrue + (inst().chair ? 1 : 0) >= m && bFalse === 0) return Object.assign(base, { outcome: 'true', reason: bTrue + ' >= m=' + m + ', all assert true' })",
+    expect: 'R26',
+  },
+  {
+    name: 'S4/D1: appointing a proxy also appends it to the electorate (a proxy would be a new vote)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'await patchInstitute({ chair: rec })',
+    to: "await patchInstitute({ chair: rec }); inst().members.push({ id: proxyId, kind: 'researcher', phase: 'active' })",
+    expect: 'R27',
+  },
+  {
+    name: 'S4: the chair-proxy idempotent branch stops marking deduped',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'return { ok: true, deduped: true, chair: cur, chairProxy: proxyId,',
+    to: 'return { ok: true, chair: cur, chairProxy: proxyId,',
+    expect: 'R28',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -934,6 +976,42 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R21', 'G6: the view must be audited and must never carry private-message fields')
   gate(/deduped: true, member: m\.id, fields: fieldsOf\(next\)/.test(v5rRaw),
     'R22', 'G6: same-value resubmission must be idempotent (deduped:true, no history append)')
+  // ---- S4 (D1/D2/R4/R5): the chair and the procedural-objection relief channel -----------------
+  // `bodyOf(sig)` slices ONE named function's body (from its declaration to the next 4-space closing
+  // brace), so R26/R27/R28 can assert what that code must NOT read or touch. Every gate below has a
+  // SINGLE-SITE self-probe mutation above that reddens it BY NAME.
+  const bodyOf = (sig) => {
+    const i = v5rRaw.indexOf(sig)
+    if (i === -1) return ''
+    const j = v5rRaw.indexOf('\n    }', i)
+    return j === -1 ? '' : v5rRaw.slice(i, j)
+  }
+  const chairBody = bodyOf('async function chairProxyTool(memberId, a)')
+  const objectionBody = bodyOf('async function proceduralObjectionTool(memberId, a)')
+  const judgeBody = bodyOf('function judgeVerdict(vs, endedBy)')
+  const RUNTIME_TOOLS = ['vibe_v5_end_verify', 'vibe_v5_self_report', 'vibe_v5_chair_proxy', 'vibe_v5_procedural_objection']
+  const runtimeRegistered = RUNTIME_TOOLS.filter((n) => new RegExp("registerTool\\('" + n + "'").test(v5rRaw))
+  gate(runtimeRegistered.length === RUNTIME_TOOLS.length,
+    'R23', 'S4: the four v5r runtime tools (#43–#46: end_verify / self_report / chair_proxy / procedural_objection) must all be registered (42 platform commands + 4)')
+  gate(!!chairBody && /V5_NOT_ACADEMICIAN/.test(chairBody)
+    && /String\(args\.scope \|\| ''\) !== CHAIR_SCOPE_CLOSE/.test(chairBody)
+    && /meeting\.chair = rec/.test(chairBody),
+    'R24', 'S4/D1: appointing a proxy must be academician-only, scope must be the SINGLE value "close", and the record must be filed (meeting.chair + the durable chair)')
+  gate(!!objectionBody && /chairReply: null/.test(objectionBody) && /chairReplyPending: true/.test(objectionBody),
+    'R25', 'S4/D2: an objection must be filed with chairReply:null and chairReplyPending:true VISIBLE (a pending reply is never faked as answered)')
+  gate(!!judgeBody && !/\bchair\b|\bproxy\b/.test(judgeBody),
+    'R26', 'S4/R5: judgeVerdict must not read the chair/proxy record — the chair gets NO extra weight')
+  gate(!!chairBody && !/voters\(|quorum|members\s*[.=]|\.push\(/.test(chairBody),
+    'R27', 'S4/D1: appointing a proxy must not touch the electorate (a proxy never adds a vote)')
+  gate(!!chairBody && /deduped: true/.test(chairBody) && !!objectionBody && /deduped: true/.test(objectionBody),
+    'R28', 'S4: both runtime tools must carry a same-value idempotent branch (deduped:true)')
+  notes.push('S4 (v5r): runtime tools registered=' + runtimeRegistered.length + '/4'
+    + '; academician gate=' + /V5_NOT_ACADEMICIAN/.test(chairBody)
+    + '; scope single value=' + /CHAIR_SCOPE_CLOSE/.test(chairBody)
+    + '; chair filed (meeting.chair)=' + /meeting\.chair = rec/.test(chairBody)
+    + '; objection pending visible=' + /chairReplyPending: true/.test(objectionBody)
+    + '; judgeVerdict reads chair/proxy=' + /\bchair\b|\bproxy\b/.test(judgeBody)
+    + '; proxy touches electorate=' + /voters\(|quorum|members\s*[.=]|\.push\(/.test(chairBody))
   notes.push('D3/L4 (v5r): participation gate=' + /if \(base\.silent\.length\) \{/.test(v5rRaw) + '; abstain channel=' + /raw === 'abstain'/.test(v5rRaw) + '; unable-out-of-denominator=' + /unableMap\[id\]/.test(v5rRaw) + '; end_verify(R10-2a)=' + /vibe_v5_end_verify/.test(v5rRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
