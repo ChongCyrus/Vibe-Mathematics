@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// NOTE (standalone runs): this suite's baseline runs `tests/v2-fix-probes.test.mjs` against a COPY of the
+// v2 preset, so the v2 probe discovers whatever TeX the HOST has installed. Run it standalone with
+// `V2_TEX_ROOTS_SANDBOX=<empty dir>` set, or the baseline reports the host-dependent 218/5 and the family
+// goes red; the gate is unaffected because `tests/run-tests.mjs` sets that sandbox for every child.
 /**
  * Mutant harness for the two v2 harness-gap rows (ships: `tests/*.mutants.mjs`):
  *   F3  v2 `vibe_math_list_agents` — the tool must EXIST and be MENTIONED

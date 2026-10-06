@@ -11,7 +11,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 // under a loaded gate those ran out BEFORE the plugin's next scheduling tick created the verification/debate wakes
 // (instrumented proof: T1 DEBUG {fi:300, fu:302, running:true, autoDone:false} - alive, just not there yet). Every loop
 // now ALSO stops on a wall-clock deadline, which is only reached in that pathological case, so healthy runs are unchanged.
-const LOOP_CAP_MS = Number(process.env.E2E_V4_LOOP_CAP_MS || 45000)
+const LOOP_CAP_MS = Number(process.env.E2E_V4_LOOP_CAP_MS || 120000)   // budget only: 45 s ran out under gate concurrency (two copies gave 135/6 and 134/7 while standalone is 141/0)
 // task-13: `waitFor` windows are passed explicitly (900/3000 ms) all over this file; a 3 s window cannot
 // survive a loaded gate, and even 15 s was measured to fall short (gate log: "waitFor did not settle:
 // window=15000ms" for T2 A2 while the same case passes standalone). Every window therefore gets this
