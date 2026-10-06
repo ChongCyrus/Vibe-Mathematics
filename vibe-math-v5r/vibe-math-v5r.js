@@ -5274,6 +5274,135 @@ export function apply(ctx) {
       return { ok: true, voted: memberId, verdict: p, allVoted, pendingVoters: need.filter((id) => !votes[id]) }
     }
 
+    // ── G6：成员自查＋自述（docs/03 §3 #44、docs/07 G6 节、docs/09 §5.4/§7.0）──────────────
+    // 文件承载（不碰事件 fold/EV 表）：Members/<id>/SelfReport.json ＋ Shared/SelfReportViewAudit.json
+    // 时间**由框架写入**（用户自带 …At/…Ms 一律拒绝）；写入即留痕、旧值与旧时间不丢；只记录、不驱动（R1/D10）。
+    const SELF_FIELDS = ['overall', 'subgoal', 'plan', 'status']
+    const SELF_TIME_OF = { overall: 'overallAt', subgoal: 'subgoalAt', plan: 'planAt' }
+    const SELF_VIEW_AUDIT_CAP = 200
+    async function selfReportPath(id) {
+      const fs = await import('node:fs')
+      return { fs, dir: instRoot() + '/Members/' + String(id), file: instRoot() + '/Members/' + String(id) + '/SelfReport.json' }
+    }
+    async function selfReportRead(id) {
+      try {
+        const { fs, file } = await selfReportPath(id)
+        if (!fs.existsSync(file)) return null
+        return JSON.parse(fs.readFileSync(file, 'utf8'))
+      } catch (e) { return null }
+    }
+    async function selfReportWrite(id, rec) {
+      const { fs, dir, file } = await selfReportPath(id)
+      fs.mkdirSync(dir, { recursive: true })
+      const tmp = file + '.' + process.pid + '.tmp'
+      fs.writeFileSync(tmp, JSON.stringify(rec, null, 1))
+      fs.renameSync(tmp, file)
+    }
+    async function selfViewAudit(viewerId, saw) {
+      const fs = await import('node:fs')
+      const root = instRoot()
+      const file = root + '/Shared/SelfReportViewAudit.json'
+      let list = []
+      try { if (fs.existsSync(file)) list = JSON.parse(fs.readFileSync(file, 'utf8')) || [] } catch (e) { list = [] }
+      list.push({ at: now(), by: String(viewerId || ''), saw: saw })
+      const tail = list.slice(-SELF_VIEW_AUDIT_CAP)
+      try { fs.mkdirSync(root + '/Shared', { recursive: true }); fs.writeFileSync(file, JSON.stringify(tail, null, 1)) } catch (e) { /* 留痕失败不得让查看失败 */ }
+      return tail
+    }
+    async function selfReportRow(m) {
+      const r = (await selfReportRead(m.id)) || {}
+      // 只列工作状态字段：私聊/消息内容**永不进入**（G6）
+      return {
+        member: m.id, kind: m.kind, voting: (m.kind === 'academician' || m.kind === 'researcher'),
+        overall: r.overall || '', overallAt: Number(r.overallAt || 0),
+        subgoal: r.subgoal || '', subgoalAt: Number(r.subgoalAt || 0),
+        plan: Array.isArray(r.plan) ? r.plan : [], planAt: Number(r.planAt || 0),
+        status: r.status || '', updatedAt: Number(r.updatedAt || 0), updatedBy: r.updatedBy || '',
+        deviation: r.deviation || null,
+      }
+    }
+    // 查看面：**在册成员全列**（在册＝院士/常驻研究员）；列席/受邀/临时工**单列并标注**；默认只读；**查看留痕**。
+    async function selfReportView(viewerId) {
+      const roster = inst().members.filter((m) => m.kind === 'academician' || m.kind === 'researcher')
+      const others = inst().members.filter((m) => !(m.kind === 'academician' || m.kind === 'researcher'))
+      const rows = []
+      for (const m of roster) rows.push(await selfReportRow(m))
+      const otherRows = []
+      for (const m of others) otherRows.push(await selfReportRow(m))
+      const audit = await selfViewAudit(viewerId, rows.map((r) => r.member).concat(otherRows.map((r) => r.member)))
+      return {
+        roster: rows, nonVoting: otherRows, viewAuditTail: audit.slice(-20),
+        note: '只含工作状态字段（overall/subgoal/plan/status ＋ 各自 …At）；**私聊内容永不进入**（G6／G5）',
+      }
+    }
+    async function selfReport(memberId, patch, reason, source) {
+      const m = memberById(memberId)
+      if (!m) return memberDiagnosis('自述更新（vibe_v5_self_report）', memberId)
+      if (!(m.kind === 'academician' || m.kind === 'researcher')) {
+        // D8：列席／受邀／临时工不可写（可读工作状态）
+        return { ok: false, code: 'V5_NOT_VOTER', message: '列席／受邀／临时工不可写自述（G6；与 D8 一致）；你仍可查看工作状态' }
+      }
+      const a = patch || {}
+      const timeKeys = Object.keys(a).filter((k) => /(At|Ms)$/.test(String(k)))
+      if (timeKeys.length) {
+        // G6 §7.1：时间由框架设置（防伪造/防漂移）
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置（G6 §7.1）：不接受 ' + timeKeys.join('、') + '；每个字段的 …At 由框架写入' }
+      }
+      const src = (String(source || 'self').trim() === 'negotiated') ? 'negotiated' : 'self'
+      const cur = (await selfReportRead(m.id)) || { history: [] }
+      const next = Object.assign({}, cur, { history: Array.isArray(cur.history) ? cur.history.slice() : [] })
+      const changes = []
+      for (const k of SELF_FIELDS) {
+        if (a[k] === undefined) continue
+        const oldVal = (k === 'plan') ? (Array.isArray(cur.plan) ? cur.plan : []) : String(cur[k] === undefined || cur[k] === null ? '' : cur[k])
+        const newVal = (k === 'plan') ? (Array.isArray(a[k]) ? a[k].map(String) : [String(a[k])]) : String(a[k] === null ? '' : a[k])
+        if (JSON.stringify(oldVal) === JSON.stringify(newVal)) continue
+        changes.push({ field: k, old: oldVal, next: newVal })
+      }
+      const fieldsOf = (r) => ({
+        overall: r.overall || '', subgoal: r.subgoal || '',
+        plan: Array.isArray(r.plan) ? r.plan : [], status: r.status || '',
+      })
+      const timesOf = (r) => ({
+        overallAt: Number(r.overallAt || 0), subgoalAt: Number(r.subgoalAt || 0), planAt: Number(r.planAt || 0),
+      })
+      if (!changes.length) {
+        // 幂等：同值重复提交 ⇒ deduped，且**不追加历史**
+        return { ok: true, deduped: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),
+          updatedBy: next.updatedBy || '', deviation: next.deviation || null,
+          message: '自述未变化：同值重复提交按幂等处理（deduped:true），未追加历史' }
+      }
+      const at = now()
+      for (const c of changes) {
+        if (c.field === 'plan') next.plan = c.next
+        else next[c.field] = c.next
+        next[SELF_TIME_OF[c.field]] = at
+        next.history.push({ at, by: m.id, field: c.field, old: c.old, next: c.next, reason: String(reason || ''), source: src })
+      }
+      const ov = changes.filter((c) => c.field === 'overall')[0]
+      if (ov) {
+        if (cur.overallBy === 'academician' && m.kind !== 'academician') {
+          // 偏离：**保留院士原值与旧时间**（可取回），并在总览显著标注
+          next.deviation = { at, by: m.id, keptAcademicianValue: ov.old, keptAt: Number(cur.overallAt || 0) }
+        }
+        if (!next.overallBy) next.overallBy = (m.kind === 'academician') ? 'academician' : src
+      }
+      next.updatedAt = at
+      next.updatedBy = m.id
+      await selfReportWrite(m.id, next)
+      await saveChatLine('【自述更新】' + m.id + ' 更新了 ' + changes.map((c) => c.field).join('、')
+        + (reason ? ('（理由：' + String(reason) + '）') : '') + '；时间由框架写入。'
+        + (next.deviation ? '【注意】' + m.id + ' 的总目的原由院士设定 ⇒ **已偏离院士设定**（院士原值与旧时间已保留、可取回）。' : ''))
+      return { ok: true, member: m.id, fields: fieldsOf(next), times: timesOf(next), updatedBy: m.id,
+        history: next.history.slice(-10), deviation: next.deviation || null }
+    }
+    async function selfReportTool(memberId, a) {
+      const args = a || {}
+      const patch = {}
+      for (const k of SELF_FIELDS) if (args[k] !== undefined) patch[k] = args[k]
+      if (!Object.keys(patch).length) return { ok: true, view: await selfReportView(memberId) }   // 只读查看（记录留痕）
+      return await selfReport(memberId, patch, args.reason, args.source)
+    }
     // R10-2a：**院士显式结束辩论** —— 产 outcome 的合法来源之一（与 round-complete、具名可撤销触界并列）。
     // 它**不**绕过 D3 参与门（未表态仍阻塞结题），也**不**让过程票数变成裁定。
     async function endVerify(memberId, target, reason) {
@@ -8460,7 +8589,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -8686,6 +8815,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
   registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
+  registerTool('vibe_v5_self_report', '(member) Update YOUR OWN self-report (G6): overall/subgoal/plan/status. Any roster member may read every member\'s work-status fields; private messages never enter this view. Times (…At/…Ms) are set by the framework and are rejected if supplied. Same-value resubmission is idempotent (deduped:true). Call with no field to READ the view (the read is audited).', objParams({ overall: {}, subgoal: {}, plan: {}, status: S, reason: S, source: S }), (s, a, x) => s.selfReportTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))

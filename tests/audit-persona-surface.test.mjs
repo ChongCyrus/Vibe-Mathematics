@@ -47,7 +47,7 @@
  * the coordinator's persona?" — virtually all of them are `(member)` / `(academician)` /
  * `(resident)` tools that only subagents call.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -401,8 +401,14 @@ try {
     // rename it into place, so a reader sees either the old or the new file, never a partial one.
     const writeAtomic = (target, data) => {
       const tmp = target + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2)
-      writeFileSync(tmp, data, 'utf8')
-      renameSync(tmp, target)
+      try {
+        writeFileSync(tmp, data, 'utf8')
+        renameSync(tmp, target)
+      } catch (e) {
+        // (b) an interrupted/failed write must NOT leave a .tmp sibling inside the repo
+        try { unlinkSync(tmp) } catch (e2) { /* nothing of ours to clean up */ }
+        throw e
+      }
     }
     writeAtomic(join(corpusDir, 'persona-corpus.md'), md.join('\n'))
     writeAtomic(join(corpusDir, 'persona-corpus.json'), JSON.stringify({ presets: rows }, null, 2) + '\n')

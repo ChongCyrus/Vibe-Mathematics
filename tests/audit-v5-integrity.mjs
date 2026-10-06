@@ -165,6 +165,48 @@ const SELF_PROBE_MUTATIONS = [
     to: 'const n = enforced ? 0.5 : declared',
     expect: 'R16',
   },
+  {
+    name: 'G6: the framework-sets-time refusal is dropped (a user …At would be accepted)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'if (timeKeys.length) {',
+    to: 'if (false) {',
+    expect: 'R18',
+  },
+  {
+    name: 'G6: the self-report command is unregistered',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "registerTool('vibe_v5_self_report'",
+    to: "registerTool('vibe_v5_self_report_DISABLED'",
+    expect: 'R17',
+  },
+  {
+    name: 'G6: history stops recording the OLD value',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'history.push({ at, by: m.id, field: c.field, old: c.old, next: c.next, reason: String(reason || \'\'), source: src })',
+    to: 'history.push({ at, by: m.id, field: c.field, next: c.next })',
+    expect: 'R19',
+  },
+  {
+    name: 'G6: deviation is no longer recorded (silent overwrite of the academician overall)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'next.deviation = { at, by: m.id, keptAcademicianValue: ov.old,',
+    to: 'next.deviation = null; void ({ at, by: m.id, keptAcademicianValue: ov.old,',
+    expect: 'R20',
+  },
+  {
+    name: 'G6: the view stops being audited (no view trail)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'const audit = await selfViewAudit(viewerId,',
+    to: 'const audit = []; void (await selfViewAudit(viewerId,',
+    expect: 'R21',
+  },
+  {
+    name: 'G6: the idempotent branch stops marking deduped',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'return { ok: true, deduped: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),',
+    to: 'return { ok: true, member: m.id, fields: fieldsOf(next), times: timesOf(next),',
+    expect: 'R22',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -880,6 +922,18 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R15', 'R2/C1: agent-facing text must state silence is neither consent nor opposition, and must not fold silence into consent')
   gate(/const declaredWord =/.test(v5rRaw) && /isVerdictWord/.test(v5rRaw) && /declared === undefined \? declaredWord : declared/.test(v5rRaw),
     'R16', 'L4: the member turn-reply channel must accept abstain/unable exactly like the tool (no second-class channel)')
+  gate(/registerTool\('vibe_v5_self_report'/.test(v5rRaw) && /selfReportTool/.test(v5rRaw),
+    'R17', 'G6: the self-report command must be registered (update + audited read)')
+  gate(/if \(timeKeys\.length\) \{/.test(v5rRaw) && /时间由框架设置（G6 §7\.1）/.test(v5rRaw),
+    'R18', 'G6: any user-supplied …At/…Ms must be refused with the framework-sets-time message')
+  gate(/history\.push\(\{ at, by: m\.id, field: c\.field, old: c\.old/.test(v5rRaw),
+    'R19', 'G6: writing must append history with the OLD value (nothing silently dropped)')
+  gate(/next\.deviation = \{ at, by: m\.id, keptAcademicianValue: ov\.old/.test(v5rRaw) && /已偏离院士设定/.test(v5rRaw),
+    'R20', 'G6: a member editing an academician-set overall must record deviation and keep the original value/time')
+  gate(/const audit = await selfViewAudit\(viewerId,/.test(v5rRaw) && /私聊内容永不进入/.test(v5rRaw) && /viewAuditTail/.test(v5rRaw),
+    'R21', 'G6: the view must be audited and must never carry private-message fields')
+  gate(/deduped: true, member: m\.id, fields: fieldsOf\(next\)/.test(v5rRaw),
+    'R22', 'G6: same-value resubmission must be idempotent (deduped:true, no history append)')
   notes.push('D3/L4 (v5r): participation gate=' + /if \(base\.silent\.length\) \{/.test(v5rRaw) + '; abstain channel=' + /raw === 'abstain'/.test(v5rRaw) + '; unable-out-of-denominator=' + /unableMap\[id\]/.test(v5rRaw) + '; end_verify(R10-2a)=' + /vibe_v5_end_verify/.test(v5rRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
