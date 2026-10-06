@@ -34,7 +34,7 @@
 
 ---
 
-## 3. 命令契约总表（**42 条平台命令** ＋ **1 条 v5r 运行时工具 #43**）
+## 3. 命令契约总表（**42 条平台命令** ＋ **2 条 v5r 运行时工具 #43、#44**）
 
 > 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
 
@@ -83,8 +83,13 @@
 | 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
 | 42 | 请假/离席 `meeting_leave` | 通报缺席/提前离席 | `until?:ts`、`reason?` | 可选 | 出席表更新 | `attendance` 更新 | 在册成员 | — | 待实现 |
 | 43★ | 显式结束辩论（v5r 运行时工具）`vibe_v5_end_verify` | 院士显式结束对当前验证对象的辩论，使其进入**结束裁定**（R10-2a） | `target?`、`reason?`（**无 `memberId` 参数：调用者身份由调用上下文推导**） | 否 | `{ok,target,endedBy:'academician',endedByMember,endedAt,endReason,outcome,reason,process{…provisional:true},provisional:false}` | 关闭/置未定论该验证对象（写 `verdicts[target]`） | **仅院士** | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **待实现**（P2 第 3 步） |
 
-**计数**：**现状 12 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **21 处**（院士侧 16、成员侧 5），与 SPEC 一致。**#43 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
+**计数**：**现状 13 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **22 处**（院士侧 16、成员侧 6），与 SPEC 一致。**#43／#44 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
+
+**查看权（G6）**：**在册成员**可查看**全体在册成员**的**工作状态字段**（`overall`／`subgoal`／`plan`／`status` ＋ 各自 `overallAt`／`subgoalAt`／`planAt` 与最近更新者）；**不再是院士专属**。**G5 的边界**：只开放上述工作状态字段，**私聊内容永不进入**（他人私密永不进入）；**默认只读**；**查看留痕**（谁在何时看了谁）；列席／受邀／临时工**单列并标注**，不冒充表决成员。
+
+**G6 成员自述字段（查看与编辑共用）**：`member`（标识）｜`overall`（总任务/总目的：**院士设定或成员本人可改**；成员改动若原值为院士设定 ⇒ 记 `deviation` 并**保留院士原值与旧时间**，总览显著标注「**已偏离院士设定**」）｜`subgoal`（当下子目的，本人可改）｜`plan`（计划流程，有序步骤数组，本人可改）｜`status`（`planning/working/blocked/done`，可选）｜`updatedAt`/`updatedBy`（系统）＋ `overallAt`/`subgoalAt`/`planAt`（**框架自动**，见 `09` §7.0 的两类时间规范）。**写入即留痕**：`who/at/旧值/新值/reason?/source ∈ {self,negotiated}`，**旧值与旧时间不得静默丢弃**（历史可展开）。**框架不得据此自动推进流程**（R1／D10）。
 
 ---
 
@@ -189,6 +194,8 @@
 ---
 - **显式结束辩论（`vibe_v5_end_verify`）**：**同一 `target` 重复结束 ⇒ `{ok:true, deduped:true, …}`**（**不报错**）；第二次请求不改变任何状态，`endedBy/endedByMember/endedAt` 保持**第一次**的值。
 - **不新增错误码**：`vibe_v5_end_verify` 复用 `V5_NOT_ACADEMICIAN`（非院士）与 `V5_INVALID_ARGUMENT`（当前无进行中的验证／`target` 与在验证对象不匹配），故 §4.2 码表无需新增行。
+- **自述更新（`vibe_v5_self_report`）**：**同值重复提交 ⇒ `{ok:true, deduped:true, …}`**（**不报错**、不再追加历史）；不同值 ⇒ 追加一条历史并刷新该字段的 `…At`。
+- **时间字段由框架设置**：请求里出现任何 `…At`／`…Ms` 字段（如 `updatedAt`／`subgoalAt`）**一律拒绝**，回执说明「**时间由框架设置**」（防伪造/防漂移，见 G6 §7.1）。
 
 ## 6. 硬约束（接口层）
 
