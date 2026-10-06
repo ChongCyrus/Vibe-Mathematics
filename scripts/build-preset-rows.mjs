@@ -19,11 +19,11 @@ import { fileURLToPath } from 'node:url'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CHECK = process.argv.includes('--check')
-const VERSIONS = ['v2', 'v3', 'v4', 'v5']
+const VERSIONS = ['v2', 'v3', 'v4', 'v5', 'v5r']
 const OUT = join(REPO, 'cordis.patch.yml')
 
 /** Roster position: after the four shipped presets (standard 1 … cordis 4). */
-const ORDER = { v2: 20, v3: 21, v4: 22, v5: 23 }
+const ORDER = { v2: 20, v3: 21, v4: 22, v5: 23, v5r: 24 }
 
 /**
  * Every difference between the frozen 0.1.x composition and the composition shipped for >= 0.1.7.
@@ -47,7 +47,7 @@ const TRANSFORMS = [
   },
   {
     why: 'comment follows the row above (`./vibe-math-vN.js` → the package subpath)',
-    find: /a preset-local plugin \(\.\/vibe-math-v\d\.js\)/,
+    find: /a preset-local plugin \(\.\/vibe-math-v\d+r?\.js\)/,
     replace: (v) => `this package's plugin (dsh-vibe-math/vibe-math-${v}/vibe-math-${v}.js)`,
   },
   {

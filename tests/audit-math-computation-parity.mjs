@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
-const PRESETS = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5']
+const PRESETS = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r']
 const MODULES = ['math-engines.js', 'math-computation.js']
 const CANON = join(REPO, '_oneoff', 'mc-P1-ready', 'canonical')
 const SCHEMA = join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json')
@@ -144,10 +144,10 @@ for (const f of MODULES) {
     hashes[h] = (hashes[h] || []).concat(p)
   }
   const distinct = Object.keys(hashes)
-  ok(distinct.length === 1 && hashes[distinct[0]].length === 4, 'four copies of ' + f + ' are byte-identical', distinct.length + ' distinct hash(es)')
+  ok(distinct.length === 1 && hashes[distinct[0]].length === 5, 'five copies of ' + f + ' are byte-identical', distinct.length + ' distinct hash(es)')
   const canon = join(CANON, f)
   if (existsSync(canon)) ok(sha(canon) === distinct[0], f + ' matches the canonical source', sha(canon).slice(0, 16) + ' vs ' + String(distinct[0]).slice(0, 16))
-  else console.log('  note canonical source absent (published tree) - four-way comparison only')
+  else console.log('  note canonical source absent (published tree) - five-way comparison only')
 }
 
 // ---- 3. both install lines ship the module ----

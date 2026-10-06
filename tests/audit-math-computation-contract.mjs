@@ -32,6 +32,7 @@ const PRESETS = [
   { dir: 'vibe-math-v3', designator: 'vibe-math-v3', dualRegistration: true },
   { dir: 'vibe-math-v4', designator: 'vibe-math-v4', dualRegistration: false },
   { dir: 'vibe-math-v5', designator: 'vibe-math-v5', dualRegistration: false },
+  { dir: 'vibe-math-v5r', designator: 'vibe-math-v5r', dualRegistration: false },
 ]
 const SIX = ['mathComputation', 'mathMode', 'mathEngines', 'mathTimeoutMs', 'mathPackages', 'mathInstallScope']
 

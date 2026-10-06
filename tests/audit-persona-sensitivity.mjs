@@ -37,6 +37,7 @@ const PRESETS = [
   { dir: 'vibe-math-v3', js: 'vibe-math-v3.js' },
   { dir: 'vibe-math-v4', js: 'vibe-math-v4.js' },
   { dir: 'vibe-math-v5', js: 'vibe-math-v5.js' },
+  { dir: 'vibe-math-v5r', js: 'vibe-math-v5r.js' },
 ]
 
 /** Prepare a private copy of every preset (persona + plugin), so one probe cannot leak. */

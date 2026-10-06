@@ -1,4 +1,4 @@
-# The `vibe-math-v5` agent preset: the full coding agent (`standard`), plus the
+# The `vibe-math-v5r` agent preset: the full coding agent (`standard`), plus the
 # FIFTH-generation "research institute" framework (see 实现方案.md).
 #
 # V5 turns v4's band of residents into a RESEARCH INSTITUTE with real offices:
@@ -18,7 +18,7 @@
 # artifact libraries / consensus tally / context / resume). It NEVER assigns
 # tasks — the academician does that, as a member subject to the same m-vote rule.
 #
-# The vibe-math-v5 plugin row consumes HOST subagents/agents/fs/tools/commands/
+# The vibe-math-v5r plugin row consumes HOST subagents/agents/fs/tools/commands/
 # timer services and publishes nothing, so it needs no isolate realm. Institute
 # state lives in its own hardened JSON file (State/<institute>.v5state.json):
 # the plugin appends NOTHING to any host session log.
@@ -445,7 +445,7 @@
 
 # ── Vibe Math V5 ────────────────────────────────────────────────────────────
 
-# THE FIFTH-GENERATION framework: a preset-local plugin (./vibe-math-v5.js) that
+# THE FIFTH-GENERATION framework: a preset-local plugin (./vibe-math-v5r.js) that
 # registers the vibe_v5_* tools + a /v5 slash command and runs the research
 # institute (group chat / meetings / per-member artifact libraries / the academician's
 # organization & task assignment / m-vote boolean consensus verification /
@@ -456,5 +456,5 @@
 # persisted by the plugin itself in State/<institute>.v5state.json — the host
 # session log is never written (DSH refuses to load a session that carries an
 # unknown event type, and Session.append cannot mark one ignorable).
-- id: vibe-math-v5
-  name: './vibe-math-v5.js'
+- id: vibe-math-v5r
+  name: './vibe-math-v5r.js'

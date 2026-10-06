@@ -39,6 +39,7 @@ const PLUGINS = {
   v3: { file: join(REPO, 'vibe-math-v3', 'vibe-math-v3.js'), suite: 'tests/formal-verify-v3.test.mjs', env: 'V3_PLUGIN', corpusEnv: 'V3_CORPUS_DIR' },
   v4: { file: join(REPO, 'vibe-math-v4', 'vibe-math-v4.js'), suite: 'tests/formal-verify-v4.test.mjs', env: 'V4_PLUGIN', corpusEnv: 'V4_CORPUS_DIR' },
   v5: { file: join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
+  v5r: { file: join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
 }
 const ORIGINAL = {}
 for (const [k, v] of Object.entries(PLUGINS)) {

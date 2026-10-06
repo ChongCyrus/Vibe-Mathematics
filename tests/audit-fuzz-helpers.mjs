@@ -25,6 +25,7 @@ const FILES = {
   'vibe-math-v3': `${REPO}/vibe-math-v3/vibe-math-v3.js`,
   'vibe-math-v4': `${REPO}/vibe-math-v4/vibe-math-v4.js`,
   'vibe-math-v5': `${REPO}/vibe-math-v5/vibe-math-v5.js`,
+  'vibe-math-v5r': `${REPO}/vibe-math-v5r/vibe-math-v5r.js`,
 };
 
 const HOSTILE = [

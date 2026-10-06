@@ -912,7 +912,7 @@ export function apply(ctx) {
           const outcome = await writeTextAbs(pathOf(), JSON.stringify(snapshot, null, 2))
           if (outcome === undefined) {
             try { onWriteFailure(pathOf()) } catch (e) { /* diagnostics must never break the chain */ }
-            try { console.error('vibe-math-v5: state write FAILED for ' + pathOf() + ' — the in-memory state advanced but the file is STALE') } catch (e) { /* ignore */ }
+            try { console.error('vibe-math-v5r: state write FAILED for ' + pathOf() + ' — the in-memory state advanced but the file is STALE') } catch (e) { /* ignore */ }
           }
           return true
         })
@@ -1131,7 +1131,7 @@ export function apply(ctx) {
             note: '沙箱策略声明的可写根与会话工作目录不一致：v5 用会话工作目录拼所有路径（成员提示词/状态/Formal/Verified），'
               + '若宿主按策略根解析写操作，产物可能落在预期之外的那棵树。请核对 sandbox 策略的 workspaceRoot。',
           }
-          console.error('vibe-math-v5: ⚠ 沙箱策略根与会话工作目录不一致（策略=' + policyRoot + '，会话=' + expected + '）：写盘位置可能不是你预期的那棵树')
+          console.error('vibe-math-v5r: ⚠ 沙箱策略根与会话工作目录不一致（策略=' + policyRoot + '，会话=' + expected + '）：写盘位置可能不是你预期的那棵树')
         }
       } catch (e) { /* a diagnostic must never break path resolution */ }
     }
@@ -1168,7 +1168,7 @@ export function apply(ctx) {
       if (!ws || ws === '.') return true                 // no cwd to strip: nothing to compare
       const actual = abs.indexOf(ws) === 0 ? abs.slice(ws.length).replace(/^\/+/, '') : abs
       if (documented !== actual) {
-        console.error('vibe-math-v5: member library path contract BROKEN — the member-facing text says "'
+        console.error('vibe-math-v5r: member library path contract BROKEN — the member-facing text says "'
           + documented + '" but the framework writes/reads "' + actual + '"')
         return false
       }
@@ -1189,7 +1189,7 @@ export function apply(ctx) {
       const viaDocumented = leanAbsPath(instRel(probe))   // what the prompt advertises (cwd-relative)
       const viaShort = leanAbsPath(probe)                 // the tools' short form (institute-relative)
       if (viaPrinted !== expected || viaDocumented !== expected || viaShort !== expected) {
-        console.error('vibe-math-v5: Lean path contract BROKEN — printed "' + printedProbe
+        console.error('vibe-math-v5r: Lean path contract BROKEN — printed "' + printedProbe
           + '" resolves to ' + String(viaPrinted) + ', documented "' + instRel(probe) + '" to '
           + String(viaDocumented) + ', short form to ' + String(viaShort) + ', but the framework uses ' + expected)
         return false
@@ -1260,11 +1260,11 @@ export function apply(ctx) {
       // folded in: a leftover Formal/Jobs/*.json is re-queued or explicitly interrupted, and
       // is NEVER silently turned into `passed` (docs/formal-verification.md §7-7).
       if (!leanRecoveryDone) {
-        try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v5: lean recovery: ' + String((e && e.message) || e)) }
+        try { await recoverLeanJobs() } catch (e) { console.error('vibe-math-v5r: lean recovery: ' + String((e && e.message) || e)) }
       }
       // The math availability line is derived at session start (and on every tuning that
       // touches the six math_* keys); `probeMathEngines` caches per host, so this is cheap.
-      try { await refreshMathLine() } catch (e) { console.error('vibe-math-v5: math probe: ' + String((e && e.message) || e)) }
+      try { await refreshMathLine() } catch (e) { console.error('vibe-math-v5r: math probe: ' + String((e && e.message) || e)) }
       // The member-library path contract (documented root == the root the framework writes/reads).
       // A broken contract is recorded in `diagnostics` so `report()` shows it instead of leaving a
       // silent "members write where nothing reads" state.
@@ -2218,7 +2218,7 @@ export function apply(ctx) {
     function noteSpawnLimitOnce(member) {
       if (childLimitLoggedThisRound) return
       childLimitLoggedThisRound = true
-      console.error('vibe-math-v5: ' + activationLimitText(hostChildLimit) + (member ? ('（本轮被拒：' + member.id + '）') : ''))
+      console.error('vibe-math-v5r: ' + activationLimitText(hostChildLimit) + (member ? ('（本轮被拒：' + member.id + '）') : ''))
     }
     // The operator-facing sentence used for BOTH the typed error and the durable member record.
     function activationLimitText(limit) {
@@ -2388,7 +2388,7 @@ export function apply(ctx) {
         roundsSinceCompact.set(member.id, softInjected ? 0 : nextRoundsSinceCompact)
         return true
       } catch (e) {
-        console.error('vibe-math-v5: wake ' + member.id + ' failed: ' + String((e && e.message) || e))
+        console.error('vibe-math-v5r: wake ' + member.id + ' failed: ' + String((e && e.message) || e))
         inflight.delete(member.childId)
         busy.delete(member.id)
         return false
@@ -2712,8 +2712,8 @@ export function apply(ctx) {
         heartbeatDisposer = null
         // Drain the Lean compile queue FIRST: it is independent of the scheduler and must run
         // even when the pass below decides there is nothing to do (docs/formal-verification.md §7).
-        runLeanQueue().catch((e) => console.error('vibe-math-v5: lean queue: ' + String((e && e.message) || e)))
-        scheduleNext().catch((e) => console.error('vibe-math-v5: heartbeat: ' + String((e && e.message) || e)))
+        runLeanQueue().catch((e) => console.error('vibe-math-v5r: lean queue: ' + String((e && e.message) || e)))
+        scheduleNext().catch((e) => console.error('vibe-math-v5r: heartbeat: ' + String((e && e.message) || e)))
       }, delay)
     }
     // Digest timer: a chatty institute must not wake everyone per message.
@@ -2721,7 +2721,7 @@ export function apply(ctx) {
       if (digestTimer || !running) return
       digestTimer = ctx.timeout(() => {
         digestTimer = null
-        scheduleNext().catch((e) => console.error('vibe-math-v5: digest: ' + String((e && e.message) || e)))
+        scheduleNext().catch((e) => console.error('vibe-math-v5r: digest: ' + String((e && e.message) || e)))
       }, posMs(params.chatDigestMs, 45000))
     }
 
@@ -3134,7 +3134,7 @@ export function apply(ctx) {
       const delay = (typeof ms === 'number' && ms > 0) ? Math.floor(ms) : 0
       leanDrainTimer = ctx.timeout(() => {
         leanDrainTimer = null
-        runLeanQueue().catch((e) => console.error('vibe-math-v5: lean queue: ' + String((e && e.message) || e)))
+        runLeanQueue().catch((e) => console.error('vibe-math-v5r: lean queue: ' + String((e && e.message) || e)))
       }, delay)
     }
     function clearLeanDrain() { if (leanDrainTimer) { try { leanDrainTimer() } catch (e) { /* ignore */ } leanDrainTimer = null } }
@@ -3179,7 +3179,7 @@ export function apply(ctx) {
         const slot = { job, handle: null }
         leanActive.set(job.jobId, slot)
         runLeanJob(job, slot)
-          .catch((e) => console.error('vibe-math-v5: lean job ' + job.jobId + ': ' + String((e && e.message) || e)))
+          .catch((e) => console.error('vibe-math-v5r: lean job ' + job.jobId + ': ' + String((e && e.message) || e)))
           .finally(() => {
             leanActive.delete(job.jobId)
             if (leanActiveJob === job) { leanActiveJob = null; leanActiveHandle = null }
@@ -3222,7 +3222,7 @@ export function apply(ctx) {
         timedOut: !!job.timedOut, interrupted: !!job.interrupted, buildMatched,
         stderrTail: tail(run.stderr || (buildMatched ? '' : '构建上下文已改变（leanArgs/搜索路径在入队后被修改），本次结果不用于判定'), 800),
       }
-      try { await leanApplySettle(job, run, settledOk, hashMatched && buildMatched) } catch (e) { console.error('vibe-math-v5: lean settle ' + job.jobId + ': ' + String((e && e.message) || e)) }
+      try { await leanApplySettle(job, run, settledOk, hashMatched && buildMatched) } catch (e) { console.error('vibe-math-v5r: lean settle ' + job.jobId + ': ' + String((e && e.message) || e)) }
       await leanWriteJob(job)
       leanQueueNotice(job, run, hashMatched && buildMatched)
     }
@@ -3426,7 +3426,7 @@ export function apply(ctx) {
       let waitedMs = 0
       while (waitMs > 0 && (job.state === 'queued' || job.state === 'running') && now() < deadline) {
         const t0 = now()
-        try { await runLeanQueue() } catch (e) { console.error('vibe-math-v5: lean wait: ' + String((e && e.message) || e)) }
+        try { await runLeanQueue() } catch (e) { console.error('vibe-math-v5r: lean wait: ' + String((e && e.message) || e)) }
         if (job.state === 'queued' || job.state === 'running') {
           await new Promise((resolve) => { ctx.timeout(() => resolve(true), Math.min(25, waitMs)) })
         }
@@ -3592,7 +3592,7 @@ export function apply(ctx) {
       register: () => {},
       params: () => Object.assign({}, params),
       projectRoot: () => instRoot(),
-      designator: 'vibe-math-v5',
+      designator: 'vibe-math-v5r',
       writeText: (rel, text) => mathWriteRel(rel, text),
       readText: (rel) => mathReadRel(rel),
       exists: (rel) => mathExistsRel(rel),
@@ -3622,16 +3622,16 @@ export function apply(ctx) {
         mathLineEn = mathAvailabilityLine(probe, 'en', String(params.mathMode))
         // Drift guard: the shared line must still carry the frozen rule text (a future module
         // edit that drops the rules would silently remove a rule from every round prompt).
-        if (mathLineZh.indexOf(MATH_RULE_LINES[0]) === -1) console.error('vibe-math-v5: the math availability line lost the frozen rules')
-        if (mathLineEn.indexOf(MATH_RULE_LINES_EN[0]) === -1) console.error('vibe-math-v5: the EN math availability line lost the frozen rules')
+        if (mathLineZh.indexOf(MATH_RULE_LINES[0]) === -1) console.error('vibe-math-v5r: the math availability line lost the frozen rules')
+        if (mathLineEn.indexOf(MATH_RULE_LINES_EN[0]) === -1) console.error('vibe-math-v5r: the EN math availability line lost the frozen rules')
         // P2a: the archive→edit→re-run workflow rule must reach the prompt too (it is what makes
         // `scriptChanged` actionable for a member).
-        if (mathLineZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) === -1) console.error('vibe-math-v5: the math availability line lost the archive workflow rule')
-        if (mathLineEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN) === -1) console.error('vibe-math-v5: the EN math availability line lost the archive workflow rule')
+        if (mathLineZh.indexOf(MATH_ARCHIVE_WORKFLOW_LINE) === -1) console.error('vibe-math-v5r: the math availability line lost the archive workflow rule')
+        if (mathLineEn.indexOf(MATH_ARCHIVE_WORKFLOW_LINE_EN) === -1) console.error('vibe-math-v5r: the EN math availability line lost the archive workflow rule')
         // Round-6 (A): an undeclared SUBSTITUTION must never read like the exact result — the
         // honesty rule has to reach the prompt in both languages.
-        if (mathLineZh.indexOf(MATH_SUBSTITUTION_RULE_LINE) === -1) console.error('vibe-math-v5: the math availability line lost the substitution-honesty rule')
-        if (mathLineEn.indexOf(MATH_SUBSTITUTION_RULE_LINE_EN) === -1) console.error('vibe-math-v5: the EN math availability line lost the substitution-honesty rule')
+        if (mathLineZh.indexOf(MATH_SUBSTITUTION_RULE_LINE) === -1) console.error('vibe-math-v5r: the math availability line lost the substitution-honesty rule')
+        if (mathLineEn.indexOf(MATH_SUBSTITUTION_RULE_LINE_EN) === -1) console.error('vibe-math-v5r: the EN math availability line lost the substitution-honesty rule')
         return mathLineZh
       } catch (e) {
         // A probe failure must never break prompt construction: keep whatever we had.
@@ -5953,7 +5953,7 @@ export function apply(ctx) {
         }
         return false
       } catch (e) {
-        console.error('vibe-math-v5: paper pass: ' + String((e && e.stack) || e))
+        console.error('vibe-math-v5r: paper pass: ' + String((e && e.stack) || e))
         return false
       } finally { paperLock = false }
     }
@@ -6726,7 +6726,7 @@ export function apply(ctx) {
         try { if (typeof subagents.interrupt === 'function') subagents.interrupt(target.childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) { /* fire-and-return */ }
         try {
           if (typeof subagents.drainContinuableChildren === 'function') await subagents.drainContinuableChildren(rootAgent, [target.childId])
-        } catch (e) { console.error('vibe-math-v5: drain ' + id + ': ' + String((e && e.message) || e)) }
+        } catch (e) { console.error('vibe-math-v5r: drain ' + id + ': ' + String((e && e.message) || e)) }
         childOwner.delete(target.childId)
         inflight.delete(target.childId)
         liveAgents.delete(target.childId)
@@ -6885,7 +6885,7 @@ export function apply(ctx) {
           await schedulePass()
         } while (reschedule && running && !autoDone)
       } catch (e) {
-        console.error('vibe-math-v5: scheduling pass failed: ' + String((e && e.stack) || e))
+        console.error('vibe-math-v5r: scheduling pass failed: ' + String((e && e.stack) || e))
       } finally {
         scheduling = false
       }
@@ -6961,7 +6961,7 @@ export function apply(ctx) {
       if (!loadSettled) { try { await ready() } catch (e) { /* the pass still runs; status reports it */ } }
       // G-6: deferred spawns are retried BEFORE anything else is scheduled, so freed capacity is
       // spent on the work the cap previously refused (v4's `retryPendingSpawns()` position).
-      try { await retryPendingSpawns() } catch (e) { console.error('vibe-math-v5: pending-spawn retry failed: ' + String((e && e.message) || e)) }
+      try { await retryPendingSpawns() } catch (e) { console.error('vibe-math-v5r: pending-spawn retry failed: ' + String((e && e.message) || e)) }
       clearHeartbeat()
       syncParamsFromState()
       // A verification that is ALREADY in flight is served first: the two coordination
@@ -7389,14 +7389,14 @@ export function apply(ctx) {
       try {
         await handleReply(member, parsed, wakeKind.get(member.id) || 'normal')
       } catch (e) {
-        console.error('vibe-math-v5: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
+        console.error('vibe-math-v5r: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
       }
       try { await maybeRealCompact(childId, member) } catch (e) { /* compaction is best-effort */ }
       wakeKind.delete(member.id)
       if (member.activeMeetingId) delete member.activeMeetingId
       // The final-paper phase is driven by member turns, exactly like a meeting: the reply was
       // just folded, so advance the paper BEFORE asking the (possibly inert) scheduler.
-      try { await paperPass() } catch (e) { console.error('vibe-math-v5: paper after end: ' + String((e && e.message) || e)) }
+      try { await paperPass() } catch (e) { console.error('vibe-math-v5r: paper after end: ' + String((e && e.message) || e)) }
       await scheduleNext()
     }
     // ---- toolFilter names the host may not register -------------------------
@@ -7410,11 +7410,11 @@ export function apply(ctx) {
         const message = String((e && e.message) || e)
         const retry = sanitizeToolFilter(toolFilter, registeredToolsFromError(message))
         if(retry===undefined){
-          console.error('vibe-math-v5: 配置的工具过滤只包含本宿主未注册的工具名，拒绝在不带过滤的情况下启动成员。filter=' + JSON.stringify(toolFilter) + ' 宿主提示：' + message)
+          console.error('vibe-math-v5r: 配置的工具过滤只包含本宿主未注册的工具名，拒绝在不带过滤的情况下启动成员。filter=' + JSON.stringify(toolFilter) + ' 宿主提示：' + message)
           throw e
         }
         if(JSON.stringify(retry) === JSON.stringify(toolFilter)) throw e
-        console.error('vibe-math-v5: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
+        console.error('vibe-math-v5r: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
         // a FRESH spec (and a fresh timeout signal) for the retry
         return await subagents.startContinuable(makeSpec(retry))
       }
@@ -7583,7 +7583,7 @@ export function apply(ctx) {
         })
         while (target.diagnostics.length > 50) target.diagnostics.shift()
       }
-      console.warn('vibe-math-v5: 忽略未知参数键（不静默丢失，已记入 diagnostics）：' + keys.join(', ') + '（来源：' + where + '）')
+      console.warn('vibe-math-v5r: 忽略未知参数键（不静默丢失，已记入 diagnostics）：' + keys.join(', ') + '（来源：' + where + '）')
       return keys
     }
     async function setParams(input) {
@@ -7925,7 +7925,7 @@ export function apply(ctx) {
       await scheduleNext()
       // An interrupted FINAL PAPER resumes its own stage (the paper phase runs before the
       // completion flags, so a crash there leaves a live, resumable institute).
-      if (paperActive()) { try { await paperPass() } catch (e) { console.error('vibe-math-v5: paper after resume: ' + String((e && e.message) || e)) } }
+      if (paperActive()) { try { await paperPass() } catch (e) { console.error('vibe-math-v5r: paper after resume: ' + String((e && e.message) || e)) } }
       // Leftover Lean jobs are re-driven (or explicitly interrupted) on the resume path too.
       try { await recoverLeanJobs() } catch (e) { /* already reported on the ready() path */ }
       return { ok: true, resumed: true, members: members.map((m) => m.id), respawned, running: true }
@@ -8415,7 +8415,7 @@ export function apply(ctx) {
     register: (name, description, parameters) => { if (!mathToolMeta) mathToolMeta = { name, description, parameters } },
     params: () => DEFAULT_PARAMS,
     projectRoot: () => '.',
-    designator: 'vibe-math-v5',
+    designator: 'vibe-math-v5r',
     writeText: async () => false,
     readText: async () => undefined,
     exists: async () => false,
@@ -8427,7 +8427,7 @@ export function apply(ctx) {
   // Drift guard: the installed face must BE the shared frozen text (all four presets must ship
   // the same description — a re-typed copy here would diverge silently).
   if (!mathToolMeta || mathToolMeta.description !== MATH_TOOL_DESCRIPTION) {
-    console.error('vibe-math-v5: math_computation was registered with a description that is not MATH_TOOL_DESCRIPTION')
+    console.error('vibe-math-v5r: math_computation was registered with a description that is not MATH_TOOL_DESCRIPTION')
   }
   function mathHandlerFor(s) {
     let handler = mathSessionHandlers.get(s)
@@ -8809,7 +8809,7 @@ export function apply(ctx) {
     if (!s) return
     s.onMemberEnd(info.id, info)
       .catch((e) => {
-        console.error('vibe-math-v5: end handler: ' + String((e && e.stack) || e))
+        console.error('vibe-math-v5r: end handler: ' + String((e && e.stack) || e))
         // Last line of defence: an exceptional turn must never leave the institute with
         // no end-event and no heartbeat to continue it (v4 §30).
         s.kick()
