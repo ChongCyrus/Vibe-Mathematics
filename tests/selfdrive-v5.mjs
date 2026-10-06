@@ -585,9 +585,45 @@ async function runScenario(name) {
     return Array.isArray(inst.ballots) ? inst.ballots : []
   }
   const ballotRow = (id) => durableBallots().filter((b) => String(b.id) === String(id))[0] || {}
+  // S8 场景的结构化纪要读取（`minutes{}` 写回在耐久会议条目上）。
+  const durableMinutes = (id) => {
+    const s = readV5State() || {}
+    const inst = (s.institutes || {})['default::institute'] || {}
+    const row = (inst.meetings || []).filter((x) => String(x.id) === String(id))[0] || {}
+    return row.minutes || null
+  }
+  // S8 场景的驱动：**对某个成员的「会议」唤醒**回复自定义 payload。会议按名册**逐个**问（轮流发言），
+  // 所以为了轮到目标成员，必须先把**其它成员**的会议唤醒用中性回复放行（`onMemberEnd` 只认 inflight
+  // 令牌，且会议发言只在 `kind==='meeting'` 分支里解析 ⇒ 必须命中【研究所会议】唤醒）。
+  const replyMeeting = async (memberId, payload) => {
+    const cid = childOf(memberId)
+    for (let i = 0; i < 120; i++) {
+      const idx = wakes.findIndex((w) => /【研究所会议/.test(JSON.stringify(w.blocks || '')))
+      if (idx === -1) {
+        // 没有会议唤醒时，先把**别的**待处理唤醒按常规答复（`onMemberEnd` 末尾的 `scheduleNext()`
+        // 才会驱动下一轮调度，会议成员才会被唤醒）——否则会永远等不到会议唤醒。
+        if (wakes.length) { await answerWake(wakes.shift()); continue }
+        await settleAll()
+        await sleep(20)
+        continue
+      }
+      const w = wakes.splice(idx, 1)[0]
+      const mine = w.childId === cid
+      fireEnd(w.childId, mine ? Object.assign({ contextPct: 10 }, payload) : { contextPct: 10 })
+      await settleAll()
+      if (mine) return true
+      await sleep(10)
+    }
+    return false
+  }
   // S7 场景只在 v5r 下可跑（投票板是 v5r 的能力）；v5 路径**显式 skip**。
   if (name.startsWith('s7-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S7 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_poll_open / _vote / _close）')
+    return
+  }
+  // S8 场景只在 v5r 下可跑（表决期禁言＋纪要分区是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s8-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S8 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有表决期禁言与纪要分区）')
     return
   }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
@@ -1272,6 +1308,161 @@ async function runScenario(name) {
       'S7-secret-nonvoter：**默认记名**（secret 缺省 false；got ' + JSON.stringify(stN.poll).slice(0, 200) + '）')
     const repN = String(((await callTool('vibe_v5_report', {})) || {}).report || '')
     assert(repN.indexOf('r-3＝o-2') !== -1, 'S7-secret-nonvoter：记名板在 report() 里公开逐人选择（got len=' + repN.length + '）')
+  } else if (name === 's8-freeze-say') {
+    // S8-freeze-say（R3/K12/B9）：**表决期禁止发言** —— 用 harness **自己的** `drainWakes`（会议唤醒按
+    // 常规作答）做前后对照：冻结**前**的会议发言照常入纪要；冻结**期**同样的回答**一律被拒**（不产生发言）
+    // 且群聊有**具名通知**；`vibe_v5_say` 被具名拒绝；**收束表决后**成员发言恢复。
+    // 注：**举手保留不放行**由 R44 的静态门（门禁路径绝不 `delete meeting.hands`）与拒绝文案共同保证。
+    const mt = await openMeeting('S8 表决期禁言探测')
+    await settleAll()
+    await drainWakes(6)
+    await settleAll()
+    const st0 = await callTool('vibe_v5_status', {})
+    assert(st0.meeting.spoke.length > 0,
+      'S8-freeze-say：对照——冻结**前**的会议发言被记录（got ' + JSON.stringify(st0.meeting.spoke) + '）')
+    const spokeBefore = JSON.stringify(st0.meeting.spokeCount)
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 禁言板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-freeze-say：表决板已开（got ' + JSON.stringify(op).slice(0, 160) + '）')
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(st1.meeting.speech_frozen === true && st1.meeting.frozen_by === 'ballot:' + String(op.ballot.id),
+      'S8-freeze-say：只读冻结面可见（speech_frozen/frozen_by；got ' + JSON.stringify([st1.meeting.speech_frozen, st1.meeting.frozen_by]) + '）')
+    const ref = await callTool('vibe_v5_say', { text: 'S8 表决期插话（应被拒）' }, childAgent(childOf('r-1')))
+    assert(ref.ok === false && ref.code === 'V5_INVALID_ARGUMENT' && /表决期禁止发言/.test(String(ref.message))
+      && /举手队列保留/.test(String(ref.message)),
+      'S8-freeze-say：成员发言 ⇒ 具名拒绝（且文案写明"举手队列保留"；got ' + JSON.stringify(ref).slice(0, 260) + '）')
+    assert(chatTextR10().indexOf('S8 表决期插话（应被拒）') === -1, 'S8-freeze-say：被拒的发言**不产生任何发言**（群聊无该文本）')
+    await drainWakes(8)
+    await settleAll()
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(JSON.stringify(st2.meeting.spokeCount) === spokeBefore,
+      'S8-freeze-say：冻结期**会议与群聊的发言一律被拒**（spokeCount 与冻结前逐字相同；got ' + JSON.stringify(st2.meeting.spokeCount) + ' vs ' + spokeBefore + '）')
+    assert(/被拒/.test(chatTextR10()), 'S8-freeze-say：拒绝有**具名系统通知**（系统消息不受禁言影响）')
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(op.ballot.id), reason: 'S8 收束表决' }, childAgent(childOf('acad')))
+    assert(closed.ok === true, 'S8-freeze-say：表决收束（got ' + JSON.stringify(closed).slice(0, 160) + '）')
+    const after = await callTool('vibe_v5_status', {})
+    assert(!!after.meeting && after.meeting.speech_frozen === false,
+      'S8-freeze-say：收束后自动解冻（got ' + JSON.stringify(after.meeting && after.meeting.speech_frozen) + '）')
+    const ok2 = await callTool('vibe_v5_say', { text: 'S8 解冻后发言' }, childAgent(childOf('r-1')))
+    assert(ok2.ok === true, 'S8-freeze-say：解冻后同一条发言通过（got ' + JSON.stringify(ok2).slice(0, 160) + '）')
+    await drainWakes(4)
+    await settleAll()
+    const st3 = await callTool('vibe_v5_status', {})
+    assert(!st3.meeting || JSON.stringify(st3.meeting.spokeCount) !== spokeBefore,
+      'S8-freeze-say：解冻后会议发言恢复（spokeCount 前进，或会议已正常收束；got ' + JSON.stringify(st3.meeting && st3.meeting.spokeCount) + '）')
+    assert(!!mt && !!mt.id, 'S8-freeze-say：前置会议已开启')
+  } else if (name === 's8-system-not-blocked') {
+    // S8-system-not-blocked：**系统/框架消息不受禁言** —— 表决期仍可派活、进度广播照常、院士不受限；
+    // 同一时刻**成员**仍被拒（证明门只在成员发言入口，没有误伤系统路径）。
+    await openMeeting('S8 系统消息探测')
+    await settleAll()
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 系统消息板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-system-not-blocked：表决板已开')
+    const asg = await callTool('vibe_v5_assign', { to: 'r-2', why: 'S8 表决期派活', acceptance: '完成' }, ROOT)
+    assert(asg.ok === true, 'S8-system-not-blocked：表决期仍可分派任务（系统动作不受禁言；got ' + JSON.stringify(asg).slice(0, 200) + '）')
+    const v = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    assert(v.ok === true && /【投票板·投票】/.test(chatTextR10()), 'S8-system-not-blocked：表决进度广播照常送达')
+    const acadSay = await callTool('vibe_v5_say', { text: 'S8 主持在表决期的说明' }, childAgent(childOf('acad')))
+    assert(acadSay.ok === true, 'S8-system-not-blocked：院士发言不受限（chair-first；got ' + JSON.stringify(acadSay).slice(0, 160) + '）')
+    const memSay = await callTool('vibe_v5_say', { text: 'S8 成员插话' }, childAgent(childOf('r-2')))
+    assert(memSay.ok === false && memSay.code === 'V5_INVALID_ARGUMENT',
+      'S8-system-not-blocked：同一时刻成员仍被拒（对照；got ' + JSON.stringify(memSay).slice(0, 200) + '）')
+  } else if (name === 's8-no-phase-change') {
+    // S8-no-phase-change：冻结**不改阶段、不收束、不写票、无自动解除**；冻结期会议仍可投票/派活/收束；
+    // 收束表决后会议**仍开着**（解冻 ≠ 散会）。
+    await openMeeting('S8 不改阶段探测')
+    await settleAll()
+    const snapBefore = await callTool('vibe_v5_status', {})
+    const phaseBefore = String((snapBefore.meeting || {}).phase || '')
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 阶段板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-no-phase-change：表决板已开')
+    const ref = await callTool('vibe_v5_say', { text: 'S8 冻结期发言' }, childAgent(childOf('r-1')))
+    assert(ref.ok === false, 'S8-no-phase-change：冻结期发言被拒')
+    const stAfter = await callTool('vibe_v5_status', {})
+    assert(!!stAfter.meeting && String(stAfter.meeting.phase) === phaseBefore,
+      'S8-no-phase-change：冻结**不改会议阶段**（' + phaseBefore + ' ⇒ ' + String(stAfter.meeting && stAfter.meeting.phase) + '）')
+    assert(JSON.stringify(stAfter.solveVotes) === JSON.stringify(snapBefore.solveVotes)
+      && JSON.stringify(stAfter.undecided) === JSON.stringify(snapBefore.undecided)
+      && JSON.stringify(stAfter.verified) === JSON.stringify(snapBefore.verified),
+      'S8-no-phase-change：冻结**不写**任何票/真值（solveVotes/undecided/verified 全不变）')
+    const v = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-2')))
+    const asg = await callTool('vibe_v5_assign', { to: 'r-3', why: 'S8 冻结期派活', acceptance: '完成' }, ROOT)
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(op.ballot.id), reason: 'S8 阶段收束' }, childAgent(childOf('acad')))
+    assert(v.ok === true && asg.ok === true && closed.ok === true, 'S8-no-phase-change：冻结期投票/派活/收束都可用')
+    const stEnd = await callTool('vibe_v5_status', {})
+    assert(!!stEnd.meeting && stEnd.meeting.speech_frozen === false,
+      'S8-no-phase-change：收束表决后会议**仍开着**（冻结解除、不是散会；got ' + JSON.stringify(!!stEnd.meeting) + '）')
+  } else if (name === 's8-ballot-unaffected') {
+    // S8-ballot-unaffected（H3）：**票与发言互不折算** —— 被拒的发言不产生票、不改门槛/分母；
+    // 同一时刻的**真票**照常记账；票面里绝不出现被拒发言的文本。
+    await openMeeting('S8 票面不受影响探测')
+    await settleAll()
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 票面板', options: ['甲', '乙'], min_votes: 2 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-ballot-unaffected：表决板已开')
+    const snap0 = await callTool('vibe_v5_status', {})
+    const ref = await callTool('vibe_v5_say', { text: 'S8 被拒的发言' }, childAgent(childOf('r-1')))
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(ref.ok === false && st1.poll.cast === 0 && st1.poll.min_votes_reached === false
+      && JSON.stringify(st1.quorum.voters) === JSON.stringify(snap0.quorum.voters),
+      'S8-ballot-unaffected：被拒发言**不产生票**、不改门槛/票权集合（got cast=' + st1.poll.cast + '）')
+    const v1 = await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    const v2 = await callTool('vibe_v5_poll_vote', { choices: ['o-2'] }, childAgent(childOf('r-2')))
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(v1.ok === true && v2.ok === true && st2.poll.cast === 2 && st2.poll.min_votes_reached === true,
+      'S8-ballot-unaffected：同一时刻**真票照常记账**（cast=2、门槛成立；got ' + JSON.stringify(st2.poll).slice(0, 200) + '）')
+    const row = durableBallots().filter((b) => b.id === String(op.ballot.id))[0] || {}
+    assert((row.votes || []).length === 2 && (row.votes || []).every((x) => Array.isArray(x.choices) && x.choices.length === 1)
+      && (row.votes || []).every((x) => JSON.stringify(x).indexOf('S8 被拒的发言') === -1),
+      'S8-ballot-unaffected：票面只有**真票**（被拒的发言没有变成票；got ' + JSON.stringify(row.votes) + '）')
+  } else if (name === 's8-minutes-zones') {
+    // S8-minutes-zones（K12）：纪要**分区** —— 渲染文本含 `## 发言区`／`## 投票区`（问题/选项/规则/
+    // 计票/有效票/弃权/**未投票名单**），**并**写进结构化 `minutes{}`（双份）。
+    const mt = await openMeeting('S8 纪要分区探测')
+    await settleAll()
+    await drainWakes(6)
+    await settleAll()
+    const stPre = await callTool('vibe_v5_status', {})
+    assert(stPre.meeting.spoke.length > 0, 'S8-minutes-zones：表决前已有发言（发言区非空；got ' + JSON.stringify(stPre.meeting.spoke) + '）')
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 分区板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-minutes-zones：表决板已开')
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(op.ballot.id), reason: 'S8 分区计票' }, childAgent(childOf('acad')))
+    assert(closed.ok === true, 'S8-minutes-zones：表决已收束')
+    await waitMeetingClosed()
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md')
+    const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(mtText.indexOf('## 发言区') !== -1 && /\n### r-/.test(mtText),
+      'S8-minutes-zones：纪要渲染含**发言区**与逐人发言小节（got len=' + mtText.length + '）')
+    assert(mtText.indexOf('## 投票区') !== -1 && mtText.indexOf('S8 分区板') !== -1 && /未投票名单/.test(mtText),
+      'S8-minutes-zones：纪要渲染含**投票区**（问题/规则/计票/未投票名单）')
+    const mins = durableMinutes(String(mt.id))
+    assert(!!mins && Array.isArray(mins.speechZone)
+      && mins.speechZone.length > 0 && mins.speechZone.some((z) => Array.isArray(z.speeches) && z.speeches.length > 0),
+      'S8-minutes-zones：结构化 `minutes.speechZone` 含逐人发言（got ' + JSON.stringify(mins && mins.speechZone).slice(0, 220) + '）')
+    assert(!!mins && Array.isArray(mins.voteZone) && mins.voteZone.length === 1
+      && mins.voteZone[0].question === 'S8 分区板' && mins.voteZone[0].minVotes === 1
+      && Array.isArray(mins.voteZone[0].unvoted) && Array.isArray(mins.voteZone[0].options)
+      && !!mins.voteZone[0].rules && !!mins.voteZone[0].tally,
+      'S8-minutes-zones：结构化 `minutes.voteZone` 字段齐全（问题/选项/规则/计票/未投票名单；got ' + JSON.stringify(mins && mins.voteZone).slice(0, 260) + '）')
+  } else if (name === 's8-exception-path') {
+    // S8-exception-path：**例外通道** —— 程序异议（#46，D2 救济权）**不受禁言影响**；院士/所办不受限
+    // （chair-first）；成员的任何发言入口（群聊/私聊/对表决者）**一律拒**；收束后成员发言恢复。
+    await openMeeting('S8 例外通道探测')
+    await settleAll()
+    const op = await callTool('vibe_v5_poll_open', { question: 'S8 例外板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S8-exception-path：表决板已开')
+    const obj = await callTool('vibe_v5_procedural_objection', { why: 'S8 表决期程序异议（D2 不受限）' }, childAgent(childOf('r-1')))
+    assert(obj.ok === true, 'S8-exception-path：程序异议**不受禁言影响**（D2 救济权；got ' + JSON.stringify(obj).slice(0, 220) + '）')
+    const acadSay = await callTool('vibe_v5_say', { text: 'S8 主持说明' }, childAgent(childOf('acad')))
+    assert(acadSay.ok === true, 'S8-exception-path：院士/所办不受限（chair-first）')
+    const memSay = await callTool('vibe_v5_say', { text: 'S8 成员插话' }, childAgent(childOf('r-2')))
+    const memDm = await callTool('vibe_v5_say', { to: 'r-3', text: 'S8 成员私聊' }, childAgent(childOf('r-2')))
+    const memVoters = await callTool('vibe_v5_say', { to: 'voters', text: 'S8 成员对表决者发言' }, childAgent(childOf('r-2')))
+    assert(memSay.ok === false && memDm.ok === false && memVoters.ok === false,
+      'S8-exception-path：成员的任何发言入口都拒（群聊/私聊/对表决者；got ' + JSON.stringify([memSay.code, memDm.code, memVoters.code]) + '）')
+    const closed = await callTool('vibe_v5_poll_close', { ballot_id: String(op.ballot.id), reason: 'S8 例外收束' }, childAgent(childOf('acad')))
+    assert(closed.ok === true, 'S8-exception-path：收束表决')
+    const ok2 = await callTool('vibe_v5_say', { text: 'S8 解冻后成员发言' }, childAgent(childOf('r-2')))
+    assert(ok2.ok === true, 'S8-exception-path：解冻后成员发言恢复（got ' + JSON.stringify(ok2).slice(0, 160) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

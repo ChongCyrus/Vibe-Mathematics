@@ -714,6 +714,16 @@ export function apply(ctx) {
       }
       if (t === EV.meeting) {
         return withInstitute(state, key, (inst) => {
+          // S8（R3/K12）：**纪要结构化写回**。`make` 是**插入**路径（新会议）；`minutes` 是**同一场会议**的
+          // 追加/覆盖路径（发言区／投票区）——两者互斥，且都只动 `meetings[]`（同 id 不存在则原样返回）。
+          if (typeof d.make !== 'function') {
+            const mid = String((d.index && d.index.id) || d.id || '')
+            if (!mid || !d.minutes) return inst
+            const cur = inst.meetings.filter((x) => x && x.id === mid)[0]
+            if (!cur) return inst
+            const patched = Object.assign({}, cur, { minutes: Object.assign({}, cur.minutes || {}, d.minutes) })
+            return Object.assign({}, inst, { meetings: inst.meetings.map((x) => (x && x.id === mid ? patched : x)) })
+          }
           const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
           const idx = alloc ? d.make(alloc) : d.index
           if (!idx || typeof idx.id !== 'string' || !idx.id) return inst
@@ -1872,6 +1882,34 @@ export function apply(ctx) {
         + (rules.secret ? '｜**不记名**（逐人选择仅供计票；"这次是不记名"已留档）' : '｜记名（逐人选择见 report()）')
         + '。由 ' + me.id + ' **显式**截止；不存在"到点自动结算"。')
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
+    }
+
+    // ── S8（R3/K12/B9）：票与发言的**时序分离** ────────────────────────────────────────────────
+    // 定稿口径：**表决期间不得发言**（`05` B9／`SPEC` K12／`04` 权限矩阵）——进入表决即**冻结发言**
+    // （**举手队列保留、但不放行**：`05` L162）；需要再讨论则**先由院士收束表决**（`vibe_v5_poll_close`
+    // #51）或结束会议。**派生判据**（与 S7 的"板不改会议阶段"一致）：**存在一张 `open` 的投票板 ⇒ 冻结**。
+    // 边界：① 只拦**成员发言入口**（`vibe_v5_say` ＋ 会议唤醒的发言交付）——**系统消息照常**
+    //       ② **不改阶段、不收束、不自动解除**（无定时器；D10/S5 同源）
+    //       ③ **不折算**：发言不产生票、票也不产生发言（H3）
+    //       ④ 程序异议（#46，D2 救济权）与院士/所办的显式说明**不受限**（chair-first）。
+    function speechFrozen() {
+      const b = openBallot()
+      return b
+        ? { frozen: true, ballotId: String(b.id || ''), since: Number(b.at || 0), question: String(b.question || '') }
+        : { frozen: false, ballotId: '', since: 0, question: '' }
+    }
+    const speechFrozenView = () => {
+      const f = speechFrozen()
+      return { frozen: f.frozen, frozen_by: f.frozen ? ('ballot:' + f.ballotId) : '', since: f.since, question: f.question }
+    }
+    /** 成员发言的**唯一门禁**（只作用于成员发言入口；系统消息不经这里）。返回 `null`＝放行。 */
+    function speechGate(callerId) {
+      const f = speechFrozen()
+      if (!f.frozen) return null
+      const m = memberById(callerId)
+      // 例外：院士/所办（chair-first）不受限；程序异议走 #46（另一入口），不经过本门。
+      if (isOffice(callerId) || (m && m.kind === 'academician')) return null
+      return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '表决期禁止发言（R3/K12/B9）：投票板 `' + f.ballotId + '` 仍在进行中。先把表决收束（vibe_v5_poll_close）或由院士结束会议再讨论；**举手队列保留**，解冻后按原顺序放行。程序异议（D2）不受此限。' }
     }
 
     // ---- roster helpers ---------------------------------------------------
@@ -6384,6 +6422,10 @@ export function apply(ctx) {
       // F6: the meeting is closed ⇒ clear the durable OPEN marker (see `beginMeeting`).
       try { await patchInstitute({ meetingOpen: null }) } catch (e) { /* the minutes below matter more */ }
       const lines = []
+      // S8（R3/K12）：纪要**分区** —— 先「## 发言区」（本场发言，含表决前的讨论），最后「## 投票区」
+      // （问题／选项／规则／计票／有效票／弃权／**未投票名单** P12）。两区**同时**写进渲染文本与结构化
+      // `minutes{}`（下面的 `commit(EV.meeting, {index, minutes})`）。
+      lines.push('## 发言区')
       // 逐人小节：**保持"有发言才写"**；同一人的多次发言（举手再发言）按次数标注。
       for (const id of mn.order.concat(Object.keys(mn.invited || {}))) {
         const all = mn.speeches && Array.isArray(mn.speeches[id]) ? mn.speeches[id] : null
@@ -6395,8 +6437,53 @@ export function apply(ctx) {
         else lines.push(String(text || (all && all[0]) || '（无发言）'))
         lines.push('')
       }
+      // S8（R3/K12）：**发言区**的结构化快照（与渲染文本同源）。
+      const speechZone = mn.order.concat(Object.keys(mn.invited || {})).filter((id) => (
+        mn.inputs[id] !== undefined || (Array.isArray(mn.speeches && mn.speeches[id]) && mn.speeches[id].length)
+      )).map((id) => ({
+        by: id,
+        speeches: ((mn.speeches && mn.speeches[id]) || (mn.inputs[id] !== undefined ? [mn.inputs[id]] : [])).slice(),
+        count: Number((mn.spokeCount && mn.spokeCount[id]) || 0),
+        invited: !!(mn.invited && mn.invited[id]),
+      }))
+      // S8（R3/K12）：**投票区** —— 本场会议的每一张板（问题／选项／规则／计票／有效票／弃权／未投票名单）。
+      const voteZone = ballotsList().filter((b) => b && String(b.meetingId || '') === String(mn.id)).map((b) => {
+        const v = ballotView(b) || {}
+        const pending = b.phase === 'open' ? ballotPending(b) : (((b.result || {}).pending) || [])
+        return {
+          ballotId: String(b.id || ''), question: String(b.question || ''),
+          options: (v.options || []).map((o) => o.text), rules: v.rules || ballotRulesView(b),
+          cast: Number(v.cast || 0), valid: Number(v.valid || 0), abstained: Number(v.abstained || 0),
+          tally: v.tally || {}, minVotes: Number(v.minVotes || 0),
+          settled: !!v.settled, outcome: String(v.outcome || ''),
+          quorum_reached: !!v.quorum_reached, m: Number(v.m || 0),
+          unvoted: pending.slice(),
+          secret: !!v.secret,
+        }
+      })
+      if (voteZone.length) {
+        lines.push('## 投票区')
+        for (const z of voteZone) {
+          lines.push('- `' + z.ballotId + '`：' + z.question
+            + '｜选项：' + z.options.map((t, i) => 'o-' + (i + 1) + '＝' + t).join('；')
+            + '｜规则：' + (z.rules.mode === 'single' ? '单选' : '多选（至少 ' + z.rules.min + '、至多 ' + z.rules.max + '）')
+            + '｜**最少收集票 ' + z.minVotes + '** ⇒ ' + (z.settled ? '本次投票成立' : '**不形成结论**（未达门槛）')
+            + '｜法定人数 m＝' + z.m + '（' + (z.quorum_reached ? '阻塞已解除' : '仍被未投票者阻塞') + '）'
+            + '｜已投 ' + z.cast + '（有效 ' + z.valid + '、弃权 ' + z.abstained + '）'
+            + '｜计票：' + z.options.map((t, i) => 'o-' + (i + 1) + '＝' + Number(z.tally['o-' + (i + 1)] || 0)).join('、')
+            + '｜**未投票名单**：' + (z.unvoted.length ? z.unvoted.join('、') : '（无）')
+            + (z.secret ? '｜**不记名**（逐人选择仅供计票）' : ''))
+        }
+      } else {
+        lines.push('## 投票区')
+        lines.push('- （本场会议未使用投票板）')
+      }
       lines.push(...meetingMinutesTail(mn, null))
       lines.push('')
+      // S8（R3/K12）：结构化 `minutes{}` 写回（与渲染文本**双份**；写回失败不得影响纪要）。
+      try {
+        await commit(EV.meeting, { index: { id: mn.id }, minutes: { at: now(), speechZone, voteZone } })
+      } catch (e) { /* 结构化写回失败不得影响纪要 */ }
       const rel = 'Shared/Meetings/' + mn.id + '.md'
       const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + mn.id + '\n\n')
       await writeTextRel(rel, prev + '\n' + lines.join('\n'))
@@ -8151,7 +8238,18 @@ export function apply(ctx) {
           delete meeting.hands[member.id]
           meeting.history.push({ at: now(), id: member.id, what: 'hand-withdrawn' })
         }
-        if (text) {
+        // S8（R3/K12/B9）：**表决期禁止发言** —— 会议唤醒里的**发言交付**（`input`/`say`/`summary`）在
+        // 冻结期**不接受**：不写 `inputs`/`speeches`、不进纪要、**不消费已举的手**（举手**保留**，解冻后
+        // 按原顺序放行）；**票仍然照记**（上面的 `recordSolveVote` 已写）⇒ 票与发言**互不折算**。
+        // 院士/所办不受限（chair-first）；系统消息（本条通知）也不受禁言影响。
+        const frozenSpeech = speechFrozen().frozen && !!text
+          && !(member.kind === 'academician' || isOffice(member.id))
+        if (frozenSpeech) {
+          meeting.history.push({ at: now(), id: member.id, what: 'speech-refused-frozen', ballotId: speechFrozen().ballotId })
+          await saveChatLine('【会议 ' + meeting.id + '】' + member.id + ' 在**表决期**提交发言 ⇒ **被拒**（R3/K12/B9：表决期间禁止发言）。'
+            + '举手**保留**；先由院士收束表决（vibe_v5_poll_close）或结束会议再讨论。')
+        }
+        if (text && !frozenSpeech) {
           // ② 交付发言：只在"这次交付是在还上一次举手"时清除举手；不交付/撤回都不清。按次数累积发言。
           if (pendingHand) delete meeting.hands[member.id]
           if (!Array.isArray(meeting.speeches[member.id])) meeting.speeches[member.id] = []
@@ -8166,7 +8264,7 @@ export function apply(ctx) {
           const rel = 'Shared/Meetings/' + meeting.id + '.md'
           const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + meeting.id + '\n\n')
           await writeTextRel(rel, prev + '### ' + member.id + (n > 1 ? '（第 ' + n + ' 次发言）' : '') + '\n' + text + '\n\n')
-        } else if (meeting.asked[member.id] !== undefined
+        } else if (!frozenSpeech && meeting.asked[member.id] !== undefined
           && meeting.inputs[member.id] === undefined && meeting.silent[member.id] === undefined
           && meeting.unreached[member.id] === undefined && !meeting.hands[member.id]) {
           // ③ 已获机会、这一轮没有发言 ⇒ 记"选择不发言"。**与阶段无关**（第一阶段的机会可能在同一轮里
@@ -8894,6 +8992,8 @@ export function apply(ctx) {
           attempts: Object.assign({}, meeting.retries || {}),
           invited: Object.keys(meeting.invited || {}),
           spoke: Object.keys(meeting.inputs), spokeCount: Object.assign({}, meeting.spokeCount || {}),
+          // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
+          speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
         verify: cv ? { target: cv.target, kind: cv.kind, stage: cv.stage, round: cv.round, voted: Object.keys(cv.votes), m: quorumM(), P: voterCount() } : null,
@@ -9257,7 +9357,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -9463,6 +9563,9 @@ export function apply(ctx) {
   registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
     const from = s.memberIdOfAgent(x)
     if (!from) return s.memberDiagnosis('发言（vibe_v5_say）', from)
+    // S8（R3/K12/B9）：**表决期禁止发言** —— 门在**成员发言入口**（系统/框架消息不经过这里，照常可达）。
+    const frozen = s.speechGate(from)
+    if (frozen) return frozen
     const to = a.to || 'all'
     return s.say(from, { to, text: a.text, kind: to === 'voters' ? 'voters' : (a.to ? 'dm' : 'chat') })
   })

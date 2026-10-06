@@ -866,6 +866,74 @@ const V5R_FAMILIES = [
     to: 'if (false) {',
     expect: /S7-open-six：六项规则快照齐全/,
   },
+  // ── S8 family (R3/K12/B9；docs/09 §12 的 S8 行) ─────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s8-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R44–R48，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 冻结判据失效（有 open 板也放行）⇒ s8-freeze-say 的"成员发言 ⇒ 具名拒绝"必红。
+    name: 'S8: the freeze predicate stops looking at the open ballot (speech flows during a ballot)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-freeze-say' },
+    from: '    function speechFrozen() {\n      const b = openBallot()',
+    to: '    function speechFrozen() {\n      const b = null',
+    expect: /S8-freeze-say：成员发言 ⇒ 具名拒绝/,
+  },
+  {
+    // ② 门塞进 `say()` 内部（**系统消息也被挡**）⇒ s8-system-not-blocked 的"表决期仍可分派任务"必红。
+    name: 'S8: the freeze is enforced inside say() (framework messages would be blocked too)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-system-not-blocked' },
+    from: '    async function say(from, opts) {\n      const text = String((opts && opts.text) || \'\').trim()',
+    to: "    async function say(from, opts) {\n      if (speechFrozen().frozen) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 系统消息也被挡' }\n      const text = String((opts && opts.text) || '').trim()",
+    expect: /S8-system-not-blocked：院士发言不受限/,
+  },
+  {
+    // ③ 冻结**顺手收束**（门禁路径直接收掉会议）⇒ s8-no-phase-change 的"不改会议阶段"必红。
+    name: 'S8: the gate itself closes the meeting (the freeze is no longer passive)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-no-phase-change' },
+    from: '      const f = speechFrozen()\n      if (!f.frozen) return null',
+    to: '      const f = speechFrozen()\n      if (f.frozen && meeting) void finalizeMeeting(meeting)\n      if (!f.frozen) return null',
+    expect: /S8-no-phase-change：冻结\*\*不改会议阶段\*\*/,
+  },
+  {
+    // ④ 冻结**永不解冻**（收束表决后仍禁言）⇒ s8-freeze-say 的"收束后自动解冻"必红。
+    //    （"冻结期清空举手队列"由 R44 的静态门守着：门禁路径出现 `delete meeting.hands` 即红。）
+    name: 'S8: the freeze never lifts (speech stays blocked after the ballot closes)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-freeze-say' },
+    from: '    function speechFrozen() {\n      const b = openBallot()',
+    to: '    function speechFrozen() {\n      return { frozen: true, ballotId: \'mutant\', since: 0, question: \'\' }',
+    expect: /S8-freeze-say：收束后自动解冻/,
+  },
+  {
+    // ⑤ 结构化 `minutes{}` 写回丢失 ⇒ s8-minutes-zones 的"结构化 `minutes.speechZone`/`voteZone`"必红
+    //    （渲染分区那半由 R47 的静态门守着）。
+    name: 'S8: the structured minutes write-back is dropped (the zones live only in the rendered file)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-minutes-zones' },
+    from: '        await commit(EV.meeting, { index: { id: mn.id }, minutes: { at: now(), speechZone, voteZone } })',
+    to: '        void speechZone; void voteZone',
+    expect: /S8-minutes-zones：结构化 `minutes.speechZone`/,
+  },
+  {
+    // ⑥ 冻结范围失控：**院士也被禁言**（chair-first 例外被删）⇒ s8-exception-path 的"院士/所办不受限"必红。
+    //    注：**"到点自动解除"**这一形态由 **R45 的静态门**守着（门禁路径出现任何 `setTimeout`/`armHeartbeat`
+    //    即红）——行为级用定时器会要么落在场景之后（空变异）、要么让子进程崩溃（无按名红名），
+    //    与 S7 族④的教训一致。
+    name: 'S8: the chair is blocked too (the chair-first exemption is dropped from the gate)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-exception-path' },
+    from: '      if (isOffice(callerId) || (m && m.kind === \'academician\')) return null',
+    to: '      if (isOffice(callerId)) return null',
+    expect: /S8-exception-path：院士\/所办不受限/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -880,7 +948,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // 时间纪律（G6 §7.1＋S4/S6 同源加固）：g6-time 的"大小写不敏感"新断言的正控。
   'g6-time',
   // S7（D3/D4/R9/K13）：每个 s7-* 场景一个正控（六项/单选多选/最少收集票/两门槛/弃权改票/不记名）。
-  's7-open-six', 's7-single-multi', 's7-min-votes', 's7-two-thresholds', 's7-abstain-revote', 's7-secret-nonvoter']
+  's7-open-six', 's7-single-multi', 's7-min-votes', 's7-two-thresholds', 's7-abstain-revote', 's7-secret-nonvoter',
+  // S8（R3/K12/B9）：每个 s8-* 场景一个正控（禁言/系统消息/不改阶段/票面/纪要分区/例外通道）。
+  's8-freeze-say', 's8-system-not-blocked', 's8-no-phase-change', 's8-ballot-unaffected', 's8-minutes-zones', 's8-exception-path']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

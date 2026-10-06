@@ -354,6 +354,41 @@ const SELF_PROBE_MUTATIONS = [
     to: '        ballot: (b.votes || []).map((v) => ({',
     expect: 'R43',
   },
+  {
+    name: 'S8: the freeze predicate stops looking at the open ballot (speech flows during a ballot)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '    function speechFrozen() {\n      const b = openBallot()',
+    to: '    function speechFrozen() {\n      const b = null',
+    expect: 'R44',
+  },
+  {
+    name: 'S8: the gate itself starts closing the meeting (the freeze is no longer passive)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const f = speechFrozen()\n      if (!f.frozen) return null',
+    to: '      const f = speechFrozen()\n      if (f.frozen && meeting) void finalizeMeeting(meeting)\n      if (!f.frozen) return null',
+    expect: 'R45',
+  },
+  {
+    name: 'S8: the gate starts writing a solve vote (speech would be folded into a ballot)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const f = speechFrozen()\n      if (!f.frozen) return null',
+    to: "      const f = speechFrozen()\n      if (f.frozen) void putSolve({ member: 'mutant', value: true })\n      if (!f.frozen) return null",
+    expect: 'R46',
+  },
+  {
+    name: 'S8: the minutes lose the speech zone header (the zones are no longer separated)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      lines.push('## 发言区')",
+    to: "      lines.push('## 发言')",
+    expect: 'R47',
+  },
+  {
+    name: 'S8: the freeze is enforced inside say() (framework messages would be blocked too)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '    async function say(from, opts) {\n      const text = String((opts && opts.text) || \'\').trim()',
+    to: "    async function say(from, opts) {\n      if (speechFrozen().frozen) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 系统消息也被挡' }\n      const text = String((opts && opts.text) || '').trim()",
+    expect: 'R48',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1235,6 +1270,43 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; poll_vote in grantable=' + (grantableLine.indexOf('poll_vote') !== -1)
     + '; secret default=' + /const secret = args\.secret === true/.test(pollOpenBody)
     + '; secret board hides choices=' + !/ballot: \(b\.votes/.test(ballotViewBody))
+  // ---- S8 (R3/K12/B9): the temporal separation of ballots and speech --------------------------------
+  // The freeze is DERIVED (an OPEN poll board), enforced BY NAME at BOTH member entries (the say tool
+  // and the meeting reply), never inside `say()` (framework messages must keep flowing), never changes
+  // the phase / closes anything / unfreezes on a timer, never touches a ballot, and the minutes carry
+  // BOTH zones (rendered + structured).
+  const frozenBody = bodyOf('function speechFrozen() {')
+  const speechGateBody = bodyOf('function speechGate(callerId) {')
+  const finalizeBody = bodyOf('async function finalizeMeeting(mn) {')
+  const sayBody = bodyOf('async function say(from, opts) {')
+  gate(/function speechFrozen\(\) \{/.test(v5rRaw) && /const b = openBallot\(\)/.test(frozenBody)
+    && /表决期禁止发言/.test(speechGateBody) && /V5_INVALID_ARGUMENT/.test(speechGateBody)
+    && /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw)
+    && /const frozenSpeech = speechFrozen\(\)\.frozen/.test(v5rRaw)
+    && !/delete\s+meeting\.hands/.test(frozenBody + speechGateBody),
+    'R44', 'S8/R3+K12+B9: during a ballot (an OPEN poll board) member speech must be refused BY NAME at BOTH member entries (vibe_v5_say + the meeting reply), and the freeze must NOT clear the raised-hand queue')
+  gate(!!speechGateBody && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(/.test(frozenBody + speechGateBody),
+    'R45', 'S8/D10: the freeze is DERIVED and passive — it never changes the meeting phase, never closes anything, and has no timer (nothing unfreezes "on time")')
+  gate(!!speechGateBody && !/putSolve\(|castVerdict\(|putVerdict\(|patchInstitute\(\{ ballots|verdicts/.test(speechGateBody)
+    && !/patchInstitute\(\{ ballots/.test(frozenBody)
+    && /recordSolveVote\(/.test(v5rRaw),
+    'R46', 'S8/H3: the freeze touches NO ballot (no putSolve/castVerdict/putVerdict/ballots write) — a vote cast in the same reply still counts, and speech never becomes a vote')
+  gate(/lines\.push\('## 发言区'\)/.test(finalizeBody) && /lines\.push\('## 投票区'\)/.test(finalizeBody)
+    && /未投票名单/.test(finalizeBody)
+    && /const speechZone = /.test(finalizeBody) && /const voteZone = /.test(finalizeBody)
+    && /commit\(EV\.meeting, \{ index: \{ id: mn\.id \}, minutes: \{ at: now\(\), speechZone, voteZone \} \}\)/.test(finalizeBody),
+    'R47', 'S8/K12: the minutes must carry BOTH zones — rendered (`## 发言区` / `## 投票区` with the unvoted list) AND structured (`minutes{speechZone,voteZone}` written back to the durable meeting entry)')
+  gate(!!sayBody && !/speechGate\(|speechFrozen\(/.test(sayBody)
+    && /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw),
+    'R48', 'S8: the gate lives at the MEMBER ENTRY (the vibe_v5_say handler), never inside say() — framework/system messages (assignments, nudges, broadcasts, poll progress) must keep flowing during a ballot')
+  notes.push('S8 (v5r): freeze=' + (/const b = openBallot\(\)/.test(frozenBody) ? 'derived(open ballot)' : 'MISSING')
+    + '; gate at say tool=' + /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw)
+    + '; gate inside say()=' + /speechGate\(|speechFrozen\(/.test(sayBody)
+    + '; meeting reply refused=' + /const frozenSpeech = speechFrozen\(\)\.frozen/.test(v5rRaw)
+    + '; passive(no phase/finalize/timer)=' + !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(/.test(frozenBody + speechGateBody)
+    + '; touches ballot=' + /putSolve\(|castVerdict\(|putVerdict\(|patchInstitute\(\{ ballots/.test(speechGateBody)
+    + '; zones=' + (/lines\.push\('## 发言区'\)/.test(finalizeBody) && /lines\.push\('## 投票区'\)/.test(finalizeBody) ? 'both' : 'MISSING')
+    + '; structured minutes=' + /minutes: \{ at: now\(\), speechZone, voteZone \}/.test(finalizeBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
