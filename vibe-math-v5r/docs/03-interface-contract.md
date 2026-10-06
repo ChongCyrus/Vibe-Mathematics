@@ -71,7 +71,7 @@
 | 29★ | 创办任务板 `meeting_taskboard_open` | 把产物变成**可认领**任务清单 | `tasks[{subject,detail,accept,priority}]` | **是** | 任务板快照 | 建 `task_board` | 院士 | 代行（须显式指定） | 待实现 |
 | 30★ | 分派任务 `meeting_task_assign` | 把任务**直接派给**某人 | `task_id`、`to`、`why?`、`due?` | 可选 | 派单回执 | 任务板 `assigned` | 院士 | 代行（须显式指定） | **现状**（`vibe_v5_assign`） |
 | 31★ | 举手发言 `meeting_raise_hand` | 请求发言机会（可再次举手） | `about?:string`、`retract?:bool=false` | 可选 | 队列位置 | 入队/撤回（**不改阶段**） | 在册成员 | — | **现状**（`meeting_hand` 回复字段） |
-| 32★ | 发言（含引用）`meeting_say` | 发言并可引用过去某条 | `text:string`、`quote_ref?:string`、`quote_excerpt?`、`visibility?` | **是**（`text`） | 发言 id、引用关系 | 记发言；可能推进配额 | 在册成员（受策略） | — | **现状**（`vibe_v5_say`；`quote_ref` 待补） |
+| 32★ | 发言（含引用）`meeting_say` | 发言并可引用过去某条 | `text:string`、`quote_ref?:string`、`quote_excerpt?`、`visibility?` | **是**（`text`） | 发言 id、引用关系 | 记发言；可能推进配额（**表决期：冻结**，见 S8/H14） | 在册成员（受策略） | — | **现状**（`vibe_v5_say`；`quote_ref` 待补） |
 | 33 | 定向质询 `meeting_challenge` | 向某人提必须回答的问题 | `to:string`、`text:string`、`timebox_ms?` | **是** | 质询记录 | `debate(directed)` 排队 | 辩论参与方 | 本章第 3 节（命令契约总表）的权限列 | 待实现 |
 | 34 | 回答质询 `meeting_answer` | 回应质询 | `challenge_id:string`、`text:string` | **是** | 回答记录 | 关闭该质询或标待答 | 被质询者 | — | 待实现 |
 | 35★ | 投票板投票 `meeting_poll_vote` | 在选项式投票板投票（可带理由） | `ballot_id`、`choices[]`、`note?` | 可选 | 投票回执 | 记票；可触发兜底截止 | 有表决权者 | — | **已实现**（v5r 运行时工具 **#50**：布尔票 ＋ 选项式板；**票权只认 `voters()`、不可授**） |
@@ -121,7 +121,7 @@
 | 子阶段 | `opening/roll_call/speech/discussion/settling/motion/debate/voting/tally/resolution/minutes` | 由院士显式动作迁移；**不得**由类型字段、计时器或过程票数触发（R10） |（注意：**计时器不得推进阶段**；而**有界触界**是 R10 第 2 条允许的停止来源，须**具名广播**且**可撤销/续期**——二者不同。）
 
 ### 4.3 `status` / `report` / `overview` 稳定字段
-- **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。（**S7 起填充**：`poll` 沿用上述**既有冻结键**，**只新增子键** `rules`／`min_votes_reached`／`settled`／`pending`／`ballot_id`／`secret`；其中 `quorum_reached`＝**法定人数（结题门）**、`min_votes_reached`＝**本次投票是否成立**——**两个门槛各算各的**，**不加 `status()` 顶层键**。）
+- **`status`**：`meeting.{id,title,type,phase,status,chair}`、`speech.{mode,order,hands_queue,current_speaker,granted{}}`、`poll.{open,question,options,cast,quorum_reached}`、`taskboard.{open,claimed,assigned}`、`attendance{}`、`side.available_commands[]`、`hints[]`。（**S7 起填充**：`poll` 沿用上述**既有冻结键**，**只新增子键** `rules`／`min_votes_reached`／`settled`／`pending`／`ballot_id`／`secret`；其中 `quorum_reached`＝**法定人数（结题门）**、`min_votes_reached`＝**本次投票是否成立**——**两个门槛各算各的**，**不加 `status()` 顶层键**。）（**S8 起填充**：`meeting` 沿用既有键，**只新增只读子键** `speech_frozen`（布尔）／`frozen_by`（`'ballot:<id>'`）——**派生**自"是否存在 `open` 投票板"，**不加 `status()` 顶层键**。）
 - **`report`**：`agenda_progress[]`、`speech_points[]`、`resolutions[]`、`actions[{who,due,state}]`、`poll_results[]`、`blocking[]` ＋ **「静止提示」节**（S5：静止期间**最多一次**的提示 ＋「谁在等谁」）＋ **「临时授权」节**（S6：台账＋生效/失效状态；**只读**）＋ **「投票板」节**（S7：规则快照／两门槛对照／未投票者点名；**secret 板不公开逐人选择**）。
 - **`overview`**：`meetings[{id,type,phase,artifacts}]`、`tasks_summary`、`handover_pending[]` ＋ 「停滞提示」里的**本片段已提示一次**与「谁在等谁」（S5） ＋ 「临时授权（N 条生效／M 条台账）」（S6） ＋ 「投票板（已投 x/y｜最少收集票 k｜法定人数 m｜记名/不记名）」（S7）。
 - **`status` 顶层不加键**：「静止提示」（S5）、「临时授权」（S6）与「投票板」（S7 只加 `poll` 子键）都只进 `report()`／`overview()`（`status` 顶层键是**冻结面**，见 第 2.3 节）；静止期间 `status.meeting` 保持 `null`（框架**不**自动召集会议）。
@@ -224,7 +224,7 @@
 |---|---|---|
 | H1 | **类型字段＝使能而非驱动**：决定"能做什么"，不决定"现在做什么" | 出现按类型自动进入阶段/自动收束 ⇒ 架空 R1/R4，决议来源不清 |
 | H2 | **chair-first**：阶段迁移与收束只能由院士显式动作触发（或**具名广播触界**，可撤销/续期） | 出现"无人主持的推进/停止"，无法追责（R4/R10） |
-| H3 | **票与发言分离**：发言不产生票权，票不因发言改变权重 | 辩论变拉票，列席者获得事实表决权（R3） |
+| H3 | **票与发言分离**：发言不产生票权，票不因发言改变权重；**且表决期内成员发言被具名拒绝**（**S8/H14**） | 辩论变拉票，列席者获得事实表决权（R3） |
 | H4 | **沉默≠同意**：只记"未表态"，**禁止任何折算** | 门槛被"不说话的人数"注水，结论不可审计（R2/定稿 C1） |
 | H5 | **过程判定 vs 结束裁定分离（R10）**：过程票数只是"当时票数的描述" | 过程数字变自动收束器，辩论被掐断（R10） |
 | H6 | **时间字段两类**：墙钟（含时区）用于计划/记录；单调时长用于成本（定义见第 09 章） | 用时长当时刻或反之 ⇒ 时间线与审计被污染（R7/G2） |
@@ -235,6 +235,7 @@
 | H11 | **框架只推荐、不驱动（静止）**：静止（无会议、无验证在飞、无人在飞）时**最多提示一次**（列出「谁在等谁」），**不得**自动召集会议、自动散会、自动收束或推进阶段（**R1／D10 ＋ R4／H2**）；**也不得**代替成员表态——票面／解决票／自述都不由框架写（**R2／R3／D3／D8**） | 框架替所里开会/收束/推进 ⇒ 出现"无人主持的决议"（R1/D10、R4/H2）；框架替成员表态 ⇒ 沉默被折算成票、结论不可审计（R2/R3、D3/D8） |
 | H12 | **授权只改"默认权限表"这一层**：临时授权**不得**产生票权、不得改阶段/票面/收束时点，也不得打开私密与引用面；**凡由裁定级身份保证把守的命令一律不可授**（`end_verify`、主持与代行、票权与代表态、私密与引用面、授权本身）；**不可转授**（GAPS 22） | 授权变成"第二张票"或"绕过裁定级身份" ⇒ 架空 D1/D8/R2/R3/R10 与 D6；转授 ⇒ 授权链失控、不可追责 |
 | H13 | **两个门槛不得混用**：**「最少收集票」`min_votes`**（本次投票**是否成立**）与**法定人数 `m`**（**结题门**：未投票者是否已清空；`m = min(quorumCap, |voters|)`）**各算各的**；不满足 `min_votes` ⇒ **该次投票不形成结论**，**不得**据剩余票推断；**票权只认 `voters()`、永不可授**（H12）；**没有任何"到点自动结算"**（D10） | 把 `m` 折进 `min_votes`（或反之）⇒ 票少也能结题、结论不可审计（R9/K13）；授权扩票权 ⇒ 表决权被外包（D8/H12）；到点自动结算 ⇒ 出现"无人主持的收束"（R1/R10） |
+| H14 | **票与发言的时序互斥**（S8/R3/K12/B9）：**存在 `open` 投票板 ⇒ 冻结发言**（**派生**判据，**不改会议阶段**）；**成员**的两个发言入口（`vibe_v5_say` ＋ 会议唤醒里的发言交付）**一律具名拒绝**（`V5_INVALID_ARGUMENT`＋「表决期禁止发言」），**举手队列保留、不放行、不消费**（解冻后按原顺序放行）；**系统/框架消息不受影响**（分派、催办、广播、进度照常）；**例外＝程序异议（#46，D2 救济权）＋ 院士/所办（chair-first）**；**冻结不改阶段、不收束、无任何"到点解冻"**；会议收束后纪要**两区**（`## 发言区`／`## 投票区`，投票区含**未投票名单** P12） | 只挡工具不挡会议唤醒 ⇒ 禁言**半真**（R3 被架空）；把禁言放进 `say()` 内部 ⇒ 表决期**自己挡住**分派/广播（无人主持的会议）；冻结顺手改阶段/收束 ⇒ "无人主持的收束"（R1/R4/R10）；到点自动解冻 ⇒ 禁言形同虚设（D10）；纪要缺投票区 ⇒ 未投票者不可见（R7/P12） |
 
 ---
 
