@@ -34,7 +34,7 @@
 
 ---
 
-## 3. 命令契约总表（**42 条平台命令** ＋ **2 条 v5r 运行时工具 #43、#44**）
+## 3. 命令契约总表（**42 条平台命令** ＋ **4 条 v5r 运行时工具 #43–#46**）
 
 > 每行 8 字段齐全；`实现` 列基于当前 `vibe-math-v5r.js` 的静态证据（是否已有该**行为**，而非是否已有该名字）。
 
@@ -83,9 +83,11 @@
 | 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
 | 42 | 请假/离席 `meeting_leave` | 通报缺席/提前离席 | `until?:ts`、`reason?` | 可选 | 出席表更新 | `attendance` 更新 | 在册成员 | — | 待实现 |
 | 43★ | 显式结束辩论（v5r 运行时工具）`vibe_v5_end_verify` | 院士显式结束对当前验证对象的辩论，使其进入**结束裁定**（R10-2a） | `target?`、`reason?`（**无 `memberId` 参数：调用者身份由调用上下文推导**） | 否 | `{ok,target,endedBy:'academician',endedByMember,endedAt,endReason,outcome,reason,process{…provisional:true},provisional:false}` | 关闭/置未定论该验证对象（写 `verdicts[target]`） | **仅院士** | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
-| 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`｜`academician`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **待实现**（P2 第 3 步） |
+| 44★ | 自述更新（v5r 运行时工具）`vibe_v5_self_report` | 成员更新**自己的**总目的/子目的/计划流程/进行态（**G6**；`overall/subgoal/plan/status`） | `overall?`、`subgoal?`、`plan?`（有序步骤数组）、`status?`、`reason?`、`source?`（`self`｜`negotiated`｜`academician`）；**一切 `…At`／`…Ms` 时间参数一律拒绝**（**时间由框架设置**） | 否（写入留痕，不产生会议内容） | `{ok,member,fields{overall,subgoal,plan,status},times{overallAt,subgoalAt,planAt},updatedBy,history[],deviation?,deduped?}` | 更新 `members[me].selfReport`（历史保留） | **仅本人**（在册成员；院士可**读**全部，默认**不**静默改写他人） | 否 | **已实现**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 45 | 主持代行（v5r 运行时工具）`vibe_v5_chair_proxy` | **仅院士**可**显式指定**代行收束（D1/R4/R5）；代行**不产生新票权**、主持**不额外加权** | `member`（代行者 id，必填；亦可用别名 `proxy`）、`scope`（**唯一取值** `'close'`）、`why`（**必填**）；**一切 `…At`／`…Ms`／`until` 一律拒绝**（**时间由框架设置**） | 否（只落记录，不产生会议内容） | `{ok,chair{id,since,proxy,scope,why},chairProxy,scope,meetingId,deduped?}`（幂等 ⇒ `deduped:true` 且**不刷新** `since`） | 写入耐久 `chair` 记录＋当次会议 `meeting.chair`（`{id,since,proxy?}`）；**不改阶段、不改票面** | **仅院士** | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
+| 46 | 程序异议（v5r 运行时工具）`vibe_v5_procedural_objection` | **在册成员**（院士/常驻研究员）可对进行中的会议提程序异议并要求主持给出理由（D2 救济通道；**不设**"全体推翻主持"） | `why`（**必填**） | **是**（`why`） | `{ok,objection{by,at,why,chairReply:null,chairReplyPending:true},chairReplyPending,meetingId,deduped?}` | 入档 `meeting.objections[]`＋当次会议纪要（耐久）；**只记录不驱动**（不改阶段/票面/收束时点） | **在册成员**（列席/受邀/临时工 ⇒ `V5_NOT_VOTER`） | 否 | **已落地**（`vibe-math-v5r/vibe-math-v5r.js`） |
 
-**计数**：**现状 13 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **22 处**（院士侧 16、成员侧 6），与 SPEC 一致。**#43／#44 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
+**计数**：**现状 15 条**（#1、#15、#22、#27、#30、#31、#32、#35、#36、#37、#40、**#43**、**#44**、**#45**、**#46**）／**待实现 31 条**；其中 #27、#32、#35 标注了"部分覆盖"（见上表备注）。★ 共 **22 处**（院士侧 16、成员侧 6），与 SPEC 一致。**#43–#46 是 v5r 运行时工具（`vibe_v5_*`），不是 `meeting_*` 平台命令** —— 归入本章以保"对外承诺单一出处"（**42 条平台命令的编号与含义不变**）。
 
 **查看权（G6）**：**在册成员**可查看**全体在册成员**的**工作状态字段**（`overall`／`subgoal`／`plan`／`status` ＋ 各自 `overallAt`／`subgoalAt`／`planAt` 与最近更新者）；**不再是院士专属**。**G5 的边界**：只开放上述工作状态字段，**私聊内容永不进入**（他人私密永不进入）；**默认只读**；**查看留痕**（谁在何时看了谁）；列席／受邀／临时工**单列并标注**，不冒充表决成员。
 
@@ -96,7 +98,9 @@
 ## 4. 状态与观测字段
 
 ### 4.1 会议实体字段（规范）
-`meeting_id`、`title`、`agenda[]`、`type`、`phase`、`chair`、`roster[]`、`attendance{}`、`speech_policy{}`、`ballot{}`、`task_board{}`、`permissions[]`、`timeline[]`、`started_at`、`ended_at`、`duration_ms`、`recess{}`、`minutes{}`、`artifacts{}`、`status`。
+`meeting_id`、`title`、`agenda[]`、`type`、`phase`、`chair`、`objections[]`、`roster[]`、`attendance{}`、`speech_policy{}`、`ballot{}`、`task_board{}`、`permissions[]`、`timeline[]`、`started_at`、`ended_at`、`duration_ms`、`recess{}`、`minutes{}`、`artifacts{}`、`status`。
+
+**主持与救济（S4）字段语义**：`chair`＝当次会议的主持记录 `{id, since, scope, why, proxy?}` —— `id` 只能是院士；`proxy` 存在即"**代行已显式指定**"（D1）；`since` **由框架写入**。`objections[]`＝程序异议档案，每条 `{by, at, why, chairReply:null, chairReplyPending:true}` —— `chairReplyPending:true` 表示"**待主持回应**"；**未经主持回应不得写成 `false` 或省略**。代行与异议**都只记录、不驱动**（不改阶段、不改票面、不延后收束；R1/D10）。
 
 ### 4.2 `phase` 各态与允许迁移
 | phase | 含义 | 允许的下一态（默认） |
@@ -131,9 +135,9 @@
 
 | 码 | 触发 | 可重试 | 文案要点 |
 |---|---|---|---|
-| `V5_NO_OPEN_MEETING` | 无进行中的会议 | 否 | 先开会 |
-| `V5_NOT_ACADEMICIAN` | 非院士执行主持类命令 | 否 | 仅院士（或获临时授权者） |
-| `V5_NOT_VOTER` | 无表决权者投票 | 否 | 列席/临时工无表决权 |
+| `V5_NO_OPEN_MEETING` | 无进行中的会议（含主持代行/程序异议） | 否 | 先开会 |
+| `V5_NOT_ACADEMICIAN` | 非院士执行主持类命令或指定代行 | 否 | 仅院士（或获临时授权者） |
+| `V5_NOT_VOTER` | 无表决权者投票／非在册成员提程序异议 | 否 | 列席/临时工无表决权 |
 | `V5_NOT_OFFICE` | 需要所办身份的机构动作 | 否 | 由所办执行 |
 | `V5_ALREADY_INVITED` | 重复邀请同一人 | 否 | 已邀请（幂等提示） |
 | `V5_INVITE_NOT_TEMP` | 邀请非临时工对象 | 否 | 邀请对象受限 |
@@ -196,6 +200,9 @@
 - **不新增错误码**：`vibe_v5_end_verify` 复用 `V5_NOT_ACADEMICIAN`（非院士）与 `V5_INVALID_ARGUMENT`（当前无进行中的验证／`target` 与在验证对象不匹配），故 §4.2 码表无需新增行。
 - **自述更新（`vibe_v5_self_report`）**：**同值重复提交 ⇒ `{ok:true, deduped:true, …}`**（**不报错**、不再追加历史）；不同值 ⇒ 追加一条历史并刷新该字段的 `…At`。
 - **时间字段由框架设置**：请求里出现任何 `…At`／`…Ms` 字段（如 `updatedAt`／`subgoalAt`）**一律拒绝**，回执说明「**时间由框架设置**」（防伪造/防漂移，见 G6 §7.1）。
+- **主持代行（`vibe_v5_chair_proxy`）**：同值重复（同 `{id, proxy, scope}`）⇒ `{ok:true, deduped:true, …}`（**不报错**、不追加历史、**不刷新 `since`**）；不同值 ⇒ 覆盖并刷新 `since`。
+- **程序异议（`vibe_v5_procedural_objection`）**：同 `by + why` 重复 ⇒ `{ok:true, deduped:true, …}`（不追加）；`chairReply:null` 与 `chairReplyPending:true` 保持可见（**不得假装已回填**）。
+- **主持代行的时间也由框架设置**：请求里出现任何 `…At`／`…Ms`（**含 `until`**）一律拒绝，回执说明「**时间由框架设置**」；代行**不自设时限**（`chair.since` 由框架写入），与上一条 G6 的时间纪律同源。
 
 ## 6. 硬约束（接口层）
 
