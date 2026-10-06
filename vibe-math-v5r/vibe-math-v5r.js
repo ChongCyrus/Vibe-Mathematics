@@ -4779,7 +4779,15 @@ export function apply(ctx) {
     // Anything strictly between is an abstention: excluded from the quorum, included
     // in the mean. Any opposing assertion BLOCKS the verdict, so a minority can never
     // be out-voted by abstention.
-    function judgeVerdict(vs) {
+    // ── R10（docs/02-rulings.md §7.2）：过程判定与结束裁定必须分离 ──────────────────────────
+    // `aggregateOpinion()` 只是"当时票数的描述"（永远带 `provisional: true`，永不产出结论）；
+    // `judgeVerdict(vs, endedBy)` 只有在辩论**已结束**时才可能给出 outcome：
+    //   endedBy = 'round-complete'（每位表决者都作答，本轮结束）| 'bound:idle' | 'bound:round-cap'（具名可撤销触界）。
+    // 忘记传 endedBy ⇒ 一律 undecided（fail-safe，绝不隐式收束）。
+    const R10 = { separation: 1, provisional: 1, namedBound: 1 }
+    const boundOf = (name, why) => ({ name: String(name), why: String(why || ''), at: now(), revocable: true })
+    const R10_PROVISIONAL_NOTE = '（过程票数：尚未生效·仅供参考）'
+    function aggregateOpinion(vs) {
       // E = the LIVE voter set (roster, recomputed on every call). A ballot cast by someone
       // who is no longer in E — a dismissed member whose entry survived in `vs.votes` — is
       // NOT counted, in either mode: `Verified/` may only ever be reached by current voters.
@@ -4799,7 +4807,22 @@ export function apply(ctx) {
         else abstain += 1
       }
       const mean = all.length ? all.reduce((a, x) => a + x, 0) / all.length : 0.5
-      const base = { m, P, bTrue, bFalse, abstain, mean, votedCount: all.length, voters: E }
+      const base = { m, P, bTrue, bFalse, abstain, mean, votedCount: all.length, voters: E, provisional: true }
+      return base
+    }
+    // R10（docs/02-rulings.md §7.2）：**结束裁定**是唯一能产出布尔结论的路径，且必须显式说明"辩论为何结束"。
+    //   · 'round-complete' —— 每位表决者都已作答（这一轮辩论单位已结束）
+    //   · 'bound:idle' / 'bound:round-cap' —— **具名、可撤销**的有界兜底触界
+    // 任何其它情况（含调用方忘记传参）一律 `undecided`：过程票数永远不构成裁定（fail-safe）。
+    function judgeVerdict(vs, endedBy) {
+      const base = aggregateOpinion(vs)
+      if (!endedBy) return Object.assign(base, { outcome: 'undecided', reason: 'R10: 辩论尚未结束（过程票数不构成裁定）' })
+      const E = base.voters
+      const P = base.P
+      const m = base.m
+      const bTrue = base.bTrue
+      const bFalse = base.bFalse
+      const votes = vs.votes || {}
       // DEFECT 2 hardening: with NO voters there is nothing to conclude — every `>= m` test
       // below would be trivially satisfiable if m were ever 0. Consensus needs voters.
       if (P === 0) return Object.assign(base, { outcome: 'undecided', reason: 'no voters: the institute has no voting members yet' })
@@ -4917,14 +4940,20 @@ export function apply(ctx) {
       if (!vs || vs.closed) return
       const stale = now() - Number(vs.lastVoteAt || vs.createdAt || now())
       if (stale >= recoverStallMs()) {
-        // Deadlock watchdog: a broken verification may block consensus for at most
-        // recoverStallMs, then it is abandoned and control returns to the institute's
-        // own self-organization (v4 §26).
+        // R10 §7.2 第 2 条：停止只可能来自（a）院士显式操作，或（b）**具名且可撤销**的有界触界。
+        // 这里是有界兜底：它不是"隐式收束"——触界**具名广播**、记入状态、并**可撤销/续期**
+        // （收到本触界的对象不进入"刚刚定论"的 dedup 窗口，任何成员/院士可重新提议验证以续期）。
+        const bound = boundOf('idle', '长时间无新票，已到有界兜底上限（recoverStallMs=' + recoverStallMs() + 'ms）')
+        const op = aggregateOpinion(vs)
         await putVerdict(vs.target, Object.assign({}, vs, {
-          closed: true, outcome: 'undecided', reason: 'abandoned (stuck)',
-          mean: judgeVerdict(vs).mean, closedAt: now(),
+          closed: true, outcome: 'undecided', reason: 'bound:idle — ' + bound.why,
+          mean: op.mean, endedBy: 'bound:idle', bound, closedAt: now(),
         }))
-        await saveChatLine('【求真表决】' + vs.target + ' 因长时间无新票而被放弃，保留为未定论（附平均概率）。')
+        await saveChatLine('【求真触界｜' + bound.name + '】' + vs.target + '：' + bound.why + '。'
+          + '本触界**具名**且**可撤销/续期**（任意成员或院士可重新提议验证）。'
+          + '过程票数（尚未生效·仅供参考）：真 ' + op.bTrue + '／假 ' + op.bFalse + '／弃权 ' + op.abstain
+          + '，平均概率 ' + Number(op.mean).toFixed(2) + '（m=' + op.m + '，有表决权者 ' + op.P + ' 人）。'
+          + '本轮**不定论**：保留为未定论。')
         await armNextVerify()
         await scheduleNext()
         return
@@ -4954,7 +4983,7 @@ export function apply(ctx) {
       if (finalizeLock) return
       finalizeLock = 'verify'
       try {
-        const j = judgeVerdict(vs)
+        const j = judgeVerdict(vs, 'round-complete')
         if (j.outcome === 'true' || j.outcome === 'false') {
           // ── the `require` gate (§8 of docs/formal-verification.md) ────────────────
           // A unanimous boolean verdict is a CONSENSUS, not a proof. In `require` mode the
@@ -4970,7 +4999,7 @@ export function apply(ctx) {
             await closeVerify(vs, j.outcome === 'true', j)
           }
         } else if (vs.round >= Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))) {
-          await finalizeUndecided(vs, j)
+          await finalizeUndecided(vs, j, { endedBy: 'bound:round-cap', bound: boundOf('round-cap', '已达最大辩论轮数 ' + Math.max(1, Math.floor(Number(params.verdictMaxRounds) || 3))) })
         } else {
           // Move to a REAL debate round: snapshot this round's votes into `history`
           // (so the next prompt can show what others thought), then CLEAR `votes` so every
@@ -4983,9 +5012,9 @@ export function apply(ctx) {
             round: vs.round + 1,
             lastVoteAt: now(),
           })
-          await putVerdict(vs.target, next)
+          await putVerdict(vs.target, Object.assign({}, next, { provisional: true }))
           await saveChatLine('【求真表决】' + vs.target + ' 第 ' + vs.round + ' 轮未定论（' + j.reason + '）。' +
-            '公开辩论并重新表决：' + Object.entries(next.history).map(([k, v]) => k + '=' + Number(v.prob)).join('、'))
+            '公开辩论并重新表决：' + Object.entries(next.history).map(([k, v]) => k + '=' + Number(v.prob)).join('、') + R10_PROVISIONAL_NOTE)
           await askVoters(next)
         }
       } finally {
@@ -5028,7 +5057,9 @@ export function apply(ctx) {
       await armNextVerify()
       await scheduleNext()
     }
-    async function finalizeUndecided(vs, j) {
+    async function finalizeUndecided(vs, j, opts) {
+      const o = opts || {}
+      const bound = o.bound || null
       await writeDebateDoc(vs, false, j)
       // Keep it in the library with the group's MEAN probability — the design's
       // "留库附概率". A missing source card is skipped rather than creating garbage.
@@ -5036,14 +5067,15 @@ export function apply(ctx) {
       await putVerdict(vs.target, Object.assign({}, vs, {
         closed: true, outcome: 'undecided', reason: j.reason, mean: j.mean,
         m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
+        endedBy: String(o.endedBy || 'round-complete'), bound,
         // LOW (deep review): record the ELECTORATE too. judgeVerdict had it (ase.voters) and
         // the closed record used to drop it, so a completed decision could not be audited for who
         // was counted once the roster changed.
         voters: j.voters,
       }))
       await putDebate({ target: vs.target, at: now(), file: 'Shared/Debates/' + vs.target + '.md', outcome: 'undecided' })
-      await saveChatLine('【求真表决】' + vs.target + ' 未达门槛（' + j.reason + '）；留库为未定论，平均概率 ' +
-        Number(j.mean).toFixed(2) + '。辩论记录见 Shared/Debates/' + vs.target + '.md')
+      await saveChatLine((bound ? ('【求真触界｜' + bound.name + '】' + vs.target + '：' + bound.why + '（**具名且可撤销/续期**：任意成员或院士可重新提议验证）') : ('【求真表决】' + vs.target + ' 未达门槛'))
+        + '；留库为未定论，平均概率 ' + Number(j.mean).toFixed(2) + '（' + R10_PROVISIONAL_NOTE + '）。辩论记录见 Shared/Debates/' + vs.target + '.md')
       await markProgress()
       await armNextVerify()
       await scheduleNext()
@@ -5117,7 +5149,7 @@ export function apply(ctx) {
       const j = typeof val === 'object' ? val : null
       const lines = ['# 验证辩论｜' + vs.target + '（' + kindLabel2(vs.kind) + '）｜' + fmtTime(), '']
       if (done) lines.push('**结论**：全体一致为' + (val === 1 || val === 'true' ? '真' : '假') + '（写入 Verified/）')
-      else lines.push('**未达门槛**：平均概率 ' + Number(j ? j.mean : val).toFixed(2) + '｜原因：' + (j ? j.reason : '') +
+      else lines.push('**过程记录（尚未生效·仅供参考）**：未达门槛｜平均概率 ' + Number(j ? j.mean : val).toFixed(2) + '｜原因：' + (j ? j.reason : '') +
         '｜m=' + (j ? j.m : '?') + '｜布尔票 真' + (j ? j.bTrue : '?') + '/假' + (j ? j.bFalse : '?') + '/弃权' + (j ? j.abstain : '?'))
       lines.push('')
       lines.push('- 提出者：' + (vs.proposer || '(office)'))

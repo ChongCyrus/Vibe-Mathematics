@@ -19,8 +19,8 @@ const CHILD_TIMEOUT_MS = Number(process.env.MUTANT_CHILD_TIMEOUT_MS || 300000)
 const TIMES = []
 const hangs = []
 const skipped = []
-function copyGraph(file, dest) {
-  const src = join(REPO, PRESET, file)
+function copyGraph(file, dest, preset) {
+  const src = join(REPO, preset || PRESET, file)
   copyFileSync(src, join(dest, file))
   for (const m of readFileSync(src, 'utf8').matchAll(/from\s+'(\.\/[A-Za-z0-9_.-]+\.js)'/g)) {
     const dep = m[1].slice(2)
@@ -30,8 +30,10 @@ function copyGraph(file, dest) {
 function runFamily(f) {
   const dest = join(tmpdir(), 'v5fix-mut-' + Math.random().toString(36).slice(2, 10))
   mkdirSync(dest, { recursive: true })
-  copyGraph(MAIN, dest)
-  const target = join(dest, f.editFile || MAIN)
+  const preset = f.preset || PRESET
+  const main = preset + '.js'
+  copyGraph(main, dest, preset)
+  const target = join(dest, f.editFile || main)
   const before = readFileSync(target, 'utf8').replace(/\r\n?/g, '\n')   // task-7: anchors are LF; a CRLF checkout made them match 0 times
 if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not EOL-normalised (CRLF leaked into anchor matching)'); process.exit(1) }
   const n = before.split(f.from).length - 1
@@ -59,12 +61,12 @@ if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not E
   let code = 0
   let hang = false
   try {
-    out = execFileSync(process.execPath, [SUITE], {
+    out = execFileSync(process.execPath, [f.suite || SUITE], {
       cwd: REPO, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL',
       // task-13: a mutated CHILD only has to redden BY NAME, so it runs with a SMALL wait floor - the patient
     // default (E2E_V5_WAIT_FLOOR_MS = 30 s inside the suite) belongs to the real gate run. Without this the
     // 15 families x (patient suite) exceeded even the family's 900 s override and timed the family out.
-    env: Object.assign({}, process.env, { [ENV]: join(dest, MAIN), E2E_V5_WAIT_FLOOR_MS: '2000' }),
+    env: Object.assign({}, process.env, { [ENV]: join(dest, main), E2E_V5_WAIT_FLOOR_MS: '2000' }),
     })
   } catch (e) {
     if (e && (e.killed || e.signal === 'SIGKILL')) hang = true
@@ -428,16 +430,47 @@ const FAMILIES = [
     expect: /\[task-31\] P4: 面向代理文本里不再出现/,
   },
 ]
+// ── v5r family (R10 / docs/02-rulings §7.2) ──────────────────────────────────────────────────
+// These three mutate the v5r preset and run the v5r R10 behaviour block (tests/selfdrive-v5.mjs,
+// itself gated on the v5r preset). Each must redden ONE named R10 assertion. The static twin of
+// the same guarantee lives in tests/audit-v5-integrity.mjs (gates R10[1..7]).
+const V5R_FAMILIES = [
+  {
+    name: 'R10-v5r: the idle bound stops being revocable (named触界 must be revocable)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    from: "const bound = boundOf('idle', '长时间无新票，已到有界兜底上限（recoverStallMs=' + recoverStallMs() + 'ms）')",
+    to: "const bound = { name: 'idle', why: '', at: 0, revocable: false }",
+    expect: /R10：idle 触界同样/,
+  },
+  {
+    name: 'R10-v5r: the round-cap close goes back to a bare round-complete (no named bound)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    from: "endedBy: 'bound:round-cap'",
+    to: "endedBy: 'round-complete'",
+    expect: /R10：轮数到顶是/,
+  },
+  {
+    name: 'R10-v5r: the implicit abandoned(stuck) settle is restored in place of bound:idle',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    from: "endedBy: 'bound:idle', bound, closedAt: now(),",
+    to: "endedBy: 'abandoned (stuck)', closedAt: now(),",
+    expect: /R10：空闲兜底是/,
+  },
+]
 let red = 0
-for (const f of FAMILIES) { const ok = runFamily(f); if (ok) red++ }
+const ALL_FAMILIES = FAMILIES.concat(V5R_FAMILIES)
+for (const f of ALL_FAMILIES) { const ok = runFamily(f); if (ok) red++ }
 const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
 console.log('')
-console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + FAMILIES.length)
+console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + ALL_FAMILIES.length)
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
 // R15: the audit-checklist row says EVERY family prints this line, and override decisions must quote it
 // rather than an external estimate. Same shape as tests/formal-verify-v3.mutants.mjs.
 console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
-if (red !== FAMILIES.length || skipped.length || hangs.length) process.exit(1)
+if (red !== ALL_FAMILIES.length || skipped.length || hangs.length) process.exit(1)
 console.log('ALL MUTANTS RED AS REQUIRED')

@@ -95,6 +95,34 @@ const SELF_PROBE_MUTATIONS = [
     to: '`makeFileBackend`（queued 永不重发）',
     expect: 'still states the pre-G1 re-send contract',
   },
+  {
+    name: 'R10[1]: aggregateOpinion loses its provisional marking (process tallies look like verdicts)',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: 'voters: E, provisional: true }',
+    to: 'voters: E }',
+    expect: 'R10[1]',
+  },
+  {
+    name: 'R10[2]: the endedBy fail-safe is deleted (a process tally could decide again)',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: "if (!endedBy) return Object.assign(base, { outcome: 'undecided', reason: 'R10: 辩论尚未结束（过程票数不构成裁定）' })",
+    to: '// R10 fail-safe removed (self-probe)',
+    expect: 'R10[2]',
+  },
+  {
+    name: 'R10[5]: the named bound stops being revocable',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: 'revocable: true',
+    to: 'revocable: false',
+    expect: 'R10[5]',
+  },
+  {
+    name: 'R10[6]: the idle close stops recording its named bound',
+    rel: "vibe-math-v5r/vibe-math-v5r.js",
+    from: "endedBy: 'bound:idle', bound, closedAt: now(),",
+    to: "endedBy: 'bound:idle', closedAt: now(),",
+    expect: 'R10[6]',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -771,6 +799,34 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
+}
+
+// ---- R10 gates (README/docs/02-rulings.md §7.2), targeting the v5r preset ---------------
+// v5 is FROZEN and predates R10, so these gates speak about `vibe-math-v5r` only. They go through
+// `readRaw()` so the `V5_INTEGRITY_MUTATE` self-probe seam reaches them like every other gate.
+{
+  const v5rRaw = readRaw('vibe-math-v5r/vibe-math-v5r.js').replace(/\r\n?/g, '\n')
+  const gate = (cond, key, msg) => { gateCount += 1; if (!cond) findings.push(key + ': ' + msg) }
+  const countOf = (re) => (v5rRaw.match(re) || []).length
+  gate(/function aggregateOpinion\(vs\)/.test(v5rRaw)
+    && /const base = \{[^}]*provisional: true[^}]*\}/.test(v5rRaw),
+    'R10[1]', 'aggregateOpinion() must exist and carry provisional: true (a process tally is never a verdict)')
+  gate(/function judgeVerdict\(vs, endedBy\)/.test(v5rRaw)
+    && /if \(!endedBy\) return Object\.assign\(base, \{ outcome: 'undecided'/.test(v5rRaw),
+    'R10[2]', 'judgeVerdict must require an explicit endedBy (and fall back to undecided)')
+  gate(!/judgeVerdict\(vs\)/.test(v5rRaw.replace(/function judgeVerdict\(vs, endedBy\)/g, '')),
+    'R10[3]', 'a judgeVerdict(vs) call without endedBy exists — process tallies must never decide')
+  gate(/judgeVerdict\(vs, 'round-complete'\)/.test(v5rRaw),
+    'R10[4]', "the end-of-round aggregation must pass endedBy='round-complete'")
+  gate(/boundOf\('idle'/.test(v5rRaw) && /boundOf\('round-cap'/.test(v5rRaw) && /revocable: true/.test(v5rRaw),
+    'R10[5]', 'the idle/round-cap fallbacks must be NAMED bounds (boundOf) and revocable:true')
+  gate(!/abandoned \(stuck\)/.test(v5rRaw)
+    && /endedBy: 'bound:idle', bound,/.test(v5rRaw)
+    && /endedBy: 'bound:round-cap', bound: boundOf\(/.test(v5rRaw),
+    'R10[6]', "a fallback close no longer records its named bound (or the implicit 'abandoned (stuck)' settle is back)")
+  gate(countOf(/尚未生效·仅供参考/g) >= 3 && countOf(/provisional: true/g) >= 2,
+    'R10[7]', 'process tallies are exposed without the provisional marking (尚未生效·仅供参考 / provisional: true)')
+  notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
 // ---- report ------------------------------------------------------------

@@ -403,6 +403,72 @@ assert(sawStaff, '* V5-A3 the staff persona reaches the member persona/prompts (
   assert(existsSync(srcCard) && /- 状态: 已验证·真/.test(readFileSync(srcCard, 'utf8')), 'the source card was rewritten to 已验证·真')
 }
 
+// ---------- R10 (v5r only): 过程判定 vs 结束裁定；触界具名且可撤销 ----------
+// v5 is FROZEN and predates R10, so these assertions run ONLY when the suite is pointed at the v5r
+// preset (V5_PLUGIN=<abs path to vibe-math-v5r/vibe-math-v5r.js>). The static half of the same
+// guarantee always runs in tests/audit-v5-integrity.mjs (gates R10[1..7], each with a single-site
+// self-probe mutation that reddens it BY NAME).
+const IS_V5R = /vibe-math-v5r/.test(PLUGIN.pathname)
+const instDirR10 = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
+const chatTextR10 = () => {
+  const d = join(instDirR10, 'Shared', 'Chat')
+  if (!existsSync(d)) return ''
+  return readdirSync(d).map((f) => { try { return readFileSync(join(d, f), 'utf8') } catch (e) { return '' } }).join('\n')
+}
+const verdictOfR10 = (t) => { const s = readV5State(); return s && s.institutes['default::institute'].verdicts[t] }
+// Drive scheduling passes (the watchdog is reached from them) until `t` is closed or the budget runs out.
+async function waitClosedR10(t, iterations) {
+  for (let i = 0; i < iterations; i++) {
+    const r = verdictOfR10(t)
+    if (r && r.closed) return r
+    await drainWakes(6)
+    await settleAll()
+    await sleep(25)
+  }
+  return verdictOfR10(t)
+}
+if (!IS_V5R) {
+  console.log('  skip - R10 block: v5 is FROZEN and predates R10 (point this suite at v5r to run it); static gates: audit-v5-integrity R10[1..7]')
+} else {
+  // ---- (A) 轮数到顶＝具名触界 round-cap（确定性：本轮四票全到、但布尔票 < m）----
+  await callTool('vibe_v5_set', { verdictMaxRounds: 1 }, ROOT)
+  await callTool('vibe_v5_record_proposition', { id: 'p-r10', title: 'R10 探测', statement: '过程票数不构成裁定。', value: 0.5, motive: 'R10 行为块', p: 0.5 }, childAgent(childOf('r-1')))
+  const pr10 = await callTool('vibe_v5_propose_verify', { target: 'p-r10', kind: 'proposition', reason: 'R10 行为探测' }, childAgent(childOf('r-1')))
+  assert(pr10.ok === true, 'R10：探测对象进入验证')
+  plannedVotes = new Map([['acad', 1], ['r-1', 1], ['r-2', 0.5], ['r-3', 0.5]])
+  assert(await drainVerifyRound(4) === 4, 'R10：四个表决者都作答（本轮结束）')
+  await settleAll()
+  const rec10 = await waitClosedR10('p-r10', 40)
+  assert(!!rec10 && rec10.outcome === 'undecided', 'R10：布尔票 < m ⇒ 未定论（过程票数绝不构成裁定）')
+  assert(!!rec10 && rec10.endedBy === 'bound:round-cap', "R10：轮数到顶是**具名触界**（endedBy='bound:round-cap'），不是隐式收束")
+  assert(!!rec10 && !!rec10.bound && rec10.bound.name === 'round-cap' && rec10.bound.revocable === true,
+    'R10：触界**具名**（bound.name=round-cap）且**可撤销**（revocable=true）已落盘')
+  assert(!!rec10 && Number.isFinite(Number(rec10.mean)), 'R10：意见收敛的平均概率仍作为**过程数据**保留（未替代程序性结论）')
+  assert(/【求真触界｜round-cap】/.test(chatTextR10()), 'R10：触界**具名广播**到群聊（【求真触界｜round-cap】）')
+  assert(/尚未生效·仅供参考/.test(chatTextR10()), 'R10：过程票数带「尚未生效·仅供参考」标注')
+  // ---- (B) 触界可撤销/续期：同一对象重新提议必须被接受（不得被"刚刚定论，忽略重复提议"挡回）----
+  const pr10b = await callTool('vibe_v5_propose_verify', { target: 'p-r10', kind: 'proposition', reason: 'R10 续期探测' }, childAgent(childOf('r-1')))
+  assert(pr10b.ok === true && pr10b.deduped !== true, 'R10：触界**可撤销/续期**（重新提议被接受，未被"刚刚定论"挡回）')
+  let sv10 = await callTool('vibe_v5_status', {})
+  if (!sv10.verify) { await drainWakes(6); await settleAll(); sv10 = await callTool('vibe_v5_status', {}) }
+  assert(!!sv10.verify && sv10.verify.target === 'p-r10', 'R10：续期后该对象重新进入验证（不是"已定论"）')
+  await waitClosedR10('p-r10', 40)   // let the renewed round settle again (round-cap) so the state stays tidy
+  // ---- (C) 空闲触界＝具名 bound:idle（小额 activityTimeoutMs ⇒ recoverStallMs=80ms；无人投票）----
+  await callTool('vibe_v5_set', { activityTimeoutMs: 40, verdictMaxRounds: 3 }, ROOT)
+  await callTool('vibe_v5_record_proposition', { id: 'p-r11', title: 'R10 探测 2', statement: '无人应答是有界触界，不是隐式放弃。', value: 0.5, motive: 'R10 行为块', p: 0.5 }, childAgent(childOf('r-1')))
+  const pr11 = await callTool('vibe_v5_propose_verify', { target: 'p-r11', kind: 'proposition', reason: 'R10 空闲触界探测' }, childAgent(childOf('r-1')))
+  assert(pr11.ok === true, 'R10：第二个探测对象进入验证')
+  const rec11 = await waitClosedR10('p-r11', 80)
+  assert(!!rec11 && rec11.outcome === 'undecided', 'R10：空闲兜底也记未定论（绝不自动下真值结论）')
+  assert(!!rec11 && rec11.endedBy === 'bound:idle', "R10：空闲兜底是**具名触界**（endedBy='bound:idle'），不是隐式放弃")
+  assert(!!rec11 && !!rec11.bound && rec11.bound.name === 'idle' && rec11.bound.revocable === true,
+    'R10：idle 触界同样**具名**且**可撤销**（bound.name/revocable 落盘）')
+  assert(/【求真触界｜idle】/.test(chatTextR10()), 'R10：idle 触界同样**具名广播**（【求真触界｜idle】）')
+  assert(!/abandoned \(stuck\)/.test(JSON.stringify(readV5State() || {})), "R10：隐式 'abandoned (stuck)' 结算语义已消失")
+  await callTool('vibe_v5_set', { activityTimeoutMs: 120000, verdictMaxRounds: 3 }, ROOT)
+  console.log('  R10 block (v5r) done; failures so far=' + failed)
+}
+
 // ---------- the academician's organization powers ----------
 const asg = await callTool('vibe_v5_assign', { subject: '核验 n=3 的情形', to: 'r-2', why: '你在同余方向最强', acceptance: '给出完整的模 9 分析' }, childAgent(childOf('acad')))
 assert(asg.ok === true && asg.task && asg.task.ownerId === 'r-2', 'the academician CAN assign a task to a member')
