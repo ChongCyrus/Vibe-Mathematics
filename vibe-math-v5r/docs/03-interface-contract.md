@@ -1,4 +1,4 @@
-﻿# 第 03 章 · 统一接口契约（Interface Contract）
+# 第 03 章 · 统一接口契约（Interface Contract）
 
 > **本章地位**：本章是会议平台**唯一**的接口权威 —— 命令名、参数、回执、错误码、状态字段、硬约束，**同一件事只有一个说法**。
 > **上游（只读，不得违反）**：`MEETING-PLATFORM-RULINGS.md`（定稿：D1–D10／**R1–R10**／C1–C7／G1–G5／U3–U5）、`MEETING-PLATFORM-SPEC.md`（其第 2 节 统一命名表 42 条、其第 3 节 K1–K14 裁决）、`MEETING-PLATFORM-A-model.md`（命令目录 8 字段）、`MEETING-PLATFORM-PHILOSOPHY.md`、`MEETING-PLATFORM-VOTING.md`、`MEETING-PLATFORM-OVERSIGHT-TIME.md`。
@@ -77,7 +77,7 @@
 | 35★ | 投票板投票 `meeting_poll_vote` | 在选项式投票板投票（可带理由） | `ballot_id`、`choices[]`、`note?` | 可选 | 投票回执 | 记票；可触发兜底截止 | 有表决权者 | — | **已实现**（v5r 运行时工具 **#50**：布尔票 ＋ 选项式板；**票权只认 `voters()`、不可授**） |
 | 36★ | 布尔概率＋理由 `meeting_boolean_vote` | 提交概率估计（0…1）＋理由 | `value:number(0..1)`、`reason:string` | **是**（理由） | 票面回执 | 记票（R10 第 4 条后方可终局） | 有表决权者 | — | **现状**（`vibe_v5_verdict`+聚合） |
 | 37 | 弃权 `meeting_abstain` | 明确弃权（计入已投、不计选项） | `ballot_id`、`reason?` | 可选 | 弃权回执 | 记弃权 | 有表决权者 | — | **现状**（由 **#50** 的 `abstain` 参数承载：计入已投、**不计选项**） |
-| 38 | 附议 `meeting_second` | 附议动议使其成立 | `motion_id:string`（`m-N`，必填） | **是** | 附议回执 | `motion` 计数 +1（附议人**计名**） | **在册成员**（**不需授权**） | 在册成员 | **已实现**（`vibe_v5_second`）：**任何在册成员**可附议；**不可附议自己的动议**（具名拒）；**同一人重复 ⇒ `deduped`（计数不增）**；**达门槛当刻 ⇒ `carried`**（`carriedAt` 由**框架**写）；**`carried` 后附议 ⇒ 幂等、`withdrawn` ⇒ 拒**；**门槛＝参数 `motionSecondsRequired`（默认 1）**；**不用 `voters()` 分母、不产票权、不碰 `ballots`/`cast`** |
+| 38 | 附议 `meeting_second` | 附议动议使其成立 | `motion_id:string`（`m-N`，必填） | **是** | 附议回执 | `motion` 计数 +1（附议人**计名**） | **在册成员**（**不需授权**） | 在册成员 | **已实现**（`vibe_v5_second`）：**任何在册成员**可附议；**不可附议自己的动议**（具名拒）；**同一人重复 ⇒ `deduped`（计数不增）**；**达门槛当刻 ⇒ `carried`**（`carriedAt` 由**框架**写）；**`carried` 后附议 ⇒ 幂等、`withdrawn` ⇒ 拒**；**门槛＝参数 `motionSecondsRequired`（默认 1）**；**不用 `voters()` 分母、不产票权、不碰 `ballots`/`cast`**。**（S19 参数面）`motionSecondsRequired`：`vibe_v5_set` **可设**（`0`／负数／非整数 ⇒ **具名拒 `V5_INVALID_ARGUMENT`**）；**≥1 的整数**；**默认 1**；**单一读取口径**（`motionSecondsRequired()` 读持久 `params`，**无第二份默认值**）；`params` 为**整表替换、读端给缺省**；**门槛 > 在册成员数 ⇒ 动议停留 `proposed`**（`status.meeting.motions.pending` ＋ `needed`/`count` **并列可见**；**不报错、不夹取**）。** |
 | 39 | 提交材料 `meeting_material_submit` | 材料挂到议程条目/议题 | `agenda_item?`、`kind:string`、`text?:string`、`path?:string` | **是**（text 或 path） | 材料 id | 材料列表更新 | 在册成员 | — | 待实现 |
 | 40★ | 请求认领任务 `meeting_task_claim` | **请求**认领（需批准） | `task_id`、`plan?` | 可选 | `pending`/`granted` | 任务板 `claim_pending` | 在册成员 | — | **现状**（任务认领+CAS 修订号） |
 | 41 | 请求休会/延长 `meeting_request` | 提议休会或延长 | `kind:recess/extend`、`by_ms?`、`reason` | 是（理由） | 请求回执 | 入请求队列（**不迁移**） | 在册成员 | — | 待实现 |
