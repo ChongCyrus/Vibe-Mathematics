@@ -636,6 +636,11 @@ async function runScenario(name) {
     console.log('  skip - S10 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有引用锚与私聊补记）')
     return
   }
+  // S11 场景只在 v5r 下可跑（记录人／秘书角色是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s11-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S11 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_secretary / vibe_v5_minutes）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1447,12 +1452,12 @@ async function runScenario(name) {
     const mins = durableMinutes(String(mt.id))
     assert(!!mins && Array.isArray(mins.speechZone)
       && mins.speechZone.length > 0 && mins.speechZone.some((z) => Array.isArray(z.speeches) && z.speeches.length > 0),
-      'S8-minutes-zones：结构化 `minutes.speechZone` 含逐人发言（got ' + JSON.stringify(mins && mins.speechZone).slice(0, 220) + '）')
+      'S8-minutes-zones：结构化 `minutes.speechZone` 含逐人发言（got ' + JSON.stringify((mins && mins.speechZone) || null).slice(0, 220) + '）')
     assert(!!mins && Array.isArray(mins.voteZone) && mins.voteZone.length === 1
       && mins.voteZone[0].question === 'S8 分区板' && mins.voteZone[0].minVotes === 1
       && Array.isArray(mins.voteZone[0].unvoted) && Array.isArray(mins.voteZone[0].options)
       && !!mins.voteZone[0].rules && !!mins.voteZone[0].tally,
-      'S8-minutes-zones：结构化 `minutes.voteZone` 字段齐全（问题/选项/规则/计票/未投票名单；got ' + JSON.stringify(mins && mins.voteZone).slice(0, 260) + '）')
+      'S8-minutes-zones：结构化 `minutes.voteZone` 字段齐全（问题/选项/规则/计票/未投票名单；got ' + JSON.stringify((mins && mins.voteZone) || null).slice(0, 260) + '）')
   } else if (name === 's8-exception-path') {
     // S8-exception-path：**例外通道** —— 程序异议（#46，D2 救济权）**不受禁言影响**；院士/所办不受限
     // （chair-first）；成员的任何发言入口（群聊/私聊/对表决者）**一律拒**；收束后成员发言恢复。
@@ -1760,6 +1765,121 @@ async function runScenario(name) {
     assert(qf.ok === false && /表决期禁止发言/.test(String(qf.message)),
       'S10×S8：冻结期**引用随发言一起被拒**（同一入口；got ' + JSON.stringify(qf).slice(0, 240) + '）')
     assert(chatTextR10().indexOf('S10 冻结期引用（应被拒）') === -1, 'S10×S8：被拒的引用**不产生任何发言**')
+  } else if (name === 's11-appoint') {
+    // S11-appoint（GAPS 29）：院士指定**非主持成员**为记录人 ⇒ 生效 ＋ 只读面 ＋ 台账（append-only）＋ 广播。
+    const mt = await openMeeting('S11 记录人指定探测')
+    await settleAll()
+    const ap = await callTool('vibe_v5_secretary', { who: 'r-1', why: 'S11 记录与主持分离' }, childAgent(childOf('acad')))
+    assert(ap.ok === true && ap.secretary && ap.secretary.who === 'r-1' && String(ap.secretary.meetingId) === String(mt.id),
+      'S11：院士可指定记录人（got ' + JSON.stringify(ap).slice(0, 220) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(String(sv.meeting.secretary) === 'r-1' && Number(sv.meeting.record_entry_count) === 0,
+      'S11：只读面可见（status.meeting.secretary/record_entry_count；got ' + JSON.stringify([sv.meeting.secretary, sv.meeting.record_entry_count]) + '）')
+    const led = ((readV5State() || {}).institutes['default::institute'].secretaries) || []
+    assert(led.length === 1 && led[0].who === 'r-1' && led[0].by === 'acad' && Number(led[0].at) > 0 && String(led[0].meetingId) === String(mt.id),
+      'S11：台账 append-only 一条（who/by/at/meetingId；got ' + JSON.stringify(led) + '）')
+    assert(/【记录人】/.test(chatTextR10()), 'S11：指定**具名广播**')
+    const ap2 = await callTool('vibe_v5_secretary', { who: 'r-1' }, childAgent(childOf('acad')))
+    assert(ap2.ok === true && ap2.deduped === true, 'S11：同值指定 ⇒ **幂等**（deduped，不追加台账；got ' + JSON.stringify(ap2).slice(0, 180) + '）')
+    const led2 = ((readV5State() || {}).institutes['default::institute'].secretaries) || []
+    assert(led2.length === 1, 'S11：幂等**不追加台账**（仍 1 条）')
+  } else if (name === 's11-self-refused') {
+    // S11-self-refused（GAPS 29 核心）：**不得自任**（院士/所办）＋ **临时工不可被指定**（仅在册成员）。
+    await openMeeting('S11 禁止自任探测')
+    await settleAll()
+    const self = await callTool('vibe_v5_secretary', { who: 'acad', why: 'S11 自任探测' }, childAgent(childOf('acad')))
+    assert(self.ok === false && self.code === 'V5_INVALID_ARGUMENT' && /主持人不得兼任唯一记录者/.test(String(self.message)),
+      'S11/GAPS 29：**院士不得自任**记录人（具名拒；got ' + JSON.stringify(self).slice(0, 240) + '）')
+    const off = await callTool('vibe_v5_secretary', { who: 'office' }, childAgent(childOf('acad')))
+    assert(off.ok === false, 'S11：**所办**也不可被指定（got ' + JSON.stringify(off).slice(0, 180) + '）')
+    const temp = await callTool('vibe_v5_secretary', { who: 't-1' }, childAgent(childOf('acad')))
+    assert(temp.ok === false && temp.code === 'V5_NOT_VOTER',
+      'S11：**临时工不可被指定**（仅在册成员；got ' + JSON.stringify(temp).slice(0, 200) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(String(sv.meeting.secretary) === '', 'S11：三次拒绝**无副作用**（记录人仍为空）')
+  } else if (name === 's11-only-academician') {
+    // S11-only-academician（`03` #28/#27）：指定**仅院士**；写条目＝**院士 ∪ 当前记录人**；其他成员具名拒。
+    await openMeeting('S11 权限面探测')
+    await settleAll()
+    const bad = await callTool('vibe_v5_secretary', { who: 'r-1' }, childAgent(childOf('r-2')))
+    assert(bad.ok === false && bad.code === 'V5_NOT_ACADEMICIAN',
+      'S11/#28：非院士指定记录人 ⇒ 具名拒（got ' + JSON.stringify(bad).slice(0, 200) + '）')
+    const ap = await callTool('vibe_v5_secretary', { who: 'r-1' }, childAgent(childOf('acad')))
+    assert(ap.ok === true, 'S11：院士指定 r-1（前置）')
+    const other = await callTool('vibe_v5_minutes', { entry: 'S11 非记录人写条目（应被拒）' }, childAgent(childOf('r-2')))
+    assert(other.ok === false && other.code === 'V5_NOT_VOTER' && /记录人/.test(String(other.message)),
+      'S11/#27：**非记录人**写条目 ⇒ 具名拒（got ' + JSON.stringify(other).slice(0, 240) + '）')
+    const mine = await callTool('vibe_v5_minutes', { entry: 'S11 记录人条目（r-1）' }, childAgent(childOf('r-1')))
+    assert(mine.ok === true && mine.entry && mine.entry.by === 'r-1',
+      'S11/#27：**记录人**可写条目（got ' + JSON.stringify(mine).slice(0, 220) + '）')
+    const chairWrite = await callTool('vibe_v5_minutes', { entry: 'S11 院士条目（acad）' }, childAgent(childOf('acad')))
+    assert(chairWrite.ok === true, 'S11/#27：**院士**也可写条目（`03` #27"院士/纪要人"；got ' + JSON.stringify(chairWrite).slice(0, 200) + '）')
+  } else if (name === 's11-record-entries') {
+    // S11-record-entries：记录人**只增不改**追加具名条目 ⇒ 纪要出现独立小节 `## 记录人补充` ＋ 责任人行；
+    // **同一条目幂等**；无 `entry` ⇒ **只报缺口**（不自动补全，R7）。
+    const mt = await openMeeting('S11 记录人条目探测')
+    await settleAll()
+    await callTool('vibe_v5_secretary', { who: 'r-1' }, childAgent(childOf('acad')))
+    const gaps = await callTool('vibe_v5_minutes', { detail: 'brief' }, childAgent(childOf('r-1')))
+    const gapsOk = gaps.ok === true && !!gaps.minutes && Array.isArray(gaps.minutes.gaps) && gaps.minutes.gaps.length > 0
+      && /不自动补全/.test(String(gaps.minutes && gaps.minutes.note))
+    assert(gapsOk, 'S11/R7：无 `entry` ⇒ **只报缺口**（不自动补全；got ' + JSON.stringify(gaps).slice(0, 240) + '）')
+    const e1 = await callTool('vibe_v5_minutes', { entry: 'S11 条目：议程要点与行动项', agenda_item: 'S11' }, childAgent(childOf('r-1')))
+    assert(e1.ok === true && e1.entry && e1.entry.by === 'r-1' && Number(e1.entry.at) > 0,
+      'S11：记录人追加具名条目（got ' + JSON.stringify(e1).slice(0, 220) + '）')
+    const e2 = await callTool('vibe_v5_minutes', { entry: 'S11 条目：议程要点与行动项' }, childAgent(childOf('r-1')))
+    assert(e2.ok === true && e2.deduped === true, 'S11：**同一条目幂等**（deduped；got ' + JSON.stringify(e2).slice(0, 180) + '）')
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md')
+    let mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(mtText.indexOf('S11 条目：议程要点与行动项') !== -1, 'S11：条目**立即追加进纪要**（append-only；got len=' + mtText.length + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(Number(sv.meeting.record_entry_count) === 1, 'S11：只读面 `record_entry_count` = 1（got ' + JSON.stringify(sv.meeting.record_entry_count) + '）')
+    await waitMeetingClosed()
+    mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(mtText.indexOf('## 记录人补充') !== -1 && mtText.indexOf('- 纪要责任人：r-1') !== -1,
+      'S11：收束后纪要含**独立小节** `## 记录人补充` ＋责任人行（got len=' + mtText.length + '）')
+    assert(mtText.indexOf('S11 条目：议程要点与行动项') !== -1, 'S11：条目**在收束后的纪要里仍在**（可追）')
+  } else if (name === 's11-zones-and-anchors') {
+    // S11×S8×S10：记录人条目**不破坏两区**、**不影响** S10 的会议内锚（只追加、绝不重写 `### <who>`）。
+    const mt = await openMeeting('S11 两区与锚探测')
+    await settleAll()
+    const gotSpeech = await replyMeeting('r-1', { input: 'S11 会议发言（锚的前置）' })
+    assert(gotSpeech, 'S11：r-1 交付会议发言（前置）')
+    await settleAll()
+    await callTool('vibe_v5_secretary', { who: 'r-2' }, childAgent(childOf('acad')))
+    const e = await callTool('vibe_v5_minutes', { entry: 'S11 记录人条目（不得破坏两区/锚）' }, childAgent(childOf('r-2')))
+    assert(e.ok === true, 'S11：记录人条目已追加（前置；got ' + JSON.stringify(e).slice(0, 160) + '）')
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md')
+    let mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(mtText.indexOf('### r-1') !== -1 && mtText.indexOf('S11 记录人条目（不得破坏两区/锚）') !== -1,
+      'S11×S8：逐人发言小节**未被重写**，且记录人条目**追加**在同一文件（got len=' + mtText.length + '）')
+    const q = await callTool('vibe_v5_say', { text: 'S11 记录条目后引用锚', quote_ref: 'mt-' + String(mt.id) + '#speech-r-1-1' }, childAgent(childOf('r-3')))
+    assert(q.ok === true && q.quote && q.quote.domain === 'meeting',
+      'S11×S10：**记录人条目后，会议内锚仍可解析**（got ' + JSON.stringify(q).slice(0, 240) + '）')
+    await waitMeetingClosed()
+    mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    assert(mtText.indexOf('## 发言区') !== -1 && mtText.indexOf('## 投票区') !== -1 && mtText.indexOf('## 记录人补充') !== -1,
+      'S11×S8：收束后**两区仍在**且记录人小节**独立**（got len=' + mtText.length + '）')
+    assert(mtText.indexOf('## 投票区') < mtText.indexOf('## 记录人补充'),
+      'S11×S8：`## 记录人补充` 位于**两区之后**（S8 门不回归）')
+  } else if (name === 's11-revoke-idempotent') {
+    // S11-revoke-idempotent：撤销 ⇒ 责任人清空；**再撤销 ⇒ 幂等**；换人 ⇒ 旧记录带 `revokedAt`（append-only）；
+    // 换人后**前记录人**不再能写条目。
+    await openMeeting('S11 撤销幂等探测')
+    await settleAll()
+    await callTool('vibe_v5_secretary', { who: 'r-1' }, childAgent(childOf('acad')))
+    const rv = await callTool('vibe_v5_secretary', { revoke: true }, childAgent(childOf('acad')))
+    assert(rv.ok === true && rv.revoked === 'r-1', 'S11：撤销记录人（got ' + JSON.stringify(rv).slice(0, 200) + '）')
+    const rv2 = await callTool('vibe_v5_secretary', { revoke: true }, childAgent(childOf('acad')))
+    assert(rv2.ok === true && rv2.deduped === true, 'S11：**再撤销 ⇒ 幂等**（deduped；got ' + JSON.stringify(rv2).slice(0, 180) + '）')
+    const ap2 = await callTool('vibe_v5_secretary', { who: 'r-2' }, childAgent(childOf('acad')))
+    assert(ap2.ok === true, 'S11：换人（r-1 ⇒ r-2）')
+    const led = ((readV5State() || {}).institutes['default::institute'].secretaries) || []
+    assert(led.length === 3 && led[0].who === 'r-1' && Number(led[0].revokedAt) === 0 && Number(led[1].revokedAt) > 0 && led[2].who === 'r-2',
+      'S11：台账 **append-only**（指定 1 条 ＋ 撤销 1 条（`revokedAt`）＋ 换人 1 条；got ' + JSON.stringify(led).slice(0, 300) + '）')
+    const exSec = await callTool('vibe_v5_minutes', { entry: 'S11 前记录人写条目（应被拒）' }, childAgent(childOf('r-1')))
+    assert(exSec.ok === false && exSec.code === 'V5_NOT_VOTER',
+      'S11：**前记录人**不再能写条目（got ' + JSON.stringify(exSec).slice(0, 220) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

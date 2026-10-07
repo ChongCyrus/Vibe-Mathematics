@@ -617,6 +617,12 @@ export function apply(ctx) {
             const nextS = typeof patch.chatSupplements === 'function' ? patch.chatSupplements(Array.isArray(n.chatSupplements) ? n.chatSupplements : []) : patch.chatSupplements
             if (nextS !== undefined) n.chatSupplements = Array.isArray(nextS) ? nextS : []
           }
+          // S11（GAPS 29）：**记录人台账**（append-only：谁在何时被指定/撤销、对哪次会议）。
+          // 同样走 fold 白名单 ⇒ 漏写即静默丢弃。
+          if (patch.secretaries !== undefined) {
+            const nextR = typeof patch.secretaries === 'function' ? patch.secretaries(Array.isArray(n.secretaries) ? n.secretaries : []) : patch.secretaries
+            if (nextR !== undefined) n.secretaries = Array.isArray(nextR) ? nextR : []
+          }
           return n
         })
       }
@@ -1536,6 +1542,10 @@ export function apply(ctx) {
       // S7（D3/D4/R9/K13）：开/关投票板（#24/#25，权限＝院士）—— 与 `board` 同属**默认表**，
       // **不在** `GRANTABLE_COMMANDS` ⇒ 永不可授（S6 的可授集合保持四命令不变）。
       if (command === 'poll_open' || command === 'poll_close') return acad
+      // S11（GAPS 29）：**指定/撤销记录人**＝默认表（**仅院士**；**不在**可授集合 ⇒ 永不可授）。
+      if (command === 'secretary') return acad
+      // S11：**纪要条目/生成**＝院士 ∪ **当次会议的记录人**（记录权与表决权**分离**；不因授权而开）。
+      if (command === 'minutes') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))
       if (command === 'assign' || command === 'prioritize' || command === 'nudge' || command === 'convene') return !!(acad && params.academicianLeads)
       return false
     }
@@ -1893,6 +1903,105 @@ export function apply(ctx) {
         + (rules.secret ? '｜**不记名**（逐人选择仅供计票；"这次是不记名"已留档）' : '｜记名（逐人选择见 report()）')
         + '。由 ' + me.id + ' **显式**截止；不存在"到点自动结算"。')
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
+    }
+
+    // ── S11（GAPS 29）：**记录人／秘书角色**（记录与主持分离）────────────────────────────────────
+    // ① 只有**在册成员**可被指定（**排除临时工**）；**院士/所办不得自任**（"主持人不得兼任唯一记录者"）。
+    // ② 记录人只拿**记录权**（追加具名条目）：**不获得票权、不改阶段/分母**（C5/R5 分离）。
+    // ③ **只增不改**：**绝不重写** `### <who>` 发言小节（S10 的会议内锚依赖它）与**两区**（S8），
+    //    也不删改异议尾注（S4）；**不自动补全**缺口（只报缺口；R7）。
+    // ④ **随会议收束失效**（当次会议绑定；与 U5"同一会议"单位一致）；未指定 ⇒ `secretary=''`
+    //    且明写"未指定：由框架自动落盘，无成员责任人"（**绝不**把框架/院士写成责任人）。
+    const SECRETARY_ENTRY_MAX = 1000
+    const NO_SECRETARY_NOTE = '未指定：由框架自动落盘，无成员责任人'
+    const currentSecretary = () => ((meeting && meeting.secretary) ? String(meeting.secretary) : '')
+    const secretaryEntriesOf = (mn) => ((mn && Array.isArray(mn.recordEntries)) ? mn.recordEntries : [])
+    /** S11 #53：**指定/撤销记录人**（仅院士；**不得自任**；当次会议绑定；同值幂等；撤销 append-only）。 */
+    async function secretaryTool(memberId, a) {
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTime.join('、') }
+      const gate = canDo(memberId, 'secretary')
+      if (!gate.ok) return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以指定/撤销记录人（GAPS 29／`03` #28）' }
+      const who = String(args.who || args.member || '').trim()
+      const revoke = args.revoke === true || String(args.op || '').trim() === 'revoke'
+      if (!revoke && !who) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'who is required：指定记录人必须给出成员 id' }
+      const m = revoke ? null : memberById(who)
+      if (!revoke && !m) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: '找不到成员 ' + who }
+      if (!revoke && (m.kind === 'academician' || isOffice(who))) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '记录与主持分离（GAPS 29）：**主持人不得兼任唯一记录者** ⇒ 不能把院士/所办指定为记录人' }
+      }
+      if (!revoke && m.kind === 'temp') return { ok: false, code: 'V5_NOT_VOTER', message: '记录人必须是**在册成员**（临时工不可被指定）' }
+      if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '指定记录人失败：当前没有进行中的会议（记录人**当次会议绑定**）' }
+      const at = now()
+      const mtId = String(meeting.id)
+      const entry = { who, by: memberId, at, meetingId: mtId, revokedAt: 0 }
+      if (revoke) {
+        if (String(meeting.secretary || '') === '') {
+          return { ok: true, deduped: true, secretary: null, meetingId: mtId, message: '当前未指定记录人（撤销幂等）' }
+        }
+        const prev = String(meeting.secretary)
+        meeting.secretary = ''
+        meeting.secretaryAt = at
+        await patchInstitute({ secretaries: (list) => (Array.isArray(list) ? list : []).concat([Object.assign({}, entry, { who: prev, revokedAt: at })]) })
+        await saveChatLine('【记录人】' + memberId + ' 撤销 ' + prev + ' 的记录人职责（当次会议 ' + mtId + '）；纪要责任人回到"**' + NO_SECRETARY_NOTE + '**"。')
+        return { ok: true, revoked: prev, meetingId: mtId, message: '已撤销记录人（当次会议绑定）' }
+      }
+      if (String(meeting.secretary || '') === who) {
+        return {
+          ok: true, deduped: true, meetingId: mtId,
+          secretary: { who, by: memberId, at: Number(meeting.secretaryAt || at), meetingId: mtId },
+          message: '记录人已是 ' + who + '（幂等，不追加台账）',
+        }
+      }
+      meeting.secretary = who
+      meeting.secretaryAt = at
+      meeting.secretaryBy = memberId
+      await patchInstitute({ secretaries: (list) => (Array.isArray(list) ? list : []).concat([entry]) })
+      await saveChatLine('【记录人】' + memberId + ' 指定 ' + who + ' 为本次会议（' + mtId + '）的**记录人**：对纪要的**准确与完整**负责（GAPS 29；只拿记录权，**不获票权**）。')
+      if (args.why) await saveChatLine('【记录人｜理由】' + String(args.why))
+      return {
+        ok: true, secretary: { who, by: memberId, at, meetingId: mtId },
+        note: '记录人**当次会议绑定**，会议收束即失效',
+        message: '已指定记录人 ' + who + '（对纪要负责；不获票权）',
+      }
+    }
+    /** S11 #54：**记录人（或院士）追加具名条目**；无 `entry` ⇒ **只报缺口、不自动补全**（R7）。 */
+    async function minutesTool(memberId, a) {
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTime.join('、') }
+      const gate = canDo(memberId, 'minutes')
+      if (!gate.ok) {
+        return { ok: false, code: 'V5_NOT_VOTER', message: '纪要条目只能由**院士或当次会议的记录人**写入（`03` #27）：当前记录人＝' + (currentSecretary() || ('（' + NO_SECRETARY_NOTE + '）')) }
+      }
+      if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '没有进行中的会议：纪要条目随当次会议入档' }
+      const detail = String(args.detail || 'normal')
+      const text = String(args.entry || args.text || '').trim()
+      if (!text) {
+        const gaps = []
+        if (!secretaryEntriesOf(meeting).length) gaps.push('记录人补充（尚无条目）')
+        if (!String(meeting.agenda || '').trim()) gaps.push('议程')
+        if (!Object.keys(meeting.inputs || {}).length) gaps.push('发言区（尚无发言）')
+        if (!ballotsList().some((b) => String(b.meetingId || '') === String(meeting.id))) gaps.push('投票区（本场未用板）')
+        return {
+          ok: true,
+          minutes: { meetingId: String(meeting.id), secretary: currentSecretary(), detail, entries: secretaryEntriesOf(meeting).length, gaps, note: '只报缺口，**不自动补全**（R7）' },
+        }
+      }
+      if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '条目过长（上限 ' + SECRETARY_ENTRY_MAX + ' 字符）' }
+      const entries = secretaryEntriesOf(meeting)
+      const same = entries.filter((x) => x && String(x.text) === text)[0]
+      if (same) return { ok: true, deduped: true, entry: same, message: '同一条目已是同值（幂等）：未重复写纪要' }
+      const entry = { by: memberId, at: now(), text, agenda_item: String(args.agenda_item || '') }
+      meeting.recordEntries = entries.concat([entry])
+      // **只追加**（`appendMeetingTail` 语义）：绝不重写既有 `### <who>` 小节/两区（否则 S10 的会议内锚会失效）。
+      await appendMeetingTail(meeting, '- 记录（' + memberId + '｜' + fmtTime(entry.at) + '）：' + text)
+      await saveChatLine('【纪要记录】' + memberId + ' 追加一条具名记录（' + meeting.id + '）：' + text)
+      return {
+        ok: true, entry, meetingId: String(meeting.id), secretary: currentSecretary(),
+        message: '已追加具名条目（**只增不改**；责任人在纪要里公开可追）',
+      }
     }
 
     // ── S10（D6/G5）：**引用边界** ─────────────────────────────────────────────────────────────
@@ -6553,6 +6662,8 @@ export function apply(ctx) {
         by: opts.by || 'office', order, roster: order.slice(), phase: 'round-robin',
         inputs: {}, speeches: {}, extras: {}, asked: {}, silent: {}, unreached: {}, hands: {}, spokeCount: {},
         invited: {}, retries: {}, history: [], hardLimitMs, lastInputAt: now(), startedAt: now(),
+        // S11（GAPS 29）：**记录人当次会议绑定**（会议收束即失效）；`recordEntries` 是记录人的具名条目。
+        secretary: '', secretaryAt: 0, secretaryBy: '', recordEntries: [],
       }
       // F6 (status/report review): mark the meeting OPEN durably. `finalizeMeeting` clears it, so a
       // meeting that never finished (crash/restart/stop) stays visible as "未收束" instead of
@@ -6859,11 +6970,23 @@ export function apply(ctx) {
         lines.push('## 投票区')
         lines.push('- （本场会议未使用投票板）')
       }
+      // S11（GAPS 29）：**记录人补充**是**独立小节**，放在**两区之后** ⇒ 两区结构零改动（S8 门不回归）、
+      // S10 的会议内锚不受影响（只追加，绝不重写 `### <who>` 小节）。责任人**公开可追**；未指定则**明写**
+      // "由框架自动落盘，无成员责任人"（**绝不**把框架/院士写成责任人）。
+      const secWho = (mn && mn.secretary) ? String(mn.secretary) : ''
+      const secEntries = secretaryEntriesOf(mn)
+      lines.push('## 记录人补充')
+      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))
+      if (secEntries.length) for (const e of secEntries) lines.push('- 记录（' + String(e.by || '') + '）：' + String(e.text || ''))
+      else lines.push('- （记录人未追加任何条目）')
       lines.push(...meetingMinutesTail(mn, null))
       lines.push('')
-      // S8（R3/K12）：结构化 `minutes{}` 写回（与渲染文本**双份**；写回失败不得影响纪要）。
+      // S8（R3/K12）＋S11（GAPS 29）：结构化 `minutes{}` 写回（与渲染文本**双份**；写回失败不得影响纪要）。
       try {
-        await commit(EV.meeting, { index: { id: mn.id }, minutes: { at: now(), speechZone, voteZone } })
+        await commit(EV.meeting, {
+          index: { id: mn.id },
+          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries },
+        })
       } catch (e) { /* 结构化写回失败不得影响纪要 */ }
       const rel = 'Shared/Meetings/' + mn.id + '.md'
       const prev = (await readTextRel(rel)) || ('# 会议纪要｜' + mn.id + '\n\n')
@@ -9380,6 +9503,8 @@ export function apply(ctx) {
           attempts: Object.assign({}, meeting.retries || {}),
           invited: Object.keys(meeting.invited || {}),
           spoke: Object.keys(meeting.inputs), spokeCount: Object.assign({}, meeting.spokeCount || {}),
+          // S11（GAPS 29）：**只读**子键（**不加 `status()` 顶层键**）——记录人（'' ＝ 未指定）＋条目数。
+          secretary: currentSecretary(), record_entry_count: secretaryEntriesOf(meeting).length,
           // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
           speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
@@ -9764,7 +9889,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -10002,6 +10127,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_poll_vote', '(member with a vote) #50 — VOTE on the open option-type poll board (SPEC #35; the explicit abstention of #37 rides on this tool). Params: ballot_id? (defaults to the open board), choices[] (option ids or exact texts; must satisfy the board min/max), abstain:true (an EXPLICIT abstention: counted as having voted, NEVER as an option — the same semantics as the verify ballot), note/reason. A non-voter (attending/invited/temp) is refused BY NAME with V5_NOT_VOTER: vote power can NEVER be delegated (H12/R36). Revoting is allowed until closure when the board allows it (revotedAt is recorded); after closure it is refused (only a review/reconsideration can follow). Same-value resubmission is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, choices: SA, abstain: B, note: S, reason: S }), (s, a, x) => s.pollVoteTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_poll_close', '(academician) #51 — CLOSE AND TALLY the poll board and broadcast the result (SPEC #25/K4). Params: ballot_id? (defaults to the open board), reason?. The poll counts ONLY IF cast >= min_votes (settled:false / outcome:"unsettled" otherwise — the remaining votes are never used to infer a conclusion); the quorum m (closure gate) is computed SEPARATELY and reported NEXT TO it. The unvoted are named publicly. Closure is an EXPLICIT academician action: nothing closes "on time" (no automatic settlement anywhere). Repeated closure is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, reason: S }), (s, a, x) => s.pollCloseTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_reconsider', '(participant) #52 — REQUEST A RECONSIDERATION of an already-closed verdict (D5/D5a; the "review" that SPEC #19 and the poll board\'s "after closure only a reconsideration can follow" both point at). Params: target (required; the closed object), why (required; the reason is archived), evidence? (must come from the same object/meeting — D6). ELIGIBILITY IS DERIVED FROM THE RECORD, never from a role: with a clear winner only one of the ORIGINAL WINNERS may ask; with NO winner (undecided / mean-only) ANY participant may ask and the request may NOT be refused for "having no winner" (D5a hard constraint). The threshold can only RISE: after = max(before, reconsiderFloor, quorumCap) (U3) and the raise is recorded (thresholdBefore/After, raisedBy). One reconsideration per round; the total rounds stay bounded by verdictMaxRounds. The old conclusion, the old ballot and the old minority are all preserved (append-only) and the old conclusion is marked supersededBy. No vote power is created and the denominator never changes. No time may be supplied: every …At/…Ms is rejected (the framework writes the times) and nothing ever happens "on time".', objParams({ target: S, target_id: S, why: S, evidence: S }, ['why']), (s, a, x) => s.reconsiderTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_secretary', '(academician) #53 — APPOINT or REVOKE the meeting secretary (GAPS 29: keeping the record OUT of the chair\'s hands). Params: who (required; an ACTIVE MEMBER — a temp worker is refused with V5_NOT_VOTER), why?, revoke:true (or op:"revoke") to revoke. The academician may NOT appoint itself or the office ("主持人不得兼任唯一记录者"): the chair must never be the only recorder. The appointment is BOUND TO THE CURRENT MEETING and lapses when that meeting closes (the same unit as U5). The ledger `secretaries[]` is append-only (the same value is idempotent: deduped:true, no new entry; a change of person records revokedAt). A secretary gets RECORD rights only: no vote power, no phase change, no denominator change (C5/R5). No time may be supplied: every …At/…Ms is rejected (the framework writes the times).', objParams({ who: S, member: S, why: S, revoke: B, op: S }, ['who']), (s, a, x) => s.secretaryTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), or (with no `entry`) REPORT THE GAPS only. Params: entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry is idempotent (deduped:true). Entries land in the durable minutes file as a separate `## 记录人补充` section AFTER the two zones, and in the structured `minutes{}` (secretary + entries). No time may be supplied: every …At/…Ms is rejected.', objParams({ entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))

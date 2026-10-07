@@ -917,8 +917,8 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's8-minutes-zones' },
-    from: '        await commit(EV.meeting, { index: { id: mn.id }, minutes: { at: now(), speechZone, voteZone } })',
-    to: '        void speechZone; void voteZone',
+    from: '          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries },',
+    to: '          minutes: { at: now(), secretary: secWho, entries: secEntries },',
     expect: /S8-minutes-zones：结构化 `minutes.speechZone`/,
   },
   {
@@ -1060,6 +1060,69 @@ const V5R_FAMILIES = [
     to: "      if (meeting) meeting.phase = 'open-floor'\n      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })",
     expect: /S10：引用\*\*不改会议阶段\*\*/,
   },
+  // ── S11 family (GAPS 29；docs/09 §12 的 S11 行) ─────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s11-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R61–R66，每条一个唯一点 self-probe 变异）。
+  {
+    // ① **允许自任**（记录退化为主持人的叙述）⇒ s11-self-refused 的"院士不得自任"必红。
+    name: 'S11: the chair may appoint itself (recording collapses back into the chair)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-self-refused' },
+    from: "      if (!revoke && (m.kind === 'academician' || isOffice(who))) {",
+    to: '      if (false) {',
+    expect: /S11\/GAPS 29：\*\*院士不得自任\*\*/,
+  },
+  {
+    // ② 台账**漏出 fold 白名单**（指定被静默丢弃）⇒ s11-appoint 的"只读面可见"必红。
+    name: 'S11: the secretary ledger stops passing the fold whitelist (appointments are dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-appoint' },
+    from: '          if (patch.secretaries !== undefined) {',
+    to: '          if (false) {',
+    expect: /S11：台账 append-only 一条/,
+  },
+  {
+    // ③ **#54 权限放宽**（任何人都能写纪要）⇒ s11-only-academician 的"非记录人具名拒"必红。
+    name: 'S11: writing minutes entries stops requiring the academician or the secretary',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-only-academician' },
+    from: "      if (command === 'minutes') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))",
+    to: "      if (command === 'minutes') return true",
+    expect: /S11\/#27：\*\*非记录人\*\*写条目 ⇒ 具名拒/,
+  },
+  {
+    // ④ 记录人小节**失去独立标题**（两区不再分离）⇒ s11-zones-and-anchors 的"两区仍在"必红。
+    name: 'S11: the recorder section loses its own heading (the minutes zones are no longer separate)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-zones-and-anchors' },
+    from: "      lines.push('## 记录人补充')\n      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    to: "      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    expect: /S11×S8：收束后\*\*两区仍在\*\*/,
+  },
+  {
+    // ⑤ **只报缺口**失效（无 `entry` 也照样写）⇒ s11-record-entries 的"只报缺口"必红。
+    name: 'S11: the gap report is skipped (a complete-looking minutes could be fabricated)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-record-entries' },
+    from: '      if (!text) {',
+    to: '      if (false) {',
+    expect: /S11\/R7：无 `entry` ⇒ \*\*只报缺口\*\*/,
+  },
+  {
+    // ⑥ **撤销非幂等**（第二次报错）⇒ s11-revoke-idempotent 的"再撤销 ⇒ 幂等"必红。
+    name: 'S11: revoking twice is no longer idempotent (the second revocation errors)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's11-revoke-idempotent' },
+    from: "          return { ok: true, deduped: true, secretary: null, meetingId: mtId, message: '当前未指定记录人（撤销幂等）' }",
+    to: "          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 撤销非幂等' }",
+    expect: /S11：\*\*再撤销 ⇒ 幂等\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1080,7 +1143,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S9（D5/D5a/U3）：每个 s9-* 场景一个正控（少数意见/胜方资格/无胜方/门槛只升/不记名聚合/append-only）。
   's9-minority-archive', 's9-reconsider-winner-only', 's9-reconsider-undecided', 's9-threshold-only-up', 's9-secret-no-identity', 's9-audit-append-only',
   // S10（D6/G5）：每个 s10-* 场景一个正控（同会议引用/跨会议拒/私聊补记/上限折叠/悬空拒/不驱动）。
-  's10-quote-same-meeting', 's10-cross-meeting-refused', 's10-dm-not-quotable', 's10-quote-limits', 's10-dangling-refused', 's10-no-drive']
+  's10-quote-same-meeting', 's10-cross-meeting-refused', 's10-dm-not-quotable', 's10-quote-limits', 's10-dangling-refused', 's10-no-drive',
+  // S11（GAPS 29）：每个 s11-* 场景一个正控（指定/禁止自任/权限面/条目/两区与锚/撤销幂等）。
+  's11-appoint', 's11-self-refused', 's11-only-academician', 's11-record-entries', 's11-zones-and-anchors', 's11-revoke-idempotent']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

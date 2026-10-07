@@ -473,6 +473,48 @@ const SELF_PROBE_MUTATIONS = [
     to: "      if (meeting) meeting.phase = 'open-floor'\n      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })",
     expect: 'R60',
   },
+  {
+    name: 'S11: the chair may appoint itself (recording collapses back into the chair)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (!revoke && (m.kind === 'academician' || isOffice(who))) {",
+    to: '      if (false) {',
+    expect: 'R61',
+  },
+  {
+    name: 'S11: the secretary ledger stops passing the fold whitelist (appointments are dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '          if (patch.secretaries !== undefined) {',
+    to: '          if (false) {',
+    expect: 'R62',
+  },
+  {
+    name: 'S11: writing minutes entries stops requiring the academician or the secretary',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (command === 'minutes') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))",
+    to: "      if (command === 'minutes') return true",
+    expect: 'R63',
+  },
+  {
+    name: 'S11: the recorder section loses its own heading (the minutes zones are no longer separate)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      lines.push('## 记录人补充')\n      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    to: "      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    expect: 'R64',
+  },
+  {
+    name: 'S11: the gap report is skipped (a complete-looking minutes could be fabricated)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      if (!text) {',
+    to: '      if (false) {',
+    expect: 'R65',
+  },
+  {
+    name: 'S11: the secretary path invents a brand-new error code',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '条目过长（上限 ' + SECRETARY_ENTRY_MAX + ' 字符）' }",
+    to: "      if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_SECRETARY_ENTRY_TOO_LONG', message: 'MUTANT: 新错误码' }",
+    expect: 'R66',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1378,7 +1420,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   gate(/lines\.push\('## 发言区'\)/.test(finalizeBody) && /lines\.push\('## 投票区'\)/.test(finalizeBody)
     && /未投票名单/.test(finalizeBody)
     && /const speechZone = /.test(finalizeBody) && /const voteZone = /.test(finalizeBody)
-    && /commit\(EV\.meeting, \{ index: \{ id: mn\.id \}, minutes: \{ at: now\(\), speechZone, voteZone \} \}\)/.test(finalizeBody),
+    && /commit\(EV\.meeting, \{\s*index: \{ id: mn\.id \},\s*minutes: \{ at: now\(\), speechZone, voteZone/.test(finalizeBody),
     'R47', 'S8/K12: the minutes must carry BOTH zones — rendered (`## 发言区` / `## 投票区` with the unvoted list) AND structured (`minutes{speechZone,voteZone}` written back to the durable meeting entry)')
   gate(!!sayBody && !/speechGate\(|speechFrozen\(/.test(sayBody)
     && /registerTool\('vibe_v5_say'[\s\S]{0,2000}s\.speechGate\(from\)[\s\S]{0,400}s\.sayQuote\(from, a\)/.test(v5rRaw),
@@ -1492,6 +1534,46 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; dangling refused=' + /悬空引用/.test(anchorBody)
     + '; secret per-person refused=' + /不记名板的\*\*逐人选择不可引用\*\*/.test(anchorBody)
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|MEMBER_NOT_FOUND)[A-Z_]+/.test(quoteBody + anchorBody)    + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(/.test(quoteBody))
+  // ---- S11 (GAPS 29): the meeting secretary (recording kept out of the chair's hands) -----------------
+  const secretaryBody = bodyOf('async function secretaryTool(memberId, a) {')
+  const minutesBody = bodyOf('async function minutesTool(memberId, a) {')
+  gate(!!secretaryBody && /m\.kind === 'academician' \|\| isOffice\(who\)/.test(secretaryBody)
+    && /主持人不得兼任唯一记录者/.test(secretaryBody)
+    && /m\.kind === 'temp'/.test(secretaryBody) && /V5_NOT_VOTER/.test(secretaryBody),
+    'R61', 'S11/GAPS 29: the chair may NEVER be the only recorder — appointing the academician/office is refused by name, and a temp worker (not an active member) is refused too')
+  gate(/if \(patch\.secretaries !== undefined\)/.test(v5rRaw)
+    && /patchInstitute\(\{ secretaries: \(list\) => \(Array\.isArray\(list\) \? list : \[\]\)\.concat\(\[/.test(secretaryBody),
+    'R62', 'S11: the secretary ledger must pass the EV.institute fold whitelist (patch.secretaries) and be append-only (concat, never a rewrite)')
+  gate(/if \(command === 'secretary'\) return acad/.test(v5rRaw)
+    && /if \(command === 'minutes'\) return acad \|\| \(!!meeting && String\(meeting\.secretary \|\| ''\) === String\(callerId\)\)/.test(v5rRaw)
+    && /V5_NOT_ACADEMICIAN/.test(secretaryBody)
+    && grantableLine.indexOf('secretary') === -1 && grantableLine.indexOf('minutes') === -1,
+    'R63', 'S11/`03` #27+#28: appointing is academician-only and writing entries is academician ∪ THIS meeting\'s secretary; neither command is grantable (R35 untouched)')
+  gate(/lines\.push\('## 记录人补充'\)/.test(finalizeBody)
+    && finalizeBody.indexOf("lines.push('## 记录人补充')") > finalizeBody.indexOf("lines.push('## 投票区')")
+    && /lines\.push\('## 发言区'\)/.test(finalizeBody)
+    && /appendMeetingTail\(meeting, '- 记录（/.test(minutesBody)
+    && !/writeTextRel\(/.test(minutesBody),
+    'R64', 'S11×S8×S10: the recorder section is a SEPARATE section pushed AFTER the two zones and entries are APPENDED (appendMeetingTail) — the zones and the `### <who>` speech anchors are never rewritten')
+  gate(!!minutesBody && /if \(!text\) \{/.test(minutesBody) && /gaps\.push\(/.test(minutesBody)
+    && /不自动补全/.test(minutesBody) && !/writeTextRel\(/.test(minutesBody),
+    'R65', 'S11/R7: with no entry the tool only REPORTS gaps in a guarded branch (it never fabricates a complete-looking minutes) and the write path touches only the append helper')
+  gate(!!secretaryBody && !!minutesBody
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(secretaryBody + minutesBody)
+    && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(|voters\(\)/.test(secretaryBody + minutesBody),
+    'R66', 'S11: no new error code (only the existing five are reused), no vote power is touched (no voters()), nothing drives the phase/closure, and no timer exists')
+  notes.push('S11 (v5r): self-appointment refused=' + /m\.kind === 'academician' \|\| isOffice\(who\)/.test(secretaryBody)
+    + '; temp refused=' + /m\.kind === 'temp'/.test(secretaryBody)
+    + '; fold whitelist=' + /if \(patch\.secretaries !== undefined\)/.test(v5rRaw)
+    + '; ledger append-only=' + /concat\(\[/.test(secretaryBody)
+    + '; appoint academician-only=' + /if \(command === 'secretary'\) return acad/.test(v5rRaw)
+    + '; minutes=acad+secretary=' + /if \(command === 'minutes'\) return acad \|\| \(!!meeting/.test(v5rRaw)
+    + '; not grantable=' + (grantableLine.indexOf('secretary') === -1 && grantableLine.indexOf('minutes') === -1)
+    + '; separate section after zones=' + (finalizeBody.indexOf("lines.push('## 记录人补充')") > finalizeBody.indexOf("lines.push('## 投票区')"))
+    + '; append-only entries=' + /appendMeetingTail\(meeting, '- 记录（/.test(minutesBody)
+    + '; gaps-only=' + (/if \(!text\) \{/.test(minutesBody) && /gaps\.push\(/.test(minutesBody))
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(secretaryBody + minutesBody)
+    + '; votes/phase/timer touched=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(|putSolve\(|castVerdict\(|voters\(\)/.test(secretaryBody + minutesBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
