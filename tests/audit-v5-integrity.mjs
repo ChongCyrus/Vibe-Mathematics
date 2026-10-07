@@ -634,6 +634,13 @@ const SELF_PROBE_MUTATIONS = [
     to: '            return String(t.id)',
     expect: 'R83',
   },
+  {
+    name: 'S17: the overview action-items section stops exposing 待接手 / 逾期（未决项） counts',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        parts.push('- 共 ' + ai.total + ' 条｜未完成 ' + ai.open.length + '｜**待接手** ' + ai.handover.length + '｜**逾期（未决项）** ' + ai.overdue.length)",
+    to: "        parts.push('- 共 ' + ai.total + ' 条｜未完成 ' + ai.open.length)",
+    expect: 'R84',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1850,6 +1857,39 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; non-empty only=' + /if \(items\.length\) \{/.test(promptWin)
     + '; rollcall before minutes=' + (rollcallIdx >= 0 && minutesIdx >= 0 && rollcallIdx < minutesIdx)
     + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(/.test(promptWin))
+  // ---- S17 (G3/D-10): `overview()` shows the ACTION ITEMS (counts + named 待接手/逾期), read-only --------
+  const aiStart = v5rRaw.indexOf('const actionItemsView = () => {')
+  const aiEnd = v5rRaw.indexOf('const nextResolutionId = () =>', aiStart)
+  const aiWin = (aiStart >= 0 && aiEnd > aiStart) ? v5rRaw.slice(aiStart, aiEnd) : ''
+  const ovStart = v5rRaw.indexOf("registerTool('vibe_v5_overview'")
+  const ovEnd = v5rRaw.indexOf("registerTool(", ovStart + 10)
+  const ovWin = (ovStart >= 0 && ovEnd > ovStart) ? v5rRaw.slice(ovStart, ovEnd) : ''
+  const repStart = v5rRaw.indexOf('// S15（K4/GAPS 11＋12）：**上次纪要确认**')
+  const repWin = repStart >= 0 ? v5rRaw.slice(repStart, repStart + 3000) : ''
+  const aiRule = /String\(t\.due_in \|\| ''\) === 'next-meeting' && Number\(t\.createdAt \|\| 0\) < Number\(/
+  const repRule = /String\(t\.due_in \|\| ''\) === 'next-meeting' && !!openM && Number\(t\.createdAt \|\| 0\) < Number\(/
+  gate(!!aiWin && !!ovWin
+    && /const actionItemsView = \(\) => \{/.test(v5rRaw)
+    && /t\.status !== 'deleted'/.test(aiWin)
+    && aiRule.test(aiWin)
+    && repRule.test(repWin)
+    && /minutesConfirmationsList, actionItemsView,/.test(v5rRaw)
+    && /const ai = s\.actionItemsView\(\)/.test(ovWin)
+    && /## 行动项（G3\/D-10）/.test(ovWin)
+    && /'｜\*\*待接手\*\* ' \+ ai\.handover\.length/.test(ovWin)
+    && /'｜\*\*逾期（未决项）\*\* ' \+ ai\.overdue\.length/.test(ovWin)
+    && /String\(t\.ownerId \|\| ''\) \|\| '待接手'/.test(ovWin)
+    && /if \(ai\.open\.length\) \{/.test(ovWin)
+    && !/finalizeMeeting\(|closeVerify\(|setTimeout\(|setInterval\(|armHeartbeat\(|putVerdict\(|putSolve\(|patchInstitute\(|meeting\.phase =/.test(ovWin),
+    'R84', 'S17/G3: `overview()` carries an ACTION-ITEMS section with the totals (共/未完成/待接手/逾期（未决项）) and one named line per open item (`t-N` + owner or 待接手 + overdue mark), using the SAME no-timer overdue rule as `report()`, it emits no section when there is nothing to show, and it drives nothing')
+  notes.push('S17 (v5r): actionItemsView=' + /const actionItemsView = \(\) => \{/.test(v5rRaw)
+    + '; overdue rule shared with report=' + (aiRule.test(aiWin) && repRule.test(repWin))
+    + '; overview section=' + /## 行动项（G3\/D-10）/.test(ovWin)
+    + '; counts=' + (/待接手\*\* ' \+ ai\.handover\.length/.test(ovWin) && /逾期（未决项）\*\* ' \+ ai\.overdue\.length/.test(ovWin))
+    + '; named=' + /String\(t\.ownerId \|\| ''\) \|\| '待接手'/.test(ovWin)
+    + '; non-empty only=' + /if \(ai\.open\.length\) \{/.test(ovWin)
+    + '; exported=' + /minutesConfirmationsList, actionItemsView,/.test(v5rRaw)
+    + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(/.test(ovWin))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

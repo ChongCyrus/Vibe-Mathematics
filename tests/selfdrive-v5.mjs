@@ -666,6 +666,11 @@ async function runScenario(name) {
     console.log('  skip - S16 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有行动项 origin/due_in/state 与开场点名）')
     return
   }
+  // S17 场景只在 v5r 下可跑（G3 的 overview 行动项节是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s17-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S17 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有行动项 origin/due_in/state 与 overview 行动项节）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2405,6 +2410,42 @@ async function runScenario(name) {
         'S16/G3：**无行动项 ⇒ 不点空名**（群聊无点名条目；got ' + String(JSON.stringify(chat.slice(-200)) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s16）：' + name)
+    }
+  } else if (name.startsWith('s17-')) {
+    // S17（G3/D-10）：**`overview()` 的行动项节**（总览可见；与 `report()`／开场点名**同一口径**）。
+    if (name === 's17-overview-actions') {
+      // ① 空列表：**不输出空节**（**自愈前置：先测空态** ⇒ 顺序无关 ✓）
+      const ov0 = await callTool('vibe_v5_overview', {}, ROOT)
+      const t0 = typeof ov0 === 'string' ? ov0 : String((ov0 && ov0.overview) || '')
+      assert(ov0 && ov0.ok === true && t0.length > 0 && t0.indexOf('## 行动项') === -1,
+        'S17/G3：**无行动项 ⇒ 不输出空节**（got ' + String(JSON.stringify(t0.slice(-160)) || null).slice(0, 200) + '）')
+      // ② 建两条**早于本次会议**的行动项（一条有 owner、一条转**待接手**）⇒ 本场会议即为**逾期**
+      const a1 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S17 前置一', acceptance: '完成', subject: 'S17 行动项一', origin: 'meeting:mt-seed', due_in: 'next-meeting' }, ROOT)
+      assert(a1 && a1.ok === true, 'S17：行动项一已建（前置；got ' + JSON.stringify(a1).slice(0, 200) + '）')
+      const a2 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S17 前置二', acceptance: '完成', subject: 'S17 行动项二', origin: 'meeting:mt-seed', due_in: 'next-meeting' }, ROOT)
+      const list0 = await callTool('vibe_v5_task_list', {}, ROOT)
+      const t2 = (((list0 && list0.tasks) || []).filter((x) => String(x.subject) === 'S17 行动项二'))[0]
+      assert(a2 && a2.ok === true && !!t2, 'S17：行动项二已建（前置）')
+      const ho = await callTool('vibe_v5_task_update', { task_id: String(t2.id), expected_revision: Number(t2.revision), action: 'handover' }, ROOT)
+      assert(ho && ho.ok === true && String(ho.task.state) === 'handover', 'S17：行动项二已置**待接手**（前置）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S17 总览可见', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S17：会议已开（前置；逾期判定需要会议开场时刻）')
+      // ③ 总览（academician/office 面）⇒ 必须有行动项节，且计数/具名/标记齐全
+      const ov = await callTool('vibe_v5_overview', {}, ROOT)
+      const txt = typeof ov === 'string' ? ov : String((ov && ov.overview) || '')
+      assert(txt.indexOf('## 行动项（G3/D-10）') !== -1 && !/finalizeMeeting|收束/.test(txt.slice(0, 0)),
+        'S17/G3：`overview()` 必含**行动项节**（got ' + String(JSON.stringify(txt.slice(txt.indexOf('## 任务板'), txt.indexOf('## 任务板') + 400)) || null).slice(0, 320) + '）')
+      assert(/共 2 条｜未完成 2｜\*\*待接手\*\* 1｜\*\*逾期（未决项）\*\* 2/.test(txt),
+        'S17/G3：节内含**总数/未完成/待接手/逾期（未决项）**（got ' + String(JSON.stringify((txt.match(/- 共 [^\n]*/) || [null])[0]) || null).slice(0, 200) + '）')
+      const sec = txt.slice(txt.indexOf('## 行动项（G3/D-10）'))
+      const lines = sec.split('\n').filter((x) => /^- t-\d+｜/.test(x))
+      assert(lines.length === 2 && lines.some((x) => /owner=r-1｜\*\*逾期\*\*｜due_in=next-meeting/.test(x))
+        && lines.some((x) => /owner=待接手｜\*\*待接手\*\*｜\*\*逾期\*\*/.test(x)),
+        'S17/G3：**逐条具名**（`t-N` ＋ owner／「待接手」＋ **逾期**标记；got ' + String(JSON.stringify(lines) || null).slice(0, 300) + '）')
+      assert(txt.indexOf('## 编制') !== -1 && txt.indexOf('## 任务板') !== -1,
+        'S17：**既有节未被破坏**（编制／任务板仍在；got ' + String(JSON.stringify(txt.slice(0, 120)) || null).slice(0, 160) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s17）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

@@ -1940,6 +1940,15 @@ export function apply(ctx) {
       const cur = inst()
       return Array.isArray(cur.minutesConfirmations) ? cur.minutesConfirmations : []
     }
+    /** S17（G3/D-10）：**行动项视图**（`origin:'meeting:<mt>'` 的任务）—— `report()` 与 `overview()` **同一口径**；
+     * **逾期**（＝"上次派发、到本次会议仍未完成"）**不用定时器**，只在会议开场/总览时按 `createdAt < meeting.startedAt` 判定。 */
+    const actionItemsView = () => {
+      const items = (inst().tasks || []).filter((t) => t && /^meeting:/.test(String(t.origin || '')) && t.status !== 'deleted')
+      const open = items.filter((t) => String(t.state || 'open') !== 'done')
+      const handover = open.filter((t) => String(t.state) === 'handover')
+      const overdue = open.filter((t) => String(t.due_in || '') === 'next-meeting' && Number(t.createdAt || 0) < Number((meeting && meeting.startedAt) || 0))
+      return { total: items.length, open, handover, overdue }
+    }
     const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)
     /** S13 #55：**记录决议**（院士 ∪ 当次会议记录人；正式会议内；公告即生效；稳定标识）。 */
     async function resultRecordTool(memberId, a) {
@@ -10243,7 +10252,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, resultRecordTool, resolutionsTool, resolutionsList, minutesConfirmationsList, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, resultRecordTool, resolutionsTool, resolutionsList, minutesConfirmationsList, actionItemsView, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -10502,6 +10511,21 @@ export function apply(ctx) {
     parts.push(''); parts.push('## 任务板')
     for (const t of st.tasks) parts.push('- [' + t.status + '] ' + t.id + '｜' + t.subject + '｜owner=' + (t.ownerName || '(未认领)') + '｜rev=' + t.revision + '｜优先级=' + t.priority)
     if (!st.tasks.length) parts.push('（暂无任务）')
+    // S17（G3/D-10）：**行动项**（`origin:'meeting:<mt>'` 的任务）—— **总览可见**（与 `report()`／开场点名**同一口径**）；
+    // **只读、不驱动**（不改阶段/不收束/无定时器/不写 verdicts·solve）；**无行动项 ⇒ 不输出空节**（与开场"空列表不点空名"一致）。
+    {
+      const ai = s.actionItemsView()
+      if (ai.open.length) {
+        parts.push(''); parts.push('## 行动项（G3/D-10）')
+        parts.push('- 共 ' + ai.total + ' 条｜未完成 ' + ai.open.length + '｜**待接手** ' + ai.handover.length + '｜**逾期（未决项）** ' + ai.overdue.length)
+        for (const t of ai.open) {
+          const who = String(t.ownerId || '') || '待接手'
+          const over = ai.overdue.some((x) => String(x.id) === String(t.id))
+          parts.push('- ' + String(t.id) + '｜' + String(t.subject || '') + '｜owner=' + who
+            + (String(t.state) === 'handover' ? '｜**待接手**' : '') + (over ? '｜**逾期**' : '') + '｜due_in=' + String(t.due_in || ''))
+        }
+      }
+    }
     parts.push(''); parts.push('## 各成员 Progress 摘要')
     for (const m of st.members) {
       const p = await s.readLibrary({ member: m.id })

@@ -1408,6 +1408,39 @@ const V5R_FAMILIES = [
     to: "        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（G3 程序性点名 → K4 实质议程）')\n        await finalizeMeeting(meeting, 's16-mutant')\n      }",
     expect: /S16\/G3：点名\*\*只提示、不驱动\*\*（开场后会议仍在进行中/,
   },
+  // ── S17 family (G3/D-10：`overview()` 行动项节；docs/09 §12 的 S17 行) ──────────────────────────
+  // 三个族各锚**一处**、各跑**一个** s17-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S17'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R84，一条唯一点 self-probe 变异）。
+  {
+    // ① `overview` 缺行动项节（总览不可见）⇒ s17-overview-actions 的"必含行动项节"必红。
+    name: 'S17: overview() stops carrying the action-items section (the board view is invisible in the overview)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's17-overview-actions' },
+    from: '      if (ai.open.length) {',
+    to: '      if (false) {',
+    expect: /S17\/G3：`overview\(\)` 必含\*\*行动项节\*\*/,
+  },
+  {
+    // ② 具名行**不再标逾期**（G3 的"逾期＝未决项且可见"在总览里消失）⇒ 具名断言必红。
+    name: 'S17: the overview drops the overdue mark from the named action-item lines',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's17-overview-actions' },
+    from: '          const over = ai.overdue.some((x) => String(x.id) === String(t.id))',
+    to: '          const over = false',
+    expect: /S17\/G3：\*\*逐条具名\*\*/,
+  },
+  {
+    // ③ 待接手被显示成普通人（责任落点消失）⇒ 具名断言必红。
+    name: 'S17: an unowned action item is shown as an ordinary owner instead of 待接手',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's17-overview-actions' },
+    from: "          const who = String(t.ownerId || '') || '待接手'",
+    to: "          const who = String(t.ownerId || '') || '（未认领）'",
+    expect: /S17\/G3：\*\*逐条具名\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1441,7 +1474,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S15（K4/GAPS 11–12）：每个 s15-* 场景一个正控（确认/只改事实/行动项源自决议/待接手·逾期可见/两区与锚/幂等）。
   's15-confirm-minutes', 's15-fact-only', 's15-action-from-resolution', 's15-handover-visible', 's15-zones-preserved', 's15-idempotent',
   // S16（G3/D-10）：每个 s16-* 场景一个正控（开场具名点名＋顺序／空列表不点空名）。
-  's16-rollcall-named', 's16-empty-no-rollcall']
+  's16-rollcall-named', 's16-empty-no-rollcall',
+  // S17（G3/D-10）：每个 s17-* 场景一个正控（overview 行动项节：计数/具名/待接手/逾期/不输出空节）。
+  's17-overview-actions']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
