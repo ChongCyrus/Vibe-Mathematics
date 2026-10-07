@@ -651,6 +651,11 @@ async function runScenario(name) {
     console.log('  skip - S13 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_result_record / vibe_v5_resolutions）')
     return
   }
+  // S14 场景只在 v5r 下可跑（迁移/守卫收尾是 v5r 的契约）；v5 路径**显式 skip**。
+  if (name.startsWith('s14-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S14 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 fold 白名单的缺省契约）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2096,6 +2101,139 @@ async function runScenario(name) {
     const badT = await callTool('vibe_v5_resolutions', { since_at: 'x' })
     assert(badT.ok === false && /检索不接受时间参数/.test(String(badT.message)),
       'S13：**时间过滤键一律拒**（got ' + JSON.stringify(badT).slice(0, 220) + '）')
+  } else if (name.startsWith('s14-')) {
+    // S14（迁移与守卫收尾）：**旧 `v5state.json` 契约**。手法：在该场景**隔离工作区**里为**另一个研究所名**
+    // 写一份**旧形状**状态文件（缺 S4–S13 的七个新键，但保留 `members`），再用 `vibe_v5_configure` 切所
+    // ⇒ 插件走"**收养既有研究所**"的路径（`instituteAt` 读盘）⇒ **真的从磁盘加载这份旧文件** ✓。
+    const S14_KEYS = ['chair', 'stallNotice', 'grants', 'ballots', 'chatSupplements', 'secretaries', 'resolutions']
+    const cur = readV5State()
+    assert(!!cur && !!cur.institutes && !!cur.institutes['default::institute'],
+      'S14：当前状态文件已存在（前置；got ' + JSON.stringify(cur && Object.keys(cur)) + '）')
+    const mkLegacy = (instName) => {
+      const inst = JSON.parse(JSON.stringify(cur.institutes['default::institute']))
+      for (const k of S14_KEYS) delete inst[k]
+      const dir = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', instName, 'State')
+      mkdirSync(dir, { recursive: true })
+      const p = join(dir, instName + '.v5state.json')
+      writeFileSync(p, JSON.stringify({ v: cur.v, institutes: { ['default::' + instName]: inst } }, null, 2))
+      return { dir, path: p, instName }
+    }
+    const adopt = async (instName) => {
+      // `configure` 在 run 进行中会拒（`running && !autoDone`）⇒ **必须先 stop**；随后切所会走
+      // **收养既有研究所**的路径（`instituteAt` 读盘）⇒ **真的从磁盘加载这份旧文件** ✓。
+      await callTool('vibe_v5_stop', {}, ROOT)
+      const cfg = await callTool('vibe_v5_configure', { project: 'default', institute: instName }, ROOT)
+      if (cfg && cfg.ok !== false) await callTool('vibe_v5_start', {}, ROOT)
+      const st = await callTool('vibe_v5_status', {})
+      return { cfg, st }
+    }
+    if (name === 's14-legacy-state') {
+      // 旧文件 ⇒ **收养即加载**（可读）＋**可续跑**（可在该所开会并写入台账 ⇒ 白名单在旧状态上照常工作）。
+      const lg = mkLegacy('legacy')
+      const { cfg, st } = await adopt(lg.instName)
+      assert(cfg && cfg.ok !== false && st && String(st.institute) === lg.instName && (st.members || []).length > 0,
+        'S14：**旧文件被成功收养/加载**（got ' + JSON.stringify({ cfg: cfg && cfg.ok, institute: st && st.institute, members: st && (st.members || []).length }).slice(0, 240) + '）')
+      assert(Number(st.resolutions && st.resolutions.count) === 0,
+        'S14：旧文件**无 `resolutions`** ⇒ 读端缺省为 0（got ' + JSON.stringify(st.resolutions).slice(0, 160) + '）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S14 旧状态续跑', kind: 'solve-vote' }, ROOT)
+      assert(mt && mt.ok === true, 'S14：旧状态下**可开正式会议**（可续跑；got ' + JSON.stringify(mt).slice(0, 200) + '）')
+      const rec = await callTool('vibe_v5_result_record', { text: 'S14 旧状态下的决议', kind: 'resolution' }, ROOT)
+      assert(rec && rec.ok === true && String(rec.resolution && rec.resolution.id) === 'res-1',
+        'S14：旧状态 + 白名单 ⇒ **写台账可用**（got ' + JSON.stringify(rec).slice(0, 220) + '）')
+      const sec = await callTool('vibe_v5_secretary', { who: 'r-1' }, ROOT)
+      assert(sec && sec.ok === true && String(sec.secretary && sec.secretary.who) === 'r-1',
+        'S14：旧状态 + 白名单 ⇒ **记录人可指定**（got ' + JSON.stringify(sec).slice(0, 200) + '）')
+      const st2 = await callTool('vibe_v5_status', {})
+      assert(Number(st2.resolutions && st2.resolutions.count) === 1 && String(st2.meeting && st2.meeting.secretary) === 'r-1',
+        'S14：新写的台账**可见**（got ' + JSON.stringify({ res: st2.resolutions && st2.resolutions.count, sec: st2.meeting && st2.meeting.secretary }).slice(0, 200) + '）')
+      // **落盘可见**：台账必须真的进 `EV.institute` fold（白名单）⇒ 读**文件**确认（内存可见 ≠ 已持久化）。
+      const lgState = JSON.parse(readFileSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', lg.instName, 'State', lg.instName + '.v5state.json'), 'utf8'))
+      const lgInst = lgState.institutes['default::' + lg.instName] || {}
+      assert(Array.isArray(lgInst.secretaries) && lgInst.secretaries.length === 1
+        && Array.isArray(lgInst.resolutions) && lgInst.resolutions.length === 1,
+        'S14：记录人台账**落盘可见**（fold 白名单生效；got ' + JSON.stringify({ secretaries: (lgInst.secretaries || []).length, resolutions: (lgInst.resolutions || []).length }).slice(0, 200) + '）')
+    } else if (name === 's14-read-only-load') {
+      // **读旧不迁移**：收养后**不补键**；且**只读操作零副作用**（字节不变）。
+      const lg = mkLegacy('legacy2')
+      const { cfg } = await adopt(lg.instName)
+      assert(cfg && cfg.ok !== false, 'S14：旧文件已被收养（前置；got ' + JSON.stringify(cfg).slice(0, 180) + '）')
+      const bytesAfterAdopt = readFileSync(lg.path, 'utf8')
+      const parsedAfter = JSON.parse(bytesAfterAdopt)
+      const instAfter = parsedAfter.institutes['default::' + lg.instName] || {}
+      assert(S14_KEYS.every((k) => instAfter[k] === undefined),
+        'S14：**不补键、不迁移**（文件里仍无 S4–S13 的新键；got ' + JSON.stringify(Object.keys(instAfter).filter((k) => S14_KEYS.indexOf(k) !== -1)) + '）')
+      await callTool('vibe_v5_status', {})
+      await callTool('vibe_v5_report', {})
+      await callTool('vibe_v5_resolutions', {})
+      assert(readFileSync(lg.path, 'utf8') === bytesAfterAdopt,
+        'S14：**只读操作零副作用**（字节未被改写；got len=' + readFileSync(lg.path, 'utf8').length + ' vs ' + bytesAfterAdopt.length + '）')
+    } else if (name === 's14-legacy-defaults') {
+      // **缺键取缺省且可观察**（**用全新研究所**：它天然没有那七个键 ⇒ 等价于"旧形状"）：
+      // `resolutions:[]` ⇒ 检索 0 ＋ `res:` 悬空拒；`secretaries:[]` ⇒ 纪要**明写"无成员责任人"**；
+      // `grants:[]` ⇒ **权限回落默认表**（所办/院士照常可授；**负向**由 S6 的门守着）。
+      const list = await callTool('vibe_v5_resolutions', {})
+      assert(list && list.ok === true && Number(list.count) === 0,
+        'S14：`resolutions` 缺省＝空台账（got ' + JSON.stringify(list).slice(0, 180) + '）')
+      const q = await callTool('vibe_v5_say', { text: 'S14 无决议时引决议', quote_ref: 'res:latest' }, childAgent(childOf('r-1')))
+      assert(q && q.ok === false && /悬空引用/.test(String(q.message)),
+        'S14：无决议（缺省空台账）下 `res:latest` ⇒ **悬空拒**（缺省不是崩；got ' + JSON.stringify(q).slice(0, 220) + '）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S14 缺省可见', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S14：简流程会议已开（前置；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+      const mtId = String((await callTool('vibe_v5_status', {})).meeting.id)
+      const grantOk = await callTool('vibe_v5_grant', { to: 'r-2', command: 'assign', grant_scope: 'meeting', why: 'S14 缺省探测' }, childAgent(childOf('acad')))
+      assert(grantOk && grantOk.ok === true,
+        'S14：`grants` 缺省 ⇒ **默认表仍允许院士授权**（got ' + JSON.stringify(grantOk).slice(0, 220) + '）')
+      await waitMeetingClosed()
+      const mtFile = join(instDir, 'Shared', 'Meetings', mtId + '.md')
+      const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+      assert(mtText.indexOf('未指定：由框架自动落盘，无成员责任人') !== -1,
+        'S14：`secretaries` 缺省 ⇒ 纪要**明写"无成员责任人"**（got len=' + mtText.length + '）')
+    } else if (name === 's14-load-failure-refuses-commit') {
+      // **加载失败 ⇒ 拒绝提交**（版本不匹配）＋ `status` 可见 ＋ **真实文件绝不被空状态覆盖**。
+      const lg = mkLegacy('broken')
+      const brokenPayload = JSON.stringify({ v: 'v0-ancient', institutes: { 'default::broken': JSON.parse(JSON.stringify(cur.institutes['default::institute'])) } }, null, 2)
+      writeFileSync(lg.path, brokenPayload)
+      await callTool('vibe_v5_stop', {}, ROOT)
+      const cfg = await callTool('vibe_v5_configure', { project: 'default', institute: 'broken' }, ROOT)
+      assert(cfg && cfg.ok === false && /V5_STATE_NOT_LOADED|refusing to overwrite|version mismatch/.test(JSON.stringify(cfg)),
+        'S14：**加载失败 ⇒ 拒绝提交**（`V5_STATE_NOT_LOADED`；got ' + JSON.stringify(cfg).slice(0, 260) + '）')
+      assert(readFileSync(lg.path, 'utf8') === brokenPayload,
+        'S14：**真实文件未被覆盖**（字节不变；got len=' + readFileSync(lg.path, 'utf8').length + '）')
+      const st = await callTool('vibe_v5_status', {})
+      assert(!!st && !!st.institute, 'S14：加载失败后 `status` **仍可用且可见**（got ' + JSON.stringify({ institute: st && st.institute }).slice(0, 160) + '）')
+    } else if (name === 's14-idempotent-reload') {
+      // **重复加载同一旧文件 ⇒ 结果一致**（幂等；不补键）。
+      const lg = mkLegacy('legacy4')
+      const a = await adopt(lg.instName)
+      assert(a.cfg && a.cfg.ok !== false && String(a.st.institute) === lg.instName, 'S14：首次收养成功（前置）')
+      await callTool('vibe_v5_configure', { project: 'default', institute: 'institute' }, ROOT)
+      const b = await adopt(lg.instName)
+      assert(b.cfg && b.cfg.ok !== false && String(b.st.institute) === lg.instName
+        && String(a.st.institute) === lg.instName
+        && Number(a.st.resolutions && a.st.resolutions.count) === Number(b.st.resolutions && b.st.resolutions.count)
+        && (b.st.members || []).length >= 5,
+        'S14：**重复加载结果一致**（幂等：同一所＋同一台账计数；got ' + JSON.stringify([a.st.institute, b.st.institute, Number(a.st.resolutions && a.st.resolutions.count), Number(b.st.resolutions && b.st.resolutions.count)]).slice(0, 200) + '）')
+      const finalBytes = readFileSync(lg.path, 'utf8')
+      const finalInst = (JSON.parse(finalBytes).institutes['default::' + lg.instName]) || {}
+      assert(S14_KEYS.every((k) => finalInst[k] === undefined),
+        'S14：重复加载**不补键**（仍无 S4–S13 新键；got ' + JSON.stringify(Object.keys(finalInst).filter((k) => S14_KEYS.indexOf(k) !== -1)) + '）')
+    } else if (name === 's14-meeting-resume') {
+      // 旧会议**可续跑**，既有纪要**只追加不重写**（旧正文保留）。
+      const lg = mkLegacy('legacy5')
+      const mtDir = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', lg.instName, 'Shared', 'Meetings')
+      mkdirSync(mtDir, { recursive: true })
+      const oldMinutes = '# 会议纪要｜mt-old｜legacy5\n\n## 发言区\n- 旧正文必须保留\n'
+      writeFileSync(join(mtDir, 'mt-old.md'), oldMinutes)
+      const { cfg } = await adopt(lg.instName)
+      assert(cfg && cfg.ok !== false, 'S14：旧文件已被收养（前置；got ' + JSON.stringify(cfg).slice(0, 180) + '）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S14 旧纪要续跑', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S14：旧状态下**可开新会议**（可续跑；got ' + JSON.stringify(mt).slice(0, 200) + '）')
+      const after = readFileSync(join(mtDir, 'mt-old.md'), 'utf8')
+      assert(after === oldMinutes && after.indexOf('旧正文必须保留') !== -1,
+        'S14：既有纪要**未被改写**（只追加；got len=' + after.length + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s14）：' + name)
+    }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

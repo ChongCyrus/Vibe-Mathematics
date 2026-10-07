@@ -578,6 +578,27 @@ const SELF_PROBE_MUTATIONS = [
     to: "      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 不再拒绝时间过滤 ' + badTime.join('、') }",
     expect: 'R75',
   },
+  {
+    name: 'S14: a ledger key loses its read-side default (an old state file would crash)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "            const next = typeof patch.grants === 'function' ? patch.grants(Array.isArray(n.grants) ? n.grants : []) : patch.grants",
+    to: '            const next = patch.grants',
+    expect: 'R76',
+  },
+  {
+    name: 'S14: the schema version gate disappears (an old file is read as if it were current)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "            else loadProblem = 'schema version mismatch: file has v='",
+    to: "            else loadProblem = 'MUTANT: version gate dropped v='",
+    expect: 'R77',
+  },
+  {
+    name: 'S14: the machine modes start deleting temp state (--counts would sweep)',
+    rel: 'tests/run-tests.mjs',
+    from: "if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {",
+    to: "if (!has('no-temp-hygiene')) {",
+    expect: 'R78',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1711,6 +1732,31 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; read-only face=' + /resolutions: \{/.test(v5rRaw)
     + '; time filters rejected=' + /检索不接受时间参数/.test(resolutionsBody)
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(resultBody + resolutionsBody))
+  // ---- S14 (migration & guards): the legacy-state contract, proven against the code --------------
+  const FOLD_LEDGER_KEYS = ['grants', 'ballots', 'chatSupplements', 'secretaries', 'resolutions']
+  gate(FOLD_LEDGER_KEYS.every((k) => new RegExp('if \\(patch\\.' + k + ' !== undefined\\)').test(v5rRaw))
+    && FOLD_LEDGER_KEYS.every((k) => new RegExp('Array\\.isArray\\(n\\.' + k + '\\) \\? n\\.' + k + ' : \\[\\]').test(v5rRaw))
+    && /if \(patch\.chair !== undefined\) n\.chair = patch\.chair === null \? null : Object\.assign\(\{\}, patch\.chair\)/.test(v5rRaw)
+    && /if \(patch\.stallNotice !== undefined\) n\.stallNotice = patch\.stallNotice === null \? null : Object\.assign\(\{\}, patch\.stallNotice\)/.test(v5rRaw)
+    && /const resolutionsList = \(\) => \{/.test(v5rRaw),
+    'R76', 'S14: the migration matrix must be TRUE of the code — every S4–S13 key sits in the explicit fold whitelist AND the read end supplies a default (`null` for chair/stallNotice, `[]` for the five ledgers), so an old file missing them cannot crash')
+  gate(/schema version mismatch/.test(v5rRaw)
+    && /V5_STATE_NOT_LOADED/.test(v5rRaw)
+    && /loadOk/.test(v5rRaw)
+    && /if \(patch\.meetingOpen !== undefined\) n\.meetingOpen = patch\.meetingOpen === null \? null : Object\.assign\(\{\}, patch\.meetingOpen\)/.test(v5rRaw),
+    'R77', 'S14: an old v5state.json must stay readable (version gate + missing keys take defaults, meetingOpen included) and a failed load must REFUSE commits (never overwrite a real file with an empty state) while staying visible')
+  const runnerRaw = readRaw('tests/run-tests.mjs')
+  gate(/has\('no-temp-hygiene'\) && !has\('self-check'\) && !has\('counts'\)/.test(runnerRaw)
+    && /incrementalSkipped/.test(runnerRaw)
+    && /--counts/.test(runnerRaw),
+    'R78', 'S14: the machine modes must never delete anything (the temp sweep is skipped for --self-check/--counts) and --counts must keep reporting the DERIVED job list with incrementalSkipped included — the guard index and the doc counts depend on exactly that')
+  notes.push('S14 (v5r): fold whitelist keys=' + FOLD_LEDGER_KEYS.join('|')
+    + '; array defaults=' + FOLD_LEDGER_KEYS.every((k) => new RegExp('Array\\.isArray\\(n\\.' + k + '\\) \\? n\\.' + k + ' : \\[\\]').test(v5rRaw))
+    + '; null defaults (chair/stallNotice)=' + (/patch\.chair === null \? null/.test(v5rRaw) && /patch\.stallNotice === null \? null/.test(v5rRaw))
+    + '; version gate=' + /schema version mismatch/.test(v5rRaw)
+    + '; not-loaded face=' + /V5_STATE_NOT_LOADED/.test(v5rRaw)
+    + '; machine modes delete nothing=' + /has\('no-temp-hygiene'\) && !has\('self-check'\) && !has\('counts'\)/.test(runnerRaw)
+    + '; derived counts=' + /incrementalSkipped/.test(runnerRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

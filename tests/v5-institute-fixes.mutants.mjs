@@ -1249,6 +1249,69 @@ const V5R_FAMILIES = [
     to: '            // MUTANT: supersededBy dropped from the stored quote',
     expect: /S13\/G2：引用带 `supersededBy` 字段/,
   },
+  // ── S14 family (迁移与守卫收尾；docs/09 §12 的 S14 行) ──────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s14-* 场景；`expect` 一律抄自定向实跑的**首条**红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R76–R78，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 某台账**缺省失效**（空台账不再悬空拒 ⇒ 旧状态被当成"有决议"）⇒ s14-legacy-defaults 的悬空拒必红。
+    name: 'S14: an empty resolution ledger stops being a dangling reference (a defaulted read is treated as a resolution)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-legacy-defaults' },
+    from: "        if (!all.length) return quoteRefused('悬空引用：决议台账为空（`res:` 只能引**已落库**的决议；未生效的决议不得被引用为结论）')",
+    to: '        if (!all.length) return { ok: true, ref: \'res:none\', from: \'\', at: 0, kind: \'resolution\', domain: \'resolution\', excerpt: \'\', truncated: false, depth: 0, collapsed: false, rootRef: \'res:none\', supersededBy: \'\', secretAggregateOnly: false, viaSupplement: \'\' }',
+    expect: /S14：无决议（缺省空台账）下 `res:latest` ⇒ \*\*悬空拒\*\*/,
+  },
+  {
+    // ② **版本门消失**（旧 `v` 被当成当前版本读入）⇒ s14-load-failure-refuses-commit 的"拒绝提交"必红。
+    name: 'S14: the schema version gate disappears (an old file is read as if it were current)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-load-failure-refuses-commit' },
+    from: '            if (parsed.v === PROJECTION_VERSION) { mem = parsed; ok = true }',
+    to: '            if (true) { mem = parsed; ok = true }',
+    expect: /S14：\*\*加载失败 ⇒ 拒绝提交\*\*/,
+  },
+  {
+    // ③ **加载失败仍允许提交**（commit 守卫被摘 ⇒ 可能覆盖真实文件）⇒ 同场景的"拒绝提交"必红。
+    name: 'S14: a failed load still allows commits (the never-clobber guard is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-load-failure-refuses-commit' },
+    from: '        if (loadedPath !== path || !loadOk) {',
+    to: '        if (false) {',
+    expect: /S14：\*\*加载失败 ⇒ 拒绝提交\*\*/,
+  },
+  {
+    // ④ 某键**未进 fold 白名单**（静默丢弃）⇒ s14-legacy-state 的"新写的台账可见"必红。
+    name: 'S14: the resolution ledger is not in the fold whitelist (writes are silently dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-legacy-state' },
+    from: '          if (patch.resolutions !== undefined) {',
+    to: '          if (false) {',
+    expect: /S14：新写的台账\*\*可见\*\*/,
+  },
+  {
+    // ⑤ 某键**未进 fold 白名单**（`secretaries` 写盘即静默丢弃）⇒ s14-legacy-state 的"台账落盘可见"必红。
+    name: 'S14: the secretary ledger is not in the fold whitelist (the appointment never reaches the file)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-legacy-state' },
+    from: '          if (patch.secretaries !== undefined) {',
+    to: '          if (false) {',
+    expect: /S14：记录人台账\*\*落盘可见\*\*/,
+  },
+  {
+    // ⑥ 纪要责任人**缺省失效**（无记录人时不再明写"无成员责任人"）⇒ s14-legacy-defaults 的该断言必红。
+    name: 'S14: the minutes stop spelling out "no member is responsible" when no secretary was appointed',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's14-legacy-defaults' },
+    from: "      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    to: "      lines.push('- 纪要责任人：' + (secWho || '框架'))",
+    expect: /S14：`secretaries` 缺省 ⇒ 纪要\*\*明写"无成员责任人"\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1276,7 +1339,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   's12-level-derived', 's12-light-no-truth', 's12-acad-only', 's12-idempotent', 's12-report-visible', 's12-no-drive',
   // S13（G2/D6）：每个 s13-* 场景一个正控（落库/标识/未落库拒/取代/简流程拒/检索）＋ S10 放开的正控。
   's13-record-resolution', 's13-stable-id', 's13-prerecord-refused', 's13-superseded', 's13-light-refused', 's13-search',
-  's10-last-resolution-quotable']
+  's10-last-resolution-quotable',
+  // S14（迁移与守卫收尾）：每个 s14-* 场景一个正控（旧文件可读/只读零副作用/缺省可见/加载失败拒提交/幂等/续跑）。
+  's14-legacy-state', 's14-read-only-load', 's14-legacy-defaults', 's14-load-failure-refuses-commit', 's14-idempotent-reload', 's14-meeting-resume']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
