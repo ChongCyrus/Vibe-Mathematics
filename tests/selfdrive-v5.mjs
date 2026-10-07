@@ -631,6 +631,11 @@ async function runScenario(name) {
     console.log('  skip - S9 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_reconsider 与少数意见入档）')
     return
   }
+  // S10 场景只在 v5r 下可跑（引用边界（D6）是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s10-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S10 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有引用锚与私聊补记）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1614,6 +1619,147 @@ async function runScenario(name) {
     assert(after.previousOutcome === 'true' && String(after.supersededBy || '').length > 0 && after.closed === false
       && Object.keys(after.votes).length === 0 && Number(after.round) === Number(before.round || 0) + 1,
       'S9/R7：旧结论带"已被复议"标记（supersededBy）＋新一轮**空票面**＋轮次 +1（got ' + JSON.stringify([after.previousOutcome, after.supersededBy, after.closed, after.round]) + '）')
+  } else if (name === 's10-quote-same-meeting') {
+    // S10-quote-same-meeting（D6）：**会议内引用**锚落**会议纪要文件**（耐久）⇒ 可解析；**只带摘要**
+    // （>200 字符 ⇒ **确定性截断**＋`truncated:true`）；指针**落在消息上**（耐久）。
+    const mt = await openMeeting('S10 会议内引用探测')
+    await settleAll()
+    const gotSpeech = await replyMeeting('r-1', { input: 'S10 会议发言（可被引用）' })
+    assert(gotSpeech, 'S10：r-1 收到会议唤醒并交付发言（前置）')
+    await settleAll()
+    const mtFile = join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md')
+    const mtText = existsSync(mtFile) ? readFileSync(mtFile, 'utf8') : ''
+    const mm = /^###\s+([A-Za-z0-9_-]+)/m.exec(mtText)
+    assert(!!mm && mm[1] === 'r-1', 'S10：会议纪要里已有 r-1 的发言小节（锚可解析；got len=' + mtText.length + '）')
+    const who = mm[1]
+    const anchor = 'mt-' + String(mt.id) + '#speech-' + who + '-1'
+    const q = await callTool('vibe_v5_say', { text: 'S10 引用同会议发言', quote_ref: anchor }, childAgent(childOf('r-2')))
+    assert(q.ok === true && q.quote && q.quote.ref === anchor && q.quote.domain === 'meeting',
+      'S10/D6：会议内引用成功（锚＝会议纪要；got ' + JSON.stringify(q).slice(0, 240) + '）')
+    assert(String(q.quote.excerpt).length > 0 && String(q.quote.excerpt).length <= 200,
+      'S10/D6：只带**摘要**（≤200 字符；got len=' + String(q.quote.excerpt).length + '）')
+    const long = 'X'.repeat(500)
+    const q2 = await callTool('vibe_v5_say', { text: 'S10 摘句截断探测', quote_ref: anchor, quote_excerpt: long }, childAgent(childOf('r-3')))
+    assert(q2.ok === true && q2.quote.truncated === true && String(q2.quote.excerpt).length === 200,
+      'S10/D6：摘句**确定性截断**（500 ⇒ 200 ＋ truncated:true；got len=' + String(q2.quote.excerpt).length + '）')
+    const msgs = ((readV5State() || {}).institutes['default::institute'].messages) || []
+    const stored = msgs.filter((x) => x && String(x.id) === String(q.ids[0]))[0]
+    assert(!!stored && stored.quote && stored.quote.ref === anchor && Number(stored.quote.at) > 0,
+      'S10/D6：指针**落在消息上**（耐久：quote{ref,at}；got ' + JSON.stringify(stored && stored.quote).slice(0, 200) + '）')
+  } else if (name === 's10-cross-meeting-refused') {
+    // S10-cross-meeting-refused（D6）：**跨会议/跨域**引用 ⇒ **具名拒**；`res:` 决议锚 ⇒ **具名拒**
+    // 并说明原因（"跨会议只引上次决议；#26 未实现"）——**不得静默放宽**。
+    const mt = await openMeeting('S10 跨会议引用探测')
+    await settleAll()
+    const gotSpeech = await replyMeeting('r-1', { input: 'S10 会议发言（跨会议引用前置）' })
+    assert(gotSpeech, 'S10：r-1 交付会议发言（前置）')
+    await settleAll()
+    const mtText = existsSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'))
+      ? readFileSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'), 'utf8') : ''
+    const mm = /^###\s+([A-Za-z0-9_-]+)/m.exec(mtText)
+    assert(!!mm && mm[1] === 'r-1', 'S10：会议纪要有 r-1 的小节（前置；got len=' + mtText.length + '）')
+    const anchor = 'mt-' + String(mt.id) + '#speech-' + mm[1] + '-1'
+    await waitMeetingClosed()
+    const cross = await callTool('vibe_v5_say', { text: 'S10 跨会议引用（应被拒）', quote_ref: anchor }, childAgent(childOf('r-1')))
+    assert(cross.ok === false && cross.code === 'V5_INVALID_ARGUMENT' && /仅限同一会议内/.test(String(cross.message)),
+      'S10/D6：跨会议引用**具名拒绝**（got ' + JSON.stringify(cross).slice(0, 260) + '）')
+    const res = await callTool('vibe_v5_say', { text: 'S10 决议引用（应被拒）', quote_ref: 'res:p-s10' }, childAgent(childOf('r-1')))
+    assert(res.ok === false && /上次决议/.test(String(res.message)) && /#26/.test(String(res.message)),
+      'S10/D6：**跨会议只引上次决议**且决议对象 #26 **未实现** ⇒ 当前一律具名拒（got ' + JSON.stringify(res).slice(0, 260) + '）')
+  } else if (name === 's10-dm-not-quotable') {
+    // S10-dm-not-quotable（D6/G5）：私聊**不得**作为引用来源；补记只能由**本人**发起；补记**只记事实**；
+    // **原私聊正文不进公开面**；补记后引用到的是**补记本**（`viaSupplement`）。
+    const dm = await callTool('vibe_v5_say', { to: 'r-2', text: 'S10 私聊原文（不得进公开面）' }, childAgent(childOf('r-1')))
+    assert(dm.ok === true && Array.isArray(dm.ids) && dm.ids.length > 0, 'S10：私聊已发出（前置）')
+    const dmId = String(dm.ids[0])
+    const q1 = await callTool('vibe_v5_say', { text: 'S10 引私聊（应被拒）', quote_ref: dmId }, childAgent(childOf('r-1')))
+    assert(q1.ok === false && /私聊内容\*\*不得\*\*作为引用来源/.test(String(q1.message)),
+      'S10/D6+G5：私聊**不得**作为引用来源（具名拒；got ' + JSON.stringify(q1).slice(0, 240) + '）')
+    const wrong = await callTool('vibe_v5_say', { text: 'S10 第三人补记（应被拒）', supplement_of: dmId, why: '我想引用它' }, childAgent(childOf('r-2')))
+    assert(wrong.ok === false && /发送者本人/.test(String(wrong.message)),
+      'S10/G5：补记只能由**私聊发送者本人**发起（got ' + JSON.stringify(wrong).slice(0, 240) + '）')
+    const sup = await callTool('vibe_v5_say', { text: 'S10 补记本：要点复述', supplement_of: dmId, why: '需要进公开面才能被引用' }, childAgent(childOf('r-1')))
+    assert(sup.ok === true && sup.supplementOf === dmId && Array.isArray(sup.ids) && sup.ids.length > 0,
+      'S10/G5：**本人**补记成功（got ' + JSON.stringify(sup).slice(0, 240) + '）')
+    assert(chatTextR10().indexOf('S10 私聊原文（不得进公开面）') === -1,
+      'S10/G5：**原私聊正文不进公开面**（群聊里没有私聊原文）')
+    const ledger = ((readV5State() || {}).institutes['default::institute'].chatSupplements) || []
+    assert(ledger.some((x) => x && x.of === dmId && x.by === 'r-1' && String(x.publicRef) === String(sup.ids[0])),
+      'S10/G5：补记**只记事实**且可追（chatSupplements{of,by,publicRef}；got ' + JSON.stringify(ledger).slice(0, 240) + '）')
+    const q2 = await callTool('vibe_v5_say', { text: 'S10 补记后引用', quote_ref: dmId }, childAgent(childOf('r-1')))
+    assert(q2.ok === true && q2.quote.kind === 'supplemented-dm' && String(q2.quote.viaSupplement) === String(sup.ids[0])
+      && String(q2.quote.excerpt).indexOf('S10 私聊原文') === -1,
+      'S10/G5：补记后引用到的是**补记本**（viaSupplement；**不搬原私聊**；got ' + JSON.stringify(q2.quote).slice(0, 260) + '）')
+  } else if (name === 's10-quote-limits') {
+    // S10-quote-limits（D6/`04` §4–5）：**条数上限 2**（超限**具名拒**）＋**深度上限 3**（超深**折叠标注、不拒**）。
+    const base = await callTool('vibe_v5_say', { text: 'S10 基线消息（可被引用）' }, childAgent(childOf('r-1')))
+    assert(base.ok === true && Array.isArray(base.ids) && base.ids.length > 0, 'S10：基线消息已发出（前置）')
+    const id = String(base.ids[0])
+    const one = await callTool('vibe_v5_say', { text: 'S10 引用一条', quote_ref: id }, childAgent(childOf('r-2')))
+    assert(one.ok === true && one.quote && one.quote.depth === 1, 'S10：一条引用可用（depth=1）')
+    const three = await callTool('vibe_v5_say', { text: 'S10 引用三条（应被拒）', quote_refs: [id, id, id] }, childAgent(childOf('r-3')))
+    assert(three.ok === false && /最多引用 2 条/.test(String(three.message)),
+      'S10/D6：超条数**具名拒绝**（默认 2；got ' + JSON.stringify(three).slice(0, 240) + '）')
+    let prev = id
+    let last = null
+    for (let i = 0; i < 4; i++) {
+      last = await callTool('vibe_v5_say', { text: 'S10 链第 ' + (i + 2) + ' 条', quote_ref: prev }, childAgent(childOf(i % 2 ? 'r-2' : 'r-3')))
+      assert(last.ok === true, 'S10：链第 ' + (i + 2) + ' 条被接受（got ' + JSON.stringify(last).slice(0, 160) + '）')
+      prev = String(last.ids[0])
+    }
+    assert(last && last.quote && last.quote.collapsed === true && Number(last.quote.depth) > 3 && String(last.quote.excerpt) === '',
+      'S10/D6：超深度 ⇒ **折叠**（collapsed:true、depth>3、不搬原文；got ' + JSON.stringify(last.quote).slice(0, 260) + '）')
+    assert(/见第 k 轮发言/.test(chatTextR10()), 'S10/D6：折叠有**具名标注**（群聊可见）')
+  } else if (name === 's10-dangling-refused') {
+    // S10-dangling-refused（D6/B10）：**悬空锚**（消息/会议发言）⇒ **具名拒**；**不记名板** ⇒ 逐人锚**拒**、
+    // 聚合锚**可引**。
+    const d1 = await callTool('vibe_v5_say', { text: 'S10 悬空（消息）', quote_ref: 'msg-9999' }, childAgent(childOf('r-1')))
+    assert(d1.ok === false && /悬空引用/.test(String(d1.message)),
+      'S10/D6：悬空消息锚**具名拒**（got ' + JSON.stringify(d1).slice(0, 220) + '）')
+    const d2 = await callTool('vibe_v5_say', { text: 'S10 悬空（纪要）', quote_ref: 'mt-mt-9999#speech-r-1-1' }, childAgent(childOf('r-1')))
+    assert(d2.ok === false && /悬空引用/.test(String(d2.message)),
+      'S10/D6：悬空会议发言锚**具名拒**（got ' + JSON.stringify(d2).slice(0, 220) + '）')
+    await openMeeting('S10 不记名引用探测')
+    await settleAll()
+    const op = await callTool('vibe_v5_poll_open', { question: 'S10 不记名引用板', options: ['甲', '乙'], min_votes: 1, secret: true }, childAgent(childOf('acad')))
+    assert(op.ok === true && op.ballot.rules.secret === true, 'S10：不记名板已开（前置）')
+    await callTool('vibe_v5_poll_vote', { choices: ['o-1'] }, childAgent(childOf('r-1')))
+    const cl = await callTool('vibe_v5_poll_close', { ballot_id: String(op.ballot.id), reason: 'S10 计票' }, childAgent(childOf('acad')))
+    assert(cl.ok === true, 'S10：不记名板已截止（冻结解除）')
+    const per = await callTool('vibe_v5_say', { text: 'S10 引不记名逐人（应被拒）', quote_ref: 'ballot:' + String(op.ballot.id) + '#vote-r-1' }, childAgent(childOf('r-2')))
+    assert(per.ok === false && /逐人选择不可引用/.test(String(per.message)),
+      'S10/B10：不记名**逐人锚**具名拒（got ' + JSON.stringify(per).slice(0, 240) + '）')
+    const agg = await callTool('vibe_v5_say', { text: 'S10 引不记名聚合', quote_ref: 'ballot:' + String(op.ballot.id) }, childAgent(childOf('r-2')))
+    assert(agg.ok === true && agg.quote.kind === 'ballot-aggregate' && agg.quote.secretAggregateOnly === true,
+      'S10/B10：不记名板**只可引聚合**（got ' + JSON.stringify(agg).slice(0, 260) + '）')
+  } else if (name === 's10-no-drive') {
+    // S10-no-drive（R1/R10）：引用**不驱动**任何流程（不改阶段、不写票/真值）；**S8×S10**：冻结期引用
+    // **随发言一起被拒**（同一入口 ⇒ 无需第二道门）。
+    const mt = await openMeeting('S10 不驱动探测')
+    await settleAll()
+    const gotSpeech = await replyMeeting('r-1', { input: 'S10 会议发言（不驱动前置）' })
+    assert(gotSpeech, 'S10：r-1 交付会议发言（前置）')
+    await settleAll()
+    const st0 = await callTool('vibe_v5_status', {})
+    const phase0 = String((st0.meeting || {}).phase || '')
+    const mtText = existsSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'))
+      ? readFileSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'), 'utf8') : ''
+    const mm = /^###\s+([A-Za-z0-9_-]+)/m.exec(mtText)
+    assert(!!mm && !!st0.meeting, 'S10：会议进行中且纪要有发言（前置）')
+    const anchor = 'mt-' + String(mt.id) + '#speech-' + mm[1] + '-1'
+    const q = await callTool('vibe_v5_say', { text: 'S10 引用不改流程', quote_ref: anchor }, childAgent(childOf('r-2')))
+    assert(q.ok === true, 'S10：引用成功（前置；got ' + JSON.stringify(q).slice(0, 160) + '）')
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(!!st1.meeting && String(st1.meeting.phase) === phase0,
+      'S10：引用**不改会议阶段**（' + phase0 + ' ⇒ ' + String(st1.meeting && st1.meeting.phase) + '）')
+    assert(JSON.stringify(st1.solveVotes) === JSON.stringify(st0.solveVotes) && JSON.stringify(st1.undecided) === JSON.stringify(st0.undecided),
+      'S10：引用**不写票/真值**（solveVotes/undecided 全不变）')
+    const op = await callTool('vibe_v5_poll_open', { question: 'S10 冻结引用板', options: ['甲', '乙'], min_votes: 1 }, childAgent(childOf('acad')))
+    assert(op.ok === true, 'S10：表决板已开（冻结）')
+    const qf = await callTool('vibe_v5_say', { text: 'S10 冻结期引用（应被拒）', quote_ref: anchor }, childAgent(childOf('r-3')))
+    assert(qf.ok === false && /表决期禁止发言/.test(String(qf.message)),
+      'S10×S8：冻结期**引用随发言一起被拒**（同一入口；got ' + JSON.stringify(qf).slice(0, 240) + '）')
+    assert(chatTextR10().indexOf('S10 冻结期引用（应被拒）') === -1, 'S10×S8：被拒的引用**不产生任何发言**')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

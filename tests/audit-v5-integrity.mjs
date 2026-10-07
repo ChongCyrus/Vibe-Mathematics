@@ -431,6 +431,48 @@ const SELF_PROBE_MUTATIONS = [
     to: "          secretSource: bSecret, eligibility: 'board-participant', choices: bVotes.map((v) => v.choices),",
     expect: 'R54',
   },
+  {
+    name: 'S10: the excerpt stops being truncated (the quote copies the whole text)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '        ? { excerpt: s.slice(0, QUOTE_EXCERPT_MAX), truncated: true }',
+    to: '        ? { excerpt: s, truncated: true }',
+    expect: 'R55',
+  },
+  {
+    name: 'S10: a cross-meeting anchor is accepted (the same-meeting boundary is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "          if (String(got.meetingId || '') !== curMeetingId) {",
+    to: '          if (false) {',
+    expect: 'R56',
+  },
+  {
+    name: 'S10: a private message becomes directly quotable (the supplement gate is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        if (String(found.kind) === 'dm') {",
+    to: '        if (false) {',
+    expect: 'R57',
+  },
+  {
+    name: 'S10: the per-message quote cap disappears (any number of quotes is accepted)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '        if (refs.length > quotesPerMessageMax()) {',
+    to: '        if (false) {',
+    expect: 'R58',
+  },
+  {
+    name: 'S10: a dangling minutes anchor is accepted (the speech branch stops refusing)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        if (!b || !body) return quoteRefused('悬空引用：' + rel + ' 里找不到 ' + who + ' 的第 ' + nth + ' 次发言（锚 ' + r + '）')",
+    to: "        if (!b || !body) return { ok: true, ref: r, domain: 'meeting', meetingId: mid, from: who, text: '', kind: 'speech', depth: 1, chain: [] }",
+    expect: 'R59',
+  },
+  {
+    name: 'S10: the quote path starts driving the meeting phase',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })',
+    to: "      if (meeting) meeting.phase = 'open-floor'\n      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })",
+    expect: 'R60',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1323,7 +1365,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
   const sayBody = bodyOf('async function say(from, opts) {')
   gate(/function speechFrozen\(\) \{/.test(v5rRaw) && /const b = openBallot\(\)/.test(frozenBody)
     && /表决期禁止发言/.test(speechGateBody) && /V5_INVALID_ARGUMENT/.test(speechGateBody)
-    && /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw)
+    && /registerTool\('vibe_v5_say'[\s\S]{0,2000}s\.speechGate\(from\)/.test(v5rRaw)
     && /const frozenSpeech = speechFrozen\(\)\.frozen/.test(v5rRaw)
     && !/delete\s+meeting\.hands/.test(frozenBody + speechGateBody),
     'R44', 'S8/R3+K12+B9: during a ballot (an OPEN poll board) member speech must be refused BY NAME at BOTH member entries (vibe_v5_say + the meeting reply), and the freeze must NOT clear the raised-hand queue')
@@ -1339,10 +1381,10 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     && /commit\(EV\.meeting, \{ index: \{ id: mn\.id \}, minutes: \{ at: now\(\), speechZone, voteZone \} \}\)/.test(finalizeBody),
     'R47', 'S8/K12: the minutes must carry BOTH zones — rendered (`## 发言区` / `## 投票区` with the unvoted list) AND structured (`minutes{speechZone,voteZone}` written back to the durable meeting entry)')
   gate(!!sayBody && !/speechGate\(|speechFrozen\(/.test(sayBody)
-    && /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw),
+    && /registerTool\('vibe_v5_say'[\s\S]{0,2000}s\.speechGate\(from\)[\s\S]{0,400}s\.sayQuote\(from, a\)/.test(v5rRaw),
     'R48', 'S8: the gate lives at the MEMBER ENTRY (the vibe_v5_say handler), never inside say() — framework/system messages (assignments, nudges, broadcasts, poll progress) must keep flowing during a ballot')
   notes.push('S8 (v5r): freeze=' + (/const b = openBallot\(\)/.test(frozenBody) ? 'derived(open ballot)' : 'MISSING')
-    + '; gate at say tool=' + /registerTool\('vibe_v5_say'[\s\S]{0,400}speechGate\(/.test(v5rRaw)
+    + '; gate at say tool=' + /registerTool\('vibe_v5_say'[\s\S]{0,2000}s\.speechGate\(from\)/.test(v5rRaw)
     + '; gate inside say()=' + /speechGate\(|speechFrozen\(/.test(sayBody)
     + '; meeting reply refused=' + /const frozenSpeech = speechFrozen\(\)\.frozen/.test(v5rRaw)
     + '; passive(no phase/finalize/timer)=' + !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(/.test(frozenBody + speechGateBody)
@@ -1397,6 +1439,59 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|MEMBER_NOT_FOUND|NOT_ACADEMICIAN|INVALID_VERDICT|NO_OPEN_MEETING)[A-Z_]+/.test(reconsiderBody)
     + '; board branch=' + /const bSecret = !!\(b\.rules && b\.rules\.secret\)/.test(reconsiderBody)
     + '; secret aggregates only=' + !/choices/.test(reconsiderBody))
+  // ---- S10 (D6/G5): the quoting boundary ------------------------------------------------------------
+  // A quote carries ONLY a <=200-char summary + a stable pointer; the same-meeting rule is enforced
+  // (cross-meeting ⇒ refused by name, `res:` only); a private message is not a source until its OWN
+  // sender supplements it publicly (the fact is recorded, the text is not copied); the count cap
+  // (default 2) refuses by name while the depth cap (default 3) COLLAPSES; a dangling anchor and a
+  // secret board's per-person anchor are refused; no new error code; nothing is driven.
+  const quoteBody = bodyOf('async function sayQuote(callerId, args) {')
+  const anchorBody = bodyOf('async function resolveQuoteAnchor(ref) {')
+  gate(/const QUOTE_EXCERPT_MAX = 200/.test(v5rRaw)
+    && /s\.slice\(0, QUOTE_EXCERPT_MAX\), truncated: true/.test(v5rRaw)
+    && /excerpt: capped \? '' : cut\.excerpt/.test(quoteBody)
+    && !/fullText|originalText|quotedText/.test(quoteBody)
+    && /quote: opts\.quote/.test(v5rRaw),
+    'R55', 'S10/D6: a quote carries ONLY a <=200-char summary plus a stable pointer — the excerpt is deterministically truncated (truncated:true) and the full text is never copied')
+  gate(/if \(String\(got\.meetingId \|\| ''\) !== curMeetingId\)/.test(quoteBody)
+    && /引用\*\*仅限同一会议内\*\*（D6）/.test(quoteBody)
+    && /\^res:/.test(anchorBody) && /#26/.test(anchorBody),
+    'R56', 'S10/D6: quoting is limited to the SAME meeting (the meetingId must match; both-outside = the chat domain) and a cross-meeting anchor is refused by name (`res:` only — resolution objects #26 are not implemented)')
+  gate(/String\(found\.kind\) === 'dm'/.test(anchorBody) && /请先由\*\*本人\*\*用/.test(anchorBody)
+    && /if \(String\(src\.from\) !== String\(callerId\)\)/.test(quoteBody)
+    && /chatSupplements: \(list\)/.test(quoteBody)
+    && !/src\.text/.test(quoteBody),
+    'R57', 'S10/D6+G5: a private message is not a quotable source until its OWN SENDER supplements it publicly (supplement_of + why); the supplement path records only the FACT (chatSupplements) and never copies the private text into the public face')
+  gate(/const QUOTE_DEFAULT_PER_MESSAGE = 2/.test(v5rRaw) && /const QUOTE_DEFAULT_DEPTH = 3/.test(v5rRaw)
+    && /if \(refs\.length > quotesPerMessageMax\(\)\)/.test(quoteBody)
+    && /const capped = depth > quoteDepthMax\(\)/.test(quoteBody)
+    && /collapsed: capped/.test(quoteBody)
+    && /折叠为\*\*「见第 k 轮发言 #n」/.test(quoteBody),
+    'R58', 'S10/D6: at most quotesPerMessageMax (default 2) quotes per message are accepted (refused by name beyond that), while a chain deeper than quoteDepthMax (default 3) is COLLAPSED to an anchor instead of being refused (`04` §4)')
+  gate(/\(!b \|\| !body\) return quoteRefused\('悬空引用/.test(anchorBody)
+    && /'悬空引用：找不到消息 ' \+ id/.test(anchorBody)
+    && /'悬空引用：找不到投票板 ' \+ bal\[1\]/.test(anchorBody)
+    && /不记名板的\*\*逐人选择不可引用\*\*/.test(anchorBody)
+    && /const secret = !!\(b\.rules && b\.rules\.secret\)/.test(anchorBody)
+    && /domain: 'ballot'/.test(anchorBody),
+    'R59', 'S10/D6+B10: EVERY anchor branch refuses a dangling reference by name (minutes speech / chat message / poll board), and a SECRET board may only be quoted as an aggregate (a per-person anchor is refused)')
+  gate(!!quoteBody && /const quoteRefused = \(message\) => \(\{ ok: false, code: 'V5_INVALID_ARGUMENT', message \}\)/.test(v5rRaw)
+    && !/code: 'V5_/.test(quoteBody + anchorBody)
+    && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(/.test(quoteBody),
+    'R60', 'S10: the quote path introduces NO new error code (its only refusal helper hardcodes V5_INVALID_ARGUMENT and neither body inlines a code) and drives NOTHING (no phase change, no closure, no ballot write, no timer)')
+  notes.push('S10 (v5r): excerpt max=' + (/const QUOTE_EXCERPT_MAX = 200/.test(v5rRaw) ? 200 : 'MISSING')
+    + '; truncation=' + /s\.slice\(0, QUOTE_EXCERPT_MAX\), truncated: true/.test(v5rRaw)
+    + '; same-domain gate=' + /if \(String\(got\.meetingId \|\| ''\) !== curMeetingId\)/.test(quoteBody)
+    + '; res refused=' + (/\^res:/.test(anchorBody) && /#26/.test(anchorBody))
+    + '; dm blocked=' + /String\(found\.kind\) === 'dm'/.test(anchorBody)
+    + '; supplement own-sender=' + /if \(String\(src\.from\) !== String\(callerId\)\)/.test(quoteBody)
+    + '; fact-only ledger=' + (/chatSupplements: \(list\)/.test(quoteBody) && !/src\.text/.test(quoteBody))
+    + '; per-message max=' + (/const QUOTE_DEFAULT_PER_MESSAGE = 2/.test(v5rRaw) ? 2 : 'MISSING')
+    + '; depth max=' + (/const QUOTE_DEFAULT_DEPTH = 3/.test(v5rRaw) ? 3 : 'MISSING')
+    + '; collapse not refuse=' + /collapsed: capped/.test(quoteBody)
+    + '; dangling refused=' + /悬空引用/.test(anchorBody)
+    + '; secret per-person refused=' + /不记名板的\*\*逐人选择不可引用\*\*/.test(anchorBody)
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|MEMBER_NOT_FOUND)[A-Z_]+/.test(quoteBody + anchorBody)    + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(/.test(quoteBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

@@ -611,6 +611,12 @@ export function apply(ctx) {
             const nextB = typeof patch.ballots === 'function' ? patch.ballots(Array.isArray(n.ballots) ? n.ballots : []) : patch.ballots
             if (nextB !== undefined) n.ballots = Array.isArray(nextB) ? nextB : []
           }
+          // S10（D6/G5）：**私聊补记**台账（append-only：只记"何时由谁把它补记到哪"这一事实，
+          // **不搬原私聊正文**）。同样走 fold 白名单 ⇒ 漏写即静默丢弃。
+          if (patch.chatSupplements !== undefined) {
+            const nextS = typeof patch.chatSupplements === 'function' ? patch.chatSupplements(Array.isArray(n.chatSupplements) ? n.chatSupplements : []) : patch.chatSupplements
+            if (nextS !== undefined) n.chatSupplements = Array.isArray(nextS) ? nextS : []
+          }
           return n
         })
       }
@@ -991,6 +997,8 @@ export function apply(ctx) {
       quorumCap: 3,                 // m = min(quorumCap, |voters|)
       quorumMode: 'm-unanimous',    // 'm-unanimous' (v5) | 'all-unanimous' (v4 legacy)
       reconsiderFloor: 0,           // S9/U3：复议门槛的**下限**（缺省 0＝只保证"不降"；生效门槛 = max(本对象标准, 它, quorumCap)）
+      quotesPerMessageMax: 2,       // S10/D6：每条发言**最多引用几条**（`04` §5 默认 2）；超限 ⇒ 具名拒
+      quoteDepthMax: 3,             // S10/D6：引用链**深度上限**（`04` §4 默认 3）；超深 ⇒ **折叠标注**（不拒）
       verdictMaxRounds: 3,
       // ── staffing ─────────────────────────────────────────────────────────
       maxTempPerMember: 3,          // simultaneously employed temps per academician/researcher
@@ -1887,6 +1895,195 @@ export function apply(ctx) {
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
     }
 
+    // ── S10（D6/G5）：**引用边界** ─────────────────────────────────────────────────────────────
+    // 三条硬边界：① 引用**仅限同一会议内**（跨会议**只引上次决议** —— #26 未实现 ⇒ **当前一律具名拒**）
+    //            ② **只带摘要＋稳定指针、不搬原文**（摘句 ≤200 字符，超长**确定性截断**并标 `truncated`）
+    //            ③ **私聊不得作为引用来源**（须由**本人**先用 `supplement_of` 补记到群聊/会议）
+    // 锚载体（裁定 (a-1)(i)）：**会议内 ⇒ 会议纪要文件** `mt-<id>#speech-<who>-<n>`（**耐久**，可作悬空判）；
+    // **会议外 ⇒ 未投递群聊消息** `msg-<N>`（**写入时快照**；投递后正文不再保留 ⇒ 悬空即具名拒）；
+    // 聚合锚 `ballot:<id>`（**不记名板只可引聚合**）；逐人锚 `ballot:<id>#vote-<who>` 在**不记名**时具名拒。
+    const QUOTE_EXCERPT_MAX = 200
+    const QUOTE_DEFAULT_PER_MESSAGE = 2
+    const QUOTE_DEFAULT_DEPTH = 3
+    const quotesPerMessageMax = () => Math.max(1, Math.floor(Number(params.quotesPerMessageMax) || QUOTE_DEFAULT_PER_MESSAGE))
+    const quoteDepthMax = () => Math.max(1, Math.floor(Number(params.quoteDepthMax) || QUOTE_DEFAULT_DEPTH))
+    /** **确定性**摘句：压缩空白 ＋ 限长 200 ＋ 截断标记（**绝不搬运原文**）。 */
+    const truncateExcerpt = (t) => {
+      const s = String(t || '').replace(/\s+/g, ' ').trim()
+      return s.length > QUOTE_EXCERPT_MAX
+        ? { excerpt: s.slice(0, QUOTE_EXCERPT_MAX), truncated: true }
+        : { excerpt: s, truncated: false }
+    }
+    const quoteRefused = (message) => ({ ok: false, code: 'V5_INVALID_ARGUMENT', message })
+    /** 解析引用锚 ⇒ `{ok:true,…}` 或 `{ok:false, code, message}`（**悬空即拒**）。 */
+    async function resolveQuoteAnchor(ref) {
+      const r = String(ref || '').trim()
+      if (!r) return quoteRefused('quote_ref 为空：引用必须给出锚（会议内 `mt-<id>#speech-<who>-<n>`／会议外 `msg-<N>`／聚合 `ballot:<id>`）')
+      if (/^res:/.test(r)) {
+        return quoteRefused('跨会议只能引**上次决议**（D6）：决议对象 `meeting_result_record`（#26）**尚未实现** ⇒ 当前跨会议引用一律拒绝，不得静默放宽')
+      }
+      // ① 会议内发言锚（**耐久**：读会议纪要文件 ⇒ 悬空可判）
+      const mts = /^mt-([A-Za-z0-9_-]+)#speech-([A-Za-z0-9_-]+)-(\d+)$/.exec(r)
+      if (mts) {
+        const mid = mts[1]
+        const who = mts[2]
+        const nth = Math.max(1, Math.floor(Number(mts[3]) || 1))
+        const rel = 'Shared/Meetings/' + mid + '.md'
+        let text = ''
+        try { text = String((await readTextRel(rel)) || '') } catch (e) { text = '' }
+        if (!text) return quoteRefused('悬空引用：会议纪要 ' + rel + ' 不存在或不可读 ⇒ 锚 ' + r + ' 无法解析')
+        const blocks = []
+        let cur = null
+        for (const line of text.split(/\r?\n/)) {
+          const h = /^###\s+([A-Za-z0-9_-]+)/.exec(line)
+          if (h) { cur = { who: h[1], buf: [] }; blocks.push(cur); continue }
+          if (cur) cur.buf.push(line)
+        }
+        const b = blocks.filter((x) => x.who === who)[nth - 1]
+        const body = b ? b.buf.join('\n').trim() : ''
+        if (!b || !body) return quoteRefused('悬空引用：' + rel + ' 里找不到 ' + who + ' 的第 ' + nth + ' 次发言（锚 ' + r + '）')
+        return { ok: true, ref: r, domain: 'meeting', meetingId: mid, from: who, text: body, kind: 'speech', depth: 1, chain: [] }
+      }
+      // ② 会议外群聊消息锚（**写入时快照**：投递后正文不再保留）
+      const msg = /^msg-(\d+)$/.exec(r)
+      if (msg) {
+        const id = 'msg-' + msg[1]
+        const found = (inst().messages || []).filter((x) => x && String(x.id) === id)[0]
+        if (!found) {
+          const known = (inst().delivered || []).indexOf(id) !== -1
+          return quoteRefused(known
+            ? '悬空引用：' + id + ' 已投递归档，正文不再保留（封顶账本）⇒ 不能作为引用来源；请改为在会议内引用，或先补记到群聊/会议'
+            : '悬空引用：找不到消息 ' + id)
+        }
+        if (String(found.kind) === 'dm') {
+          // S10+G5：私聊**不是**引用来源；**只有**它已被**本人**补记到公开面之后，才允许引用——
+          // 且引到的是**补记本**（公开文本），**原私聊正文仍不搬**（`viaSupplement` 指回补记本）。
+          const sup = (inst().chatSupplements || []).filter((x) => x && String(x.of) === id)[0]
+          if (!sup) {
+            return quoteRefused('私聊内容**不得**作为引用来源（D6/G5）：请先由**本人**用 `supplement_of` 把它补记到群聊/会议，再引用补记本')
+          }
+          const pub = (inst().messages || []).filter((x) => x && String(x.id) === String(sup.publicRef))[0]
+          return {
+            ok: true, ref: r, domain: 'chat', meetingId: '', from: String(found.from || ''),
+            text: pub ? String(pub.text || '') : '', kind: 'supplemented-dm', depth: 1, chain: [],
+            viaSupplement: String(sup.publicRef || ''),
+          }
+        }
+        const chain = []
+        let hop = found
+        for (let i = 0; i < 8 && hop && hop.quote && hop.quote.ref; i++) {
+          chain.push({ ref: hop.quote.ref, from: hop.from })
+          hop = (inst().messages || []).filter((x) => x && String(x.id) === String(hop.quote.ref))[0]
+        }
+        return {
+          ok: true, ref: r, domain: 'chat', meetingId: '', from: String(found.from || ''),
+          text: String(found.text || ''), kind: String(found.kind || 'chat'),
+          depth: Number((found.quote && found.quote.depth) || 0) + 1, chain,
+        }
+      }
+      // ③ 聚合锚 / 逐人锚（**不记名只可引聚合**）
+      const bal = /^ballot:([A-Za-z0-9_-]+)(?:#vote-([A-Za-z0-9_-]+))?$/.exec(r)
+      if (bal) {
+        const b = ballotById(bal[1])
+        if (!b) return quoteRefused('悬空引用：找不到投票板 ' + bal[1])
+        const secret = !!(b.rules && b.rules.secret)
+        if (bal[2]) {
+          if (secret) return quoteRefused('不记名板的**逐人选择不可引用**（B10/R43）：只可引聚合锚 `ballot:' + b.id + '`')
+          const v = (b.votes || []).filter((x) => x && String(x.by) === String(bal[2]))[0]
+          if (!v) return quoteRefused('悬空引用：板上没有 ' + bal[2] + ' 的票')
+          return {
+            ok: true, ref: r, domain: 'ballot', meetingId: String(b.meetingId || ''), from: String(bal[2]),
+            text: bal[2] + '＝' + ((v.choices || []).join('、') || (v.abstain ? '弃权' : '（无）')), kind: 'ballot-vote', depth: 1, chain: [],
+          }
+        }
+        const vs = ballotView(b) || {}
+        const tally = vs.tally || {}
+        const agg = '问题：' + String(b.question || '') + '｜计票：' + Object.keys(tally).map((k) => k + '＝' + tally[k]).join('、')
+          + '｜已投 ' + Number(vs.cast || 0) + (vs.settled ? '｜本次投票成立' : '｜未达门槛') + (secret ? '｜**不记名板**（只引聚合）' : '')
+        return {
+          ok: true, ref: r, domain: 'ballot', meetingId: String(b.meetingId || ''), from: String(b.from || ''),
+          text: agg, kind: 'ballot-aggregate', depth: 1, chain: [],
+        }
+      }
+      return quoteRefused('无法识别的引用锚：' + r + '（可用：会议内 `mt-<id>#speech-<who>-<n>`／会议外 `msg-<N>`／聚合 `ballot:<id>`）')
+    }
+    /**
+     * S10 唯一入口：`vibe_v5_say` 的**发言 ＋ 引用/补记**。
+     * 顺序：① 时间键一律拒 → ② 补记（`supplement_of`，**本人**发起、只记事实）→ ③ 引用（同域／悬空／条数／
+     * 深度折叠／环形标注／不记名只引聚合）；边界：**不驱动**（不改阶段、不收束、不写票、无定时器）。
+     */
+    async function sayQuote(callerId, args) {
+      const a = args || {}
+      const badTime = Object.keys(a).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return quoteRefused('时间由框架设置：不接受时间参数 ' + badTime.join('、'))
+      const to = a.to || 'all'
+      const kind = to === 'voters' ? 'voters' : (a.to ? 'dm' : 'chat')
+      // ② 私聊补记（G5：**本人**发起、只记事实、**原私聊不进公开面**）
+      let supplementOf = ''
+      if (a.supplement_of) {
+        const ref = String(a.supplement_of).trim()
+        const why = String(a.why || '').trim()
+        if (!why) return quoteRefused('why is required：补记必须写明理由（G5/D6）')
+        const src = (inst().messages || []).filter((x) => x && String(x.id) === ref)[0]
+        if (!src || String(src.kind) !== 'dm') return quoteRefused('补记失败：' + ref + ' 不是一条私聊消息')
+        if (String(src.from) !== String(callerId)) {
+          return quoteRefused('补记只能由**私聊的发送者本人**发起（G5：私聊内容永不默认转发）：' + ref + ' 不是你发的')
+        }
+        supplementOf = ref
+      }
+      // ③ 引用（同域／悬空／条数／深度／环形／不记名）
+      const refs = (Array.isArray(a.quote_refs) ? a.quote_refs.map(String) : []).concat(a.quote_ref ? [String(a.quote_ref)] : [])
+      let quote = null
+      const quotes = []
+      if (refs.length) {
+        if (refs.length > quotesPerMessageMax()) {
+          return quoteRefused('每条发言最多引用 ' + quotesPerMessageMax() + ' 条（`04` §5；超限**具名拒绝**）：本次请求 ' + refs.length + ' 条')
+        }
+        const curMeetingId = meeting ? String(meeting.id) : ''
+        for (const ref of refs) {
+          const got = await resolveQuoteAnchor(ref)
+          if (!got.ok) return got
+          if (String(got.meetingId || '') !== curMeetingId) {
+            return quoteRefused('引用**仅限同一会议内**（D6）：当前'
+              + (curMeetingId ? '会议是 ' + curMeetingId : '不在会议中（会议外群聊域）')
+              + '，而被引发言属于 ' + (got.meetingId || '会议外群聊域') + ' ⇒ 跨会议/跨域引用被拒')
+          }
+          const want = String(a.quote_excerpt || '').trim()
+          const cut = truncateExcerpt(want || got.text)
+          const depth = Number(got.depth || 1)
+          const capped = depth > quoteDepthMax()
+          const cycle = (got.chain || []).some((x) => String(x.from) === String(callerId))
+          quotes.push({
+            ref: got.ref, from: got.from, at: now(), kind: got.kind, domain: got.domain,
+            excerpt: capped ? '' : cut.excerpt, truncated: capped ? false : cut.truncated,
+            depth, collapsed: capped, cycle,
+            rootRef: (got.chain && got.chain.length ? got.chain[got.chain.length - 1].ref : got.ref),
+            secretAggregateOnly: got.kind === 'ballot-aggregate',
+            viaSupplement: String(got.viaSupplement || ''),
+          })
+        }
+        quote = quotes[0]
+        if (quote.collapsed) {
+          await saveChatLine('【引用】' + callerId + ' 的引用链深度 ' + quote.depth + ' 超过上限 ' + quoteDepthMax()
+            + ' ⇒ **折叠为**「见第 k 轮发言 #n」（只标锚、不搬原文；`04` §4）。')
+        }
+        if (quotes.some((q) => q.cycle)) {
+          await saveChatLine('【引用成环】' + callerId + ' 的引用指向了链条里**自己**的发言 ⇒ 提示"引用成环，请补充新论据或转为一句话表态"（**只标注，不拒绝**；`04` §4）。')
+        }
+      }
+      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })
+      if (supplementOf) {
+        await patchInstitute({
+          chatSupplements: (list) => (Array.isArray(list) ? list : []).concat([{
+            of: supplementOf, by: callerId, at: now(), publicRef: String((sent && sent.ids && sent.ids[0]) || ''), why: String(a.why || ''),
+          }]),
+        })
+        await saveChatLine('【补记】' + callerId + ' 把私聊 ' + supplementOf + ' 的内容**补记**到公开面（理由：' + String(a.why || '')
+          + '）⇒ 之后可被引用（引用带 viaSupplement）；**原私聊本身仍不进公开面**（G5）。')
+      }
+      return Object.assign({}, sent, quote ? { quote, quotes } : {}, supplementOf ? { supplementOf } : {})
+    }
+
     // ── S9（D5/D5a/U3）：**少数意见入档 ＋ 复议** ──────────────────────────────────────────────
     // 收束的记录**一律**盖上少数意见（`minority[]`）、门槛（`threshold{m,floor}`）与生效时点
     // （`effectiveAt`）——**唯一的盖章点**是 `putVerdict`，因而四条收束路径（触界/形式化推迟/未定论/
@@ -2741,7 +2938,10 @@ export function apply(ctx) {
       // returned `ok:true`.
       const made = []
       await putMessageMake((alloc) => {
-        for (const t of targets) made.push({ id: alloc.next('message'), from, to: t.id, kind, text, at })
+        for (const t of targets) made.push(Object.assign({ id: alloc.next('message'), from, to: t.id, kind, text, at },
+          (opts && opts.quote) ? { quote: opts.quote } : {},
+          (opts && Array.isArray(opts.quotes) && opts.quotes.length) ? { quotes: opts.quotes } : {},
+          (opts && opts.supplementOf) ? { supplementOf: opts.supplementOf } : {}))
         return made
       })
       // The office talking to the institute is HALF of the `paperEditor='office'` consultation
@@ -8576,7 +8776,7 @@ export function apply(ctx) {
       // prompt-invariants self-probe mutates the exact TAIL of this array (dropping
       // leanTimeoutMs from the accept-set), so appending a key after it would silently
       // disarm that guard.
-      const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'reconsiderFloor', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
+      const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'reconsiderFloor', 'quotesPerMessageMax', 'quoteDepthMax', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'meetingHardLimitMs', 'meetingWakeRetries',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
@@ -8664,6 +8864,9 @@ export function apply(ctx) {
       if (out.quorumCap !== undefined && out.quorumCap < 1) out.quorumCap = 1
       // S9/U3：复议门槛的**下限**不得为负（负值等于"降门槛"，直接违反"只升不降"）。
       if (out.reconsiderFloor !== undefined && out.reconsiderFloor < 0) out.reconsiderFloor = 0
+      // S10/D6：引用条数与深度上限的下限是 1（0/负值等于"禁止一切引用"或"无限深"，都不是可用的政策）。
+      if (out.quotesPerMessageMax !== undefined && out.quotesPerMessageMax < 1) out.quotesPerMessageMax = 1
+      if (out.quoteDepthMax !== undefined && out.quoteDepthMax < 1) out.quoteDepthMax = 1
       // NOT every non-positive number is harmless (audit L3). `compactThreshold <= 0` makes
       // EVERY round look over the threshold (a permanent compaction directive), so it falls back
       // to the default like a bad duration; `chatDigestMax < 1` would empty the digest bucket and
@@ -9143,7 +9346,9 @@ export function apply(ctx) {
         // F8 (status/report review): the two counts have different scopes — `pending` is the
         // INSTITUTE-WIDE number of not-yet-acknowledged messages (not "my unread"), and `delivered`
         // is a CAPPED acknowledgement ledger. Both are named accordingly here.
-        chat: { pending: s.messages.length, delivered: s.delivered.length },
+        chat: { pending: s.messages.length, delivered: s.delivered.length,
+          // S10（D6）：**只读**子键（**不加 `status()` 顶层键**）。
+          quotes_per_message_max: quotesPerMessageMax(), quote_depth_max: quoteDepthMax() },
         chatScope: 'pending = 全所未确认投递的消息数（非"我的未读"）；delivered = 封顶账本（DELIVERED_CAP，到顶后不再增长）',
         // MEDIUM 4 (deep review): the requests only the OFFICE can approve. `to:'voters'` never
         // reaches the office (it is not a member), so an unapproved proposal used to be invisible
@@ -9559,7 +9764,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -9762,14 +9967,14 @@ export function apply(ctx) {
   registerTool('vibe_v5_finalize_paper', 'Office: finalise the final paper after consulting the whole institute. Required when paperEditor="office": at least one office message (vibe_v5_message) AND at least one meeting convened by the office must happen first (paper.meta.json records them, and the note must state the conclusion). decision="revise" asks for another writing round (bounded).', objParams({ decision: { type: 'string', enum: ['deliverable', 'revise'] }, note: S, conclusion: S, force: B }, ['decision']), (s, a, x) => withOffice(s, x, 'finalise the final paper', () => s.finalizePaperByOffice(a)))
 
   // ── member-facing controls ────────────────────────────────────────────────
-  registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters").', objParams({ text: S, to: S }, ['text']), (s, a, x) => {
+  registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters"). QUOTING (D6): quote_ref takes an anchor — a speech of the SAME meeting (`mt-<id>#speech-<who>-<n>`, resolved against the durable minutes file), an undelivered group message (`msg-N`, snapshotted at write time) or a poll aggregate (`ballot:<id>`); quote_excerpt optionally overrides the summary. The quote carries ONLY a <=200-char summary plus a stable pointer (the full text is never copied); at most quotesPerMessageMax (default 2) quotes per message, and a chain deeper than quoteDepthMax (default 3) is COLLAPSED to an anchor instead of being refused; cross-meeting quoting is refused (only the last resolution may be quoted across meetings and meeting_result_record #26 is not implemented yet); a dangling anchor is refused; a message that is already delivered is refused (its body is not retained); a PRIVATE message may not be quoted until its own sender supplements it publicly (supplement_of + why); a secret board can only be quoted as an aggregate. Nothing here drives the meeting.', objParams({ text: S, to: S, quote_ref: S, quote_refs: SA, quote_excerpt: S, supplement_of: S, why: S }, ['text']), (s, a, x) => {
     const from = s.memberIdOfAgent(x)
     if (!from) return s.memberDiagnosis('发言（vibe_v5_say）', from)
-    // S8（R3/K12/B9）：**表决期禁止发言** —— 门在**成员发言入口**（系统/框架消息不经过这里，照常可达）。
+    // S8（R3/K12/B9）：**表决期禁止发言** —— 门在**成员发言入口**（系统/框架消息不经过这里，照常可达）；
+    // S10（D6）：引用**随发言一起**被这道门覆盖（同一入口 ⇒ 无需第二道门）。
     const frozen = s.speechGate(from)
     if (frozen) return frozen
-    const to = a.to || 'all'
-    return s.say(from, { to, text: a.text, kind: to === 'voters' ? 'voters' : (a.to ? 'dm' : 'chat') })
+    return s.sayQuote(from, a)
   })
   registerTool('vibe_v5_wait', '(member) Wait for the next institute change (roster/task/mail/status) WITHOUT polling. Returns immediately with noProgress when nobody else is running or provisioning. timeout_ms: 10000-3600000 (default 30000).', objParams({ timeout_ms: I, reason: S }), async (s, a, x) => {
     const me = s.memberIdOfAgent(x)

@@ -997,6 +997,69 @@ const V5R_FAMILIES = [
     to: '        previousRounds: [],',
     expect: /S9\/R7：旧结论／旧票面／旧少数意见\*\*全部留档\*\*/,
   },
+  // ── S10 family (D6/G5；docs/09 §12 的 S10 行) ───────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s10-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R55–R60，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 摘句不再截断（**全文搬运**）⇒ s10-quote-same-meeting 的"确定性截断"必红。
+    name: 'S10: the excerpt stops being truncated (the quote copies the whole text)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-quote-same-meeting' },
+    from: '        ? { excerpt: s.slice(0, QUOTE_EXCERPT_MAX), truncated: true }',
+    to: '        ? { excerpt: s, truncated: true }',
+    expect: /S10\/D6：摘句\*\*确定性截断\*\*/,
+  },
+  {
+    // ② **跨会议/跨域**引用被放行（同域边界失效）⇒ s10-cross-meeting-refused 的"具名拒绝"必红。
+    name: 'S10: a cross-meeting anchor is accepted (the same-meeting boundary is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-cross-meeting-refused' },
+    from: "          if (String(got.meetingId || '') !== curMeetingId) {",
+    to: '          if (false) {',
+    expect: /S10\/D6：跨会议引用\*\*具名拒绝\*\*/,
+  },
+  {
+    // ③ **私聊可直接引用**（补记门失效）⇒ s10-dm-not-quotable 的"私聊不得作为引用来源"必红。
+    name: 'S10: a private message becomes directly quotable (the supplement gate is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-dm-not-quotable' },
+    from: "        if (String(found.kind) === 'dm') {",
+    to: '        if (false) {',
+    expect: /S10\/D6\+G5：私聊\*\*不得\*\*作为引用来源/,
+  },
+  {
+    // ④ **条数上限失效**（任意条数都收）⇒ s10-quote-limits 的"超条数具名拒绝"必红。
+    name: 'S10: the per-message quote cap disappears (any number of quotes is accepted)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-quote-limits' },
+    from: '        if (refs.length > quotesPerMessageMax()) {',
+    to: '        if (false) {',
+    expect: /S10\/D6：超条数\*\*具名拒绝\*\*/,
+  },
+  {
+    // ⑤ **悬空锚被接受**（消息被凭空发明）⇒ s10-dangling-refused 的"悬空消息锚具名拒"必红。
+    name: 'S10: a dangling message anchor is accepted (the quoted message is invented)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-dangling-refused' },
+    from: '        const found = (inst().messages || []).filter((x) => x && String(x.id) === id)[0]',
+    to: "        const found = (inst().messages || []).filter((x) => x && String(x.id) === id)[0] || { id, from: 'r-1', to: 'all', kind: 'chat', text: 'MUTANT: 伪造的悬空消息', at: 0 }",
+    expect: /S10\/D6：悬空消息锚\*\*具名拒\*\*/,
+  },
+  {
+    // ⑥ 引用**顺手驱动会议阶段**（不再被动）⇒ s10-no-drive 的"引用不改会议阶段"必红。
+    name: 'S10: the quote path starts driving the meeting phase',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's10-no-drive' },
+    from: '      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })',
+    to: "      if (meeting) meeting.phase = 'open-floor'\n      const sent = await say(callerId, { to, text: a.text, kind, quote, quotes, supplementOf })",
+    expect: /S10：引用\*\*不改会议阶段\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1015,7 +1078,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S8（R3/K12/B9）：每个 s8-* 场景一个正控（禁言/系统消息/不改阶段/票面/纪要分区/例外通道）。
   's8-freeze-say', 's8-system-not-blocked', 's8-no-phase-change', 's8-ballot-unaffected', 's8-minutes-zones', 's8-exception-path',
   // S9（D5/D5a/U3）：每个 s9-* 场景一个正控（少数意见/胜方资格/无胜方/门槛只升/不记名聚合/append-only）。
-  's9-minority-archive', 's9-reconsider-winner-only', 's9-reconsider-undecided', 's9-threshold-only-up', 's9-secret-no-identity', 's9-audit-append-only']
+  's9-minority-archive', 's9-reconsider-winner-only', 's9-reconsider-undecided', 's9-threshold-only-up', 's9-secret-no-identity', 's9-audit-append-only',
+  // S10（D6/G5）：每个 s10-* 场景一个正控（同会议引用/跨会议拒/私聊补记/上限折叠/悬空拒/不驱动）。
+  's10-quote-same-meeting', 's10-cross-meeting-refused', 's10-dm-not-quotable', 's10-quote-limits', 's10-dangling-refused', 's10-no-drive']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
