@@ -1542,6 +1542,8 @@ export function apply(ctx) {
       // S7（D3/D4/R9/K13）：开/关投票板（#24/#25，权限＝院士）—— 与 `board` 同属**默认表**，
       // **不在** `GRANTABLE_COMMANDS` ⇒ 永不可授（S6 的可授集合保持四命令不变）。
       if (command === 'poll_open' || command === 'poll_close') return acad
+      // S12（D7/GAPS 22）：**设定会议等级**（正式／简流程）＝默认表（**仅院士**；**不在**可授集合 ⇒ 永不可授）。
+      if (command === 'meeting_level') return acad
       // S11（GAPS 29）：**指定/撤销记录人**＝默认表（**仅院士**；**不在**可授集合 ⇒ 永不可授）。
       if (command === 'secretary') return acad
       // S11：**纪要条目/生成**＝院士 ∪ **当次会议的记录人**（记录权与表决权**分离**；不因授权而开）。
@@ -1905,6 +1907,56 @@ export function apply(ctx) {
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
     }
 
+    // ── S12（D7/GAPS 22）：**会议分级**（正式会／简流程）──────────────────────────────────────────
+    // ① **等级**：`formal`（决议类：会产出**实体定论**／表决）／`light`（同步／讨论：议程＋轮询＋行动项）。
+    //    **派生**自 `meeting.kind`（`verify-request`／`solve-vote` ⇒ 决议类；`sync`／`division` ⇒ 简流程），
+    //    并可由院士用 `formal_agenda:true` **显式覆盖**（建会时或会期内）。
+    // ② **硬约束（D7）**：**简流程会期内**，**任何"实体定论"写入一律具名拒**——不得落**决议**条目
+    //    （`entry_kind:'decision'`）、不得把支持性确认写成"结论／通过／已定"、**不得当真值**（R6）。
+    // ③ **不强制（D7 原文"建议节奏但不强制"）**：**不自动**升降级、**不自动**拒绝开会；**不驱动**
+    //    （不改阶段、不收束、不写票、无定时器）。等级**当次会议绑定**（与 U5 的"同一会议"单位一致）。
+    const FORMAL_MEETING_KINDS = ['verify-request', 'solve-vote']
+    const LIGHT_LEVEL_NOTE = '本场为**简流程**：**不得产出实体定论**（D7／R6）'
+    const meetingLevelOf = (mn) => {
+      if (!mn) return ''
+      if (mn.formalAgenda === true) return 'formal'
+      return FORMAL_MEETING_KINDS.indexOf(String(mn.kind || '')) !== -1 ? 'formal' : 'light'
+    }
+    const isLightMeeting = () => (meeting ? meetingLevelOf(meeting) === 'light' : false)
+    /** D7 的**唯一判定点**：简流程会期内不得写入实体定论（具名拒；**不新增错误码**）。 */
+    const truthWriteRefusal = (what) => ({
+      ok: false,
+      code: 'V5_INVALID_ARGUMENT',
+      message: '简流程不得产出实体定论（D7/GAPS 22）：' + what + '——本场等级＝**简流程**。若确需定论，请由院士把本会设为正式（`vibe_v5_meeting {formal_agenda:true}`），或另开决议类会议（`solve-vote`／`verify-request`）。',
+    })
+    /** S12：**设定/查询会议等级**（仅院士；同值幂等；会期内可改但**每次写事件并广播**；不收时间键）。 */
+    async function setMeetingLevel(callerId, a) {
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTime.join('、') }
+      if (args.formal_agenda !== undefined && typeof args.formal_agenda !== 'boolean') {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'formal_agenda 必须是布尔值' }
+      }
+      const gate = canDo(callerId, 'meeting_level')
+      if (!gate.ok) return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: '只有院士可以设定会议等级（D7：正式／简流程）' }
+      if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '没有进行中的会议：等级**当次会议绑定**（与 U5 的"同一会议"单位一致）' }
+      const want = args.formal_agenda === true
+      const before = meetingLevelOf(meeting)
+      if ((meeting.formalAgenda === true) === want) {
+        return { ok: true, deduped: true, level: before, meetingId: String(meeting.id), message: '等级已是该值（幂等；**不写事件**）' }
+      }
+      meeting.formalAgenda = want
+      meeting.levelAt = now()
+      meeting.levelBy = callerId
+      const after = meetingLevelOf(meeting)
+      await saveChatLine('【会议分级】' + callerId + ' 把本场会议（' + meeting.id + '）设为 ' + (after === 'formal' ? '**正式**（可产出实体定论）' : ('**简流程**：' + LIGHT_LEVEL_NOTE)) + '（原为 ' + before + '；D7/GAPS 22）')
+      return {
+        ok: true, level: after, before, meetingId: String(meeting.id),
+        note: '等级**当次会议绑定**，会议收束即失效',
+        message: '本场等级＝' + after + (after === 'light' ? '（' + LIGHT_LEVEL_NOTE + '）' : '（可产出实体定论）'),
+      }
+    }
+
     // ── S11（GAPS 29）：**记录人／秘书角色**（记录与主持分离）────────────────────────────────────
     // ① 只有**在册成员**可被指定（**排除临时工**）；**院士/所办不得自任**（"主持人不得兼任唯一记录者"）。
     // ② 记录人只拿**记录权**（追加具名条目）：**不获得票权、不改阶段/分母**（C5/R5 分离）。
@@ -1990,10 +2042,13 @@ export function apply(ctx) {
         }
       }
       if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '条目过长（上限 ' + SECRETARY_ENTRY_MAX + ' 字符）' }
+      // S12（D7/GAPS 22）：**简流程会期内不得落"决议"条目**（实体定论）⇒ 唯一的判定点 `truthWriteRefusal`。
+      const entryKind = String(args.entry_kind || 'note')
+      if (entryKind === 'decision' && isLightMeeting()) return truthWriteRefusal('不得落**决议**条目')
       const entries = secretaryEntriesOf(meeting)
       const same = entries.filter((x) => x && String(x.text) === text)[0]
       if (same) return { ok: true, deduped: true, entry: same, message: '同一条目已是同值（幂等）：未重复写纪要' }
-      const entry = { by: memberId, at: now(), text, agenda_item: String(args.agenda_item || '') }
+      const entry = { by: memberId, at: now(), text, agenda_item: String(args.agenda_item || ''), entry_kind: entryKind }
       meeting.recordEntries = entries.concat([entry])
       // **只追加**（`appendMeetingTail` 语义）：绝不重写既有 `### <who>` 小节/两区（否则 S10 的会议内锚会失效）。
       await appendMeetingTail(meeting, '- 记录（' + memberId + '｜' + fmtTime(entry.at) + '）：' + text)
@@ -6659,6 +6714,8 @@ export function apply(ctx) {
       const hardLimitMs = meetingHardLimitMs()
       meeting = {
         id, agenda: opts.agenda, kind: opts.kind || 'sync', target: opts.target || '',
+        // S12（D7/GAPS 22）：**会议分级**——`formalAgenda:true` 是院士的**显式覆盖**（否则由 `kind` 派生）。
+        formalAgenda: opts.formalAgenda === true,
         by: opts.by || 'office', order, roster: order.slice(), phase: 'round-robin',
         inputs: {}, speeches: {}, extras: {}, asked: {}, silent: {}, unreached: {}, hands: {}, spokeCount: {},
         invited: {}, retries: {}, history: [], hardLimitMs, lastInputAt: now(), startedAt: now(),
@@ -6975,9 +7032,12 @@ export function apply(ctx) {
       // "由框架自动落盘，无成员责任人"（**绝不**把框架/院士写成责任人）。
       const secWho = (mn && mn.secretary) ? String(mn.secretary) : ''
       const secEntries = secretaryEntriesOf(mn)
+      // S12（D7/GAPS 22）：**等级**必须在纪要里**公开可见**（简流程 ⇒ 明写"不得产出实体定论"）。
+      const lvl = meetingLevelOf(mn)
       lines.push('## 记录人补充')
+      lines.push('- 本场等级：' + (lvl === 'formal' ? '**正式**（决议类：可产出实体定论）' : ('**简流程**：' + LIGHT_LEVEL_NOTE)))
       lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))
-      if (secEntries.length) for (const e of secEntries) lines.push('- 记录（' + String(e.by || '') + '）：' + String(e.text || ''))
+      if (secEntries.length) for (const e of secEntries) lines.push('- ' + (String(e.entry_kind || 'note') === 'decision' ? '**决议**' : '记录') + '（' + String(e.by || '') + '）：' + String(e.text || ''))
       else lines.push('- （记录人未追加任何条目）')
       lines.push(...meetingMinutesTail(mn, null))
       lines.push('')
@@ -6985,7 +7045,7 @@ export function apply(ctx) {
       try {
         await commit(EV.meeting, {
           index: { id: mn.id },
-          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries },
+          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries, level: lvl },
         })
       } catch (e) { /* 结构化写回失败不得影响纪要 */ }
       const rel = 'Shared/Meetings/' + mn.id + '.md'
@@ -9505,6 +9565,8 @@ export function apply(ctx) {
           spoke: Object.keys(meeting.inputs), spokeCount: Object.assign({}, meeting.spokeCount || {}),
           // S11（GAPS 29）：**只读**子键（**不加 `status()` 顶层键**）——记录人（'' ＝ 未指定）＋条目数。
           secretary: currentSecretary(), record_entry_count: secretaryEntriesOf(meeting).length,
+          // S12（D7/GAPS 22）：**只读**子键——本场等级（`formal`／`light`）。
+          level: meetingLevelOf(meeting),
           // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
           speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
@@ -9646,7 +9708,9 @@ export function apply(ctx) {
           + (handsUp.length ? '｜举手 ' + handsUp.join('、') : '')
           + (Object.keys(m.invited || {}).length ? '｜受邀 ' + Object.keys(m.invited).join('、') : '')
           + '｜已开 ' + Math.round((now() - Number(m.startedAt || now())) / 60000) + ' 分／硬界 ' + Math.round(Number(m.hardLimitMs || 0) / 60000) + ' 分'
-          + (Object.keys(m.inputs).length ? '｜已发言 ' + Object.keys(m.inputs).join('、') : '｜尚无人发言'))
+          + (Object.keys(m.inputs).length ? '｜已发言 ' + Object.keys(m.inputs).join('、') : '｜尚无人发言')
+          // S12（D7/GAPS 22）：**等级公开可见**（简流程 ⇒ 明写"不得产出实体定论"）。
+          + '｜等级＝' + (meetingLevelOf(m) === 'formal' ? '**正式**（可产出实体定论）' : '**简流程**：' + LIGHT_LEVEL_NOTE))
       }
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
       // F6 (status/report review): a meeting whose index entry exists but which never FINALIZED is
@@ -9889,7 +9953,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -10050,9 +10114,11 @@ export function apply(ctx) {
     const to = String(a.to || 'all')
     return s.say('office', { to, text: String(a.content), kind: to === 'all' || to === 'voters' ? 'office' : 'dm' })
   })
-  registerTool('vibe_v5_meeting', 'Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight. kind picks the meeting type: "sync" = routine coordination (default), "division" = split the work, "verify-request" = ask the group to verify an object, "solve-vote" = put "is the original problem solved?" to a vote; target names the object for verify-request/solve-vote.', objParams({ agenda: S, kind: { type: 'string', enum: ['sync', 'division', 'verify-request', 'solve-vote'] }, target: S }, ['agenda']), (s, a, x) => {
+  registerTool('vibe_v5_meeting', 'Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight. kind picks the meeting type: "sync" = routine coordination (default), "division" = split the work, "verify-request" = ask the group to verify an object, "solve-vote" = put "is the original problem solved?" to a vote; target names the object for verify-request/solve-vote. S12 (D7/GAPS 22) — MEETING LEVEL: `formal` meetings may write entity conclusions, `light` (routine sync/discussion: agenda + rounds + action items) may NOT. The level is DERIVED from `kind` (verify-request/solve-vote ⇒ formal; sync/division ⇒ light) and may be OVERRIDDEN by the academician with `formal_agenda:true` — either when convening or, while a meeting is already open, to CHANGE its level (same value is idempotent: deduped, no event; a real change writes an event and broadcasts). Setting the level is academician-only and never grantable; it never drives the meeting (no auto up/down-grade, no auto refusal to convene, no timer), and every …At/…Ms is rejected (the framework writes the times).', objParams({ agenda: S, kind: { type: 'string', enum: ['sync', 'division', 'verify-request', 'solve-vote'] }, target: S, formal_agenda: B }, ['agenda']), (s, a, x) => {
     const caller = s.officeCaller(x)
     if (!caller) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'no calling member: only the office (the session root), the academician or a member may convene/propose a meeting', next: { kind: 'member-call', tool: 'vibe_v5_members', hint: 'call this tool from a member subagent; the office (the session root) can read state with vibe_v5_report / vibe_v5_status' } }
+    // S12：会议**已在进行中**且只给 `formal_agenda` ⇒ 这是**改等级**（不是再开一场）。
+    if (s.meetingOpen() && a.formal_agenda !== undefined && !a.agenda) return s.setMeetingLevel(caller, a)
     return s.startMeeting(caller, a)
   })
   registerTool('vibe_v5_members', 'List the institute roster (office, employer, phase, direction, rounds).', objParams({}), (s) => ({ ok: true, members: s.status().members, quorum: s.status().quorum }))

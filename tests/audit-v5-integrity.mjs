@@ -497,8 +497,8 @@ const SELF_PROBE_MUTATIONS = [
   {
     name: 'S11: the recorder section loses its own heading (the minutes zones are no longer separate)',
     rel: 'vibe-math-v5r/vibe-math-v5r.js',
-    from: "      lines.push('## 记录人补充')\n      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
-    to: "      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    from: "      lines.push('## 记录人补充')\n      lines.push('- 本场等级：'",
+    to: "      lines.push('- 本场等级：'",
     expect: 'R64',
   },
   {
@@ -514,6 +514,34 @@ const SELF_PROBE_MUTATIONS = [
     from: "      if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '条目过长（上限 ' + SECRETARY_ENTRY_MAX + ' 字符）' }",
     to: "      if (text.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_SECRETARY_ENTRY_TOO_LONG', message: 'MUTANT: 新错误码' }",
     expect: 'R66',
+  },
+  {
+    name: 'S12: the level stops being derived from the meeting kind (a decision meeting becomes light)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "    const FORMAL_MEETING_KINDS = ['verify-request', 'solve-vote']",
+    to: '    const FORMAL_MEETING_KINDS = []',
+    expect: 'R67',
+  },
+  {
+    name: 'S12: a light meeting accepts an entity conclusion (the D7 refusal is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (entryKind === 'decision' && isLightMeeting()) return truthWriteRefusal('不得落**决议**条目')",
+    to: "      if (false) return truthWriteRefusal('不得落**决议**条目')",
+    expect: 'R68',
+  },
+  {
+    name: 'S12: anyone may set the meeting level (the academician gate is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (command === 'meeting_level') return acad",
+    to: "      if (command === 'meeting_level') return true",
+    expect: 'R69',
+  },
+  {
+    name: 'S12: setting the level starts driving the meeting (it closes the meeting)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      meeting.formalAgenda = want',
+    to: "      meeting.formalAgenda = want\n      await finalizeMeeting(meeting, 'level-change')",
+    expect: 'R70',
   },
 ]
 
@@ -1574,6 +1602,40 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; gaps-only=' + (/if \(!text\) \{/.test(minutesBody) && /gaps\.push\(/.test(minutesBody))
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(secretaryBody + minutesBody)
     + '; votes/phase/timer touched=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(|putSolve\(|castVerdict\(|voters\(\)/.test(secretaryBody + minutesBody))
+  // ---- S12 (D7/GAPS 22): meeting levels (a light meeting may never produce an entity conclusion) ----
+  const levelBody = bodyOf('async function setMeetingLevel(callerId, a) {')
+  const truthRefusalBody = bodyOf('const truthWriteRefusal = (what) => ({')
+  gate(/const FORMAL_MEETING_KINDS = \['verify-request', 'solve-vote'\]/.test(v5rRaw)
+    && /if \(mn\.formalAgenda === true\) return 'formal'/.test(v5rRaw)
+    && /FORMAL_MEETING_KINDS\.indexOf\(String\(mn\.kind \|\| ''\)\) !== -1 \? 'formal' : 'light'/.test(v5rRaw)
+    && /formalAgenda: opts\.formalAgenda === true/.test(v5rRaw)
+    && /formal_agenda: B/.test(v5rRaw),
+    'R67', 'S12/D7: the level is DERIVED from kind (verify-request/solve-vote ⇒ formal; sync/division ⇒ light) and the academician can override it with formal_agenda:true')
+  gate(!!truthRefusalBody && /简流程不得产出实体定论/.test(truthRefusalBody)
+    && !!minutesBody && /entryKind === 'decision' && isLightMeeting\(\)\) return truthWriteRefusal\(/.test(minutesBody)
+    && !/putVerdict\(|putSolve\(|castVerdict\(|judgeVerdict\(/.test(truthRefusalBody + minutesBody)
+    && /lvl === 'formal' \? '\*\*正式\*\*（决议类：可产出实体定论）' : \('\*\*简流程\*\*：' \+ LIGHT_LEVEL_NOTE\)/.test(finalizeBody),
+    'R68', 'S12/D7: a light meeting REFUSES an entity conclusion (entry_kind:"decision" ⇒ named refusal from the single truthWriteRefusal point), that path never writes verdicts/solves, and the minutes render the level with the light warning')
+  gate(/if \(command === 'meeting_level'\) return acad/.test(v5rRaw)
+    && !!levelBody && /const gate = canDo\(callerId, 'meeting_level'\)/.test(levelBody)
+    && /V5_NOT_ACADEMICIAN/.test(levelBody)
+    && grantableLine.indexOf('meeting_level') === -1,
+    'R69', 'S12/`03` #3★: setting the level is academician-only (default table) and never grantable (R35 untouched)')
+  gate(!!levelBody && !!truthRefusalBody
+    && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putSolve\(|castVerdict\(|putVerdict\(|voters\(\)/.test(levelBody + truthRefusalBody)
+    && /deduped: true, level: before/.test(levelBody)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(levelBody + truthRefusalBody),
+    'R70', 'S12/D7: the level path is passive (no phase/closure/vote/timer), the same value is idempotent (deduped, no event) and no new error code is invented')
+  notes.push('S12 (v5r): kinds derived formal=' + /const FORMAL_MEETING_KINDS = \['verify-request', 'solve-vote'\]/.test(v5rRaw)
+    + '; explicit override=' + /if \(mn\.formalAgenda === true\) return 'formal'/.test(v5rRaw)
+    + '; light refuses decision=' + /entryKind === 'decision' && isLightMeeting\(\)\) return truthWriteRefusal\(/.test(minutesBody)
+    + '; single refusal point=' + !!truthRefusalBody
+    + '; academician-only=' + /if \(command === 'meeting_level'\) return acad/.test(v5rRaw)
+    + '; not grantable=' + (grantableLine.indexOf('meeting_level') === -1)
+    + '; idempotent=' + /deduped: true, level: before/.test(levelBody)
+    + '; level visible in minutes=' + /本场等级/.test(finalizeBody)
+    + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(|putSolve\(|castVerdict\(|putVerdict\(|voters\(\)/.test(levelBody + truthRefusalBody)
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(levelBody + truthRefusalBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

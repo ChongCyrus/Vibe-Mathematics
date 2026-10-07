@@ -917,8 +917,8 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's8-minutes-zones' },
-    from: '          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries },',
-    to: '          minutes: { at: now(), secretary: secWho, entries: secEntries },',
+    from: '          minutes: { at: now(), speechZone, voteZone, secretary: secWho, entries: secEntries, level: lvl },',
+    to: '          minutes: { at: now(), secretary: secWho, entries: secEntries, level: lvl },',
     expect: /S8-minutes-zones：结构化 `minutes.speechZone`/,
   },
   {
@@ -1099,8 +1099,8 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's11-zones-and-anchors' },
-    from: "      lines.push('## 记录人补充')\n      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
-    to: "      lines.push('- 纪要责任人：' + (secWho || ('（' + NO_SECRETARY_NOTE + '）')))",
+    from: "      lines.push('## 记录人补充')\n      lines.push('- 本场等级：'",
+    to: "      lines.push('- 本场等级：'",
     expect: /S11×S8：收束后\*\*两区仍在\*\*/,
   },
   {
@@ -1122,6 +1122,69 @@ const V5R_FAMILIES = [
     from: "          return { ok: true, deduped: true, secretary: null, meetingId: mtId, message: '当前未指定记录人（撤销幂等）' }",
     to: "          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 撤销非幂等' }",
     expect: /S11：\*\*再撤销 ⇒ 幂等\*\*/,
+  },
+  // ── S12 family (D7/GAPS 22；docs/09 §12 的 S12 行) ──────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s12-* 场景；`expect` 一律抄自定向实跑的**实际红名**。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R67–R70，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 等级**不再派生**（决议类会议降级为简流程）⇒ s12-level-derived 的"正式"必红。
+    name: 'S12: the level stops being derived from the meeting kind (a decision meeting becomes light)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-level-derived' },
+    from: "    const FORMAL_MEETING_KINDS = ['verify-request', 'solve-vote']",
+    to: '    const FORMAL_MEETING_KINDS = []',
+    expect: /S12\/D7：`kind=solve-vote` ⇒ \*\*正式\*\*/,
+  },
+  {
+    // ② **简流程接受实体定论**（D7 拒绝被摘掉）⇒ s12-light-no-truth 的"不得落决议"必红。
+    name: 'S12: a light meeting accepts an entity conclusion (the D7 refusal is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-light-no-truth' },
+    from: "      if (entryKind === 'decision' && isLightMeeting()) return truthWriteRefusal('不得落**决议**条目')",
+    to: "      if (false) return truthWriteRefusal('不得落**决议**条目')",
+    expect: /S12\/D7：简流程\*\*不得落决议条目\*\*/,
+  },
+  {
+    // ③ **任何人都能设等级**（院士门被摘掉）⇒ s12-acad-only 的"非院士具名拒"必红。
+    name: 'S12: anyone may set the meeting level (the academician gate is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-acad-only' },
+    from: "      if (command === 'meeting_level') return acad",
+    to: "      if (command === 'meeting_level') return true",
+    expect: /S12\/#3★：非院士设定等级 ⇒ 具名拒/,
+  },
+  {
+    // ④ **设等级开始驱动会议**（顺手收束）⇒ s12-no-drive 的"不改会议阶段"必红。
+    name: 'S12: setting the level starts driving the meeting (it closes the meeting)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-no-drive' },
+    from: '      meeting.formalAgenda = want',
+    to: "      meeting.formalAgenda = want\n      await finalizeMeeting(meeting, 'level-change')",
+    expect: /S12：等级变更\*\*不改会议阶段\*\*/,
+  },
+  {
+    // ⑤ **同值幂等失效**（重复设定也当"真变更"）⇒ s12-idempotent 的"同值幂等"必红。
+    name: 'S12: setting the same level twice stops being idempotent (it always writes an event)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-idempotent' },
+    from: '      if ((meeting.formalAgenda === true) === want) {',
+    to: '      if (false) {',
+    expect: /S12：\*\*同值幂等\*\*/,
+  },
+  {
+    // ⑥ 等级在 `report()` 里**不再可见**（简流程硬约束看不见）⇒ s12-report-visible 必红。
+    name: 'S12: the level stops being visible in report() (the light warning disappears)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's12-report-visible' },
+    from: "          + '｜等级＝' + (meetingLevelOf(m) === 'formal' ? '**正式**（可产出实体定论）' : '**简流程**：' + LIGHT_LEVEL_NOTE))",
+    to: "          + '｜等级＝（MUTANT: 不写）')",
+    expect: /S12：`report\(\)` \*\*明写\*\*简流程与硬约束/,
   },
 ]
 
@@ -1145,7 +1208,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S10（D6/G5）：每个 s10-* 场景一个正控（同会议引用/跨会议拒/私聊补记/上限折叠/悬空拒/不驱动）。
   's10-quote-same-meeting', 's10-cross-meeting-refused', 's10-dm-not-quotable', 's10-quote-limits', 's10-dangling-refused', 's10-no-drive',
   // S11（GAPS 29）：每个 s11-* 场景一个正控（指定/禁止自任/权限面/条目/两区与锚/撤销幂等）。
-  's11-appoint', 's11-self-refused', 's11-only-academician', 's11-record-entries', 's11-zones-and-anchors', 's11-revoke-idempotent']
+  's11-appoint', 's11-self-refused', 's11-only-academician', 's11-record-entries', 's11-zones-and-anchors', 's11-revoke-idempotent',
+  // S12（D7/GAPS 22）：每个 s12-* 场景一个正控（派生/简流程不得定论/仅院士/幂等/可见性/不驱动）。
+  's12-level-derived', 's12-light-no-truth', 's12-acad-only', 's12-idempotent', 's12-report-visible', 's12-no-drive']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

@@ -641,6 +641,11 @@ async function runScenario(name) {
     console.log('  skip - S11 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_secretary / vibe_v5_minutes）')
     return
   }
+  // S12 场景只在 v5r 下可跑（会议分级是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s12-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S12 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有会议分级／formal_agenda）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1880,6 +1885,100 @@ async function runScenario(name) {
     const exSec = await callTool('vibe_v5_minutes', { entry: 'S11 前记录人写条目（应被拒）' }, childAgent(childOf('r-1')))
     assert(exSec.ok === false && exSec.code === 'V5_NOT_VOTER',
       'S11：**前记录人**不再能写条目（got ' + JSON.stringify(exSec).slice(0, 220) + '）')
+  } else if (name === 's12-level-derived') {
+    // S12-level-derived（D7/GAPS 22）：等级**派生**自 `kind`——`sync`/`division` ⇒ **简流程**；
+    // `solve-vote`/`verify-request` ⇒ **正式**；只读面 `status.meeting.level` 可见。
+    const light = await callTool('vibe_v5_meeting', { agenda: 'S12 简流程派生探测', kind: 'sync' }, childAgent(childOf('acad')))
+    assert(light.ok === true, 'S12：简流程会议已开（前置；got ' + JSON.stringify(light).slice(0, 160) + '）')
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(String(st1.meeting.level) === 'light', 'S12/D7：`kind=sync` ⇒ **简流程**（got ' + JSON.stringify(st1.meeting.level) + '）')
+    await waitMeetingClosed()
+    const formal = await callTool('vibe_v5_meeting', { agenda: 'S12 正式派生探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(formal.ok === true, 'S12：决议类会议已开（前置）')
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(String(st2.meeting.level) === 'formal', 'S12/D7：`kind=solve-vote` ⇒ **正式**（got ' + JSON.stringify(st2.meeting.level) + '）')
+  } else if (name === 's12-light-no-truth') {
+    // S12-light-no-truth（D7 **硬约束**）：简流程会期内**不得产出实体定论** —— `entry_kind:'decision'` **具名拒**；
+    // 事实性条目仍可写；纪要**公开写明**"简流程：不得产出实体定论"。
+    const mt = await openMeeting('S12 简流程不得定论探测')
+    await settleAll()
+    const dec = await callTool('vibe_v5_minutes', { entry: '决议：本项目通过结题', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    assert(dec.ok === false && dec.code === 'V5_INVALID_ARGUMENT' && /简流程不得产出实体定论/.test(String(dec.message)),
+      'S12/D7：简流程**不得落决议条目**（具名拒；got ' + JSON.stringify(dec).slice(0, 260) + '）')
+    const note = await callTool('vibe_v5_minutes', { entry: '讨论要点：先补实验再议' }, childAgent(childOf('acad')))
+    assert(note.ok === true && note.entry && String(note.entry.entry_kind) === 'note',
+      'S12/D7：**事实性条目**仍可写（got ' + JSON.stringify(note).slice(0, 200) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(Number(sv.meeting.record_entry_count) === 1, 'S12：被拒的决议**不产生条目**（计数仍 1；got ' + JSON.stringify(sv.meeting.record_entry_count) + '）')
+    await waitMeetingClosed()
+    const mtText = existsSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'))
+      ? readFileSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'), 'utf8') : ''
+    assert(mtText.indexOf('简流程') !== -1 && mtText.indexOf('不得产出实体定论') !== -1,
+      'S12/D7：纪要**公开写明**简流程不得产出实体定论（got len=' + mtText.length + '）')
+  } else if (name === 's12-acad-only') {
+    // S12-acad-only（`03` #3★）：**设定等级＝仅院士**；设定为正式后，**决议条目才被接受**。
+    const mt = await openMeeting('S12 等级权限探测')
+    await settleAll()
+    const bad = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('r-2')))
+    assert(bad.ok === false && bad.code === 'V5_NOT_ACADEMICIAN',
+      'S12/#3★：非院士设定等级 ⇒ 具名拒（got ' + JSON.stringify(bad).slice(0, 220) + '）')
+    const denyDec = await callTool('vibe_v5_minutes', { entry: '决议：先占位', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    assert(denyDec.ok === false, 'S12：升级前决议仍被拒（前置）')
+    const set = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
+    assert(set.ok === true && String(set.level) === 'formal', 'S12：院士把本场升为**正式**（got ' + JSON.stringify(set).slice(0, 200) + '）')
+    const okDec = await callTool('vibe_v5_minutes', { entry: '决议：本项目通过结题（正式会议）', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    assert(okDec.ok === true && String(okDec.entry.entry_kind) === 'decision',
+      'S12/D7：**正式**会议可落决议条目（got ' + JSON.stringify(okDec).slice(0, 200) + '）')
+    await waitMeetingClosed()
+    const mtText = existsSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'))
+      ? readFileSync(join(instDir, 'Shared', 'Meetings', String(mt.id) + '.md'), 'utf8') : ''
+    assert(mtText.indexOf('**决议**（acad）') !== -1, 'S12：决议条目在纪要里**标为决议**（got len=' + mtText.length + '）')
+  } else if (name === 's12-idempotent') {
+    // S12-idempotent：**同值幂等**（`deduped`，**不写事件**）；**真变更** ⇒ 生效并**写事件广播**。
+    await openMeeting('S12 等级幂等探测')
+    await settleAll()
+    const first = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
+    assert(first.ok === true && String(first.level) === 'formal', 'S12：首次升级生效（前置）')
+    const again = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
+    assert(again.ok === true && again.deduped === true, 'S12：**同值幂等**（deduped；got ' + JSON.stringify(again).slice(0, 200) + '）')
+    const back = await callTool('vibe_v5_meeting', { formal_agenda: false }, childAgent(childOf('acad')))
+    assert(back.ok === true && String(back.level) === 'light' && String(back.before) === 'formal',
+      'S12：**真变更生效**（formal ⇒ light；got ' + JSON.stringify(back).slice(0, 200) + '）')
+    assert(/【会议分级】/.test(chatTextR10()), 'S12：等级变更**写事件并广播**（具名）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(String(sv.meeting.level) === 'light', 'S12：只读面回到简流程（got ' + JSON.stringify(sv.meeting.level) + '）')
+  } else if (name === 's12-report-visible') {
+    // S12-report-visible：等级在 `report()` 与 `status` 里**公开可见**（简流程写明"不得产出实体定论"）。
+    await openMeeting('S12 等级可见性探测')
+    await settleAll()
+    const sv = await callTool('vibe_v5_status', {})
+    assert(String(sv.meeting.level) === 'light', 'S12：`status.meeting.level`＝light（got ' + JSON.stringify(sv.meeting.level) + '）')
+    const rep = await callTool('vibe_v5_report', {})
+    const repText = JSON.stringify(rep)
+    assert(repText.indexOf('简流程') !== -1 && repText.indexOf('不得产出实体定论') !== -1,
+      'S12：`report()` **明写**简流程与硬约束（got ' + repText.slice(0, 240) + '）')
+  } else if (name === 's12-no-drive') {
+    // S12-no-drive（R1/D10）：设定等级与"简流程拒绝"**不驱动**任何流程（不改阶段、不写票、不收束、无定时器）。
+    await openMeeting('S12 不驱动探测')
+    await settleAll()
+    const st0 = await callTool('vibe_v5_status', {})
+    const phase0 = String((st0.meeting || {}).phase || '')
+    const set = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
+    assert(set.ok === true, 'S12：等级已设定（前置）')
+    await callTool('vibe_v5_minutes', { entry: '决议：甲', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    const back = await callTool('vibe_v5_meeting', { formal_agenda: false }, childAgent(childOf('acad')))
+    assert(back.ok === true && String(back.level) === 'light', 'S12：降回简流程（前置）')
+    const st1 = await callTool('vibe_v5_status', {})
+    assert(!!st1.meeting && String(st1.meeting.phase) === phase0,
+      'S12：等级变更**不改会议阶段**（' + phase0 + ' ⇒ ' + String(st1.meeting && st1.meeting.phase) + '）')
+    assert(JSON.stringify(st1.solveVotes) === JSON.stringify(st0.solveVotes) && JSON.stringify(st1.undecided) === JSON.stringify(st0.undecided),
+      'S12：等级变更**不写票/真值**（solveVotes/undecided 不变）')
+    const lightAgain = await callTool('vibe_v5_minutes', { entry: '决议：乙', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    assert(lightAgain.ok === false && /简流程不得产出实体定论/.test(String(lightAgain.message)),
+      'S12：降级后决议**再次被拒**（got ' + JSON.stringify(lightAgain).slice(0, 220) + '）')
+    const st2 = await callTool('vibe_v5_status', {})
+    assert(!!st2.meeting && Number(st2.meeting.record_entry_count) === 1,
+      'S12：被拒的决议**不留条目**（计数仍 1；got ' + JSON.stringify(st2.meeting.record_entry_count) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }
