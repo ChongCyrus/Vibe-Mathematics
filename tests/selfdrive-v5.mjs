@@ -646,6 +646,11 @@ async function runScenario(name) {
     console.log('  skip - S12 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有会议分级／formal_agenda）')
     return
   }
+  // S13 场景只在 v5r 下可跑（决议实体／生效时点／检索是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s13-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S13 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 vibe_v5_result_record / vibe_v5_resolutions）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1673,9 +1678,9 @@ async function runScenario(name) {
     const cross = await callTool('vibe_v5_say', { text: 'S10 跨会议引用（应被拒）', quote_ref: anchor }, childAgent(childOf('r-1')))
     assert(cross.ok === false && cross.code === 'V5_INVALID_ARGUMENT' && /仅限同一会议内/.test(String(cross.message)),
       'S10/D6：跨会议引用**具名拒绝**（got ' + JSON.stringify(cross).slice(0, 260) + '）')
-    const res = await callTool('vibe_v5_say', { text: 'S10 决议引用（应被拒）', quote_ref: 'res:p-s10' }, childAgent(childOf('r-1')))
-    assert(res.ok === false && /上次决议/.test(String(res.message)) && /#26/.test(String(res.message)),
-      'S10/D6：**跨会议只引上次决议**且决议对象 #26 **未实现** ⇒ 当前一律具名拒（got ' + JSON.stringify(res).slice(0, 260) + '）')
+    const res = await callTool('vibe_v5_say', { text: 'S10 决议引用（未落库）', quote_ref: 'res:p-s10' }, childAgent(childOf('r-1')))
+    assert(res.ok === false && /悬空引用/.test(String(res.message)),
+      'S10×S13/D6：`res:` 只解析**已落库**的决议 ⇒ 未落库 ⇒ **悬空具名拒**（got ' + JSON.stringify(res).slice(0, 260) + '）')
   } else if (name === 's10-dm-not-quotable') {
     // S10-dm-not-quotable（D6/G5）：私聊**不得**作为引用来源；补记只能由**本人**发起；补记**只记事实**；
     // **原私聊正文不进公开面**；补记后引用到的是**补记本**（`viaSupplement`）。
@@ -1985,6 +1990,112 @@ async function runScenario(name) {
     const st2 = await callTool('vibe_v5_status', {})
     assert(!!st2.meeting && Number(st2.meeting.record_entry_count) === 1,
       'S12：被拒的决议**不留条目**（计数仍 1；got ' + JSON.stringify(st2.meeting.record_entry_count) + '）')
+  } else if (name === 's10-last-resolution-quotable') {
+    // S10×S13（D6 放开）：**跨会议可引"上次决议"**（稳定标识 `res:<n>`／`res:latest`）；摘要＋指针、不搬原文。
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S10 决议引用探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(mt.ok === true, 'S10×S13：正式会议已开（前置；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+    const rec = await callTool('vibe_v5_result_record', { text: 'S10×S13 决议：甲方案通过（待引用的对象）', kind: 'resolution' }, childAgent(childOf('acad')))
+    assert(rec.ok === true && rec.resolution && /^res-\d+$/.test(String(rec.resolution.id)),
+      'S10×S13：决议已落库（前置；got ' + JSON.stringify(rec).slice(0, 200) + '）')
+    const rid = String(rec.resolution.id)
+    await waitMeetingClosed()
+    const q = await callTool('vibe_v5_say', { text: 'S10×S13 引上次决议（latest）', quote_ref: 'res:latest' }, childAgent(childOf('r-1')))
+    assert(q.ok === true && q.quote && q.quote.kind === 'resolution' && q.quote.domain === 'resolution',
+      'S10×S13/D6：**跨会议可引上次决议**（`res:latest`；got ' + JSON.stringify(q).slice(0, 240) + '）')
+    assert(String(q.quote.excerpt).length > 0 && String(q.quote.excerpt).length <= 200 && q.quote.supersededBy === '',
+      'S10×S13：只带**摘要＋指针**（≤200；`supersededBy` 字段在位；got ' + JSON.stringify(q.quote).slice(0, 240) + '）')
+    const q2 = await callTool('vibe_v5_say', { text: 'S10×S13 引指定决议', quote_ref: 'res:' + rid }, childAgent(childOf('r-1')))
+    assert(q2.ok === true && q2.quote.ref === 'res:' + rid,
+      'S10×S13：`res:<id>` 可引（got ' + JSON.stringify(q2).slice(0, 200) + '）')
+  } else if (name === 's13-record-resolution') {
+    // S13-record-resolution（G2）：**公告即生效**（`effectiveAt === at`）＋**框架分配稳定标识** ＋ 只读面可见 ＋ 时间键一律拒。
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S13 决议落库探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(mt.ok === true, 'S13：正式会议已开（前置；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+    const rec = await callTool('vibe_v5_result_record', { text: 'S13 决议：本项目通过结题', kind: 'resolution', target: 'p-13', actions: [{ who: 'r-1', due_in: 'next-meeting' }] }, childAgent(childOf('acad')))
+    assert(rec.ok === true && rec.resolution && /^res-\d+$/.test(String(rec.resolution.id))
+      && Number(rec.resolution.effectiveAt) === Number(rec.resolution.at),
+      'S13/G2：**公告即生效**（`effectiveAt === at`）＋**框架分配稳定标识**（got ' + JSON.stringify(rec).slice(0, 260) + '）')
+    assert(Array.isArray(rec.resolution.actions) && rec.resolution.actions.length === 1 && rec.resolution.actions[0].who === 'r-1',
+      'S13/G2：`actions[{who,due_in}]` 入档（got ' + JSON.stringify(rec.resolution.actions).slice(0, 200) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(Number(sv.resolutions.count) === 1 && String(sv.resolutions.latest_id) === String(rec.resolution.id),
+      'S13：只读面 `status.resolutions{count,latest_id}`（got ' + JSON.stringify(sv.resolutions).slice(0, 220) + '）')
+    assert(/【决议】/.test(chatTextR10()), 'S13：决议**具名广播**')
+    const badT = await callTool('vibe_v5_result_record', { text: 'S13 决议（带时间键）', due_at: '2026-01-01' }, childAgent(childOf('acad')))
+    assert(badT.ok === false && /时间由框架设置/.test(String(badT.message)),
+      'S13/G2：**时间键一律拒**（含 `due_at`；got ' + JSON.stringify(badT).slice(0, 220) + '）')
+    const other = await callTool('vibe_v5_result_record', { text: 'S13 非记录人决议（应被拒）' }, childAgent(childOf('r-2')))
+    assert(other.ok === false && other.code === 'V5_NOT_VOTER',
+      'S13/#26：**非院士且非记录人**落决议 ⇒ 具名拒（got ' + JSON.stringify(other).slice(0, 220) + '）')
+  } else if (name === 's13-stable-id') {
+    // S13-stable-id（G2/R7）：id **全所单调且各不同**；**同值决议幂等**（`deduped`，不追加台账）。
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S13 标识单调探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(mt.ok === true, 'S13：正式会议已开（前置）')
+    const a1 = await callTool('vibe_v5_result_record', { text: 'S13 决议一：甲', kind: 'resolution' }, childAgent(childOf('acad')))
+    const a2 = await callTool('vibe_v5_result_record', { text: 'S13 决议二：乙', kind: 'resolution' }, childAgent(childOf('acad')))
+    assert(a1.ok === true && a2.ok === true && String(a1.resolution.id) === 'res-1' && String(a2.resolution.id) === 'res-2',
+      'S13/G2：标识**全所单调且各不同**（框架从 `res-1` 起分配；got ' + JSON.stringify([a1.resolution && a1.resolution.id, a2.resolution && a2.resolution.id]) + '）')
+    const dup = await callTool('vibe_v5_result_record', { text: 'S13 决议一：甲', kind: 'resolution' }, childAgent(childOf('acad')))
+    assert(dup.ok === true && dup.deduped === true, 'S13：**同值决议幂等**（deduped；got ' + JSON.stringify(dup).slice(0, 200) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(Number(sv.resolutions.count) === 2, 'S13：幂等**不追加台账**（仍 2 条；got ' + JSON.stringify(sv.resolutions.count) + '）')
+  } else if (name === 's13-prerecord-refused') {
+    // S13/D6：**未落库的决议不得被引用为结论** ⇒ 悬空具名拒（`res:<n>` 与空台账 `res:latest`）。
+    const bad = await callTool('vibe_v5_say', { text: 'S13 未落库决议引用（应被拒）', quote_ref: 'res:99' }, childAgent(childOf('r-1')))
+    assert(bad.ok === false && /悬空引用/.test(String(bad.message)) && /台账为空/.test(String(bad.message)),
+      'S13/D6：**未落库**的决议 ⇒ 悬空具名拒（got ' + JSON.stringify(bad).slice(0, 240) + '）')
+    const bad2 = await callTool('vibe_v5_say', { text: 'S13 空台账引用（应被拒）', quote_ref: 'res:latest' }, childAgent(childOf('r-1')))
+    assert(bad2.ok === false && /悬空引用/.test(String(bad2.message)),
+      'S13/D6：**台账为空**时 `res:latest` ⇒ 悬空具名拒（got ' + JSON.stringify(bad2).slice(0, 240) + '）')
+  } else if (name === 's13-superseded') {
+    // S13/G2（S9 口径）：台账 **append-only**（旧条仍在）＋ 检索/引用**携带 `supersededBy` 字段**（当前无写入面 ⇒ 恒为空）。
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S13 取代链探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(mt.ok === true, 'S13：正式会议已开（前置）')
+    const r1 = await callTool('vibe_v5_result_record', { text: 'S13 决议甲', kind: 'resolution', target: 'p-1' }, childAgent(childOf('acad')))
+    const r2 = await callTool('vibe_v5_result_record', { text: 'S13 决议乙', kind: 'resolution', target: 'p-2' }, childAgent(childOf('acad')))
+    assert(r1.ok === true && r2.ok === true, 'S13：两条决议已落库（前置）')
+    const list = await callTool('vibe_v5_resolutions', {})
+    const rows = (list && Array.isArray(list.resolutions)) ? list.resolutions : []
+    assert(list.ok === true && list.count === 2 && rows.length === 2
+      && rows.every((x) => x && String(x.supersededBy) === '')
+      && String(rows[0].id) === String(r2.resolution.id),
+      'S13/G2：检索**时间倒序**＋携带 `supersededBy`（当前恒为空）＋台账**只增**（got ' + JSON.stringify(rows).slice(0, 260) + '）')
+    await waitMeetingClosed()
+    const q = await callTool('vibe_v5_say', { text: 'S13 引决议（带取代字段）', quote_ref: 'res:' + String(r1.resolution.id) }, childAgent(childOf('r-1')))
+    assert(q.ok === true && q.quote && q.quote.supersededBy === '' && q.quote.ref === 'res:' + String(r1.resolution.id),
+      'S13/G2：引用带 `supersededBy` 字段（可引"旧"决议，取代时**标明已被复议**；got ' + JSON.stringify(q && q.quote).slice(0, 240) + '）')
+  } else if (name === 's13-light-refused') {
+    // S13×S12（D7）：**简流程会期内落决议** ⇒ **复用 S12 的唯一判定点**具名拒；**不入台账**。
+    await openMeeting('S13 简流程决议探测')
+    await settleAll()
+    const bad = await callTool('vibe_v5_result_record', { text: 'S13 简流程决议（应被拒）' }, childAgent(childOf('acad')))
+    assert(bad.ok === false && /简流程不得产出实体定论/.test(String(bad.message)),
+      'S13×S12/D7：简流程会期内落决议 ⇒ **具名拒**（唯一判定点；got ' + JSON.stringify(bad).slice(0, 240) + '）')
+    const sv = await callTool('vibe_v5_status', {})
+    assert(Number(sv.resolutions.count) === 0 && String(sv.resolutions.latest_id) === '',
+      'S13：被拒的决议**不入台账**（got ' + JSON.stringify(sv.resolutions).slice(0, 200) + '）')
+  } else if (name === 's13-search') {
+    // S13/G2：**检索维度**（`id`／`target`／`meetingId`／`kind`／`limit`）；**时间过滤键一律拒**。
+    const mt = await callTool('vibe_v5_meeting', { agenda: 'S13 检索探测', kind: 'solve-vote' }, childAgent(childOf('acad')))
+    assert(mt.ok === true, 'S13：正式会议已开（前置）')
+    const ra = await callTool('vibe_v5_result_record', { text: 'S13 检索决议甲', kind: 'resolution', target: 'p-1' }, childAgent(childOf('acad')))
+    const rb = await callTool('vibe_v5_result_record', { text: 'S13 检索决议乙', kind: 'org', target: 'p-2' }, childAgent(childOf('acad')))
+    assert(ra.ok === true && rb.ok === true, 'S13：两条决议已落库（前置）')
+    const byTarget = await callTool('vibe_v5_resolutions', { target: 'p-1' })
+    assert(byTarget.ok === true && byTarget.count === 1 && String(byTarget.resolutions[0].target) === 'p-1',
+      'S13：按 `target` 检索（got ' + JSON.stringify(byTarget).slice(0, 220) + '）')
+    const byKind = await callTool('vibe_v5_resolutions', { kind: 'org' })
+    assert(byKind.ok === true && byKind.count === 1 && String(byKind.resolutions[0].kind) === 'org',
+      'S13：按 `kind` 检索（got ' + JSON.stringify(byKind).slice(0, 220) + '）')
+    const byId = await callTool('vibe_v5_resolutions', { id: '1' })
+    assert(byId.ok === true && byId.count === 1 && String(byId.resolutions[0].id) === 'res-1',
+      'S13：`id` 简写 `1` ⇒ `res-1`（got ' + JSON.stringify(byId).slice(0, 220) + '）')
+    const byMeet = await callTool('vibe_v5_resolutions', { meetingId: String((await callTool('vibe_v5_status', {})).meeting.id), limit: 1 })
+    assert(byMeet.ok === true && byMeet.count === 2 && byMeet.resolutions.length === 1,
+      'S13：`meetingId` ＋ `limit` 封顶（got ' + JSON.stringify(byMeet).slice(0, 220) + '）')
+    const badT = await callTool('vibe_v5_resolutions', { since_at: 'x' })
+    assert(badT.ok === false && /检索不接受时间参数/.test(String(badT.message)),
+      'S13：**时间过滤键一律拒**（got ' + JSON.stringify(badT).slice(0, 220) + '）')
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

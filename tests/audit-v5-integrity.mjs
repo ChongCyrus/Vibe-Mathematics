@@ -543,6 +543,41 @@ const SELF_PROBE_MUTATIONS = [
     to: "      meeting.formalAgenda = want\n      await finalizeMeeting(meeting, 'level-change')",
     expect: 'R70',
   },
+  {
+    name: 'S13: the stable resolution id stops being allocated by the framework (ids collide)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "    const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)",
+    to: "    const nextResolutionId = () => 'res-' + (resolutionsList().length)",
+    expect: 'R71',
+  },
+  {
+    name: 'S13: a light meeting accepts a resolution (the D7 refusal on the resolution path is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (meetingLevelOf(meeting) !== 'formal') return truthWriteRefusal('不得落决议')",
+    to: "      if (false) return truthWriteRefusal('不得落决议')",
+    expect: 'R72',
+  },
+  {
+    name: 'S13: anyone may write a resolution (the academician/secretary gate is dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (command === 'result_record') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))",
+    to: "      if (command === 'result_record') return true",
+    expect: 'R73',
+  },
+  {
+    name: 'S13: the resolution ledger stops passing the fold whitelist (resolutions are dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '          if (patch.resolutions !== undefined) {',
+    to: '          if (false) {',
+    expect: 'R74',
+  },
+  {
+    name: 'S13: retrieval stops rejecting time filters',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：检索不接受时间参数 ' + badTime.join('、') + '（时间只作排序/展示）' }",
+    to: "      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 不再拒绝时间过滤 ' + badTime.join('、') }",
+    expect: 'R75',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1525,8 +1560,12 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R55', 'S10/D6: a quote carries ONLY a <=200-char summary plus a stable pointer — the excerpt is deterministically truncated (truncated:true) and the full text is never copied')
   gate(/if \(String\(got\.meetingId \|\| ''\) !== curMeetingId\)/.test(quoteBody)
     && /引用\*\*仅限同一会议内\*\*（D6）/.test(quoteBody)
-    && /\^res:/.test(anchorBody) && /#26/.test(anchorBody),
-    'R56', 'S10/D6: quoting is limited to the SAME meeting (the meetingId must match; both-outside = the chat domain) and a cross-meeting anchor is refused by name (`res:` only — resolution objects #26 are not implemented)')
+    && /\^res:/.test(anchorBody)
+    && /res:latest/.test(anchorBody) && /resolutionsList\(\)/.test(anchorBody)
+    && /悬空引用：找不到决议/.test(anchorBody)
+    && /supersededBy: String\(rec\.supersededBy \|\| ''\)/.test(anchorBody)
+    && !/尚未实现/.test(anchorBody),
+    'R56', 'S10×S13/D6: quoting is limited to the SAME meeting for meeting-internal anchors (the meetingId must match; both-outside = the chat domain), while a RESOLUTION may be quoted across meetings via its stable id (`res:<n>` / `res:latest`, resolved against the durable `resolutions[]` ledger — a resolution that is not on file is a dangling refusal, and a superseded one carries supersededBy so the quote can be marked as reconsidered)')
   gate(/String\(found\.kind\) === 'dm'/.test(anchorBody) && /请先由\*\*本人\*\*用/.test(anchorBody)
     && /if \(String\(src\.from\) !== String\(callerId\)\)/.test(quoteBody)
     && /chatSupplements: \(list\)/.test(quoteBody)
@@ -1636,6 +1675,42 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; level visible in minutes=' + /本场等级/.test(finalizeBody)
     + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(|putSolve\(|castVerdict\(|putVerdict\(|voters\(\)/.test(levelBody + truthRefusalBody)
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(levelBody + truthRefusalBody))
+  // ---- S13 (G2/D6): the resolution entity, its effective time, and retrieval -------------------
+  const resultBody = bodyOf('async function resultRecordTool(memberId, a) {')
+  const resolutionsBody = bodyOf('function resolutionsTool(memberId, a) {')
+  gate(/const RESOLUTION_KINDS = \['resolution', 'solve', 'org', 'procedure'\]/.test(v5rRaw)
+    && /const nextResolutionId = \(\) => 'res-' \+ \(resolutionsList\(\)\.length \+ 1\)/.test(v5rRaw)
+    && /effectiveAt: at, retroactive: args\.retroactive === true, declaredAt: args\.retroactive === true \? at : 0/.test(resultBody),
+    'R71', 'S13/G2: the stable id `res-<n>` is allocated by the framework (institute-wide monotonic, never from the caller), the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at) and a retroactive declaration is archived (declaredAt) without ever changing effectiveAt')
+  gate(!!resultBody && /meetingLevelOf\(meeting\) !== 'formal'\) return truthWriteRefusal\('不得落决议'\)/.test(resultBody)
+    && !/putVerdict\(|putSolve\(|castVerdict\(|judgeVerdict\(/.test(resultBody)
+    && /悬空引用：找不到决议/.test(anchorBody),
+    'R72', 'S13/S12/D6: a light meeting refuses a resolution through the SINGLE S12 truthWriteRefusal point, the resolution path never writes verdicts/solve (R6) and a resolution that is not on file can never be quoted (dangling refusal)')
+  gate(/if \(command === 'result_record'\) return acad \|\| \(!!meeting && String\(meeting\.secretary \|\| ''\) === String\(callerId\)\)/.test(v5rRaw)
+    && grantableLine.indexOf('result_record') === -1
+    && /const same = resolutionsList\(\)\.filter/.test(resultBody)
+    && /deduped: true, resolution: same/.test(resultBody)
+    && /patchInstitute\(\{ resolutions: \(list\) => \(Array\.isArray\(list\) \? list : \[\]\)\.concat\(\[rec\]\) \}\)/.test(resultBody),
+    'R73', 'S13/`03` #26: writing a resolution is academician ∪ THIS meeting\'s secretary and never grantable; the same resolution is idempotent (deduped) and the ledger is append-only (concat)')
+  gate(/if \(patch\.resolutions !== undefined\)/.test(v5rRaw)
+    && /resolutions: \{/.test(v5rRaw)
+    && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putVerdict\(|putSolve\(|voters\(\)/.test(resultBody + resolutionsBody)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(resultBody + resolutionsBody),
+    'R74', 'S13/G2: the ledger passes the fold whitelist, the read-only face is exposed, nothing drives the meeting (no phase/closure/timer/vote) and no new error code is invented')
+  gate(!!resolutionsBody && /args\.id/.test(resolutionsBody) && /args\.target/.test(resolutionsBody)
+    && /args\.meetingId/.test(resolutionsBody) && /args\.kind/.test(resolutionsBody) && /args\.limit/.test(resolutionsBody)
+    && /检索不接受时间参数/.test(resolutionsBody)
+    && !/setTimeout\(|finalizeMeeting\(/.test(resolutionsBody),
+    'R75', 'S13/G2: retrieval supports id/target/meetingId/kind/limit and REJECTS every time filter (time is for ordering/display only)')
+  notes.push('S13 (v5r): stable id by framework=' + /const nextResolutionId = \(\) => 'res-'/.test(v5rRaw)
+    + '; effectiveAt===at=' + /effectiveAt: at,/.test(resultBody)
+    + '; retroactive keeps effectiveAt=' + /declaredAt: args\.retroactive === true \? at : 0/.test(resultBody)
+    + '; light refused via single point=' + /truthWriteRefusal\('不得落决议'\)/.test(resultBody)
+    + '; res quotable=' + /res:latest/.test(anchorBody) + '; not-on-file refused=' + /悬空引用：找不到决议/.test(anchorBody)
+    + '; fold whitelist=' + /if \(patch\.resolutions !== undefined\)/.test(v5rRaw)
+    + '; read-only face=' + /resolutions: \{/.test(v5rRaw)
+    + '; time filters rejected=' + /检索不接受时间参数/.test(resolutionsBody)
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING)[A-Z_]+/.test(resultBody + resolutionsBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

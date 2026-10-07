@@ -1186,6 +1186,69 @@ const V5R_FAMILIES = [
     to: "          + '｜等级＝（MUTANT: 不写）')",
     expect: /S12：`report\(\)` \*\*明写\*\*简流程与硬约束/,
   },
+  // ── S13 family (G2/D6；docs/09 §12 的 S13 行) ───────────────────────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s13-* 场景；`expect` 一律抄自定向实跑的**首条**红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R71–R75，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 稳定标识**不再由框架单调分配**（id 冲突）⇒ s13-stable-id 的"单调且各不同"必红。
+    name: 'S13: the stable resolution id stops being allocated by the framework (ids collide)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-stable-id' },
+    from: "    const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)",
+    to: "    const nextResolutionId = () => 'res-' + (resolutionsList().length)",
+    expect: /S13\/G2：标识\*\*全所单调且各不同\*\*/,
+  },
+  {
+    // ② **简流程接受决议**（D7 拒绝被摘掉）⇒ s13-light-refused 的"简流程具名拒"必红。
+    name: 'S13: a light meeting accepts a resolution (the D7 refusal on the resolution path is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-light-refused' },
+    from: "      if (meetingLevelOf(meeting) !== 'formal') return truthWriteRefusal('不得落决议')",
+    to: "      if (false) return truthWriteRefusal('不得落决议')",
+    expect: /S13×S12\/D7：简流程会期内落决议 ⇒ \*\*具名拒\*\*/,
+  },
+  {
+    // ③ **任何人都能落决议**（院士∪记录人门被摘掉）⇒ s13-record-resolution 的"非记录人具名拒"必红。
+    name: 'S13: anyone may write a resolution (the academician/secretary gate is dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-record-resolution' },
+    from: "      if (command === 'result_record') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))",
+    to: "      if (command === 'result_record') return true",
+    expect: /S13\/#26：\*\*非院士且非记录人\*\*落决议 ⇒ 具名拒/,
+  },
+  {
+    // ④ 台账**漏出 fold 白名单**（决议被静默丢弃）⇒ s13-record-resolution 的"只读面"必红。
+    name: 'S13: the resolution ledger stops passing the fold whitelist (resolutions are dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-record-resolution' },
+    from: '          if (patch.resolutions !== undefined) {',
+    to: '          if (false) {',
+    expect: /S13：只读面 `status\.resolutions\{count,latest_id\}`/,
+  },
+  {
+    // ⑤ **时间过滤键不再被拒**（检索可被时间键污染）⇒ s13-search 的"时间过滤键一律拒"必红。
+    name: 'S13: retrieval stops rejecting time filters',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-search' },
+    from: "      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：检索不接受时间参数 ' + badTime.join('、') + '（时间只作排序/展示）' }",
+    to: "      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'MUTANT: 不再拒绝时间过滤 ' + badTime.join('、') }",
+    expect: /S13：\*\*时间过滤键一律拒\*\*/,
+  },
+  {
+    // ⑥ 决议**不再带取代链字段**（引用无法标明"已被复议"）⇒ s13-superseded 的"携带 supersededBy"必红。
+    name: 'S13: the quoted resolution stops carrying supersededBy (a reconsidered resolution cannot be marked)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's13-superseded' },
+    from: "            supersededBy: String(got.supersededBy || ''),",
+    to: '            // MUTANT: supersededBy dropped from the stored quote',
+    expect: /S13\/G2：引用带 `supersededBy` 字段/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1210,7 +1273,10 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S11（GAPS 29）：每个 s11-* 场景一个正控（指定/禁止自任/权限面/条目/两区与锚/撤销幂等）。
   's11-appoint', 's11-self-refused', 's11-only-academician', 's11-record-entries', 's11-zones-and-anchors', 's11-revoke-idempotent',
   // S12（D7/GAPS 22）：每个 s12-* 场景一个正控（派生/简流程不得定论/仅院士/幂等/可见性/不驱动）。
-  's12-level-derived', 's12-light-no-truth', 's12-acad-only', 's12-idempotent', 's12-report-visible', 's12-no-drive']
+  's12-level-derived', 's12-light-no-truth', 's12-acad-only', 's12-idempotent', 's12-report-visible', 's12-no-drive',
+  // S13（G2/D6）：每个 s13-* 场景一个正控（落库/标识/未落库拒/取代/简流程拒/检索）＋ S10 放开的正控。
+  's13-record-resolution', 's13-stable-id', 's13-prerecord-refused', 's13-superseded', 's13-light-refused', 's13-search',
+  's10-last-resolution-quotable']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

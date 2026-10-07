@@ -623,6 +623,11 @@ export function apply(ctx) {
             const nextR = typeof patch.secretaries === 'function' ? patch.secretaries(Array.isArray(n.secretaries) ? n.secretaries : []) : patch.secretaries
             if (nextR !== undefined) n.secretaries = Array.isArray(nextR) ? nextR : []
           }
+          // S13（G2）：**决议台账**（append-only：稳定标识 `res-<n>`／生效时点／追溯声明／取代链）。
+          if (patch.resolutions !== undefined) {
+            const nextRes = typeof patch.resolutions === 'function' ? patch.resolutions(Array.isArray(n.resolutions) ? n.resolutions : []) : patch.resolutions
+            if (nextRes !== undefined) n.resolutions = Array.isArray(nextRes) ? nextRes : []
+          }
           return n
         })
       }
@@ -1544,6 +1549,9 @@ export function apply(ctx) {
       if (command === 'poll_open' || command === 'poll_close') return acad
       // S12（D7/GAPS 22）：**设定会议等级**（正式／简流程）＝默认表（**仅院士**；**不在**可授集合 ⇒ 永不可授）。
       if (command === 'meeting_level') return acad
+      // S13（G2/D6）：**落决议**＝院士 ∪ **当次会议的记录人**（`03` #26 的"院士／代行＝纪要人"；
+      // **产出实体定论** ⇒ 裁定级面 ⇒ **不在**可授集合）。
+      if (command === 'result_record') return acad || (!!meeting && String(meeting.secretary || '') === String(callerId))
       // S11（GAPS 29）：**指定/撤销记录人**＝默认表（**仅院士**；**不在**可授集合 ⇒ 永不可授）。
       if (command === 'secretary') return acad
       // S11：**纪要条目/生成**＝院士 ∪ **当次会议的记录人**（记录权与表决权**分离**；不因授权而开）。
@@ -1907,6 +1915,92 @@ export function apply(ctx) {
       return { ok: true, ballot: ballotView(ballotById(b.id) || b) }
     }
 
+    // ── S13（G2/D6）：**决议实体与生效时点/检索** ───────────────────────────────────────────────
+    // ① **公告即生效**：`effectiveAt === at`（写入时刻）；**追溯**只能在公告里**显式声明**（`retroactive`）
+    //    并留档（`declaredAt`），**绝不改 `effectiveAt`**（G2）。
+    // ② **稳定标识**：`res-<n>` 由**框架分配**（全所单调；**不取自用户入参**）⇒ 可跨会议引用（`res:<n>`／
+    //    `res:latest`）与审计（R7）。
+    // ③ **未落库不得被引**：`res:` 只解析**已落库**的决议；找不到 ⇒ 悬空拒。
+    // ④ **简流程不得产出实体定论**：写决议前查等级，**复用 S12 的 `truthWriteRefusal`（唯一判定点）**。
+    // ⑤ **不写 `verdicts`/`solve`**（R6：决议不是真值）；**不驱动**（不改阶段/不收束/无定时器）。
+    const RESOLUTION_TEXT_MAX = 1000
+    const RESOLUTION_KINDS = ['resolution', 'solve', 'org', 'procedure']
+    const resolutionsList = () => {
+      const cur = inst()
+      return Array.isArray(cur.resolutions) ? cur.resolutions : []
+    }
+    const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)
+    /** S13 #55：**记录决议**（院士 ∪ 当次会议记录人；正式会议内；公告即生效；稳定标识）。 */
+    async function resultRecordTool(memberId, a) {
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTime.join('、') + '（期限请用 `due_in` 相对表达）' }
+      const gate = canDo(memberId, 'result_record')
+      if (!gate.ok) {
+        return { ok: false, code: 'V5_NOT_VOTER', message: '决议只能由**院士或当次会议的记录人**写入（`03` #26）：当前记录人＝' + (currentSecretary() || ('（' + NO_SECRETARY_NOTE + '）')) }
+      }
+      if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '决议是**会议产出**：请在**进行中的正式会议**内落决议（S13/D7；院士也不得会外落决议）' }
+      if (meetingLevelOf(meeting) !== 'formal') return truthWriteRefusal('不得落决议')
+      const text = String(args.text || '').trim()
+      if (!text) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'text is required：决议必须给出文本' }
+      if (text.length > RESOLUTION_TEXT_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议过长（上限 ' + RESOLUTION_TEXT_MAX + ' 字符）' }
+      const kind = String(args.kind || 'resolution')
+      if (RESOLUTION_KINDS.indexOf(kind) === -1) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'kind 必须是 ' + RESOLUTION_KINDS.join('／') + ' 之一（决议类别，S13 检索维度）' }
+      }
+      const target = String(args.target || '')
+      const rawActions = Array.isArray(args.actions) ? args.actions : []
+      const actions = []
+      for (const raw of rawActions) {
+        const o = raw || {}
+        const badA = Object.keys(o).filter((k) => /(At|Ms)$/i.test(k))
+        if (badA.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：行动项不接受时间参数 ' + badA.join('、') + '（请用 `due_in`）' }
+        const who = String(o.who || o.member || '').trim()
+        if (!who) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'actions[].who is required（行动项责任人）' }
+        const m = memberById(who)
+        if (!m) return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: '行动项责任人找不到：' + who }
+        if (m.kind === 'temp') return { ok: false, code: 'V5_NOT_VOTER', message: '行动项责任人必须是**在册成员**（临时工不可）' }
+        actions.push({ who, due_in: String(o.due_in || o.dueIn || ''), state: 'open' })
+      }
+      const mtId = String(meeting.id)
+      const same = resolutionsList().filter((x) => x && String(x.meetingId) === mtId && String(x.target || '') === target && String(x.text) === text)[0]
+      if (same) return { ok: true, deduped: true, resolution: same, message: '同值决议已存在（幂等）：未重复入档' }
+      const at = now()
+      const rec = {
+        id: nextResolutionId(), by: memberId, at, meetingId: mtId, target, kind, text, actions,
+        effectiveAt: at, retroactive: args.retroactive === true, declaredAt: args.retroactive === true ? at : 0, supersededBy: '',
+      }
+      await patchInstitute({ resolutions: (list) => (Array.isArray(list) ? list : []).concat([rec]) })
+      await saveChatLine('【决议】' + rec.id + '（' + mtId + '｜' + kind + '）' + text + '｜生效：' + fmtTime(at) + (rec.retroactive ? '｜**追溯声明**（不改进效时点）' : '') + (actions.length ? '｜行动项 ' + actions.length + ' 条' : ''))
+      return {
+        ok: true, resolution: rec,
+        note: '**公告即生效**（G2）；稳定标识可跨会议引用（`res:' + rec.id + '`／`res:latest`）',
+        message: '决议已落库：' + rec.id,
+      }
+    }
+    /** S13 #56：**按标识/维度检索决议**（**只读**；不接受任何时间过滤键）。 */
+    function resolutionsTool(memberId, a) {
+      const args = a || {}
+      const badTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：检索不接受时间参数 ' + badTime.join('、') + '（时间只作排序/展示）' }
+      let list = resolutionsList().slice()
+      if (args.id) {
+        const want = String(args.id).trim()
+        const id = /^\d+$/.test(want) ? ('res-' + want) : want
+        list = list.filter((x) => x && String(x.id) === id)
+      }
+      if (args.target) list = list.filter((x) => x && String(x.target || '') === String(args.target))
+      if (args.meetingId) list = list.filter((x) => x && String(x.meetingId) === String(args.meetingId))
+      if (args.kind) list = list.filter((x) => x && String(x.kind) === String(args.kind))
+      const limit = Math.max(1, Math.min(50, Number(args.limit || 10) || 10))
+      const rows = list.slice(-limit).reverse().map((r) => ({
+        id: String(r.id), kind: String(r.kind || ''), text: String(r.text || ''), effectiveAt: Number(r.effectiveAt || 0),
+        meetingId: String(r.meetingId || ''), target: String(r.target || ''), supersededBy: String(r.supersededBy || ''),
+        actions_count: (Array.isArray(r.actions) ? r.actions : []).length,
+      }))
+      return { ok: true, count: list.length, resolutions: rows }
+    }
+
     // ── S12（D7/GAPS 22）：**会议分级**（正式会／简流程）──────────────────────────────────────────
     // ① **等级**：`formal`（决议类：会产出**实体定论**／表决）／`light`（同步／讨论：议程＋轮询＋行动项）。
     //    **派生**自 `meeting.kind`（`verify-request`／`solve-vote` ⇒ 决议类；`sync`／`division` ⇒ 简流程），
@@ -2084,7 +2178,40 @@ export function apply(ctx) {
       const r = String(ref || '').trim()
       if (!r) return quoteRefused('quote_ref 为空：引用必须给出锚（会议内 `mt-<id>#speech-<who>-<n>`／会议外 `msg-<N>`／聚合 `ballot:<id>`）')
       if (/^res:/.test(r)) {
-        return quoteRefused('跨会议只能引**上次决议**（D6）：决议对象 `meeting_result_record`（#26）**尚未实现** ⇒ 当前跨会议引用一律拒绝，不得静默放宽')
+        // S13（G2/D6 放开）：**跨会议只引"上次决议"** —— 决议**已实现**（`resolutions[]`，稳定标识 `res-<n>`）。
+        // ① `res:latest` ⇒ **最近一条未被取代**的决议；② `res:<n>`／`res-<n>` ⇒ 指定决议。
+        // ③ 未落库/找不到 ⇒ **悬空拒**（未生效的决议**不得**被引用为结论）；④ 决议带 `supersededBy`
+        //    ⇒ **可引**（原文＋摘要），但必须**标明"已被复议"**（S9 口径）。
+        const want = r.slice(4).trim()
+        const all = resolutionsList()
+        if (!all.length) return quoteRefused('悬空引用：决议台账为空（`res:` 只能引**已落库**的决议；未生效的决议不得被引用为结论）')
+        let rec = null
+        if (want === '' || want === 'latest') {
+          const live = all.filter((x) => x && !String(x.supersededBy || ''))
+          rec = (live.length ? live : all)[(live.length ? live : all).length - 1]
+        } else {
+          const id = /^\d+$/.test(want) ? ('res-' + want) : want
+          rec = all.filter((x) => x && String(x.id) === id)[0] || null
+        }
+        if (!rec) return quoteRefused('悬空引用：找不到决议 ' + r + '（`res:<n>`／`res:latest`）')
+        const rText = String(rec.text || '')
+        const rCut = truncateExcerpt(rText)
+        return {
+          ok: true,
+          ref: 'res:' + String(rec.id),
+          from: String(rec.by || ''),
+          at: Number(rec.effectiveAt || rec.at || 0),
+          kind: 'resolution',
+          domain: 'resolution',
+          excerpt: rCut.excerpt,
+          truncated: rCut.truncated,
+          depth: 0,
+          collapsed: false,
+          rootRef: 'res:' + String(rec.id),
+          supersededBy: String(rec.supersededBy || ''),
+          secretAggregateOnly: false,
+          viaSupplement: '',
+        }
       }
       // ① 会议内发言锚（**耐久**：读会议纪要文件 ⇒ 悬空可判）
       const mts = /^mt-([A-Za-z0-9_-]+)#speech-([A-Za-z0-9_-]+)-(\d+)$/.exec(r)
@@ -2213,7 +2340,7 @@ export function apply(ctx) {
               + '，而被引发言属于 ' + (got.meetingId || '会议外群聊域') + ' ⇒ 跨会议/跨域引用被拒')
           }
           const want = String(a.quote_excerpt || '').trim()
-          const cut = truncateExcerpt(want || got.text)
+          const cut = truncateExcerpt(want || got.excerpt || got.text)
           const depth = Number(got.depth || 1)
           const capped = depth > quoteDepthMax()
           const cycle = (got.chain || []).some((x) => String(x.from) === String(callerId))
@@ -2224,6 +2351,8 @@ export function apply(ctx) {
             rootRef: (got.chain && got.chain.length ? got.chain[got.chain.length - 1].ref : got.ref),
             secretAggregateOnly: got.kind === 'ballot-aggregate',
             viaSupplement: String(got.viaSupplement || ''),
+            // S13（G2/S9）：决议锚**携带取代链**（被复议取代的决议仍可引，但**必须**据此标明"已被复议"）。
+            supersededBy: String(got.supersededBy || ''),
           })
         }
         quote = quotes[0]
@@ -9533,6 +9662,13 @@ export function apply(ctx) {
           // S10（D6）：**只读**子键（**不加 `status()` 顶层键**）。
           quotes_per_message_max: quotesPerMessageMax(), quote_depth_max: quoteDepthMax() },
         chatScope: 'pending = 全所未确认投递的消息数（非"我的未读"）；delivered = 封顶账本（DELIVERED_CAP，到顶后不再增长）',
+        // S13（G2）：**只读**决议面（稳定标识／生效时点／检索维度）——**不含**任何可写入口。
+        resolutions: {
+          count: resolutionsList().length,
+          latest_id: (resolutionsList().length ? String(resolutionsList()[resolutionsList().length - 1].id) : ''),
+          latest_effective_at: (resolutionsList().length ? Number(resolutionsList()[resolutionsList().length - 1].effectiveAt || 0) : 0),
+          kinds: RESOLUTION_KINDS.slice(),
+        },
         // MEDIUM 4 (deep review): the requests only the OFFICE can approve. `to:'voters'` never
         // reaches the office (it is not a member), so an unapproved proposal used to be invisible
         // to the one actor able to act on it.
@@ -9566,8 +9702,7 @@ export function apply(ctx) {
           // S11（GAPS 29）：**只读**子键（**不加 `status()` 顶层键**）——记录人（'' ＝ 未指定）＋条目数。
           secretary: currentSecretary(), record_entry_count: secretaryEntriesOf(meeting).length,
           // S12（D7/GAPS 22）：**只读**子键——本场等级（`formal`／`light`）。
-          level: meetingLevelOf(meeting),
-          // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
+          level: meetingLevelOf(meeting),          // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
           speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
@@ -9713,6 +9848,13 @@ export function apply(ctx) {
           + '｜等级＝' + (meetingLevelOf(m) === 'formal' ? '**正式**（可产出实体定论）' : '**简流程**：' + LIGHT_LEVEL_NOTE))
       }
       if (pendingMeeting) L.push('- 暂存会议：' + pendingMeeting.agenda)
+      // S13（G2）：**决议节**（稳定标识／生效时点／是否已被复议取代）——只读；时间只作展示。
+      const resAll = resolutionsList()
+      if (resAll.length) {
+        const lastFew = resAll.slice(-3).reverse()
+        L.push('- 决议：共 ' + resAll.length + ' 条｜最近：' + lastFew.map((r) => String(r.id) + '（' + (String(r.supersededBy || '') ? '**已被复议** ' + String(r.supersededBy) : '生效 ' + fmtTime(Number(r.effectiveAt || 0))) + '）').join('、'))
+        L.push('- 决议检索：`vibe_v5_resolutions {id?|target?|meetingId?|kind?|limit?}`（只读；时间只作排序/展示）')
+      }
       // F6 (status/report review): a meeting whose index entry exists but which never FINALIZED is
       // not history. `meetingOpen` is durable (set in `beginMeeting`, cleared in `finalizeMeeting`),
       // so a restart cannot silently drop the minutes while the count still looks normal.
@@ -9953,7 +10095,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, resultRecordTool, resolutionsTool, resolutionsList, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -10158,7 +10300,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_finalize_paper', 'Office: finalise the final paper after consulting the whole institute. Required when paperEditor="office": at least one office message (vibe_v5_message) AND at least one meeting convened by the office must happen first (paper.meta.json records them, and the note must state the conclusion). decision="revise" asks for another writing round (bounded).', objParams({ decision: { type: 'string', enum: ['deliverable', 'revise'] }, note: S, conclusion: S, force: B }, ['decision']), (s, a, x) => withOffice(s, x, 'finalise the final paper', () => s.finalizePaperByOffice(a)))
 
   // ── member-facing controls ────────────────────────────────────────────────
-  registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters"). QUOTING (D6): quote_ref takes an anchor — a speech of the SAME meeting (`mt-<id>#speech-<who>-<n>`, resolved against the durable minutes file), an undelivered group message (`msg-N`, snapshotted at write time) or a poll aggregate (`ballot:<id>`); quote_excerpt optionally overrides the summary. The quote carries ONLY a <=200-char summary plus a stable pointer (the full text is never copied); at most quotesPerMessageMax (default 2) quotes per message, and a chain deeper than quoteDepthMax (default 3) is COLLAPSED to an anchor instead of being refused; cross-meeting quoting is refused (only the last resolution may be quoted across meetings and meeting_result_record #26 is not implemented yet); a dangling anchor is refused; a message that is already delivered is refused (its body is not retained); a PRIVATE message may not be quoted until its own sender supplements it publicly (supplement_of + why); a secret board can only be quoted as an aggregate. Nothing here drives the meeting.', objParams({ text: S, to: S, quote_ref: S, quote_refs: SA, quote_excerpt: S, supplement_of: S, why: S }, ['text']), (s, a, x) => {
+  registerTool('vibe_v5_say', '(member) Speak in the group chat (omit "to"), send a private message ("to":"r-2"), or address only the voters ("to":"voters"). QUOTING (D6): quote_ref takes an anchor — a speech of the SAME meeting (`mt-<id>#speech-<who>-<n>`, resolved against the durable minutes file), an undelivered group message (`msg-N`, snapshotted at write time) or a poll aggregate (`ballot:<id>`); quote_excerpt optionally overrides the summary. The quote carries ONLY a <=200-char summary plus a stable pointer (the full text is never copied); at most quotesPerMessageMax (default 2) quotes per message, and a chain deeper than quoteDepthMax (default 3) is COLLAPSED to an anchor instead of being refused; cross-meeting quoting: a meeting-internal anchor is refused outside its own meeting, but the LAST RESOLUTION may be quoted across meetings (`res:<n>` / `res:latest` — S13/G2; a resolution carrying supersededBy is still quotable but must be marked as reconsidered); a dangling anchor is refused; a message that is already delivered is refused (its body is not retained); a PRIVATE message may not be quoted until its own sender supplements it publicly (supplement_of + why); a secret board can only be quoted as an aggregate. Nothing here drives the meeting.', objParams({ text: S, to: S, quote_ref: S, quote_refs: SA, quote_excerpt: S, supplement_of: S, why: S }, ['text']), (s, a, x) => {
     const from = s.memberIdOfAgent(x)
     if (!from) return s.memberDiagnosis('发言（vibe_v5_say）', from)
     // S8（R3/K12/B9）：**表决期禁止发言** —— 门在**成员发言入口**（系统/框架消息不经过这里，照常可达）；
@@ -10195,6 +10337,8 @@ export function apply(ctx) {
   registerTool('vibe_v5_reconsider', '(participant) #52 — REQUEST A RECONSIDERATION of an already-closed verdict (D5/D5a; the "review" that SPEC #19 and the poll board\'s "after closure only a reconsideration can follow" both point at). Params: target (required; the closed object), why (required; the reason is archived), evidence? (must come from the same object/meeting — D6). ELIGIBILITY IS DERIVED FROM THE RECORD, never from a role: with a clear winner only one of the ORIGINAL WINNERS may ask; with NO winner (undecided / mean-only) ANY participant may ask and the request may NOT be refused for "having no winner" (D5a hard constraint). The threshold can only RISE: after = max(before, reconsiderFloor, quorumCap) (U3) and the raise is recorded (thresholdBefore/After, raisedBy). One reconsideration per round; the total rounds stay bounded by verdictMaxRounds. The old conclusion, the old ballot and the old minority are all preserved (append-only) and the old conclusion is marked supersededBy. No vote power is created and the denominator never changes. No time may be supplied: every …At/…Ms is rejected (the framework writes the times) and nothing ever happens "on time".', objParams({ target: S, target_id: S, why: S, evidence: S }, ['why']), (s, a, x) => s.reconsiderTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_secretary', '(academician) #53 — APPOINT or REVOKE the meeting secretary (GAPS 29: keeping the record OUT of the chair\'s hands). Params: who (required; an ACTIVE MEMBER — a temp worker is refused with V5_NOT_VOTER), why?, revoke:true (or op:"revoke") to revoke. The academician may NOT appoint itself or the office ("主持人不得兼任唯一记录者"): the chair must never be the only recorder. The appointment is BOUND TO THE CURRENT MEETING and lapses when that meeting closes (the same unit as U5). The ledger `secretaries[]` is append-only (the same value is idempotent: deduped:true, no new entry; a change of person records revokedAt). A secretary gets RECORD rights only: no vote power, no phase change, no denominator change (C5/R5). No time may be supplied: every …At/…Ms is rejected (the framework writes the times).', objParams({ who: S, member: S, why: S, revoke: B, op: S }, ['who']), (s, a, x) => s.secretaryTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), or (with no `entry`) REPORT THE GAPS only. Params: entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry is idempotent (deduped:true). Entries land in the durable minutes file as a separate `## 记录人补充` section AFTER the two zones, and in the structured `minutes{}` (secretary + entries). No time may be supplied: every …At/…Ms is rejected.', objParams({ entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_resolutions', '(member) #56 — SEARCH RESOLUTIONS (read-only; S13/G2). Params: id? (`res-<n>` or `res:<n>`/`<n>`), target?, meetingId?, kind?, limit? (1-50, default 10). Returns {count, resolutions[{id,kind,text,effectiveAt,meetingId,target,supersededBy,actions_count}]}. The time is only for ordering/display: any …At/…Ms filter is rejected. Nothing here drives anything.', objParams({ id: S, target: S, meetingId: S, kind: S, limit: { type: 'number' } }), (s, a, x) => s.resolutionsTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
