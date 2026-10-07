@@ -656,6 +656,11 @@ async function runScenario(name) {
     console.log('  skip - S14 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 fold 白名单的缺省契约）')
     return
   }
+  // S15 场景只在 v5r 下可跑（K4 上次纪要确认／行动项跟踪是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s15-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S15 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有纪要确认台账与行动项 origin/due_in/state）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2233,6 +2238,127 @@ async function runScenario(name) {
         'S14：既有纪要**未被改写**（只追加；got len=' + after.length + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s14）：' + name)
+    }
+  } else if (name.startsWith('s15-')) {
+    // S15（K4/GAPS 11–12）：**上次纪要确认** ＋ **行动项跟踪**（含 G3 待接手／逾期可见）。
+    // 助手：先跑完一场会议（作为"上次纪要"），再开新会议做确认/检查（**自愈前置、顺序无关**）。
+    const prevMeeting = async (agenda) => {
+      const mt = await callTool('vibe_v5_meeting', { agenda, kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：前一场会议已开（前置；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+      const id = String((await callTool('vibe_v5_status', {})).meeting.id)
+      await waitMeetingClosed()
+      return id
+    }
+    if (name === 's15-confirm-minutes') {
+      const prevId = await prevMeeting('S15 上次纪要（第一场）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 确认上次纪要（第二场）', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：本场会议已开（前置）')
+      const conf = await callTool('vibe_v5_minutes', { op: 'confirm' }, childAgent(childOf('acad')))
+      assert(conf && conf.ok === true && String(conf.confirmation && conf.confirmation.of) === prevId,
+        'S15/K4：确认缺省＝**最近一场已收束会议**且回执写明是哪一份（got ' + JSON.stringify(conf).slice(0, 240) + '）')
+      const sv = await callTool('vibe_v5_status', {})
+      assert(sv.meeting && sv.meeting.minutes_confirmation && sv.meeting.minutes_confirmation.confirmed === true
+        && String(sv.meeting.minutes_confirmation.of) === prevId,
+        'S15：只读面 `status.meeting.minutes_confirmation` 可见（got ' + String(JSON.stringify(sv.meeting && sv.meeting.minutes_confirmation) || null).slice(0, 220) + '）')
+      const st = readV5State()
+      const led = (st && st.institutes['default::institute'].minutesConfirmations) || []
+      assert(led.length === 1 && String(led[0].of) === prevId && Number(led[0].at) > 0,
+        'S15：确认**入档**（append-only 台账一条；got ' + JSON.stringify(led).slice(0, 220) + '）')
+    } else if (name === 's15-fact-only') {
+      const prevId = await prevMeeting('S15 上次纪要（事实更正）')
+      const prevFile = join(instDir, 'Shared', 'Meetings', prevId + '.md')
+      const before = existsSync(prevFile) ? readFileSync(prevFile, 'utf8') : ''
+      assert(before.length > 0, 'S15：旧纪要文件存在（前置；got len=' + before.length + '）')
+      const vBefore = JSON.stringify(((readV5State() || {}).institutes['default::institute'] || {}).verdicts || {})
+      const rBefore = (((readV5State() || {}).institutes['default::institute'] || {}).resolutions || []).length
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 本场（事实更正）', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：本场会议已开（前置）')
+      const curId = String((await callTool('vibe_v5_status', {})).meeting.id)
+      const conf = await callTool('vibe_v5_minutes', { op: 'confirm', of: prevId, fact_fix: '把出席人数 3 改为 4（事实）' }, childAgent(childOf('acad')))
+      assert(conf && conf.ok === true && String(conf.confirmation.factFix).indexOf('出席人数') !== -1,
+        'S15/K4：**事实更正**已受理（got ' + JSON.stringify(conf).slice(0, 240) + '）')
+      const after = existsSync(prevFile) ? readFileSync(prevFile, 'utf8') : ''
+      assert(after === before, 'S15/K4：**旧纪要一字未改**（只追加；got len=' + after.length + ' vs ' + before.length + '）')
+      const vAfter = JSON.stringify(((readV5State() || {}).institutes['default::institute'] || {}).verdicts || {})
+      const rAfter = (((readV5State() || {}).institutes['default::institute'] || {}).resolutions || []).length
+      assert(vAfter === vBefore && rAfter === rBefore,
+        'S15/K4：确认**不写判据/决议**（`verdicts`＋`solve`＋`resolutions` 均不变 ⇒ 只改事实、不改结论；got verdicts ' + vAfter.length + ' vs ' + vBefore.length + '｜resolutions ' + rAfter + ' vs ' + rBefore + '）')
+      await waitMeetingClosed()
+      const curFile = join(instDir, 'Shared', 'Meetings', curId + '.md')
+      const curText = existsSync(curFile) ? readFileSync(curFile, 'utf8') : ''
+      assert(curText.indexOf('## 上次纪要确认') !== -1 && curText.indexOf('出席人数') !== -1,
+        'S15/K4：事实更正**追加到当次会议纪要的独立小节**（got len=' + curText.length + '）')
+    } else if (name === 's15-action-from-resolution') {
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 行动项（源自决议）', kind: 'solve-vote' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：正式会议已开（前置）')
+      const curId = String((await callTool('vibe_v5_status', {})).meeting.id)
+      const rec = await callTool('vibe_v5_result_record', { text: 'S15 决议：派发行动项', kind: 'resolution', actions: [{ who: 'r-1', due_in: 'next-meeting' }] }, childAgent(childOf('acad')))
+      assert(rec && rec.ok === true, 'S15：决议已落库（前置；got ' + JSON.stringify(rec).slice(0, 200) + '）')
+      const asg = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S15 决议行动项', acceptance: '下次会议前完成', origin: 'meeting:' + curId, due_in: 'next-meeting' }, ROOT)
+      assert(asg && asg.ok === true && asg.task && String(asg.task.origin) === 'meeting:' + curId,
+        'S15/K4：行动项**显式**转任务板（`origin:meeting:<mt>`；got ' + JSON.stringify(asg).slice(0, 240) + '）')
+      const list = await callTool('vibe_v5_task_list', {}, ROOT)
+      const items = ((list && list.tasks) || []).filter((t) => String(t.origin || '') === 'meeting:' + curId)
+      assert(items.length === 1 && String(items[0].due_in) === 'next-meeting' && !!items[0].id,
+        'S15/K4：任务带**稳定标识**＋相对期限（got ' + JSON.stringify(items).slice(0, 240) + '）')
+      const sv = await callTool('vibe_v5_status', {})
+      assert(Number(sv.meeting.action_items.open) >= 1,
+        'S15：只读面 `status.meeting.action_items.open` 可见（got ' + JSON.stringify(sv.meeting.action_items).slice(0, 200) + '）')
+    } else if (name === 's15-handover-visible') {
+      const asg = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S15 逾期探测', acceptance: '下次会议前完成', origin: 'meeting:mt-seed', due_in: 'next-meeting' }, ROOT)
+      assert(asg && asg.ok === true, 'S15：行动项已建（前置；got ' + JSON.stringify(asg).slice(0, 200) + '）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 待接手/逾期', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：本次会议已开（前置）')
+      const sv1 = await callTool('vibe_v5_status', {})
+      assert(Number(sv1.meeting.action_items.overdue) >= 1,
+        'S15/K4/G3：**逾期＝未决项且可见**（上次派发、本次会议仍未完成；got ' + String(JSON.stringify(sv1.meeting && sv1.meeting.action_items) || null).slice(0, 200) + '）')
+      const list = await callTool('vibe_v5_task_list', {}, ROOT)
+      const t = (((list && list.tasks) || []).filter((x) => String(x.origin) === 'meeting:mt-seed'))[0]
+      assert(!!t, 'S15：找到该行动项（前置）')
+      const ho = await callTool('vibe_v5_task_update', { task_id: String(t.id), expected_revision: Number(t.revision), action: 'handover' }, ROOT)
+      assert(ho && ho.ok === true && String(ho.task.state) === 'handover' && String(ho.task.status) !== 'completed',
+        'S15/K4/G3：**待接手**（`state:handover`；**不自动关闭**；got ' + JSON.stringify(ho).slice(0, 240) + '）')
+      const sv2 = await callTool('vibe_v5_status', {})
+      assert(Number(sv2.meeting.action_items.handover) >= 1,
+        'S15：只读面 `action_items.handover` 可见（got ' + JSON.stringify(sv2.meeting.action_items).slice(0, 200) + '）')
+      const rep = await callTool('vibe_v5_report', {})
+      assert(/待接手|逾期/.test(JSON.stringify(rep)),
+        'S15/K4：`report()` 里**待接手/逾期可见**（got ' + JSON.stringify(rep).slice(0, 200) + '）')
+    } else if (name === 's15-zones-preserved') {
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 两区与锚不被确认破坏', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：会议已开（前置）')
+      const curId = String((await callTool('vibe_v5_status', {})).meeting.id)
+      const spoke = await replyMeeting('r-1', { input: 'S15 会议发言（锚的前置）' })
+      assert(spoke, 'S15：r-1 已交付会议发言（前置）')
+      await settleAll()
+      const conf = await callTool('vibe_v5_minutes', { op: 'confirm', fact_fix: '补一条事实（不得破坏两区/锚）' }, childAgent(childOf('acad')))
+      assert(conf && conf.ok === true, 'S15：确认已受理（前置；got ' + JSON.stringify(conf).slice(0, 200) + '）')
+      const q = await callTool('vibe_v5_say', { text: 'S15 确认后引会议内锚', quote_ref: 'mt-' + curId + '#speech-r-1-1' }, childAgent(childOf('r-3')))
+      assert(q && q.ok === true && q.quote && q.quote.domain === 'meeting',
+        'S15×S10：**确认后会议内锚仍可解析**（got ' + JSON.stringify(q).slice(0, 240) + '）')
+      await waitMeetingClosed()
+      const curFile = join(instDir, 'Shared', 'Meetings', curId + '.md')
+      const t = existsSync(curFile) ? readFileSync(curFile, 'utf8') : ''
+      assert(t.indexOf('## 发言区') !== -1 && t.indexOf('## 投票区') !== -1 && t.indexOf('### r-1') !== -1 && t.indexOf('## 上次纪要确认') !== -1,
+        'S15×S8：**两区与逐人小节仍在**且确认为独立小节（got len=' + t.length + '）')
+    } else if (name === 's15-idempotent') {
+      const prevId = await prevMeeting('S15 幂等（前一场）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S15 幂等（本场）', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S15：本场会议已开（前置）')
+      const c1 = await callTool('vibe_v5_minutes', { op: 'confirm', of: prevId, fact_fix: 'S15 同值事实更正' }, childAgent(childOf('acad')))
+      const c2 = await callTool('vibe_v5_minutes', { op: 'confirm', of: prevId, fact_fix: 'S15 同值事实更正' }, childAgent(childOf('acad')))
+      assert(c1 && c1.ok === true && c2 && c2.ok === true && c2.deduped === true,
+        'S15/K4：**同值确认幂等**（`deduped`；got ' + JSON.stringify(c2).slice(0, 220) + '）')
+      const a1 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S15 幂等行动项', acceptance: '完成', subject: 'S15 同值行动项', origin: 'meeting:' + prevId, due_in: 'next-meeting' }, ROOT)
+      const a2 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S15 幂等行动项', acceptance: '完成', subject: 'S15 同值行动项', origin: 'meeting:' + prevId, due_in: 'next-meeting' }, ROOT)
+      assert(a1 && a1.ok === true && a2 && a2.ok === true,
+        'S15：两次同值派发都被接受（前置；a1=' + JSON.stringify(a1 && a1.ok) + ' a2=' + JSON.stringify(a2).slice(0, 220) + '）')
+      const list = await callTool('vibe_v5_task_list', {}, ROOT)
+      const items = ((list && list.tasks) || []).filter((x) => String(x.origin || '') === 'meeting:' + prevId && String(x.subject) === 'S15 同值行动项')
+      assert(items.length === 1,
+        'S15/K4：**同一条行动项不重复建**（同 origin＋同 subject ⇒ 复用；got ' + JSON.stringify(items).slice(0, 220) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s15）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

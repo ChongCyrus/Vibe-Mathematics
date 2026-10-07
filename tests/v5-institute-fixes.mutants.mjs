@@ -1312,6 +1312,69 @@ const V5R_FAMILIES = [
     to: "      lines.push('- 纪要责任人：' + (secWho || '框架'))",
     expect: /S14：`secretaries` 缺省 ⇒ 纪要\*\*明写"无成员责任人"\*\*/,
   },
+  // ── S15 family (K4/GAPS 11–12：上次纪要确认 ＋ 行动项跟踪；docs/09 §12 的 S15 行) ──────────────
+  // 六个族各锚**一处**、各跑**一个** s15-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S15'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R79–R82，每条一个唯一点 self-probe 变异）。
+  {
+    // ① 确认台账**未进 fold 白名单**（静默丢弃）⇒ s15-confirm-minutes 的确认面必红。
+    name: 'S15: the confirmation ledger is not in the fold whitelist (the confirmation is silently dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-confirm-minutes' },
+    from: '          if (patch.minutesConfirmations !== undefined) {',
+    to: '          if (false) {',
+    expect: /S15：只读面 `status\.meeting\.minutes_confirmation` 可见/,
+  },
+  {
+    // ② 事实更正**写到旧纪要上**（破坏"只追加"）⇒ s15-fact-only 的"旧纪要一字未改"必红。
+    name: 'S15: the factual correction is appended to the OLD minutes instead of this meeting (the append-only rule breaks)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-fact-only' },
+    from: "        await appendMeetingTail(meeting, '## 上次纪要确认",
+    to: "        await appendMeetingTail({ id: of }, '## 上次纪要确认",
+    expect: /S15\/K4：\*\*旧纪要一字未改\*\*/,
+  },
+  {
+    // ③ `handover` **顺手把任务关闭**（破坏 G3"不自动关闭"）⇒ s15-handover-visible 的待接手断言必红。
+    name: 'S15: handover closes the action item (G3 breaks: responsibility is silently dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-handover-visible' },
+    from: "          } else {\n            next.ownerId = ''\n            next.status = 'pending'\n          }",
+    to: "          } else {\n            next.ownerId = ''\n            next.status = 'completed'\n          }",
+    expect: /S15\/K4\/G3：\*\*待接手\*\*/,
+  },
+  {
+    // ④ `handover` **不落状态**（仍是 open ⇒ 待接手不可见）⇒ 同场景的待接手断言必红。
+    name: 'S15: handover leaves the item open (the 待接手 state never appears)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-handover-visible' },
+    from: "          next.state = 'handover'",
+    to: "          next.state = 'open'",
+    expect: /S15\/K4\/G3：\*\*待接手\*\*/,
+  },
+  {
+    // ⑤ 确认**顺手落一条决议**（把事实当结论）⇒ s15-fact-only 的"不写判据/决议"断言必红。
+    name: 'S15: confirming the minutes also files a resolution (a fact is turned into a conclusion)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-fact-only' },
+    from: '        await patchInstitute({ minutesConfirmations: (list) => (Array.isArray(list) ? list : []).concat([rec]) })',
+    to: '        await patchInstitute({ resolutions: (list) => (Array.isArray(list) ? list : []).concat([{ id: \'res-999\', meetingId: of, kind: \'resolution\', text: \'MUTANT\' }]) })\n        await patchInstitute({ minutesConfirmations: (list) => (Array.isArray(list) ? list : []).concat([rec]) })',
+    expect: /S15\/K4：确认\*\*不写判据\/决议\*\*/,
+  },
+  {
+    // ⑥ 只读面**不再暴露待接手**（G3 的可见性被抹）⇒ s15-handover-visible 的 handover 只读断言必红。
+    name: 'S15: the read-only face stops exposing 待接手 (G3 visibility disappears)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's15-handover-visible' },
+    from: 'handover: handover.length, overdue: overdue.length',
+    to: 'handover: 0, overdue: overdue.length',
+    expect: /S15：只读面 `action_items\.handover` 可见/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1341,7 +1404,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   's13-record-resolution', 's13-stable-id', 's13-prerecord-refused', 's13-superseded', 's13-light-refused', 's13-search',
   's10-last-resolution-quotable',
   // S14（迁移与守卫收尾）：每个 s14-* 场景一个正控（旧文件可读/只读零副作用/缺省可见/加载失败拒提交/幂等/续跑）。
-  's14-legacy-state', 's14-read-only-load', 's14-legacy-defaults', 's14-load-failure-refuses-commit', 's14-idempotent-reload', 's14-meeting-resume']
+  's14-legacy-state', 's14-read-only-load', 's14-legacy-defaults', 's14-load-failure-refuses-commit', 's14-idempotent-reload', 's14-meeting-resume',
+  // S15（K4/GAPS 11–12）：每个 s15-* 场景一个正控（确认/只改事实/行动项源自决议/待接手·逾期可见/两区与锚/幂等）。
+  's15-confirm-minutes', 's15-fact-only', 's15-action-from-resolution', 's15-handover-visible', 's15-zones-preserved', 's15-idempotent']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

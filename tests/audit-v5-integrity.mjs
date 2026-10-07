@@ -599,6 +599,34 @@ const SELF_PROBE_MUTATIONS = [
     to: "if (!has('no-temp-hygiene')) {",
     expect: 'R78',
   },
+  {
+    name: 'S15: the confirmation ledger stops passing the fold whitelist (confirmations are dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '          if (patch.minutesConfirmations !== undefined) {',
+    to: '          if (false) {',
+    expect: 'R79',
+  },
+  {
+    name: 'S15: the factual correction stops landing in its own appended section (the minutes could be rewritten)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        await appendMeetingTail(meeting, '## 上次纪要确认\\n- ' + fmtTime(at) + '｜' + memberId + ' 确认 ' + of",
+    to: "        await appendMeetingTail(meeting, '- ' + fmtTime(at) + '｜' + memberId + ' 确认 ' + of",
+    expect: 'R80',
+  },
+  {
+    name: 'S15: handover stops parking the action item (responsibility could vanish silently)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "          next.state = 'handover'",
+    to: "          next.state = 'open'",
+    expect: 'R81',
+  },
+  {
+    name: 'S15: the minutes-confirm path starts driving the meeting (it closes the meeting)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      const detail = String(args.detail || 'normal')",
+    to: "      await finalizeMeeting(meeting, 'k4-mutant')\n      const detail = String(args.detail || 'normal')",
+    expect: 'R82',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1757,6 +1785,44 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; not-loaded face=' + /V5_STATE_NOT_LOADED/.test(v5rRaw)
     + '; machine modes delete nothing=' + /has\('no-temp-hygiene'\) && !has\('self-check'\) && !has\('counts'\)/.test(runnerRaw)
     + '; derived counts=' + /incrementalSkipped/.test(runnerRaw))
+  // ---- S15 (K4/GAPS 11–12): last-minutes confirmation + action-item tracking -------------------
+  const taskUpdateBody = bodyOf('async function taskUpdate(memberId, o, meta) {')
+  gate(/if \(patch\.minutesConfirmations !== undefined\)/.test(v5rRaw)
+    && !!minutesBody && /minutesConfirmations: \(list\) => \(Array\.isArray\(list\) \? list : \[\]\)\.concat\(\[rec\]\)/.test(minutesBody)
+    && /const gate = canDo\(memberId, 'minutes'\)/.test(minutesBody)
+    && /deduped: true, confirmation: same/.test(minutesBody)
+    && /const minutesConfirmationsList = \(\) => \{/.test(v5rRaw),
+    'R79', 'S15/K4: the confirmation ledger passes the EV.institute fold whitelist, is append-only, is gated to the academician ∪ THIS meeting\'s secretary, and the same confirmation is idempotent (deduped)')
+  gate(!!minutesBody && /trim\(\) === 'confirm'/.test(minutesBody)
+    && /appendMeetingTail\(meeting, '## 上次纪要确认/.test(minutesBody)
+    && /只改事实、不改结论/.test(minutesBody)
+    && !/putVerdict\(|putSolve\(|castVerdict\(|writeTextRel\(/.test(minutesBody),
+    'R80', 'S15/K4: a confirmation changes FACTS only — it never writes verdicts/solve, and the factual correction is APPENDED to THIS meeting\'s minutes as its own section, so the old minutes (and any conclusion) are never rewritten')
+  gate(!!taskUpdateBody && /action === 'handover'/.test(taskUpdateBody)
+    && /next\.state = 'handover'/.test(taskUpdateBody)
+    && /only the academician or the office can hand a task over/.test(taskUpdateBody)
+    && /next\.state = 'done'/.test(taskUpdateBody)
+    && (taskUpdateBody.match(/next\.status = 'completed'/g) || []).length === 1
+    && /action_items: \(\(\) =>/.test(v5rRaw)
+    && /handover: handover\.length, overdue: overdue\.length/.test(v5rRaw),
+    'R81', 'S15/K4/G3: the action-item state machine is explicit — only an explicit `complete` closes an item, `handover` (academician/office only) parks it as 待接手 without closing it, and status.meeting.action_items exposes open/handover/overdue')
+  gate(!!minutesBody && !!taskUpdateBody
+    && !/finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|setInterval\(|armHeartbeat\(|putVerdict\(|putSolve\(/.test(minutesBody)
+    && /minutes_confirmation: \(\(\) =>/.test(v5rRaw)
+    && /action_items: \(\(\) =>/.test(v5rRaw)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING|TASK_NOT_FOUND|TASK_DELETED|TASK_STALE_REVISION|TASK_UNAUTHORIZED|TASK_INVALID_TRANSITION|TASK_ALREADY_CLAIMED|TASK_BLOCKED|TASK_HAS_DEPENDENTS|TASK_INVALID_TRANSITION|INVALID_WRITE_SCOPE)[A-Z_]+/.test(minutesBody),
+    'R82', 'S15/K4: the confirm path drives nothing (no phase/closure/timer), the new read-only faces are SUB-KEYS only and no new error code is invented')
+  notes.push('S15 (v5r): confirm ledger in fold whitelist=' + /if \(patch\.minutesConfirmations !== undefined\)/.test(v5rRaw)
+    + '; append-only=' + /minutesConfirmations: \(list\) => \(Array\.isArray\(list\) \? list : \[\]\)\.concat\(\[rec\]\)/.test(minutesBody)
+    + '; acad+secretary gate=' + /const gate = canDo\(memberId, 'minutes'\)/.test(minutesBody)
+    + '; deduped=' + /deduped: true, confirmation: same/.test(minutesBody)
+    + '; fact-only (no verdicts/solve)=' + !/putVerdict\(|putSolve\(|castVerdict\(/.test(minutesBody)
+    + '; fact fix appended=' + /appendMeetingTail\(meeting, '## 上次纪要确认/.test(minutesBody)
+    + '; handover state=' + /next\.state = 'handover'/.test(taskUpdateBody)
+    + '; explicit close only=' + ((taskUpdateBody.match(/next\.status = 'completed'/g) || []).length === 1)
+    + '; read-only sub-keys=' + (/minutes_confirmation: \(\(\) =>/.test(v5rRaw) && /action_items: \(\(\) =>/.test(v5rRaw))
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING|TASK_)[A-Z_]+/.test(minutesBody)
+    + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(/.test(minutesBody))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

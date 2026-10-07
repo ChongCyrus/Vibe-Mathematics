@@ -628,6 +628,12 @@ export function apply(ctx) {
             const nextRes = typeof patch.resolutions === 'function' ? patch.resolutions(Array.isArray(n.resolutions) ? n.resolutions : []) : patch.resolutions
             if (nextRes !== undefined) n.resolutions = Array.isArray(nextRes) ? nextRes : []
           }
+          // S15（K4/GAPS 11）：**上次纪要确认台账**（append-only：谁在何时确认了哪一份纪要、有无事实更正）。
+          // 走 fold 白名单 ⇒ 漏加即静默丢弃（S4–S14 已证）。
+          if (patch.minutesConfirmations !== undefined) {
+            const nextC = typeof patch.minutesConfirmations === 'function' ? patch.minutesConfirmations(Array.isArray(n.minutesConfirmations) ? n.minutesConfirmations : []) : patch.minutesConfirmations
+            if (nextC !== undefined) n.minutesConfirmations = Array.isArray(nextC) ? nextC : []
+          }
           return n
         })
       }
@@ -1929,6 +1935,11 @@ export function apply(ctx) {
       const cur = inst()
       return Array.isArray(cur.resolutions) ? cur.resolutions : []
     }
+    /** S15（K4/GAPS 11）：**上次纪要确认台账**（只读；门与 `report()` 用它）。 */
+    const minutesConfirmationsList = () => {
+      const cur = inst()
+      return Array.isArray(cur.minutesConfirmations) ? cur.minutesConfirmations : []
+    }
     const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)
     /** S13 #55：**记录决议**（院士 ∪ 当次会议记录人；正式会议内；公告即生效；稳定标识）。 */
     async function resultRecordTool(memberId, a) {
@@ -2122,6 +2133,31 @@ export function apply(ctx) {
         return { ok: false, code: 'V5_NOT_VOTER', message: '纪要条目只能由**院士或当次会议的记录人**写入（`03` #27）：当前记录人＝' + (currentSecretary() || ('（' + NO_SECRETARY_NOTE + '）')) }
       }
       if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '没有进行中的会议：纪要条目随当次会议入档' }
+      // ── S15（K4/GAPS 11）：**确认上次纪要**（会议开场第一项实质议程）────────────────────────────
+      // **只改事实错误、不改结论**：确认入档（append-only）；事实更正**追加**到**当次会议纪要**的
+      // 独立小节 —— **绝不改写旧纪要**（S8/S10 的"只追加"硬约束）。**未确认可见但不阻塞**（R1）。
+      if (String(args.op || '').trim() === 'confirm') {
+        const openId = String(meeting.id)
+        const hist = (inst().meetings || []).filter((x) => x && x.id && String(x.id) !== openId)
+        const of = String(args.of || (hist.length ? String(hist[hist.length - 1].id) : '')).trim()
+        if (!of) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '没有可确认的历史会议纪要：`of` 缺省＝时间上最近一场已收束会议，但当前没有历史会议' }
+        if (hist.length && !hist.some((x) => String(x.id) === of)) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '`of` 必须是**已收束**会议：' + of + ' 不在历史会议里（未收束的会议纪要不可确认）' }
+        }
+        const factFix = String(args.fact_fix || args.factFix || '').trim()
+        if (factFix.length > SECRETARY_ENTRY_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '事实更正过长（上限 ' + SECRETARY_ENTRY_MAX + ' 字符）' }
+        const ledger = Array.isArray(inst().minutesConfirmations) ? inst().minutesConfirmations : []
+        const same = ledger.filter((x) => x && String(x.of) === of && String(x.factFix || '') === factFix)[0]
+        if (same) return { ok: true, deduped: true, confirmation: same, message: '同值确认（幂等）：未重复入档' }
+        const at = now()
+        const rec = { of, by: memberId, at, factFix }
+        await patchInstitute({ minutesConfirmations: (list) => (Array.isArray(list) ? list : []).concat([rec]) })
+        // **只追加**：事实更正落在**当次会议纪要**的独立小节；旧纪要（`of`）**一字不改**。
+        await appendMeetingTail(meeting, '## 上次纪要确认\n- ' + fmtTime(at) + '｜' + memberId + ' 确认 ' + of
+          + (factFix ? '｜**事实更正**：' + factFix : '｜（无事实更正；**只改事实、不改结论**）'))
+        await saveChatLine('【纪要确认】' + memberId + ' 确认了上次纪要 ' + of + (factFix ? '（**事实更正**：' + factFix + '）' : '（无事实更正）') + '（D6/GAPS 11：只改事实错误、不改结论）')
+        return { ok: true, confirmation: rec, meetingId: openId, message: '已确认上次纪要 ' + of + (factFix ? '（含事实更正，已追加到当次会议纪要）' : '') }
+      }
       const detail = String(args.detail || 'normal')
       const text = String(args.entry || args.text || '').trim()
       if (!text) {
@@ -5583,6 +5619,9 @@ export function apply(ctx) {
     }
     async function taskCreate(memberId, o) {
       const args = o || {}
+      // S15（K4/GAPS 12）：**期限只用相对表达** —— 任何 `…At`／`…Ms`（含 `due_at`）一律拒（时间由框架设置）。
+      const badTimeKeys = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badTimeKeys.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badTimeKeys.join('、') + '（期限请用 `due_in` 相对表达，如 next-meeting）' }
       const subject = String(args.subject || '').trim()
       if (!subject) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'subject is required' }
       if (subject.length > 200) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'subject must be <= 200 chars' }
@@ -5602,6 +5641,9 @@ export function apply(ctx) {
         priority: Number.isFinite(Number(args.priority)) ? Number(args.priority) : 0,
         createdBy: isOffice(memberId) ? 'office' : memberId,
         assignedBy: '', why: '', acceptance: '',
+        // S15（K4/GAPS 12）：**行动项**＝任务板上的一个来源标记 ＋ 相对期限 ＋ **显式状态机**。
+        // `origin` 形如 `meeting:<mt-id>`（源自会议/决议的显式转派）⇒ `report()` 据此区分"行动项"。
+        origin: String(args.origin || ''), due_in: String(args.due_in || args.dueIn || ''), state: 'open',
         createdAt: now(), updatedAt: now(),
       }
       // HIGH 1: the id and the `counters.task` bump happen INSIDE the fold. The dependency check
@@ -5704,10 +5746,30 @@ export function apply(ctx) {
           requireOwnerOrLead()
           if (task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only an in-progress task can be completed')
           next.status = 'completed'
+          // S15（K4/GAPS 12）：**显式状态机** —— 完成才置 `done`（**绝不自动关闭**）。
+          next.state = 'done'
+        } else if (action === 'handover') {
+          // S15（K4/G3）：**责任人缺席/离所 ⇒ 待接手**（`state:'handover'`）。**仅院士/所办**可指派接手人；
+          // **不自动关闭、不静默丢弃**（G3 硬约束）。`owner` 省略 ⇒ 停在"待接手"（ownerId 清空）。
+          if (!lead) throw v5err('V5_TASK_UNAUTHORIZED', 'only the academician or the office can hand a task over')
+          if (task.status === 'deleted') throw v5err('V5_TASK_INVALID_TRANSITION', 'a deleted task cannot be handed over')
+          const nextOwner = String(args.owner || args.to || '').trim()
+          next.state = 'handover'
+          if (nextOwner) {
+            const m = memberById(nextOwner)
+            if (!m || m.phase !== 'active') throw v5err('V5_MEMBER_NOT_FOUND', 'active member "' + nextOwner + '" not found')
+            next.ownerId = nextOwner
+            next.status = 'in_progress'
+            next.state = 'open'
+          } else {
+            next.ownerId = ''
+            next.status = 'pending'
+          }
         } else if (action === 'reopen') {
           requireOwnerOrLead()
           if (task.status !== 'completed') throw v5err('V5_TASK_INVALID_TRANSITION', 'only a completed task can be reopened')
           next.status = 'pending'; next.ownerId = ''
+          next.state = 'open'   // S15（K4）：重开 ⇒ 回到 open（状态机单向、需显式动作）
         } else if (action === 'reassign') {
           if (!lead) throw v5err('V5_TASK_UNAUTHORIZED', 'only the academician or the office can reassign tasks')
           if (task.status !== 'pending' && task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only pending/in-progress tasks can be reassigned')
@@ -5756,6 +5818,9 @@ export function apply(ctx) {
       const denyAssign = await gateDo(memberId, 'assign', 'only the academician (or the office) can assign tasks')
       if (denyAssign) return denyAssign
       const args = o || {}
+      // S15（K4/GAPS 12）：派活也**只收相对期限**（`due_in`）；任何时间键一律拒。
+      const badAssignTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
+      if (badAssignTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badAssignTime.join('、') + '（期限请用 `due_in`）' }
       const to = String(args.to || '').trim()
       const target = memberById(to)
       if (!target || target.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + to + '" not found' }
@@ -5765,14 +5830,32 @@ export function apply(ctx) {
       if (!acceptance) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'assign 必须写明 acceptance（验收标准）' }
       let taskId = args.task_id ? String(args.task_id) : ''
       if (!taskId) {
+        // S15（K4/GAPS 12）：**同一条行动项不重复建**（同 `origin` ＋ 同 subject ⇒ 复用既有任务，幂等）。
+        const wantSubject = String(args.subject || '').trim() || ('（院士分派）' + why.slice(0, 60))
+        if (args.origin) {
+          const dup = (inst().tasks || []).filter((t) => t && t.status !== 'deleted'
+            && String(t.origin || '') === String(args.origin) && String(t.subject || '') === wantSubject)[0]
+          if (dup) {
+            // S15（K4/GAPS 12）：**同一条行动项**（同 origin ＋ 同 subject ＋ 同 owner 且已在执行）⇒ **幂等**：
+            // 既**不重复建**、也**不重复派**（避免再次走过 `reassign` 的"仅在 pending 可派"前置）。
+            if (String(dup.ownerId || '') === to && String(dup.status || '') === 'in_progress') {
+              return { ok: true, deduped: true, task: taskView(dup), message: '同一条行动项（幂等）：未重复建、未重复派' }
+            }
+            taskId = dup.id
+          }
+        }
+        if (!taskId) {
         const created = await taskCreate(memberId, {
-          subject: String(args.subject || '').trim() || ('（院士分派）' + why.slice(0, 60)),
+          subject: wantSubject,
           description: String(args.description || why),
           priority: args.priority,
           write_scopes: args.write_scopes,
+          // S15（K4）：行动项**显式**来源 ＋ 相对期限（`origin:'meeting:<mt>'` 由调用方给出）。
+          origin: args.origin, due_in: args.due_in,
         })
         if (!created.ok) return created
         taskId = created.task.id
+        }
       }
       const cur = inst().tasks.find((t) => t.id === taskId)
       if (cur && (cur.blockedBy || []).length && !taskReady(cur)) {
@@ -6859,6 +6942,21 @@ export function apply(ctx) {
       // persisted too, otherwise a reload would resurrect the previous question's answers).
       await putSolve({ clear: true })
       await saveChatLine('【会议 ' + id + '】召开：' + meeting.agenda + '（类型：' + meeting.kind + '｜召集人：' + meeting.by + '）')
+      // S15（K4/GAPS 11＋12）：**开场提示一句**（**只可见、不强制** —— R1/D10：不做成程序动作、不收束、
+      // 无定时器）。第一项实质议程＝确认上次纪要；行动项在下次会议**先检查**（可见，不阻塞）。
+      {
+        const hist = (inst().meetings || []).filter((x) => x && x.id && String(x.id) !== String(id))
+        const prevM = hist.length ? hist[hist.length - 1] : null
+        const confLed = minutesConfirmationsList()
+        const items = (inst().tasks || []).filter((t) => t && /^meeting:/.test(String(t.origin || '')) && String(t.state || 'open') !== 'done' && t.status !== 'deleted')
+        const bits = []
+        if (prevM) {
+          const done = confLed.some((x) => x && String(x.of) === String(prevM.id))
+          bits.push('上次纪要 ' + String(prevM.id) + (done ? '**已确认**' : '**未确认**（第一项实质议程：`vibe_v5_minutes {op:"confirm"}`；只改事实、不改结论）'))
+        }
+        if (items.length) bits.push('未完成行动项 ' + items.length + ' 条（先检查：`vibe_v5_report` 行动项节；只可见、不强制）')
+        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（K4/GAPS 11–12）')
+      }
       // A meeting that ACTUALLY begins and was convened by the office is the other half of the
       // `paperEditor='office'` consultation requirement (docs/final-paper.md §7). Counted here, not at the
       // request: a parked/refused request is not a consultation. A FRAMEWORK-convened stall
@@ -9703,6 +9801,28 @@ export function apply(ctx) {
           secretary: currentSecretary(), record_entry_count: secretaryEntriesOf(meeting).length,
           // S12（D7/GAPS 22）：**只读**子键——本场等级（`formal`／`light`）。
           level: meetingLevelOf(meeting),          // S8（R3/K12/B9）：**只读**冻结面（**只加子键、不加顶层键**）——派生自"是否存在 open 投票板"。
+          // S15（K4/GAPS 11＋12）：**只读**确认面 ＋ **行动项面**（只加子键；不引入写入入口）。
+          minutes_confirmation: (() => {
+            const led = Array.isArray(inst().minutesConfirmations) ? inst().minutesConfirmations : []
+            const mine = led.filter((x) => x && Number(x.at) >= Number(meeting.startedAt || 0))
+            const last = mine.length ? mine[mine.length - 1] : null
+            const hist = (inst().meetings || []).filter((x) => x && x.id && String(x.id) !== String(meeting.id))
+            const lastHist = hist.length ? hist[hist.length - 1] : null
+            return {
+              of: last ? String(last.of) : (lastHist ? String(lastHist.id) : ''),
+              confirmed: !!last,
+              at: last ? Number(last.at) : 0,
+              by: last ? String(last.by) : '',
+              fact_fix: last ? String(last.factFix || '') : '',
+            }
+          })(),
+          action_items: (() => {
+            const items = (inst().tasks || []).filter((t) => t && /^meeting:/.test(String(t.origin || '')))
+            const open = items.filter((t) => String(t.state || 'open') !== 'done' && t.status !== 'deleted')
+            const handover = open.filter((t) => String(t.state) === 'handover')
+            const overdue = open.filter((t) => String(t.due_in || '') === 'next-meeting' && Number(t.createdAt || 0) < Number(meeting.startedAt || 0))
+            return { total: items.length, open: open.length, handover: handover.length, overdue: overdue.length }
+          })(),
           speech_frozen: speechFrozenView().frozen, frozen_by: speechFrozenView().frozen_by,
         } : null,
         parkedMeeting: pendingMeeting ? { agenda: pendingMeeting.agenda, kind: pendingMeeting.kind } : null,
@@ -9854,6 +9974,24 @@ export function apply(ctx) {
         const lastFew = resAll.slice(-3).reverse()
         L.push('- 决议：共 ' + resAll.length + ' 条｜最近：' + lastFew.map((r) => String(r.id) + '（' + (String(r.supersededBy || '') ? '**已被复议** ' + String(r.supersededBy) : '生效 ' + fmtTime(Number(r.effectiveAt || 0))) + '）').join('、'))
         L.push('- 决议检索：`vibe_v5_resolutions {id?|target?|meetingId?|kind?|limit?}`（只读；时间只作排序/展示）')
+      }
+      // S15（K4/GAPS 11＋12）：**上次纪要确认** ＋ **行动项跟踪**（只可见、不强制；**无定时器**）。
+      {
+        const openM = meeting ? String(meeting.id) : ''
+        const confLed = Array.isArray(inst().minutesConfirmations) ? inst().minutesConfirmations : []
+        const histM = (inst().meetings || []).filter((x) => x && x.id && (!openM || String(x.id) !== openM))
+        const lastM = histM.length ? histM[histM.length - 1] : null
+        if (lastM) {
+          const done = confLed.some((x) => x && String(x.of) === String(lastM.id))
+          L.push('- 上次纪要：' + String(lastM.id) + '｜' + (done ? '**已确认**' : '**未确认**（可见、不阻塞；开场第一项实质议程）'))
+        }
+        const items = (inst().tasks || []).filter((t) => t && /^meeting:/.test(String(t.origin || '')))
+        if (items.length) {
+          const openI = items.filter((t) => String(t.state || 'open') !== 'done' && t.status !== 'deleted')
+          const hand = openI.filter((t) => String(t.state) === 'handover')
+          const over = openI.filter((t) => String(t.due_in || '') === 'next-meeting' && !!openM && Number(t.createdAt || 0) < Number(meeting.startedAt || 0))
+          L.push('- 行动项：共 ' + items.length + ' 条｜未完成 ' + openI.length + (hand.length ? '｜**待接手** ' + hand.map((t) => t.id).join('、') : '') + (over.length ? '｜**逾期（未决项）** ' + over.map((t) => t.id).join('、') : '') + '（下次会议先检查；只可见、不强制 — K4/GAPS 12）')
+        }
       }
       // F6 (status/report review): a meeting whose index entry exists but which never FINALIZED is
       // not history. `meetingOpen` is durable (set in `beginMeeting`, cleared in `finalizeMeeting`),
@@ -10095,7 +10233,7 @@ export function apply(ctx) {
       leanQueueApi: async () => { await runLeanQueue(); return { jobs: leanJobsView(), notices: leanNotices.length } },
       leanRunToolApi: async (relPath, timeoutMs) => await leanRunFile(relPath, timeoutMs),
       // consensus / meetings
-      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, resultRecordTool, resolutionsTool, resolutionsList, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
+      maybeQueueVerify, castVerdict, endVerify, selfReport, selfReportView, selfReportTool, chairProxyTool, proceduralObjectionTool, stallNoticeView, grantTool, revokeTool, grantsView, pollOpenTool, pollVoteTool, pollCloseTool, ballotView, openBallot, speechGate, speechFrozenView, reconsiderTool, minorityOf, sayQuote, resolveQuoteAnchor, quotesPerMessageMax, quoteDepthMax, secretaryTool, minutesTool, currentSecretary, setMeetingLevel, meetingLevelOf, resultRecordTool, resolutionsTool, resolutionsList, minutesConfirmationsList, meetingOpen: () => !!meeting, currentVerify, hasVerifyInFlight, startMeeting, quorumM, voterCount,
       // final paper (docs/final-paper.md; the phase runs BEFORE finishRun)
       startPaper, paperStatus: paperSummary, finalizePaperByOffice,
       // methodology/collaboration feedback (Shared/Feedback/): the tool handler + the observers
@@ -10336,7 +10474,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_poll_close', '(academician) #51 — CLOSE AND TALLY the poll board and broadcast the result (SPEC #25/K4). Params: ballot_id? (defaults to the open board), reason?. The poll counts ONLY IF cast >= min_votes (settled:false / outcome:"unsettled" otherwise — the remaining votes are never used to infer a conclusion); the quorum m (closure gate) is computed SEPARATELY and reported NEXT TO it. The unvoted are named publicly. Closure is an EXPLICIT academician action: nothing closes "on time" (no automatic settlement anywhere). Repeated closure is idempotent (deduped:true).', objParams({ ballot_id: S, ballotId: S, reason: S }), (s, a, x) => s.pollCloseTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_reconsider', '(participant) #52 — REQUEST A RECONSIDERATION of an already-closed verdict (D5/D5a; the "review" that SPEC #19 and the poll board\'s "after closure only a reconsideration can follow" both point at). Params: target (required; the closed object), why (required; the reason is archived), evidence? (must come from the same object/meeting — D6). ELIGIBILITY IS DERIVED FROM THE RECORD, never from a role: with a clear winner only one of the ORIGINAL WINNERS may ask; with NO winner (undecided / mean-only) ANY participant may ask and the request may NOT be refused for "having no winner" (D5a hard constraint). The threshold can only RISE: after = max(before, reconsiderFloor, quorumCap) (U3) and the raise is recorded (thresholdBefore/After, raisedBy). One reconsideration per round; the total rounds stay bounded by verdictMaxRounds. The old conclusion, the old ballot and the old minority are all preserved (append-only) and the old conclusion is marked supersededBy. No vote power is created and the denominator never changes. No time may be supplied: every …At/…Ms is rejected (the framework writes the times) and nothing ever happens "on time".', objParams({ target: S, target_id: S, why: S, evidence: S }, ['why']), (s, a, x) => s.reconsiderTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_secretary', '(academician) #53 — APPOINT or REVOKE the meeting secretary (GAPS 29: keeping the record OUT of the chair\'s hands). Params: who (required; an ACTIVE MEMBER — a temp worker is refused with V5_NOT_VOTER), why?, revoke:true (or op:"revoke") to revoke. The academician may NOT appoint itself or the office ("主持人不得兼任唯一记录者"): the chair must never be the only recorder. The appointment is BOUND TO THE CURRENT MEETING and lapses when that meeting closes (the same unit as U5). The ledger `secretaries[]` is append-only (the same value is idempotent: deduped:true, no new entry; a change of person records revokedAt). A secretary gets RECORD rights only: no vote power, no phase change, no denominator change (C5/R5). No time may be supplied: every …At/…Ms is rejected (the framework writes the times).', objParams({ who: S, member: S, why: S, revoke: B, op: S }, ['who']), (s, a, x) => s.secretaryTool(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), or (with no `entry`) REPORT THE GAPS only. Params: entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry is idempotent (deduped:true). Entries land in the durable minutes file as a separate `## 记录人补充` section AFTER the two zones, and in the structured `minutes{}` (secretary + entries). No time may be supplied: every …At/…Ms is rejected.', objParams({ entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), CONFIRM THE PREVIOUS MEETING\'S MINUTES (K4/GAPS 11: `op:"confirm"` + `of?` + `fact_fix?`), or (with no `entry`) REPORT THE GAPS only. Params: op? ("confirm"), of? (the minutes being confirmed; defaults to the MOST RECENTLY FINALIZED meeting, and the receipt always names it), fact_fix? (a FACTUAL correction — appended to THIS meeting\'s minutes as a separate `## 上次纪要确认` section; the old minutes are NEVER rewritten, and a conclusion is never changed), entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry / the same confirmation is idempotent (deduped:true). No time may be supplied: every …At/…Ms is rejected.', objParams({ op: S, of: S, fact_fix: S, entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_resolutions', '(member) #56 — SEARCH RESOLUTIONS (read-only; S13/G2). Params: id? (`res-<n>` or `res:<n>`/`<n>`), target?, meetingId?, kind?, limit? (1-50, default 10). Returns {count, resolutions[{id,kind,text,effectiveAt,meetingId,target,supersededBy,actions_count}]}. The time is only for ordering/display: any …At/…Ms filter is rejected. Nothing here drives anything.', objParams({ id: S, target: S, meetingId: S, kind: S, limit: { type: 'number' } }), (s, a, x) => s.resolutionsTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
@@ -10430,7 +10568,7 @@ export function apply(ctx) {
     }
     return { ok: true, overview: parts.join('\n') }
   })
-  registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
+  registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast). K4/GAPS 12 (S15): `due_in` gives a RELATIVE deadline (e.g. next-meeting) and `origin` marks the task as an ACTION ITEM (e.g. `meeting:<mt-id>`) so `report()` tracks it (open / handover / overdue); any …At/…Ms (including due_at) is REJECTED — the framework writes times.', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA, due_in: S, origin: S }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
   registerTool('vibe_v5_prioritize', '(office, or the academician when academicianLeads) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => withCaller(s, x, 'setting priorities', (caller) => s.taskPrioritize(caller, a)))
   registerTool('vibe_v5_nudge', '(office, or the academician when academicianLeads) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => withCaller(s, x, 'a nudge', (caller) => s.nudge(caller, a)))
 
