@@ -671,6 +671,11 @@ async function runScenario(name) {
     console.log('  skip - S17 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有行动项 origin/due_in/state 与 overview 行动项节）')
     return
   }
+  // S18 场景只在 v5r 下可跑（#23 动议／#38 附议是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s18-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S18 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 motions 台账与 vibe_v5_motion／vibe_v5_second）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2446,6 +2451,112 @@ async function runScenario(name) {
         'S17：**既有节未被破坏**（编制／任务板仍在；got ' + String(JSON.stringify(txt.slice(0, 120)) || null).slice(0, 160) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s17）：' + name)
+    }
+  } else if (name.startsWith('s18-')) {
+    // S18（#23/#38；K3/K5/D4）：**动议与附议**（附议≠表决；不产定论；不改阶段；无定时器）。
+    const openFormal = async (agenda) => {
+      const mt = await callTool('vibe_v5_meeting', { agenda, kind: 'solve-vote' }, ROOT)
+      assert(mt && mt.ok === true, 'S18：正式会议已开（前置；got ' + JSON.stringify(mt).slice(0, 160) + '）')
+    }
+    if (name === 's18-motion-propose') {
+      await openFormal('S18 提出动议')
+      const p1 = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 动议一：先讨论引理 A' }, childAgent(childOf('r-1')))
+      assert(p1 && p1.ok === true && String(p1.motion && p1.motion.id) === 'm-1'
+        && String(p1.motion.state) === 'proposed' && Number(p1.motion.needed) >= 1,
+        'S18/#23：动议已提出（`m-N` ＋ `state=proposed` ＋ 门槛；got ' + String(JSON.stringify(p1) || null).slice(0, 240) + '）')
+      const p2 = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 动议一：先讨论引理 A' }, childAgent(childOf('r-1')))
+      assert(p2 && p2.ok === true && p2.deduped === true,
+        'S18/#23：**同值动议幂等**（`deduped`；got ' + String(JSON.stringify(p2) || null).slice(0, 200) + '）')
+      const sv = await callTool('vibe_v5_status', {})
+      assert(Number(sv.meeting && sv.meeting.motions && sv.meeting.motions.count) === 1,
+        'S18：只读面 `status.meeting.motions.count` 可见且**未重复入账**（got ' + String(JSON.stringify(sv.meeting && sv.meeting.motions) || null).slice(0, 200) + '）')
+      const bad = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 非法时间键', due_at: 'x' }, childAgent(childOf('r-1')))
+      assert(bad && bad.ok === false && /时间/.test(String(bad.message)),
+        'S18：**用户时间键一律拒**（got ' + String(JSON.stringify(bad) || null).slice(0, 200) + '）')
+    } else if (name === 's18-second-carries') {
+      await openFormal('S18 附议成立')
+      const p = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 动议二：采纳引理 A' }, childAgent(childOf('r-1')))
+      assert(p && p.ok === true, 'S18：动议已提出（前置）')
+      const mid = String(p.motion.id)
+      const s1 = await callTool('vibe_v5_second', { motion_id: mid }, childAgent(childOf('r-2')))
+      assert(s1 && s1.ok === true && String(s1.motion.state) === 'carried' && Number(s1.motion.carriedAt) > 0,
+        'S18/#38：**达门槛当刻 `carried`**（`carriedAt` 由框架写；got ' + String(JSON.stringify(s1) || null).slice(0, 240) + '）')
+      const sv = await callTool('vibe_v5_status', {})
+      assert(Number(sv.meeting.motions.carried) >= 1 && Number(sv.meeting.motions.pending) === 0,
+        'S18：只读面 `motions.carried/pending` 一致（got ' + String(JSON.stringify(sv.meeting.motions) || null).slice(0, 200) + '）')
+      const rep = await callTool('vibe_v5_report', {})
+      assert(/动议：共/.test(JSON.stringify(rep)),
+        'S18：`report()` 含**动议节**（got ' + String(JSON.stringify(rep) || null).slice(0, 200) + '）')
+    } else if (name === 's18-self-second-refused') {
+      await openFormal('S18 自附议被拒')
+      const p = await callTool('vibe_v5_motion', { kind: 'procedural', text: 'S18 程序动议：延长讨论' }, childAgent(childOf('r-1')))
+      assert(p && p.ok === true, 'S18：动议已提出（前置）')
+      const s = await callTool('vibe_v5_second', { motion_id: String(p.motion.id) }, childAgent(childOf('r-1')))
+      assert(s && s.ok === false && /不可附议自己的动议/.test(String(s.message)),
+        'S18/#38：**不可附议自己的动议**（具名拒；got ' + String(JSON.stringify(s) || null).slice(0, 220) + '）')
+    } else if (name === 's18-second-idempotent') {
+      await openFormal('S18 附议幂等')
+      const p = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 动议三：记录待办' }, childAgent(childOf('r-1')))
+      assert(p && p.ok === true, 'S18：动议已提出（前置）')
+      const mid = String(p.motion.id)
+      const s1 = await callTool('vibe_v5_second', { motion_id: mid }, childAgent(childOf('r-2')))
+      assert(s1 && s1.ok === true, 'S18：第一次附议被接受（前置）')
+      const s2 = await callTool('vibe_v5_second', { motion_id: mid }, childAgent(childOf('r-2')))
+      assert(s2 && s2.ok === true && s2.deduped === true && (s2.motion.secondedBy || []).length === 1,
+        'S18/#38：**重复附议幂等、**计数不增**（got ' + String(JSON.stringify(s2.motion && s2.motion.secondedBy) || null).slice(0, 200) + '）')
+    } else if (name === 's18-withdraw') {
+      await openFormal('S18 撤回')
+      const p1 = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 撤回项一（本人撤）' }, childAgent(childOf('r-2')))
+      assert(p1 && p1.ok === true, 'S18：动议一已提出（前置）')
+      const w1 = await callTool('vibe_v5_motion', { op: 'withdraw', motion_id: String(p1.motion.id), reason: 'S18 本人撤回' }, childAgent(childOf('r-2')))
+      assert(w1 && w1.ok === true && String(w1.motion.state) === 'withdrawn' && String(w1.motion.withdrawnBy) === 'r-2',
+        'S18/#23：**本人可撤回**（got ' + String(JSON.stringify(w1) || null).slice(0, 240) + '）')
+      const w1b = await callTool('vibe_v5_motion', { op: 'withdraw', motion_id: String(p1.motion.id) }, childAgent(childOf('r-2')))
+      assert(w1b && w1b.ok === true && w1b.deduped === true,
+        'S18：**重复撤回幂等**（got ' + String(JSON.stringify(w1b) || null).slice(0, 200) + '）')
+      const p2 = await callTool('vibe_v5_motion', { kind: 'procedural', text: 'S18 撤回项二（所办撤）' }, childAgent(childOf('r-3')))
+      assert(p2 && p2.ok === true, 'S18：动议二已提出（前置）')
+      const w2 = await callTool('vibe_v5_motion', { op: 'withdraw', motion_id: String(p2.motion.id), reason: 'S18 所办撤回' }, ROOT)
+      assert(w2 && w2.ok === true && String(w2.motion.state) === 'withdrawn',
+        'S18/#23：**院士/所办可撤回**（got ' + String(JSON.stringify(w2) || null).slice(0, 220) + '）')
+      const p3 = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S18 撤回项三（已成立不可撤）' }, childAgent(childOf('r-1')))
+      const s3 = await callTool('vibe_v5_second', { motion_id: String(p3.motion.id) }, childAgent(childOf('r-2')))
+      assert(s3 && s3.ok === true && String(s3.motion.state) === 'carried', 'S18：动议三已成立（前置）')
+      const w3 = await callTool('vibe_v5_motion', { op: 'withdraw', motion_id: String(p3.motion.id) }, childAgent(childOf('r-1')))
+      assert(w3 && w3.ok === false && /不可撤回/.test(String(w3.message)),
+        'S18/#23：**已成立（carried）不可撤回**（单向状态机；got ' + String(JSON.stringify(w3) || null).slice(0, 220) + '）')
+    } else if (name === 's18-boundaries') {
+      await openFormal('S18 边界：动议 vs 异议/复议/决议/表决')
+      const vBefore = JSON.stringify(((readV5State() || {}).institutes['default::institute'] || {}).verdicts || {})
+      const rBefore = (((readV5State() || {}).institutes['default::institute'] || {}).resolutions || []).length
+      // ① **动议 ≠ 程序异议（#46）**：异议与动议可**并存**（异议不需附议、不进入表决）
+      const obj = await callTool('vibe_v5_procedural_objection', { why: 'S18 边界：程序异议仍走 #46' }, childAgent(childOf('r-3')))
+      assert(obj && obj.ok === true, 'S18/#46：程序异议仍独立可用（got ' + String(JSON.stringify(obj) || null).slice(0, 200) + '）')
+      const mo = await callTool('vibe_v5_motion', { kind: 'procedural', text: 'S18 边界：程序动议与异议并存' }, childAgent(childOf('r-3')))
+      assert(mo && mo.ok === true, 'S18/#46：**动议与异议并存**（got ' + String(JSON.stringify(mo) || null).slice(0, 200) + '）')
+      // ② **动议 ≠ 复议（#52）**：复议面向"已收束结论"⇒ 无对象时具名拒；动议照常可提
+      const rec = await callTool('vibe_v5_reconsider', {}, childAgent(childOf('r-1')))
+      assert(rec && rec.ok === false, 'S18/#52：复议**不是**动议（无收束结论 ⇒ 拒；got ' + String(JSON.stringify(rec) || null).slice(0, 200) + '）')
+      // ③ **`resolution` 动议不直写 `resolutions`**（唯一入口 #55）
+      const res = await callTool('vibe_v5_motion', { kind: 'resolution', text: 'S18 边界：决议草案（不得直写）' }, childAgent(childOf('r-1')))
+      assert(res && res.ok === true, 'S18/#23：正式会议内 `resolution` 草案可提（got ' + String(JSON.stringify(res) || null).slice(0, 200) + '）')
+      const rAfter = (((readV5State() || {}).institutes['default::institute'] || {}).resolutions || []).length
+      const vAfter = JSON.stringify(((readV5State() || {}).institutes['default::institute'] || {}).verdicts || {})
+      assert(rAfter === rBefore && vAfter === vBefore,
+        'S18/#23：动议**不产定论**（`resolutions`／`verdicts` 均不变 ⇒ 决议唯一入口仍是 #55；got resolutions ' + rAfter + ' vs ' + rBefore + '）')
+      // ④ **不碰 ballots/voters()/cast**：表决面未被开启
+      const sv = await callTool('vibe_v5_status', {})
+      assert(!(sv.poll && sv.poll.open),
+        'S18：动议**不写票**（表决面未被开启；got ' + String(JSON.stringify(sv.poll) || null).slice(0, 200) + '）')
+      await waitMeetingClosed()
+      // ⑤ **简流程会期内 `resolution` ⇒ 复用 S12 唯一判定点**
+      const light = await callTool('vibe_v5_meeting', { agenda: 'S18 简流程（resolution 应拒）', kind: 'sync' }, ROOT)
+      assert(light && light.ok === true, 'S18：简流程会议已开（前置）')
+      const lt = await callTool('vibe_v5_motion', { kind: 'resolution', text: 'S18 边界：简流程不得落决议' }, childAgent(childOf('r-1')))
+      assert(lt && lt.ok === false && /决议/.test(String(lt.message)),
+        'S18×S12：**简流程会期内 `resolution` 被拒**（唯一判定点；got ' + String(JSON.stringify(lt) || null).slice(0, 220) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s18）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

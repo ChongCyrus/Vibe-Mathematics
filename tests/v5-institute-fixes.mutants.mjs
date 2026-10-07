@@ -1441,6 +1441,69 @@ const V5R_FAMILIES = [
     to: "          const who = String(t.ownerId || '') || '（未认领）'",
     expect: /S17\/G3：\*\*逐条具名\*\*/,
   },
+  // ── S18 family (#23/#38；K3/K5/D4 动议与附议；docs/09 §12 的 S18 行) ────────────────────────────
+  // 六个族各锚**一处**、各跑**一个** s18-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S18'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R85–R88，每条一个唯一点 self-probe 变异）。
+  {
+    // ① `motions` **未进 fold 白名单**（静默丢弃）⇒ s18-motion-propose 的幂等断言必红。
+    name: 'S18: the motion ledger is not in the fold whitelist (motions are silently dropped)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-motion-propose' },
+    from: '          if (patch.motions !== undefined) {',
+    to: '          if (false) {',
+    expect: /S18\/#23：\*\*同值动议幂等\*\*/,
+  },
+  {
+    // ② **自附议未拒**（提出者自己就能"成立"）⇒ s18-self-second-refused 的具名拒断言必红。
+    name: 'S18: seconding your OWN motion stops being refused',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-self-second-refused' },
+    from: "      if (String(cur.by) === memberId) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '**不可附议自己的动议**（' + mid + '）' }",
+    to: '      // MUTANT: self-second allowed',
+    expect: /S18\/#38：\*\*不可附议自己的动议\*\*/,
+  },
+  {
+    // ③ **门槛失效**（永不 `carried`）⇒ s18-second-carries 的"达门槛当刻成立"必红。
+    name: 'S18: the seconds threshold stops carrying the motion (it can never become carried)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-second-carries' },
+    from: "      if (next.secondedBy.length >= Math.max(1, Number(next.needed || 1))) { next.state = 'carried'; next.carriedAt = now() }",
+    to: '      // MUTANT: the threshold never carries the motion',
+    expect: /S18\/#38：\*\*达门槛当刻 `carried`\*\*/,
+  },
+  {
+    // ④ **`carried` 后仍可撤回**（单向状态机被破）⇒ s18-withdraw 的"已成立不可撤"必红。
+    name: 'S18: a carried motion can still be withdrawn (the one-way state machine breaks)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-withdraw' },
+    from: "        if (String(cur0.state) === 'carried') return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '动议 ' + mid0 + ' **已成立**（carried）⇒ **不可撤回**（状态机单向）' }",
+    to: '        // MUTANT: a carried motion may still be withdrawn',
+    expect: /S18\/#23：\*\*已成立（carried）不可撤回\*\*/,
+  },
+  {
+    // ⑤ **`resolution` 动议直写 `resolutions`**（绕过唯一入口 #55）⇒ s18-boundaries 的"不产定论"必红。
+    name: 'S18: a resolution MOTION writes the resolution ledger directly (bypassing #55)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-boundaries' },
+    from: "      await patchInstitute({ motions: (l) => (Array.isArray(l) ? l : []).concat([rec]) })",
+    to: "      if (kind === 'resolution') await patchInstitute({ resolutions: (l) => (Array.isArray(l) ? l : []).concat([{ id: 'res-999', meetingId: String(meeting.id), kind: 'resolution', text: rec.text }]) })\n      await patchInstitute({ motions: (l) => (Array.isArray(l) ? l : []).concat([rec]) })",
+    expect: /S18\/#23：动议\*\*不产定论\*\*/,
+  },
+  {
+    // ⑥ 提出动议**顺手收束会议**（驱动）⇒ s18-motion-propose 的只读面断言必红。
+    name: 'S18: raising a motion drives the meeting (it finalizes it)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's18-motion-propose' },
+    from: "      await saveChatLine('【动议】' + memberId + ' 提出 ' + rec.id + '（' + kind + '）：' + text.slice(0, 120)",
+    to: "      await finalizeMeeting(meeting, 's18-mutant')\n      await saveChatLine('【动议】' + memberId + ' 提出 ' + rec.id + '（' + kind + '）：' + text.slice(0, 120)",
+    expect: /S18：只读面 `status\.meeting\.motions\.count` 可见且\*\*未重复入账\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1476,7 +1539,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S16（G3/D-10）：每个 s16-* 场景一个正控（开场具名点名＋顺序／空列表不点空名）。
   's16-rollcall-named', 's16-empty-no-rollcall',
   // S17（G3/D-10）：每个 s17-* 场景一个正控（overview 行动项节：计数/具名/待接手/逾期/不输出空节）。
-  's17-overview-actions']
+  's17-overview-actions',
+  // S18（#23/#38；K3/K5/D4）：每个 s18-* 场景一个正控（提出/附议成立/自附议拒/幂等/撤回/边界）。
+  's18-motion-propose', 's18-second-carries', 's18-self-second-refused', 's18-second-idempotent', 's18-withdraw', 's18-boundaries']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

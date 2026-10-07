@@ -641,6 +641,34 @@ const SELF_PROBE_MUTATIONS = [
     to: "        parts.push('- 共 ' + ai.total + ' 条｜未完成 ' + ai.open.length)",
     expect: 'R84',
   },
+  {
+    name: 'S18: the motion ledger stops passing the fold whitelist (motions are silently dropped)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '          if (patch.motions !== undefined) {',
+    to: '          if (false) {',
+    expect: 'R85',
+  },
+  {
+    name: 'S18: seconding your OWN motion stops being refused',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (String(cur.by) === memberId) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '**不可附议自己的动议**（' + mid + '）' }",
+    to: '      // MUTANT: self-second allowed',
+    expect: 'R86',
+  },
+  {
+    name: 'S18: the seconds threshold stops carrying the motion',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      if (next.secondedBy.length >= Math.max(1, Number(next.needed || 1))) { next.state = 'carried'; next.carriedAt = now() }",
+    to: '      // MUTANT: threshold never carries',
+    expect: 'R87',
+  },
+  {
+    name: 'S18: raising a motion starts driving the meeting (it finalizes it)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "      await patchInstitute({ motions: (l) => (Array.isArray(l) ? l : []).concat([rec]) })",
+    to: "      await patchInstitute({ motions: (l) => (Array.isArray(l) ? l : []).concat([rec]) })\n      await finalizeMeeting(meeting, 's18-mutant')",
+    expect: 'R88',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1890,6 +1918,57 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; non-empty only=' + /if \(ai\.open\.length\) \{/.test(ovWin)
     + '; exported=' + /minutesConfirmationsList, actionItemsView,/.test(v5rRaw)
     + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(/.test(ovWin))
+  // ---- S18 (#23/#38; K3/K5/D4): motions + seconds ----------------------------------------------------
+  const moStart = v5rRaw.indexOf('async function motionTool(memberId, a) {')
+  const moEnd = v5rRaw.indexOf('async function minutesTool(memberId, a) {')
+  const moWin = (moStart >= 0 && moEnd > moStart) ? v5rRaw.slice(moStart, moEnd) : ''
+  const motionsHelperWin = (() => {
+    const s = v5rRaw.indexOf('const motionsList = () => {')
+    const e = v5rRaw.indexOf('const motionSecondsRequired = () => {')
+    return (s >= 0 && e > s) ? v5rRaw.slice(s, e + 260) : ''
+  })()
+  gate(/if \(patch\.motions !== undefined\)/.test(v5rRaw)
+    && /const motionsList = \(\) => \{/.test(v5rRaw)
+    && /id: 'm-' \+ \(list\.length \+ 1\)/.test(moWin)
+    && /motions: \(l\) => \(Array\.isArray\(l\) \? l : \[\]\)\.concat\(\[rec\]\)/.test(moWin)
+    && /String\(cur0\.state\) === 'carried'\) return \{ ok: false/.test(moWin)
+    && /String\(cur\.state\) === 'withdrawn'\) return \{ ok: false/.test(moWin)
+    && /const motionSecondsRequired = \(\) => \{/.test(v5rRaw)
+    && /needed: motionSecondsRequired\(\)/.test(moWin),
+    'R85', 'S18/#23-#38: the motion ledger passes the fold whitelist, is append-only with a framework-allocated `m-<n>` id, and its state machine is ONE-WAY (a carried motion can no longer be withdrawn and a withdrawn motion can no longer be seconded)')
+  gate(!!moWin && /const who = memberById\(memberId\)/.test(moWin)
+    && (moWin.match(/code: 'V5_NOT_VOTER'/g) || []).length >= 2
+    && /String\(cur0\.by\) === memberId \|\| isOffice\(memberId\) \|\| canDo\(memberId, 'board'\)\.ok/.test(moWin)
+    && /String\(cur\.by\) === memberId\) return \{ ok: false, code: 'V5_INVALID_ARGUMENT', message: '\*\*不可附议自己的动议\*\*/.test(moWin)
+    && /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw)
+    && !/voters\(/.test(moWin),
+    'R86', 'S18: proposing and seconding are ACTIVE-MEMBER rights (the mover cannot second their own motion); withdrawing is the mover OR the academician/office; the motion faces are NOT grantable (the bounded GRANTABLE_COMMANDS is untouched) and confer NO vote weight (voters() is never touched)')
+  gate(!!moWin
+    && /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 1/.test(motionsHelperWin)
+    && /next\.secondedBy\.length >= Math\.max\(1, Number\(next\.needed \|\| 1\)\)/.test(moWin)
+    && /meetingLevelOf\(meeting\) !== 'formal'\) return truthWriteRefusal\('resolution 动议/.test(moWin)
+    && !/putVerdict\(|putSolve\(|resolutions: |ballots: |castVerdict\(/.test(moWin),
+    'R87', 'S18/#38: seconds carry the motion AT THE MOMENT the threshold (`motionSecondsRequired`, default 1) is reached, and a motion PRODUCES NO CONCLUSION — it never writes verdicts/solve/resolutions/ballots; inside a LIGHT meeting a `resolution` motion is refused by the single S12 truthWriteRefusal point')
+  gate(!!moWin
+    && !/finalizeMeeting\(|closeVerify\(|setTimeout\(|setInterval\(|armHeartbeat\(|meeting\.phase =|patchInstitute\(\{ phase/.test(moWin)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(moWin)
+    && /motions: \(\(\) => \{/.test(v5rRaw)
+    && /L\.push\('- 动议：共 ' \+ ms\.length/.test(v5rRaw)
+    && /minutesConfirmationsList, actionItemsView, motionTool, secondTool, motionsList,/.test(v5rRaw),
+    'R88', 'S18: the motion faces drive nothing (no phase change, closure or timer), invent no new error code, and the new read-only faces are SUB-KEYS only (status.meeting.motions + the report motion section)')
+  notes.push('S18 (v5r): ledger in fold whitelist=' + /if \(patch\.motions !== undefined\)/.test(v5rRaw)
+    + '; append-only=' + /motions: \(l\) => \(Array\.isArray\(l\) \? l : \[\]\)\.concat\(\[rec\]\)/.test(moWin)
+    + '; one-way=' + (/String\(cur0\.state\) === 'carried'\) return \{ ok: false/.test(moWin) && /String\(cur\.state\) === 'withdrawn'\) return \{ ok: false/.test(moWin))
+    + '; active-member only=' + ((moWin.match(/code: 'V5_NOT_VOTER'/g) || []).length >= 2)
+    + '; self-second refused=' + /不可附议自己的动议/.test(moWin)
+    + '; not grantable=' + /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw)
+    + '; no vote power=' + !/voters\(/.test(moWin)
+    + '; threshold=' + /next\.secondedBy\.length >= Math\.max\(1, Number\(next\.needed \|\| 1\)\)/.test(moWin)
+    + '; no conclusion=' + !/putVerdict\(|putSolve\(|resolutions: |ballots: |castVerdict\(/.test(moWin)
+    + '; light resolution refused=' + /truthWriteRefusal\('resolution 动议/.test(moWin)
+    + '; read-only sub-keys=' + (/motions: \(\(\) => \{/.test(v5rRaw) && /L\.push\('- 动议：共 ' \+ ms\.length/.test(v5rRaw))
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(moWin)
+    + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(|meeting\.phase =/.test(moWin))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
