@@ -676,6 +676,11 @@ async function runScenario(name) {
     console.log('  skip - S18 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 motions 台账与 vibe_v5_motion／vibe_v5_second）')
     return
   }
+  // S19 场景只在 v5r 下可跑（#23 的可设附议门槛是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s19-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S19 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 motions 台账与 motionSecondsRequired 参数）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2557,6 +2562,47 @@ async function runScenario(name) {
         'S18×S12：**简流程会期内 `resolution` 被拒**（唯一判定点；got ' + String(JSON.stringify(lt) || null).slice(0, 220) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s18）：' + name)
+    }
+  } else if (name.startsWith('s19-')) {
+    // S19（`D-10` 待办 ②）：**附议门槛可设**（`motionSecondsRequired`，≥1 整数，默认 1）—— 覆盖 S18 不可达的
+    // "同人在仍 `proposed` 时重复附议"分支；**场景结束复位门槛**（顺序无关 ✓）。
+    if (name === 's19-threshold-settable') {
+      const set2 = await callTool('vibe_v5_set', { motionSecondsRequired: 2 }, ROOT)
+      assert(set2 && set2.ok === true, 'S19：门槛设 2 成功（前置；got ' + String(JSON.stringify(set2) || null).slice(0, 200) + '）')
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S19 门槛=2', kind: 'solve-vote' }, ROOT)
+      assert(mt && mt.ok === true, 'S19：正式会议已开（前置）')
+      const p = await callTool('vibe_v5_motion', { kind: 'topic', text: 'S19 门槛 2 的动议' }, childAgent(childOf('r-1')))
+      assert(p && p.ok === true && Number(p.motion && p.motion.needed) === 2,
+        'S19：动议门槛**读作 2**（单一读取口径；got ' + String(JSON.stringify(p && p.motion && p.motion.needed) || null) + '）')
+      const s1 = await callTool('vibe_v5_second', { motion_id: String(p.motion.id) }, childAgent(childOf('r-2')))
+      assert(s1 && s1.ok === true && String(s1.motion.state) === 'proposed' && (s1.motion.secondedBy || []).length === 1,
+        'S19：**第一次附议后仍 `proposed`**（未达门槛 2；got ' + String(JSON.stringify(s1 && s1.motion && s1.motion.state) || null) + '）')
+      const s2 = await callTool('vibe_v5_second', { motion_id: String(p.motion.id) }, childAgent(childOf('r-2')))
+      assert(s2 && s2.ok === true && s2.deduped === true && (s2.motion.secondedBy || []).length === 1,
+        'S19/#38：**同人重复附议 ⇒ `deduped` 且计数不增**（S18 不可达分支现已可达；got ' + String(JSON.stringify(s2 && s2.motion && s2.motion.secondedBy) || null).slice(0, 200) + '）')
+      const s3 = await callTool('vibe_v5_second', { motion_id: String(p.motion.id) }, childAgent(childOf('r-3')))
+      assert(s3 && s3.ok === true && String(s3.motion.state) === 'carried',
+        'S19：第二人附议达门槛 ⇒ **`carried`**（门槛语义闭环；got ' + String(JSON.stringify(s3 && s3.motion && s3.motion.state) || null) + '）')
+      const sv = await callTool('vibe_v5_status', {})
+      assert(Number(sv.meeting && sv.meeting.motions && sv.meeting.motions.needed) === 2,
+        'S19：只读面 `motions.needed` 反映**可设门槛**（got ' + String(JSON.stringify(sv.meeting && sv.meeting.motions) || null).slice(0, 200) + '）')
+      const back = await callTool('vibe_v5_set', { motionSecondsRequired: 1 }, ROOT)
+      assert(back && back.ok === true, 'S19：**复位门槛=1**（顺序无关；got ' + String(JSON.stringify(back) || null).slice(0, 140) + '）')
+    } else if (name === 's19-threshold-invalid') {
+      const base = await callTool('vibe_v5_set', { motionSecondsRequired: 3 }, ROOT)
+      assert(base && base.ok === true, 'S19：先把门槛设为 3（前置；got ' + String(JSON.stringify(base) || null).slice(0, 160) + '）')
+      for (const bad of [0, -1, 1.5, 'abc']) {
+        const r = await callTool('vibe_v5_set', { motionSecondsRequired: bad }, ROOT)
+        assert(r && r.ok === false && String(r.code) === 'V5_INVALID_ARGUMENT',
+          'S19：**非法门槛具名拒**（' + JSON.stringify(bad) + ' ⇒ V5_INVALID_ARGUMENT；got ' + String(JSON.stringify(r) || null).slice(0, 200) + '）')
+      }
+      const rb = await callTool('vibe_v5_set', { motionSecondsRequired: 3 }, ROOT)
+      assert(rb && rb.ok === true && (!rb.adjusted || rb.adjusted.motionSecondsRequired === undefined),
+        'S19：**拒后参数未被改坏**（再设同值 ⇒ 回执**无 adjusted**（值仍是 3）；got ' + String(JSON.stringify(rb && rb.adjusted) || null).slice(0, 200) + '）')
+      const reset = await callTool('vibe_v5_set', { motionSecondsRequired: 1 }, ROOT)
+      assert(reset && reset.ok === true, 'S19：**复位门槛=1**（顺序无关；got ' + String(JSON.stringify(reset) || null).slice(0, 140) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s19）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

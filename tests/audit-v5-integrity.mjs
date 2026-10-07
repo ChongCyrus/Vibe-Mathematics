@@ -669,6 +669,13 @@ const SELF_PROBE_MUTATIONS = [
     to: "      await patchInstitute({ motions: (l) => (Array.isArray(l) ? l : []).concat([rec]) })\n      await finalizeMeeting(meeting, 's18-mutant')",
     expect: 'R88',
   },
+  {
+    name: 'S19: the seconds-threshold domain check lets 0 through (n < 1 becomes n < 0)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 1) {',
+    to: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {',
+    expect: 'R89',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1969,6 +1976,26 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; read-only sub-keys=' + (/motions: \(\(\) => \{/.test(v5rRaw) && /L\.push\('- 动议：共 ' \+ ms\.length/.test(v5rRaw))
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(moWin)
     + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(|meeting\.phase =/.test(moWin))
+  // ---- S19 (D-10 candidate 2): the seconds threshold becomes a settable integer (>=1) -----------------
+  const setWin = (() => {
+    const s = v5rRaw.indexOf('async function setParams(input) {')
+    const e = v5rRaw.indexOf('const droppedSet = []', s)
+    return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
+  })()
+  gate(/'motionSecondsRequired'\]/.test(v5rRaw)
+    && /const motionSecondsRequired = \(\) => \{/.test(v5rRaw)
+    && /const p = \(inst\(\) && inst\(\)\.params\) \|\| \{\}/.test(v5rRaw)
+    && /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 1/.test(v5rRaw)
+    && (v5rRaw.match(/\.motionSecondsRequired/g) || []).length === 3
+    && !!setWin && /motionSecondsRequired !== undefined/.test(setWin)
+    && /Math\.floor\(n\) !== n \|\| n < 1/.test(setWin)
+    && /code: 'V5_INVALID_ARGUMENT', message: 'motionSecondsRequired 必须是/.test(setWin),
+    'R89', 'S19: the seconds threshold is a SETTABLE integer (`ints` whitelist), it has ONE reading rule (`motionSecondsRequired()` off `inst().params`; exactly two `.motionSecondsRequired` accesses — the setter and that one reader, so no second default can hide) and its domain (>=1 integer) is enforced by an explicit named refusal instead of a silent clamp')
+  notes.push('S19 (v5r): settable=' + /'motionSecondsRequired'\]/.test(v5rRaw)
+    + '; single reader=' + (/const motionSecondsRequired = \(\) => \{/.test(v5rRaw) && (v5rRaw.match(/\.motionSecondsRequired/g) || []).length === 3)
+    + '; domain>=1 integer=' + (!!setWin && /Math\.floor\(n\) !== n \|\| n < 1/.test(setWin))
+    + '; named refusal=' + /motionSecondsRequired 必须是/.test(setWin)
+    + '; default=1=' + /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 1/.test(v5rRaw))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

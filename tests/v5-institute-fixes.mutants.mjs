@@ -1504,6 +1504,39 @@ const V5R_FAMILIES = [
     to: "      await finalizeMeeting(meeting, 's18-mutant')\n      await saveChatLine('【动议】' + memberId + ' 提出 ' + rec.id + '（' + kind + '）：' + text.slice(0, 120)",
     expect: /S18：只读面 `status\.meeting\.motions\.count` 可见且\*\*未重复入账\*\*/,
   },
+  // ── S19 family（`D-10` 待办 ②：附议门槛可设；docs/09 §12 的 S19 行）──────────────────────────────
+  // 三个族各锚**一处**、各跑**一个** s19-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S19'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R89，一条唯一点 self-probe 变异）。
+  {
+    // ① `motionSecondsRequired` **未进 `vibe_v5_set` 白名单** ⇒ 设不上 ⇒ 门槛读不到 2。
+    name: 'S19: the seconds threshold is not in the vibe_v5_set whitelist (it cannot be set at all)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's19-threshold-settable' },
+    from: "        'motionSecondsRequired']",
+    to: '        ]',
+    expect: /S19：动议门槛\*\*读作 2\*\*/,
+  },
+  {
+    // ② **读取口径分裂**（读端写死 1 ⇒ 设了不生效）⇒ 同场景的门槛断言必红。
+    name: 'S19: the reader hard-codes 1 (setting the threshold has no effect)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's19-threshold-settable' },
+    from: '      const n = Number(p.motionSecondsRequired)',
+    to: '      const n = 1',
+    expect: /S19：动议门槛\*\*读作 2\*\*/,
+  },
+  {
+    // ③ **域校验失效**（`n < 1` ⇒ `n < 0`）⇒ `0` 被接受 ⇒ s19-threshold-invalid 的具名拒断言必红。
+    name: 'S19: the domain check accepts 0 (the named refusal disappears)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's19-threshold-invalid' },
+    from: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 1) {',
+    to: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {',
+    expect: /S19：\*\*非法门槛具名拒\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1541,7 +1574,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S17（G3/D-10）：每个 s17-* 场景一个正控（overview 行动项节：计数/具名/待接手/逾期/不输出空节）。
   's17-overview-actions',
   // S18（#23/#38；K3/K5/D4）：每个 s18-* 场景一个正控（提出/附议成立/自附议拒/幂等/撤回/边界）。
-  's18-motion-propose', 's18-second-carries', 's18-self-second-refused', 's18-second-idempotent', 's18-withdraw', 's18-boundaries']
+  's18-motion-propose', 's18-second-carries', 's18-self-second-refused', 's18-second-idempotent', 's18-withdraw', 's18-boundaries',
+  // S19（`D-10` 待办 ②）：每个 s19-* 场景一个正控（门槛可设／非法门槛具名拒）。
+  's19-threshold-settable', 's19-threshold-invalid']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

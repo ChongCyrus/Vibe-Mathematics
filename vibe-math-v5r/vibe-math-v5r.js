@@ -9300,7 +9300,10 @@ export function apply(ctx) {
       const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'reconsiderFloor', 'quotesPerMessageMax', 'quoteDepthMax', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'meetingHardLimitMs', 'meetingWakeRetries',
-        'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
+        'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs',
+        // S19（`D-10` 待办 ②）：**附议门槛**（`01` §3.6"附议几人由规则定"）—— ≥1 整数，默认 1；
+        // **唯一读取口径**＝`motionSecondsRequired()`（`inst().params`），**不引入第二份默认值**。
+        'motionSecondsRequired']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
       const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
         'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative',
@@ -9433,6 +9436,16 @@ export function apply(ctx) {
       return keys
     }
     async function setParams(input) {
+      // S19（`D-10` 待办 ②；`01` §3.6"是否必须附议、附议几人**由规则定**"）：`motionSecondsRequired`
+      // 必须是 **≥1 的整数**（0／负数／非整数 ⇒ **具名拒**，复用 `V5_INVALID_ARGUMENT`；**域校验**不靠
+      // `normalizeParams` 的"越界即夹取"静默语义 ⇒ 否则"设了等于没设"）。**唯一读取口径**＝`motionSecondsRequired()`。
+      if (input && input.motionSecondsRequired !== undefined) {
+        const raw = input.motionSecondsRequired
+        const n = Number(raw)
+        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 1) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'motionSecondsRequired 必须是 **≥1 的整数**（当前 ' + JSON.stringify(raw) + '）；0／负数／非整数一律拒（附议门槛由规则定；默认 1）' }
+        }
+      }
       const droppedSet = []
       const patch = normalizeParams(input || {}, droppedSet)
       // task-26 (real-host R2): an out-of-range value is coerced by normalizeParams (documented) and an unknown
