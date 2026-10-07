@@ -1375,6 +1375,39 @@ const V5R_FAMILIES = [
     to: 'handover: 0, overdue: overdue.length',
     expect: /S15：只读面 `action_items\.handover` 可见/,
   },
+  // ── S16 family (G3/D-10：开场程序性事项具名点名；docs/09 §12 的 S16 行) ──────────────────────
+  // 三个族各锚**一处**、各跑**一个** s16-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S16'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R83，一条唯一点 self-probe 变异）。
+  {
+    // ① 点名**退化为条数**（不再具名）⇒ s16-rollcall-named 的"具名点名"必红。
+    name: 'S16: the opening roll-call degrades to a bare count (no t-N / owner / overdue)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's16-rollcall-named' },
+    from: "          bits.push('**程序性点名**：未完成行动项 ' + items.length + ' 条 ⇒ ' + named.join('、') + '（先检查：`vibe_v5_report` 行动项节；**只提示、不驱动**）')",
+    to: "          bits.push('未完成行动项 ' + items.length + ' 条（先检查：`vibe_v5_report` 行动项节；**只提示、不驱动**）')",
+    expect: /S16\/G3：开场\*\*具名点名\*\*/,
+  },
+  {
+    // ② **顺序颠倒**（上次纪要在点名之前）⇒ s16-rollcall-named 的"顺序"断言必红。
+    name: 'S16: the opening prompt lists the minutes confirmation BEFORE the procedural roll-call',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's16-rollcall-named' },
+    from: "        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（G3 程序性点名 → K4 实质议程）')",
+    to: "        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.slice().reverse().join('；') + '（G3 程序性点名 → K4 实质议程）')",
+    expect: /S16\/G3：\*\*顺序＝先程序性点名 ⇒ 再上次纪要\*\*/,
+  },
+  {
+    // ③ 点名**变成驱动**（开场就收束会议）⇒ s16-rollcall-named 的"只提示不驱动"必红。
+    name: 'S16: the opening roll-call drives the meeting (it finalizes it)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's16-rollcall-named' },
+    from: "        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（G3 程序性点名 → K4 实质议程）')\n      }",
+    to: "        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（G3 程序性点名 → K4 实质议程）')\n        await finalizeMeeting(meeting, 's16-mutant')\n      }",
+    expect: /S16\/G3：点名\*\*只提示、不驱动\*\*（开场后会议仍在进行中/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1406,7 +1439,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S14（迁移与守卫收尾）：每个 s14-* 场景一个正控（旧文件可读/只读零副作用/缺省可见/加载失败拒提交/幂等/续跑）。
   's14-legacy-state', 's14-read-only-load', 's14-legacy-defaults', 's14-load-failure-refuses-commit', 's14-idempotent-reload', 's14-meeting-resume',
   // S15（K4/GAPS 11–12）：每个 s15-* 场景一个正控（确认/只改事实/行动项源自决议/待接手·逾期可见/两区与锚/幂等）。
-  's15-confirm-minutes', 's15-fact-only', 's15-action-from-resolution', 's15-handover-visible', 's15-zones-preserved', 's15-idempotent']
+  's15-confirm-minutes', 's15-fact-only', 's15-action-from-resolution', 's15-handover-visible', 's15-zones-preserved', 's15-idempotent',
+  // S16（G3/D-10）：每个 s16-* 场景一个正控（开场具名点名＋顺序／空列表不点空名）。
+  's16-rollcall-named', 's16-empty-no-rollcall']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

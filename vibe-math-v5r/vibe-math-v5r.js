@@ -6942,20 +6942,30 @@ export function apply(ctx) {
       // persisted too, otherwise a reload would resurrect the previous question's answers).
       await putSolve({ clear: true })
       await saveChatLine('【会议 ' + id + '】召开：' + meeting.agenda + '（类型：' + meeting.kind + '｜召集人：' + meeting.by + '）')
-      // S15（K4/GAPS 11＋12）：**开场提示一句**（**只可见、不强制** —— R1/D10：不做成程序动作、不收束、
-      // 无定时器）。第一项实质议程＝确认上次纪要；行动项在下次会议**先检查**（可见，不阻塞）。
+      // S15（K4/GAPS 11＋12）＋S16（G3/D-10）：**开场提示**（**只可见、不驱动** —— R1/D10：不做成程序动作、
+      // 不收束、无定时器）。**顺序**：**先"程序性点名"（未完成行动项，具名）⇒ 再"上次纪要确认"（第一项实质议程）**
+      // —— 口径见 `07` 的 S15 节 与 `03` H20（两者不冲突：程序性事项 ≠ 实质议程）。
       {
         const hist = (inst().meetings || []).filter((x) => x && x.id && String(x.id) !== String(id))
         const prevM = hist.length ? hist[hist.length - 1] : null
         const confLed = minutesConfirmationsList()
         const items = (inst().tasks || []).filter((t) => t && /^meeting:/.test(String(t.origin || '')) && String(t.state || 'open') !== 'done' && t.status !== 'deleted')
         const bits = []
+        // ① **程序性点名（具名）**：`t-N` ＋ owner（空 ⇒ 「待接手」）＋ **逾期**标记；**空列表不点空名**。
+        if (items.length) {
+          const named = items.map((t) => {
+            const who = String(t.ownerId || '')
+            const over = String(t.due_in || '') === 'next-meeting' && Number(t.createdAt || 0) < Number(meeting.startedAt || 0)
+            return String(t.id) + '（' + (who || '待接手') + (over ? '｜**逾期**' : '') + '）'
+          })
+          bits.push('**程序性点名**：未完成行动项 ' + items.length + ' 条 ⇒ ' + named.join('、') + '（先检查：`vibe_v5_report` 行动项节；**只提示、不驱动**）')
+        }
+        // ② **第一项实质议程**：确认上次纪要。
         if (prevM) {
           const done = confLed.some((x) => x && String(x.of) === String(prevM.id))
           bits.push('上次纪要 ' + String(prevM.id) + (done ? '**已确认**' : '**未确认**（第一项实质议程：`vibe_v5_minutes {op:"confirm"}`；只改事实、不改结论）'))
         }
-        if (items.length) bits.push('未完成行动项 ' + items.length + ' 条（先检查：`vibe_v5_report` 行动项节；只可见、不强制）')
-        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（K4/GAPS 11–12）')
+        if (bits.length) await saveChatLine('【会议 ' + id + '｜开场】' + bits.join('；') + '（G3 程序性点名 → K4 实质议程）')
       }
       // A meeting that ACTUALLY begins and was convened by the office is the other half of the
       // `paperEditor='office'` consultation requirement (docs/final-paper.md §7). Counted here, not at the

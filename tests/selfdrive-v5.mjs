@@ -661,6 +661,11 @@ async function runScenario(name) {
     console.log('  skip - S15 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有纪要确认台账与行动项 origin/due_in/state）')
     return
   }
+  // S16 场景只在 v5r 下可跑（G3 开场具名点名是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s16-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S16 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有行动项 origin/due_in/state 与开场点名）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2359,6 +2364,47 @@ async function runScenario(name) {
         'S15/K4：**同一条行动项不重复建**（同 origin＋同 subject ⇒ 复用；got ' + JSON.stringify(items).slice(0, 220) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s15）：' + name)
+    }
+  } else if (name.startsWith('s16-')) {
+    // S16（G3/D-10）：**开场程序性事项＝未完成行动项具名点名**，**排在"上次纪要确认"（第一项实质议程）之前**；
+    // **只提示、不驱动**；**空列表不点空名**。
+    if (name === 's16-rollcall-named') {
+      const a1 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S16 点名前置', acceptance: '完成', subject: 'S16 点名项一', origin: 'meeting:mt-seed', due_in: 'next-meeting' }, ROOT)
+      assert(a1 && a1.ok === true, 'S16：行动项一已建（前置；got ' + JSON.stringify(a1).slice(0, 200) + '）')
+      const a2 = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S16 点名前置二', acceptance: '完成', subject: 'S16 点名项二', origin: 'meeting:mt-seed', due_in: 'next-meeting' }, ROOT)
+      const list0 = await callTool('vibe_v5_task_list', {}, ROOT)
+      const t2 = (((list0 && list0.tasks) || []).filter((x) => String(x.subject) === 'S16 点名项二'))[0]
+      assert(a2 && a2.ok === true && !!t2, 'S16：行动项二已建（前置）')
+      const ho = await callTool('vibe_v5_task_update', { task_id: String(t2.id), expected_revision: Number(t2.revision), action: 'handover' }, ROOT)
+      assert(ho && ho.ok === true && String(ho.task.state) === 'handover', 'S16：行动项二已置**待接手**（前置；got ' + JSON.stringify(ho).slice(0, 200) + '）')
+      const prev = await callTool('vibe_v5_meeting', { agenda: 'S16 前一场（上次纪要）', kind: 'sync' }, ROOT)
+      assert(prev && prev.ok === true, 'S16：前一场会议已开（前置）')
+      const prevOpen = await callTool('vibe_v5_status', {})
+      assert(!!(prevOpen.meeting && prevOpen.meeting.id),
+        'S16/G3：点名**只提示、不驱动**（开场后会议仍在进行中；got ' + String(JSON.stringify(prevOpen.meeting && prevOpen.meeting.id) || null).slice(0, 160) + '）')
+      await waitMeetingClosed()
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S16 本场（开场点名）', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S16：本次会议已开（前置）')
+      const mtId = String((await callTool('vibe_v5_status', {})).meeting.id)
+      const chat = String(chatTextR10() || '')
+      const line = (chat.split('\n').filter((x) => x.indexOf('程序性点名') !== -1)[0]) || ''
+      assert(line.indexOf('待接手') !== -1 && line.indexOf('逾期') !== -1 && /t-\d+/.test(line),
+        'S16/G3：开场**具名点名**（`t-N` ＋ 「待接手」＋ **逾期**标记；got ' + String(line || null).slice(0, 260) + '）')
+      const iRoll = line.indexOf('程序性点名')
+      const iMin = line.indexOf('上次纪要')
+      assert(iRoll >= 0 && iMin > iRoll,
+        'S16/G3：**顺序＝先程序性点名 ⇒ 再上次纪要**（第一项实质议程；got 点名@' + iRoll + ' 纪要@' + iMin + '）')
+      const still = await callTool('vibe_v5_status', {})
+      assert(String(still.meeting && still.meeting.id) === mtId,
+        'S16/G3：点名**只提示、不驱动**（会议仍在进行中；got ' + String(JSON.stringify(still.meeting && still.meeting.id) || null).slice(0, 160) + '）')
+    } else if (name === 's16-empty-no-rollcall') {
+      const mt = await callTool('vibe_v5_meeting', { agenda: 'S16 空列表（不点空名）', kind: 'sync' }, ROOT)
+      assert(mt && mt.ok === true, 'S16：会议已开（前置）')
+      const chat = String(chatTextR10() || '')
+      assert(chat.indexOf('未完成行动项') === -1 && chat.indexOf('程序性点名：') === -1,
+        'S16/G3：**无行动项 ⇒ 不点空名**（群聊无点名条目；got ' + String(JSON.stringify(chat.slice(-200)) || null).slice(0, 200) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s16）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

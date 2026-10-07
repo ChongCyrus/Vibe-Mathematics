@@ -627,6 +627,13 @@ const SELF_PROBE_MUTATIONS = [
     to: "      await finalizeMeeting(meeting, 'k4-mutant')\n      const detail = String(args.detail || 'normal')",
     expect: 'R82',
   },
+  {
+    name: 'S16: the opening roll-call stops naming the owner / 待接手 / overdue (it degrades to bare ids)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "            return String(t.id) + '（' + (who || '待接手') + (over ? '｜**逾期**' : '') + '）'",
+    to: '            return String(t.id)',
+    expect: 'R83',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1823,6 +1830,26 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; read-only sub-keys=' + (/minutes_confirmation: \(\(\) =>/.test(v5rRaw) && /action_items: \(\(\) =>/.test(v5rRaw))
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|NOT_VOTER|NO_OPEN_MEETING|TASK_)[A-Z_]+/.test(minutesBody)
     + '; drives=' + /finalizeMeeting\(|closeVerify\(|patchInstitute\(\{ phase|meeting\.phase =|setTimeout\(|armHeartbeat\(/.test(minutesBody))
+  // ---- S16 (G3/D-10): the opening roll-call NAMES the unfinished action items, before the
+  // minutes-confirmation item, and still drives nothing -------------------------------------------------
+  const promptStart = v5rRaw.indexOf('S16（G3/D-10）')
+  const promptEnd = v5rRaw.indexOf('（G3 程序性点名 → K4 实质议程）')
+  const promptWin = (promptStart >= 0 && promptEnd > promptStart) ? v5rRaw.slice(promptStart, promptEnd) : ''
+  const rollcallIdx = promptWin.indexOf("bits.push('**程序性点名**")
+  const minutesIdx = promptWin.indexOf("bits.push('上次纪要 '")
+  gate(!!promptWin
+    && /String\(t\.id\) \+ '（' \+ \(who \|\| '待接手'\) \+ \(over \? '｜\*\*逾期\*\*' : ''\) \+ '）'/.test(promptWin)
+    && /const who = String\(t\.ownerId \|\| ''\)/.test(promptWin)
+    && /over = String\(t\.due_in \|\| ''\) === 'next-meeting'/.test(promptWin)
+    && /if \(items\.length\) \{/.test(promptWin)
+    && rollcallIdx >= 0 && minutesIdx >= 0 && rollcallIdx < minutesIdx
+    && !/finalizeMeeting\(|closeVerify\(|setTimeout\(|setInterval\(|armHeartbeat\(|putVerdict\(|putSolve\(|patchInstitute\(|meeting\.phase =/.test(promptWin),
+    'R83', 'S16/G3: the opening roll-call NAMES every unfinished action item (stable `t-N` + owner or 待接手 + an overdue mark), only when the list is non-empty, it comes BEFORE the minutes-confirmation item (procedural item vs first substantive item), and it drives nothing')
+  notes.push('S16 (v5r): named roll-call=' + /String\(t\.id\) \+ '（' \+ \(who \|\| '待接手'\)/.test(promptWin)
+    + '; overdue mark=' + /'｜\*\*逾期\*\*'/.test(promptWin)
+    + '; non-empty only=' + /if \(items\.length\) \{/.test(promptWin)
+    + '; rollcall before minutes=' + (rollcallIdx >= 0 && minutesIdx >= 0 && rollcallIdx < minutesIdx)
+    + '; drives=' + /finalizeMeeting\(|closeVerify\(|setTimeout\(|armHeartbeat\(/.test(promptWin))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
