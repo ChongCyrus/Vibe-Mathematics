@@ -1922,8 +1922,12 @@ async function runScenario(name) {
     const bad = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('r-2')))
     assert(bad.ok === false && bad.code === 'V5_NOT_ACADEMICIAN',
       'S12/#3★：非院士设定等级 ⇒ 具名拒（got ' + JSON.stringify(bad).slice(0, 220) + '）')
-    const denyDec = await callTool('vibe_v5_minutes', { entry: '决议：先占位', entry_kind: 'decision' }, childAgent(childOf('acad')))
-    assert(denyDec.ok === false, 'S12：升级前决议仍被拒（前置）')
+    // **自愈前置**（不许依赖"上一步必然失败"）：只看**当前状态**——仍为简流程时才检查"决议被拒"。
+    const stNow = await callTool('vibe_v5_status', {})
+    if (stNow.meeting && String(stNow.meeting.level) === 'light') {
+      const denyDec = await callTool('vibe_v5_minutes', { entry: '决议：先占位', entry_kind: 'decision' }, childAgent(childOf('acad')))
+      assert(denyDec.ok === false, 'S12：简流程下决议被拒（前置；got ' + JSON.stringify(denyDec).slice(0, 160) + '）')
+    }
     const set = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
     assert(set.ok === true && String(set.level) === 'formal', 'S12：院士把本场升为**正式**（got ' + JSON.stringify(set).slice(0, 200) + '）')
     const okDec = await callTool('vibe_v5_minutes', { entry: '决议：本项目通过结题（正式会议）', entry_kind: 'decision' }, childAgent(childOf('acad')))
@@ -1963,16 +1967,18 @@ async function runScenario(name) {
     await settleAll()
     const st0 = await callTool('vibe_v5_status', {})
     const phase0 = String((st0.meeting || {}).phase || '')
+    assert(!!st0.meeting, 'S12：会议进行中（前置）')
     const set = await callTool('vibe_v5_meeting', { formal_agenda: true }, childAgent(childOf('acad')))
-    assert(set.ok === true, 'S12：等级已设定（前置）')
-    await callTool('vibe_v5_minutes', { entry: '决议：甲', entry_kind: 'decision' }, childAgent(childOf('acad')))
-    const back = await callTool('vibe_v5_meeting', { formal_agenda: false }, childAgent(childOf('acad')))
-    assert(back.ok === true && String(back.level) === 'light', 'S12：降回简流程（前置）')
+    // **变异敏感断言放最前**（R70：设等级**不得驱动**会议）——**只看当前状态**，不假设上一步成功。
     const st1 = await callTool('vibe_v5_status', {})
     assert(!!st1.meeting && String(st1.meeting.phase) === phase0,
       'S12：等级变更**不改会议阶段**（' + phase0 + ' ⇒ ' + String(st1.meeting && st1.meeting.phase) + '）')
     assert(JSON.stringify(st1.solveVotes) === JSON.stringify(st0.solveVotes) && JSON.stringify(st1.undecided) === JSON.stringify(st0.undecided),
       'S12：等级变更**不写票/真值**（solveVotes/undecided 不变）')
+    assert(set.ok === true && String(set.level) === 'formal', 'S12：等级已设定（前置；got ' + JSON.stringify(set).slice(0, 180) + '）')
+    await callTool('vibe_v5_minutes', { entry: '决议：甲', entry_kind: 'decision' }, childAgent(childOf('acad')))
+    const back = await callTool('vibe_v5_meeting', { formal_agenda: false }, childAgent(childOf('acad')))
+    assert(back.ok === true && String(back.level) === 'light', 'S12：降回简流程（前置；got ' + JSON.stringify(back).slice(0, 180) + '）')
     const lightAgain = await callTool('vibe_v5_minutes', { entry: '决议：乙', entry_kind: 'decision' }, childAgent(childOf('acad')))
     assert(lightAgain.ok === false && /简流程不得产出实体定论/.test(String(lightAgain.message)),
       'S12：降级后决议**再次被拒**（got ' + JSON.stringify(lightAgain).slice(0, 220) + '）')
