@@ -1595,6 +1595,17 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S25-D（issue #13 #4）：把单回合工具预算的读取写死成 0（等于取消机器强制）⇒
+    // `s25d-resource-budget` 的"第 3 次调用被机器拒"必红（单点）。
+    name: 'S25D: the machine-enforced tool budget is disabled (the cap reader hard-codes 0)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25d-resource-budget' },
+    from: '          const cap = rb.cap()',
+    to: '          const cap = 0',
+    expect: /S25-D：\*\*第 3 次调用被机器拒\*\*/,
+  },
+  {
     // S25-B 段二（issue #13 #5）：把暂停时的待续原因改成别的 ⇒ `s25b-pending-work` 的
     // "暂停 ⇒ 在役成员标 institute-paused"必红（单点）。
     name: 'S25B: pausing the institute no longer marks the live members as institute-paused',
@@ -1719,6 +1730,7 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   's25b-progress-tracks',
   's25b-pending-work',
   's25c-proof-gate',
+  's25d-resource-budget',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
   's8-freeze-say']
 let posRed = 0

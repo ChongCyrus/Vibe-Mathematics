@@ -716,6 +716,11 @@ async function runScenario(name) {
     console.log('  skip - S25-C 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 formal_proof 准入与院士独占门）')
     return
   }
+  // S25-D 场景只在 v5r 下可跑（机器层工具预算与内存降级是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s25d-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S25-D 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有机器层资源预算）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2826,6 +2831,39 @@ async function runScenario(name) {
         'S25-C：**登记后由院士提议 ⇒ 受理**（got ' + String(JSON.stringify(okNow) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25c）：' + name)
+    }
+  } else if (name.startsWith('s25d-')) {
+    // S25-D（issue #13 #4）：**机器层**资源预算（不再是提示词）。① 单回合工具预算**硬拒**；
+    // ② **真实**内存读数（RSS）可从 status().debug 观测；③ 越过内存上限 ⇒ 新建成员被**机器拒绝**。
+    const setRes = (v) => callTool('vibe_v5_set', v, ROOT)
+    if (name === 's25d-resource-budget') {
+      const st0 = await callTool('vibe_v5_status', {})
+      assert(st0 && st0.debug && Number(st0.debug.rssMb) > 0,
+        'S25-D：**status().debug.rssMb 是真实读数**（got ' + String(JSON.stringify(st0 && st0.debug) || null).slice(0, 200) + '）')
+      const on = await setRes({ toolCallsPerTurnCap: 2 })
+      assert(on && on.ok === true, 'S25-D：可设 toolCallsPerTurnCap（前置；got ' + String(JSON.stringify(on) || null).slice(0, 160) + '）')
+      const call = () => callTool('vibe_v5_status', {}, childAgent(childOf('r-1')))
+      const a1 = await call()
+      const a2 = await call()
+      const a3 = await call()
+      assert(a1 && a1.ok === true && a2 && a2.ok === true,
+        'S25-D：预算内两次调用**正常执行**（got ' + String(JSON.stringify({ a1: a1 && a1.ok, a2: a2 && a2.ok }) || null).slice(0, 160) + '）')
+      assert(a3 && a3.ok === false && String(a3.code) === 'V5_RESOURCE_BUDGET' && /机器强制/.test(String(a3.message)),
+        'S25-D：**第 3 次调用被机器拒**（`V5_RESOURCE_BUDGET`；got ' + String(JSON.stringify(a3) || null).slice(0, 200) + '）')
+      const off = await setRes({ toolCallsPerTurnCap: 0 })
+      assert(off && off.ok === true, 'S25-D：复位不限（got ' + String(JSON.stringify(off) || null).slice(0, 160) + '）')
+      const set1mb = await setRes({ memoryCeilingMb: 1 })
+      assert(set1mb && set1mb.ok === true, 'S25-D：可设 memoryCeilingMb（got ' + String(JSON.stringify(set1mb) || null).slice(0, 160) + '）')
+      const res = await callTool('vibe_v5_hire', { purpose: 'S25-D 内存降级探测', initial_task: '探测' }, childAgent(childOf('r-1')))
+      const failed = (await callTool('vibe_v5_status', {})).failedMembers || []
+      const hitMem = failed.some((m) => /memoryCeilingMb/.test(String(m.error || '')))
+        || (/memoryCeilingMb/.test(String((res && res.message) || '')))
+      assert(hitMem,
+        'S25-D：**越过内存上限 ⇒ 新建成员被机器拒**（got res=' + String(JSON.stringify(res) || null).slice(0, 160)
+        + ' failed=' + String(JSON.stringify(failed) || null).slice(0, 160) + '）')
+      await setRes({ memoryCeilingMb: 0 })
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s25d）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

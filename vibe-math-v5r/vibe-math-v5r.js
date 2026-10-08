@@ -1986,6 +1986,18 @@ export function apply(ctx) {
       const n = Number(params.memoryCeilingMb)
       return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
     }
+    /** S25-D（issue #13 #4）：**真实**本机内存读数（RSS，MB）。宿主是 Node ⇒ `process.memoryUsage()`
+     *  可用；取不到就返回 0（**绝不因此抛错**，D-3）。这是"资源自监测"从**提示词**落到**机器**的那一步。 */
+    const rssMb = () => {
+      try { return Math.round((Number((process.memoryUsage() || {}).rss) || 0) / 1048576) } catch (e) { return 0 }
+    }
+    /** S25-D：**本回合已用工具次数**（按成员计；回合开始时复位 ⇒ 见 wakeMember / spawnMember 的 inflight.set）。 */
+    const turnToolCalls = new Map()
+    const resourceBudgetRefusal = (who, cap) => ({
+      ok: false, code: 'V5_RESOURCE_BUDGET',
+      message: '本回合工具调用已达上限 toolCallsPerTurnCap=' + cap + '（成员 ' + who + '；issue #13 #4：这是**机器强制**，不是提示词）'
+        + '——请把已有结论写进这一轮的回复，或由所办调高该参数后另起一轮。',
+    })
     /** S25-A（issue #13 #4）：**资源自监测**提示段（**唯一常量**；**仅当开关打开才注入** ⇒ 默认零改动 ✓）。 */
     function resourceBlock() {
       if (!resourceSelfCheckOn()) return []
@@ -3674,6 +3686,14 @@ export function apply(ctx) {
         noteSpawnLimitOnce(member)
         throw v5err('ACTIVATION_LIMIT_REACHED', activationLimitText(hostChildLimit))
       }
+      // S25-D（issue #13 #4）：**真实**内存读数 ⇒ 越过所办设的上限时**机器降级**：不再新建成员。
+      // （提示词层的 resourceBlock 只是提醒；这里是硬门，且把读数写进 status().debug，主代理能看见原因。）
+      const memCeiling = memoryCeilingMb()
+      if (memCeiling > 0 && rssMb() >= memCeiling) {
+        noteSpawnLimitOnce(member)
+        throw v5err('V5_RESOURCE_BUDGET', '本机内存已达 memoryCeilingMb=' + memCeiling + 'MB（当前 RSS≈' + rssMb()
+          + 'MB），暂时不再新建成员（issue #13 #4）。资源释放或调高该参数后用 vibe_v5_resume 继续。')
+      }
       const provider = member.provider || pickProvider()
       const ao = memberAgentOptions()
       const tf = memberToolFilter(member)
@@ -3750,6 +3770,7 @@ export function apply(ctx) {
         childId: started.childId, objective: '入职/继续首轮（kind=' + String(kind || 'initial') + '）',
         interruptedAt: now(), reason: 'host-ended',
       }
+      turnToolCalls.set(member.id, 0)   // S25-D：本回合工具预算从 0 开始计
       await putMember(member)
       return member
     }
@@ -3775,6 +3796,7 @@ export function apply(ctx) {
         childId: member.childId, objective: String(promptText || '').slice(0, 300),
         interruptedAt: now(), reason: 'host-ended',
       }
+      turnToolCalls.set(member.id, 0)   // S25-D：本回合工具预算从 0 开始计
       busy.add(member.id)
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
@@ -10128,7 +10150,7 @@ export function apply(ctx) {
         // Skipped/malformed events AND state-file load problems. Without this the two
         // failure modes that silently drop state were invisible in the operator's view.
         diagnostics: s.diagnostics || [],
-        debug: Object.assign({ scheduling, reschedule }, dbg),
+        debug: Object.assign({ scheduling, reschedule, rssMb: rssMb(), memoryCeilingMb: memoryCeilingMb(), toolCallsPerTurnCap: toolCallsPerTurnCap() }, dbg),
         quorum: quorumView(),
         members: s.members.map((m) => ({
           id: m.id, kind: m.kind, phase: m.phase, direction: m.direction, hiredBy: m.hiredBy,
@@ -10679,6 +10701,9 @@ export function apply(ctx) {
       feedbackOn, feedbackCounts, feedbackTool,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
+      // S25-D（issue #13 #4）：机器层资源预算 —— **一次导出**（module 作用域的 registerTool 用），
+      // 属性刻意用别名（cap/calls/refusal），这样不会新增 `params.X` 的点式读取口径（R95 守的就是这个）。
+      resourceBudget: { cap: toolCallsPerTurnCap, calls: turnToolCalls, refusal: resourceBudgetRefusal },
       // diagnosis helpers (defects 1/2 of the architecture self-test)
       memberDiagnosis, quorumM, quorumView, voterCount,
     }
@@ -10699,6 +10724,18 @@ export function apply(ctx) {
           const s = getSession(exec && exec.agent)
           if (!s) return JSON.stringify({ ok: false, error: 'no session' })
           await s.ready()
+          // S25-D（issue #13 #4）：**机器强制**的单回合工具预算。只对**成员**计数（所办/根不受限）；
+          // 超限 ⇒ **具名拒且不执行**（提示词层的 resourceBlock 只是提醒，这里才是硬门）。
+          const rb = s.resourceBudget
+          const cap = rb.cap()
+          if (cap > 0) {
+            const who = s.memberIdOfAgent(exec && exec.agent)
+            if (who) {
+              const used = (rb.calls.get(who) || 0) + 1
+              rb.calls.set(who, used)
+              if (used > cap) return JSON.stringify(rb.refusal(who, cap))
+            }
+          }
           return JSON.stringify(await fn(s, args || {}, exec && exec.agent))
         } catch (e) {
           return JSON.stringify({ ok: false, error: String((e && e.message) || e) })
