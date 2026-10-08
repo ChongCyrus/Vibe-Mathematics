@@ -704,6 +704,34 @@ const SELF_PROBE_MUTATIONS = [
     to: '        // MUTANT: a superseded resolution may still dispatch work',
     expect: 'R92',
   },
+  {
+    name: 'S25-A: the resource block loses its off-switch (it is injected even when resourceSelfCheck is false)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      if (!resourceSelfCheckOn()) return []',
+    to: '      // MUTANT: the off-switch is gone',
+    expect: 'R94',
+  },
+  {
+    name: 'S25-A: the tool-call budget reader hard-codes 0 (setting toolCallsPerTurnCap has no effect)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const n = Number(params.toolCallsPerTurnCap)',
+    to: '      const n = 0',
+    expect: 'R95',
+  },
+  {
+    name: 'S25-A: the memory ceiling reader hard-codes 0 (setting memoryCeilingMb has no effect)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '      const n = Number(params.memoryCeilingMb)',
+    to: '      const n = 0',
+    expect: 'R95',
+  },
+  {
+    name: 'S25-A: the >=0 domain check accepts a negative toolCallsPerTurnCap (n < 0 becomes n < -1)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是",
+    to: "        if (!Number.isFinite(n) || Math.floor(n) !== n || n < -1) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是",
+    expect: 'R96',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -2010,7 +2038,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     const e = v5rRaw.indexOf('const droppedSet = []', s)
     return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
   })()
-  gate(/'motionSecondsRequired'\]/.test(v5rRaw)
+  gate(/'motionSecondsRequired',/.test(v5rRaw)
     && /const motionSecondsRequired = \(\) => \{/.test(v5rRaw)
     && /const p = \(inst\(\) && inst\(\)\.params\) \|\| \{\}/.test(v5rRaw)
     && /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 1/.test(v5rRaw)
@@ -2088,6 +2116,65 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; no verdicts=' + !/putVerdict\(|putSolve\(/.test(assignWin)
     + '; not grantable=' + /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw)
     + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(supWin))
+  // ---- S25-A (issue #13 #1/#4): prompt-only constraints + the three resource parameters ---------------
+  const resWin = (() => {
+    const s = v5rRaw.indexOf('function resourceBlock() {')
+    const e = v5rRaw.indexOf('function proofStatusBlock()', s)
+    return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
+  })()
+  const proofWin = (() => {
+    const s = v5rRaw.indexOf('function proofStatusBlock() {')
+    return s >= 0 ? v5rRaw.slice(s, s + 900) : ''
+  })()
+  const domWin = (() => {
+    const s = v5rRaw.indexOf('if (input && input.toolCallsPerTurnCap !== undefined) {')
+    const e = v5rRaw.indexOf("      // S19（`D-10` 待办 ②", s)
+    return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
+  })()
+  gate(/'resourceSelfCheck'\]/.test(v5rRaw)
+    && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw)
+    && /resourceSelfCheck: false,/.test(v5rRaw)
+    && /toolCallsPerTurnCap: 0,/.test(v5rRaw)
+    && /memoryCeilingMb: 0,/.test(v5rRaw)
+    && /const resourceSelfCheckOn = \(\) => params\.resourceSelfCheck === true/.test(v5rRaw)
+    && !!resWin && /if \(!resourceSelfCheckOn\(\)\) return \[\]/.test(resWin),
+    'R94', 'S25-A: the three resource parameters are SETTABLE (bool whitelist + int whitelist), their defaults are the do-nothing values (false / 0 / 0) and the 【资源】 block is gated by one off-switch (`if (!resourceSelfCheckOn()) return []`) so a default institute gets byte-identical prompts')
+  gate((v5rRaw.match(/\.resourceSelfCheck/g) || []).length === 1
+    && (v5rRaw.match(/\.toolCallsPerTurnCap/g) || []).length === 3
+    && (v5rRaw.match(/\.memoryCeilingMb/g) || []).length === 3
+    && /const toolCallsPerTurnCap = \(\) => \{/.test(v5rRaw)
+    && /const memoryCeilingMb = \(\) => \{/.test(v5rRaw)
+    && /Number\.isFinite\(n\) && n >= 0 \? Math\.floor\(n\) : 0/.test(v5rRaw)
+    && !/toolCallsPerTurnCap\(\) *\{ *return 0/.test(v5rRaw),
+    'R95', 'S25-A: ONE reading rule per parameter (`resourceSelfCheckOn()` / `toolCallsPerTurnCap()` / `memoryCeilingMb()`), with a fixed number of dotted accesses (1 / 3 / 3 — the setter guards and the single reader), so a second hard-coded default cannot hide')
+  gate(!!domWin
+    && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 2
+    && /Math\.floor\(n\) !== n \|\| n < 0\) \{\n          return \{ ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是/.test(domWin)
+    && /code: 'V5_INVALID_ARGUMENT'/.test(domWin)
+    && !/putVerdict\(|putSolve\(|finalizeMeeting\(/.test(resWin + proofWin),
+    'R96', 'S25-A: both new integers have an explicit >=0 domain check that NAMEDLY refuses a negative/non-integer value (no silent clamp), and neither prompt block writes a verdict/solve or finalizes anything')
+  gate((v5rRaw.match(/function resourceBlock\(\) \{/g) || []).length === 1
+    && (v5rRaw.match(/function proofStatusBlock\(\) \{/g) || []).length === 1
+    && (v5rRaw.match(/for \(const ln of resourceBlock\(\)\) L\.push\(ln\)/g) || []).length === 3
+    && (v5rRaw.match(/for \(const ln of proofStatusBlock\(\)\) L\.push\(ln\)/g) || []).length === 2
+    && /当前 ' \+ \(Number\.isFinite\(Number\(params\.maxParallel\)\)/.test(v5rRaw),
+    'R97', 'S25-A: each block has exactly ONE definition and is injected from a fixed set of prompt builders (【资源】x3 = initial/normal/meeting, 【命题准入】x2 = meeting/verify), and the meeting prompt now reads the LIVE `maxParallel` (default 3 keeps the sentence byte-identical)')
+  gate(/PROMPT TEXT ONLY and NEVER a machine decision/.test(v5rRaw)
+    && /resourceSelfCheck: resourceSelfCheckOn\(\), toolCallsPerTurnCap: toolCallsPerTurnCap\(\), memoryCeilingMb: memoryCeilingMb\(\),/.test(v5rRaw)
+    && !!proofWin && /证明尝试／证伪尝试/.test(proofWin)
+    && /禁止/.test(proofWin),
+    'R98', 'S25-A: the promise is stated where the office can see it — the `vibe_v5_set` description says PROMPT TEXT ONLY and NEVER a machine decision, `status().params` echoes all three keys (so the office can discover them), and the 【命题准入】 block explicitly forbids treating "证明尝试／证伪尝试" as "已论证"')
+  notes.push('S25-A (v5r): settable=' + (/'resourceSelfCheck'\]/.test(v5rRaw) && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw))
+    + '; defaults do-nothing=' + (/resourceSelfCheck: false,/.test(v5rRaw) && /toolCallsPerTurnCap: 0,/.test(v5rRaw) && /memoryCeilingMb: 0,/.test(v5rRaw))
+    + '; off-switch=' + (!!resWin && /if \(!resourceSelfCheckOn\(\)\) return \[\]/.test(resWin))
+    + '; single readers=' + ((v5rRaw.match(/\.resourceSelfCheck/g) || []).length === 1 && (v5rRaw.match(/\.toolCallsPerTurnCap/g) || []).length === 3 && (v5rRaw.match(/\.memoryCeilingMb/g) || []).length === 3)
+    + '; domain>=0=' + (!!domWin && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 2)
+    + '; blocks single=' + ((v5rRaw.match(/function resourceBlock\(\) \{/g) || []).length === 1 && (v5rRaw.match(/function proofStatusBlock\(\) \{/g) || []).length === 1)
+    + '; injections=3+2=' + ((v5rRaw.match(/for \(const ln of resourceBlock\(\)\) L\.push\(ln\)/g) || []).length === 3 && (v5rRaw.match(/for \(const ln of proofStatusBlock\(\)\) L\.push\(ln\)/g) || []).length === 2)
+    + '; live maxParallel=' + /当前 ' \+ \(Number\.isFinite\(Number\(params\.maxParallel\)\)/.test(v5rRaw)
+    + '; echo=' + /resourceSelfCheck: resourceSelfCheckOn\(\), toolCallsPerTurnCap/.test(v5rRaw)
+    + '; prompt-only promise=' + /PROMPT TEXT ONLY and NEVER a machine decision/.test(v5rRaw)
+    + '; no machine writes=' + !/putVerdict\(|putSolve\(|finalizeMeeting\(/.test(resWin + proofWin))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 

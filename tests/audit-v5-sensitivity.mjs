@@ -109,7 +109,7 @@ const probes = [
     name: 'spawn-not-registered-inflight',
     ref: 'selfdrive-v5.mjs',
     guarantee: '⑯ the founding turn must be registered in-flight or its end is dropped',
-    from: "      inflight.set(started.childId, shortId())",
+    from: "      inflight.set(started.childId, { token: shortId(), kind })",
     to: "",
   },
   {

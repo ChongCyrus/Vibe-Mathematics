@@ -1513,8 +1513,10 @@ const V5R_FAMILIES = [
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's19-threshold-settable' },
-    from: "        'motionSecondsRequired']",
-    to: '        ]',
+    from: "        'motionSecondsRequired',",
+    // S25-A 修（**等价改名法**）：原 `to: '        ]'`（删键）在 S25-A 给 `ints` 追加两键后**副本不再编译** ✗
+    // ⇒ 改为**改名**：该键不再是可设整数（`normalizeParams` 丢弃它）⇒ 与"删键"同效且语法完好 ✓（`expect` 未动）。
+    to: "        'motionSecondsRequired_X',",
     expect: /S19：动议门槛\*\*读作 2\*\*/,
   },
   {
@@ -1580,6 +1582,61 @@ const V5R_FAMILIES = [
     to: '        // MUTANT: a superseded resolution may still dispatch work',
     expect: /S20\/B-3\(甲\)：\*\*已被取代的决议不得据此派活\*\*/,
   },
+  // ── S25-A family（issue #13 #1/#4：提示词断言归静态门 R94–R98 ⇒ 族只打**可观测的参数面**）────────────
+  // 四个族各锚**一处**、各跑**一个** s25a-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S25A'` 定向实跑的首红名。
+  {
+    // ① 工具预算读取口径写死 0（设了不生效）⇒ params-echo 的"回显 12"必红。
+    name: 'S25A: the tool-call budget reader hard-codes 0 (setting toolCallsPerTurnCap has no effect)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25a-params-echo' },
+    from: '      const n = Number(params.toolCallsPerTurnCap)',
+    to: '      const n = 0',
+    expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
+  },
+  {
+    // ② 内存阈值读取口径写死 0 ⇒ 同一场景必红。
+    name: 'S25A: the memory ceiling reader hard-codes 0 (setting memoryCeilingMb has no effect)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25a-params-echo' },
+    from: '      const n = Number(params.memoryCeilingMb)',
+    to: '      const n = 0',
+    expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
+  },
+  {
+    // ③ 域校验失效（`n < 0` ⇒ `n < -1`）⇒ 非法值被接受 ⇒ invalid-refused 必红。
+    name: 'S25A: the >=0 domain check accepts a negative toolCallsPerTurnCap (n < 0 becomes n < -1)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25a-invalid-refused' },
+    from: "        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是",
+    to: "        if (!Number.isFinite(n) || Math.floor(n) !== n || n < -1) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是",
+    expect: /S25-A：\*\*非法值具名拒\*\*/,
+  },
+  {
+    // ④ `status()` 回显被删（主代理无法发现参数）⇒ default-echo 必红。
+    name: 'S25A: status() stops echoing the resource parameters (the office cannot discover them)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25a-default-echo' },
+    from: '        resourceSelfCheck: resourceSelfCheckOn(), toolCallsPerTurnCap: toolCallsPerTurnCap(), memoryCeilingMb: memoryCeilingMb(),',
+    to: '        // MUTANT: the resource parameters are not echoed',
+    expect: /S25-A：\*\*默认值也回显\*\*/,
+  },
+  // ── S8/S24 回归族（本次修：冻结期不推进发言轮 (B) ＋ 被拒记 silent (A)）──────────────────────────
+  {
+    // 反向＝删 (B) 的冻结早退行 ⇒ 被拒成员被重试到 unreached ⇒ 会议提前收束 ⇒ s8-freeze-say 必红 ✓（已实测变红）。
+    // **注**：(A)（`meeting.silent[…]`）经实测**删除后场景仍绿** ⇒ **它是防御性补充、无独立行为红** ✗
+    // ⇒ **不立族**（不立"无效测试件"；如需覆盖它，须先造出能独立观测 (A) 的场景 ✗ 另议）。
+    name: 'S8: the meeting round keeps advancing while speech is frozen (the refusal path still pushes the round)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's8-freeze-say' },
+    from: '      if (speechFrozen().frozen) { armHeartbeat(); return }',
+    to: '      // MUTANT: the frozen meeting round is advanced anyway',
+    expect: /S8-freeze-say/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1621,7 +1678,13 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S19（`D-10` 待办 ②）：每个 s19-* 场景一个正控（门槛可设／非法门槛具名拒）。
   's19-threshold-settable', 's19-threshold-invalid',
   // S20（B-3(甲)）：每个 s20-* 场景一个正控（取代写入／latest 单一口径／已取代不得派活／未取代可派活）。
-  's20-supersede', 's20-latest-skips', 's20-assign-superseded-refused', 's20-assign-from-resolution']
+  's20-supersede', 's20-latest-skips', 's20-assign-superseded-refused', 's20-assign-from-resolution',
+  // S25-A（issue #13 #1/#4）：每个 s25a-* 场景一个正控（三参数可设＋回显／默认也回显／非法具名拒／复位）。
+  // 说明：**提示词面不可经工具观测** ⇒ 提示词断言归 `tests/audit-v5-integrity.mjs` 的 **R94／R97／R98**；
+  // 这里的族只打**可观测的参数面**（`vibe_v5_set` 回执 ＋ `status()` 文本回显）✓。
+  's25a-params-echo', 's25a-default-echo', 's25a-invalid-refused', 's25a-reset',
+  // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
+  's8-freeze-say']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

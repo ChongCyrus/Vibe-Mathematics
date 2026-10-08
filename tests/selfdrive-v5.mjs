@@ -686,6 +686,11 @@ async function runScenario(name) {
     console.log('  skip - S20 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 resolutions 取代链与 from_resolution 校验）')
     return
   }
+  // S25-A 场景只在 v5r 下可跑（三个资源参数与 status 回显是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s25a-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S25-A 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 resourceSelfCheck／toolCallsPerTurnCap／memoryCeilingMb）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -1394,6 +1399,9 @@ async function runScenario(name) {
     await drainWakes(8)
     await settleAll()
     const st2 = await callTool('vibe_v5_status', {})
+    // 观测面守卫（D-3）：`meeting` 若已被收束 ⇒ **具名断言**（而不是 `TypeError`），这样"冻结期被误收束"
+    // 这条回归会以**具名红**报出（`S8:` 族的 `expect` 才咬得住；此前它是崩栈、非具名红 ✗）。
+    assert(!!st2.meeting, 'S8-freeze-say：冻结期**会议不得被收束**（`status.meeting` 必须仍在；got ' + String(JSON.stringify(st2.meeting) || null).slice(0, 160) + '）')
     assert(JSON.stringify(st2.meeting.spokeCount) === spokeBefore,
       'S8-freeze-say：冻结期**会议与群聊的发言一律被拒**（spokeCount 与冻结前逐字相同；got ' + JSON.stringify(st2.meeting.spokeCount) + ' vs ' + spokeBefore + '）')
     assert(/被拒/.test(chatTextR10()), 'S8-freeze-say：拒绝有**具名系统通知**（系统消息不受禁言影响）')
@@ -2687,6 +2695,43 @@ async function runScenario(name) {
       assert(!!t, 'S20：任务板可见 `resolution_id`（got ' + String(JSON.stringify((list && list.tasks) || []).slice(0, 200) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s20）：' + name)
+    }
+  } else if (name.startsWith('s25a-')) {
+    // S25-A（issue #13 #1/#4）：**提示词面不可经工具观测** ⇒ 提示词断言归**静态门**（R94／R97／R98）；
+    // 场景**只验可观测的参数面**（`vibe_v5_set` 回执 ＋ `status()` 文本回显）✓。
+    const setRes = async (v) => callTool('vibe_v5_set', v, ROOT)
+    if (name === 's25a-params-echo') {
+      const s1 = await setRes({ resourceSelfCheck: true, toolCallsPerTurnCap: 12, memoryCeilingMb: 4096 })
+      assert(s1 && s1.ok === true, 'S25-A：三个资源参数可设（前置；got ' + String(JSON.stringify(s1) || null).slice(0, 200) + '）')
+      const again = await setRes({ resourceSelfCheck: true, toolCallsPerTurnCap: 12, memoryCeilingMb: 4096 })
+      assert(again && again.ok === true && (!again.adjusted || (again.adjusted.toolCallsPerTurnCap === undefined && again.adjusted.memoryCeilingMb === undefined && again.adjusted.resourceSelfCheck === undefined)),
+        'S25-A：**同值再设 ⇒ 回执无 `adjusted`**（值确实已存；got ' + String(JSON.stringify(again && again.adjusted) || null).slice(0, 200) + '）')
+      const st = JSON.stringify(await callTool('vibe_v5_status', {}))
+      assert(/"toolCallsPerTurnCap":12/.test(st) && /"memoryCeilingMb":4096/.test(st) && /"resourceSelfCheck":true/.test(st),
+        'S25-A：**`status()` 回显三键真实值**（12／4096／true；got ' + String(st || null).slice(0, 200) + '）')
+    } else if (name === 's25a-default-echo') {
+      const d = await setRes({ resourceSelfCheck: false, toolCallsPerTurnCap: 0, memoryCeilingMb: 0 })
+      assert(d && d.ok === true, 'S25-A：恢复默认可设（前置；got ' + String(JSON.stringify(d) || null).slice(0, 160) + '）')
+      const st = JSON.stringify(await callTool('vibe_v5_status', {}))
+      assert(/"resourceSelfCheck":false/.test(st) && /"toolCallsPerTurnCap":0/.test(st) && /"memoryCeilingMb":0/.test(st),
+        'S25-A：**默认值也回显**（false／0／0 ⇒ 主代理可发现；got ' + String(st || null).slice(0, 200) + '）')
+    } else if (name === 's25a-invalid-refused') {
+      for (const bad of [{ toolCallsPerTurnCap: -1 }, { memoryCeilingMb: -1 }, { toolCallsPerTurnCap: 1.5 }]) {
+        const r = await setRes(bad)
+        assert(r && r.ok === false && String(r.code) === 'V5_INVALID_ARGUMENT' && /≥0 的整数/.test(String(r.message)),
+          'S25-A：**非法值具名拒**（' + JSON.stringify(bad) + '；got ' + String(JSON.stringify(r) || null).slice(0, 200) + '）')
+      }
+      const keep = await setRes({ toolCallsPerTurnCap: 0 })
+      assert(keep && keep.ok === true && (!keep.adjusted || keep.adjusted.toolCallsPerTurnCap === undefined),
+        'S25-A：**拒后值未被改坏**（再设 0 ⇒ 无 `adjusted`；got ' + String(JSON.stringify(keep && keep.adjusted) || null).slice(0, 160) + '）')
+    } else if (name === 's25a-reset') {
+      const r1 = await setRes({ resourceSelfCheck: false, toolCallsPerTurnCap: 0, memoryCeilingMb: 0 })
+      assert(r1 && r1.ok === true, 'S25-A：**复位默认**（顺序无关；got ' + String(JSON.stringify(r1) || null).slice(0, 160) + '）')
+      const st = JSON.stringify(await callTool('vibe_v5_status', {}))
+      assert(/"resourceSelfCheck":false/.test(st),
+        'S25-A：复位后回显为 false（got ' + String(st || null).slice(0, 160) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s25a）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

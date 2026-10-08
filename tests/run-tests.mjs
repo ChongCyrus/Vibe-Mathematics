@@ -281,7 +281,9 @@ const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computatio
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
-const QUICK_EXPECTED_JOBS = 23
+// S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
+// suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
+const QUICK_EXPECTED_JOBS = 24
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
   if (scope !== 'quick') return list

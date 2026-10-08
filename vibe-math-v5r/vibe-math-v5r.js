@@ -1069,6 +1069,13 @@ export function apply(ctx) {
       leanSearchPaths: [],
       // leanJobsMaxParallel: how many background compiles may run at once (default 1 = serial).
       leanJobsMaxParallel: 1,
+      // S25-A（issue #13 #4，**默认全部"不改现状"**）：
+      // resourceSelfCheck=false ⇒ 提示词**一字不改**（仅当为 true 时才注入【资源】段）。
+      resourceSelfCheck: false,
+      // toolCallsPerTurnCap=0 ⇒ 不限（提示词不出现"工具预算"句）；>0 ⇒ 该句写明上限。
+      toolCallsPerTurnCap: 0,
+      // memoryCeilingMb=0 ⇒ 未知/不限（提示词不出现阈值句）；>0 ⇒ 该句写明阈值（MB）。
+      memoryCeilingMb: 0,
       // ── math_computation (docs/math-computation.md; the shared module owns the semantics) ──
       // mathComputation    — 'off' | 'auto' (default) | 'on': whether the tool is available
       // mathMode           — 'typed+shell' (default: the host shell may be used as an unarchived
@@ -1146,7 +1153,11 @@ export function apply(ctx) {
     let finalizeLock = null
     const verifiedRecently = new Map()
     const liveAgents = new Map()      // childId -> WeakRef<Agent>
-    const inflight = new Map()        // childId -> turn token (dedupes duplicate subagent/end)
+    // childId -> { token, kind } (dedupes duplicate `subagent/end`; `kind` is the wake kind THAT
+    // turn was started with). The kind MUST travel with the turn: `wakeKind` is a per-member slot
+    // that a later wake overwrites, so reading it at `onMemberEnd` can attribute a reply to the
+    // wrong ask — see the meeting-registration note in `handleReply`. (PR #14 / S24.)
+    const inflight = new Map()
     let heartbeatDisposer = null
     let meeting = null                // in-flight meeting round state
     // real1004-minutes: the id of the MOST RECENT meeting. A speech can arrive AFTER the meeting was
@@ -1956,6 +1967,48 @@ export function apply(ctx) {
       const p = (inst() && inst().params) || {}
       const n = Number(p.motionSecondsRequired)
       return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+    }
+    /** S25-A（issue #13 #4）：**资源自监测**总开关（默认 `false` ⇒ 提示词零改动；**唯一读取口径** ✓）。 */
+    const resourceSelfCheckOn = () => params.resourceSelfCheck === true
+    /** S25-A：单回合工具调用上限（**0＝不限**；**唯一读取口径**）。 */
+    const toolCallsPerTurnCap = () => {
+      const n = Number(params.toolCallsPerTurnCap)
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
+    }
+    /** S25-A：本机内存上限（MB；**0＝未知/不限**；**唯一读取口径**）。 */
+    const memoryCeilingMb = () => {
+      const n = Number(params.memoryCeilingMb)
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
+    }
+    /** S25-A（issue #13 #4）：**资源自监测**提示段（**唯一常量**；**仅当开关打开才注入** ⇒ 默认零改动 ✓）。 */
+    function resourceBlock() {
+      if (!resourceSelfCheckOn()) return []
+      const cap = toolCallsPerTurnCap()
+      const mb = memoryCeilingMb()
+      const par = Number(params.maxParallel)
+      const L = []
+      L.push('【资源】本机可能资源紧张，请自觉控本回合开销：')
+      L.push('  · 并发：框架每轮最多同时唤醒 ' + (Number.isFinite(par) && par >= 1 ? Math.floor(par) : 3) + ' 名成员（`maxParallel`）；'
+        + '**不要**为了提速而让你自己一次性铺开大量子代理。')
+      L.push('  · 工具预算：' + (cap > 0 ? '**本回合工具调用不超过 ' + cap + ' 次**' : '未设上限（仍请克制）') + '。')
+      L.push('  · 自监测：' + (mb > 0 ? '若观察到内存占用接近 ' + mb + ' MB' : '若观察到内存/进程压力明显增大') + '，'
+        + '**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，'
+        + '并在回执里写明"因资源让出、剩余工作是什么"。')
+      L.push('  · 取舍：**正确性优先于产出量**；资源紧张时宁可少做一步并说明，也不要冒险把本机拖垮（OOM 会丢掉全部未落盘工作）。')
+      L.push('')
+      return L
+    }
+    /** S25-A（issue #13 #1）：**命题准入**措辞（**唯一常量**）—— 把"证明尝试/草稿"与"已论证"分开 ✓。 */
+    function proofStatusBlock() {
+      return [
+        '【命题准入（本所纪律）】进入本场辩论/裁决的命题，主张方必须**明示其证据等级**，三者之一：',
+        '  · **已论证**：本所已归档的正式证明/证伪（例如 Lean 通过的对象，或 `verdicts` 里已裁决的条目）；',
+        '  · **仅有尝试/草稿**：**必须显式写出"这还只是尝试/草稿"**，并**点明还缺哪一个具体引理或哪一步**；',
+        '  · **无证据**：只能作为**待验证的猜想**提出，**不得**在当前轮次当作支撑更外层命题的依据。',
+        '**禁止**把"证明尝试／证伪尝试"当作"已论证"去支撑更外层结论（这会把算力花在"否决别人"上而让中间引理无人论证）。',
+        '**写实比写全更重要**：宁可如实说"只有草稿"，也不要含糊地把它当成已成立。',
+        '',
+      ]
     }
     /** S17（G3/D-10）：**行动项视图**（`origin:'meeting:<mt>'` 的任务）—— `report()` 与 `overview()` **同一口径**；
      * **逾期**（＝"上次派发、到本次会议仍未完成"）**不用定时器**，只在会议开场/总览时按 `createdAt < meeting.startedAt` 判定。 */
@@ -3676,7 +3729,7 @@ export function apply(ctx) {
       // Without this the child's first `subagent/end` has no token to match, so
       // onMemberEnd would ignore it: the founding round would never be processed and
       // the member would be re-woken with a heartbeat prompt instead of a brainstorm.
-      inflight.set(started.childId, shortId())
+      inflight.set(started.childId, { token: shortId(), kind })
       await putMember(member)
       return member
     }
@@ -3691,7 +3744,10 @@ export function apply(ctx) {
       if (!member || !member.childId || member.phase !== 'active') return false
       clearHeartbeat()
       const token = shortId()
-      inflight.set(member.childId, token)
+      // Carry the wake kind WITH the turn (see the `inflight` declaration): the reply must be
+      // attributed to the ask that actually started this turn, not to whatever `wakeKind` holds
+      // when the turn happens to end. (PR #14 / S24.)
+      inflight.set(member.childId, { token, kind: kind || 'normal' })
       busy.add(member.id)
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
@@ -3890,6 +3946,7 @@ export function apply(ctx) {
       L.push('')
       if (initialTask) { L.push(resume ? '恢复说明：' : '你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
+      for (const ln of resourceBlock()) L.push(ln)
       mathPushLine(L)
       paperPushLine(L)
       feedbackPushLine(L)
@@ -3911,6 +3968,7 @@ export function apply(ctx) {
         L.push('哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。')
       }
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
+      for (const ln of resourceBlock()) L.push(ln)
       mathPushLine(L)
       paperPushLine(L)
       feedbackPushLine(L)
@@ -3964,7 +4022,7 @@ export function apply(ctx) {
         L.push('（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；'
           + '随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。'
           + '**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。'
-          + '框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。'
+          + '框架每轮最多同时唤醒 maxParallel 名成员（当前 ' + (Number.isFinite(Number(params.maxParallel)) && Number(params.maxParallel) >= 1 ? Math.floor(Number(params.maxParallel)) : 3) + '），并把已收集到的发言附在提示里。'
           + '收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）')
         L.push('')
       }
@@ -3976,6 +4034,8 @@ export function apply(ctx) {
         + '给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。')
       L.push('**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；')
       L.push('只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。')
+      for (const ln of proofStatusBlock()) L.push(ln)
+      for (const ln of resourceBlock()) L.push(ln)
       mathPushLine(L)
       paperPushLine(L)
       feedbackPushLine(L)
@@ -3999,6 +4059,7 @@ export function apply(ctx) {
         L.push('  陈述：' + (_st.length > 800 ? _st.slice(0, 800) + '…（已截断；完整陈述见源卡片 ' + String(vs.rel || vs.target || '') + '）' : _st))
       }
       L.push('')
+      for (const ln of proofStatusBlock()) L.push(ln)
       L.push('请给出你**诚实独立的判断**：')
       L.push('  verdict = 1  表示你认为该对象**绝对为真**；')
       L.push('  verdict = 0  表示你认为该对象**绝对为假**；')
@@ -7241,6 +7302,9 @@ export function apply(ctx) {
         await scheduleNext()
         return
       }
+      // S8/R3/K12/B9：表决冻结期不推进发言轮 —— 冻结期本无发言轮（拒绝分支不写 inputs），
+      // 若在此照常"再问/判完成"，被拒成员会被重试到 unreached 而提前收束会议。
+      if (speechFrozen().frozen) { armHeartbeat(); return }
       // 收束判据（只看机会位与"还在举手/在飞"，**不看是否发过言、更不看票**）：
       //   (a) 还有常驻成员没获得机会              ⇒ 继续征询（"还没轮到它"，不是卡死）
       //   (b) 已获机会、仍在飞、尚未落定          ⇒ 等它交付（不设计时器；硬界兜底）
@@ -9200,6 +9264,12 @@ export function apply(ctx) {
           && !(member.kind === 'academician' || isOffice(member.id))
         if (frozenSpeech) {
           meeting.history.push({ at: now(), id: member.id, what: 'speech-refused-frozen', ballotId: speechFrozen().ballotId })
+          // S8/R3/K12/B9（A）：被拒的"发言交付"**同时**记入机会位 `silent` ⇒ 该成员**不再被重试**，
+          // 因而不会因"没落定"被推到 `unreached` 而提前收束会议（**不写 inputs／speeches／spokeCount** ✗✓；幂等 ✓）。
+          if (!meeting.history.some((h) => h && h.what === 'silent-after-refusal' && String(h.id) === String(member.id))) {
+            meeting.silent[member.id] = now()
+            meeting.history.push({ at: now(), id: member.id, what: 'silent-after-refusal' })
+          }
           await saveChatLine('【会议 ' + meeting.id + '】' + member.id + ' 在**表决期**提交发言 ⇒ **被拒**（R3/K12/B9：表决期间禁止发言）。'
             + '举手**保留**；先由院士收束表决（vibe_v5_poll_close）或结束会议再讨论。')
         }
@@ -9260,8 +9330,12 @@ export function apply(ctx) {
     // twice (v4 §28-T29), so a turn is only honoured while its in-flight token is
     // still registered.
     async function onMemberEnd(childId, info) {
-      const token = inflight.get(childId)
-      if (token === undefined) return
+      const rec = inflight.get(childId)
+      if (rec === undefined) return
+      // The mission kind is the one recorded when THIS turn was started (`inflight`). `wakeKind`
+      // is a per-member slot that a LATER wake can overwrite before this turn ends; falling back
+      // to it is kept only for a legacy string-shaped entry. (PR #14 / S24.)
+      const turnKind = (rec && typeof rec === 'object') ? rec.kind : undefined
       inflight.delete(childId)
       await ready()
       const member = byChild(childId)
@@ -9276,7 +9350,7 @@ export function apply(ctx) {
       let parsed = {}
       try { parsed = parseReply(text) } catch (e) { parsed = {} }
       try {
-        await handleReply(member, parsed, wakeKind.get(member.id) || 'normal')
+        await handleReply(member, parsed, turnKind !== undefined ? turnKind : (wakeKind.get(member.id) || 'normal'))
       } catch (e) {
         console.error('vibe-math-v5r: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
       }
@@ -9355,8 +9429,10 @@ export function apply(ctx) {
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs',
         // S19（`D-10` 待办 ②）：**附议门槛**（`01` §3.6"附议几人由规则定"）—— ≥1 整数，默认 1；
         // **唯一读取口径**＝`motionSecondsRequired()`（`inst().params`），**不引入第二份默认值**。
-        'motionSecondsRequired']
-      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
+        'motionSecondsRequired',
+        // S25-A（issue #13 #4）：资源自监测的两个整数（**≥0**；0＝不限／未知 ⇒ 默认不改现状）。
+        'toolCallsPerTurnCap', 'memoryCeilingMb']
+      const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync', 'resourceSelfCheck']
       const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
         'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative',
         'mathComputation', 'mathMode', 'mathInstallScope']
@@ -9488,6 +9564,22 @@ export function apply(ctx) {
       return keys
     }
     async function setParams(input) {
+      // S25-A（issue #13 #4）：两个新整数**域校验**（**≥0**；0＝不限／未知）—— 越界/非整数**具名拒**，
+      // 不靠 `normalizeParams` 的"越界即夹取"静默语义（否则"设了等于没设"）。
+      if (input && input.toolCallsPerTurnCap !== undefined) {
+        const raw = input.toolCallsPerTurnCap
+        const n = Number(raw)
+        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是 **≥0 的整数**（0＝不限；当前 ' + JSON.stringify(raw) + '）' }
+        }
+      }
+      if (input && input.memoryCeilingMb !== undefined) {
+        const raw = input.memoryCeilingMb
+        const n = Number(raw)
+        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'memoryCeilingMb 必须是 **≥0 的整数**（0＝未知/不限；当前 ' + JSON.stringify(raw) + '）' }
+        }
+      }
       // S19（`D-10` 待办 ②；`01` §3.6"是否必须附议、附议几人**由规则定**"）：`motionSecondsRequired`
       // 必须是 **≥1 的整数**（0／负数／非整数 ⇒ **具名拒**，复用 `V5_INVALID_ARGUMENT`；**域校验**不靠
       // `normalizeParams` 的"越界即夹取"静默语义 ⇒ 否则"设了等于没设"）。**唯一读取口径**＝`motionSecondsRequired()`。
@@ -9540,6 +9632,7 @@ export function apply(ctx) {
         meetingHardLimitMs: params.meetingHardLimitMs, meetingWakeRetries: params.meetingWakeRetries,
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
         formalVerify: params.formalVerify, leanCommand: params.leanCommand,
+        resourceSelfCheck: resourceSelfCheckOn(), toolCallsPerTurnCap: toolCallsPerTurnCap(), memoryCeilingMb: memoryCeilingMb(),
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         leanAsync: params.leanAsync, leanInitiative: params.leanInitiative,
         leanSearchPaths: params.leanSearchPaths, leanJobsMaxParallel: params.leanJobsMaxParallel,
@@ -10682,7 +10775,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_motion', '(member) #23 — RAISE A MOTION (K3/K5/D4) inside an ONGOING meeting, or WITHDRAW YOUR OWN with `op:"withdraw"`. Params: op? ("withdraw"), motion_id? (required for withdraw, `m-N`), kind (topic|procedural|resolution — required to raise), text (the motion text, required to raise; <= 2000 chars), reason? (withdraw). A motion is a PROPOSAL about a FUTURE action/process (topic / procedural: adjourn, extend, limit speech, close / a resolution DRAFT) — it is NOT a procedural objection (#46, which protests an ALREADY-HAPPENING process and needs no second) and NOT a reconsideration (#52, which targets a CLOSED conclusion): the three are ORTHOGONAL. It needs SECONDS to carry (`vibe_v5_second`; threshold = the `motionSecondsRequired` param, default 1). `carried` is decided AT THE MOMENT the threshold is reached, is one-way (a carried motion can no longer be seconded or withdrawn) and PRODUCES NO CONCLUSION: it never writes verdicts/solve/resolutions (a resolution draft still lands ONLY through `vibe_v5_result_record`), never touches ballots/voters/cast, and inside a LIGHT meeting a `resolution` motion is refused by the single S12 truthWriteRefusal point. No phase change, no timer, no auto-close — the framework only records. Every …At/…Ms is rejected (the framework writes times).', objParams({ op: S, motion_id: S, kind: S, text: S, reason: S }), (s, a, x) => s.motionTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_second', '(member) #38 — SECOND a `proposed` motion (K3/K5). Params: motion_id (required, `m-N`). ANY active member may second (no grant needed) EXCEPT the mover (seconding your own motion is refused by name); the same member seconding twice is idempotent (deduped:true). When the seconds reach the threshold (`motionSecondsRequired`, default 1) the motion becomes `carried` AT THAT MOMENT. Seconding is NOT voting: it creates no vote weight, does not touch ballots/voters/cast, and produces no conclusion; a carried motion can no longer be seconded or withdrawn. No timer, no phase change, no drive. Every …At/…Ms is rejected.', objParams({ motion_id: S }, ['motion_id']), (s, a, x) => s.secondTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), CONFIRM THE PREVIOUS MEETING\'S MINUTES (K4/GAPS 11: `op:"confirm"` + `of?` + `fact_fix?`), or (with no `entry`) REPORT THE GAPS only. Params: op? ("confirm"), of? (the minutes being confirmed; defaults to the MOST RECENTLY FINALIZED meeting, and the receipt always names it), fact_fix? (a FACTUAL correction — appended to THIS meeting\'s minutes as a separate `## 上次纪要确认` section; the old minutes are NEVER rewritten, and a conclusion is never changed), entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry / the same confirmation is idempotent (deduped:true). No time may be supplied: every …At/…Ms is rejected.', objParams({ op: S, of: S, fact_fix: S, entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B, op: S, of: S, by: S, why: S }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing. S25-A (issue #13 #4) RESOURCE SELF-CHECK: resourceSelfCheck (default false) injects a 【资源】 block into the member prompts asking them to watch this host budget — it changes PROMPT TEXT ONLY and NEVER a machine decision; toolCallsPerTurnCap (default 0 = unlimited) and memoryCeilingMb (default 0 = unknown) fill that block in; maxParallel keeps governing how many members the framework wakes per meeting round.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B, op: S, of: S, by: S, why: S }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_resolutions', '(member) #56 — SEARCH RESOLUTIONS (read-only; S13/G2). Params: id? (`res-<n>` or `res:<n>`/`<n>`), target?, meetingId?, kind?, limit? (1-50, default 10). Returns {count, resolutions[{id,kind,text,effectiveAt,meetingId,target,supersededBy,actions_count}]}. The time is only for ordering/display: any …At/…Ms filter is rejected. Nothing here drives anything.', objParams({ id: S, target: S, meetingId: S, kind: S, limit: { type: 'number' } }), (s, a, x) => s.resolutionsTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))
