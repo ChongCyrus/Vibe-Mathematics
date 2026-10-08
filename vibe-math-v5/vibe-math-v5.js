@@ -1085,7 +1085,11 @@ export function apply(ctx) {
     let finalizeLock = null
     const verifiedRecently = new Map()
     const liveAgents = new Map()      // childId -> WeakRef<Agent>
-    const inflight = new Map()        // childId -> turn token (dedupes duplicate subagent/end)
+    // childId -> { token, kind } (dedupes duplicate `subagent/end`; `kind` is the wake kind THAT
+    // turn was started with). The kind MUST travel with the turn: `wakeKind` is a per-member slot
+    // that a later wake overwrites, so reading it at `onMemberEnd` can attribute a reply to the
+    // wrong ask — see the meeting-registration note in `handleReply` (11).
+    const inflight = new Map()
     let heartbeatDisposer = null
     let meeting = null                // in-flight meeting round state
     // real1004-minutes: the id of the MOST RECENT meeting. A speech can arrive AFTER the meeting was
@@ -2320,7 +2324,7 @@ export function apply(ctx) {
       // Without this the child's first `subagent/end` has no token to match, so
       // onMemberEnd would ignore it: the founding round would never be processed and
       // the member would be re-woken with a heartbeat prompt instead of a brainstorm.
-      inflight.set(started.childId, shortId())
+      inflight.set(started.childId, { token: shortId(), kind })
       await putMember(member)
       return member
     }
@@ -2335,7 +2339,10 @@ export function apply(ctx) {
       if (!member || !member.childId || member.phase !== 'active') return false
       clearHeartbeat()
       const token = shortId()
-      inflight.set(member.childId, token)
+      // Carry the wake kind WITH the turn (see the `inflight` declaration): the reply must be
+      // attributed to the ask that actually started this turn, not to whatever `wakeKind` holds
+      // when the turn happens to end.
+      inflight.set(member.childId, { token, kind: kind || 'normal' })
       busy.add(member.id)
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
@@ -7371,8 +7378,12 @@ export function apply(ctx) {
     // twice (v4 §28-T29), so a turn is only honoured while its in-flight token is
     // still registered.
     async function onMemberEnd(childId, info) {
-      const token = inflight.get(childId)
-      if (token === undefined) return
+      const rec = inflight.get(childId)
+      if (rec === undefined) return
+      // The mission kind is the one recorded when THIS turn was started (`inflight`). `wakeKind`
+      // is a per-member slot that a LATER wake can overwrite before this turn ends; falling back
+      // to it is kept only for a legacy string-shaped entry.
+      const turnKind = (rec && typeof rec === 'object') ? rec.kind : undefined
       inflight.delete(childId)
       await ready()
       const member = byChild(childId)
@@ -7387,7 +7398,7 @@ export function apply(ctx) {
       let parsed = {}
       try { parsed = parseReply(text) } catch (e) { parsed = {} }
       try {
-        await handleReply(member, parsed, wakeKind.get(member.id) || 'normal')
+        await handleReply(member, parsed, turnKind !== undefined ? turnKind : (wakeKind.get(member.id) || 'normal'))
       } catch (e) {
         console.error('vibe-math-v5: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
       }
