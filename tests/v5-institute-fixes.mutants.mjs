@@ -1595,6 +1595,17 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S25-B 段二（issue #13 #5）：把暂停时的待续原因改成别的 ⇒ `s25b-pending-work` 的
+    // "暂停 ⇒ 在役成员标 institute-paused"必红（单点）。
+    name: 'S25B: pausing the institute no longer marks the live members as institute-paused',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25b-pending-work' },
+    from: "          interruptedAt: now(), reason: 'institute-paused',",
+    to: "          interruptedAt: now(), reason: 'host-ended',",
+    expect: /S25-B：\*\*暂停 ⇒ 在役成员标 `institute-paused`\*\*/,
+  },
+  {
     // S25-C（issue #13 #1）：把"仅院士可开启辩论/选对象"这道门关掉 ⇒ `s25c-proof-gate` 的
     // "非院士提议 ⇒ 具名拒"必红（单点；正式证明那道门仍在，所以只有这一条会红）。
     name: 'S25C: the academician-only proposal gate is disabled (any member may open a debate)',
@@ -1706,6 +1717,7 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // 这里的族只打**可观测的参数面**（`vibe_v5_set` 回执 ＋ `status()` 文本回显）✓。
   's25a-params-echo', 's25a-default-echo', 's25a-invalid-refused', 's25a-reset',
   's25b-progress-tracks',
+  's25b-pending-work',
   's25c-proof-gate',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
   's8-freeze-say']

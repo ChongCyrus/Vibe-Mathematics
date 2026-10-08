@@ -2779,6 +2779,25 @@ async function runScenario(name) {
       const back = await rec({ content: 'S25-B 叙述续' })
       assert(back && back.ok === true && /Progress\/progress\.md$/.test(String(back.file)),
         'S25-B：分轨后**缺省仍回 progress.md**（got ' + String(JSON.stringify(back) || null).slice(0, 200) + '）')
+    } else if (name === 's25b-pending-work') {
+      // S25-B 段二（issue #13 #5）：**待续标记**（耐久）。① 正常收尾 ⇒ 清；② 暂停 ⇒ 在役成员标
+      // `institute-paused`（重启/暂停后仍知道谁还有活没干完）；③ 恢复并正常收尾 ⇒ 再清。
+      const pend = async () => (await callTool('vibe_v5_status', {})).members.map((m) => m.pendingWork)
+      await drainWakes(6); await settleAll()
+      const p0 = await pend()
+      assert(p0.length > 0 && p0.every((x) => x === null),
+        'S25-B：**正常收尾 ⇒ 无待续标记**（got ' + String(JSON.stringify(p0) || null).slice(0, 200) + '）')
+      const paused = await callTool('vibe_v5_pause', {}, ROOT)
+      assert(paused && paused.ok === true, 'S25-B：pause 可调（前置；got ' + String(JSON.stringify(paused) || null).slice(0, 160) + '）')
+      const p1 = await pend()
+      assert(p1.length > 0 && p1.every((x) => x && x.reason === 'institute-paused'),
+        'S25-B：**暂停 ⇒ 在役成员标 `institute-paused`**（got ' + String(JSON.stringify(p1) || null).slice(0, 200) + '）')
+      const resumed = await callTool('vibe_v5_resume', {}, ROOT)
+      assert(resumed && resumed.ok === true, 'S25-B：resume 可调（got ' + String(JSON.stringify(resumed) || null).slice(0, 160) + '）')
+      await drainWakes(8); await settleAll()
+      const p2 = await pend()
+      assert(p2.every((x) => x === null),
+        'S25-B：**恢复且正常收尾 ⇒ 待续标记被清**（got ' + String(JSON.stringify(p2) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25b）：' + name)
     }

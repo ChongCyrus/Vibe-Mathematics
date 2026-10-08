@@ -3745,6 +3745,11 @@ export function apply(ctx) {
       // onMemberEnd would ignore it: the founding round would never be processed and
       // the member would be re-woken with a heartbeat prompt instead of a brainstorm.
       inflight.set(started.childId, { token: shortId(), kind })
+      // S25-B 段二（issue #13 #5）：同 `wakeMember` —— 回合开始即落"待续"耐久标记（紧接着的 putMember 会写盘）。
+      member.pendingWork = {
+        childId: started.childId, objective: '入职/继续首轮（kind=' + String(kind || 'initial') + '）',
+        interruptedAt: now(), reason: 'host-ended',
+      }
       await putMember(member)
       return member
     }
@@ -3763,6 +3768,13 @@ export function apply(ctx) {
       // attributed to the ask that actually started this turn, not to whatever `wakeKind` holds
       // when the turn happens to end. (PR #14 / S24.)
       inflight.set(member.childId, { token, kind: kind || 'normal' })
+      // S25-B 段二（issue #13 #5）：**待续标记**。当前这一轮的"委托"与 childId 在**回合开始**就落耐久，
+      // 这样即使主代理的会话被杀、子代理的 end 从不回来（H4），重启后仍能在成员记录里看到"它还有活没干完"，
+      // 从而**继续它**而不是回到主代理单干。正常回执会清掉它（见 onMemberEnd）。
+      member.pendingWork = {
+        childId: member.childId, objective: String(promptText || '').slice(0, 300),
+        interruptedAt: now(), reason: 'host-ended',
+      }
       busy.add(member.id)
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
@@ -9446,6 +9458,14 @@ export function apply(ctx) {
       } catch (e) {
         console.error('vibe-math-v5r: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
       }
+      // S25-B 段二（issue #13 #5）：一轮**正常收尾** ⇒ 清掉"待续"标记（这一轮的委托已经交付）；
+      // 异常收尾（aborted/error/…）⇒ **保留**并标明，让重启后的续用有据可依。
+      if (stopReason === 'completed') {
+        if (member.pendingWork !== undefined) { delete member.pendingWork; await putMember(member) }
+      } else if (member.pendingWork !== undefined) {
+        member.pendingWork = Object.assign({}, member.pendingWork, { reason: 'host-ended', interruptedAt: now() })
+        await putMember(member)
+      }
       try { await maybeRealCompact(childId, member) } catch (e) { /* compaction is best-effort */ }
       wakeKind.delete(member.id)
       if (member.activeMeetingId) delete member.activeMeetingId
@@ -9991,7 +10011,12 @@ export function apply(ctx) {
       let respawned = 0
       beginSpawnRound()   // the whole re-spawn loop is ONE round for the cap notice
       for (const m of members.concat(queued)) {
-        if (m.childId) continue
+        if (m.childId) {
+          // S25-B 段二（issue #13 #5）：**仍在役**（没被杀）的成员没有"待续"——续用只针对需要重新派发的成员。
+          // 所以恢复调度时要把暂停留下的标记清掉，否则"待续列表"会永远报着已经活着的成员。
+          if (m.pendingWork !== undefined) { delete m.pendingWork; await putMember(m) }
+          continue
+        }
         try {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
           // `mode='resume'` is what makes this a RESUME rather than an instruction: the prompt
@@ -10031,9 +10056,20 @@ export function apply(ctx) {
       try { await recoverLeanJobs() } catch (e) { /* already reported on the ready() path */ }
       return { ok: true, resumed: true, members: members.map((m) => m.id), respawned, running: true }
     }
-    function setPause() {
+    async function setPause() {
       clearHeartbeat()
       running = false
+      // S25-B 段二（issue #13 #5）：暂停时把**在役**成员的"待续"标清楚（reason=institute-paused）——
+      // 暂停/重启之后仍知道"谁还有活没干完"，续用时不会退回主代理单干。
+      for (const m of activeMembers()) {
+        if (!m.childId) continue
+        m.pendingWork = {
+          childId: m.childId,
+          objective: String((m.pendingWork && m.pendingWork.objective) || '暂停时的在途委托').slice(0, 300),
+          interruptedAt: now(), reason: 'institute-paused',
+        }
+        await putMember(m)
+      }
       return { ok: true, paused: true, message: '已暂停调度；成员的在途回合结束后不会被再次唤醒。用 vibe_v5_resume 继续。' }
     }
     async function initStop() {
@@ -10086,7 +10122,7 @@ export function apply(ctx) {
         // durable state. Durable = derived from the state file; session = rebuilt on load.
         fieldScopes: {
           session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts', 'diagnostics', 'backend'],
-          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'verifiedTrue (derived from verdicts)', 'concludedFalse (derived from verdicts)', 'undecided (derived from verdicts)', 'verdicts', 'solve', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
+          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'members[].pendingWork', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'verifiedTrue (derived from verdicts)', 'concludedFalse (derived from verdicts)', 'undecided (derived from verdicts)', 'verdicts', 'solve', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params', 'formalProofs'],
         },
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two
@@ -10102,6 +10138,14 @@ export function apply(ctx) {
           // cap refused it, and the framework will retry it) — needed to audit the queue without
           // re-deriving it from the error text.
           failReason: m.failReason || '',
+          // S25-B 段二（issue #13 #5）：**待续标记**（耐久）。主代理据此知道"重启/暂停后谁还有活没干完"，
+          // 从而继续该子代理，而不是退回自己单干（现象：重启后上下文丢失 ⇒ 主代理偏好独干）。
+          pendingWork: m.pendingWork ? {
+            childId: String(m.pendingWork.childId || '').slice(0, 12),
+            objective: String(m.pendingWork.objective || '').slice(0, 120),
+            interruptedAt: Number(m.pendingWork.interruptedAt || 0),
+            reason: String(m.pendingWork.reason || ''),
+          } : null,
         })),
         tasks: listTasks(),
         // LOW (deep review): a member whose provisioning failed stays on the roster forever (ids
