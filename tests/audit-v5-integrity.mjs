@@ -1441,8 +1441,12 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     'R12', 'L4: an EXPLICIT abstention channel must exist and stay separate from the 0<p<1 estimate')
   gate(/const E = E0\.filter\(\(id\) => !unableMap\[id\]\)/.test(v5rRaw) && /退出本次分母/.test(v5rRaw),
     'R13', 'D3: an explicit unable/不能应答 declaration must leave the denominator (and still be listed)')
-  gate(/registerTool\('vibe_v5_end_verify'/.test(v5rRaw) && /async function endVerify\(memberId, target, reason\)/.test(v5rRaw) && /judgeVerdict\(vs, 'academician'\)/.test(v5rRaw),
-    'R14', 'R10-2a: the academician explicit end-of-debate channel must exist and aggregate with endedBy=academician')
+  gate(/registerTool\('vibe_v5_end_verify'/.test(v5rRaw)
+    && /async function endVerify\(memberId, target, reason(, op, status)?\)/.test(v5rRaw)
+    && /judgeVerdict\(vs, 'academician'\)/.test(v5rRaw)
+    && /'formal_proof'/.test(v5rRaw)
+    && /function formalProofOf\(/.test(v5rRaw),
+    'R14', 'R10-2a: the academician explicit end-of-debate channel must exist and aggregate with endedBy=academician (S25-C: the same academician-gated tool also registers a formal proof, and the proof gate reads it through formalProofOf)')
   gate(/沉默不是同意/.test(v5rRaw) && /阻塞结题/.test(v5rRaw) && !/沉默[^。\n]{0,10}(视为|等同|算作)[^。\n]{0,8}(同意|赞成|无异议)/.test(v5rRaw),
     'R15', 'R2/C1: agent-facing text must state silence is neither consent nor opposition, and must not fold silence into consent')
   gate(/const declaredWord =/.test(v5rRaw) && /isVerdictWord/.test(v5rRaw) && /declared === undefined \? declaredWord : declared/.test(v5rRaw),

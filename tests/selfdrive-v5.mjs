@@ -136,10 +136,25 @@ const mod = await import(PLUGIN.href + '?t=' + Date.now())
 const plugin = mod.default || mod
 plugin.apply(ctx)
 
-async function callTool(name, args, agent) {
+async function callToolRaw(name, args, agent) {
   const spec = toolRegs.find(x => x.name === name)
   if (!spec) throw new Error('no tool ' + name)
   return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
+}
+async function callTool(name, args, agent) {
+  // S25-C（issue #13 #1）：产品现在要求"只有已登记正式证明/证伪且定稿的命题才能进入辩论"且
+  // "开启与选对象由院士"。既有场景大量在"未登记 ＋ 非院士"下提议 ⇒ 这里**统一补前置**：
+  // 先由院士登记 formal_proof（幂等：已登记时 end_verify 仍是幂等写入），再由**院士**发起提议。
+  // 两道门的**负例**由新场景 `s25c-proof-gate` 显式覆盖（它直接调 callToolRaw，绕过本包装）。
+  if (name === 'vibe_v5_propose_verify' && args && args.target
+      && toolRegs.some((x) => x.name === 'vibe_v5_end_verify')) {
+    const t = String(args.target)
+    await callToolRaw('vibe_v5_end_verify', {
+      target: t, reason: 'S25-C 前置：登记正式证明（场景前置，非被测行为）', op: 'formal_proof', status: 'proved',
+    }, childAgent(childOf('acad')))
+    return await callToolRaw('vibe_v5_propose_verify', args, childAgent(childOf('acad')))
+  }
+  return await callToolRaw(name, args, agent)
 }
 const childAgent = (childId) => liveAgents.get(childId) || { id: childId, session: { header: { parentSession: 'sess-A' } } }
 function fireEnd(childId, reply, stopReason) {
@@ -343,7 +358,7 @@ assert(prop.ok === true, 'proposing verification is accepted')
 // needing any unrelated event to drive a pass.
 let sv = await callTool('vibe_v5_status', {})
 assert(!!sv.verify, 'verification of ' + target + ' is in flight right after proposing (nobody has voted yet) — got ' +
-  JSON.stringify({ verify: sv.verify, queue: sv.verifyQueue, undecided: sv.undecided, running: sv.running, autoDone: sv.autoDone, phase: sv.phase, meeting: sv.meeting, parked: sv.parkedMeeting, tasks: sv.tasks.length }))
+  JSON.stringify({ verify: sv.verify, queue: sv.verifyQueue, undecided: sv.undecided, running: sv.running, autoDone: sv.autoDone, phase: sv.phase, meeting: sv.meeting, parked: sv.parkedMeeting, tasks: (sv.tasks || []).length, svShape: Object.keys(sv || {}).join(','), svCode: sv && sv.code, svMsg: sv && sv.message }))
 if (sv.verify) {
   assert(sv.verify.m === 3 && sv.verify.P === 4, 'verification reports m=3 over P=4 voters')
 // V5-A1: P=4 is a COUNT - assert the semantic unit too. The voter set is the roster identity that
@@ -694,6 +709,11 @@ async function runScenario(name) {
   // S25-B 场景只在 v5r 下可跑（record_progress 的 track 分轨是 v5r 的行为）；v5 路径**显式 skip**。
   if (name.startsWith('s25b-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S25-B 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设的 record_progress 没有 track 分轨）')
+    return
+  }
+  // S25-C 场景只在 v5r 下可跑（"正式证明/证伪"准入门与院士独占是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s25c-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S25-C 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 formal_proof 准入与院士独占门）')
     return
   }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
@@ -2761,6 +2781,32 @@ async function runScenario(name) {
         'S25-B：分轨后**缺省仍回 progress.md**（got ' + String(JSON.stringify(back) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25b）：' + name)
+    }
+  } else if (name.startsWith('s25c-')) {
+    // S25-C（issue #13 #1）：两道硬门的**负例**在此显式覆盖 —— 这里用 `callToolRaw` 绕过 `callTool` 的
+    // 场景前置包装（包装会先登记 formal_proof 并由院士提议），所以能真的测到"被拒"。
+    if (name === 's25c-proof-gate') {
+      const acad = childAgent(childOf('acad'))
+      const r1 = childAgent(childOf('r-1'))
+      const t2 = 'p-s25c-gate'
+      await callTool('vibe_v5_record_proposition', { id: t2, title: 'S25-C 门探测', statement: 'S25-C：只有正规证明/证伪的命题可入辩论。', value: 0.5, motive: 'S25-C 门', p: 0.5 }, r1)
+      const noProof = await callToolRaw('vibe_v5_propose_verify', { target: t2, kind: 'proposition', reason: 'S25-C：未登记正式证明就提议' }, acad)
+      assert(noProof && noProof.ok === false && String(noProof.code) === 'V5_INVALID_ARGUMENT' && /只有已被正式证明或证伪/.test(String(noProof.message)),
+        'S25-C：**未登记正式证明 ⇒ 具名拒**（got ' + String(JSON.stringify(noProof) || null).slice(0, 200) + '）')
+      const notAcad = await callToolRaw('vibe_v5_propose_verify', { target: t2, kind: 'proposition', reason: 'S25-C：非院士提议' }, r1)
+      assert(notAcad && notAcad.ok === false && /由院士决定/.test(String(notAcad.message)),
+        'S25-C：**非院士提议 ⇒ 具名拒**（got ' + String(JSON.stringify(notAcad) || null).slice(0, 200) + '）')
+      const regBad = await callToolRaw('vibe_v5_end_verify', { target: t2, reason: 'S25-C：非法 status', op: 'formal_proof', status: 'maybe' }, acad)
+      assert(regBad && regBad.ok === false && /status 必须是/.test(String(regBad.message)),
+        'S25-C：**非法 status ⇒ 具名拒**（got ' + String(JSON.stringify(regBad) || null).slice(0, 200) + '）')
+      const regOk = await callToolRaw('vibe_v5_end_verify', { target: t2, reason: 'S25-C：登记正式证明', op: 'formal_proof', status: 'proved' }, acad)
+      assert(regOk && regOk.ok === true && regOk.formalProof && regOk.formalProof.locked === true,
+        'S25-C：**院士登记 formal_proof ⇒ 定稿（locked）**（got ' + String(JSON.stringify(regOk) || null).slice(0, 200) + '）')
+      const okNow = await callToolRaw('vibe_v5_propose_verify', { target: t2, kind: 'proposition', reason: 'S25-C：登记后提议' }, acad)
+      assert(okNow && okNow.ok === true,
+        'S25-C：**登记后由院士提议 ⇒ 受理**（got ' + String(JSON.stringify(okNow) || null).slice(0, 200) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s25c）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

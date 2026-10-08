@@ -1595,6 +1595,17 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S25-C（issue #13 #1）：把"仅院士可开启辩论/选对象"这道门关掉 ⇒ `s25c-proof-gate` 的
+    // "非院士提议 ⇒ 具名拒"必红（单点；正式证明那道门仍在，所以只有这一条会红）。
+    name: 'S25C: the academician-only proposal gate is disabled (any member may open a debate)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25c-proof-gate' },
+    from: '      if (!isAcademician(proposer)) {',
+    to: '      if (false) {',
+    expect: /S25-C：\*\*非院士提议 ⇒ 具名拒\*\*/,
+  },
+  {
     // S25-B（issue #13 #2）：把 track 解析写死成 narrative ⇒ 所有分轨都写回 progress.md
     // ⇒ `s25b-progress-tracks` 的"rejected ⇒ rejected.md"必红（单点）。
     name: 'S25B: the track resolver hard-codes narrative (every track writes progress.md)',
@@ -1695,6 +1706,7 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // 这里的族只打**可观测的参数面**（`vibe_v5_set` 回执 ＋ `status()` 文本回显）✓。
   's25a-params-echo', 's25a-default-echo', 's25a-invalid-refused', 's25a-reset',
   's25b-progress-tracks',
+  's25c-proof-gate',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
   's8-freeze-say']
 let posRed = 0
