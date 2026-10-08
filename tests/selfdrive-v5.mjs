@@ -142,16 +142,22 @@ async function callToolRaw(name, args, agent) {
   return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
 }
 async function callTool(name, args, agent) {
-  // S25-C（issue #13 #1）：产品现在要求"只有已登记正式证明/证伪且定稿的命题才能进入辩论"且
-  // "开启与选对象由院士"。既有场景大量在"未登记 ＋ 非院士"下提议 ⇒ 这里**统一补前置**：
-  // 先由院士登记 formal_proof（幂等：已登记时 end_verify 仍是幂等写入），再由**院士**发起提议。
-  // 两道门的**负例**由新场景 `s25c-proof-gate` 显式覆盖（它直接调 callToolRaw，绕过本包装）。
-  if (name === 'vibe_v5_propose_verify' && args && args.target
-      && toolRegs.some((x) => x.name === 'vibe_v5_end_verify')) {
+  // S25-C（issue #13 #1）：产品（v5r 与 v5）现在要求"只有已登记正式证明/证伪且定稿的命题才能进入
+  // 辩论"且"开启与选对象由院士"。既有场景大量在"未登记 ＋ 非院士"下提议 ⇒ 这里**统一补前置**：
+  // 先由院士登记 formal_proof，再由**院士**发起提议。登记入口按**能力**选择（v5r 用 end_verify 的
+  // op=formal_proof；v5 没有 end_verify ⇒ 用 propose_verify 的 op=formal_proof）；对没有该机制的
+  // 预设（v2/v3/v4）整段自动跳过（靠工具描述里是否出现 formal_proof 判定）。
+  // 两道门的**负例**由 `s25c-proof-gate` 场景显式覆盖（它直接调 callToolRaw，绕过本包装）。
+  const pvSpec = toolRegs.find((x) => x.name === 'vibe_v5_propose_verify')
+  const hasProofGate = !!(pvSpec && /formal_proof/.test(String(pvSpec.description || '')))
+  if (name === 'vibe_v5_propose_verify' && hasProofGate && agent && args && args.target && String(args.op || '') !== 'formal_proof') {
     const t = String(args.target)
-    await callToolRaw('vibe_v5_end_verify', {
-      target: t, reason: 'S25-C 前置：登记正式证明（场景前置，非被测行为）', op: 'formal_proof', status: 'proved',
-    }, childAgent(childOf('acad')))
+    const why = 'S25-C 前置：登记正式证明（场景前置，非被测行为）'
+    if (toolRegs.some((x) => x.name === 'vibe_v5_end_verify')) {
+      await callToolRaw('vibe_v5_end_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, childAgent(childOf('acad')))
+    } else {
+      await callToolRaw('vibe_v5_propose_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, childAgent(childOf('acad')))
+    }
     return await callToolRaw('vibe_v5_propose_verify', args, childAgent(childOf('acad')))
   }
   return await callToolRaw(name, args, agent)

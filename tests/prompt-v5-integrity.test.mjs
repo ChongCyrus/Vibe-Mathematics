@@ -233,10 +233,35 @@ plugin.apply(ctx)
 // ---------------------------------------------------------------
 // driving helpers
 // ---------------------------------------------------------------
-async function callTool(name, args, agent) {
+// S25-C（issue #13 #1）：在本用例所属的**同一个 root** 里找出院士（`acad`）的 child，用于前置登记
+// 正式证明 —— 登记必须由院士发起，而调用点只知道"提议者"是哪个成员 child，所以按 rootId 反查。
+const acadChildIdOf = (agent) => {
+  const me = spawns.find((s) => s.childId === (agent && agent.id))
+  const rootId = me ? me.rootId : (spawns[0] ? spawns[0].rootId : '')
+  const a = spawns.find((s) => s.rootId === rootId && String(s.label).indexOf('vibe5 acad ') !== -1)
+  return a ? a.childId : ''
+}
+async function callToolRawPolicy(name, args, agent) {
   const spec = toolRegs.find(x => x.name === name)
   if (!spec) throw new Error('no tool ' + name)
   return JSON.parse(await spec.execute(args || {}, { agent }))
+}
+async function callTool(name, args, agent) {
+  // S25-C（issue #13 #1）：v5 现在要求"只有已登记正式证明/证伪且定稿的命题才能进入辩论"，且
+  // "开启与选对象由院士"。既有用例都在"未登记 ＋ 非院士"下提议 ⇒ 这里**统一补前置**。
+  const pvSpec = toolRegs.find((x) => x.name === 'vibe_v5_propose_verify')
+  const gate = !!(pvSpec && /formal_proof/.test(String(pvSpec.description || '')))
+  if (name === 'vibe_v5_propose_verify' && gate && agent && args && args.target && String(args.op || '') !== 'formal_proof') {
+    const t = String(args.target), why = 'S25-C 前置：登记正式证明（用例前置，非被测行为）'
+    const acad = childAgent(acadChildIdOf(agent))
+    if (toolRegs.some((x) => x.name === 'vibe_v5_end_verify')) {
+      await callToolRawPolicy('vibe_v5_end_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, acad)
+    } else {
+      await callToolRawPolicy('vibe_v5_propose_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, acad)
+    }
+    return await callToolRawPolicy('vibe_v5_propose_verify', args, acad)
+  }
+  return await callToolRawPolicy(name, args, agent)
 }
 const childAgent = (childId) => liveAgents.get(childId)
 function fireEnd(childId, reply, stopReason) {

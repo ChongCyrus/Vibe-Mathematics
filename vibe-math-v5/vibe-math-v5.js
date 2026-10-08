@@ -573,6 +573,17 @@ export function apply(ctx) {
           // F6 / F4 (status/report review): two durable markers the published surfaces read.
           if (patch.meetingOpen !== undefined) n.meetingOpen = patch.meetingOpen === null ? null : Object.assign({}, patch.meetingOpen)
           if (patch.officeRequestsDropped !== undefined) n.officeRequestsDropped = Number(patch.officeRequestsDropped) || 0
+          // S25-C（issue #13 #1）：**命题级"正式证明或证伪"台账**（所级映射 target → {status,by,at,ref,locked}）。
+          // 它是"该命题有资格进入验证/辩论"的**唯一凭据**（见 maybeQueueVerify / beginVerify 两道门）。
+          // **函数式变更**（与 paper/feedback 同一手法）：同 tick 的两个登记若在 fold 外做整对象读改写，
+          // 会丢掉其中一个（e2e-v5-round2 的"并发提议不得丢"用例实测抓到了这一点）。
+          // 同样走 fold 白名单 ⇒ 漏写即静默丢弃。
+          if (patch.formalProofs !== undefined) {
+            const nextFp = typeof patch.formalProofs === 'function'
+              ? patch.formalProofs(n.formalProofs === undefined ? {} : n.formalProofs)
+              : patch.formalProofs
+            if (nextFp !== undefined) n.formalProofs = Object.assign({}, nextFp)
+          }
           // The final-paper state. A FUNCTION is a MUTATION applied inside the fold (the same
           // trick the verify queue uses): the paper stage, its parts and its office-consultation
           // counters are updated from several places (member replies, office messages, meetings),
@@ -1736,6 +1747,15 @@ export function apply(ctx) {
         L.push('  7. **主动在群聊里汇报**：本所没有院士替你统筹，你不说别人就无从与你协作；把关键')
         L.push('     结论说出来，把细节留在你自己的 Progress/ 里。')
       }
+      // S25-C（issue #13 #1）：三条硬规章（用户点名）。**只有已登记"正式证明或证伪"且定稿的命题
+      // 才能被作为辩论命题**；"证明尝试/证伪尝试"只是候选；**辩论的开启与对象由院士决定**；
+      // 且**正式证明/证伪只可在确信、有完整把握时登记，登记即定稿**。
+      L.push('  8. **辩论/验证的开启与辩论对象的选择由院士决定**：其他成员可以提出建议，')
+      L.push('     但入队与选对象必须由院士发起（propose_verify）。')
+      L.push('  9. **只有已被给出"正式证明或证伪"、且相应负责人已写完并不再更改（locked）的命题/对象，')
+      L.push('     才能被作为辩论命题**；仅有"证明尝试/证伪尝试"的命题只是候选，不是辩论对象。')
+      L.push(' 10. **"正式证明或证伪"只可在你确信、有完整把握时登记**（propose_verify 的 op=formal_proof）；')
+      L.push('     登记即定稿，之后不再更改——宁可写"仅有尝试"，也不要把草稿当结论。')
       L.push('')
       // ── 三、libraries ───────────────────────────────────────────────────
       L.push('【三、你的资料库、progress 与卡片格式】')
@@ -4859,9 +4879,53 @@ export function apply(ctx) {
     // Queue a proposal UNLESS the same object was just closed as 真/假 (a dedup window
     // prevents several members independently proposing the same object in one tick
     // from running it end-to-end twice — v4 §26 test9).
+    // S25-C（issue #13 #1）：命题级"正式证明或证伪"。**缺省不存在 ⇒ 旧状态与新库都不受影响**，
+    // 但它一旦存在，就是"该命题有资格进入验证/辩论"的唯一凭据（见下面的两道门与规章 8.–10.）。
+    function formalProofOf(target) {
+      // D-3：调用者可能传 undefined（调度路径不带参数就会这样）⇒ **先判空再 idSafe**。
+      if (target === undefined || target === null || target === '') return null
+      const t = idSafe(target)
+      if (!t) return null
+      const map = inst().formalProofs || {}
+      return (map[t] && typeof map[t] === 'object') ? map[t] : null
+    }
+    function formalProofReady(target) {
+      const fp = formalProofOf(target)
+      return fp !== null && fp.locked === true && (fp.status === 'proved' || fp.status === 'disproved')
+    }
+    async function registerFormalProof(memberId, target, status, reason) {
+      // 只有院士能登记（与"辩论的开启与对象由院士决定"同一道门）。
+      if (!isAcademician(memberId)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '只有院士可以登记"正式证明或证伪"（issue #13 #1）' }
+      }
+      const t = idSafe(target)
+      if (!t) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target id is empty after sanitising' }
+      if (status !== 'proved' && status !== 'disproved') {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "formal_proof 的 status 必须是 'proved' 或 'disproved'（got " + String(status) + '）' }
+      }
+      // **函数式变更**：并发登记不会互相覆盖（fold 内应用；见 fold 白名单里 formalProofs 的处理）。
+      await patchInstitute({
+        formalProofs: (cur) => Object.assign({}, cur || {}, {
+          [t]: { status, by: memberId, at: now(), ref: String(reason || ''), locked: true },
+        }),
+      })
+      await saveChatLine('【正式证明/证伪登记】院士 ' + memberId + ' 登记 ' + t + ' 为「'
+        + (status === 'proved' ? '已正式证明' : '已正式证伪') + '」并**定稿**'
+        + (reason ? ('，依据：' + String(reason)) : '') + '；自此该命题才有资格进入验证/辩论（issue #13 #1）。')
+      notifyActivity()
+      return { ok: true, target: t, formalProof: { status, by: memberId, at: now(), locked: true } }
+    }
     async function maybeQueueVerify(target, kind, proposer, reason) {
       const t = idSafe(target)
       if (!t) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target id is empty after sanitising' }
+      // S25-C（issue #13 #1，用户点名的两道硬门）：**辩论的开启与辩论对象的选择由院士决定**，
+      // 且**只有已被正式证明或证伪、且负责人已定稿（locked）的命题/对象才能进入辩论**。
+      if (!isAcademician(proposer)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '辩论的开启与辩论对象的选择由院士决定（issue #13 #1）：请由院士发起 propose_verify' }
+      }
+      if (!formalProofReady(t)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '只有已被正式证明或证伪、且负责人已定稿（locked）的命题才能进入验证/辩论：' + t + '（先用 propose_verify 的 op=formal_proof 登记）' }
+      }
       const recent = verifiedRecently.get(t)
       if (recent !== undefined && (now() - recent) < recoverStallMs()) {
         return { ok: true, deduped: true, message: t + ' 刚刚定论，忽略重复提议' }
@@ -4883,6 +4947,13 @@ export function apply(ctx) {
     }
     async function beginVerify(proposal) {
       dbg.begin += 1
+      // S25-C（issue #13 #1）：**任何调用者都必须过这两道门**（提议侧与开启侧各一道）。
+      if (!isAcademician(proposal && proposal.proposer)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '辩论的开启与辩论对象的选择由院士决定（issue #13 #1）：请由院士发起 propose_verify' }
+      }
+      if (!formalProofReady(proposal && proposal.target)) {
+        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '只有已被正式证明或证伪、且负责人已定稿（locked）的命题才能进入验证/辩论：' + String(proposal && proposal.target) + '（先用 propose_verify 的 op=formal_proof 登记）' }
+      }
       const target = proposal.target
       const resolved = await resolveTargetStatement(target, proposal.proposer)
       const vs = {
@@ -8364,6 +8435,8 @@ export function apply(ctx) {
       feedbackOn, feedbackCounts, feedbackTool,
       // authorization helpers (used by tool handlers)
       memberIdOfAgent, isOffice, isAcademician, isProvablyOffice, officeCaller, memberById, activeMembers,
+      // S25-C（issue #13 #1）：院士登记"正式证明或证伪"（module 作用域的 propose_verify 处理器用）。
+      registerFormalProof,
       // diagnosis helpers (defects 1/2 of the architecture self-test)
       memberDiagnosis, quorumM, quorumView, voterCount,
     }
@@ -8582,7 +8655,9 @@ export function apply(ctx) {
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
-  registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
+  registerTool('vibe_v5_propose_verify', '(academician) S25-C (issue #13 #1): with op=formal_proof and status=proved|disproved the academician REGISTERS this object as formally proved or disproved and locks it — only such objects may be debated at all, and registration is final, so only register it when you are confident the proof or disproof is complete. Otherwise it proposes an object for consensus verification, and ONLY the academician may open a debate or choose its object: an object that only has proof/disproof ATTEMPTS is a candidate, not a debate subject. Other members may suggest, but the academician must make the proposal.', objParams({ target: S, kind: S, reason: S, op: S, status: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => (String(a.op || '') === 'formal_proof'
+    ? s.registerFormalProof(caller, a.target, a.status, a.reason)
+    : s.maybeQueueVerify(a.target, a.kind, caller, a.reason))))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = abstention (not counted toward m, counted in the mean).', objParams({ target: S, verdict: N, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
   registerTool('vibe_v5_task_list', '(member) List shared tasks with readiness, owner, revision, blockers and write-scope warnings.', objParams({ status: S, owner: S, ready: B }), (s, a) => ({ ok: true, tasks: s.taskList(a) }))

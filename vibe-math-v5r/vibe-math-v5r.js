@@ -621,8 +621,14 @@ export function apply(ctx) {
           // 它是"该命题有资格进入验证/辩论"的**唯一凭据**（见 maybeQueueVerify / beginVerify 两道门）。
           // **不写进 `verdicts`**：那里一条记录必须带 `votes`/`closed` 等标准字段，否则会被 `currentVerify()`
           // 当成"在飞验证"而劫持辩论流（实测：`continueVerifyRound` 读 `vs.votes[id]` 直接 TypeError）。
-          // 同样走 fold 白名单 ⇒ 漏写即静默丢弃。
-          if (patch.formalProofs !== undefined) n.formalProofs = Object.assign({}, patch.formalProofs)
+          // **函数式变更**（与 paper/feedback 同一手法）：同 tick 的两个登记若在 fold 外做整对象读改写，
+          // 会丢掉其中一个。同样走 fold 白名单 ⇒ 漏写即静默丢弃。
+          if (patch.formalProofs !== undefined) {
+            const nextFp = typeof patch.formalProofs === 'function'
+              ? patch.formalProofs(n.formalProofs === undefined ? {} : n.formalProofs)
+              : patch.formalProofs
+            if (nextFp !== undefined) n.formalProofs = Object.assign({}, nextFp)
+          }
           // S11（GAPS 29）：**记录人台账**（append-only：谁在何时被指定/撤销、对哪次会议）。
           // 同样走 fold 白名单 ⇒ 漏写即静默丢弃。
           if (patch.secretaries !== undefined) {
@@ -7118,9 +7124,12 @@ export function apply(ctx) {
         if (status !== 'proved' && status !== 'disproved') {
           return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "formal_proof 的 status 必须是 'proved' 或 'disproved'（got " + String(status) + '）' }
         }
-        const curMap = Object.assign({}, inst().formalProofs || {})
-        curMap[t] = { status, by: memberId, at: now(), ref: String(reason || ''), locked: true }
-        await patchInstitute({ formalProofs: curMap })
+        // **函数式变更**：并发登记不会互相覆盖（fold 内应用；见 fold 白名单里 formalProofs 的处理）。
+        await patchInstitute({
+          formalProofs: (cur) => Object.assign({}, cur || {}, {
+            [t]: { status, by: memberId, at: now(), ref: String(reason || ''), locked: true },
+          }),
+        })
         await saveChatLine('【正式证明/证伪登记】院士 ' + memberId + ' 登记 ' + t + ' 为「'
           + (status === 'proved' ? '已正式证明' : '已正式证伪') + '」并**定稿**'
           + (reason ? ('，依据：' + String(reason)) : '') + '；自此该命题才有资格进入验证/辩论（issue #13 #1）。')

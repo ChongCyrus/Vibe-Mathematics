@@ -186,10 +186,28 @@ function makeHost(opts) {
   const mod = o.pluginModule
   mod.apply(ctx)
 
-  async function callTool(name, args, agent) {
+  async function callToolRawPolicy(name, args, agent) {
     const spec = toolRegs.find(x => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
     return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
+  }
+  async function callTool(name, args, agent) {
+    // S25-C（issue #13 #1）：v5 现在要求"只有已登记正式证明/证伪且定稿的命题才能进入辩论"，且
+    // "开启与选对象由院士"。既有用例都在"未登记 ＋ 非院士"下提议 ⇒ 这里**统一补前置**（本工厂是
+    // 单机构，院士就是 `acad`；按能力选择登记入口，无 formal_proof 的预设自动跳过）。
+    const pvSpec = toolRegs.find((x) => x.name === 'vibe_v5_propose_verify')
+    const gate = !!(pvSpec && /formal_proof/.test(String(pvSpec.description || '')))
+    if (name === 'vibe_v5_propose_verify' && gate && agent && liveAgents.has(agent.id) && args && args.target && String(args.op || '') !== 'formal_proof') {
+      const t = String(args.target), why = 'S25-C 前置：登记正式证明（用例前置，非被测行为）'
+      const acad = childAgent(childOf('acad'))
+      if (toolRegs.some((x) => x.name === 'vibe_v5_end_verify')) {
+        await callToolRawPolicy('vibe_v5_end_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, acad)
+      } else {
+        await callToolRawPolicy('vibe_v5_propose_verify', { target: t, reason: why, op: 'formal_proof', status: 'proved' }, acad)
+      }
+      return await callToolRawPolicy('vibe_v5_propose_verify', args, acad)
+    }
+    return await callToolRawPolicy(name, args, agent)
   }
   const childAgent = (childId) => liveAgents.get(childId) || { id: childId, session: { header: { parentSession: ROOT.id } } }
   function fireEnd(childId, reply, stopReason) {
