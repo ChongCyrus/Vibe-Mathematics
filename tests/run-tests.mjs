@@ -167,6 +167,19 @@ const SELF = 'run-tests.mjs'
 // so 180 s bounds a hang without killing an honest slow suite. Do NOT raise it silently to "fix" reds.
 const SUITE_TIMEOUT_MS = Math.max(1000, Number(process.env.GATE_SUITE_TIMEOUT_MS || 180000))
 
+// S22: the MUTANT-FAMILY budget. A family job legitimately runs 20+ minutes (one child per family,
+// each child booting the plugin), so the 180 s default would misreport an honest family as a hang.
+// Families therefore get their own default, and it must keep a REAL margin against the measured wall:
+// history for v5-institute-fixes.mutants.mjs is 1319/1342/1352/1399/1456 s (this session's full
+// 151-family sweeps) against the 1500 s it used to get — only 3–12% headroom, which is exactly how a
+// RED sweep (three TIMEOUTs) gets mistaken for a stuck job. 2400 s gives 1456 s => 1.65x and 1157.9 s
+// (two concurrent copies) => 2.07x. RULE: a family budget is measured, never guessed — keep
+// measured x >= 1.65 (>= 2x under concurrency) and record the measurement here whenever it moves. The
+// timeout is NOT removed: 2400 s still catches a real hang as "TIMEOUT after 2400s".
+const FAMILY_TIMEOUT_MS = Math.max(1000, Number(process.env.GATE_FAMILY_TIMEOUT_MS || 2400000))
+/** Mutant families are the heavy class; everything else keeps 180 s unless named in the overrides. */
+function isFamilyJob(file) { return /\.mutants\.mjs$/.test(String(file || '')) }
+
 // NAMED per-suite overrides for suites that are HONEST but slow (measured, not guessed). Raising a
 // limit is a documented act: update the numbers here AND say so in the commit message - never silently.
 //   v2-fix-probes.mutants.mjs: ~43.1 s per family x 10 families ~= 430 s measured (inner child cap 120 s)
@@ -186,7 +199,11 @@ const TIMEOUT_OVERRIDES = {
   //  that gate #10 killed it with was BELOW its own measurement. Budget set to 1500000 (25 min) by the
   //  maintainer: the known standalone figure is 1054 s and the same sweep measured 1157.7/1157.9 s with
   //  two copies running concurrently, so the extra headroom absorbs gate-load amplification.)
-  'v5-institute-fixes.mutants.mjs': 1500000,
+  // (S22) The 1500 s that gate #10 killed it with is GONE: it sat at only 3–12% headroom over the
+  // measured 1319–1456 s — exactly how a red sweep (three TIMEOUTs) gets mistaken for a stuck job.
+  // Kept EXPLICIT (documented, not merely inherited) and now equal to the family default 2400 s.
+  'v5-institute-fixes.mutants.mjs': 2400000,   // MEASURED 1319/1342/1352/1399/1456 s => 1.65x;
+                                               // 1157.9 s with two concurrent copies => 2.07x
   // e2e-v4-fixes.test.mjs: MEASURED, not guessed (task-13). Its cases script an institute and pump
   // member followups; the pump loops used FIXED iteration caps (i<300 etc.) which, under a loaded gate,
   // ran out BEFORE the plugin's next scheduling tick produced the verification/debate wakes.
@@ -213,8 +230,15 @@ const TIMEOUT_OVERRIDES = {
                                           // copies concurrent; the gate killed it at the 180 s default three
                                           // times (it embeds several full run-tests runs + scans large dirs) => 900 s
 }
-/** One place decides a job limit: explicit job value, then the named override, then the default. */
-function jobLimit(job) { return job.timeoutMs || TIMEOUT_OVERRIDES[job.file] || SUITE_TIMEOUT_MS }
+/** One place decides a job limit: explicit job value, then the named override, then (S22) the family
+ *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a
+ *  caller never has to configure anything for a green sweep — and a family can still be caught hanging. */
+function jobLimit(job) {
+  if (job.timeoutMs) return job.timeoutMs
+  if (TIMEOUT_OVERRIDES[job.file]) return TIMEOUT_OVERRIDES[job.file]
+  if (isFamilyJob(job.file)) return FAMILY_TIMEOUT_MS
+  return SUITE_TIMEOUT_MS
+}
 
 // ── Scheduling: longest-processing-time first (LPT) ────────────────────────────────────────────────
 // MEASURED WEIGHTS: per-job seconds from the 2026-10 full sweep at concurrency 2 (the run whose summary
