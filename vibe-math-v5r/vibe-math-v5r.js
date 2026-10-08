@@ -346,6 +346,42 @@ function v5err(code, message) {
   return e
 }
 
+// ── S21 pointer propagation: the ONE content fingerprint (D1) ─────────────────────────────────────
+// Cross-object references are carried as `(id, 内容指纹, 一行标题, 状态)` and the BODY is expanded only
+// when a member asks for it by id. The fingerprint is what makes "the text I remember" detectable as
+// stale, so it must be:
+//   · computed in ONE place only (`contentFingerprint`), never a second composition anywhere;
+//   · COVERED over the STATEMENT TEXT and the PROOF BODY only — display-only fields (标题/ID/记录者/
+//     记录时间) are excluded on purpose, so re-labelling a card is not a content change (D1);
+//   · persisted WITH the object (the `- 内容指纹:` line of the card file), so the read faces only ever
+//     READ BACK a stored value and can never recompute a different one;
+//   · idempotent: the same parts ⇒ the same digest, so re-recording identical content cannot rotate it.
+// Lean archives deliberately do NOT go through here: `vibe_v5_lean_archive` already returns a `sha256`
+// of the archived bytes (`leanHashText`-normalised) and Lean code must stay BYTE-REPRODUCIBLE, so the
+// Lean face REUSES that existing digest instead of inventing a second one (D1/D3).
+function contentFingerprint(kind, parts) {
+  const list = (Array.isArray(parts) ? parts : [parts]).filter((p) => p !== undefined && p !== null)
+  return sha256Hex(String(kind == null ? '' : kind) + '\n' + list.map((p) => leanHashText(p)).join('\n---\n'))
+}
+
+// ── S21 pointer propagation: the injected contract (D4/D5) ────────────────────────────────────────
+// A MECHANISM description, not mathematical content: it is rebuilt from scratch on EVERY prompt (every
+// round / every reload), so it survives compaction by construction instead of depending on whatever
+// memory is left after it. It carries NO object data — the data lives behind `vibe_v5_read_library`
+// (`list` mode) and is fetched by id when a body is actually needed.
+function headerListContractBlock() {
+  return [
+    '【指针传播 · 头部列表（机制约束）】',
+    '  · 跨对象引用只以**头部列表**形式存在：`id` + 一行标题 + **内容指纹** + 状态。',
+    '  · 要正文就用 id 调 `vibe_v5_read_library` 展开；**不得**因为"我刚才读过"就当作它仍在你的上下文里。',
+    '  · 引用某对象时若它的**指纹与头部列表不一致，必须重新拉取**，不得沿用记忆里的旧文本。',
+    '  · 引用他人结论**必须**带 id；上下文里没有正文时**不得**凭记忆叙述它。',
+    '  · 论文阶段必须按 `id` + 指纹重建正文；指纹与磁盘正文不一致 ⇒ **具名阻塞并上报**，绝不静默用旧文。',
+    '  · **禁止**自行猜测、改写、拼写对象 id；查不到就**具名停下并上报**。',
+    '  · Lean 归档正文不在头部列表里，也不参与压缩：用 `vibe_v5_lean_lib` / `vibe_v5_lean_read` 按名取原文。',
+  ].join('\n')
+}
+
 // ---- host live-child cap (DSH ≥ 0.2) ----------------------------------------
 // The host caps the number of LIVE continuable children PER ROOT AGENT. Evidence (installed
 // dsh-subagent 0.2.0-rc.2): `materialize` calls `ActivationPool.reserve(this.maxActiveSubagents())`
@@ -3894,6 +3930,7 @@ export function apply(ctx) {
       paperPushLine(L)
       feedbackPushLine(L)
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member, roundNo))
       L.push('------------')
       L.push(replySpec(member.kind))
@@ -3916,6 +3953,7 @@ export function apply(ctx) {
       feedbackPushLine(L)
       L.push('')
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
@@ -3935,6 +3973,7 @@ export function apply(ctx) {
       feedbackPushLine(L)
       L.push('')
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
@@ -3981,6 +4020,7 @@ export function apply(ctx) {
       feedbackPushLine(L)
       L.push('')
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('------------')
       L.push(replySpec(member.kind))
@@ -4037,6 +4077,7 @@ export function apply(ctx) {
       feedbackPushLine(L)
       L.push('')
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('------------')
       L.push('结束时请**只**输出一个 JSON 对象（```json 围栏内）：')
@@ -4367,6 +4408,11 @@ export function apply(ctx) {
       // it). The defect fields are updated, the marker history is preserved.
       await putFormal(t, (prev0) => Object.assign({}, prev0 || { status: 'none' }, {
         status: 'attempted', proof: '', decision: 'defect', note: why,
+        // S21 (D3): the withdrawn archive's content identity is DROPPED, so the stale `sha256` can
+        // never be read as "this object's current formalization". This slice only RECORDS — it does
+        // NOT cascade to downstream objects (that linkage is the next slice; the landing points
+        // `formal.sha256` + the card `- 内容指纹:` line are what it will need).
+        sha256: '',
         fidelity: Object.assign({}, (prev0 && prev0.fidelity) || {}, { at: now(), by: String(memberId || ''), note: why }),
         updatedAt: now(),
       }), (todo0) => {
@@ -4604,6 +4650,14 @@ export function apply(ctx) {
           file: job.rel,
           proof: settledOk ? 'Verified/Lean/' + target + '.lean' : '',
           decision: 'used',
+          // S21 (D1/D3): the settle write REPLACES the object's formal record, so it must carry the
+          // content identity forward — otherwise the ARCHIVE's `sha256` is clobbered the moment the
+          // queued job lands (measured: the durable record had NO sha256 while `async` still read
+          // 'queued', because this write is built from a `prev` taken outside the fold). The job mirror
+          // already persisted the hash of the bytes it compiled (`contentSha256`), so this REUSES it —
+          // no second digest is computed, and `job.contentSha256` is exactly the identity of the content
+          // that was written to `job.rel`.
+          sha256: String(job.contentSha256 || prev.sha256 || ''),
           // L7 (deep-review 5): `decision:'used'` is written by BOTH the member's reply and this
           // settle path; `decisionSource` says which one. Fallout #4 (F1d): it used to be
           // WRITE-ONLY — nothing read or asserted it — so it is now part of the readable surfaces
@@ -4694,6 +4748,9 @@ export function apply(ctx) {
         await writeTextRel('Verified/Lean/' + target + '.lean', String(rec.content == null ? '' : rec.content))
         await putFormal(target, Object.assign({}, prev, {
           status: 'passed', file: rec.rel, proof: 'Verified/Lean/' + target + '.lean', decision: 'used',
+          // S21 (D1/D3): the same carry-forward as `leanApplySettle` — this write also replaces the
+          // record, and the recovered job mirror already carries the hash of the bytes it archived.
+          sha256: String(rec.contentSha256 || prev.sha256 || ''),
           run: Object.assign({}, rec.run || {}, { ok: true, exitCode: 0 }), async: asyncRec, updatedAt: now(),
         }))
         await rebuildLeanLibIndexes()
@@ -5322,9 +5379,10 @@ export function apply(ctx) {
       // and are shown in Formal/Index.md.
       const scan = async (dirAbs, dirRel, kindLabel) => {
         const rows = []
+        const cards = []
         try {
           const t = await fs.resolve(dirAbs)
-          if (await fs.stat(t) === undefined) return rows
+          if (await fs.stat(t) === undefined) return { rows, cards }
           const entries = await fs.listDir(t)
           for (const e of entries || []) {
             if (!e || e.type !== 'file' || !/\.lean$/.test(String(e.name))) continue
@@ -5336,23 +5394,31 @@ export function apply(ctx) {
             // answer to "can I reuse it, and what does it drag in?".
             const depend = (txt.split('\n').filter((l) => /^\s*import\s+/.test(l)).map((l) => l.replace(/^\s*import\s+/, '').trim()).join('、')) || '—'
             rows.push('| ' + name + ' | ' + rel + ' | ' + kindLabel + ' | ' + first.replace(/\|/g, '/') + ' | ' + depend.replace(/\|/g, '/') + ' |')
+            // S21 (D1/D3): the reuse face is a POINTER face — it carries the same content identity
+            // Lean already uses (`sha256Hex` over `leanHashText`, exactly what `lean_read` and the
+            // archive de-dupe compute) and NOT the code text, which must stay byte-reproducible.
+            // `first` is the file's FIRST CODE LINE — this is the existing human summary column, and
+            // it is the only line any member-facing Lean listing has ever shown.
+            cards.push({ name, file: rel, kind: kindLabel, summary: first, sha256: sha256Hex(leanHashText(txt)) })
           }
         } catch (e) { /* listing is best-effort */ }
-        return rows
+        return { rows, cards }
       }
-      const libRows = await scan(formalLibRoot(), 'Formal/Lib', 'def')
+      const libScan = await scan(formalLibRoot(), 'Formal/Lib', 'def')
+      const provedScan = await scan(formalProvedRoot(), 'Formal/Proved', 'lemma')
+      const libRows = libScan.rows
       await writeTextAbs(vibeRoot() + '/Formal/Lib/Index.md', ['# 可复用 Lean 定义库（跨项目）｜' + instituteName, '',
         '> 写新定义之前先查这里：能复用就不要重新定义。', '',
         '| 名称 | 文件 | 类别 | 摘要 | 依赖 |', '|---|---|---|---|---|']
         .concat(libRows.length ? libRows : ['| （暂无） | | | | |']).join('\n') + '\n')
-      const provedRows = await scan(formalProvedRoot(), 'Formal/Proved', 'lemma')
+      const provedRows = provedScan.rows
       await writeTextAbs(vibeRoot() + '/Formal/Proved/Index.md', ['# 已成立的 Lean 命题 / 引理（机器已核对，可跨项目复用）｜' + instituteName, '',
         '> 这些文件是通过内核检查的引理，可直接 import 复用。', '',
         '| 名称 | 文件 | 类别 | 陈述 | 依赖 |', '|---|---|---|---|---|']
         .concat(provedRows.length ? provedRows : ['| （暂无） | | | | |']).join('\n') + '\n')
       await writeFormalIndex()
       await writeFormalTodo()
-      return { lib: libRows.length, proved: provedRows.length, objects: Object.keys(formalRecords()).length }
+      return { lib: libRows.length, proved: provedRows.length, objects: Object.keys(formalRecords()).length, libCards: libScan.cards, provedCards: provedScan.cards }
     }
     // A vibe-root-relative path → absolute. Used for the GLOBAL library, which sits beside
     // the project tree rather than inside the current institute.
@@ -5543,6 +5609,12 @@ export function apply(ctx) {
         const rec = Object.assign({}, prev, {
           status: passed ? 'passed' : 'attempted',
           file: workRel,
+          // S21 (D1/D3): the archived bytes already have a content identity — `sha256` — and Lean code
+          // must stay byte-reproducible, so this face REUSES it instead of fingerprints. It is the
+          // `(id, 指纹)` basis the NEXT slice will need in order to invalidate downstream objects when a
+          // proof is withdrawn; records written before S21 simply carry no `sha256` (readers treat a
+          // missing hash as unknown, never as a hash of something else).
+          sha256: sha,
           // A FAILED re-archive must also drop the pointer to the previous proof: the code
           // that proof referred to has just been overwritten by `body` (the file that failed),
           // so keeping it would advertise `Verified/Lean/<id>.lean` as this object's proof
@@ -5658,20 +5730,7 @@ export function apply(ctx) {
       const id = idSafe(args.id) || (prefix + '-' + shortId())
       const dir = kind === 'proposition' ? 'Propos' : kind === 'method' ? 'Methods' : 'Subproblems'
       const rel = 'Members/' + memberId + '/' + dir + '/' + id + '.md'
-      const head = [
-        '# ' + (kind === 'proposition' ? '命题' : kind === 'method' ? '方法' : '子问题') + '｜' + (args.title || id),
-        '- 标题: ' + String(args.title || id),
-        '- ID: ' + id,
-        '- 类型: ' + (kind === 'proposition' ? '命题' : kind === 'method' ? String(args.type || '方法') : '子问题'),
-        '- 状态: ' + (kind === 'proposition' ? '未定论' : kind === 'method' ? '经验' : '求解中'),
-        '- 概率: ' + clamp01(args.p).toFixed(2),
-        '- 价值程度: ' + clamp01(args.value).toFixed(2),
-        '- 动机用途计划: ' + String(args.motive),
-        '- 记录者: ' + memberId,
-        '- 记录时间: ' + fmtTime(),
-        '- 依赖: []',
-        '',
-      ]
+      const status = kind === 'proposition' ? '未定论' : kind === 'method' ? '经验' : '求解中'
       let body
       if (kind === 'proposition') {
         body = ['## 陈述', String(args.statement || ''), '', '## 证明尝试', '', '## 证伪尝试', '']
@@ -5680,26 +5739,115 @@ export function apply(ctx) {
       } else {
         body = ['## 陈述', String(args.statement || ''), '', '## 进度', '']
       }
+      // S21 (D1): the content fingerprint covers the STATEMENT TEXT and the PROOF BODY only. The
+      // display-only head lines (标题/ID/记录者/记录时间) stay OUT of it on purpose, so re-labelling a
+      // card is not a content change while editing its statement always is. This is the ONLY call site:
+      // every read face reads the stored `- 内容指纹:` value back instead of recomputing anything.
+      const fingerprint = contentFingerprint(kind, body)
+      const head = [
+        '# ' + (kind === 'proposition' ? '命题' : kind === 'method' ? '方法' : '子问题') + '｜' + (args.title || id),
+        '- 标题: ' + String(args.title || id),
+        '- ID: ' + id,
+        '- 类型: ' + (kind === 'proposition' ? '命题' : kind === 'method' ? String(args.type || '方法') : '子问题'),
+        '- 状态: ' + status,
+        '- 概率: ' + clamp01(args.p).toFixed(2),
+        '- 价值程度: ' + clamp01(args.value).toFixed(2),
+        '- 动机用途计划: ' + String(args.motive),
+        '- 记录者: ' + memberId,
+        '- 记录时间: ' + fmtTime(),
+        '- 依赖: []',
+        '- 内容指纹: ' + fingerprint,
+        '',
+      ]
       const ok = await writeTextRel(rel, head.concat(body).join('\n'))
       if (!ok) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
       await bumpArtifacts()
       notifyActivity()
-      return { ok: true, id, file: rel, kind }
+      return { ok: true, id, file: rel, kind, fingerprint, status, title: String(args.title || id), owner: memberId }
     }
     async function readLibrary(query) {
       const q = query || {}
       const wantMember = q.member ? String(q.member) : ''
       const wantKind = q.kind ? String(q.kind) : ''
       const wantId = q.id ? idSafe(q.id) : ''
+      // S21 (D2/D5): `list:true` switches this read face to the HEADER LIST — `id / 标题(一行) /
+      // 内容指纹 / 状态 / 归属成员 / 更新时间` for every recorded card, and NOTHING else. The body is
+      // deliberately ABSENT (that is the whole point of pointer propagation: the list is what a member
+      // holds, and the body is pulled by id only when it is actually needed). The list is DERIVED FROM
+      // DISK on every call, never a second source of truth, and the fingerprint is READ BACK from the
+      // card file (`- 内容指纹:`) rather than recomputed. `list` defaults to false, so every existing
+      // call keeps its byte-for-byte behaviour. Returning HERE — instead of falling through — is what
+      // keeps the body out of the answer: falling through would run the expand branch below and every
+      // list entry would acquire the card's whole body (measured: that is exactly what the R95 gate
+      // catches).
+      const listMode = q.list === true || q.list === 'true'
       const dirs = [['proposition', 'Propos'], ['method', 'Methods'], ['subproblem', 'Subproblems']]
+      const cardHead = (text) => {
+        const meta = { title: '', fingerprint: '', status: '', recordedAt: 0 }
+        for (const line of String(text == null ? '' : text).split('\n')) {
+          const m = /^-\s*(标题|状态|内容指纹|记录时间):\s*(.*)$/.exec(line)
+          if (!m) continue
+          if (m[1] === '标题') meta.title = m[2].trim()
+          else if (m[1] === '状态') meta.status = m[2].trim()
+          else if (m[1] === '记录时间') meta.recordedAt = Number(Date.parse(m[2].trim().replace(' ', 'T'))) || 0
+          else meta.fingerprint = m[2].trim()
+        }
+        return meta
+      }
+      // `updatedAt` prefers the file's own write time and falls back to the header's `- 记录时间:`
+      // (written by the framework at record time), so the value is real on every host instead of
+      // silently depending on whether the host's `stat` exposes mtime. `0` means "unknown" — the S14
+      // discipline: an unknown time is stated as unknown, never guessed into a number.
+      const cardUpdatedAt = async (rel, fallbackMs) => {
+        try {
+          const st = await fs.stat(await fs.resolve(instRoot() + '/' + rel))
+          const m = st === undefined ? 0 : Number(st.mtimeMs || 0)
+          if (Number.isFinite(m) && m > 0) return m
+        } catch (e) { /* fall through to the recorded time */ }
+        return Number(fallbackMs || 0) || 0
+      }
       const members = wantMember ? [memberById(wantMember)].filter(Boolean) : activeMembers()
       const out = []
+      const listOut = []
+      if (listMode) {
+        for (const m of members) {
+          for (const [kind, dir] of dirs) {
+            if (wantKind && wantKind !== kind) continue
+            try {
+              const dirT = await fs.resolve(instRoot() + '/Members/' + m.id + '/' + dir)
+              if (await fs.stat(dirT) === undefined) continue
+              const entries = await fs.listDir(dirT)
+              for (const e of entries || []) {
+                if (!e || e.type !== 'file' || !/\.md$/.test(String(e.name))) continue
+                const id = String(e.name).replace(/\.md$/, '')
+                if (wantId && id !== wantId) continue
+                const rel = 'Members/' + m.id + '/' + dir + '/' + e.name
+                const meta = cardHead(await readTextRel(rel))
+                listOut.push({
+                  id, kind, title: meta.title || id, fingerprint: meta.fingerprint,
+                  status: meta.status, owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),
+                })
+              }
+            } catch (e) { /* listing is best-effort, exactly as before */ }
+          }
+        }
+        if (Number.isFinite(Number(q.limit)) && Number(q.limit) > 0) listOut.length = Math.min(listOut.length, Math.floor(Number(q.limit)))
+        return { ok: true, mode: 'list', count: listOut.length, list: listOut, note: '头部列表：只有 id／一行标题／内容指纹／状态／归属成员／更新时间——**不含任何正文**；要正文请用 id 展开（vibe_v5_read_library {id:"…"}）。' }
+      }
       for (const m of members) {
         for (const [kind, dir] of dirs) {
           if (wantKind && wantKind !== kind) continue
           if (wantId) {
-            const t = await readTextRel('Members/' + m.id + '/' + dir + '/' + wantId + '.md')
-            if (t !== undefined) out.push({ member: m.id, kind, id: wantId, text: t })
+            const rel = 'Members/' + m.id + '/' + dir + '/' + wantId + '.md'
+            const t = await readTextRel(rel)
+            if (t !== undefined) {
+              const meta = cardHead(t)
+              out.push({
+                member: m.id, kind, id: wantId, text: t,
+                fingerprint: meta.fingerprint, status: meta.status, title: meta.title || wantId,
+                owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),
+              })
+            }
             continue
           }
           try {
@@ -5716,6 +5864,21 @@ export function apply(ctx) {
         if (!wantKind && !wantId) {
           const p = await readTextRel('Members/' + m.id + '/Progress/progress.md')
           if (p !== undefined) out.push({ member: m.id, kind: 'progress', id: 'progress', text: String(p).slice(-6000) })
+        }
+      }
+      // S21 (D5/G3): asking for ONE object by id is an EXPANSION request, so "not there" must be a NAMED
+      // refusal — never an empty body, and never a look-alike (a neighbouring card, an older revision or
+      // a remembered text). This is the tool-level twin of the injected rule "查不到就具名停下并上报".
+      if (wantId && out.length === 0) {
+        return {
+          ok: false, code: 'V5_INVALID_ARGUMENT',
+          message: '读不到对象 ' + wantId + '：按 id 展开**必须命中一个既存对象**，本次在'
+            + (wantMember ? '成员 ' + wantMember : '全体在册成员') + '的成果库里没有这个 id。'
+            + '请用 vibe_v5_read_library {list:true} 取头部列表，核对 id 拼写后再展开；**不得**改用记忆、猜测或近似对象。',
+          next: {
+            kind: 'expand-by-id', tool: 'vibe_v5_read_library',
+            hint: '先 `vibe_v5_read_library {list:true}` 拿头部列表（id／标题／内容指纹／状态），再用命中的 id 展开；若确实不存在，请具名上报而不是继续推理。',
+          },
         }
       }
       return { ok: true, count: out.length, items: out }
@@ -7624,6 +7787,7 @@ export function apply(ctx) {
       }
       L.push('')
       L.push('------------')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('------------')
       L.push('结束时只输出一个 JSON 对象：')
@@ -7652,6 +7816,7 @@ export function apply(ctx) {
       L.push('【声称的证据】' + ((((part && part.evidence) || []).join('、')) || '(无)'))
       L.push('------------')
       L.push('')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('')
       L.push('结束时只输出一个 JSON 对象：')
@@ -7682,6 +7847,7 @@ export function apply(ctx) {
       if ((p.disagreement || []).length) L.push('- ⚠ 已达轮次上限仍有分歧：' + JSON.stringify(p.disagreement[p.disagreement.length - 1]).slice(0, 500))
       L.push('------------')
       L.push('')
+      L.push(headerListContractBlock())
       L.push(stateBlock(member))
       L.push('')
       L.push('结束时只输出一个 JSON 对象：')
@@ -10667,7 +10833,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_feedback', '(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。', objParams({ op: S, id: S, category: S, route: S, context: S, phenomenon: S, impact: S, action: S, assessment: S, outcome: S, status: S, note: S, all: B }, ['op']), (s, a, x) => withCaller(s, x, '使用反馈库', (caller) => s.feedbackTool(caller, a)))
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
-  registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
+  registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone. TWO MODES (S21 pointer propagation): (1) HEADER LIST — `{list:true}` returns, for every recorded card, ONLY `id` / one-line title / `fingerprint` (内容指纹) / `status` / `owner` / `updatedAt`, with NO body at all; this is what you hold across objects instead of the text. (2) EXPAND BY ID — `{id:"<对象 id>"}` returns that object\'s BODY plus its stored `fingerprint`/`status`/`owner`/`updatedAt`. Asking for an id that does not exist is a NAMED refusal (`ok:false`) — never an empty body and never a look-alike: re-read the header list, check the id, and if it is genuinely absent report it by name instead of continuing from memory. The body is expanded only on request; "I already read it" is not the same as "it is still in my context".', objParams({ member: S, kind: S, id: S, list: B, limit: I }), (s, a) => s.readLibrary(a))
   registerTool('vibe_v5_propose_verify', '(member) Propose an object for consensus verification. Any member may propose; only voting members decide.', objParams({ target: S, kind: S, reason: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => s.maybeQueueVerify(a.target, a.kind, caller, a.reason)))
   registerTool('vibe_v5_self_report', '(member) Update YOUR OWN self-report (G6): overall/subgoal/plan/status. Any roster member may read every member\'s work-status fields; private messages never enter this view. Times (…At/…Ms) are set by the framework and are rejected if supplied. Same-value resubmission is idempotent (deduped:true). Call with no field to READ the view (the read is audited).', objParams({ overall: {}, subgoal: {}, plan: {}, status: S, reason: S, source: S }), (s, a, x) => s.selfReportTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_chair_proxy', '(academician) #45 — appoint a PROXY for the chair (D1/R4/R5). Only the academician may call it (a non-academician is refused by name). scope accepts exactly one value, "close" (the proxy may only close the meeting); why is required. Any client-supplied …At/…Ms or until is refused (times are set by the framework). Same-value resubmission is idempotent (deduped:true) and does not refresh since. A proxy NEVER adds a vote: voters()/quorum are untouched and the chair is not weighted (R5).', objParams({ member: S, scope: S, why: S }), (s, a, x) => s.chairProxyTool(s.memberIdOfAgent(x), a))
@@ -10801,13 +10967,20 @@ export function apply(ctx) {
   // mode they still work if a human or agent calls them deliberately.
   registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Parameters: file (required; `Formal/x.lean` or the full CWD-relative path — both name the same file), target (optional object id to record the run against), timeout_ms (optional per-run budget). There is NO run/run=false switch here — run-vs-archive are separate tools; use vibe_v5_lean_archive {run:false} to archive WITHOUT compiling. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; the result is durable at Formal/Jobs/<jobId>.json (vibe_v5_lean_job {jobId} reads it), is listed by vibe_v5_lean_lib.jobs, and the initiator also gets ONE 【形式化结果】 announcement in its next round. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. The framework appends `-R <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
   registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required). Optional `run` (default true): whether to COMPILE after writing — `run:false` archives the text only (useful when this host has no toolchain; the object then stays `attempted`/unset until something compiles it).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
-  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
-    const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
+  registerTool('vibe_v5_lean_lib', "(member) List (and by default rebuild) the Lean reuse library: your institute's Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining. S21 pointer face: `lib[]` / `proved[]` carry ONE line per archived file — `{name, file, kind, summary, sha256}` — where `sha256` is the same content identity `vibe_v5_lean_read` returns and the archive de-dupe uses; the Lean CODE TEXT itself is never carried here (use `vibe_v5_lean_read {name}` to fetch it verbatim), and `objects[].sha256` carries the identity recorded for a formalized object (empty when none was recorded, e.g. a proof withdrawn after a fidelity defect).", objParams({ refresh: B }), async (s, a) => {
+    const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length, libCards: [], provedCards: [] } : await s.rebuildLeanLibIndexes()
     const st = s.status()
     return {
       ok: true, mode: s.formalMode(), rebuilt: !(a && a.refresh === false),
       counts: r, todo: s.formalTodo(), jobs: s.leanJobsView(),
-      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, decision: (s.formalRecords()[k] || {}).decision || '', decisionSource: (s.formalRecords()[k] || {}).decisionSource || '', fidelity: (s.formalRecords()[k] || {}).fidelity || null, abstainedCount: Number(((s.formalRecords()[k] || {}).fidelity || {}).abstainedCount || 0), file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
+      // S21 (D1/D3): `sha256` is READ BACK from the archived record (never recomputed here) so the
+      // pointer face carries the SAME content identity Lean already uses for dedupe. It is '' or absent
+      // for records written before S21 and after a `defect` withdrawal.
+      objects: Object.keys(s.formalRecords()).map((k) => ({ target: k, status: (s.formalRecords()[k] || {}).status, decision: (s.formalRecords()[k] || {}).decision || '', decisionSource: (s.formalRecords()[k] || {}).decisionSource || '', fidelity: (s.formalRecords()[k] || {}).fidelity || null, abstainedCount: Number(((s.formalRecords()[k] || {}).fidelity || {}).abstainedCount || 0), sha256: (s.formalRecords()[k] || {}).sha256 || '', file: (s.formalRecords()[k] || {}).file, proof: (s.formalRecords()[k] || {}).proof, note: (s.formalRecords()[k] || {}).note, async: (s.formalRecords()[k] || {}).async || null })),
+      // S21 (D1/D5): the reuse library as a HEADER LIST — `(name, file, kind, 一行摘要, sha256)` and no
+      // code text. This is what makes "reuse instead of redefine" answerable without loading a body.
+      lib: Array.isArray(r.libCards) ? r.libCards : [],
+      proved: Array.isArray(r.provedCards) ? r.provedCards : [],
       // L1/L5/L6 (deep-review 5): ONE basis for every entry (cwd-relative, i.e. what a member's own
       // file tools resolve), an explicit `toolShortForm` for the institute-relative spelling the
       // tools also accept, and the bare `Lib/` hint replaced by the real library root.
@@ -11007,6 +11180,8 @@ export const __testHelpers = {
   sha256Hex,
   leanHashText,
   leanHasSearchFlag,
+  contentFingerprint,
+  headerListContractBlock,
 }
 
 function clamp01(v) { const n = Number(v); if (!Number.isFinite(n)) return 0.5; return Math.max(0, Math.min(1, n)) }
