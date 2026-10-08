@@ -691,6 +691,11 @@ async function runScenario(name) {
     console.log('  skip - S25-A 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 resourceSelfCheck／toolCallsPerTurnCap／memoryCeilingMb）')
     return
   }
+  // S25-B 场景只在 v5r 下可跑（record_progress 的 track 分轨是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s25b-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S25-B 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设的 record_progress 没有 track 分轨）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2732,6 +2737,30 @@ async function runScenario(name) {
         'S25-A：复位后回显为 false（got ' + String(st || null).slice(0, 160) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25a）：' + name)
+    }
+  } else if (name.startsWith('s25b-')) {
+    // S25-B（issue #13 #2）：记录分轨。**缺省 ⇒ 仍写 progress.md（逐字不变）**；给了 track ⇒
+    // 落到 `Progress/{routes,obstacles,rejected,state}.md`（"被否决的路线/障碍"各自成档）；
+    // 非法 track ⇒ 具名拒。提示词面不可观测的部分归静态门。
+    const rec = (args) => callTool('vibe_v5_record_progress', args, childAgent(childOf('r-1')))
+    if (name === 's25b-progress-tracks') {
+      const base = await rec({ content: 'S25-B 叙述基线' })
+      assert(base && base.ok === true && /Progress\/progress\.md$/.test(String(base.file)),
+        'S25-B：**缺省 track ⇒ 仍写 progress.md**（got ' + String(JSON.stringify(base) || null).slice(0, 200) + '）')
+      const rej = await rec({ content: 'S25-B 被否决的路线', track: 'rejected' })
+      assert(rej && rej.ok === true && /Progress\/rejected\.md$/.test(String(rej.file)) && String(rej.track) === 'rejected',
+        'S25-B：**track=rejected ⇒ 落 rejected.md**（got ' + String(JSON.stringify(rej) || null).slice(0, 200) + '）')
+      const obs = await rec({ content: 'S25-B 障碍', track: 'obstacle' })
+      assert(obs && obs.ok === true && /Progress\/obstacles\.md$/.test(String(obs.file)),
+        'S25-B：**track=obstacle ⇒ 落 obstacles.md**（got ' + String(JSON.stringify(obs) || null).slice(0, 200) + '）')
+      const bad = await rec({ content: 'x', track: 'nope' })
+      assert(bad && bad.ok === false && String(bad.code) === 'V5_INVALID_ARGUMENT' && /unknown track/.test(String(bad.message)),
+        'S25-B：**非法 track ⇒ 具名拒**（got ' + String(JSON.stringify(bad) || null).slice(0, 200) + '）')
+      const back = await rec({ content: 'S25-B 叙述续' })
+      assert(back && back.ok === true && /Progress\/progress\.md$/.test(String(back.file)),
+        'S25-B：分轨后**缺省仍回 progress.md**（got ' + String(JSON.stringify(back) || null).slice(0, 200) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s25b）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

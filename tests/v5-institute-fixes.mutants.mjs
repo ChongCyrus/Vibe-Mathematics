@@ -1595,6 +1595,17 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S25-B（issue #13 #2）：把 track 解析写死成 narrative ⇒ 所有分轨都写回 progress.md
+    // ⇒ `s25b-progress-tracks` 的"rejected ⇒ rejected.md"必红（单点）。
+    name: 'S25B: the track resolver hard-codes narrative (every track writes progress.md)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25b-progress-tracks' },
+    from: "      const T = (track === undefined || track === null || track === '') ? 'narrative' : String(track)",
+    to: "      const T = 'narrative'",
+    expect: /S25-B：\*\*track=rejected ⇒ 落 rejected\.md\*\*/,
+  },
+  {
     // ② 内存阈值读取口径写死 0 ⇒ 同一场景必红。
     name: 'S25A: the memory ceiling reader hard-codes 0 (setting memoryCeilingMb has no effect)',
     preset: 'vibe-math-v5r',
@@ -1683,6 +1694,7 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // 说明：**提示词面不可经工具观测** ⇒ 提示词断言归 `tests/audit-v5-integrity.mjs` 的 **R94／R97／R98**；
   // 这里的族只打**可观测的参数面**（`vibe_v5_set` 回执 ＋ `status()` 文本回显）✓。
   's25a-params-echo', 's25a-default-echo', 's25a-invalid-refused', 's25a-reset',
+  's25b-progress-tracks',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
   's8-freeze-say']
 let posRed = 0

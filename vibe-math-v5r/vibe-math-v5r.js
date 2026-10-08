@@ -5694,15 +5694,30 @@ export function apply(ctx) {
       }
       return n
     }
-    async function publishProgress(memberId, text) {
+    // S25-B（issue #13 #2 负向知识库）：记录分轨。**缺省（未给 track）⇒ 与既有逐字一致**地追加
+    // `Progress/progress.md`；给了 track ⇒ 落到 `Progress/{routes|obstacles|rejected|state}.md`
+    // （**格式相同**），并在 `progress.md` 里补一行索引（仅首次）。"被否决/障碍/尝试路线"因此
+    // 各自成档，不再挤在一个越写越沉的 progress 里；读端的截断一律计数（见注入处）。
+    const PROGRESS_TRACKS = { route: 'routes', obstacle: 'obstacles', rejected: 'rejected', state: 'state' }
+    async function publishProgress(memberId, text, track) {
       if (!memberId || !memberById(memberId)) return memberDiagnosis('记录研究进度（vibe_v5_record_progress）', memberId)
       if (!String(text || '').trim()) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'empty progress' }
-      const rel = 'Members/' + memberId + '/Progress/progress.md'
+      const T = (track === undefined || track === null || track === '') ? 'narrative' : String(track)
+      if (T !== 'narrative' && !PROGRESS_TRACKS[T]) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'unknown track: ' + String(track) + '（可用 narrative/route/obstacle/rejected/state）' }
+      const rel = T === 'narrative'
+        ? 'Members/' + memberId + '/Progress/progress.md'
+        : 'Members/' + memberId + '/Progress/' + PROGRESS_TRACKS[T] + '.md'
       const prev = (await readTextRel(rel)) || ''
       const ok = await writeTextRel(rel, prev + '\n### ' + fmtTime() + '｜' + memberId + '\n' + String(text) + '\n')
       if (!ok) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
+      if (T !== 'narrative') {
+        const indexRel = 'Members/' + memberId + '/Progress/progress.md'
+        const indexPrev = (await readTextRel(indexRel)) || ''
+        const marker = '- 分轨：routes/obstacles/rejected/state'
+        if (indexPrev.indexOf(marker) === -1) await writeTextRel(indexRel, indexPrev + '\n' + marker + '\n')
+      }
       await markProgress()
-      return { ok: true, file: rel }
+      return T === 'narrative' ? { ok: true, file: rel } : { ok: true, file: rel, track: T }
     }
     // Every recorded card must state 价值程度 / 动机用途计划 / 概率 — the charter's three
     // hard requirements. Missing fields are refused rather than silently defaulted,
@@ -5777,6 +5792,17 @@ export function apply(ctx) {
         if (!wantKind && !wantId) {
           const p = await readTextRel('Members/' + m.id + '/Progress/progress.md')
           if (p !== undefined) out.push({ member: m.id, kind: 'progress', id: 'progress', text: String(p).slice(-6000) })
+          // S25-B（issue #13 #2）：分轨记录随叙述一起注入 —— **每条尾 2000 并显式计数丢弃量**
+          // （沿用本仓既有的"截断必须计数"范式，见 status/report 的最新 N/累计丢弃 K），
+          // 这样"被否决的路线 / 障碍 / 尝试路线"能被读到，又不会被静默吞掉或撑爆上下文。
+          for (const tk of [['route', 'routes'], ['obstacle', 'obstacles'], ['rejected', 'rejected'], ['state', 'state']]) {
+            const tp = await readTextRel('Members/' + m.id + '/Progress/' + tk[1] + '.md')
+            if (tp === undefined || tp === null) continue
+            const ts = String(tp)
+            if (!ts.trim()) continue
+            const kept = ts.slice(-2000)
+            out.push({ member: m.id, kind: 'progress-track', id: tk[0], text: kept, droppedChars: Math.max(0, ts.length - kept.length) })
+          }
         }
       }
       return { ok: true, count: out.length, items: out }
@@ -9904,7 +9930,12 @@ export function apply(ctx) {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
           // `mode='resume'` is what makes this a RESUME rather than an instruction: the prompt
           // prints the seed as "恢复说明" (your own log, restored), not as a task to execute.
-          await spawnMember(m, seedText ? seedText.slice(-4000) : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）', 'resume')
+          // S25-B（issue #13 #2）：截断必须计数 —— 只有真的截断时才补那行说明（短日志逐字不变）。
+          const seedDropped = Math.max(0, seedText.length - 4000)
+          const seedBody = seedText
+            ? (seedText.slice(-4000) + (seedDropped > 0 ? '\n\n（恢复说明：你的 Progress/ 更早的 ' + seedDropped + ' 字符已省略——需要时请自行 readTextRel 查看。）' : ''))
+            : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）'
+          await spawnMember(m, seedBody, 'resume')
           respawned += 1
         } catch (e) {
           await putMember(Object.assign({}, m, { phase: 'failed', error: String((e && e.message) || e) }))
@@ -10755,7 +10786,7 @@ export function apply(ctx) {
     const r = await s.waitForActivity(ms, x && x.signal)
     return { ok: true, timedOut: r.timedOut, note: '醒来后请重新读取状态（vibe_v5_task_list / 状态块），本工具只报告是否超时。' }
   })
-  registerTool('vibe_v5_record_progress', '(member) Append to YOUR progress.md — your research log. Include what you tried, the routes and their obstacles, your current state, your plans, and failed/dead ends (they save the institute from repeating them).', objParams({ content: S }, ['content']), (s, a, x) => s.publishProgress(s.memberIdOfAgent(x), a.content))
+  registerTool('vibe_v5_record_progress', '(member) Append to YOUR research log. `track` picks the file: narrative (default) appends Progress/progress.md byte-for-byte as before; route / obstacle / rejected / state append Progress/{routes,obstacles,rejected,state}.md instead — use `rejected` for routes you disproved or abandoned and `obstacle` for blockers, so NEGATIVE knowledge is archived in its own file instead of piling up in one ever-heavier progress log (issue #13 #2). Include what you tried, the routes and their obstacles, your current state, your plans, and failed/dead ends (they save the institute from repeating them).', objParams({ content: S, track: S }, ['content']), (s, a, x) => s.publishProgress(s.memberIdOfAgent(x), a.content, a.track))
   registerTool('vibe_v5_record_proposition', '(member) Record a proposition/lemma in your library. REQUIRES value (价值程度), motive (动机用途计划) and p (your probability that it is true).', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'proposition', a))
   registerTool('vibe_v5_feedback', '(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。', objParams({ op: S, id: S, category: S, route: S, context: S, phenomenon: S, impact: S, action: S, assessment: S, outcome: S, status: S, note: S, all: B }, ['op']), (s, a, x) => withCaller(s, x, '使用反馈库', (caller) => s.feedbackTool(caller, a)))
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
