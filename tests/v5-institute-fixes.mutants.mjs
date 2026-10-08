@@ -1537,6 +1537,49 @@ const V5R_FAMILIES = [
     to: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {',
     expect: /S19：\*\*非法门槛具名拒\*\*/,
   },
+  // ── S20 family（`B-3(甲)`：决议取代写入面 ＋ `res:latest` 单一口径 ＋ `from_resolution` 校验）──────────
+  // 四个族各锚**一处**、各跑**一个** s20-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S20'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R90–R93，各一个唯一点 self-probe 变异）。
+  {
+    // ① **不校验"既存"**（幽灵 id 也能取代）⇒ s20-supersede 的"取代成功"断言必红。
+    name: 'S20: supersede stops checking that the target resolution EXISTS (a ghost id supersedes)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's20-supersede' },
+    from: "        if (!oldRec) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '找不到被取代的决议 ' + of + '（须先由 #55 落库）' }",
+    to: '        // MUTANT: the existence of the target is not checked',
+    expect: /S20：\*\*幽灵 `of` ⇒ 具名拒\*\*/,
+  },
+  {
+    // ② **允许二次取代**（单向链被破）⇒ s20-supersede 的"不得二次取代"断言必红。
+    name: 'S20: a resolution can be superseded TWICE (the one-way chain breaks)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's20-supersede' },
+    from: "          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + of + ' **已被取代**（by ' + String(oldRec.supersededBy) + '）⇒ **不得二次取代**（状态机单向）' }",
+    to: '          // MUTANT: a second supersede is allowed',
+    expect: /S20：\*\*不得二次取代\*\*/,
+  },
+  {
+    // ③ **`latest` 退回"最后一条"**（被取代者又能当 latest）⇒ s20-latest-skips 的"退回"断言必红。
+    name: 'S20: latestResolution falls back to the LAST element (a superseded resolution becomes "latest" again)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's20-latest-skips' },
+    from: "        if (!String(list[i].supersededBy || '')) return list[i]",
+    to: '        return list[i]',
+    expect: /S20\/B-3\(甲\)：\*\*`res:latest` 退回上一条未被取代者\*\*/,
+  },
+  {
+    // ④ **`from_resolution` 不校验已取代**（被取代的决议仍可派活）⇒ s20-assign-superseded-refused 必红。
+    name: 'S20: from_resolution stops refusing a superseded resolution (superseded decisions dispatch work)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's20-assign-superseded-refused' },
+    from: "        if (String(rr.supersededBy || '')) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + fromRes + ' **已被取代**（by ' + String(rr.supersededBy) + '）⇒ **不得据此派活**（B-3(甲)/S20）' }\n        }",
+    to: '        // MUTANT: a superseded resolution may still dispatch work',
+    expect: /S20\/B-3\(甲\)：\*\*已被取代的决议不得据此派活\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1576,7 +1619,9 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   // S18（#23/#38；K3/K5/D4）：每个 s18-* 场景一个正控（提出/附议成立/自附议拒/幂等/撤回/边界）。
   's18-motion-propose', 's18-second-carries', 's18-self-second-refused', 's18-second-idempotent', 's18-withdraw', 's18-boundaries',
   // S19（`D-10` 待办 ②）：每个 s19-* 场景一个正控（门槛可设／非法门槛具名拒）。
-  's19-threshold-settable', 's19-threshold-invalid']
+  's19-threshold-settable', 's19-threshold-invalid',
+  // S20（B-3(甲)）：每个 s20-* 场景一个正控（取代写入／latest 单一口径／已取代不得派活／未取代可派活）。
+  's20-supersede', 's20-latest-skips', 's20-assign-superseded-refused', 's20-assign-from-resolution']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

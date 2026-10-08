@@ -681,6 +681,11 @@ async function runScenario(name) {
     console.log('  skip - S19 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 motions 台账与 motionSecondsRequired 参数）')
     return
   }
+  // S20 场景只在 v5r 下可跑（决议取代写入面与 `from_resolution` 是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s20-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S20 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 resolutions 取代链与 from_resolution 校验）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2603,6 +2608,85 @@ async function runScenario(name) {
       assert(reset && reset.ok === true, 'S19：**复位门槛=1**（顺序无关；got ' + String(JSON.stringify(reset) || null).slice(0, 140) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s19）：' + name)
+    }
+  } else if (name.startsWith('s20-')) {
+    // S20（B-3(甲)）：**决议取代写入面**（`op:'supersede'`）＋ **`res:latest` 单一口径** ＋ **`from_resolution` 校验**。
+    const openFormalS20 = async (agenda) => {
+      const mt = await callTool('vibe_v5_meeting', { agenda, kind: 'solve-vote' }, ROOT)
+      assert(mt && mt.ok === true, 'S20：正式会议已开（前置；got ' + String(JSON.stringify(mt) || null).slice(0, 160) + '）')
+      return String((await callTool('vibe_v5_status', {})).meeting.id)
+    }
+    const recordRes = async (text) => {
+      const r = await callTool('vibe_v5_result_record', { text, kind: 'resolution' }, childAgent(childOf('acad')))
+      assert(r && r.ok === true, 'S20：决议已落库（前置；got ' + String(JSON.stringify(r) || null).slice(0, 200) + '）')
+      return String(r.resolution.id)
+    }
+    if (name === 's20-supersede') {
+      await openFormalS20('S20 取代写入')
+      const r1 = await recordRes('S20 决议一（将被取代）')
+      const r2 = await recordRes('S20 决议二（取代者）')
+      assert(r1 === 'res-1' && r2 === 'res-2', 'S20：两条决议标识＝res-1／res-2（前置；got ' + String(JSON.stringify([r1, r2]) || null) + '）')
+      const effBefore = Number((((((readV5State() || {}).institutes || {})['default::institute'] || {}).resolutions || [])[0] || {}).effectiveAt || 0)
+      const r3 = await recordRes('S20 决议三（用于二次取代）')
+      const ghost = await callTool('vibe_v5_result_record', { op: 'supersede', of: 'res-404', by: r2 }, childAgent(childOf('acad')))
+      assert(ghost && ghost.ok === false && /找不到被取代的决议/.test(String(ghost.message)),
+        'S20：**幽灵 `of` ⇒ 具名拒**（不校验既存即红；got ' + String(JSON.stringify(ghost) || null).slice(0, 220) + '）')
+      const sup = await callTool('vibe_v5_result_record', { op: 'supersede', of: r1, by: r2, why: 'S20 取代理由' }, childAgent(childOf('acad')))
+      assert(sup && sup.ok === true && String(sup.superseded.of) === r1 && String(sup.superseded.by) === r2 && Number(sup.superseded.at) > 0,
+        'S20/B-3(甲)：**取代成功**（`superseded{of,by,at,byWhom}`；got ' + String(JSON.stringify(sup) || null).slice(0, 240) + '）')
+      const st = readV5State()
+      const list = (((st || {}).institutes || {})['default::institute'] || {}).resolutions || []
+      assert(list.length === 3 && String(list[0].supersededBy) === r2 && Number(list[0].effectiveAt) === effBefore,
+        'S20：**旧条目保留**（长度 3）＋ **`effectiveAt` 不变** ＋ 标注取代链（got ' + String(JSON.stringify(list).slice(0, 260) || null).slice(0, 260) + '）')
+      const again = await callTool('vibe_v5_result_record', { op: 'supersede', of: r1, by: r2 }, childAgent(childOf('acad')))
+      assert(again && again.ok === true && again.deduped === true,
+        'S20：**同值取代幂等**（`deduped`；got ' + String(JSON.stringify(again) || null).slice(0, 200) + '）')
+      const twice = await callTool('vibe_v5_result_record', { op: 'supersede', of: r1, by: r3 }, childAgent(childOf('acad')))
+      assert(twice && twice.ok === false && /不得二次取代/.test(String(twice.message)),
+        'S20：**不得二次取代**（`of` 已被取代、换一个未被取代的 `by` 仍拒；got ' + String(JSON.stringify(twice) || null).slice(0, 240) + '）')
+      const useDead = await callTool('vibe_v5_result_record', { op: 'supersede', of: r3, by: r1 }, childAgent(childOf('acad')))
+      assert(useDead && useDead.ok === false && /本身已被取代/.test(String(useDead.message)),
+        'S20：**不得用被取代者取代他人**（具名拒；got ' + String(JSON.stringify(useDead) || null).slice(0, 240) + '）')
+    } else if (name === 's20-latest-skips') {
+      await openFormalS20('S20 latest 跳过被取代')
+      const r1 = await recordRes('S20 latest 决议一')
+      const r2 = await recordRes('S20 latest 决议二')
+      const q1 = await callTool('vibe_v5_report', {})
+      assert(/最新（未被取代）[^：]*：res-2/.test(JSON.stringify(q1)),
+        'S20：`report()` 的"最新（未被取代）"＝`res-2`（三处同源；got ' + String(JSON.stringify(q1) || null).slice(0, 200) + '）')
+      const before = String((await callTool('vibe_v5_status', {})).resolutions.latest_id)
+      assert(before === r2, 'S20：取代前 `latest_id === res-2`（前置；got ' + String(JSON.stringify(before) || null) + '）')
+      const sup = await callTool('vibe_v5_result_record', { op: 'supersede', of: r2, by: r1, why: 'S20 取代当前 latest' }, childAgent(childOf('acad')))
+      assert(sup && sup.ok === true, 'S20：取代当前 latest 成功（前置；got ' + String(JSON.stringify(sup) || null).slice(0, 200) + '）')
+      const after = String((await callTool('vibe_v5_status', {})).resolutions.latest_id)
+      assert(after === r1 && after !== before,
+        'S20/B-3(甲)：**`res:latest` 退回上一条未被取代者**（两次取值不同：' + String(JSON.stringify([before, after]) || null) + '）')
+      const q2 = await callTool('vibe_v5_report', {})
+      assert(/最新（未被取代）[^：]*：res-1/.test(JSON.stringify(q2)),
+        'S20：`report()` 同步为 `res-1`（第三处同源；got ' + String(JSON.stringify(q2) || null).slice(0, 200) + '）')
+      const supAll = await callTool('vibe_v5_result_record', { op: 'supersede', of: r1, by: 'res-1' }, childAgent(childOf('r-3')))
+      assert(supAll && supAll.ok === false,
+        'S20：既已被取代 ⇒ 再取代被拒（前置；got ' + String(JSON.stringify(supAll) || null).slice(0, 200) + '）')
+    } else if (name === 's20-assign-superseded-refused') {
+      await openFormalS20('S20 已取代不得派活')
+      const r1 = await recordRes('S20 待取代决议')
+      const r2 = await recordRes('S20 取代者决议')
+      const sup = await callTool('vibe_v5_result_record', { op: 'supersede', of: r1, by: r2 }, childAgent(childOf('acad')))
+      assert(sup && sup.ok === true, 'S20：取代成功（前置；got ' + String(JSON.stringify(sup) || null).slice(0, 160) + '）')
+      const asg = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S20 已取代决议派活', acceptance: '完成', from_resolution: r1 }, ROOT)
+      assert(asg && asg.ok === false && /已被取代/.test(String(asg.message)) && /不得据此派活/.test(String(asg.message)),
+        'S20/B-3(甲)：**已被取代的决议不得据此派活**（具名拒；got ' + String(JSON.stringify(asg) || null).slice(0, 240) + '）')
+    } else if (name === 's20-assign-from-resolution') {
+      const mtId = await openFormalS20('S20 未取代可派活')
+      const r1 = await recordRes('S20 未取代决议')
+      const asg = await callTool('vibe_v5_assign', { to: 'r-1', why: 'S20 未取代决议派活', acceptance: '完成', from_resolution: r1 }, ROOT)
+      assert(asg && asg.ok === true && String(asg.task && asg.task.resolution_id) === r1,
+        'S20/B-3(甲)：**未取代 ⇒ 派活成功且记 `resolution_id`**（got ' + String(JSON.stringify(asg && asg.task) || null).slice(0, 240) + '）')
+      const list = await callTool('vibe_v5_task_list', {}, ROOT)
+      const t = (((list && list.tasks) || []).filter((x) => String(x.resolution_id || '') === r1))[0]
+      assert(!!t, 'S20：任务板可见 `resolution_id`（got ' + String(JSON.stringify((list && list.tasks) || []).slice(0, 200) || null).slice(0, 200) + '）')
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s20）：' + name)
     }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)

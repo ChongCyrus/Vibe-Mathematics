@@ -1967,6 +1967,16 @@ export function apply(ctx) {
       return { total: items.length, open, handover, overdue }
     }
     const nextResolutionId = () => 'res-' + (resolutionsList().length + 1)
+    /** S20（B-3(甲)）：**最近一条未被取代的决议** —— **唯一口径**，三处共用：① `resolveQuoteAnchor` 的 `res:latest`
+     * ② `status.resolutions.latest_id`／`latest_effective_at` ③ `report()` 的"最近决议"展示；
+     * **全部被取代 ⇒ `null`**（⇒ `res:latest` **悬空拒**，**绝不回落到被取代者** ✗）。 */
+    const latestResolution = () => {
+      const list = resolutionsList().filter((r) => r && String(r.id) !== '')
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (!String(list[i].supersededBy || '')) return list[i]
+      }
+      return null
+    }
     /** S13 #55：**记录决议**（院士 ∪ 当次会议记录人；正式会议内；公告即生效；稳定标识）。 */
     async function resultRecordTool(memberId, a) {
       const args = a || {}
@@ -1978,6 +1988,34 @@ export function apply(ctx) {
       }
       if (!meeting) return { ok: false, code: 'V5_NO_OPEN_MEETING', message: '决议是**会议产出**：请在**进行中的正式会议**内落决议（S13/D7；院士也不得会外落决议）' }
       if (meetingLevelOf(meeting) !== 'formal') return truthWriteRefusal('不得落决议')
+      // S20（B-3(甲)）：**取代一条既存决议**（`op:'supersede'`）—— **不新增工具**；**同台账／同权限面／同"正式会议内"**
+      // 约束（上面四道门已过 ✓）；**只改 `resolutions[]` 内字段** ⇒ **旧条目保留**（台账只增不减 ✓）、**`effectiveAt` 不变** ✓。
+      if (String(args.op || '').trim() === 'supersede') {
+        const of = String(args.of || '').trim()
+        const by = String(args.by || '').trim()
+        if (!of || !by) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '取代需要 `of`（被取代的 `res-<n>`）与 `by`（取代者 `res-<m>`，**另一条既存决议**）' }
+        if (of === by) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '`of` 与 `by` 不能是同一条决议（' + of + '）' }
+        const list = resolutionsList()
+        const oldRec = list.filter((x) => x && String(x.id) === of)[0]
+        const supRec = list.filter((x) => x && String(x.id) === by)[0]
+        if (!oldRec) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '找不到被取代的决议 ' + of + '（须先由 #55 落库）' }
+        if (!supRec) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '找不到取代者决议 ' + by + '（须先由 #55 落库）' }
+        if (String(supRec.supersededBy || '')) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '取代者 ' + by + ' 本身已被取代 ⇒ 不得用它取代他人（状态机单向）' }
+        if (String(oldRec.supersededBy || '')) {
+          if (String(oldRec.supersededBy) === by) {
+            return { ok: true, deduped: true, superseded: { of, by, at: Number(oldRec.supersededAt || 0) }, message: '同值取代（幂等）：未重复写' }
+          }
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + of + ' **已被取代**（by ' + String(oldRec.supersededBy) + '）⇒ **不得二次取代**（状态机单向）' }
+        }
+        const atSup = now()
+        const nextRec = Object.assign({}, oldRec, { supersededBy: by, supersededAt: atSup, supersededByWhom: memberId })
+        await patchInstitute({ resolutions: (l) => (Array.isArray(l) ? l : []).map((r) => (String(r.id) === of ? nextRec : r)) })
+        await saveChatLine('【决议·取代】' + memberId + ' 以 ' + by + ' 取代 ' + of
+          + (String(args.why || '') ? '（' + String(args.why) + '）' : '')
+          + '（B-3(甲)/S20：**只标注取代链**；**`effectiveAt` 不变**、旧条目保留）')
+        const latest = latestResolution()
+        return { ok: true, superseded: { of, by, at: atSup, byWhom: memberId }, latest_id: (latest ? String(latest.id) : '') }
+      }
       const text = String(args.text || '').trim()
       if (!text) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'text is required：决议必须给出文本' }
       if (text.length > RESOLUTION_TEXT_MAX) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议过长（上限 ' + RESOLUTION_TEXT_MAX + ' 字符）' }
@@ -2324,8 +2362,10 @@ export function apply(ctx) {
         if (!all.length) return quoteRefused('悬空引用：决议台账为空（`res:` 只能引**已落库**的决议；未生效的决议不得被引用为结论）')
         let rec = null
         if (want === '' || want === 'latest') {
-          const live = all.filter((x) => x && !String(x.supersededBy || ''))
-          rec = (live.length ? live : all)[(live.length ? live : all).length - 1]
+          // S20（B-3(甲)）：**口径单点** `latestResolution()` ⇒ **全部被取代 ⇒ `null`** ⇒ **悬空拒**（**绝不回落** ✗）。
+          const latest = latestResolution()
+          if (!latest) return quoteRefused('悬空引用：决议**全部已被取代** ⇒ `res:latest` 不可引（**不得回落到被取代者**，S20/B-3(甲)）')
+          rec = latest
         } else {
           const id = /^\d+$/.test(want) ? ('res-' + want) : want
           rec = all.filter((x) => x && String(x.id) === id)[0] || null
@@ -5901,6 +5941,8 @@ export function apply(ctx) {
         if (meta.assignedBy !== undefined) next.assignedBy = String(meta.assignedBy)
         if (meta.why !== undefined) next.why = String(meta.why)
         if (meta.acceptance !== undefined) next.acceptance = String(meta.acceptance)
+        // S20（B-3(甲)）：行动项可记**来源决议**（`resolution_id`；`tasks` 已在 fold 白名单 ⇒ 无新耐久键 ✓）。
+        if (meta.resolution_id !== undefined) next.resolution_id = String(meta.resolution_id)
       }
       next.revision = task.revision + 1
       next.updatedAt = now()
@@ -5922,6 +5964,16 @@ export function apply(ctx) {
       // S15（K4/GAPS 12）：派活也**只收相对期限**（`due_in`）；任何时间键一律拒。
       const badAssignTime = Object.keys(args).filter((k) => /(At|Ms)$/i.test(k))
       if (badAssignTime.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '时间由框架设置：不接受时间参数 ' + badAssignTime.join('、') + '（期限请用 `due_in`）' }
+      // S20（B-3(甲)）：**已被取代的决议不得派活** —— `from_resolution` 必须指向**既存且未被取代**的 `res-<n>`；
+      // 未取代 ⇒ 记 `resolution_id`（随 CAS 写入，供审计；`tasks` 已在 fold 白名单 ⇒ **无新耐久键** ✓）。
+      const fromRes = String(args.from_resolution || args.resolutionId || '').trim()
+      if (fromRes) {
+        const rr = resolutionsList().filter((x) => x && String(x.id) === fromRes)[0]
+        if (!rr) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '找不到决议 ' + fromRes + '（`from_resolution` 必须是既存 `res-<n>`，由 #55 落库）' }
+        if (String(rr.supersededBy || '')) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + fromRes + ' **已被取代**（by ' + String(rr.supersededBy) + '）⇒ **不得据此派活**（B-3(甲)/S20）' }
+        }
+      }
       const to = String(args.to || '').trim()
       const target = memberById(to)
       if (!target || target.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + to + '" not found' }
@@ -5966,7 +6018,7 @@ export function apply(ctx) {
         // S6（D1/D2/D6/D8）：`authorized` 是**内部**位置参数（不在工具 args 面上）：`vibe_v5_assign` 已经把
         // 权限判定做过了（含 `once` 授权在获批时即被消费）⇒ 它自己的这次板上写入必须**沿用**该判定，
         // 否则"被授权者调用 assign"会在内部 reassign 处再次被判为无权。
-        { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance, authorized: true })
+        { assignedBy: isOffice(memberId) ? 'office' : memberId, why, acceptance, authorized: true, resolution_id: fromRes })
       if (!r.ok) return r
       // G4: NO second write here — the metadata went into the CAS write above (one task commit, so an
       // interleaved task_update can neither be swallowed nor silently lose its revision).
@@ -9887,8 +9939,9 @@ export function apply(ctx) {
         // S13（G2）：**只读**决议面（稳定标识／生效时点／检索维度）——**不含**任何可写入口。
         resolutions: {
           count: resolutionsList().length,
-          latest_id: (resolutionsList().length ? String(resolutionsList()[resolutionsList().length - 1].id) : ''),
-          latest_effective_at: (resolutionsList().length ? Number(resolutionsList()[resolutionsList().length - 1].effectiveAt || 0) : 0),
+          // S20（B-3(甲)）：**口径单点** —— 与 `res:latest`／`report()` 共用 `latestResolution()`（**最近一条未被取代**）✓。
+          latest_id: (latestResolution() ? String(latestResolution().id) : ''),
+          latest_effective_at: (latestResolution() ? Number(latestResolution().effectiveAt || 0) : 0),
           kinds: RESOLUTION_KINDS.slice(),
         },
         // MEDIUM 4 (deep review): the requests only the OFFICE can approve. `to:'voters'` never
@@ -10108,7 +10161,10 @@ export function apply(ctx) {
       const resAll = resolutionsList()
       if (resAll.length) {
         const lastFew = resAll.slice(-3).reverse()
-        L.push('- 决议：共 ' + resAll.length + ' 条｜最近：' + lastFew.map((r) => String(r.id) + '（' + (String(r.supersededBy || '') ? '**已被复议** ' + String(r.supersededBy) : '生效 ' + fmtTime(Number(r.effectiveAt || 0))) + '）').join('、'))
+        // S20（B-3(甲)）：**口径单点** —— "最新（未被取代）"与 `res:latest`／`status.resolutions.latest_*` **同源**；
+        // **全部被取代 ⇒ 明写"全部已被取代"**（不静默兜底、不回落到被取代者 ✗）。
+        const latestRes = latestResolution()
+        L.push('- 决议：共 ' + resAll.length + ' 条｜最近：' + lastFew.map((r) => String(r.id) + '（' + (String(r.supersededBy || '') ? '**已被复议** ' + String(r.supersededBy) : '生效 ' + fmtTime(Number(r.effectiveAt || 0))) + '）').join('、') + '｜**最新（未被取代）**：' + (latestRes ? String(latestRes.id) : '（**全部已被取代**）'))
         L.push('- 决议检索：`vibe_v5_resolutions {id?|target?|meetingId?|kind?|limit?}`（只读；时间只作排序/展示）')
       }
       // S15（K4/GAPS 11＋12）：**上次纪要确认** ＋ **行动项跟踪**（只可见、不强制；**无定时器**）。
@@ -10626,7 +10682,7 @@ export function apply(ctx) {
   registerTool('vibe_v5_motion', '(member) #23 — RAISE A MOTION (K3/K5/D4) inside an ONGOING meeting, or WITHDRAW YOUR OWN with `op:"withdraw"`. Params: op? ("withdraw"), motion_id? (required for withdraw, `m-N`), kind (topic|procedural|resolution — required to raise), text (the motion text, required to raise; <= 2000 chars), reason? (withdraw). A motion is a PROPOSAL about a FUTURE action/process (topic / procedural: adjourn, extend, limit speech, close / a resolution DRAFT) — it is NOT a procedural objection (#46, which protests an ALREADY-HAPPENING process and needs no second) and NOT a reconsideration (#52, which targets a CLOSED conclusion): the three are ORTHOGONAL. It needs SECONDS to carry (`vibe_v5_second`; threshold = the `motionSecondsRequired` param, default 1). `carried` is decided AT THE MOMENT the threshold is reached, is one-way (a carried motion can no longer be seconded or withdrawn) and PRODUCES NO CONCLUSION: it never writes verdicts/solve/resolutions (a resolution draft still lands ONLY through `vibe_v5_result_record`), never touches ballots/voters/cast, and inside a LIGHT meeting a `resolution` motion is refused by the single S12 truthWriteRefusal point. No phase change, no timer, no auto-close — the framework only records. Every …At/…Ms is rejected (the framework writes times).', objParams({ op: S, motion_id: S, kind: S, text: S, reason: S }), (s, a, x) => s.motionTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_second', '(member) #38 — SECOND a `proposed` motion (K3/K5). Params: motion_id (required, `m-N`). ANY active member may second (no grant needed) EXCEPT the mover (seconding your own motion is refused by name); the same member seconding twice is idempotent (deduped:true). When the seconds reach the threshold (`motionSecondsRequired`, default 1) the motion becomes `carried` AT THAT MOMENT. Seconding is NOT voting: it creates no vote weight, does not touch ballots/voters/cast, and produces no conclusion; a carried motion can no longer be seconded or withdrawn. No timer, no phase change, no drive. Every …At/…Ms is rejected.', objParams({ motion_id: S }, ['motion_id']), (s, a, x) => s.secondTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_minutes', '(academician or the current secretary) #54 — RECORD a NAMED entry in the minutes (agenda point / motion / tally / resolution / action item), CONFIRM THE PREVIOUS MEETING\'S MINUTES (K4/GAPS 11: `op:"confirm"` + `of?` + `fact_fix?`), or (with no `entry`) REPORT THE GAPS only. Params: op? ("confirm"), of? (the minutes being confirmed; defaults to the MOST RECENTLY FINALIZED meeting, and the receipt always names it), fact_fix? (a FACTUAL correction — appended to THIS meeting\'s minutes as a separate `## 上次纪要确认` section; the old minutes are NEVER rewritten, and a conclusion is never changed), entry? (the named text; engine-written `at` + `by`), detail? (brief|normal|empty = report gaps), agenda_item?. Only the academician or THIS meeting\'s secretary may write (any other member is refused by name). Appends ONLY — it never rewrites the `### <who>` speech sections (the S10 in-meeting anchors depend on them) nor the two zones (S8 发言区/投票区); it never deletes an objection note (S4) and NEVER auto-completes a gap (R7). The same entry / the same confirmation is idempotent (deduped:true). No time may be supplied: every …At/…Ms is rejected.', objParams({ op: S, of: S, fact_fix: S, entry: S, text: S, detail: S, agenda_item: S }), (s, a, x) => s.minutesTool(s.memberIdOfAgent(x), a))
-  registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
+  registerTool('vibe_v5_result_record', '(academician or this meeting\'s secretary) #55 — RECORD A RESOLUTION (S13/G2, `03` #26). Params: text (required), actions? [{who, due_in?}] (owners must be ACTIVE members — a temp worker is refused; RELATIVE deadlines only: any …At/…Ms, including due_at, is rejected), target? (the object under verification / board id), kind? (resolution|solve|org|procedure), retroactive?. G2: the resolution takes effect ON ANNOUNCEMENT (effectiveAt === at, the framework writes it); a retroactive DECLARATION (retroactive:true) is recorded and archived (declaredAt) but NEVER changes effectiveAt. The stable id `res-<n>` is ALLOCATED BY THE FRAMEWORK (institute-wide monotonic, never taken from the caller) and is what makes the resolution quotable across meetings (`res:<n>` / `res:latest`) and auditable (R7). Written ONLY inside an ONGOING FORMAL meeting (a light meeting ⇒ the D7 named refusal from the single truthWriteRefusal point); the same resolution (same meeting+target+text) is idempotent (deduped:true). It writes NO verdicts/solve (R6: a resolution is not truth) and drives nothing.', objParams({ text: S, actions: { type: 'array', items: { type: 'object', properties: { who: S, due_in: S }, additionalProperties: true } }, target: S, kind: { type: 'string', enum: ['resolution', 'solve', 'org', 'procedure'] }, retroactive: B, op: S, of: S, by: S, why: S }, ['text']), (s, a, x) => s.resultRecordTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_resolutions', '(member) #56 — SEARCH RESOLUTIONS (read-only; S13/G2). Params: id? (`res-<n>` or `res:<n>`/`<n>`), target?, meetingId?, kind?, limit? (1-50, default 10). Returns {count, resolutions[{id,kind,text,effectiveAt,meetingId,target,supersededBy,actions_count}]}. The time is only for ordering/display: any …At/…Ms filter is rejected. Nothing here drives anything.', objParams({ id: S, target: S, meetingId: S, kind: S, limit: { type: 'number' } }), (s, a, x) => s.resolutionsTool(s.memberIdOfAgent(x), a))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = an UNCERTAIN estimate (a probability; not an explicit abstention). The word abstain (弃权) is an EXPLICIT abstention: counted as answered, never as an option. The word unable (无法判断) declares you cannot judge: it takes you out of this verification denominator (D3) while keeping you on the roster list. Silence is neither consent nor opposition, and it BLOCKS the conclusion.', objParams({ target: S, verdict: {}, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_end_verify', '(academician) Explicitly END the debate on the object under verification (R10-2a), so the aggregation may run. Named and auditable (endedBy=academician). It cannot bypass the participation gate: an unanswered member still blocks the conclusion.', objParams({ target: S, reason: S }), (s, a, x) => s.endVerify(s.memberIdOfAgent(x), a.target, a.reason))

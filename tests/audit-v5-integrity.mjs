@@ -676,6 +676,34 @@ const SELF_PROBE_MUTATIONS = [
     to: '        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {',
     expect: 'R89',
   },
+  {
+    name: 'S20: supersede stops checking that both resolutions EXIST (a bogus id supersedes)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        if (!oldRec) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '找不到被取代的决议 ' + of + '（须先由 #55 落库）' }",
+    to: '        // MUTANT: existence of the target is not checked',
+    expect: 'R90',
+  },
+  {
+    name: 'S20: a resolution can be superseded TWICE (the one-way chain breaks)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + of + ' **已被取代**（by ' + String(oldRec.supersededBy) + '）⇒ **不得二次取代**（状态机单向）' }",
+    to: '          // MUTANT: a second supersede is allowed',
+    expect: 'R90',
+  },
+  {
+    name: 'S20: latestResolution falls back to the last ELEMENT (superseded resolutions can be "latest" again)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: '        if (!String(list[i].supersededBy || \'\')) return list[i]',
+    to: '        return list[i]',
+    expect: 'R91',
+  },
+  {
+    name: 'S20: from_resolution stops refusing a superseded resolution (superseded decisions dispatch work)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "        if (String(rr.supersededBy || '')) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '决议 ' + fromRes + ' **已被取代**（by ' + String(rr.supersededBy) + '）⇒ **不得据此派活**（B-3(甲)/S20）' }\n        }",
+    to: '        // MUTANT: a superseded resolution may still dispatch work',
+    expect: 'R92',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -1996,6 +2024,70 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; domain>=1 integer=' + (!!setWin && /Math\.floor\(n\) !== n \|\| n < 1/.test(setWin))
     + '; named refusal=' + /motionSecondsRequired 必须是/.test(setWin)
     + '; default=1=' + /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 1/.test(v5rRaw))
+  // ---- S20 (B-3(甲)): resolution supersede write face + res:latest single rule + from_resolution guard ----
+  const supWin = (() => {
+    const s = v5rRaw.indexOf("if (String(args.op || '').trim() === 'supersede') {")
+    const e = v5rRaw.indexOf('const text = String(args.text ||', s)
+    return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
+  })()
+  const quoteWin = (() => {
+    const s = v5rRaw.indexOf("if (want === '' || want === 'latest') {")
+    return s >= 0 ? v5rRaw.slice(s, s + 420) : ''
+  })()
+  const assignWin = (() => {
+    const s = v5rRaw.indexOf("const fromRes = String(args.from_resolution")
+    return s >= 0 ? v5rRaw.slice(s, s + 700) : ''
+  })()
+  gate(!!supWin
+    && /const oldRec = list\.filter\(\(x\) => x && String\(x\.id\) === of\)\[0\]/.test(supWin)
+    && /const supRec = list\.filter\(\(x\) => x && String\(x\.id\) === by\)\[0\]/.test(supWin)
+    && /if \(of === by\) return \{ ok: false/.test(supWin)
+    && /if \(!oldRec\) return \{ ok: false/.test(supWin)
+    && /if \(!supRec\) return \{ ok: false/.test(supWin)
+    && /String\(supRec\.supersededBy \|\| ''\)\) return \{ ok: false/.test(supWin)
+    && /不得二次取代/.test(supWin)
+    && /deduped: true, superseded: \{ of, by/.test(supWin)
+    && /resolutions: \(l\) => \(Array\.isArray\(l\) \? l : \[\]\)\.map\(\(r\) => \(String\(r\.id\) === of \? nextRec : r\)\)/.test(supWin)
+    && /effectiveAt` 不变/.test(supWin),
+    'R90', 'S20/B-3(甲): superseding a resolution (same tool, `op:"supersede"`) requires BOTH ids to exist and to differ, refuses a second supersede and refuses a superseder that is itself superseded, is idempotent on the same pair, and it MAPS the ledger in place (the old entry is kept, effectiveAt unchanged)')
+  gate(/const latestResolution = \(\) => \{/.test(v5rRaw)
+    && /if \(!String\(list\[i\]\.supersededBy \|\| ''\)\) return list\[i\]/.test(v5rRaw)
+    && (v5rRaw.match(/latestResolution\(\)/g) || []).length >= 6
+    && !!quoteWin && /const latest = latestResolution\(\)/.test(quoteWin)
+    && /全部已被取代/.test(quoteWin)
+    && !/rec = \(live\.length \? live : all\)/.test(v5rRaw)
+    && /latest_id: \(latestResolution\(\) \? String\(latestResolution\(\)\.id\) : ''\)/.test(v5rRaw)
+    && /latest_effective_at: \(latestResolution\(\)/.test(v5rRaw)
+    && /最新（未被取代）/.test(v5rRaw),
+    'R91', 'S20: `latestResolution()` is the ONE rule for "the newest NOT-superseded resolution" — `res:latest`, `status.resolutions.latest_id/latest_effective_at` and the `report()` display all use it (no residual "last element" logic), and when EVERY resolution is superseded it yields null so `res:latest` is a NAMED dangling refusal instead of silently falling back to a superseded one')
+  gate(!!assignWin
+    && /const fromRes = String\(args\.from_resolution/.test(v5rRaw)
+    && /找不到决议 ' \+ fromRes/.test(assignWin)
+    && /已被取代.*不得据此派活/s.test(assignWin)
+    && /resolution_id: fromRes/.test(v5rRaw)
+    && /if \(meta\.resolution_id !== undefined\) next\.resolution_id/.test(v5rRaw)
+    && !/putVerdict\(|putSolve\(/.test(assignWin),
+    'R92', 'S20/B-3(甲): `vibe_v5_assign {from_resolution}` refuses a resolution that does not exist and NAMEDLY refuses one that has been superseded (so a superseded decision can no longer dispatch work); a live one is recorded as `tasks[].resolution_id` (inside the CAS write) and nothing here writes verdicts/solve')
+  gate(!!supWin
+    && /const gate = canDo\(memberId, 'result_record'\)/.test(v5rRaw)
+    && /truthWriteRefusal\('不得落决议'\)/.test(v5rRaw)
+    && /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw)
+    && !/voters\(|castVerdict\(|ballot/.test(supWin)
+    && !/code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(supWin),
+    'R93', 'S20: supersede sits BEHIND the four existing #55 gates (academician ∪ the current secretary, an ongoing FORMAL meeting via the single truthWriteRefusal point, time keys rejected), it is NOT grantable (the bounded GRANTABLE_COMMANDS is untouched), it confers no vote weight (no voters/castVerdict/ballot access) and it invents no new error code')
+  notes.push('S20 (v5r): supersede written=' + !!supWin
+    + '; both ids must exist=' + /if \(!oldRec\) return \{ ok: false/.test(supWin)
+    + '; one-way=' + /不得二次取代/.test(supWin)
+    + '; idempotent=' + /deduped: true, superseded/.test(supWin)
+    + '; entry kept (map)=' + /\.map\(\(r\) => \(String\(r\.id\) === of \? nextRec : r\)\)/.test(supWin)
+    + '; latest single rule=' + /const latestResolution = \(\) => \{/.test(v5rRaw)
+    + '; three call sites=' + ((v5rRaw.match(/latestResolution\(\)/g) || []).length >= 6)
+    + '; no fallback=' + !/rec = \(live\.length \? live : all\)/.test(v5rRaw)
+    + '; from_resolution guard=' + (!!assignWin && /不得据此派活/.test(assignWin))
+    + '; resolution_id recorded=' + (/resolution_id: fromRes/.test(v5rRaw) && /if \(meta\.resolution_id !== undefined\) next\.resolution_id/.test(v5rRaw))
+    + '; no verdicts=' + !/putVerdict\(|putSolve\(/.test(assignWin)
+    + '; not grantable=' + /GRANTABLE_COMMANDS = \['assign', 'prioritize', 'nudge', 'convene'\]/.test(v5rRaw)
+    + '; new codes=' + /code: 'V5_(?!INVALID_ARGUMENT|NOT_VOTER|NO_OPEN_MEETING|NOT_ACADEMICIAN|MEMBER_NOT_FOUND|TASK_)[A-Z_]+/.test(supWin))
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
