@@ -272,16 +272,21 @@ function lptOrder(list) {
 
 // ── Gate scopes (GATE_SCOPE=quick|full; default full = exactly today's sweep) ──────────────────────
 // `quick` is the ITERATION subset: v5 work + the shared parity/contract surfaces + the registration
-// surface, with EVERY `*.mutants.mjs` excluded (the 26 families are ~2/3 of the sweep's sum) and the
-// 135 s shared sensitivity probe left to `full`. MEASURED with the probe still included at concurrency 2:
-// `wall 144.1s · sum 287.1s` and `TOTAL 24 PASS 24 FAIL 0`; without it the subset is 23 jobs.
+// surface, with EVERY `*.mutants.mjs` excluded (they are ~2/3 of the sweep's sum) and the shared
+// sensitivity probe left to `full`. At concurrency 2 it is `wall 144.1s · sum 287.1s`.
+// DERIVED, NEVER TYPED: the number below is exactly `applyScope(deriveJobs(), 'quick').length`, i.e.
+// `node tests/run-tests.mjs --counts` under `GATE_SCOPE=quick`. It has to be updated whenever the
+// curated filter changes ON PURPOSE — and in particular whenever a NEW test file happens to match one
+// of the `QUICK_ONLY` substrings (a new `*v5*.test.mjs` matches `'v5'`), because the mismatch is
+// checked on EVERY run and exits 1 before `--counts` can print anything (measured: a drifted constant
+// here silently broke `--counts` and therefore `scripts/update-doc-counts.mjs`).
 // `quick` is for the edit loop ONLY and is NOT a substitute for the full sweep, which stays REQUIRED
 // before every commit and release (see the GATE DISCIPLINE note at the top of this file).
 const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
-const QUICK_EXPECTED_JOBS = 23
+const QUICK_EXPECTED_JOBS = 24
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
   if (scope !== 'quick') return list
