@@ -111,9 +111,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     })
   }
 
-  // 3) middleware — only when middleware was declared.
+  // 3) middleware — when middleware was declared OR the bus already has entries (a PACK can add them, and
+  // observability must follow reality, not only the declaration).
   const declaredEntries = Array.isArray(settings['vmu.middleware.entries']) ? settings['vmu.middleware.entries'] : []
-  if (declaredEntries.length > 0 && kernel.bus) {
+  const busEntries = kernel.bus && kernel.bus.status ? (kernel.bus.status().entries || []) : []
+  if ((declaredEntries.length > 0 || busEntries.length > 0) && kernel.bus) {
     specs.push({
       name: TOOL_NAMES.middleware,
       description: '查看/启停 vmu 中间件（四种形态共用一条总线）。action=list|disable|enable。',
@@ -212,8 +214,51 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   const failures = []
   let installed = false
   let ownedByHost = false
+  let chain = Promise.resolve()
 
   const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log }))
+
+  const doInstall = async () => {
+    if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
+      throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
+        hint: 'pass a DSH context; the adapter never invents a tool surface' })
+    }
+    const list = specs()
+    if (list.length === 0) {
+      installed = true
+      log('vmu is disabled: nothing registered')
+      return { ok: true, installed: 0, names: [], note: 'vmu.core.enabled = false: the adapter registers nothing' }
+    }
+    const hasEffect = typeof ctx.effect === 'function'
+    ownedByHost = hasEffect
+    failures.length = 0
+    for (const spec of list) {
+      // IDEMPOTENT: a later call may find tools that only became available afterwards (a pack can add bus
+      // entries after install), and already-registered names are skipped instead of colliding.
+      if (registered.includes(spec.name)) continue
+      const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
+      try {
+        if (hasEffect) {
+          // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
+          // here is the promise from tools.register().
+          const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
+          if (typeof dispose === 'function') disposers.push(dispose)
+        } else {
+          const dispose = await ctx.tools.register(hostSpec)
+          if (typeof dispose === 'function') disposers.push(dispose)
+        }
+        registered.push(spec.name)
+      } catch (e) {
+        // ONE registration may fail without killing the rest: the host refuses a duplicate name in the same
+        // layer ("duplicates within one layer fail"), and a second vmu instance is a real scenario. The
+        // failure stays NAMEABLE instead of being swallowed (R11).
+        failures.push({ name: spec.name, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+        log('vmu tool ' + spec.name + ' was not registered: ' + String((e && e.message) || e))
+      }
+    }
+    installed = true
+    return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)) }
+  }
 
   return {
     /** What WOULD be registered (pure: no host calls) - the host-side zero-mechanism proof. */
@@ -224,44 +269,14 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         reason: disabled ? 'vmu.core.enabled = false: the adapter registers nothing' : undefined }
     },
 
-    async install() {
-      if (installed) return { ok: true, already: true, names: registered.slice(), ownedByHost }
-      if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
-        throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
-          hint: 'pass a DSH context; the adapter never invents a tool surface' })
-      }
-      const list = specs()
-      if (list.length === 0) {
-        installed = true
-        log('vmu is disabled: nothing registered')
-        return { ok: true, installed: 0, names: [], note: 'vmu.core.enabled = false: the adapter registers nothing' }
-      }
-      const hasEffect = typeof ctx.effect === 'function'
-      ownedByHost = hasEffect
-      failures.length = 0
-      for (const spec of list) {
-        const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
-        try {
-          if (hasEffect) {
-            // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
-            // here is the promise from tools.register().
-            const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
-            if (typeof dispose === 'function') disposers.push(dispose)
-          } else {
-            const dispose = await ctx.tools.register(hostSpec)
-            if (typeof dispose === 'function') disposers.push(dispose)
-          }
-          registered.push(spec.name)
-        } catch (e) {
-          // ONE registration may fail without killing the rest: the host refuses a duplicate name in the
-          // same layer ("duplicates within one layer fail"), and a second vmu instance is a real scenario.
-          // The failure stays NAMEABLE instead of being swallowed (R11).
-          failures.push({ name: spec.name, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
-          log('vmu tool ' + spec.name + ' was not registered: ' + String((e && e.message) || e))
-        }
-      }
-      installed = true
-      return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures }
+    /**
+     * Register the available tools. Installs are SERIALISED through one promise chain: a pack applied just
+     * after install can make a tool available, and two concurrent installs would register the same name
+     * twice (the first version of this did exactly that).
+     */
+    install() {
+      chain = chain.then(() => doInstall())
+      return chain
     },
 
     async uninstall() {
@@ -270,11 +285,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         installed = false
         return { ok: true, ownedByHost: true, note: 'the host unwinds these registrations through ctx.effect' }
       }
-      const failures = []
-      for (const d of disposers.splice(0)) { try { d() } catch (e) { failures.push(String(e && e.message)) } }
+      const failures2 = []
+      for (const d of disposers.splice(0)) { try { d() } catch (e) { failures2.push(String(e && e.message)) } }
       registered.length = 0
       installed = false
-      return { ok: failures.length === 0, failures }
+      return { ok: failures2.length === 0, failures: failures2 }
     },
 
     status() {

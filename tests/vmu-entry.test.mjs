@@ -123,7 +123,39 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(root, { recursive: true, force: true })
 }
 
-// ---- 6. self-probe ----------------------------------------------------------------------------
+// ---- 6. a shipped PACK is applied through config.packs ------------------------------------------
+{
+  const host = fakeCtx()
+  const packRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-pack-'))
+  const handle = entry.apply(host.ctx, { clock, root: packRoot, packs: ['institute-min'] })
+  await new Promise((r) => setTimeout(r, 60))
+  ok(handle.appliedPacks().length === 1 && handle.appliedPacks()[0].id === 'institute-min',
+    'the shipped pack is applied through the entry', JSON.stringify(handle.appliedPacks()))
+  ok(handle.packErrors().length === 0, 'and it applied cleanly', JSON.stringify(handle.packErrors()))
+  const roles = handle.kernel.requireMembers().roles().map((r) => r.id)
+  ok(roles.includes('chair') && roles.includes('member'), 'the pack declared the role slots (the kernel still names no roles)', roles.join(','))
+  ok(host.state.specs.length > 0, 'tools were registered in the pack run',
+    JSON.stringify({ specs: host.state.specs.map((s) => s.name), installError: handle.installError(), hooksError: handle.hooksError() }))
+  const statusSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
+  if (statusSpec) {
+    const st = await call(statusSpec)
+    ok(st.packs.includes('institute-min'), 'status() reports the applied pack (observation matches reality)', JSON.stringify(st.packs))
+  } else {
+    ok(false, 'vibe_vmu_status must be registered even in a pack-only run',
+      JSON.stringify({ specs: host.state.specs.map((s) => s.name), installError: handle.installError(), status: handle.status() }))
+  }
+  const mwSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_middleware')
+  ok(mwSpec !== undefined, 'the middleware tool appears because the BUS has entries, even without a declaration',
+    JSON.stringify(host.state.specs.map((s) => s.name)))
+  if (mwSpec) {
+    const mw = await call(mwSpec, { action: 'list' })
+    ok(mw.ok === true && mw.entries.some((e) => e.id === 'institute-min-locked-vote'),
+      'and the pack rule is live on the assembled bus', JSON.stringify((mw.entries || []).map((e) => e.id)))
+  }
+  await rm(packRoot, { recursive: true, force: true })
+}
+
+// ---- 7. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

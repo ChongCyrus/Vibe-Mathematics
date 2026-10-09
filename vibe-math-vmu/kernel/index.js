@@ -43,6 +43,17 @@ export function refuse(code, message, hint) {
 }
 
 /**
+ * MECHANISM-level named predicates the kernel provides (docs/05 §5.2: `subject` predicates are the
+ * kernel's, so a pack can name a mechanism without inventing one). Each reads the EFFECT and expresses no
+ * opinion: "there is a settled formal proof for this object" and "the ballot is frozen" are machine facts,
+ * not academic judgements. A pack may add its own through `subjects`, and an unknown name is still refused.
+ */
+export const DEFAULT_SUBJECTS = Object.freeze({
+  has_locked_formal_proof: (ev) => !!(ev && (ev.locked === true || (ev.subject && ev.subject.settled === true))),
+  in_frozen_ballot: (ev) => !!(ev && ev.frozen === true),
+})
+
+/**
  * Assemble the kernel.
  *
  * `host` is the optional capability seam (register/spawn). `settings` is the RESOLVED settings map (the
@@ -126,7 +137,7 @@ export function createKernel({
     clock,
   })
 
-  const rules = createRulesEngine({ subjects, counters, settings, clock })
+  const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
     services: { kernel: Object.freeze({ read: () => (store ? store.read() : null) }), setting: (k) => settings[k] },
     log,
@@ -355,7 +366,9 @@ export function createKernel({
         active: started,
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun },
         registrations: registrations.slice(),
-        packs: packs.slice(),
+        // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
+        // which records itself in the notes; a status that only tracks usePack() would under-report.
+        packs: [...new Set(packs.concat(packNotes.filter((n) => n.what === 'applied').map((n) => n.id)))],
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,

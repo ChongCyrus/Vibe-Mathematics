@@ -20,6 +20,7 @@
 import { createKernel } from './kernel/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
+import { createPackLoader } from './kernel/pack.js'
 import { assertDeclared } from './settings/schema.js'
 
 export const name = 'vibe-math-vmu'
@@ -118,9 +119,48 @@ export function apply(ctx, config = {}) {
     }, 'vmu:prompt')
   }
 
+  // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
+  // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the
+  // failure is visible instead of swallowed.
+  const packLoader = createPackLoader({ kernel, registry: kernel.registry })
+  const packsWanted = Array.isArray(config.packs) ? config.packs : []
+  const appliedPacks = []
+  const packErrors = []
+  if (!switchedOff && packsWanted.length > 0) {
+    effect(() => {
+      const run = (async () => {
+        for (const wanted of packsWanted) {
+          try {
+            const manifest = typeof wanted === 'string'
+              ? (await import('./packs/' + wanted + '.js')).PACK
+              : wanted
+            const res = await packLoader.apply(manifest)
+            appliedPacks.push({ id: res.id, applied: res.applied })
+          } catch (e) {
+            const id = typeof wanted === 'string' ? wanted : (wanted && wanted.id)
+            packErrors.push({ id, code: (e && e.code) || 'VMU_PACK_MISSING', message: String((e && e.message) || e) })
+            try { process.stderr.write('vmu: pack ' + id + ' was not applied: ' + ((e && e.code) || '') + ' ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
+          }
+        }
+        // AFTER the packs settle: a pack can make tools available that did not exist at install time (bus
+        // entries, a roster, a durable root). install() is serialised and idempotent.
+        try { await adapter.install() } catch (e) {
+          packErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+        }
+      })()
+      void run
+      return () => {
+        for (const a of appliedPacks.slice()) { try { packLoader.unload(a.id) } catch { /* going away */ } }
+      }
+    }, 'vmu:packs')
+  }
+
   return {
     kernel,
     adapter,
+    packLoader: () => packLoader,
+    appliedPacks: () => appliedPacks.slice(),
+    packErrors: () => packErrors.slice(),
     hooks,
     hooksResult: () => hooksResult,
     hooksError: () => hooksError,
