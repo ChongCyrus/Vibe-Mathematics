@@ -23,6 +23,21 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+// The shared math module owns its own defaults, and v5r's discipline was to TAKE them from there and
+// COPY the arrays, so that every preset stays byte-comparable (its own comment says the module defaults
+// are frozen and must never be mutated). A1/A2 of the P3 containment report apply exactly that here:
+// `vmu.math.*` defaults are the module's, not a second hand-written opinion.
+import { MATH_PARAM_DEFAULTS as MATH_DEFAULTS } from '../math-computation.js'
+
+const mathDefaults = () => ({
+  mathComputation: MATH_DEFAULTS.mathComputation,
+  mathMode: MATH_DEFAULTS.mathMode,
+  mathEngines: MATH_DEFAULTS.mathEngines.slice(),
+  mathTimeoutMs: MATH_DEFAULTS.mathTimeoutMs,
+  mathPackages: MATH_DEFAULTS.mathPackages.slice(),
+  mathInstallScope: MATH_DEFAULTS.mathInstallScope,
+})
+
 /**
  * Hot-reload classes (docs/04 §5). A key without one may not ship (the gate is D13/D15 in the
  * docs linter and the E-class scenario in tests/vmu-settings.test.mjs).
@@ -46,29 +61,54 @@ export const SETTING_DEFS = Object.freeze([
   { key: 'vmu.limits.maxLiveMembers', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '在活成员上限；0＝不设（机器强制）' },
   { key: 'vmu.limits.memoryCeilingMb', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '内存上限（超限拒绝新建成员）；0＝不设' },
   { key: 'vmu.limits.wallClockMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻）' },
+  { key: 'vmu.limits.maxParallel', type: 'positiveInteger', def: 3, hot: HOT.H0, who: 'office', doc: '并发上限（P3：吸收 v5r 的 maxParallel；机器强制）' },
 
   // ---- records ------------------------------------------------------------------------------
   { key: 'vmu.records.tracks', type: 'stringList', def: ['progress', 'routes', 'obstacles', 'rejected', 'state'], hot: HOT.H1, who: 'office', doc: '记录分轨（负向知识有独立档）' },
   { key: 'vmu.records.headListAt', type: 'positiveInteger', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表字段数（目录常驻、正文按需）' },
   { key: 'vmu.records.truncateMode', type: 'enum', domain: ['keepChars', 'keepHeadTail', 'dropMiddle'], def: 'keepChars', hot: HOT.H1, who: 'office', doc: '截断策略（必须计数，禁静默）' },
   { key: 'vmu.records.fingerprintPolicy', type: 'enum', domain: ['content-only', 'content+display'], def: 'content-only', hot: HOT.H2, who: 'office', doc: '内容指纹口径（默认排除展示头）' },
+  { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
+  { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
 
   // ---- prompts ------------------------------------------------------------------------------
   { key: 'vmu.prompts.overridesDir', type: 'path', def: 'prompts/overrides', hot: HOT.H0, who: 'office', doc: '提示词覆盖目录（仓内相对路径）' },
   { key: 'vmu.prompts.bindings', type: 'objectList', def: [], hot: HOT.H0, who: 'office', doc: '四维绑定（优先级 角色<阶段<成员<任务）' },
   { key: 'vmu.prompts.whoMayOverride', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '允许覆盖提示词者' },
+  { key: 'vmu.prompts.resourceSection', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: 'P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段' },
 
-  // ---- meetings (rules only; "when to meet" is middleware) ----------------------------------
+  // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
   { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H1, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
+  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限' },
+  { key: 'vmu.meetings.reconsiderFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'role:chair', doc: 'P3：复议门槛下限（生效门槛 = max(对象标准, 它, 上限)）；0＝只保证"不降"' },
+  { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
+  { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H1, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
+  { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
   { key: 'vmu.meetings.roundTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '单轮超时；0＝不限' },
+  { key: 'vmu.meetings.quotesPerMessageMax', type: 'natural', def: 2, hot: HOT.H1, who: 'role:chair', doc: 'P3：每条发言最多引用几条；超限 ⇒ 具名拒' },
+  { key: 'vmu.meetings.quoteDepthMax', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：引用链深度上限；超深 ⇒ 折叠标注（不拒）' },
 
   // ---- tasks and stages ---------------------------------------------------------------------
   { key: 'vmu.tasks.maxOpenTasks', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '未完成任务上限；0＝不限' },
   { key: 'vmu.tasks.stages', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '阶段列表；默认空＝不假装有流程' },
 
   // ---- math and formalisation ---------------------------------------------------------------
-  { key: 'vmu.math.engines', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '引擎优先级；默认空＝具名降级' },
+  // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.
+  { key: 'vmu.math.computation', type: 'enum', domain: ['off', 'auto', 'on'], def: mathDefaults().mathComputation, hot: HOT.H2, who: 'office', doc: 'P3：数学工具可用性（共享模块默认 auto）' },
+  { key: 'vmu.math.mode', type: 'enum', domain: ['typed', 'typed+shell'], def: mathDefaults().mathMode, hot: HOT.H2, who: 'office', doc: 'P3：typed＝绝不提 shell 且拒绝 engine=cli' },
+  { key: 'vmu.math.engines', type: 'stringList', def: mathDefaults().mathEngines, hot: HOT.H2, who: 'office', doc: '引擎优先级（默认取自共享模块并拷贝；空＝具名降级）' },
+  { key: 'vmu.math.timeoutMs', type: 'natural', def: mathDefaults().mathTimeoutMs, hot: HOT.H0, who: 'office', doc: 'P3：单次计算预算（共享模块默认）' },
+  { key: 'vmu.math.packages', type: 'stringList', def: mathDefaults().mathPackages, hot: HOT.H1, who: 'office', doc: 'P3：计算可要求的包/工具箱（共享模块默认）' },
+  { key: 'vmu.math.installScope', type: 'enum', domain: ['user', 'system'], def: mathDefaults().mathInstallScope, hot: HOT.H1, who: 'office', doc: 'P3：安装作用域；system 仅当次、绝不记忆' },
   { key: 'vmu.math.compileTimeoutMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '编译超时；0＝作业级默认' },
+  { key: 'vmu.math.formalVerify', type: 'enum', domain: ['off', 'encourage', 'require'], def: 'off', hot: HOT.H2, who: 'office', doc: 'P3：判定时的形式化要求；默认 off＝零策略' },
+  { key: 'vmu.math.leanCommand', type: 'string', def: 'lean', hot: HOT.H1, who: 'office', doc: 'P3：Lean 命令名（命令模板可覆盖）' },
+  { key: 'vmu.math.leanArgs', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths）' },
+  { key: 'vmu.math.leanTimeoutMs', type: 'natural', def: 120000, hot: HOT.H0, who: 'office', doc: 'P3：单次 Lean 编译预算' },
+  { key: 'vmu.math.leanAsync', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: 'P3：后台队列编译；只有"退出 0 且文件内容哈希未变"才可标 passed' },
+  { key: 'vmu.math.leanInitiative', type: 'enum', domain: ['off', 'normal', 'eager'], def: 'normal', hot: HOT.H2, who: 'office', doc: 'P3：日常形式化积极性（与 formalVerify 判定时要求正交）' },
+  { key: 'vmu.math.leanSearchPaths', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：额外 -R 根（去重后注入，自动 VibMath 根之前）' },
+  { key: 'vmu.math.leanJobsMaxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: 'P3：后台编译并发（1＝串行）' },
 
   // ---- safety -------------------------------------------------------------------------------
   { key: 'vmu.safety.pathPolicy', type: 'enum', domain: ['workspace-only', 'workspace+shared'], def: 'workspace-only', hot: HOT.H3, who: 'office', doc: '写保护范围' },

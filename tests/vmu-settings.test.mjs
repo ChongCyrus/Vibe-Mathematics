@@ -17,6 +17,7 @@
 
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
@@ -48,6 +49,23 @@ ok(defs.every((d) => typeof d.who === 'string' && d.who.length > 0), 'every key 
 ok(defs.every((d) => typeof d.doc === 'string' && d.doc.length > 0), 'every key carries a one-line doc (04 §11)')
 ok(defs.every((d) => (d.type === 'enum' ? Array.isArray(d.domain) && d.domain.length > 0 : true)), 'every enum declares its domain')
 ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actually used (storeBackend, pathPolicy)')
+
+// ---- 1b. the documented table and the schema must be the SAME set (04-§11 discipline ①) ---------
+// The discipline used to be prose ("表内键集合 ≡ schema 键集合（无多无少）"). It is now executable: the
+// parameter table in docs/04 §11 is parsed and compared BOTH ways, so neither a key without a row nor a
+// row without a key can pass. This is the settings equivalent of the docs<->module guard (D16).
+{
+  const doc = readFileSync(resolve(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
+  const tableRows = [...doc.matchAll(/^\| `(vmu\.[a-z]+\.[A-Za-z]+)`/gm)].map((x) => x[1])
+  const documented = new Set(tableRows)
+  const declared = new Set(keys)
+  const rowsWithoutKey = [...documented].filter((k) => !declared.has(k))
+  const keysWithoutRow = [...declared].filter((k) => !documented.has(k))
+  ok(rowsWithoutKey.length === 0, 'every documented key exists in the schema (no phantom rows)', rowsWithoutKey.join(','))
+  ok(keysWithoutRow.length === 0, 'every schema key has a documented row (no undocumented knobs)', keysWithoutRow.join(','))
+  ok(tableRows.length === declared.size, 'the table and the schema declare the same NUMBER of keys',
+    tableRows.length + ' vs ' + declared.size)
+}
 
 // ---- 2. undeclared keys are defects (R4) -------------------------------------------------------
 expectThrow(() => m.assertDeclared('vmu.nope.x'), 'VMU_INVALID_ARGUMENT', 'undeclared key refused by name')
