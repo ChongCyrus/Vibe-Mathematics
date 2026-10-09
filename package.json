@@ -234,6 +234,7 @@
     "tests/audit-vmu-docs.test.mjs",
     "tests/audit-vmu-docs.mutants.mjs",
     "tests/vmu-script.test.mjs",
+    "tests/audit-vmu-release.test.mjs",
     "tests/vmu-settings.test.mjs",
     "tests/vmu-store.test.mjs",
     "tests/vmu-bus.test.mjs",
