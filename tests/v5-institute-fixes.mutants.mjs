@@ -1858,10 +1858,13 @@ const runPositive = (sc) => {
   rmSync(dest, { recursive: true, force: true })
   return { green: code === 0 && /SCENARIO GREEN: /.test(out), ms, code }
 }
-if (!ONLY) {
-const LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : SCENARIOS
+// The scenario list AND the positives counters are decided HERE (outside the `!ONLY` block) so the final
+// verdict line can report them even in DIRECTED runs, where the positives are skipped entirely.
+const SCENARIO_LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : SCENARIOS
 let retried = 0
 let retriedGreen = 0
+if (!ONLY) {
+const LIST = SCENARIO_LIST
 for (const sc of LIST) {
   let r = runPositive(sc)
   if (!r.green) {
@@ -1912,6 +1915,7 @@ if (String(process.env.MUTANTS_SELFTEST || '').trim() === '1') {
  */
 let mutantRetried = 0
 let mutantRetriedRed = 0
+let crashCount = 0
 /**
  * A family that CRASHES (its child timed out, its output was unparseable, ...) must count as a failed family
  * and NOT kill the script before the summary. Learned on a loaded gate: the whole run exited 1 with no
@@ -1919,6 +1923,7 @@ let mutantRetriedRed = 0
  */
 const safeRunFamily = (f) => {
   try { return runFamily(f) } catch (e) {
+    crashCount++
     console.log('  FAMILY CRASH ' + f.name + ' :: ' + String((e && e.message) || e).slice(0, 200))
     return false
   }
@@ -1943,5 +1948,18 @@ console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[
 console.log('TOTAL WALL TIME (all families + setup): ' + totalMs + 'ms (' + Math.round(totalMs / 1000) + 's)')
 console.log('hangs=[' + hangs.join(' | ') + ']')
 console.log('skipped=[' + skipped.join(' | ') + ']')
-if (red !== SELECTED.length || skipped.length || hangs.length || (!ONLY && posRed)) process.exit(1)
+// A NAMED verdict line, deliberately. The gate's failureDetail() extractor prefers NAMED marker lines over the
+// plain tail, so without this the family's real summary is FILTERED OUT of a sweep's excerpt - which is exactly
+// how five sweeps' worth of "no summary visible" was misread as "the family died silently".
+const verdictBad = red !== SELECTED.length || skipped.length || hangs.length || (!ONLY && posRed)
+const verdict = (verdictBad ? 'FAIL' : 'PASS') + ' v5-institute-fixes.mutants: families=' + red + '/' + SELECTED.length +
+  ' positives=' + (ONLY ? 'skipped(directed)' : ((SCENARIO_LIST.length - posRed) + '/' + SCENARIO_LIST.length)) +
+  ' retries={' + retried + ' positive, ' + mutantRetried + ' family}' + ' crashes=' + crashCount +
+  ' hangs=' + hangs.length + ' skipped=' + skipped.length
+console.log(verdict)
+if (verdictBad) {
+  console.log('FAILURES:')
+  console.log('  - ' + verdict)
+  process.exit(1)
+}
 console.log('ALL MUTANTS RED AS REQUIRED')

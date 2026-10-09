@@ -319,7 +319,11 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | 变异自证 | `MUTANTS_SELFTEST=1 …` | `RETRY CANNOT MASK A RED FAMILY (as required)` ✓ |
 | 定向变异 | `MUTANTS_ONLY='S25A'／'S21'／'G2'／'S8' …` | **4/4、6/6、1/1、7/7 具名红** ✓；写错名字 ⇒ **具名中止 exit=2** ✓ |
 
-**第 4 次 T3（2026-10-09 00:21–01:00，39 min，HEAD `a9ab930`，起点 `dirty=0`）**：`TOTAL 132 PASS 131 FAIL 1` ✗ —— 族耗时**涨到 1981.6 s** ✗，且**族自己的汇总行全部缺失**（无 `positive controls green:`／无 `reddening …`／无 `hangs=` ✓）＋ **0 条重试行** ✗ ⇒ 判定：**族在负载下抛异常退出**（不是被 2 400 000 ms 的超时杀掉 ✓ 1981 s < 2400 s ✓），于是**我加的重试根本够不着** ✗✓。
+**第 5 次 T3（2026-10-09 01:07–01:40，33 min，HEAD `b12b49f`，起点 `dirty=0`）**：`TOTAL 132 PASS 131 FAIL 1` ✗ —— 该族 `1561.7 s` 红（**其余 131 作业全过** ✓）。**本轮最重要的发现是方法论级别的** ✗✓：
+> **sweep 摘录里"看不到"≠"没有发生"** ✗✗ —— 我连续三次（T3-3/4/5）从日志里读"族没有打印汇总／没有重试行"，并据此推断"族静默死亡" ✗；查证 `tests/run-tests.mjs:547-550` 的 `failureDetail()` 后发现：它**优先只打印"具名断言行"**（最多 40 行 ✓），**汇总行会被过滤掉** ✗ ⇒ 我的读数**从一开始就不可靠** ✓。
+> **修法（本轮 ✓）**：该族**总是打印一条具名判定行** ⇒ `FAIL|PASS v5-institute-fixes.mutants: families=X/Y positives=A/B retries={P positive, F family} crashes=C hangs=H skipped=S` ✓✓ —— 于是**下一次全量摘录必然携带真相** ✓（无需再花 26 分钟单独复现 ✓）。
+> **同时修掉两个真 bug** ✓：① 判定行引用了只在非定向分支声明的 `LIST`／`retried` ⇒ **定向运行 `ReferenceError`** ✗ ⇒ 已把场景清单与计数器**上提到分支之外** ✓；② 之前"族崩溃⇒重试够不着"✗ ⇒ `safeRunFamily`（`crashCount++` ＋ `FAMILY CRASH` ✓）。
+> **复验** ✓：五个定向族全绿并各自打印判定行 ✓（`S25B 2/2`／`S25A 4/4`／`S21 6/6`／`G2 1/1`／`S8 7/7` ✓）；两个自证 exit 0 ✓；`run-tests --self-check` 全过 ✓。
 **由此又修两处（本轮 ✓）**：① `runFamily` 外层加 `safeRunFamily` —— **崩溃＝该族失败**（打印 `FAMILY CRASH <name> :: <msg>` ✓）⇒ 汇总**必然打印**、重试**必然生效** ✓；② **估时按四次实测校正** ✓：`DURATION_WEIGHTS['v5-institute-fixes.mutants.mjs']` 由 **906.9 s → 1800 s**（实测 1483.6／1509.9／1981.6 s ＋ 历史 1319–1456 s ✓；旧值低报 ~2× 会**错排 headstart 窗口** ✓）。**验收依据仍是下一次 T3** ✓。
 
 **发布门禁（机器面，2026-10-09 第三次实跑 ✓✓）**：
