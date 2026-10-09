@@ -158,7 +158,7 @@ if (SELF_PROBE) {
       await writeFile(join(dir, f), await readFile(resolve(REPO, 'vibe-math-vmu', f), 'utf8'), 'utf8')
     }
     await writeFile(join(dir, 'host-hooks.js'), src
-      .replace("    const hooks = new Set()\n    for (const e of entries) {\n      if (!e || typeof e !== 'object') continue\n      for (const h of [].concat(e.on || [])) if (BRIDGED_HOOKS.includes(h)) hooks.add(h)\n    }\n    return [...hooks]", "    return ['tools/pre-execute']")
+      .replace('const declaredHooks = () => {', "const declaredHooks = () => { return ['tools/pre-execute']")
       .replace('const entries = Array.isArray(settings[\'vmu.middleware.entries\']) ? settings[\'vmu.middleware.entries\'] : []', 'const entries = [{}]'), 'utf8')
     const mm = await import(pathToFileURL(join(dir, 'host-hooks.js')).href + '?probe=1')
     const kk = await import(pathToFileURL(join(dir, 'kernel', 'index.js')).href + '?probe=1')

@@ -89,6 +89,13 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
       if (!e || typeof e !== 'object') continue
       for (const h of [].concat(e.on || [])) if (BRIDGED_HOOKS.includes(h)) hooks.add(h)
     }
+    // REALITY, not only the declaration: packs and M2 modules add bus entries AFTER load, and a hook that
+    // exists on the bus but is not bridged is a middleware entry that silently never fires.
+    const busEntries = kernel.bus && kernel.bus.status ? (kernel.bus.status().entries || []) : []
+    for (const e of busEntries) {
+      if (!e || e.enabled === false) continue
+      for (const h of [].concat(e.on || [])) if (BRIDGED_HOOKS.includes(h)) hooks.add(h)
+    }
     return [...hooks]
   }
 
@@ -105,6 +112,7 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
           'pass a DSH context; the bridge never invents an event surface')
       }
       for (const hook of planned) {
+        if (attached.some((a) => a.hook === hook)) continue
         const listener = async (...args) => {
           const next = args[args.length - 1]
           const delegating = typeof next === 'function'
@@ -147,6 +155,9 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
       }
       return { ok: true, attached: attached.map((a) => a.hook) }
     },
+
+    /** Attach anything that appeared on the bus since the last call (packs, M2 modules). Idempotent. */
+    refresh() { return bridge.attach() },
 
     detach() {
       const failures = []

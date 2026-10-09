@@ -154,6 +154,11 @@ export function apply(ctx, config = {}) {
         try { await adapter.install() } catch (e) {
           packErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
         }
+        // ...and a pack can add BUS ENTRIES, whose hooks must now be bridged too (a rule that exists but is
+        // not bridged is a rule that silently never fires).
+        try { hooks.refresh() } catch (e) {
+          packErrors.push({ id: '(hooks)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+        }
       })()
       void run
       return () => {
@@ -187,9 +192,13 @@ export function apply(ctx, config = {}) {
           })
           for (const e of busEntries) { kernel.bus.add(e); moduleEntryIds.push(e.id) }
           for (const s of specs) loadedModules.push(s.id)
-          // A module can make tools available too (a bus with entries), so reinstall - it is serialised.
+          // A module can make tools available too (a bus with entries), so reinstall - it is serialised -
+          // and re-bridge, because the module's hooks must fire on the host.
           try { await adapter.install() } catch (e) {
             moduleErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+          }
+          try { hooks.refresh() } catch (e) {
+            moduleErrors.push({ id: '(hooks)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
           }
         } catch (e) {
           moduleErrors.push({ id: '(load)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })

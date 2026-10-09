@@ -35,11 +35,12 @@ const entry = await import(pathToFileURL(ENTRY).href)
 const clock = () => '2026-10-09T00:00:00.000Z'
 
 const fakeCtx = (extra = {}) => {
-  const state = { specs: [], disposed: 0, effects: [], sections: [] }
+  const state = { specs: [], disposed: 0, effects: [], sections: [], listeners: {} }
   return {
     state,
     ctx: Object.assign({
       effect(fn, label) { state.effects.push(label); return fn() },
+      on(event, handler) { (state.listeners[event] = state.listeners[event] || []).push(handler); return () => { state.listeners[event] = state.listeners[event].filter((h) => h !== handler) } },
       tools: { register: async (spec) => { state.specs.push(spec); return () => { state.disposed++ } } },
     }, extra),
   }
