@@ -242,7 +242,31 @@ export function createRulesEngine({
   }
 
   const engine = {
-    validate: validateRule,
+    /**
+     * Static validation: the STRUCTURE (validateRule) AND the named predicates. The predicate scan used to
+     * live only inside toBusEntries, so `validate()` said "fine" about a rule naming a predicate that does
+     * not exist - the manual's "上线前静态校验" promise needs both halves in one call.
+     */
+    validate(rule) {
+      const problems = validateRule(rule)
+      const scan = (node, path) => {
+        if (!node || typeof node !== 'object') return
+        if (node.subject !== undefined) {
+          for (const n of [].concat(node.subject)) {
+            if (typeof subjects[n] !== 'function') {
+              problems.push(path + '.subject: unknown named predicate: ' + n + ' (known: ' + (Object.keys(subjects).join(', ') || '(none)') + ')')
+            }
+          }
+        }
+        if (node.not !== undefined) scan(node.not, path + '.not')
+        for (const k of ['all', 'any']) {
+          if (node[k] === undefined) continue
+          ;[].concat(node[k]).forEach((child, i) => scan(child, path + '.' + k + '[' + i + ']'))
+        }
+      }
+      if (rule && rule.when) scan(rule.when, 'when')
+      return problems
+    },
     requiredCapabilities,
 
     /** Compile. Static problems are refused by name BEFORE anything can run (docs/05 §9). An unregistered
@@ -352,6 +376,18 @@ export function createRulesEngine({
 
     /** The predicate/action vocabularies, exposed so a pack can be validated against the running engine. */
     vocabulary() { return { predicates: PREDICATES.slice(), actions: ACTIONS.slice(), forbidden: FORBIDDEN_KEYS.slice() } },
+
+    /**
+     * The compiled rule behind an id (or null). The host tool needs this to DRY-RUN a rule that is already
+     * declared: the bus entry only carries a handler, so without this accessor "干跑某条已声明规则" would be
+     * impossible and the manual's promote flow would have no implementation.
+     */
+    get(id) {
+      const rec = compiled.get(String(id))
+      return rec ? JSON.parse(JSON.stringify(rec.rule)) : null
+    },
+    /** The ids this engine currently enforces (declaration order is not meaningful; the list is sorted). */
+    ids() { return [...compiled.keys()].sort() },
   }
 
   return engine

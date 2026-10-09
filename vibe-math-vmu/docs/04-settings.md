@@ -220,7 +220,7 @@ vmu.packs.active: [v5r]
 | `vmu.middleware.hookTimeoutMs` | int ≥1 | `2000` | — | 会话 | H0 | office | ✅ 已接线 | 单钩子预算 |
 | `vmu.middleware.breakerThreshold` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | 连续失败熔断阈值 |
 | `vmu.middleware.dryRun` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | 干跑（只报不做） |
-| `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | 生效整合包（冲突按 O4 报错） |
+| `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | 生效整合包（冲突按 O4 报错） |
 | `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | 是否允许 pack 间显式覆盖 |
 | `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | 显式覆盖声明（不声明即报错） |
 

@@ -34,6 +34,7 @@ export const TOOL_NAMES = Object.freeze({
   middleware: 'vibe_vmu_middleware',
   records: 'vibe_vmu_records',
   script: 'vibe_vmu_script',
+  pack: 'vibe_vmu_pack',
 })
 
 /**
@@ -59,7 +60,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [] }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null }) {
   const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
   const specs = []
 
@@ -133,17 +134,53 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if ((declaredEntries.length > 0 || busEntries.length > 0) && kernel.bus) {
     specs.push({
       name: TOOL_NAMES.middleware,
-      description: '查看/启停 vmu 中间件（四种形态共用一条总线）。action=list|disable|enable。',
+      description: 'vmu 中间件：action=list|disable|enable|validate|dryRun（四形态共用一条总线）。validate/dryRun 只读、无副作用。',
       parameters: {
-        action: param('string', 'list（默认）｜disable｜enable', { required: true, enum: ['list', 'disable', 'enable'] }),
-        id: param('string', '中间件条目 id（disable/enable 必填）'),
+        action: param('string', 'list（默认）｜disable｜enable｜validate｜dryRun', { required: true, enum: ['list', 'disable', 'enable', 'validate', 'dryRun'] }),
+        id: param('string', '中间件条目 id（disable/enable/dryRun 用；dryRun 也可改用 rule）'),
+        rule: param('string', 'validate/dryRun：M1 规则的 JSON 文本（不传 id 时使用）'),
+        samples: param('string', 'dryRun：事件样本的 JSON 数组（每个元素是一次事件对象）'),
       },
-      run: async ({ action = 'list', id } = {}) => {
+      run: async ({ action = 'list', id, rule, samples } = {}) => {
         try {
+          const parseJson = (text, what) => {
+            try { return JSON.parse(String(text)) } catch { return refused('VMU_INVALID_ARGUMENT', what + ' must be valid JSON') }
+          }
+          const ruleFor = () => {
+            if (typeof rule === 'string' && rule.trim().length > 0) return parseJson(rule, 'rule')
+            if (id && kernel.rules && typeof kernel.rules.get === 'function') {
+              const found = kernel.rules.get(id)
+              if (!found) return refused('VMU_NO_SUCH_OBJECT', 'no M1 rule with id ' + String(id),
+                'declared rules: ' + (kernel.rules.ids ? kernel.rules.ids().join(', ') : 'unknown'))
+              return found
+            }
+            return refused('VMU_INVALID_ARGUMENT', 'validate/dryRun need a rule (JSON) or an id',
+              'pass rule: "<json>" for a new rule, or id: "<declared id>" to inspect one in place')
+          }
           if (action === 'list') return Object.assign({ ok: true, action }, kernel.bus.status())
-          if (!id) return refused('VMU_INVALID_ARGUMENT', 'disable/enable 需要 id')
-          if (action === 'disable') return Object.assign({ ok: true, action, result: kernel.bus.disable(id, 'disabled by tool') })
-          if (action === 'enable') return Object.assign({ ok: true, action, result: kernel.bus.enable(id) })
+          if (action === 'disable' || action === 'enable') {
+            if (!id) return refused('VMU_INVALID_ARGUMENT', 'disable/enable 需要 id')
+            return Object.assign({ ok: true, action }, { result: action === 'disable' ? kernel.bus.disable(id, 'disabled by tool') : kernel.bus.enable(id) })
+          }
+          if (action === 'validate') {
+            const parsed = ruleFor()
+            if (parsed && parsed.ok === false) return parsed
+            const problems = kernel.rules.validate ? kernel.rules.validate(parsed) : []
+            return { ok: problems.length === 0, action, problems, vocabulary: kernel.rules.vocabulary ? kernel.rules.vocabulary() : null }
+          }
+          if (action === 'dryRun') {
+            const parsed = ruleFor()
+            if (parsed && parsed.ok === false) return parsed
+            // DRY-RUN HAS NO SIDE EFFECTS: the rules engine counts the run and returns what WOULD happen.
+            let list = []
+            if (typeof samples === 'string' && samples.trim().length > 0) {
+              const arr = parseJson(samples, 'samples')
+              if (arr && arr.ok === false) return arr
+              list = Array.isArray(arr) ? arr : [arr]
+            }
+            const out = kernel.rules.dryRun(parsed, list)
+            return Object.assign({ ok: out.ok !== false, action }, out)
+          }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_NO_SUCH_OBJECT', String(e.message), e.hint)
@@ -223,6 +260,49 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     })
   }
 
+  // 6) packs (M4) — only when the entry handed us a loader. `plan` is PURE (it reports exactly what would
+  // change), `apply` refuses conflicts (O4) and `unload` reverses what was applied, so the promote flow the
+  // pack manual describes ("plan ⇒ apply") finally has a callable surface instead of a library-only one.
+  if (typeof packLoader === 'function') {
+    specs.push({
+      name: TOOL_NAMES.pack,
+      description: 'vmu 整合包：action=list|plan|apply|unload。plan 只读（报告会改什么），apply 冲突即具名拒，unload 逐个回滚。',
+      parameters: {
+        action: param('string', 'list（默认）｜plan｜apply｜unload', { required: true, enum: ['list', 'plan', 'apply', 'unload'] }),
+        id: param('string', 'unload 必填；也可给随包整合包 id（plan/apply 时按 ./packs/<id>.js 解析）'),
+        manifest: param('string', 'plan/apply：内联 manifest 的 JSON 文本'),
+      },
+      run: async ({ action = 'list', id, manifest } = {}) => {
+        try {
+          const loader = packLoader()
+          if (!loader) return refused('VMU_ENGINE_UNAVAILABLE', 'no pack loader in this assembly')
+          if (action === 'list') return Object.assign({ ok: true, action }, loader.status())
+          const parsed = (() => {
+            if (typeof manifest === 'string' && manifest.trim().length > 0) {
+              try { return JSON.parse(manifest) } catch { return refused('VMU_INVALID_ARGUMENT', 'manifest must be valid JSON') }
+            }
+            return null
+          })()
+          if (parsed && parsed.ok === false) return parsed
+          const resolved = parsed
+          if (!resolved) {
+            return refused('VMU_INVALID_ARGUMENT', 'plan/apply need an inline manifest (manifest: "<json>")',
+              'a pack SHIPPED as ./packs/<id>.js is loaded by the profile row via config.packs; this tool inspects and loads inline manifests')
+          }
+          if (action === 'plan') return Object.assign({ ok: true, action }, loader.plan(resolved))
+          if (action === 'apply') return Object.assign({ ok: true, action }, await loader.apply(resolved))
+          if (action === 'unload') {
+            if (!id) return refused('VMU_INVALID_ARGUMENT', 'unload needs id')
+            return Object.assign({ ok: true, action }, await loader.unload(id))
+          }
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_PACK_MISSING', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
   return specs
 }
 
@@ -269,7 +349,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [] } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -277,7 +357,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {

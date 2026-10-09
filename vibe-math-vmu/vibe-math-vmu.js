@@ -130,8 +130,16 @@ export function apply(ctx, config = {}) {
   // (the live run showed `packs: []` from one instance and a pack rule from the other). `config.instance`
   // makes the answer unambiguous; the default is stable so tests stay deterministic.
   const instance = typeof config.instance === 'string' && config.instance.length > 0 ? config.instance : 'vmu-default'
-  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [] },
-    declared ? { assertDeclared } : {}))
+  // The pack loader is created further down (it needs the kernel), so the adapter gets a LATE-BOUND getter:
+  // the pack tool resolves it at call time, and no ordering trap is introduced (§11-§8 "TOCTOU" lessons).
+  // It is offered ONLY when packs are actually declared - with no configuration the adapter must still
+  // register exactly one tool (zero mechanism, R1); a management surface is not an exception to that.
+  let packLoaderRef = null
+  const packsDeclared = (Array.isArray(config.packs) && config.packs.length > 0) ||
+    (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
+  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
+    packLoader: packsDeclared ? () => packLoaderRef : null },
+  declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // With a durable root, OPEN the store: the durable layer must exist on disk, not merely be constructible.
   // (The library writes its own files; the store is the versioned state fold - docs/07 §1.)
@@ -194,6 +202,7 @@ export function apply(ctx, config = {}) {
   // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the
   // failure is visible instead of swallowed.
   const packLoader = createPackLoader({ kernel, registry: kernel.registry })
+  packLoaderRef = packLoader
   const packsWanted = Array.isArray(config.packs) ? config.packs : []
   const appliedPacks = []
   const packErrors = []

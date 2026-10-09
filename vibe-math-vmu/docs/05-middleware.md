@@ -232,21 +232,23 @@ scope: { role: ['reviewer'], phase: ['review'], session: 'self' }   # 角色/阶
 
 ---
 
-## 9. 校验、干跑与观测
+## 9. 校验、干跑与观测（**实现现状，2026-10-09 校准 ✓**）
 
-1. **静态校验**（装载期）：id 唯一、`on` 在钩子登记表内、谓词白名单、动作白名单、`file` 存在、`capabilities` 合法、`failure` 合法、`order` 为整数。
-2. **干跑（dry-run）**：用**语料/样例事件**跑一遍，报告"会命中谁、会做什么、会不会阻断"，**不产生副作用**；`vmu.middleware.dryRun=true` 时全量规则只报不做（用于上线前验证）。
-3. **观测**：`status().middleware` 给出每条中间件的启用/顺序/命中次数/最近失败/熔断状态；**每次拦截都必须可追**（`traceId` 串起"事件→命中规则→动作→结果"）。
-4. **禁用回归**：任何中间件被禁用后，行为必须回到"无该中间件"的基线（用于变异族测试）。
+1. **静态校验（真实现）**：装载期由 `kernel/rules.js` 的 `validate(rule)` ＋ `kernel/loader.js` 的 `validateModule(entry, module)` 执行 ⇒ id 唯一、`on` 在登记表内、谓词白名单、动作白名单、**具名 subject 谓词存在**（本轮补齐：此前该检查只藏在 `toBusEntries` 内 ✗✓）、`failure`/`order`/`capabilities` 合法 ✓。
+   **工具面（本轮新增 ✓）**：`vibe_vmu_middleware {action:'validate', rule:'<JSON>'}` ⇒ `{ok, problems, vocabulary}`；`{action:'validate', id:'<已声明 id>'}` ✓。
+2. **干跑（真实现 ✓）**：`vibe_vmu_middleware {action:'dryRun', id:'<id>'|rule:'<JSON>', samples:'[<事件>…]'}` ⇒ `{ok, evaluated, hits, would}`，**对总线零副作用**（`hits` 不增、条目不变，仅 `rules.stats.dryRuns` 前进 ✓）；另有全局开关 `vmu.middleware.dryRun=true`（总线只报不做 ✓）。
+   **M2 例外（诚实 ✗）**：代码模块的干跑需要真实事件载荷，**没有**逐模块 dryRun 入口 ⇒ 只做装载期校验 ✓。
+3. **观测**：`vibe_vmu_status` ⇒ `bus.entries[]`（启用/顺序/命中/连续失败/熔断 ✓）、`rules.stats`、`loader.status()`、`bridge.status()`，以及 **`auditTail`（最后 20 条审计 ✓）**；每次拦截经 `traceId` 串起"事件→命中规则→动作→结果" ✓。
+4. **禁用回归**：禁用后行为回到"无该中间件"的基线 ✓（`{action:'disable'}` ⇒ `{action:'enable'}`，有场景 ✓）。
 
 ---
 
-## 10. 与整合包（pack）的组合
+## 10. 与整合包（pack）的组合（**实现现状 ✓**）
 
-- pack 通过 `vmu.packs.active` 引入，向中间件清单**追加**条目（`source: pack:<name>`）；
-- **冲突裁决**（待裁 O4）：默认策略建议 **"显式顺序 ＋ 冲突检测报错"**，而不是静默覆盖；
-- pack 可声明 `requires`（依赖其它 pack/能力）与 `conflicts`（互斥）；
-- **载入时机**（待裁 §02-7）：boot 期静态 vs 运行期切换 —— 选择会直接影响 H2 设置与状态迁移。
+- pack 由 profile 行的 `config.packs`（随包 id 或内联 manifest ✓）在**装载期**引入，向中间件清单**追加**条目 ✓（`source: pack:<id>` ✓）；
+- **冲突裁决（已裁 O4 ✓）**：**检测即报错、不静默覆盖**；只有显式 `vmu.packs.allowOverride` 才允许覆盖 ✓；
+- pack 可声明 `requires`（`[{service,minVersion}]` ✓ 与注册面比对 ✓）；`conflicts` **尚未被读取** ✗（真实冲突面是"已应用＋设置重叠＋总线 id 重复"三类 ✓）；
+- **载入时机（已定 ✓）**：**boot 期**（`config.packs`）＋ 运行期可用 `vibe_vmu_pack {action:'plan'|'apply'|'unload'}` 处理**内联 manifest** ✓；H2 设置与之的交互见 04-§5 ✓。
 
 ---
 

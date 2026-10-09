@@ -238,6 +238,42 @@ if (SELF_PROBE) {
   }
 }
 
+// ---- B2: middleware validate/dryRun are callable, and a dry run has NO side effects -----------------
+{
+  const rule = { id: 'no-edit', kind: 'rules', on: ['tools/pre-execute'],
+    when: { tool: ['edit'] }, then: [{ deny: { code: 'VMU_NOT_PERMITTED', message: 'editing is closed' } }] }
+  const settings = { 'vmu.middleware.entries': [rule] }
+  const h = fakeHost()
+  const kernel = km.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings })
+  await kernel.start()   // the entry does this too: the declared rules are compiled here
+  const adapter = hm.createHostAdapter({ ctx: h.ctx, kernel, settings, instance: 'i' })
+  await adapter.install()
+  const spec = h.state.specs.find((s) => s.name === 'vibe_vmu_middleware')
+  ok(spec !== undefined, 'the middleware tool exists once the bus has entries')
+  if (spec) {
+    const good = JSON.parse(await spec.execute({ action: 'validate', id: 'no-edit' }, {}))
+    ok(good.ok === true && Array.isArray(good.problems) && good.problems.length === 0,
+      'validate on a DECLARED rule reports no problems', JSON.stringify(good.problems))
+    ok(good.vocabulary && Array.isArray(good.vocabulary.predicates) && good.vocabulary.predicates.length > 0,
+      'and returns the live predicate/action vocabulary it validated against')
+    const bad = JSON.parse(await spec.execute({ action: 'validate', rule: JSON.stringify({ id: 'x', kind: 'rules', on: ['tools/pre-execute'], when: { subject: 'not-a-predicate' }, then: [{ deny: { code: 'VMU_NOT_PERMITTED', message: 'x' } }] }) }, {}))
+    ok(bad.ok === false && bad.problems.length > 0 && /predicate/i.test(JSON.stringify(bad.problems)),
+      'validate on an unknown predicate reports the problem BY NAME', JSON.stringify(bad.problems).slice(0, 120))
+    const unknown = JSON.parse(await spec.execute({ action: 'dryRun', id: 'ghost' }, {}))
+    ok(unknown.ok === false && unknown.code === 'VMU_NO_SUCH_OBJECT', 'dryRun on an unknown id is refused by name', JSON.stringify(unknown))
+
+    const before = JSON.parse(await spec.execute({ action: 'list' }, {}))
+    const dry = JSON.parse(await spec.execute({ action: 'dryRun', id: 'no-edit', samples: JSON.stringify([{ tool: 'edit' }, { tool: 'pwsh' }]) }, {}))
+    ok(dry.ok === true && dry.evaluated === 2 && Array.isArray(dry.would),
+      'dryRun evaluates the samples and reports what WOULD happen', JSON.stringify(dry).slice(0, 160))
+    const after = JSON.parse(await spec.execute({ action: 'list' }, {}))
+    ok(after.entries.length === before.entries.length && after.entries.every((e) => e.hits === 0),
+      'a dry run changes NOTHING on the bus (no hits, no new entries)',
+      JSON.stringify({ before: before.entries.length, after: after.entries.length }))
+    ok(kernel.status().rules.stats.dryRuns >= 1, 'and the dry-run counter moves (observability keeps up)')
+  }
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -268,7 +268,7 @@ export default ({ log }) => ({
 
 **`README.md` 必须回答**：① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发/预算/提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默）。
 
-**装载（当前唯一路径）**：profile 行的 `config.packs: ['<id>']`（或内联 manifest）⇒ 插件装载期 `plan → apply`（冲突即具名拒 ✓）。`vibe_vmu_pack {op:'validate'|'dryRun'|'load'}` 是 **⛔ 未实现**的工具 ✗（§3 里"装载前跑一遍"的报告目前只能由库面 `createPackLoader().plan()` 产生 ✓）。
+**装载（两条路，均已可用 ✓）**：① **随包整合包** ⇒ profile 行的 `config.packs: ['<id>']`（或内联 manifest）⇒ 装载期 `plan → apply`（冲突即具名拒 ✓）；② **运行期检查/装载内联 manifest** ⇒ 工具 `vibe_vmu_pack`：`{action:'plan', manifest:'<json>'}`（**纯报告** ✓）⇒ `{action:'apply', …}` ⇒ `{action:'list'}` / `{action:'unload', id}` ✓（该工具**只在声明了整合包时出现** ✓）。
 
 ---
 

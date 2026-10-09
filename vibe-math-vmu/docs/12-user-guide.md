@@ -95,7 +95,7 @@ then:
 **上线前后怎么看它**（⚠️ **校正 ✗✓**：此前这里写的 `vibe_vmu_mw {op:'validate'|'dryRun'|'status'}` 是 **⛔ 未实现**的工具 ✗ —— 真名是 `vibe_vmu_middleware`，且它**没有** validate/dryRun 动作 ✓）：
 1. `vibe_vmu_middleware {action:'list'}` —— 看条目 `id`／`on`／`failure`／`enabled`／`hits`／`consecutiveFailures` ✓；
 2. `vibe_vmu_middleware {action:'disable', id:'proof-gate'}` ⇒ `{action:'enable', id:'proof-gate'}` —— **禁用/启回**（禁用后行为回基线 ✓）；
-3. **静态校验与干跑目前只有库面** ✗：`kernel.rules.dryRun(rule, samples)`（M1）与 `kernel.loader.validate(entry, module)`（M2）—— **⛔ 尚无工具面** ✓（见 05-§9 与 03-§3.2）。
+3. **静态校验与干跑**（**本轮已具工具面 ✓**）：`{action:'validate', id:'proof-gate'}`（或 `rule:'<新规则 JSON>'`）⇒ 返回 `{ok, problems, vocabulary}` ✓；`{action:'dryRun', id:'proof-gate', samples:'[{"tool":"edit"}]'}` ⇒ 返回 `{ok, evaluated, hits, would}` 且**对总线零副作用** ✓（`hits` 不增 ✓）。
 
 **写错也不会炸** ✗：中间件异常按 `failure: open|closed|abort` 处置，**并留审计**；连续失败会**熔断**并通知。
 

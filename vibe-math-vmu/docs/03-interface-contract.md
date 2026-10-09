@@ -76,15 +76,16 @@
 > **别名层**：pack 可声明映射（如 `vibe_v5_poll_vote → vmu.tasks`），使旧语料/旧提示词可复用（D6）。
 > **登记纪律（2026-10-09 真机校准 ✗✓）**：本表 = 宿主**实际注册**的集合，唯一真值是 `vibe-math-vmu/host.js` 的 `TOOL_NAMES` ✓；**未实现的计划工具必须标注 `⛔ 未实现`**，且文档任何地方不得把未实现的工具写成操作步骤 ✗ —— 这条由 `tests/audit-vmu-docs.test.mjs` 的 **F 组**断言强制 ✓（加此断言时，本文件原有 20 个工具名里 **15 个是幻影** ✗）。
 
-### 3.1 已实现（真机已验证的 5 个；零配置时只有第 1 个 ✓）
+### 3.1 已实现（真机已验证的 5 个 + 本轮新增 1 个；零配置时只有第 1 个 ✓）
 
 | 工具 | 语义 | 参数（宿主视图） | 出现条件 | 具名拒 |
 |---|---|---|---|---|
-| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份** | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
-| `vibe_vmu_set` | 改一个设置；未声明的键一律具名拒；回执含热改等级与可改者 | `key`(必填)、`value` | 有声明键时 | `VMU_INVALID_ARGUMENT`、`VMU_PACK_CONFLICT` |
-| `vibe_vmu_middleware` | 中间件：`action=list\|disable\|enable` | `action`(必填，枚举)、`id` | 有声明条目**或**总线已有条目 | `VMU_INVALID_ARGUMENT`、`VMU_NO_SUCH_OBJECT` |
+| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份**/`settings.resolved`/`auditTail`/`prompt` | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
+| `vibe_vmu_set` | 改一个设置；未声明的键一律具名拒；回执含**热改等级对应的生效时机**与来源 | `key`(必填)、`value` | 有声明键时 | `VMU_INVALID_ARGUMENT`、`VMU_NOT_PERMITTED`（H3）、`VMU_PACK_CONFLICT` |
+| `vibe_vmu_middleware` | 中间件：`action=list\|disable\|enable\|validate\|dryRun`（**validate/dryRun 只读、无副作用** ✓） | `action`(必填，枚举)、`id`、`rule`(M1 规则 JSON)、`samples`(事件样本 JSON 数组) | 有声明条目**或**总线已有条目 | `VMU_INVALID_ARGUMENT`、`VMU_NO_SUCH_OBJECT` |
 | `vibe_vmu_records` | 记录面：`action=list\|expand\|append` | `action`(必填)、`id`、`kind`、`statement`、`proof` | 有 `root`（耐久库在场） | `VMU_INVALID_ARGUMENT`、`VMU_NO_SUCH_OBJECT` |
 | `vibe_vmu_script` | M3 脚本：`action=list\|run`（结果**只回调用方**，不进提示词） | `action`(必填)、`id`、`args`(JSON 数组字符串) | profile 行声明了 `config.scripts` | `VMU_NO_SUCH_OBJECT`、`VMU_INVALID_ARGUMENT`、`VMU_ENGINE_UNAVAILABLE` |
+| `vibe_vmu_pack` | 整合包：`action=list\|plan\|apply\|unload`（**`plan` 是纯报告** ✓、`apply` 冲突即具名拒、`unload` 逐个回滚） | `action`(必填，枚举)、`id`(unload)、`manifest`(内联 manifest JSON) | profile 行声明了整合包（`config.packs` 或 `vmu.packs.active` 非空）。**无声明 ⇒ 不出现** ✓（零机制不受管理面豁免 ✓） | `VMU_INVALID_ARGUMENT`、`VMU_PACK_*` |
 
 > **真实接线面（此前文档完全没写 ✗）**：这 5 个工具由 **profile 行的 `config`** 装配 —— `config.root`（耐久库 ⇒ `records`）、`config.vmu['vmu.middleware.entries']`（总线 ⇒ `middleware`）、`config.scripts`（⇒ `script`）、`config.instance`（身份自证）、`config.packs`（整合包装载）。**没有** `settings.yml`／`pack.yml`／`middleware/*.yml` 这类落盘配置 ✗（运行时**不读任何 YAML 文件** ✓）。
 
@@ -105,8 +106,7 @@
 | `vibe_vmu_task` | 任务：建/派/迁移/查 | ⛔ 未实现（库面 `kernel.tasks` ✓） |
 | `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面 | ⛔ 未实现 |
 | `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ 未实现（内核**没有** pause/resume ✗） |
-| `vibe_vmu_pack` | 整合包：查看/装载/卸载 | ⛔ 未实现（装载现由 `config.packs` 完成；库面 `createPackLoader().plan/apply/unload` ✓） |
-| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓；**`validate`/`dryRun` 目前没有工具面** ✗（库面 `kernel.rules.dryRun` ✓ 见 05-§9） |
+| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓（**它的 `validate`/`dryRun` 动作现已实现** ✓，见 §3.1） |
 
 **工具面纪律**（对 DSH 的对接约束，**来源已分级标注** ✓）：
 - **参数 DSL（源码级）**：`parameters: { <名>: { type, required: true, description, enum } }` —— **`required` 写在参数内部**，**不是**顶层 `required[]` 数组 ✗；

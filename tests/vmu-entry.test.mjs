@@ -233,7 +233,40 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
-// ---- 9. self-probe ----------------------------------------------------------------------------
+// ---- 9. B2: the pack tool appears only with declared packs, and plan() is pure ----------------------
+{
+  const h = fakeCtx()
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-pack-tool-'))
+  const handle = entry.apply(h.ctx, { clock, root: dir, packs: ['institute-min'] })
+  await new Promise((r) => setTimeout(r, 60))
+  const spec = h.state.specs.find((s) => s.name === 'vibe_vmu_pack')
+  ok(spec !== undefined, 'declaring a pack makes the pack tool available')
+  if (spec) {
+    const list = await call(spec, { action: 'list' })
+    ok(list.ok === true && Array.isArray(list.applied) && list.applied.some((a) => a.id === 'institute-min'),
+      'list reports what is applied', JSON.stringify(list.applied || list).slice(0, 140))
+    const inline = { id: 'inline-demo', version: '1.0.0', slots: [{ id: 'temp', capacity: 1 }] }
+    const planned = await call(spec, { action: 'plan', manifest: JSON.stringify(inline) })
+    ok(planned.ok === true && planned.id === 'inline-demo' && Array.isArray(planned.actions),
+      'plan reports exactly what an inline manifest would change (pure)', JSON.stringify(planned).slice(0, 160))
+    const beforeSlots = handle.kernel.requireMembers().roles().length
+    await call(spec, { action: 'plan', manifest: JSON.stringify(inline) })
+    ok(handle.kernel.requireMembers().roles().length === beforeSlots,
+      'and planning TWICE changes nothing (plan is a pure report, not an apply)')
+    const badJson = await call(spec, { action: 'plan', manifest: '{not json' })
+    ok(badJson.ok === false && badJson.code === 'VMU_INVALID_ARGUMENT', 'a malformed manifest is refused by name', JSON.stringify(badJson))
+  }
+  // …and with no packs declared the tool must be absent (zero mechanism, R1).
+  const plain = fakeCtx()
+  entry.apply(plain.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(!plain.state.specs.some((s) => s.name === 'vibe_vmu_pack'),
+    'with no declared pack the pack tool does NOT appear (zero mechanism stays intact)',
+    plain.state.specs.map((s) => s.name).join(','))
+  await rm(dir, { recursive: true, force: true })
+}
+
+// ---- 10. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"
