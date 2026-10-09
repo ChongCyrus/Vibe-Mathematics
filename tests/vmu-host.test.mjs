@@ -71,6 +71,15 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(st.seams.host === false && st.seams.store === false, 'status names the missing seams instead of hiding them')
   const uninstalled = await adapter.uninstall()
   ok(uninstalled.ok === true && uninstalled.ownedByHost === true, 'uninstall defers to the host when ctx.effect owns the registrations')
+  // Instance identity: with two vmu rows in one profile the host keeps one registration per name, so the
+  // receipts must say WHICH instance answered (the live run showed contradictory-looking receipts).
+  const named = hm.createHostAdapter({ ctx: fakeHost().ctx, kernel, settings: {}, instance: 'vmu-a' })
+  ok(named.status().instance === 'vmu-a', 'the adapter reports its instance identity', named.status().instance)
+  const namedHost = fakeHost()
+  const named2 = hm.createHostAdapter({ ctx: namedHost.ctx, kernel, settings: {}, instance: 'vmu-b' })
+  await named2.install()
+  const namedStatus = await call(namedHost.state.specs[0])
+  ok(namedStatus.instance === 'vmu-b', 'and the status TOOL receipt carries it, so a real receipt is unambiguous', namedStatus.instance)
 }
 
 // ---- 2. disabled ⇒ ZERO registrations ----------------------------------------------------------

@@ -60,7 +60,12 @@ export function apply(ctx, config = {}) {
   // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the
   // middleware the configuration declares has to be ACTIVATED - that is what start() is for.
   const declared = Object.keys(settings).length > 0
-  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings },
+  // INSTANCE IDENTITY: a profile can hold more than one vmu row (the preset's, plus a standalone one), and
+  // the host keeps one registration per tool name - so without an identity the receipts look contradictory
+  // (the live run showed `packs: []` from one instance and a pack rule from the other). `config.instance`
+  // makes the answer unambiguous; the default is stable so tests stay deterministic.
+  const instance = typeof config.instance === 'string' && config.instance.length > 0 ? config.instance : 'vmu-default'
+  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance },
     declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // With a durable root, OPEN the store: the durable layer must exist on disk, not merely be constructible.
@@ -158,6 +163,7 @@ export function apply(ctx, config = {}) {
   return {
     kernel,
     adapter,
+    instance,
     packLoader: () => packLoader,
     appliedPacks: () => appliedPacks.slice(),
     packErrors: () => packErrors.slice(),

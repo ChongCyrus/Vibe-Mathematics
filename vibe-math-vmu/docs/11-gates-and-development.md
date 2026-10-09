@@ -217,6 +217,13 @@ node scripts/release-check.mjs             # 发布前清单
 
 > **方法论收获**：**库测试用自己假设的形态** ⇒ 永远抓不到这三条 ✗✓；真机（脚本化 SLV）＋ **直接读宿主源码/会话日志**才是判据 ✓。⇒ 已固化为 `tests/vmu-host.test.mjs` 的**形态断言**（`execute`／无 `handler`／`presentationMeta` 缺省或函数／`parameters.type==='object'` ＋ 顶层 `required` ✓）。
 
+### 8.3 多实例（真机发现；处置已定 ✓）
+
+一个 profile 里可以同时存在**两个 vmu 实例**：预设自带的插件行（无 config ⇒ 惰性）＋ profile patch 插入的独立行（带 config）。
+- **宿主对同层同名工具只保留一个** ⇒ 实测出现"**观测面分裂**"：`vibe_vmu_status` 由**惰性实例**回答（`packs: []`、`members: null`），而 `vibe_vmu_middleware` 由**带 config 实例**回答（能列出整合包规则）✓；
+- **嵌套的预设行不可由 profile 层寻址**：试图 `- id: vibe-math-vmu / disabled: true` ⇒ 宿主回报 **`patch: entry "vibe-math-vmu" not found`** ✓；
+- **处置（保守、低风险 ✓）**：每个 vmu 实例在回执里**自证身份** —— 入口接受 `config.instance`（缺省 `vmu-default`，**确定性**以便测试），`vibe_vmu_status` 与 `adapter.status()` 都带 `instance` ✓✓；文档写明：**"同层同名由宿主裁决，故每个 preset 只应有一个 vmu 实例；多实例必须各自 `config.instance` 以便排障"** ✓。
+
 ---
 
 ## 9. 真机验收（E 类门禁：SLV playbook）

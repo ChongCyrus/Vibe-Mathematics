@@ -58,18 +58,20 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {} }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null }) {
   const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
   const specs = []
 
   // 1) status — ALWAYS available when the kernel is enabled: it is how the inert default is observable.
+  // It also PROVES WHICH INSTANCE answered: a profile can hold two vmu rows (the preset's and a standalone
+  // one), the host keeps one registration per name, and without an identity the receipts look contradictory.
   specs.push({
     name: TOOL_NAMES.status,
-    description: 'vmu 内核状态：装配了哪些服务/接缝、注册了哪些中间件、生效的整合包、以及是否"零机制惰性"。只读。',
+    description: 'vmu 内核状态：装配了哪些服务/接缝、注册了哪些中间件、生效的整合包、实例身份、以及是否"零机制惰性"。只读。',
     parameters: {},
     run: async () => {
       try {
-        return Object.assign({ ok: true }, kernel.status())
+        return Object.assign({ ok: true, instance }, kernel.status())
       } catch (e) {
         return refused('VMU_MIDDLEWARE_FAILED', 'status() failed: ' + String(e && e.message))
       }
@@ -208,7 +210,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {} } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -216,7 +218,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
@@ -293,7 +295,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     },
 
     status() {
-      return { installed, ownedByHost, registered: registered.slice(), failures: failures.map((f) => Object.assign({}, f)), plan: this.plan(),
+      return { instance, installed, ownedByHost, registered: registered.slice(), failures: failures.map((f) => Object.assign({}, f)), plan: this.plan(),
         note: 'with nothing declared only vibe_vmu_status is registered; with vmu.core.enabled=false nothing is; execute() returns a JSON string rendered as one text part; a registration that fails is named in `failures` and does not stop the others' }
     },
   }

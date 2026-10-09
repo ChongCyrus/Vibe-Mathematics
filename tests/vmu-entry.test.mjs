@@ -70,6 +70,13 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(st.ok === true && st.active === true && st.registrations.length === 0,
     'status reports a STARTED kernel that registered nothing (that is what zero mechanism means)',
     JSON.stringify({ active: st.active, registrations: st.registrations }))
+  ok(handle.instance === 'vmu-default' && st.instance === 'vmu-default',
+    'the entry defaults to a STABLE instance identity and the status receipt carries it', JSON.stringify({ handle: handle.instance, receipt: st.instance }))
+  const namedCtx = fakeCtx()
+  const namedHandle = entry.apply(namedCtx.ctx, { clock, instance: 'vmu-second' })
+  await new Promise((r) => setTimeout(r, 10))
+  ok(namedHandle.instance === 'vmu-second' && (await call(namedCtx.state.specs[0])).instance === 'vmu-second',
+    'and config.instance overrides it, so two rows in one profile are distinguishable')
 }
 
 // ---- 3. disabled ⇒ nothing at all ---------------------------------------------------------------
@@ -165,7 +172,7 @@ if (SELF_PROBE) {
     const dir = await mkdtemp(join(tmpdir(), 'vmu-entry-mut-'))
     await mkdir(join(dir, 'kernel', 'prompt'), { recursive: true })
     await mkdir(join(dir, 'settings'), { recursive: true })
-    for (const f of ['bus.js', 'store.js', 'library.js', 'members.js', 'ballot.js', 'meeting.js', 'tasks.js', 'math.js', 'rules.js', 'loader.js', 'script-bridge.js', 'registry.js', 'index.js']) {
+    for (const f of ['bus.js', 'store.js', 'library.js', 'members.js', 'ballot.js', 'meeting.js', 'tasks.js', 'math.js', 'rules.js', 'loader.js', 'script-bridge.js', 'registry.js', 'pack.js', 'index.js']) {
       await writeFile(join(dir, 'kernel', f), await readFile(resolve(REPO, 'vibe-math-vmu', 'kernel', f), 'utf8'), 'utf8')
     }
     await writeFile(join(dir, 'kernel', 'prompt', 'index.js'), await readFile(resolve(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js'), 'utf8'), 'utf8')
