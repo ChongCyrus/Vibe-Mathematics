@@ -234,6 +234,34 @@ if (SELF_PROBE) {
     JSON.stringify(k2.control()).slice(0, 140))
 }
 
+// ---- Durable audit: rows reach the disk, and a write failure is REPORTED (R11) ------------------------
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-audit-'))
+  const k = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', root })
+  k.bus.setDryRun(true)
+  const audit = k.status().audit
+  ok(audit && audit.dir && audit.written >= 1 && audit.lastWriteError === null,
+    'audit rows are APPENDED to <root>/vmu/audit/<day>.jsonl (the trail now survives the process)',
+    JSON.stringify(audit))
+  const text = audit.file ? await readFile(audit.file, 'utf8') : ''
+  ok(/middleware\/dry-run/.test(text) && text.trim().split('\n').length >= 1,
+    'the durable file holds the JSONL rows (one object per line)', text.slice(0, 100))
+  ok(audit.file && /2026-10-09\.jsonl$/.test(audit.file), 'the file is named by UTC day', String(audit.file))
+  await rm(root, { recursive: true, force: true })
+
+  // A root that cannot hold a directory: the failure must be visible, and the in-memory tail must survive.
+  const file = await mkdtemp(join(tmpdir(), 'vmu-audit-bad-'))
+  const blocker = join(file, 'blocker')
+  await writeFile(blocker, 'not a directory', 'utf8')
+  const bad = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', root: blocker })
+  bad.bus.setDryRun(true)
+  ok(bad.status().audit.lastWriteError !== null,
+    'a failing audit write is REPORTED in status().audit.lastWriteError, not swallowed',
+    JSON.stringify(bad.status().audit).slice(0, 140))
+  ok(bad.status().auditTail.length >= 1, 'and the in-memory auditTail keeps working meanwhile')
+  await rm(file, { recursive: true, force: true })
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -156,9 +156,9 @@
 <workspace>/
 ├── vmu/                          # 内核工作区（公开布局，pack/脚本可读）
 │   ├── state.json                # 单一 fold 投影（＋版本号/迁移记录）
-│   ├── settings.resolved.json    # 生效设置与来源（只读镜像）
-│   ├── packs/<name>/             # 已装载 pack 的清单与来源
-│   └── audit/                    # 设置/中间件/拒绝 审计（只增）
+│   ├── settings.resolved.json    # ⚠️ 未落盘：生效设置与来源**只在 status().settings.resolved** ✓
+│   ├── packs/<name>/             # ⚠️ 未落盘：已装载 pack 的清单只在 status().packs 与 pack 记录里 ✓
+│   └── audit/<YYYY-MM-DD>.jsonl  # **已落盘 ✓**：设置/中间件/拒绝 审计（只增；写失败在 status().audit.lastWriteError 具名上报 ✓）
 ├── Members/<id>/
 │   ├── Progress/{progress,routes,obstacles,rejected,state}.md
 │   ├── Propos/ · Methods/ · Subproblems/

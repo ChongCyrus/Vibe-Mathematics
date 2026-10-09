@@ -34,6 +34,8 @@ import { createLoader } from './loader.js'
 import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
 import { SETTING_DEFS } from '../settings/schema.js'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -120,6 +122,27 @@ export function createKernel({
     ? createStore({ root, migrators, clock })
     : null
 
+  // DURABLE AUDIT (docs/07 §5): with a root, every audit row is APPENDED to <root>/vmu/audit/<day>.jsonl, so
+  // the trail survives the process (it used to exist only in memory, and `vmu/audit/**` was never written).
+  // A write failure must be VISIBLE (R11): it is reported in status().audit.lastWriteError, while the
+  // in-memory auditTail keeps working so the run is never silently unauditable.
+  const auditState = { dir: root ? join(root, 'vmu', 'audit') : null, file: null, written: 0, lastWriteError: null }
+  if (auditState.dir) {
+    try { mkdirSync(auditState.dir, { recursive: true }) } catch (e) { auditState.lastWriteError = String((e && e.message) || e) }
+  }
+  const auditToDisk = (row) => {
+    if (!auditState.dir) return
+    try {
+      const day = String((row && row.ts) || clock()).slice(0, 10)
+      const file = join(auditState.dir, day + '.jsonl')
+      appendFileSync(file, JSON.stringify(row) + '\n', 'utf8')
+      auditState.file = file
+      auditState.written += 1
+    } catch (e) {
+      auditState.lastWriteError = String((e && e.message) || e)
+    }
+  }
+
   // The audit trail must be OBSERVABLE, not merely logged: `status().auditTail` returns the last rows, so a
   // reader can answer "who changed what, and which middleware refused this call" without opening a log file.
   const auditRing = []
@@ -131,6 +154,7 @@ export function createKernel({
       auditRing.push(row)
       if (auditRing.length > 100) auditRing.shift()
       log('audit ' + JSON.stringify(row))
+      auditToDisk(row)
     },
   })
 
@@ -471,6 +495,11 @@ export function createKernel({
         active: started,
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved },
         auditTail: auditRing.slice(-20),
+        audit: { dir: auditState.dir, file: auditState.file, written: auditState.written,
+          lastWriteError: auditState.lastWriteError,
+          note: auditState.dir
+            ? 'audit rows are appended to <root>/vmu/audit/<day>.jsonl; a write failure is reported here, never swallowed'
+            : 'no durable root: the audit is in-memory only (auditTail)' },
         registrations: registrations.slice(),
         // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
         // which records itself in the notes; a status that only tracks usePack() would under-report.

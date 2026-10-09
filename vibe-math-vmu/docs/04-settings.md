@@ -101,7 +101,7 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 ## 6. 审计与"谁能改"（**实现现状，2026-10-09 校准 ✓**）
 
 - **值从哪来（真实现）**：`vibe_vmu_status` ⇒ `settings.resolved[<key>] = { value, source, hot, who, overridden }` ✓，`source` 取值与优先级为 **`pack:<id>` > `runtime`（`vibe_vmu_set` 写过）> `config`（插件行的 `config.vmu`）> `default`（无人设置，用 schema 默认）** ✓；`overridden` 列出被 pack 覆盖过的来源 ✓。**没有** `settings.resolved.json` 这种落盘文件 ✗（见 §2 的修正）。
-- **审计面（真实现）**：`vibe_vmu_status` ⇒ **`auditTail`**（总线审计的**最后 20 条**，内存环形缓冲，进程内 ✓）；行形如 `{ ts, seq, what, id, ... }`（注册/禁用/失败/熔断/干跑/决定 ✓）。**`status().settings.auditTail` 不是耐久全量** ✗：`vmu/audit/**` 从未落盘 ✓ ⇒ 需要耐久审计须自行写 `log` 落地的消费者 ✓。
+- **审计面（真实现，2026-10-09 更新 ✓）**：`vibe_vmu_status` ⇒ **`auditTail`**（总线审计的**最后 20 条**，内存 ✓）＋ **`audit = { dir, file, written, lastWriteError }`** ✓；行形如 `{ ts, seq, what, id, ... }` ✓。**耐久审计已落盘 ✓**：有 `root` 时每条追加到 `<root>/vmu/audit/<YYYY-MM-DD>.jsonl`（JSONL ✓，只增不改 ✓）；**写失败具名上报** ✗→✓（`lastWriteError`，且内存尾照常 ✓）；无 `root` ⇒ 仅内存面 ✓。
 - **写权限（真实现 ✗→✓ 部分）**：`who` 目前是**声明性元数据** ✓（`vibe_vmu_set` 已把它写进回执 ✓）；但**运行期尚未强制** ✗ —— `vmu.safety.delegableKeys` 截至本轮**无消费者** ✗（04 §11 的"接线"列已如实标注 ✓）。
 - **拒收（真实现）**：未声明键 ⇒ `VMU_INVALID_ARGUMENT` ✓；H3 ⇒ `VMU_NOT_PERMITTED` ✓；pack 设置冲突 ⇒ `VMU_PACK_CONFLICT` ✓（除非显式 `vmu.packs.allowOverride` ✓）。
 

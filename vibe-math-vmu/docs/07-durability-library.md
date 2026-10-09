@@ -92,7 +92,7 @@ interface VmuStore {
 | `Members/**.md` 布局、`Shared/**` 布局 | ✅ 公开 | pack/脚本/外部工具可读写（经内核服务，不直接改文件亦可） |
 | `vmu/state.json` 的**键**清单 | ✅ 公开（03-§6） | **格式不保证**（实现细节）；只读面经 `status()`/服务 |
 | `vmu/state.json` 的**文件格式** | ❌ 内部 | 任何人不得直接改；破坏性变更走 §2 |
-| `vmu/audit/**` | ✅ 只读公开 | 只增；不得改写 |
+| `vmu/audit/<YYYY-MM-DD>.jsonl` | ✅ 只读公开（**已落盘 ✓**，2026-10-09） | 只增；不得改写。**每行一个 JSON 审计记录**（`{ts,seq,what,id,…}` ✓）；写失败**具名上报**在 `status().audit.lastWriteError` ✓，且内存 `auditTail` 照常工作 ✓ |
 | 中间件内部状态 | ❌ 内部 | 中间件自管；框架不承诺 |
 
 ---
