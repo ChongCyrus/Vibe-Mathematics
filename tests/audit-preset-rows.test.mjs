@@ -30,7 +30,7 @@ const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
 const patch = readFileSync(join(REPO, 'cordis.patch.yml'), 'utf8')
-const VERSIONS = ['v2', 'v3', 'v4', 'v5', 'v5r']
+const VERSIONS = ['v2', 'v3', 'v4', 'v5', 'v5r', 'vmu']
 
 let passed = 0, failed = 0
 const failures = []
@@ -58,10 +58,10 @@ ok(pkg.files.includes('cordis.patch.yml') && pkg.files.includes('scripts/build-p
 ok(/^ {4}- id: vibe-math-preset-installer$/m.test(patch)
   && /^ {6}name: dsh-vibe-math\/installer$/m.test(patch),
   'the installer row is inserted first')
-const declarationRows = [...patch.matchAll(/^ {4}- id: preset-vibe-math-(v\d+r?)$/gm)].map((m) => m[1])
+const declarationRows = [...patch.matchAll(/^ {4}- id: preset-vibe-math-(v\d+r?|vmu)$/gm)].map((m) => m[1])
 ok(declarationRows.join(',') === VERSIONS.join(','),
   'one declaration row per preset, in order', declarationRows.join(','))
-ok((patch.match(/name: dsh-vibe-math\/preset-declaration/g) || []).length === 5,
+ok((patch.match(/name: dsh-vibe-math\/preset-declaration/g) || []).length === VERSIONS.length,
   'every declaration names this package\'s own preset-declaration module')
 ok(!patch.includes("name: '@deepseek-ai/dsh-agent-preset'"),
   'no row names @deepseek-ai/dsh-agent-preset (that package does not exist on DSH <= 0.1.6)')
@@ -69,7 +69,7 @@ ok(!/^ {4,6}disabled:/m.test(patch),
   'no `disabled: !!js` gate on a DECLARATION row (an expression calling ctx.get() throws in patch evaluation and the row never loads; the nested platform gates on tool-bash/tool-pwsh inside a composition are constants and fine)')
 
 // ---- 4. every declaration's composition -------------------------------------------------------
-const IDS = { v2: '20', v3: '21', v4: '22', v5: '23', v5r: '24' }
+const IDS = { v2: '20', v3: '21', v4: '22', v5: '23', v5r: '24', vmu: '25' }
 for (const v of VERSIONS) {
   const start = patch.indexOf('- id: preset-vibe-math-' + v)
   const next = patch.indexOf('\n- insert:', start)

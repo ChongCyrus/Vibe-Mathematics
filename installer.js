@@ -84,6 +84,14 @@ export const PRESETS = [
     // so every shipped behaviour can be traced back to a shipped design decision.
     files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5r.js', 'LEGACY-v5-实现方案（仅供参考）.md', '设计总览.md', '架构图.md', 'math-computation.js', 'math-engines.js', 'MEETING-PLATFORM-PHILOSOPHY.md', 'MEETING-PLATFORM-RULINGS.md', 'MEETING-PLATFORM-VOTING.md', 'MEETING-PLATFORM-EXPANSION.md', 'MEETING-PLATFORM-OVERSIGHT-TIME.md', 'MEETING-PLATFORM-SPEC.md', 'MEETING-PLATFORM-A-model.md', 'MEETING-PLATFORM-B-protocol.md', 'MEETING-PLATFORM-C-landing.md', 'MEETING-PLATFORM-DECISIONS.md', 'MEETING-PLATFORM-GAPS.md', 'docs/00-README.md', 'docs/01-philosophy.md', 'docs/02-rulings.md', 'docs/03-interface-contract.md', 'docs/04-flows-and-protocols.md', 'docs/05-voting.md', 'docs/06-expansion-mechanisms.md', 'docs/07-oversight-and-time.md', 'docs/08-landing-plan.md', 'docs/09-implementation-manual.md', 'docs/10-guards-and-acceptance.md', 'docs/11-appendix-drafts.md', 'docs/12-traceability.md'],
   },
+  {
+    src: 'vibe-math-vmu',
+    dst: 'vibe-math-vmu',
+    // vmu is the framework-first preset (vibe-math-unify): the runtime files plus its complete
+    // design document set (docs/00..14), so every mechanism it can express is traceable to a
+    // shipped design decision, and every default is documented as "zero mechanism".
+    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-vmu.js', 'math-computation.js', 'math-engines.js', 'docs/00-README.md', 'docs/01-philosophy.md', 'docs/02-architecture.md', 'docs/03-interface-contract.md', 'docs/04-settings.md', 'docs/05-middleware.md', 'docs/06-prompt-pipeline.md', 'docs/07-durability-library.md', 'docs/08-primitives-meeting-ballot-workflow.md', 'docs/09-math-formalization.md', 'docs/10-packs.md', 'docs/11-gates-and-development.md', 'docs/12-user-guide.md', 'docs/13-migration.md', 'docs/14-open-items-and-roadmap.md'],
+  },
 ]
 
 const STATE_FILE = '.vibe-math-installed.json'
