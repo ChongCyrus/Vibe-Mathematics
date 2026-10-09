@@ -220,6 +220,7 @@
     "vibe-math-vmu/host.js",
     "vibe-math-vmu/host-hooks.js",
     "vibe-math-vmu/host-spawn.js",
+    "vibe-math-vmu/host-math.js",
     "tests/vmu-tasks.test.mjs",
     "tests/vmu-rules.test.mjs",
     "tests/vmu-loader.test.mjs",

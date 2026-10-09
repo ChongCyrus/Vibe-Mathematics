@@ -112,7 +112,9 @@ interface EngineAdapter {
 
 ## 9. 未核项
 
-- **本机工具链的实际行为未实测**：LaTeX＝`D:\texlive\2025\bin\windows\`、Lean＝`D:\.elan\bin\`（均在 PATH ✓，实测），但 **vmu 侧尚未跑过一次真实编译/证明**（裁决：负例由**注入接缝**制造，见 §2.1 ✓）；
+- **数学计算面已接入真机（2026-10-09 ✓）**：`host-math.js` 把宿主接缝（`register/params/projectRoot/writeText/readText/exists/listDir/resolveExecutable/spawn/log` ✓）接到共享模块 ✓ ⇒ **6 个 `vmu.math.*` 键**（`computation`／`mode`／`engines`／`timeoutMs`／`packages`／`installScope` ✓）经 `host.params()` 真正生效 ✓；出现条件＝声明 `math: true` 或任一 `vmu.math.*` ✓（零机制 ✓）。路径逃逸**具名拒** ✓（`VMU_NOT_PERMITTED` ✓）。
+- **本机工具链的真实运行仍未实测** ✗：vmu 侧从未跑过一次真实编译/证明 ✓（负例一律由**注入接缝**制造 ✓，见 §2.1 ✓）；且**真实计算依赖子进程服务** ✗（M3 真机 NON-RESULT ⇒ 目标机上的 provider 内部报错 ✓，见 11-§9.6 ✓）⇒ 本机 `probe` 可跑、**真实 run 待该缺陷解决** ✓。
+- **8 个 `vmu.math.lean*` 键仍未接线** ✗（`formalVerify`／`leanCommand`／`leanArgs`／`leanTimeoutMs`／`leanAsync`／`leanInitiative`／`leanSearchPaths`／`leanJobsMaxParallel` ＋ `compileTimeoutMs` ✓）：Lean 面在 vmu 里**只有适配器与 `settled()` 规则**（R-b ✓），**没有**编译/作业队列 ✗ ⇒ 04 §11 的"接线"列已逐键标注 ✓。
 - **Lean 侧复用细节未核**：v5r 的 `sha256Hex` 是**自实现**（非复用 DSH 能力）⇒ vmu 是否沿用待定；
 - **引擎适配器的能力边界**（哪些计算必须走内部模块 vs 外部进程）未定；
 - **作业持久化**（异步作业跨重启）语义未定。

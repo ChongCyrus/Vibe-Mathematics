@@ -22,6 +22,7 @@ import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
 import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
+import { createHostMath } from './host-math.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL } from 'node:url'
 import { basename, isAbsolute, join } from 'node:path'
@@ -118,7 +119,25 @@ export function apply(ctx, config = {}) {
     }
   }).filter((s) => s.text.length > 0)
 
-  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam,
+  // V9 MATH: the shared `math_computation` module reaches the host through an injected seam. Until now only a
+  // TEST fake provided one, so the math domain and its settings were unreachable in a real session. The
+  // adapter is built here, and `vmu.math.computation: 'off'` keeps it out entirely (zero mechanism).
+  // Declaring math INTENT is what switches the domain on (`config.math`, or any declared `vmu.math.*` key).
+  // No declaration ⇒ no math tool, exactly like scripts/packs/middleware: a default value is not a
+  // declaration, and the zero-mechanism proof ("one read-only tool") must survive (docs/11 §7).
+  const mathDeclared = config.math !== undefined || Object.keys(settings).some((k) => k.startsWith('vmu.math.'))
+  let mathHost = null
+  if (mathDeclared && settings['vmu.core.enabled'] !== false && ctx && ctx.tools && typeof ctx.tools.register === 'function' && settings['vmu.math.computation'] !== 'off') {
+    try {
+      mathHost = createHostMath({
+        ctx, settings,
+        projectRoot: typeof config.workspace === 'string' ? config.workspace : null,
+        log: (m) => { try { process.stderr.write('vmu ' + String(m) + '\n') } catch { /* stderr may be gone */ } },
+      })
+    } catch (e) { mathHost = null }
+  }
+
+  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam, host: mathHost,
     sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
@@ -141,6 +160,15 @@ export function apply(ctx, config = {}) {
     packLoader: packsDeclared ? () => packLoaderRef : null },
   declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
+  // The math surface is LAZY (kernel/math.js), so the shared module registers its tool only when asked. The
+  // entry asks once, and a failure is reported by name instead of leaving the tool silently absent (R11).
+  const mathReady = mathHost ? Promise.resolve().then(() => kernel.math()).then(
+    (surface) => ({ ok: true, tool: surface && surface.registered ? surface.registered.name : null }),
+    (e) => {
+      const detail = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }
+      try { process.stderr.write('vmu: the math surface was not published: ' + detail.code + ' ' + detail.message + '\n') } catch { /* stderr may be gone */ }
+      return { ok: false, ...detail }
+    }) : Promise.resolve({ ok: true, skipped: 'no math host seam (vmu.math.computation is off, or the host has no tools.register)' })
   // With a durable root, OPEN the store: the durable layer must exist on disk, not merely be constructible.
   // (The library writes its own files; the store is the versioned state fold - docs/07 §1.)
   const opened = (root && kernel.store && typeof kernel.store.open === 'function')
@@ -289,6 +317,8 @@ export function apply(ctx, config = {}) {
     kernel,
     adapter,
     instance,
+    mathHost: () => mathHost,
+    mathReady: () => mathReady,
     // The entry's own prompt view: WHICH declaration produced each section's effective text (inline / file /
     // override). The kernel pipeline reports the declaring LAYER plus an `overridden` flag, which is a
     // different (and complementary) question - docs/06 §7 states both so the two are never conflated.

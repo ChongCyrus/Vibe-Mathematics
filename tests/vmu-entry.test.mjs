@@ -266,7 +266,38 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
-// ---- 10. self-probe ---------------------------------------------------------------------------
+// ---- 10. V9: declaring math intent publishes the inherited math_computation tool --------------------
+{
+  const h = fakeCtx({ get: () => undefined })
+  const handle = entry.apply(h.ctx, { clock, math: true, vmu: { 'vmu.math.timeoutMs': 12345 } })
+  await new Promise((r) => setTimeout(r, 40))
+  const ready = await handle.mathReady()
+  ok(ready.ok === true && ready.tool === 'math_computation',
+    'declaring math publishes the SHARED module\'s tool through the host adapter', JSON.stringify(ready))
+  const spec = h.state.specs.find((s) => s.name === 'math_computation')
+  ok(spec !== undefined && spec.parameters && spec.parameters.type === 'object' &&
+     spec.parameters.additionalProperties === false && Array.isArray(spec.parameters.required),
+    'the registered schema is host-shaped (object schema + additionalProperties + top-level required)',
+    JSON.stringify(spec && spec.parameters).slice(0, 120))
+  if (spec) {
+    const probe = JSON.parse(await spec.execute({ op: 'probe' }, {}))
+    ok(probe && typeof probe === 'object', 'the tool is CALLABLE end to end through the adapter (probe returns a receipt)',
+      JSON.stringify(probe).slice(0, 140))
+  }
+  // …and the settings reach the module through host.params(): the adapter maps the declared keys.
+  const mapped = handle.mathHost().params()
+  ok(mapped.mathTimeoutMs === 12345, 'declared vmu.math.* keys are mapped onto the module\'s parameter names',
+    JSON.stringify(mapped))
+  // No declaration ⇒ no math tool (zero mechanism, R1).
+  const plain = fakeCtx({ get: () => undefined })
+  entry.apply(plain.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(!plain.state.specs.some((s) => s.name === 'math_computation'),
+    'without a math declaration nothing is published (zero mechanism stays intact)',
+    plain.state.specs.map((s) => s.name).join(','))
+}
+
+// ---- 11. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

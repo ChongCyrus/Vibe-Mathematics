@@ -198,12 +198,12 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ⚠️ 未接线（改了不会有行为变化） | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
 | `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | 未完成任务上限；0＝不限 |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | 阶段列表；默认空＝不假装有流程 |
-| `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | P3：数学工具可用性（共享模块默认 auto） |
+| `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | P3：数学工具可用性（共享模块默认 auto） |
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | P3：typed＝绝不提 shell 且拒绝 engine=cli |
 | `vmu.math.engines` | string[] | `[python,r,octave,julia,matlab,maple,wolfram,cli]` | — | 会话 | H2 | office | ✅ 已接线 | 引擎优先级（默认取自共享模块并拷贝；空＝具名降级） |
 | `vmu.math.timeoutMs` | int ≥0 | `60000` | — | 会话 | H0 | office | ✅ 已接线 | P3：单次计算预算（共享模块默认） |
-| `vmu.math.packages` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | P3：计算可要求的包/工具箱（共享模块默认） |
-| `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | P3：安装作用域；system 仅当次、绝不记忆 |
+| `vmu.math.packages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | P3：计算可要求的包/工具箱（共享模块默认） |
+| `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ✅ 已接线 | P3：安装作用域；system 仅当次、绝不记忆 |
 | `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | 编译超时；0＝作业级默认 |
 | `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | P3：判定时的形式化要求；默认 off＝零策略 |
 | `vmu.math.leanCommand` | string | `lean` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | P3：Lean 命令名（命令模板可覆盖） |

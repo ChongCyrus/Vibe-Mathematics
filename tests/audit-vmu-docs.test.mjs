@@ -225,6 +225,9 @@ ok(unregisteredInCode.length === 0,
   for (const [name, text] of docText) {
     for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
       const k = m[0]
+      // A FAMILY wildcard (`vmu.math.lean*`) is prose about a family, not a claim about a key.
+      const after = text.slice(m.index + k.length, m.index + k.length + 1)
+      if (after === '*' || after === '…') continue
       if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
       bogus.add(k + ' (' + name + ')')
     }

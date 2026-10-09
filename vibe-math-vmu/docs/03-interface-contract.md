@@ -120,7 +120,7 @@
 
 | 工具名 | 来源 | 实现位置 | 说明 |
 |---|---|---|---|
-| **`math_computation`** ✓**已接入** | **共享模块**（清点判决"原样复用" ✓） | `vibe-math-vmu/math-computation.js` ＋ `kernel/math.js` 适配 | 名字**不改为** `vibe_vmu_*` ✗：改名会破坏各预设的**字节一致性**（`audit-math-computation-parity` ✓），且 v2–v5r 全用此名 ✓；旧名↔新名的映射由 **pack 别名层**（D6）负责 ✓ |
+| **`math_computation`** ✓**已接入（2026-10-09 完成 ✓）** | **共享模块**（清点判决"原样复用" ✓） | `vibe-math-vmu/math-computation.js` ＋ `kernel/math.js` 适配 ＋ **`host-math.js` 真宿主接缝** ✓ | 名字**不改为** `vibe_vmu_*` ✗：改名会破坏各预设的**字节一致性**（`audit-math-computation-parity` ✓），且 v2–v5r 全用此名 ✓；旧名↔新名的映射由 **pack 别名层**（D6）负责 ✓。**出现条件**：插件行声明 `math: true` 或任一 `vmu.math.*` 键 ✓（未声明 ⇒ 不发布 ✓，零机制 ✓）；接缝提供 `register/params/projectRoot/writeText/readText/exists/listDir/resolveExecutable/spawn/log` ✓，`spawn` 走 `host-spawn.js`（调用时解析 ✓） |
 
 > **纪律**：`vibe_vmu_*` 是 **vmu 自建工具**的命名空间 ✓；**继承面**以原名登记在本表 ✓，不得悄悄改名 ✗（改名 = 破坏性变更，须走 03-§7 的版本与迁移流程 ✓）。
 
