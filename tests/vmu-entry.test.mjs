@@ -99,6 +99,12 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT', 'an undeclared setting key is still refused by name')
   const good = await call(setTool, { key: 'vmu.meetings.wakeRetries', value: '4' })
   ok(good.ok === true && good.value === 4, 'a declared setting can be changed through the tool')
+  // With a durable root the store must be OPENED, not merely constructible (P1 durability).
+  const openedRes = await handle.storeOpened()
+  ok(openedRes && (openedRes.opened === 'created' || openedRes.opened === 'existing') && openedRes.version === 1,
+    'the store is opened when a durable root is configured (created, or the existing fold)', JSON.stringify(openedRes))
+  ok(handle.kernel.store && handle.kernel.store.stats().open === true, 'and it reports itself open on disk',
+    JSON.stringify(handle.kernel.store && handle.kernel.store.stats()))
   for (const cleanup of handle.cleanups) cleanup()
   ok(host.state.disposed === 0, 'with ctx.effect the host owns the unwind (our cleanup must not double-dispose)', host.state.disposed)
 

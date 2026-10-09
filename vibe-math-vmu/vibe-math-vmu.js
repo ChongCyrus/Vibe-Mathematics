@@ -61,6 +61,11 @@ export function apply(ctx, config = {}) {
   const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings },
     declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
+  // With a durable root, OPEN the store: the durable layer must exist on disk, not merely be constructible.
+  // (The library writes its own files; the store is the versioned state fold - docs/07 §1.)
+  const opened = (root && kernel.store && typeof kernel.store.open === 'function')
+    ? Promise.resolve(kernel.store.open()).catch((e) => ({ ok: false, error: String(e && e.message) }))
+    : Promise.resolve({ ok: true, skipped: 'no durable root was configured' })
 
   const effect = (fn, label) => {
     if (ctx && typeof ctx.effect === 'function') return ctx.effect(fn, label)
@@ -101,8 +106,9 @@ export function apply(ctx, config = {}) {
     kernel,
     adapter,
     /** Resolves once the tools are registered and the declared middleware is activated. */
-    ready: () => Promise.all([started, Promise.resolve(adapter.status())]).then(([, st]) => st),
+    ready: () => Promise.all([started, opened, Promise.resolve(adapter.status())]).then(([, , st]) => st),
     started: () => started,
+    storeOpened: () => opened,
     status: () => Object.assign(adapter.status(), { installError }),
     installError: () => installError,
     cleanups,
