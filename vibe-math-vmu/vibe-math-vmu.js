@@ -19,6 +19,7 @@
 
 import { createKernel } from './kernel/index.js'
 import { createHostAdapter } from './host.js'
+import { attachHostHooks } from './host-hooks.js'
 import { assertDeclared } from './settings/schema.js'
 
 export const name = 'vibe-math-vmu'
@@ -76,6 +77,21 @@ export function apply(ctx, config = {}) {
   // INERT MEANS INVISIBLE: when the kernel is switched off, not even an effect is registered.
   const switchedOff = settings['vmu.core.enabled'] === false
   let installError = null
+  // The BRIDGE: the declared middleware must fire on REAL host events, not only on the internal bus.
+  const hooks = attachHostHooks({ ctx, kernel, settings })
+  let hooksResult = null
+  let hooksError = null
+  if (!switchedOff && hooks.plan().count > 0) {
+    effect(() => {
+      try {
+        hooksResult = hooks.attach()
+      } catch (e) {
+        hooksError = { code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e), hint: (e && e.hint) || null }
+        try { process.stderr.write('vmu: hook bridging failed: ' + hooksError.code + ' ' + hooksError.message + '\n') } catch { /* stderr may be gone */ }
+      }
+      return () => { try { hooks.detach() } catch { /* the host is going away anyway */ } }
+    }, 'vmu:hooks')
+  }
   if (!switchedOff) {
     effect(() => {
       const installing = adapter.install()
@@ -105,6 +121,9 @@ export function apply(ctx, config = {}) {
   return {
     kernel,
     adapter,
+    hooks,
+    hooksResult: () => hooksResult,
+    hooksError: () => hooksError,
     /** Resolves once the tools are registered and the declared middleware is activated. */
     ready: () => Promise.all([started, opened, Promise.resolve(adapter.status())]).then(([, , st]) => st),
     started: () => started,

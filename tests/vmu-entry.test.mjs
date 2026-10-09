@@ -92,6 +92,9 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(names.includes('vibe_vmu_middleware'), 'declared middleware adds the middleware tool', names.join(','))
   ok(names.includes('vibe_vmu_records'), 'a declared root adds the records tool', names.join(','))
   ok(names.includes('vibe_vmu_set'), 'the settings tool is present because the entry passes a declared-key guard')
+  // The declared middleware must also be BRIDGED to the host hooks, or the rule exists and never fires.
+  ok(handle.hooks && handle.hooks.plan().hooks.includes('tools/pre-execute'),
+    'the declared host hook is planned for bridging', JSON.stringify(handle.hooks && handle.hooks.plan()))
   const denied = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_v5_poll_vote' }, {})
   ok(denied.ok === false && denied.refused.code === 'VMU_NOT_PERMITTED', 'the declared M1 rule is live in the assembled kernel')
   const setTool = host.state.specs.find((s) => s.name === 'vibe_vmu_set')
@@ -139,6 +142,7 @@ if (SELF_PROBE) {
       await writeFile(join(dir, f), await readFile(resolve(REPO, 'vibe-math-vmu', f), 'utf8'), 'utf8')
     }
     await writeFile(join(dir, 'host.js'), await readFile(resolve(REPO, 'vibe-math-vmu', 'host.js'), 'utf8'), 'utf8')
+    await writeFile(join(dir, 'host-hooks.js'), await readFile(resolve(REPO, 'vibe-math-vmu', 'host-hooks.js'), 'utf8'), 'utf8')
     await writeFile(join(dir, 'vibe-math-vmu.js'), src.replace(guard, '  if (true &&'), 'utf8')
     const mm = await import(pathToFileURL(join(dir, 'vibe-math-vmu.js')).href + '?probe=1')
     const state = { effects: [], sections: [] }

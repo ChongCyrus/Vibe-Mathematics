@@ -271,14 +271,18 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
         remember(traceId, { hook, entry: entry.id, outcome: 'decided', keys: Object.keys(decision) })
         if (decision.deny || decision.cancel) {
           const d = decision.deny || decision.cancel
-          return { ok: false, refused: {
+          return { ok: false, decision: applied, refused: {
             code: (d && d.code) || (decision.cancel ? 'VMU_MIDDLEWARE_REJECTED' : 'VMU_INVALID_ARGUMENT'),
-            message: (d && d.message) || 'refused by middleware ' + entry.id,
+            message: (d && d.message) || (d && d.reason) || 'refused by middleware ' + entry.id,
             hint: d && d.hint,
           }, entry: entry.id, decisions, traceId }
         }
       }
-      return { ok: true, decisions, traceId }
+      // The FULL decision is returned, not only its terminal kinds: an adapter (the DSH hook bridge) must be
+      // able to see `ask`, `rewriteArgs`, `replaceResult`, `record` and friends. A bus that surfaced only
+      // denials left those actions silently unusable - a gap the host-hook scenario exposed.
+      const last = decisions.length > 0 ? decisions[decisions.length - 1].decision : null
+      return { ok: true, decisions, traceId, decision: last }
     },
 
     /** Observability (R11): ordered entries with their enable state, hits, failures and breaker state. */
