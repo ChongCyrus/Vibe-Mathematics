@@ -162,7 +162,28 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(packRoot, { recursive: true, force: true })
 }
 
-// ---- 7. self-probe ----------------------------------------------------------------------------
+// ---- 7. M2 code modules are loaded and put on the bus ------------------------------------------
+{
+  const host = fakeCtx()
+  const moduleRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-m2-'))
+  const m2 = {
+    meta: { id: 'slv-module', apiVersion: 1 },
+    capabilities: ['deny', 'read-args'],
+    hooks: {
+      'tools/pre-execute': async (ev) => (ev.tool === 'edit' ? { deny: { code: 'VMU_PACK_SLV_M2_DENIED', message: 'm2: editing is disabled' } } : undefined),
+    },
+  }
+  const handle = entry.apply(host.ctx, { clock, root: moduleRoot, modules: [{ id: 'slv-module', module: m2, capabilities: ['deny', 'read-args'] }] })
+  await new Promise((r) => setTimeout(r, 40))
+  ok(handle.moduleErrors().length === 0, 'the M2 module loads without error', JSON.stringify(handle.moduleErrors()))
+  ok(handle.loadedModules().includes('slv-module'), 'and the loader records it', JSON.stringify(handle.loadedModules()))
+  const decision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'edit' }, {})
+  ok(decision.ok === false && decision.refused && decision.refused.code === 'VMU_PACK_SLV_M2_DENIED',
+    'the M2 module decides on the assembled bus', JSON.stringify(decision.refused))
+  await rm(moduleRoot, { recursive: true, force: true })
+}
+
+// ---- 8. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

@@ -22,6 +22,8 @@ import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
 import { assertDeclared } from './settings/schema.js'
+import { pathToFileURL } from 'node:url'
+import { basename } from 'node:path'
 
 export const name = 'vibe-math-vmu'
 
@@ -160,10 +162,53 @@ export function apply(ctx, config = {}) {
     }, 'vmu:packs')
   }
 
+  // M2 CODE MODULES: `config.modules` accepts an inline module object or `{ id, file }` (a path, imported
+  // dynamically). They go through the same loader as everything else - mandatory meta/capabilities/registered
+  // hooks - and land on the same bus, so ordering, capabilities, failure policies and traces are shared.
+  const modulesWanted = Array.isArray(config.modules) ? config.modules : []
+  const loadedModules = []
+  const moduleErrors = []
+  const moduleEntryIds = []
+  if (!switchedOff && modulesWanted.length > 0) {
+    effect(() => {
+      const run = (async () => {
+        const specs = []
+        for (const m of modulesWanted) {
+          // The loader insists on `kind: 'module'` (its own guard): an entry without it is refused with a
+          // named error, which is how this wiring mistake was found.
+          if (typeof m === 'string') specs.push({ kind: 'module', id: basename(m, '.js'), file: m })
+          else if (m && m.module) specs.push(Object.assign({ kind: 'module' }, m))
+          else if (m && m.file) specs.push({ kind: 'module', id: m.id || basename(m.file, '.js'), file: m.file, capabilities: m.capabilities })
+          else specs.push(Object.assign({ kind: 'module' }, m))
+        }
+        try {
+          const busEntries = await kernel.loader.toBusEntries(specs, {
+            importModule: (file) => import(pathToFileURL(file).href),
+          })
+          for (const e of busEntries) { kernel.bus.add(e); moduleEntryIds.push(e.id) }
+          for (const s of specs) loadedModules.push(s.id)
+          // A module can make tools available too (a bus with entries), so reinstall - it is serialised.
+          try { await adapter.install() } catch (e) {
+            moduleErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+          }
+        } catch (e) {
+          moduleErrors.push({ id: '(load)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+          try { process.stderr.write('vmu: a code module was not loaded: ' + ((e && e.code) || '') + ' ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
+        }
+      })()
+      void run
+      return () => {
+        for (const id of moduleEntryIds.splice(0)) { try { kernel.bus.disable(id, 'vmu modules unloaded') } catch { /* going away */ } }
+      }
+    }, 'vmu:modules')
+  }
+
   return {
     kernel,
     adapter,
     instance,
+    loadedModules: () => loadedModules.slice(),
+    moduleErrors: () => moduleErrors.slice(),
     packLoader: () => packLoader,
     appliedPacks: () => appliedPacks.slice(),
     packErrors: () => packErrors.slice(),
