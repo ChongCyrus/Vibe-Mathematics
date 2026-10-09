@@ -1595,6 +1595,28 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S25-E ①（issue #13 #5）：把"只有正常收尾才清待续标记"改成"任何收尾都清" ⇒
+    // `s25e-hardening` 的"异常收尾 ⇒ 标记保留"必红（单点）。
+    name: 'S25E: the pending mark is cleared on an ABNORMAL end too (a killed subagent looks delivered)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25e-hardening' },
+    from: "      if (stopReason === 'completed') {",
+    to: '      if (true) {',
+    expect: /S25-E：\*\*异常收尾 ⇒ 待续标记保留/,
+  },
+  {
+    // S25-E ③（issue #13 #4 续）：把本所自己的在活成员上限读取写死成 0（等于不设）⇒
+    // `s25e-hardening` 的"达上限 ⇒ 产品侧具名拒"必红（单点）。
+    name: 'S25E: the live-children cap reader hard-codes 0 (the product-side cap never fires)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's25e-hardening' },
+    from: '      const liveCap = maxLiveChildren()',
+    to: '      const liveCap = 0',
+    expect: /S25-E：\*\*达上限 ⇒ 新建成员被产品侧具名拒\*\*/,
+  },
+  {
     // S21 开关（用户要求"可参数调控"）：把读取口径写死成 true（等于开关失效）⇒
     // `s21-pointer-off` 的"status() 回显 false"必红（单点）。
     name: 'S21: the pointer-propagation switch is dead (the flag reader hard-codes true)',
@@ -1796,6 +1818,7 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   's25c-proof-gate',
   's25d-resource-budget',
   's21-pointer-off',
+  's25e-hardening',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
   's8-freeze-say',
   // S21（指针传播）：每个 s21-* 场景一个正控（指纹语义／头部列表不含正文／悬空 id 具名拒／注入契约／Lean sha256）。

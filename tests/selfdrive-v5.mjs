@@ -727,6 +727,11 @@ async function runScenario(name) {
     console.log('  skip - S25-D 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有机器层资源预算）')
     return
   }
+  // S25-E 场景只在 v5r 下可跑（待续标记与分轨截断计数是 v5r 的行为）；v5 路径**显式 skip**。
+  if (name.startsWith('s25e-') && !process.env.V5_PLUGIN) {
+    console.log('  skip - S25-E 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有 pendingWork 与分轨读面）')
+    return
+  }
   // S5 场景只在 v5r 下可跑（一次性静止提示是 v5r 的行为）；v5 路径**显式 skip**（同上，绝不落进"未知场景即红"）。
   if (name.startsWith('s5-') && !process.env.V5_PLUGIN) {
     console.log('  skip - S5 场景需要 V5_PLUGIN=<…/vibe-math-v5r.js>（v5 预设没有静止提示：它仍会静止自动召集会议）')
@@ -2837,6 +2842,51 @@ async function runScenario(name) {
         'S25-C：**登记后由院士提议 ⇒ 受理**（got ' + String(JSON.stringify(okNow) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25c）：' + name)
+    }
+  } else if (name.startsWith('s25e-')) {
+    // S25-E（issue #13 #2/#5/#4 的收尾硬化）：
+    //  ① 宿主杀掉子代理、`end` **永不回来**（issue #5 的真实现场）⇒ 回合开始落的耐久标记**必须在**；
+    //     异常收尾（`stopReason≠completed`）⇒ 标记**必须保留**（不得当成正常交付而清掉）；
+    //  ② 分轨记录的截断**必须被计数**（`droppedChars`），不能被静默吞掉。
+    if (name === 's25e-hardening') {
+      const h = await callTool('vibe_v5_hire', { purpose: 'S25-E 无回执探测', initial_task: '探测' }, childAgent(childOf('r-1')))
+      const hired = String((h && h.id) || '')
+      assert(hired !== '', 'S25-E：能招到临时工（前置；got ' + String(JSON.stringify(h) || null).slice(0, 160) + '）')
+      await settleAll()
+      const pick = async (id) => (((await callTool('vibe_v5_status', {})).members) || []).filter((m) => String(m.id) === id)[0]
+      const t1 = await pick(hired)
+      assert(!!t1 && !!t1.pendingWork && String(t1.pendingWork.objective).length > 0,
+        'S25-E：**回合在飞时 `pendingWork` 已在耐久记录里**（got ' + String(JSON.stringify(t1 && t1.pendingWork) || null).slice(0, 200) + '）')
+      fireEnd(childOf(hired), undefined, 'error')
+      await settleAll()
+      const t2 = await pick(hired)
+      assert(!!t2 && !!t2.pendingWork && String(t2.pendingWork.reason) === 'host-ended',
+        'S25-E：**异常收尾 ⇒ 待续标记保留（reason=host-ended）**（got ' + String(JSON.stringify(t2 && t2.pendingWork) || null).slice(0, 200) + '）')
+      const longNote = 'S25-E 截断探测。' + '甲乙丙丁戊己庚辛壬癸'.repeat(300)
+      const wr = await callTool('vibe_v5_record_progress', { content: longNote, track: 'rejected' }, childAgent(childOf('r-1')))
+      assert(wr && wr.ok === true, 'S25-E：可分轨写入（前置；got ' + String(JSON.stringify(wr) || null).slice(0, 160) + '）')
+      const rd = await callTool('vibe_v5_read_library', {}, ROOT)
+      const tracks = (((rd && rd.items) || [])).filter((it) => String(it.kind) === 'progress-track')
+      const tr = tracks.filter((it) => String(it.id) === 'rejected')[0]
+      assert(!!tr && Number(tr.droppedChars) > 0 && String(tr.text).length <= 2000,
+        'S25-E：**分轨截断被显式计数**（`droppedChars`＞0 且正文 ≤2000；got ' + String(JSON.stringify(tr) || null).slice(0, 220) + '）')
+      // ③ 本所自己的"在活成员"上限：达限 ⇒ **产品侧前置具名拒**（不再只依赖宿主 ACTIVATION_LIMIT_REACHED）
+      const setCap = await callTool('vibe_v5_set', { maxLiveChildren: 1 }, ROOT)
+      assert(setCap && setCap.ok === true, 'S25-E：可设 maxLiveChildren（前置；got ' + String(JSON.stringify(setCap) || null).slice(0, 160) + '）')
+      const stCap = JSON.stringify(await callTool('vibe_v5_status', {}))
+      assert(/"maxLiveChildren":1/.test(stCap), 'S25-E：**status() 回显 maxLiveChildren**（got ' + String(stCap || null).slice(0, 200) + '）')
+      const bad = await callTool('vibe_v5_set', { maxLiveChildren: -1 })
+      assert(bad && bad.ok === false && String(bad.code) === 'V5_INVALID_ARGUMENT' && /≥0 的整数/.test(String(bad.message)),
+        'S25-E：**非法上限 ⇒ 具名拒**（got ' + String(JSON.stringify(bad) || null).slice(0, 200) + '）')
+      const hire2 = await callTool('vibe_v5_hire', { purpose: 'S25-E 上限探测', initial_task: '探测' }, childAgent(childOf('r-1')))
+      const msg2 = String((hire2 && (hire2.message || hire2.error)) || '')
+      const failed2 = ((await callTool('vibe_v5_status', {})).failedMembers) || []
+      const hitCap = /maxLiveChildren/.test(msg2) || failed2.some((m) => /maxLiveChildren/.test(String(m.error || '')))
+      assert(hitCap, 'S25-E：**达上限 ⇒ 新建成员被产品侧具名拒**（got hire=' + String(JSON.stringify(hire2) || null).slice(0, 160)
+        + ' failed=' + String(JSON.stringify(failed2) || null).slice(0, 160) + '）')
+      await callTool('vibe_v5_set', { maxLiveChildren: 0 }, ROOT)
+    } else {
+      assert(false, 'V5_SCENARIO 未知（s25e）：' + name)
     }
   } else if (name.startsWith('s25d-')) {
     // S25-D（issue #13 #4）：**机器层**资源预算（不再是提示词）。① 单回合工具预算**硬拒**；

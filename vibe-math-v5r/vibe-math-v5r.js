@@ -1124,6 +1124,10 @@ export function apply(ctx) {
       toolCallsPerTurnCap: 0,
       // memoryCeilingMb=0 ⇒ 未知/不限（提示词不出现阈值句）；>0 ⇒ 该句写明阈值（MB）。
       memoryCeilingMb: 0,
+      // S25-E（issue #13 #4 续）：**本所自己的"在活成员"上限**（0＝不设，完全沿用宿主容量 ✓）。
+      // >0 时 `spawnMember` **在调用宿主之前**就检查：已达上限 ⇒ **具名拒 `V5_RESOURCE_BUDGET`**
+      // （而不是等宿主抛 `ACTIVATION_LIMIT_REACHED`）⇒ 行为**可预判**、主代理可读可调 ✓。
+      maxLiveChildren: 0,
       // ── S21 指针传播开关（用户要求"可参数调控"）──────────────────────────────────
       // **默认 true** ＝ S21 机制生效（头部列表为默认信息通道 ＋ 8 个提示词 builder 注入契约段）；
       // **false ⇒ 契约段函数（`headerListContractBlock`）不注入任何一行**（零注入）⇒ 提示词与行为逐字回到 S21 之前 ✓。
@@ -2035,6 +2039,11 @@ export function apply(ctx) {
     /** S25-A：本机内存上限（MB；**0＝未知/不限**；**唯一读取口径**）。 */
     const memoryCeilingMb = () => {
       const n = Number(params.memoryCeilingMb)
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
+    }
+    /** S25-E（issue #13 #4 续）：本所自己的"在活成员"上限（**0＝不设**；**唯一读取口径**）。 */
+    const maxLiveChildren = () => {
+      const n = Number(params.maxLiveChildren)
       return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
     }
     /** S25-D（issue #13 #4）：**真实**本机内存读数（RSS，MB）。宿主是 Node ⇒ `process.memoryUsage()`
@@ -3743,6 +3752,14 @@ export function apply(ctx) {
       if (hostChildLimit !== undefined && liveChildCount() >= hostChildLimit) {
         noteSpawnLimitOnce(member)
         throw v5err('ACTIVATION_LIMIT_REACHED', activationLimitText(hostChildLimit))
+      }
+      // S25-E（issue #13 #4 续）：**本所自己的"在活成员"上限** —— 在调用宿主之前就拒，
+      // 行为可预判（不再只依赖宿主的 ACTIVATION_LIMIT_REACHED），且主代理能从 status() 读到该参数与读数。
+      const liveCap = maxLiveChildren()
+      if (liveCap > 0 && liveChildCount() >= liveCap) {
+        noteSpawnLimitOnce(member)
+        throw v5err('V5_RESOURCE_BUDGET', '本所的在活成员已达 maxLiveChildren=' + liveCap + '（当前 ' + liveChildCount()
+          + '），暂时不再新建成员（issue #13 #4）。等名额释放或调高该参数后用 vibe_v5_resume 继续。')
       }
       // S25-D（issue #13 #4）：**真实**内存读数 ⇒ 越过所办设的上限时**机器降级**：不再新建成员。
       // （提示词层的 resourceBlock 只是提醒；这里是硬门，且把读数写进 status().debug，主代理能看见原因。）
@@ -9756,7 +9773,7 @@ export function apply(ctx) {
         // **唯一读取口径**＝`motionSecondsRequired()`（`inst().params`），**不引入第二份默认值**。
         'motionSecondsRequired',
         // S25-A（issue #13 #4）：资源自监测的两个整数（**≥0**；0＝不限／未知 ⇒ 默认不改现状）。
-        'toolCallsPerTurnCap', 'memoryCeilingMb']
+        'toolCallsPerTurnCap', 'memoryCeilingMb', 'maxLiveChildren']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync', 'resourceSelfCheck', 'pointerPropagation']
       const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
         'paperFormat', 'paperLanguage', 'paperEditor', 'paperLatexCommand', 'leanInitiative',
@@ -9905,6 +9922,13 @@ export function apply(ctx) {
           return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'memoryCeilingMb 必须是 **≥0 的整数**（0＝未知/不限；当前 ' + JSON.stringify(raw) + '）' }
         }
       }
+      if (input && input.maxLiveChildren !== undefined) {
+        const raw = input.maxLiveChildren
+        const n = Number(raw)
+        if (!Number.isFinite(n) || Math.floor(n) !== n || n < 0) {
+          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'maxLiveChildren 必须是 **≥0 的整数**（0＝不设上限、完全沿用宿主容量；当前 ' + JSON.stringify(raw) + '）' }
+        }
+      }
       // S19（`D-10` 待办 ②；`01` §3.6"是否必须附议、附议几人**由规则定**"）：`motionSecondsRequired`
       // 必须是 **≥1 的整数**（0／负数／非整数 ⇒ **具名拒**，复用 `V5_INVALID_ARGUMENT`；**域校验**不靠
       // `normalizeParams` 的"越界即夹取"静默语义 ⇒ 否则"设了等于没设"）。**唯一读取口径**＝`motionSecondsRequired()`。
@@ -9958,7 +9982,7 @@ export function apply(ctx) {
         chatDigestMax: params.chatDigestMax, meetingKeepEvery: params.meetingKeepEvery,
         formalVerify: params.formalVerify, leanCommand: params.leanCommand,
         resourceSelfCheck: resourceSelfCheckOn(), toolCallsPerTurnCap: toolCallsPerTurnCap(), memoryCeilingMb: memoryCeilingMb(),
-        pointerPropagation: pointerPropagationOn(),
+        pointerPropagation: pointerPropagationOn(), maxLiveChildren: maxLiveChildren(),
         leanArgs: params.leanArgs, leanTimeoutMs: params.leanTimeoutMs,
         leanAsync: params.leanAsync, leanInitiative: params.leanInitiative,
         leanSearchPaths: params.leanSearchPaths, leanJobsMaxParallel: params.leanJobsMaxParallel,

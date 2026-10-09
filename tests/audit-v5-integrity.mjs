@@ -2171,7 +2171,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
   })()
   gate(/'resourceSelfCheck', 'pointerPropagation'\]/.test(v5rRaw)
-    && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw)
+    && /'toolCallsPerTurnCap', 'memoryCeilingMb', 'maxLiveChildren'\]/.test(v5rRaw)
     && /resourceSelfCheck: false,/.test(v5rRaw)
     && /toolCallsPerTurnCap: 0,/.test(v5rRaw)
     && /memoryCeilingMb: 0,/.test(v5rRaw)
@@ -2187,11 +2187,11 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     && !/toolCallsPerTurnCap\(\) *\{ *return 0/.test(v5rRaw),
     'R95', 'S25-A: ONE reading rule per parameter (`resourceSelfCheckOn()` / `toolCallsPerTurnCap()` / `memoryCeilingMb()`), with a fixed number of dotted accesses (1 / 3 / 3 — the setter guards and the single reader), so a second hard-coded default cannot hide')
   gate(!!domWin
-    && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 2
+    && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 3
     && /Math\.floor\(n\) !== n \|\| n < 0\) \{\n          return \{ ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是/.test(domWin)
     && /code: 'V5_INVALID_ARGUMENT'/.test(domWin)
     && !/putVerdict\(|putSolve\(|finalizeMeeting\(/.test(resWin + proofWin),
-    'R96', 'S25-A: both new integers have an explicit >=0 domain check that NAMEDLY refuses a negative/non-integer value (no silent clamp), and neither prompt block writes a verdict/solve or finalizes anything')
+    'R96', 'S25-A/E: EVERY integer resource knob has an explicit >=0 domain check that NAMEDLY refuses a negative/non-integer value (no silent clamp) — toolCallsPerTurnCap, memoryCeilingMb and (S25-E) maxLiveChildren — and neither prompt block writes a verdict/solve or finalizes anything')
   gate((v5rRaw.match(/function resourceBlock\(\) \{/g) || []).length === 1
     && (v5rRaw.match(/function proofStatusBlock\(\) \{/g) || []).length === 1
     && (v5rRaw.match(/for \(const ln of resourceBlock\(\)\) L\.push\(ln\)/g) || []).length === 3
@@ -2203,11 +2203,11 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     && !!proofWin && /证明尝试／证伪尝试/.test(proofWin)
     && /禁止/.test(proofWin),
     'R98', 'S25-A: the promise is stated where the office can see it — the `vibe_v5_set` description says PROMPT TEXT ONLY and NEVER a machine decision, `status().params` echoes all three keys (so the office can discover them), and the 【命题准入】 block explicitly forbids treating "证明尝试／证伪尝试" as "已论证"')
-  notes.push('S25-A (v5r): settable=' + (/'resourceSelfCheck', 'pointerPropagation'\]/.test(v5rRaw) && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw))
+  notes.push('S25-A (v5r): settable=' + (/'resourceSelfCheck', 'pointerPropagation'\]/.test(v5rRaw) && /'toolCallsPerTurnCap', 'memoryCeilingMb', 'maxLiveChildren'\]/.test(v5rRaw))
     + '; defaults do-nothing=' + (/resourceSelfCheck: false,/.test(v5rRaw) && /toolCallsPerTurnCap: 0,/.test(v5rRaw) && /memoryCeilingMb: 0,/.test(v5rRaw))
     + '; off-switch=' + (!!resWin && /if \(!resourceSelfCheckOn\(\)\) return \[\]/.test(resWin))
     + '; single readers=' + ((v5rRaw.match(/\.resourceSelfCheck/g) || []).length === 1 && (v5rRaw.match(/\.toolCallsPerTurnCap/g) || []).length === 3 && (v5rRaw.match(/\.memoryCeilingMb/g) || []).length === 3)
-    + '; domain>=0=' + (!!domWin && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 2)
+    + '; domain>=0=' + (!!domWin && (v5rRaw.match(/必须是 \*\*≥0 的整数\*\*/g) || []).length === 3)
     + '; blocks single=' + ((v5rRaw.match(/function resourceBlock\(\) \{/g) || []).length === 1 && (v5rRaw.match(/function proofStatusBlock\(\) \{/g) || []).length === 1)
     + '; injections=3+2=' + ((v5rRaw.match(/for \(const ln of resourceBlock\(\)\) L\.push\(ln\)/g) || []).length === 3 && (v5rRaw.match(/for \(const ln of proofStatusBlock\(\)\) L\.push\(ln\)/g) || []).length === 2)
     + '; live maxParallel=' + /当前 ' \+ \(Number\.isFinite\(Number\(params\.maxParallel\)\)/.test(v5rRaw)
