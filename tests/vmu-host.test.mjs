@@ -211,6 +211,33 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- B1: the `set` receipt states WHEN a change lands, and H3 keys are refused by name --------------
+{
+  // Assembled through the ENTRY, because that is what supplies the declared-key guard to the set tool.
+  const em = await import(pathToFileURL(join(KERNEL, '..', '..', 'vibe-math-vmu.js')).href)
+  const h = fakeHost()
+  em.apply(h.ctx, { clock: () => '2026-10-09T00:00:00.000Z', vmu: { 'vmu.limits.maxLiveMembers': 4 } })
+  await new Promise((r) => setTimeout(r, 20))   // the entry registers tools inside an async effect
+  const spec = h.state.specs.find((s) => s.name === 'vibe_vmu_set')
+  ok(spec !== undefined, 'the set tool is registered when declared keys exist')
+  if (spec) {
+    const h3 = JSON.parse(await spec.execute({ key: 'vmu.safety.pathPolicy', value: 'workspace+shared' }, {}))
+    ok(h3.ok === false && h3.code === 'VMU_NOT_PERMITTED' && /read-only \(H3\)/.test(String(h3.message)),
+      'an H3 (framework-owned) key is refused BY NAME instead of silently ignored', JSON.stringify(h3))
+    const h2 = JSON.parse(await spec.execute({ key: 'vmu.math.formalVerify', value: 'require' }, {}))
+    ok(h2.ok === true && h2.appliesFrom === 'next session (restart required)' && h2.source === 'runtime',
+      'an H2 key says a restart is required and reports its new source', JSON.stringify(h2))
+    const h1 = JSON.parse(await spec.execute({ key: 'vmu.packs.allowOverride', value: 'true' }, {}))
+    ok(h1.ok === true && h1.appliesFrom === 'next turn' && h1.hot === 'H1',
+      'an H1 key says "next turn" (the receipt is per hot class)', JSON.stringify(h1))
+    const h0 = JSON.parse(await spec.execute({ key: 'vmu.limits.maxLiveMembers', value: '9' }, {}))
+    ok(h0.ok === true && h0.appliesFrom === 'immediately' && h0.hot === 'H0',
+      'an H0 key says "immediately"', JSON.stringify(h0))
+    const bad = JSON.parse(await spec.execute({ key: 'vmu.limits.notDeclared', value: '1' }, {}))
+    ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT', 'an undeclared key stays refused by name', JSON.stringify(bad))
+  }
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

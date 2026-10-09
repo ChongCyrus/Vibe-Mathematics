@@ -54,6 +54,22 @@ export const DEFAULT_SUBJECTS = Object.freeze({
 })
 
 /**
+ * WHO wrote a setting. The manual promises `settings.resolved` ("值 + 来源层"), and without it "改了没反应"
+ * cannot be answered (docs/04 §6). The record lives under a SYMBOL key so it never shows up in Object.keys,
+ * never inflates the declared-key count, and never leaks into a pack's own settings layer.
+ */
+const WRITERS = Symbol('vmu.settings.writers')
+export function markSettingWriter(settings, key, source) {
+  const box = settings[WRITERS] || (settings[WRITERS] = {})
+  box[key] = source
+  return { ok: true, key, source }
+}
+export function settingWriter(settings, key) {
+  const box = settings[WRITERS]
+  return box && box[key] ? box[key] : null
+}
+
+/**
  * Assemble the kernel.
  *
  * `host` is the optional capability seam (register/spawn). `settings` is the RESOLVED settings map (the
@@ -104,11 +120,18 @@ export function createKernel({
     ? createStore({ root, migrators, clock })
     : null
 
+  // The audit trail must be OBSERVABLE, not merely logged: `status().auditTail` returns the last rows, so a
+  // reader can answer "who changed what, and which middleware refused this call" without opening a log file.
+  const auditRing = []
   const bus = injectedBus || createBus({
     entries: middleware,
     settings,
     clock,
-    onAudit: (row) => log('audit ' + JSON.stringify(row)),
+    onAudit: (row) => {
+      auditRing.push(row)
+      if (auditRing.length > 100) auditRing.shift()
+      log('audit ' + JSON.stringify(row))
+    },
   })
 
   const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock })
@@ -348,7 +371,7 @@ export function createKernel({
     },
 
     /** The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly. */
-    setSettingsValue(key, value) { settings[key] = value; return { ok: true, key } },
+    setSettingsValue(key, value) { settings[key] = value; markSettingWriter(settings, key, 'runtime'); return { ok: true, key, source: 'runtime' } },
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
     /** The declaration of a setting (hot class, who may change it) - used by the host tool for its receipt. */
@@ -361,10 +384,31 @@ export function createKernel({
 
     /** Observability (R11): the whole assembly in one place, with each part reporting its own state. */
     status() {
+      // `settings.resolved` answers the manual's promise (docs/04 §6): for EVERY declared key, the effective
+      // value, WHERE it came from (pack layer > runtime `vibe_vmu_set` > the plugin's config > schema default),
+      // its hot class and who may change it. Precedence is stated because a pack and a runtime write are not
+      // mutually timestamped; `overridden` lists the sources a pack replaced (O4 makes that explicit).
+      const packApplied = packNotes.filter((n) => n.what === 'settings-applied')
+      const packSource = {}
+      for (const n of packApplied) for (const k of n.keys || []) packSource[k] = 'pack:' + n.id
+      const resolved = {}
+      for (const def of SETTING_DEFS) {
+        const has = Object.prototype.hasOwnProperty.call(settings, def.key)
+        const source = packSource[def.key] || settingWriter(settings, def.key) || (has ? 'config' : 'default')
+        const overridden = packApplied.filter((n) => n.id !== (packSource[def.key] || '').replace('pack:', '') && (n.keys || []).includes(def.key)).map((n) => 'pack:' + n.id)
+        resolved[def.key] = {
+          value: has ? settings[def.key] : def.def,
+          source,
+          hot: def.hot,
+          who: def.who,
+          overridden: source === 'default' ? [] : overridden,
+        }
+      }
       return {
         enabled: true,
         active: started,
-        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun },
+        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved },
+        auditTail: auditRing.slice(-20),
         registrations: registrations.slice(),
         // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
         // which records itself in the notes; a status that only tracks usePack() would under-report.

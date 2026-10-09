@@ -94,15 +94,18 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 | **H2 下一会话** | 需重新进入/重装预设 | store 后端、pack 列表（**若**启动期静态装载） | 场景：改后提示"需重启"且**不静默忽略** |
 | **H3 只读** | 由环境/安装决定，不可在运行期改 | 插件版本、DSH 兼容范围 | 静态门：`set` 必须**具名拒** |
 
-> 未标等级的键**不得**上线（静态门红）。H2/H3 必须给出**用户可见提示**，不许"改了没反应"。
+> 未标等级的键**不得**上线（静态门红）。**实现现状（2026-10-09 校准 ✓）**：`vibe_vmu_set` 的回执**逐键给出 `appliesFrom`** —— H0 ⇒ `immediately` ✓、H1 ⇒ `next turn` ✓、H2 ⇒ `next session (restart required)` ✓；**H3 直接具名拒**（`VMU_NOT_PERMITTED`，文案含 `read-only (H3)`）✗→✓（不再是"改了没反应" ✗）。九种 `safety.*` 里的 H3 键（如 `vmu.safety.pathPolicy`）因此**不可在运行期改** ✓。
 
 ---
 
-## 6. 审计与"谁能改"
+## 6. 审计与"谁能改"（**实现现状，2026-10-09 校准 ✓**）
 
-- **写权限**：默认 **office（会话根）**；`vmu.safety.delegableKeys` 可把某些键下放给"角色槽位"（例如让某角色改自己的提示词覆盖）。
-- **审计面**：`status().settings.auditTail`（尾 N 条）＋耐久全量；字段见 §2。
-- **拒收**：未声明键、域外值、无权限者、H3 键 ⇒ 一律**具名拒**并说明原因与"谁可以改"。
+- **值从哪来（真实现）**：`vibe_vmu_status` ⇒ `settings.resolved[<key>] = { value, source, hot, who, overridden }` ✓，`source` 取值与优先级为 **`pack:<id>` > `runtime`（`vibe_vmu_set` 写过）> `config`（插件行的 `config.vmu`）> `default`（无人设置，用 schema 默认）** ✓；`overridden` 列出被 pack 覆盖过的来源 ✓。**没有** `settings.resolved.json` 这种落盘文件 ✗（见 §2 的修正）。
+- **审计面（真实现）**：`vibe_vmu_status` ⇒ **`auditTail`**（总线审计的**最后 20 条**，内存环形缓冲，进程内 ✓）；行形如 `{ ts, seq, what, id, ... }`（注册/禁用/失败/熔断/干跑/决定 ✓）。**`status().settings.auditTail` 不是耐久全量** ✗：`vmu/audit/**` 从未落盘 ✓ ⇒ 需要耐久审计须自行写 `log` 落地的消费者 ✓。
+- **写权限（真实现 ✗→✓ 部分）**：`who` 目前是**声明性元数据** ✓（`vibe_vmu_set` 已把它写进回执 ✓）；但**运行期尚未强制** ✗ —— `vmu.safety.delegableKeys` 截至本轮**无消费者** ✗（04 §11 的"接线"列已如实标注 ✓）。
+- **拒收（真实现）**：未声明键 ⇒ `VMU_INVALID_ARGUMENT` ✓；H3 ⇒ `VMU_NOT_PERMITTED` ✓；pack 设置冲突 ⇒ `VMU_PACK_CONFLICT` ✓（除非显式 `vmu.packs.allowOverride` ✓）。
+
+> **诚实边界** ✗：域外值（类型/枚举越界）目前**只在 `assertDeclared` 一层**做检查 ✓；`config.vmu` 直通内存路径**不校验** ✗（见 12-§10）。
 
 ---
 

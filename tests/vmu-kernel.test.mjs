@@ -148,9 +148,14 @@ if (SELF_PROBE) {
   } else {
     const dir = await mkdtemp(join(tmpdir(), 'vmu-kernel-mut-'))
     await mkdir(join(dir, 'kernel', 'prompt'), { recursive: true })
-    for (const f of ['bus.js', 'store.js', 'library.js', 'members.js', 'ballot.js', 'meeting.js', 'tasks.js', 'math.js', 'rules.js', 'loader.js', 'script-bridge.js', 'registry.js']) {
+    // The copy must MIRROR the real import graph: kernel/*.js, kernel/prompt/index.js, settings/schema.js
+    // (the kernel reads SETTING_DEFS/assertDeclared from it) and the shared math modules one level up.
+    // A missing module here used to fail the probe with ERR_MODULE_NOT_FOUND instead of an anchor miss.
+    await mkdir(join(dir, 'settings'), { recursive: true })
+    for (const f of ['bus.js', 'store.js', 'library.js', 'members.js', 'ballot.js', 'meeting.js', 'tasks.js', 'math.js', 'rules.js', 'loader.js', 'script-bridge.js', 'registry.js', 'pack.js']) {
       await writeFile(join(dir, 'kernel', f), await readFile(resolve(REPO, 'vibe-math-vmu', 'kernel', f), 'utf8'), 'utf8')
     }
+    await writeFile(join(dir, 'settings', 'schema.js'), await readFile(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js'), 'utf8'), 'utf8')
     // kernel/math.js imports '../math-computation.js', so the shared modules live one level ABOVE kernel/.
     for (const f of ['math-computation.js', 'math-engines.js']) {
       await writeFile(join(dir, f), await readFile(resolve(REPO, 'vibe-math-vmu', f), 'utf8'), 'utf8')
@@ -166,6 +171,30 @@ if (SELF_PROBE) {
   }
   console.log('=== VMU KERNEL SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
+}
+
+// ---- B1: settings.resolved and auditTail exist, and the source is tracked honestly -----------------
+{
+  const clock = () => '2026-10-09T00:00:00.000Z'
+  const k = m.createKernel({ clock, settings: { 'vmu.limits.maxLiveMembers': 4 } })
+  const st = k.status()
+  const res = st.settings.resolved
+  ok(res && typeof res === 'object', 'status().settings.resolved exists (the manual promise, docs/04 §6)')
+  ok(res['vmu.limits.maxLiveMembers'] && res['vmu.limits.maxLiveMembers'].source === 'config',
+    'a value the config set reports source "config"', JSON.stringify(res['vmu.limits.maxLiveMembers']))
+  ok(res['vmu.limits.maxToolCalls'] === undefined, 'resolved covers DECLARED keys only')
+  ok(res['vmu.limits.wallClockMs'] && res['vmu.limits.wallClockMs'].source === 'default',
+    'a key nobody set reports source "default" (the schema default applies)', JSON.stringify(res['vmu.limits.wallClockMs']))
+  ok(res['vmu.limits.wallClockMs'].hot === 'H0' && typeof res['vmu.limits.wallClockMs'].who === 'string',
+    'each entry carries its declared hot class and who-may-change')
+  k.setSettingsValue('vmu.limits.wallClockMs', 600000)
+  const after = k.status().settings.resolved['vmu.limits.wallClockMs']
+  ok(after.source === 'runtime' && after.value === 600000,
+    'a runtime write is reported as source "runtime" (not silently attributed to config)', JSON.stringify(after))
+  ok(Array.isArray(k.status().auditTail), 'status().auditTail is an array (no log file needed to audit)')
+  const before = k.status().auditTail.length
+  k.bus.setDryRun(true)   // every bus state change is audited, so the tail must grow
+  ok(k.status().auditTail.length > before, 'bus actions append to the audit tail (auditing is observable)')
 }
 
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
