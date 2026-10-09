@@ -230,6 +230,8 @@
     "tests/vmu-host.test.mjs",
     "tests/vmu-entry.test.mjs",
     "tests/vmu-host-hooks.test.mjs",
+    "tests/audit-vmu-docs.test.mjs",
+    "tests/audit-vmu-docs.mutants.mjs",
     "tests/vmu-settings.test.mjs",
     "tests/vmu-store.test.mjs",
     "tests/vmu-bus.test.mjs",
