@@ -1,45 +1,99 @@
 // vibe-math-vmu — the vmu (vibe-math-unify) agent preset entry point.
 //
-// DESIGN (see vibe-math-vmu/docs/):
-//   Runtime mechanism = this framework + settings + middleware (+ agent self-organisation).
-//   The framework provides CAPABILITIES and HOOKS only; every policy lives in settings,
-//   middleware (declarative rules / code modules / scripts and workflows / external
-//   plugins) or a pack. See 01-philosophy.md R1 (kernel holds no policy) and
-//   02-architecture.md for the kernel partitions A-I.
+// Runtime mechanism = this framework + settings + middleware (+ agent self-organisation). The framework
+// provides CAPABILITIES; every policy lives in settings, middleware or a pack (docs/01 R1).
 //
-// P0 SKELETON — ZERO MECHANISM, ON PURPOSE:
-//   This entry point deliberately registers nothing yet. It exists so the preset can be
-//   wired (preset row, exports, installer, tests, README) and load in a real host before
-//   any capability is added. The first real increments, in documented order, are:
-//     1. settings/schema.js  — the single source of truth for every tunable (04-§3),
-//        with the JSON Schema projection used by docs, gates and domain checks;
-//     2. kernel/store.js     — the Store port with the JSON-fold default (07-§1);
-//     3. kernel/bus.js       — the vmu hook bus wrapping the host waterfalls (05-§4);
-//     4. kernel/prompt/*.js  — the prompt pipeline (06);
-//     5. the capability surfaces A-I (02-§2), each with a scenario and a mutant family.
-//   Nothing here may encode a generation-specific decision (R1): v5r behaviour is
-//   reproduced by the v5r pack, never by this file.
+// WHAT THIS FILE DOES NOW (and what it deliberately does not):
+//   · it ASSEMBLES the kernel (kernel/index.js) from plain config data and attaches it to the host's tool
+//     surface (host.js), each registration wrapped in `ctx.effect(..., label)` with a cleanup, because the
+//     host's own guidance requires exactly that (recon: host-plugin.md:54);
+//   · it keeps the first promise IN THE HOST: with no configuration the preset exposes exactly ONE tool,
+//     `vibe_vmu_status`, and with `vmu.core.enabled=false` it exposes NONE. Nothing is subscribed, nothing
+//     is injected, no state is written;
+//   · it does NOT declare a `Config` (Schemastery) export: that would require a static host import, and this
+//     repository must stay loadable by plain Node (the same reason settings/schema.js takes an injected
+//     carrier). Settings therefore arrive as plain data under `config.vmu`, and any host-side settings
+//     service remains an optional, opportunistic seam;
+//   · it does NOT reach for the math host seam: `createKernel` is given no host, so the math surface stays
+//     unavailable and refuses BY NAME. Wiring a real subprocess seam is a separate, explicit step.
+
+import { createKernel } from './kernel/index.js'
+import { createHostAdapter } from './host.js'
+import { assertDeclared } from './settings/schema.js'
 
 export const name = 'vibe-math-vmu'
 
-/** Public-interface version of this preset's exposed surfaces (03-§7, D13-O3). */
+/** Public-interface version of this preset's exposed surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
 /**
- * Host services this plugin consumes. Empty at P0: the skeleton registers nothing, so it
- * needs nothing. It grows deliberately, one capability at a time, and the growth must be
- * reflected in 03-§2 (the public-surface registry) in the same change.
+ * Required host services. Only the tool surface is required (without it there is nothing to attach to);
+ * everything else - prompts, settings, presets - is consumed opportunistically so the preset still loads
+ * in a minimal deployment instead of failing to activate.
  */
-export const inject = []
+export const inject = ['tools']
+
+/** Accept either `config.vmu = {...}` (namespaced) or a flat settings object, and copy it (never alias). */
+function readSettings(config) {
+  if (!config || typeof config !== 'object') return {}
+  const raw = config.vmu && typeof config.vmu === 'object' ? config.vmu : config
+  const out = {}
+  for (const [k, v] of Object.entries(raw)) if (k.startsWith('vmu.')) out[k] = v
+  return out
+}
 
 /**
- * Plugin entry point.
+ * Plugin entry point. Returns a handle for tests and diagnostics; the host only needs the effects.
  *
  * @param {object} ctx     Cordis context for this plugin row.
- * @param {object} config  The row's `config` (validated against `Config` once declared).
+ * @param {object} config  The row's `config` (plain data; see the header for why there is no `Config`).
  */
-export function apply(ctx, config) {
-  // P0: intentionally empty. No tools, no services, no event listeners, no state.
-  // The preset must load cleanly and stay inert until a capability or a pack is added.
-  return undefined
+export function apply(ctx, config = {}) {
+  const settings = readSettings(config)
+  const root = typeof config.root === 'string' && config.root.length > 0 ? config.root : null
+  const clock = typeof config.clock === 'function' ? config.clock : undefined
+
+  const kernel = createKernel(Object.assign({ settings, root }, clock ? { clock } : {}))
+  // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
+  // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the
+  // middleware the configuration declares has to be ACTIVATED - that is what start() is for.
+  const declared = Object.keys(settings).length > 0
+  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings },
+    declared ? { assertDeclared } : {}))
+  const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
+
+  const effect = (fn, label) => {
+    if (ctx && typeof ctx.effect === 'function') return ctx.effect(fn, label)
+    return fn() // a context without effect() still works: the cleanup is returned to the caller
+  }
+
+  const cleanups = []
+  effect(() => {
+    const installing = adapter.install()
+    const cleanup = () => { try { adapter.uninstall() } catch { /* the host is going away anyway */ } }
+    cleanups.push(cleanup)
+    installing.catch(() => { /* a failed install is reported through adapter.status() */ })
+    return cleanup
+  }, 'vmu:tools')
+
+  // A prompt section is injected ONLY when the configuration declares one (zero mechanism otherwise).
+  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&
+      typeof ctx.systemPrompt.section === 'function') {
+    effect(() => {
+      const order = typeof ctx.systemPrompt.getSectionOrder === 'function'
+        ? ctx.systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
+      const dispose = ctx.systemPrompt.section({ name: 'vmu', order, text: config.prompt })
+      return typeof dispose === 'function' ? dispose : () => {}
+    }, 'vmu:prompt')
+  }
+
+  return {
+    kernel,
+    adapter,
+    /** Resolves once the tools are registered and the declared middleware is activated. */
+    ready: () => Promise.all([started, Promise.resolve(adapter.status())]).then(([, st]) => st),
+    started: () => started,
+    status: () => adapter.status(),
+    cleanups,
+  }
 }

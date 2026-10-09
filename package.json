@@ -227,6 +227,7 @@
     "tests/vmu-pack.test.mjs",
     "tests/vmu-containment.test.mjs",
     "tests/vmu-host.test.mjs",
+    "tests/vmu-entry.test.mjs",
     "tests/vmu-settings.test.mjs",
     "tests/vmu-store.test.mjs",
     "tests/vmu-bus.test.mjs",
