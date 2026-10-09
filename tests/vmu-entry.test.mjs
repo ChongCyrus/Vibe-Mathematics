@@ -328,7 +328,29 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   }
 }
 
-// ---- 12. self-probe ---------------------------------------------------------------------------
+// ---- 12. the entry runs the in-flight recovery after the store opens (end to end) --------------------
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-entry-work-'))
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, root: dir })
+  await new Promise((r) => setTimeout(r, 60))
+  const rec = await handle.workRecovered()
+  ok(rec && rec.ok === true && typeof rec.recovered === 'number',
+    'the entry recovers the in-flight ledger right after the store opens', JSON.stringify(rec))
+  const started = await handle.kernel.work.start({ owner: 'r-1', objective: 'survive a restart' })
+  ok(started.ok === true, 'and the ledger is usable through the assembled kernel')
+  // A SECOND entry on the same root is the restart: the unfinished item is reported as interrupted.
+  const h2 = fakeCtx()
+  const handle2 = entry.apply(h2.ctx, { clock, root: dir })
+  await new Promise((r) => setTimeout(r, 60))
+  const rec2 = await handle2.workRecovered()
+  ok(rec2 && rec2.recovered === 1 && handle2.kernel.work.interrupted()[0].owner === 'r-1',
+    'a fresh entry marks the unfinished work INTERRUPTED (the "resume knows what is pending" promise)',
+    JSON.stringify(rec2).slice(0, 160))
+  await rm(dir, { recursive: true, force: true })
+}
+
+// ---- 13. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

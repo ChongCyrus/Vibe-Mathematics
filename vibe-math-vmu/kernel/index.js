@@ -33,6 +33,7 @@ import { createRulesEngine } from './rules.js'
 import { createLoader } from './loader.js'
 import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
+import { createWorkLedger } from './work.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -122,6 +123,12 @@ export function createKernel({
     ? createStore({ root, migrators, clock })
     : null
 
+  // IN-FLIGHT LEDGER (docs/07 §3): durable, and only meaningful with a store - without one it stays null and
+  // asking for it is refused by name (an in-flight ledger that forgets on exit would be a lie).
+  const workLedger = store
+    ? createWorkLedger({ store, clock, isPaused: () => controlState.state === 'paused' })
+    : null
+
   // DURABLE AUDIT (docs/07 §5): with a root, every audit row is APPENDED to <root>/vmu/audit/<day>.jsonl, so
   // the trail survives the process (it used to exist only in memory, and `vmu/audit/**` was never written).
   // A write failure must be VISIBLE (R11): it is reported in status().audit.lastWriteError, while the
@@ -203,6 +210,7 @@ export function createKernel({
   registry.register('vmu.prompt', { apiVersion: 1 }, { kind: 'service', description: 'prompt sections, bindings, overrides' })
   registry.register('vmu.middleware', { apiVersion: 1 }, { kind: 'service', description: 'the hook bus and its four forms' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
+  if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
 
   const packs = []
@@ -256,6 +264,7 @@ export function createKernel({
     // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 §2).
     get library() { return library },
     get members() { return members },
+    get work() { return workLedger },
     tasks,
     rules,
     loader,
@@ -517,6 +526,7 @@ export function createKernel({
         library: library ? { present: true, detail: 'await requireLibrary().status() for tracks/records/kinds/truncation' } : null,
         members: members ? members.status() : null,
         tasks: tasks.status(),
+        work: workLedger ? workLedger.status() : null,
         rules: rules.status(),
         control: controlView(),
         loader: loader.status(),

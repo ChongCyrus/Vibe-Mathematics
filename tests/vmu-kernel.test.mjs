@@ -262,6 +262,45 @@ if (SELF_PROBE) {
   await rm(file, { recursive: true, force: true })
 }
 
+// ---- In-flight ledger: "after an interruption the owner is told what is unfinished" ------------------
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-work-'))
+  const k = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', root })
+  await k.store.open()
+  const started = await k.work.start({ owner: 'r-1', kind: 'verification', objective: 'check the lemma' })
+  ok(started.ok === true && started.entry.owner === 'r-1' && k.work.list().length === 1,
+    'in-flight work is registered in the DURABLE ledger (the `work` key is no longer reserved-and-unused)',
+    JSON.stringify(started.entry))
+
+  // A SECOND kernel on the same root is the restart: whatever is still listed did not settle.
+  const k2 = m.createKernel({ clock: () => '2026-10-09T00:05:00.000Z', root })
+  await k2.store.open()
+  const rec = await k2.work.recover()
+  ok(rec.recovered === 1 && k2.work.interrupted().length === 1 && k2.work.interrupted()[0].owner === 'r-1',
+    'after a restart the unfinished item is marked INTERRUPTED with its owner (nothing is silently dropped)',
+    JSON.stringify(rec).slice(0, 170))
+  ok(k2.status().work.interrupted === 1 && k2.status().work.pending === 0,
+    'status() reports the ledger so a reader can see what is unfinished', JSON.stringify(k2.status().work))
+
+  await k2.work.settle(started.entry.id, { outcome: 'finished after recovery' })
+  ok(k2.work.list().length === 0, 'settling removes the entry (the ledger does not grow forever)')
+  let missing = null
+  try { await k2.work.settle('ghost') } catch (e) { missing = e && e.code }
+  ok(missing === 'VMU_NO_SUCH_OBJECT', 'settling an unknown id is refused by name', String(missing))
+
+  const k3 = m.createKernel({ clock: () => '2026-10-09T00:10:00.000Z', root })
+  await k3.store.open()
+  await k3.pause('a hold')
+  let refused = null
+  try { await k3.work.start({ owner: 'r-2' }) } catch (e) { refused = e && e.code }
+  ok(refused === 'VMU_STATE', 'a paused kernel refuses to register new in-flight work (control flow reaches the ledger too)')
+
+  const bare = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z' })
+  ok(bare.work === null && bare.status().work === null,
+    'without a durable root there is no ledger - and status() stays safe instead of throwing (R11)')
+  await rm(root, { recursive: true, force: true })
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

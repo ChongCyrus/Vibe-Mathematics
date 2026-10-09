@@ -175,6 +175,17 @@ export function apply(ctx, config = {}) {
   const opened = (root && kernel.store && typeof kernel.store.open === 'function')
     ? Promise.resolve(kernel.store.open()).catch((e) => ({ ok: false, error: String(e && e.message) }))
     : Promise.resolve({ ok: true, skipped: 'no durable root was configured' })
+  // AFTER the store is open: whatever is still in the in-flight ledger was written by an earlier process and
+  // did not settle, so it is marked INTERRUPTED and reported - the "after an interruption the owner is told
+  // what is unfinished" promise (docs/07 §3) becomes real instead of a reserved key nobody writes.
+  const workRecovered = opened.then(async () => {
+    if (!kernel.work) return { ok: true, skipped: 'no durable root: there is no in-flight ledger' }
+    try { return await kernel.work.recover() } catch (e) {
+      const detail = { ok: false, code: (e && e.code) || 'VMU_STORE_FAILED', message: String((e && e.message) || e) }
+      try { process.stderr.write('vmu: in-flight recovery failed: ' + detail.code + ' ' + detail.message + '\n') } catch { /* stderr may be gone */ }
+      return detail
+    }
+  })
 
   const effect = (fn, label) => {
     if (ctx && typeof ctx.effect === 'function') return ctx.effect(fn, label)
@@ -320,6 +331,7 @@ export function apply(ctx, config = {}) {
     instance,
     mathHost: () => mathHost,
     mathReady: () => mathReady,
+    workRecovered: () => workRecovered,
     // The entry's own prompt view: WHICH declaration produced each section's effective text (inline / file /
     // override). The kernel pipeline reports the declaring LAYER plus an `overridden` flag, which is a
     // different (and complementary) question - docs/06 §7 states both so the two are never conflated.

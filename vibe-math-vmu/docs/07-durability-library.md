@@ -45,12 +45,19 @@ interface VmuStore {
 
 **恢复三件事**：① 投影重建；② **在途工作台账**修复；③ 审计补记（谁被中断、为什么）。
 
-**在途工作台账（跨代通用能力，源自 v5r S25-B/#5 的实测需求）**
-- 语义：**工作意图**的耐久标记，**在"开始"时写入**（而非结束时）⇒ 才能在"宿主被杀、没有任何结束事件"时仍可判定；
-- 字段（提案）：`{ id, owner, kind, objective, startedAt, interrupted?: {at, reason: 'host-ended'|'paused'|'unknown'} }`；
-- **正常收尾 ⇒ 清除**；**异常收尾 ⇒ 保留并标注**（杀死的子代理**不得**被当成"已交付"）；
-- 恢复后：框架向负责人**重放"你有未完成的工作"**（提示词层面，见 06 `task-brief`），由中间件决定"重派 / 放弃 / 上报"；
-- **禁用即回基线**：关掉该能力 ⇒ 行为等价于"从未记录"（门禁用变异族证明）。
+**在途工作台账（跨代通用能力，源自 v5r S25-B/#5 的实测需求）—— 2026-10-09 已成为真实现 ✓**
+
+| 语义（文档要求） | 真实现（`kernel/work.js` ✓） |
+|---|---|
+| 在"**开始**"时写入（而非结束时）⇒ 宿主被杀也能判定 | `kernel.work.start({owner, kind, objective})` ⇒ `store.patch('work', …)`（**fold 内函数式**变更 ✓），立即持久化 ✓ |
+| 字段 `{id, owner, kind, objective, startedAt, interrupted?}` | 真字段 ✓：`{id, owner, kind, objective, startedAt, interrupted, interruptedAt, interruptedReason}` ✓ |
+| 正常收尾 ⇒ 清除；异常 ⇒ 保留并标注 | `settle(id, {outcome})` 删除 ✓；`interrupt(id, reason)` 标注 ✓；未知 id **具名拒** `VMU_NO_SUCH_OBJECT` ✓ |
+| 恢复后框架**知道谁还有活**（"不得把被杀的子代理当成已交付" ✗） | 入口在 `store.open()` **之后**调 `work.recover()` ✓：**启动时仍在册的每一项按定义未收尾** ⇒ 标记 `interrupted` 并**返回给调用方** ✓（`handle.workRecovered()` ✓，也可由中间件经 `ev.api` 读取后重派/放弃/上报 ✓） |
+| 观测 | `kernel.work.list()/pending()/interrupted()` ✓；`status().work = {entries, interrupted, pending}` ✓ |
+| 禁用即回基线 | **无 `root` ⇒ `kernel.work === null`** 且 `status().work === null` ✓（**不会**假装有一个内存台账 ✓）；`status()` 在未 open 的 store 上**不抛错** ✓（观测面不许把被观测者弄崩 ✓） |
+| 与暂停的交互 | `pause()` 期间 `start()` 被**具名拒** `VMU_STATE` ✓（控制流覆盖台账 ✓） |
+
+> **诚实边界** ✗：**"重放提示词"这一步没做** —— 台账只把"谁还有未完成的工作"**如实体现在状态面**✓；把它**注入到负责人的提示词**仍要由 pack/中间件基于 `work.list()` 自行组装（`task-brief` 段 ✓）。**恢复不重放副作用** ✗（框架不知道如何重放你的工作，也不猜 ✓）。
 
 ---
 
