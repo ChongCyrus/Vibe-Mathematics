@@ -209,6 +209,7 @@ export function toHostSpec(spec) {
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {} } = {}) {
   const disposers = []
   const registered = []
+  const failures = []
   let installed = false
   let ownedByHost = false
 
@@ -237,21 +238,30 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       }
       const hasEffect = typeof ctx.effect === 'function'
       ownedByHost = hasEffect
+      failures.length = 0
       for (const spec of list) {
         const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
-        if (hasEffect) {
-          // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
-          // here is the promise from tools.register().
-          const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
-          if (typeof dispose === 'function') disposers.push(dispose)
-        } else {
-          const dispose = await ctx.tools.register(hostSpec)
-          if (typeof dispose === 'function') disposers.push(dispose)
+        try {
+          if (hasEffect) {
+            // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
+            // here is the promise from tools.register().
+            const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
+            if (typeof dispose === 'function') disposers.push(dispose)
+          } else {
+            const dispose = await ctx.tools.register(hostSpec)
+            if (typeof dispose === 'function') disposers.push(dispose)
+          }
+          registered.push(spec.name)
+        } catch (e) {
+          // ONE registration may fail without killing the rest: the host refuses a duplicate name in the
+          // same layer ("duplicates within one layer fail"), and a second vmu instance is a real scenario.
+          // The failure stays NAMEABLE instead of being swallowed (R11).
+          failures.push({ name: spec.name, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
+          log('vmu tool ' + spec.name + ' was not registered: ' + String((e && e.message) || e))
         }
-        registered.push(spec.name)
       }
       installed = true
-      return { ok: true, installed: registered.length, names: registered.slice(), ownedByHost }
+      return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures }
     },
 
     async uninstall() {
@@ -268,8 +278,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     },
 
     status() {
-      return { installed, ownedByHost, registered: registered.slice(), plan: this.plan(),
-        note: 'with nothing declared only vibe_vmu_status is registered; with vmu.core.enabled=false nothing is; execute() returns a JSON string rendered as one text part' }
+      return { installed, ownedByHost, registered: registered.slice(), failures: failures.map((f) => Object.assign({}, f)), plan: this.plan(),
+        note: 'with nothing declared only vibe_vmu_status is registered; with vmu.core.enabled=false nothing is; execute() returns a JSON string rendered as one text part; a registration that fails is named in `failures` and does not stop the others' }
     },
   }
 }

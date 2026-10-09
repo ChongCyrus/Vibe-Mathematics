@@ -205,6 +205,18 @@ node scripts/release-check.mjs             # 发布前清单
 - **headless 无法选择预设（本轮新发现 ✗✓）**：`dsh --profile headless --help` 的 Options **只有** `--json`／`--session-id`／`-h` ✗；`--json` 事件流里**没有任何 preset/tool 信息** ✓；而 `ctx.agentPresets` 的选择手段是 **程序化 `select(agent, id)`／`mount(ctx,id?)`** 或 **GUI 预设选择器** ✓（我方 DSH 面重建 §3.9 逐字 ✓）⇒ **"预设激活"与"vmu 工具面可见"在 headless 下不可达** ⇒ 按 §9.2⑥ 记 **NON-RESULT**（**不记通过、也不记失败** ✓）。⇒ **P5 真机集的前置**：需要一个能选择预设的宿主入口（GUI 或程序化 `select`），见 14-§7 待办 ✓。
 - **`agentPresets.compositionInventory()`／`readDocument()`／`composeFrom()` 未核** ✗（headless 不可达 ⇒ 与上一条同源）。
 
+### 8.2 宿主**工具形态**（真机实证，2026-10-09；三条都曾让工具**静默消失** ✗✓）
+
+| 约束 | 证据 | 我们踩的坑 |
+|---|---|---|
+| 执行函数键名是 **`execute`** ✗不是 `handler` | 本仓可用预设 `vibe-math-v5r.js:10934-10938` ✓ | 写成 `handler` ⇒ 注册成功但工具**永不出现** ✗ |
+| `output` **必须**有 `schema` ＋ `render`；`presentationMeta` 若出现**必须是函数** | 宿主源码 `dsh-tools/lib/index.js:2881`（**从 app.asar 读出** ✓）：`output === void 0 \|\| typeof output !== 'object' \|\| typeof output.render !== 'function' \|\| (output.presentationMeta !== void 0 && typeof output.presentationMeta !== 'function') ⇒ throw TypeError(...)` | 写成**对象** `{title}` ⇒ 抛错，且消息**不指出哪一条** ✗ |
+| `parameters` **必须**是对象型 JSON Schema，且 `required` 是**顶层数组** | 真机会话日志逐字：`Invalid schema for function 'vibe_vmu_status': schema must be a JSON Schema of 'type: "object"', got 'type: null'` ✓ | 传 `{}` ⇒ **供应商**拒绝并**整轮失败** ⇒ 表现为**静默 0-token 回合** ✗✓ |
+| 注册必须包在 **`ctx.effect(fn,label)`** 并交出 cleanup | 宿主指引（我方面重建 §A ✓） | —（我们一开始就遵守 ✓） |
+| **失败必须可见** ✗不得吞 | 我们自己的 R11 | 入口曾 `catch(()=>{})` 吞掉安装错误 ✗ ⇒ 上述第 2 条**因此长期不可见**；改为 stderr ＋ `status().installError` 后**立刻现形** ✓✓ |
+
+> **方法论收获**：**库测试用自己假设的形态** ⇒ 永远抓不到这三条 ✗✓；真机（脚本化 SLV）＋ **直接读宿主源码/会话日志**才是判据 ✓。⇒ 已固化为 `tests/vmu-host.test.mjs` 的**形态断言**（`execute`／无 `handler`／`presentationMeta` 缺省或函数／`parameters.type==='object'` ＋ 顶层 `required` ✓）。
+
 ---
 
 ## 9. 真机验收（E 类门禁：SLV playbook）
