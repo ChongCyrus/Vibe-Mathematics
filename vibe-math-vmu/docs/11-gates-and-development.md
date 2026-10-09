@@ -107,15 +107,16 @@
 
 ## 5. 复用本仓既有基础设施（**已按 B′ 实测校准**）
 
-### 5.1 计数口径（**先分清两套，别混** ✗✓）
+### 5.1 计数口径（**先分清两套，别混** ✗✓；**2026-10-09 重算 ✓**）
 
-| 口径 | 来源 | 实测值 |
+| 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
-| `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts` | **`total 107 / suites 45 / probes 62`** |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 71 / suites 18 / probes 53`** |
+| `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 132 / suites 68 / probes 64`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 96 / suites 41 / probes 55`** ✓ |
 
-**107 的推导链（逐行可核）**：`deriveJobs()` 是唯一来源（`tests/run-tests.mjs:668`）⇒ **只扫 `tests/` 顶层不递归**（`:669`）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`＝`audit-tool-exec.mjs`／`replaceBare`＝`audit-registration.mjs`，`:680`）⇒ `101 − 3 = 98` 裸作业 ＋ `VARIANTS` **9 条**（`:683-692`，**kind 一律 probe**，注释点名"按文件名分类会把 suites 灌水"）⇒ **98+9=107**；`.test.mjs` 裸作业 45 = suites；`107−45=62` = probes ✓。
-**注意**：`tests/helpers/doc-counts-format.mjs:6-7` 有 VOCABULARY 警告；`scripts/update-doc-counts.mjs:56-65` 只**整行重写 4 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`）✓。
+**132 的推导链（逐行可核 ✓）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`＝`audit-tool-exec.mjs`／`replaceBare`＝`audit-registration.mjs`）⇒ **裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 132**；`.test.mjs` 裸作业 68 = suites；`132−68=64` = probes ✓。
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **49 作业**（≈60 s ✓，含两份文档审计与其变异族、宿主/脚本/整合包/包含性/控制流/台账场景 ✓）。
+**更新方式（诚实 ✗）**：`scripts/update-doc-counts.mjs` 只**整行重写 4 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md` ✓）—— **不含** `vibe-math-vmu/docs/**` ✗ ⇒ 本节数字**必须手工同步**（因此必须带日期 ✓）；若再次漂移，以 `--check` 的输出为准 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
 
