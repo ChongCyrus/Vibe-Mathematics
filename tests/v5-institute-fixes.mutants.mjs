@@ -1595,6 +1595,17 @@ const V5R_FAMILIES = [
     expect: /S25-A：\*\*`status\(\)` 回显三键真实值\*\*/,
   },
   {
+    // S21 开关（用户要求"可参数调控"）：把读取口径写死成 true（等于开关失效）⇒
+    // `s21-pointer-off` 的"status() 回显 false"必红（单点）。
+    name: 'S21: the pointer-propagation switch is dead (the flag reader hard-codes true)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-pointer-off' },
+    from: 'const pointerPropagationOn = () => params.pointerPropagation !== false',
+    to: 'const pointerPropagationOn = () => true',
+    expect: /S21 开关：\*\*status\(\) 回显 false\*\*/,
+  },
+  {
     // S25-D（issue #13 #4）：把单回合工具预算的读取写死成 0（等于取消机器强制）⇒
     // `s25d-resource-budget` 的"第 3 次调用被机器拒"必红（单点）。
     name: 'S25D: the machine-enforced tool budget is disabled (the cap reader hard-codes 0)',
@@ -1681,6 +1692,59 @@ const V5R_FAMILIES = [
     to: '      // MUTANT: the frozen meeting round is advanced anyway',
     expect: /S8-freeze-say/,
   },
+  // ── S21 family（指针传播：内容指纹 ／ 头部列表不含正文 ／ 悬空 id 具名拒 ／ 注入契约 ／ Lean 复用 sha256）──
+  // 五个族各锚**一处**、各跑**一个** s21-* 场景；`expect` 一律抄自 `MUTANTS_ONLY='S21'` 定向实跑的首条红名。
+  // 静态孪生门在 tests/audit-v5-integrity.mjs（R99–R103，各一个唯一点 self-probe 变异）。
+  {
+    // ① **指纹不再覆盖内容**（改陈述指纹也不变）⇒ s21-fingerprint-semantics 的"内容变⇒指纹必变"必红。
+    name: 'S21: contentFingerprint stops covering the statement/proof parts (content changes no longer rotate it)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-fingerprint-semantics' },
+    from: "  return sha256Hex(String(kind == null ? '' : kind) + '\\n' + list.map((p) => leanHashText(p)).join('\\n---\\n'))",
+    to: "  return sha256Hex(String(kind == null ? '' : kind) + '\\n' + 'MUTANT: the parts are not covered')",
+    expect: /G1：\*\*陈述原文一变 ⇒ 指纹必变\*\*/,
+  },
+  {
+    // ② **头部列表顺手带正文**（摘要里塞正文）⇒ s21-header-list 的"不含正文"必红。
+    name: 'S21: the header list smuggles the body in (the list must never carry card text)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-header-list' },
+    from: "                  status: meta.status, owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),\n                })",
+    to: "                  status: meta.status, owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),\n                  text: String(await readTextRel(rel)).slice(0, 400),\n                })",
+    expect: /G2：\*\*每条只有 7 个头部字段\*\*|G2：\*\*头部列表里没有任何正文\*\*/,
+  },
+  {
+    // ③ **悬空 id 编造**（查不到就回空正文当成功）⇒ s21-dangling-id 的"具名拒"必红。
+    name: 'S21: expanding a missing object fabricates an empty success instead of a NAMED refusal',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-dangling-id' },
+    from: "        return {\n          ok: false, code: 'V5_INVALID_ARGUMENT',\n          message: '读不到对象 ' + wantId + '：按 id 展开**必须命中一个既存对象**，本次在'",
+    to: "        return {\n          ok: true, code: 'V5_INVALID_ARGUMENT', text: '', items: [],\n          message: '读不到对象 ' + wantId + '：按 id 展开**必须命中一个既存对象**，本次在'",
+    expect: /G3：\*\*悬空 id ⇒ 具名拒\*\*/,
+  },
+  {
+    // ④ **注入契约缺一条**（禁止猜 id 那条被删）⇒ s21-pointer-injection 的逐条断言必红。
+    name: 'S21: the injected contract loses the "never guess or respell an object id" rule',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-pointer-injection' },
+    from: "    '  · **禁止**自行猜测、改写、拼写对象 id；查不到就**具名停下并上报**。',\n",
+    to: '',
+    expect: /S21：\*\*注入契约逐条在提示词里\*\*/,
+  },
+  {
+    // ⑤ **Lean 头部面丢掉内容身份**（sha256 不再回带）⇒ s21-lean-sha256 的复用断言必红。
+    name: 'S21: the Lean reuse header stops carrying the existing sha256 (the content identity is lost)',
+    preset: 'vibe-math-v5r',
+    suite: 'tests/selfdrive-v5.mjs',
+    env: { V5_SCENARIO: 's21-lean-sha256' },
+    from: "            cards.push({ name, file: rel, kind: kindLabel, summary: first, sha256: sha256Hex(leanHashText(txt)) })",
+    to: "            cards.push({ name, file: rel, kind: kindLabel, summary: first })",
+    expect: /D1\/D3：\*\*Lean 面复用既有 sha256\*\*/,
+  },
 ]
 
 // ── positive controls: pristine v5r, ONE scenario per child process, each in its own fresh
@@ -1731,8 +1795,11 @@ const SCENARIOS = ['d3-silence', 'l4-abstain', 'd3-unable', 'r3-speech',
   's25b-pending-work',
   's25c-proof-gate',
   's25d-resource-budget',
+  's21-pointer-off',
   // S8/S24 回归族（本次修 (B)(A)）：同一场景 `s8-freeze-say` 一个正控。
-  's8-freeze-say']
+  's8-freeze-say',
+  // S21（指针传播）：每个 s21-* 场景一个正控（指纹语义／头部列表不含正文／悬空 id 具名拒／注入契约／Lean sha256）。
+  's21-fingerprint-semantics', 's21-header-list', 's21-dangling-id', 's21-pointer-injection', 's21-lean-sha256']
 let posRed = 0
 // MUTANTS_ONLY=<子串> ⇒ 定向运行：只跑 name 含该子串的族（正控**只在全量模式下跑**，定向模式跳过以省时）。
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。

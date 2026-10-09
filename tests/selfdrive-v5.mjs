@@ -2871,6 +2871,178 @@ async function runScenario(name) {
     } else {
       assert(false, 'V5_SCENARIO 未知（s25d）：' + name)
     }
+  } else if (name.startsWith('s21-')) {
+    // ── S21（指针传播）：**内容指纹语义** ／ **头部列表不含正文** ／ **悬空 id 具名拒** ／
+    // **注入契约（逐轮重拼）** ／ **Lean 复用既有 sha256**。每个场景各自独立工作区。
+    const cardText = (memberId, dir, id) => {
+      const p = join(instDir, 'Members', memberId, dir, id + '.md')
+      return existsSync(p) ? readFileSync(p, 'utf8') : ''
+    }
+    const cardFingerprint = (memberId, dir, id) => {
+        const m = /^-\s*内容指纹:\s*(.+)$/m.exec(cardText(memberId, dir, id))
+        return m ? m[1].trim() : ''
+      }
+      const recProp = async (id, title, statement) => {
+        const r = await callTool('vibe_v5_record_proposition', {
+          id, title, statement, value: 0.5, motive: 'S21 指纹场景', p: 0.5,
+        }, childAgent(childOf('r-1')))
+        assert(r && r.ok === true, 'S21 前置：命题已入库（' + id + '；got ' + String(JSON.stringify(r) || null).slice(0, 200) + '）')
+        return r
+      }
+      if (name === 's21-fingerprint-semantics') {
+        const stmtA = 'S21 指纹：若 n>2 且 x^n+y^n=z^n 有整数解，则最小反例可归约。'
+        const stmtB = 'S21 指纹（已修订）：若 n>3 且 x^n+y^n=z^n 有整数解，则最小反例可归约。'
+        const r1 = await recProp('p-s21-fp', 'S21 指纹 甲', stmtA)
+        // ① 同内容重复写 ⇒ 指纹相同（幂等）
+        const r2 = await recProp('p-s21-fp', 'S21 指纹 甲', stmtA)
+        assert(String(r1.fingerprint) === String(r2.fingerprint) && String(r1.fingerprint).length === 64,
+          'G1：**同内容重复写 ⇒ 指纹不变**（两次都是 64 位 hex；got ' + String(r1.fingerprint) + ' / ' + String(r2.fingerprint) + '）')
+        // ② 内容变 ⇒ 指纹必变
+        const r3 = await recProp('p-s21-fp', 'S21 指纹 甲', stmtB)
+        assert(String(r3.fingerprint) !== String(r1.fingerprint),
+          'G1：**陈述原文一变 ⇒ 指纹必变**（got ' + String(r1.fingerprint) + ' → ' + String(r3.fingerprint) + '）')
+        // ③ 展示用标题不参与口径（D1）
+        const r4 = await recProp('p-s21-fp', 'S21 指纹 甲（改了标题）', stmtB)
+        assert(String(r4.fingerprint) === String(r3.fingerprint),
+          'G1/D1：**标题是展示字段、不参与指纹**（改标题后指纹不变；got ' + String(r3.fingerprint) + ' → ' + String(r4.fingerprint) + '）')
+        // ④ 指纹只算一次并随对象持久化：磁盘上的值 === 读面读回的值
+        const onDisk = cardFingerprint('r-1', 'Propos', 'p-s21-fp')
+        assert(onDisk === String(r3.fingerprint) && onDisk.length === 64,
+          'G1：**指纹随对象持久化**（卡片文件 `- 内容指纹:` 与读面一致；disk=' + String(onDisk) + ' api=' + String(r3.fingerprint) + '）')
+        const exp = await callTool('vibe_v5_read_library', { id: 'p-s21-fp' }, ROOT)
+        assert(exp && exp.ok === true && String(((exp.items || [])[0] || {}).fingerprint) === onDisk,
+          'G1：**按 id 展开时读回的是已存指纹**（读面不重算；got ' + String(JSON.stringify((exp.items || [])[0] && exp.items[0].fingerprint) || null) + '）')
+        // ⑤ 方法卡片同样有指纹（口径覆盖 4 类可验证对象）
+        const rm = await callTool('vibe_v5_record_method', {
+          id: 'm-s21-fp', title: 'S21 方法', content: '核心内容：最小反例归约。', notation: '记号：n∈N',
+          value: 0.4, motive: 'S21 指纹场景', p: 0.5,
+        }, childAgent(childOf('r-1')))
+        assert(rm && rm.ok === true && String(rm.fingerprint).length === 64,
+          'G1：**方法卡也有内容指纹**（got ' + String(JSON.stringify(rm && rm.fingerprint) || null) + '）')
+      } else if (name === 's21-header-list') {
+        await recProp('p-s21-list', 'S21 头部列表', 'S21 列表：这条陈述原文**不得**出现在头部列表里。')
+        const list = await callTool('vibe_v5_read_library', { list: true }, ROOT)
+        assert(list && list.ok === true && list.mode === 'list' && Array.isArray(list.list) && list.list.length >= 1,
+          'G2：**一次调用取回头部列表**（mode=list；got ' + String(JSON.stringify(list) || null).slice(0, 220) + '）')
+        const row = (list.list || []).filter((x) => String(x.id) === 'p-s21-list')[0]
+        assert(!!row, 'G2：列表里能按 id/标题/指纹/状态/归属/更新时间定位到刚写的对象（got ' + String(JSON.stringify(list.list) || null).slice(0, 220) + '）')
+        const raw = JSON.stringify(list)
+        const KEYS = ['id', 'kind', 'title', 'fingerprint', 'status', 'owner', 'updatedAt']
+        const extra = Object.keys(row || {}).filter((k) => KEYS.indexOf(k) === -1)
+        assert(extra.length === 0,
+          'G2：**每条只有 7 个头部字段**（多出：' + JSON.stringify(extra) + '）')
+        assert(String(row.fingerprint) === cardFingerprint('r-1', 'Propos', 'p-s21-list') && String(row.fingerprint).length === 64,
+          'G2：列表里的 `fingerprint` 就是已存指纹（got ' + String(row.fingerprint) + '）')
+        assert(String(row.title).indexOf('S21 头部列表') !== -1 && String(row.owner) === 'r-1' && String(row.status).length > 0
+          && Number(row.updatedAt) > 0,
+          'G2：标题/归属/状态/更新时间齐全（got ' + String(JSON.stringify(row) || null).slice(0, 200) + '）')
+        // 硬约束：头部列表里不得出现任何正文
+        const BODY_MARKS = ['## 陈述', '## 证明尝试', '## 证伪尝试', '## 核心内容', '## 定义与记号', '这条陈述原文']
+        const leaked = BODY_MARKS.filter((m) => raw.indexOf(m) !== -1)
+        assert(leaked.length === 0,
+          'G2：**头部列表里没有任何正文**（泄漏标志：' + JSON.stringify(leaked) + '）')
+        assert(raw.indexOf('"text"') === -1, 'G2：头部列表条目里**没有 `text` 键**（got ' + raw.slice(0, 200) + '）')
+      } else if (name === 's21-dangling-id') {
+        await recProp('p-s21-exists', 'S21 存在', 'S21 悬空：这张卡片存在，用于对照。')
+        const ghost = await callTool('vibe_v5_read_library', { id: 'p-s21-404' }, ROOT)
+        assert(ghost && ghost.ok === false && String(ghost.code) === 'V5_INVALID_ARGUMENT',
+          'G3：**悬空 id ⇒ 具名拒**（ok:false + V5_INVALID_ARGUMENT；got ' + String(JSON.stringify(ghost) || null).slice(0, 240) + '）')
+        assert(/p-s21-404/.test(String(ghost.message)),
+          'G3：拒绝文案**指名那个 id**（不许含糊；got ' + String(ghost.message) + '）')
+        assert((ghost.items || []).length === 0 && ghost.text === undefined,
+          'G3：**绝不返回空正文、更不返回近似物**（items/text 都必须缺；got ' + String(JSON.stringify({ items: ghost.items, text: ghost.text }) || null) + '）')
+        assert(!!ghost.next && String(ghost.next.tool) === 'vibe_v5_read_library',
+          'G3：拒绝附**恢复路径**（next 指回头部列表；got ' + String(JSON.stringify(ghost.next) || null).slice(0, 200) + '）')
+        const ok = await callTool('vibe_v5_read_library', { id: 'p-s21-exists' }, ROOT)
+        assert(ok && ok.ok === true && String(((ok.items || [])[0] || {}).text || '').indexOf('## 陈述') !== -1,
+          'G3：既存 id 仍能正常展开（拒绝不是"一律拒"；got ' + String(JSON.stringify(ok) || null).slice(0, 200) + '）')
+      } else if (name === 's21-pointer-injection') {
+        await recProp('p-s21-inject', 'S21 注入', 'S21 注入：这段正文**不得**出现在提示词里（框架只注入机制约束）。')
+        const seen = []
+        for (const w of wakes) {
+          const t = (w.blocks && w.blocks[0] && w.blocks[0].text) || ''
+          if (/【入职首轮|【第 \d+ 轮|【心跳检查|【研究所会议|【求真表决/.test(t)) seen.push(t)
+        }
+        assert(seen.length >= 1, 'S21 前置：至少捕获一条成员提示词（got ' + seen.length + '）')
+        const RULES = [
+          '【指针传播 · 头部列表（机制约束）】',
+          '跨对象引用只以**头部列表**形式存在',
+          '要正文就用 id 调 `vibe_v5_read_library` 展开',
+          '**指纹与头部列表不一致，必须重新拉取**',
+          '引用他人结论**必须**带 id',
+          '**具名阻塞并上报**',
+          '**禁止**自行猜测、改写、拼写对象 id',
+          '`vibe_v5_lean_lib` / `vibe_v5_lean_read`',
+        ]
+        for (const t of seen) {
+          const missing = RULES.filter((r) => t.indexOf(r) === -1)
+          assert(missing.length === 0,
+            'S21：**注入契约逐条在提示词里**（缺：' + JSON.stringify(missing) + '）')
+          const iBlock = t.indexOf('【指针传播 · 头部列表（机制约束）】')
+          const iState = t.indexOf('[状态] 你是')
+          assert(iBlock >= 0 && iState > iBlock,
+            'S21：**契约块在状态块之前**（block@' + iBlock + ' < state@' + iState + '）')
+          assert(t.indexOf('## 陈述') === -1 && t.indexOf('这段正文') === -1,
+            'S21：**提示词里没有卡片正文**（框架只注入机制，不注入内容）')
+          const toolNames = (t.match(/vibe_v5_read_library/g) || []).length
+          assert(toolNames >= 1 && /`vibe_v5_read_library`/.test(t),
+            'S21：注入文本里的工具名是**全称**（got ' + toolNames + '）')
+        }
+      } else if (name === 's21-pointer-off') {
+        // S21 开关（用户要求"可参数调控"）：可关、可开、可在 `status()` 复核；且**只控"默认注入/默认通道"**
+        // —— `vibe_v5_read_library` 的新增只读模式（`{list:true}`／`{id}`）**不随开关关闭** ✓。
+        // （"关掉 ⇒ 契约段零注入"由静态门 R103 从代码形状上钉死：包装在关闭时返回空数组 ✓。）
+        await recProp('p-s21-switch', 'S21 开关', 'S21 开关：关掉后读面仍可用。')
+        const off1 = await callTool('vibe_v5_set', { pointerPropagation: false }, ROOT)
+        assert(off1 && off1.ok === true, 'S21 开关：可设 false（前置；got ' + String(JSON.stringify(off1) || null).slice(0, 160) + '）')
+        const stOff = JSON.stringify(await callTool('vibe_v5_status', {}))
+        assert(/"pointerPropagation":false/.test(stOff), 'S21 开关：**status() 回显 false**（got ' + String(stOff || null).slice(0, 200) + '）')
+        const listOff = await callTool('vibe_v5_read_library', { list: true }, childAgent(childOf('r-1')))
+        assert(listOff && listOff.ok !== false, 'S21 开关：**关闭后 `{list:true}` 仍可用**（got ' + String(JSON.stringify(listOff) || null).slice(0, 200) + '）')
+        const on1 = await callTool('vibe_v5_set', { pointerPropagation: true }, ROOT)
+        assert(on1 && on1.ok === true, 'S21 开关：可设回 true（got ' + String(JSON.stringify(on1) || null).slice(0, 160) + '）')
+        const stOn = JSON.stringify(await callTool('vibe_v5_status', {}))
+        assert(/"pointerPropagation":true/.test(stOn), 'S21 开关：**status() 回显 true**（got ' + String(stOn || null).slice(0, 200) + '）')
+      } else if (name === 's21-lean-sha256') {
+        await recProp('p-s21-lean', 'S21 Lean', 'S21 Lean：归档正文由 Lean 面按名取原文，不进头部列表。')
+        const nonce = Math.random().toString(36).slice(2, 10)
+        const defName = 'S21Fingerprint' + nonce
+        const body = 'def ' + defName + ' (n : Nat) : Nat := n + 1\n'
+        const arc = await callTool('vibe_v5_lean_archive', { kind: 'def', name: defName, content: body, run: false }, childAgent(childOf('r-1')))
+        assert(arc && arc.ok === true && String(arc.sha256).length === 64,
+          'S21 前置：定义了可复用定义并有内容身份（got ' + String(JSON.stringify(arc) || null).slice(0, 240) + '）')
+        // `refresh` defaults to true: the reuse face REBUILDS its index and returns the header list.
+        const lib = await callTool('vibe_v5_lean_lib', {}, ROOT)
+        const row = ((lib && lib.lib) || []).filter((o) => String(o.name) === defName)[0]
+        assert(!!row, 'S21 前置：lean_lib 的 `lib[]` 头部面里能看见刚归档的文件（got ' + String(JSON.stringify((lib && lib.lib) || []) || null).slice(0, 220) + '）')
+        assert(String(row.sha256) === String(arc.sha256) && String(row.sha256).length === 64,
+          'D1/D3：**Lean 面复用既有 sha256**（lib[].sha256 === 归档回执的 sha256；got ' + String(row.sha256) + ' vs ' + String(arc.sha256) + '）')
+        assert(String(row.file) === 'Formal/Lib/' + defName + '.lean' && String(row.kind) === 'def',
+          'S21：头部面给出 file/kind（got ' + String(JSON.stringify({ file: row.file, kind: row.kind }) || null) + '）')
+        const raw = JSON.stringify(lib)
+        // 判据：正文**逐行**存在（多行代码）⇒ 头部面条目里任何叶子值都不得含换行、也不得是长块。
+        // （`summary` 是该文件的第一行代码——既有索引列，不是搬运正文；`hint` 是框架的复用提示，
+        // 不是对象内容，故本判据只看**头部面条目**与 `objects[]`。）
+        const leaves = []
+        const walk = (v) => {
+          if (v === null || typeof v !== 'object') { if (typeof v === 'string') leaves.push(v); return }
+          for (const k of Object.keys(v)) walk(v[k])
+        }
+        walk(lib.lib); walk(lib.proved); walk(lib.objects)
+        const bodyish = leaves.filter((s) => s.indexOf('\n') !== -1 || s.length > 120)
+        assert(bodyish.length === 0,
+          'S21：**头部面不搬运多行正文**（叶子值里没有换行/超长块；got ' + String(JSON.stringify(bodyish) || null).slice(0, 200) + '）')
+        assert(raw.length < 1500,
+          'S21：**头部面体量有界**（lean_lib=' + raw.length + ' 字符；逐字原文另走 `vibe_v5_lean_read`）')
+        assert(row.text === undefined && row.content === undefined,
+          'S21：头部面条目里没有 `text`/`content` 键（got ' + String(JSON.stringify(Object.keys(row)) || null) + '）')
+        // 代码正文只能按名取原文（逐字可复现），且其 sha256 与头部面同源
+        const verbatim = await callTool('vibe_v5_lean_read', { name: defName, kind: 'lib' }, ROOT)
+        assert(verbatim && verbatim.ok === true && String(verbatim.text).indexOf(defName) !== -1 && String(verbatim.sha256) === String(row.sha256),
+          'S21：**正文由 `vibe_v5_lean_read` 逐字取回，且 sha256 与头部面同源**（got ' + String(JSON.stringify({ ok: verbatim && verbatim.ok, sha: verbatim && verbatim.sha256 }) || null) + '）')
+      } else {
+        assert(false, 'V5_SCENARIO 未知（s21）：' + name)
+      }
   } else {
     assert(false, 'V5_SCENARIO 未知：' + name)
   }

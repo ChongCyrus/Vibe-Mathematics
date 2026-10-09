@@ -732,6 +732,41 @@ const SELF_PROBE_MUTATIONS = [
     to: "        if (!Number.isFinite(n) || Math.floor(n) !== n || n < -1) {\n          return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'toolCallsPerTurnCap 必须是",
     expect: 'R96',
   },
+  {
+    name: 'S21: contentFingerprint stops covering the statement/proof parts (R99 must redden)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "list.map((p) => leanHashText(p)).join('\\n---\\n')",
+    to: "'MUTANT: the parts are not covered'",
+    expect: 'R99',
+  },
+  {
+    name: 'S21: the header list carries a body snippet (R100 must redden)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "                  status: meta.status, owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),\n                })",
+    to: "                  status: meta.status, owner: m.id, updatedAt: await cardUpdatedAt(rel, meta.recordedAt),\n                  text: 'MUTANT',\n                })",
+    expect: 'R100',
+  },
+  {
+    name: 'S21: a dangling id expansion returns an empty success (R101 must redden)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "          ok: false, code: 'V5_INVALID_ARGUMENT',\n          message: '读不到对象 '",
+    to: "          ok: true, code: 'V5_INVALID_ARGUMENT', text: '',\n          message: '读不到对象 '",
+    expect: 'R101',
+  },
+  {
+    name: 'S21: the injected contract loses the "never guess or respell an object id" rule (R103 must redden)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: "    '  · **禁止**自行猜测、改写、拼写对象 id；查不到就**具名停下并上报**。',\n",
+    to: '',
+    expect: 'R103',
+  },
+  {
+    name: 'S21: the Lean reuse header stops carrying the existing sha256 (R102 must redden)',
+    rel: 'vibe-math-v5r/vibe-math-v5r.js',
+    from: 'cards.push({ name, file: rel, kind: kindLabel, summary: first, sha256: sha256Hex(leanHashText(txt)) })',
+    to: 'cards.push({ name, file: rel, kind: kindLabel, summary: first })',
+    expect: 'R102',
+  },
 ]
 
 if (process.argv.includes('--self-probe')) {
@@ -2135,7 +2170,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     const e = v5rRaw.indexOf("      // S19（`D-10` 待办 ②", s)
     return (s >= 0 && e > s) ? v5rRaw.slice(s, e) : ''
   })()
-  gate(/'resourceSelfCheck'\]/.test(v5rRaw)
+  gate(/'resourceSelfCheck', 'pointerPropagation'\]/.test(v5rRaw)
     && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw)
     && /resourceSelfCheck: false,/.test(v5rRaw)
     && /toolCallsPerTurnCap: 0,/.test(v5rRaw)
@@ -2168,7 +2203,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     && !!proofWin && /证明尝试／证伪尝试/.test(proofWin)
     && /禁止/.test(proofWin),
     'R98', 'S25-A: the promise is stated where the office can see it — the `vibe_v5_set` description says PROMPT TEXT ONLY and NEVER a machine decision, `status().params` echoes all three keys (so the office can discover them), and the 【命题准入】 block explicitly forbids treating "证明尝试／证伪尝试" as "已论证"')
-  notes.push('S25-A (v5r): settable=' + (/'resourceSelfCheck'\]/.test(v5rRaw) && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw))
+  notes.push('S25-A (v5r): settable=' + (/'resourceSelfCheck', 'pointerPropagation'\]/.test(v5rRaw) && /'toolCallsPerTurnCap', 'memoryCeilingMb'\]/.test(v5rRaw))
     + '; defaults do-nothing=' + (/resourceSelfCheck: false,/.test(v5rRaw) && /toolCallsPerTurnCap: 0,/.test(v5rRaw) && /memoryCeilingMb: 0,/.test(v5rRaw))
     + '; off-switch=' + (!!resWin && /if \(!resourceSelfCheckOn\(\)\) return \[\]/.test(resWin))
     + '; single readers=' + ((v5rRaw.match(/\.resourceSelfCheck/g) || []).length === 1 && (v5rRaw.match(/\.toolCallsPerTurnCap/g) || []).length === 3 && (v5rRaw.match(/\.memoryCeilingMb/g) || []).length === 3)
@@ -2179,6 +2214,121 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     + '; echo=' + /resourceSelfCheck: resourceSelfCheckOn\(\), toolCallsPerTurnCap/.test(v5rRaw)
     + '; prompt-only promise=' + /PROMPT TEXT ONLY and NEVER a machine decision/.test(v5rRaw)
     + '; no machine writes=' + !/putVerdict\(|putSolve\(|finalizeMeeting\(/.test(resWin + proofWin))
+  // ---- S21 (pointer propagation): ONE content fingerprint / header list WITHOUT bodies / a dangling
+  // id is a NAMED refusal / the injected contract on EVERY prompt / Lean reuses its existing sha256 ----
+  const fpStart = v5rRaw.indexOf('function contentFingerprint(kind, parts) {')
+  const fpEnd = v5rRaw.indexOf('function headerListContractBlock() {', fpStart)
+  const fpWin = (fpStart >= 0 && fpEnd > fpStart) ? v5rRaw.slice(fpStart, fpEnd) : ''
+  const rcStart = v5rRaw.indexOf('async function recordCard(memberId, kind, o) {')
+  const rcEnd = v5rRaw.indexOf('async function readLibrary(query) {', rcStart)
+  const rcWin = (rcStart >= 0 && rcEnd > rcStart) ? v5rRaw.slice(rcStart, rcEnd) : ''
+  const rlStart = v5rRaw.indexOf('async function readLibrary(query) {')
+  const rlEnd = v5rRaw.indexOf('// ---- task board (compare-and-set DAG', rlStart)
+  const rlWin = (rlStart >= 0 && rlEnd > rlStart) ? v5rRaw.slice(rlStart, rlEnd) : ''
+  const listStart = rlWin.indexOf('if (listMode) {')
+  // The END anchor is the close line of the list-mode RETURN — located STRUCTURALLY (the first `\n      }`
+  // after the early return), never by pasting the Chinese prose into the gate: a literal copy of the
+  // returned text is exactly the kind of second authority a later wording edit would silently break.
+  // (An earlier draft anchored on the expand guard's text, whose spelling also appears in a COMMENT
+  // inside this branch: measured, `indexOf` landed in the comment and pulled the expand branch's
+  // `text:` key into the window, so R100 reddened for the wrong reason.)
+  const listRet = rlWin.indexOf("return { ok: true, mode: 'list', count: listOut.length, list: listOut,", listStart)
+  const listClose = listRet >= 0 ? rlWin.indexOf('\n      }', listRet) : -1
+  const listWin = (listStart >= 0 && listClose > listStart) ? rlWin.slice(listStart, listClose + 1) : ''
+  const danglingStart = rlWin.indexOf('if (wantId && out.length === 0) {')
+  const danglingEnd = rlWin.indexOf('return { ok: true, count: out.length, items: out }', danglingStart)
+  const danglingWin = (danglingStart >= 0 && danglingEnd > danglingStart) ? rlWin.slice(danglingStart, danglingEnd) : ''
+  const hlStart = v5rRaw.indexOf('function headerListContractBlock() {')
+  const hlEnd = v5rRaw.indexOf('\n}\n', hlStart)
+  const hlWin = (hlStart >= 0 && hlEnd > hlStart) ? v5rRaw.slice(hlStart, hlEnd + 3) : ''
+  const scanStart = v5rRaw.indexOf('const scan = async (dirAbs, dirRel, kindLabel) => {')
+  const scanEnd = v5rRaw.indexOf('const libScan = await scan(', scanStart)
+  const scanWin = (scanStart >= 0 && scanEnd > scanStart) ? v5rRaw.slice(scanStart, scanEnd) : ''
+  const defectStart = v5rRaw.indexOf('async function recordFidelityDefect(memberId, rawTarget, note) {')
+  const defectEnd = v5rRaw.indexOf('// ================= async Lean compile queue', defectStart)
+  const defectWin = (defectStart >= 0 && defectEnd > defectStart) ? v5rRaw.slice(defectStart, defectEnd) : ''
+  gate(!!fpWin && !!rcWin
+    && (v5rRaw.match(/contentFingerprint\(/g) || []).length === 2
+    && /return sha256Hex\(String\(kind == null \? '' : kind\) \+ '\\n' \+ list\.map\(\(p\) => leanHashText\(p\)\)\.join\('\\n---\\n'\)\)/.test(fpWin)
+    && /const list = \(Array\.isArray\(parts\) \? parts : \[parts\]\)\.filter/.test(fpWin)
+    && (rcWin.match(/contentFingerprint\(/g) || []).length === 1
+    && /const fingerprint = contentFingerprint\(kind, body\)/.test(rcWin)
+    && /'- 内容指纹: ' \+ fingerprint,/.test(rcWin)
+    && /return \{ ok: true, id, file: rel, kind, fingerprint, status,/.test(rcWin),
+    'R99', 'S21/D1: the content fingerprint has ONE definition and ONE call site (`contentFingerprint`, inside `recordCard`), it digests the statement/proof parts through `leanHashText` (CRLF-normalised, trailing blanks dropped), and the value is BOTH persisted on the card (`- 内容指纹:`) and returned — so the same content can never rotate the digest and no read face can recompute a different one')
+  // NOTE: the key probe is written as `[{,] text:` so a MENTION of the word in a comment or in the
+  // returned prose ("...**不含任何正文**；要正文请用 id 展开...") cannot masquerade as a `text` KEY.
+  const R100_TEXTKEY = /[{,]\s*text\s*:/
+  gate(!!listWin
+    && (listWin.match(/id, kind, title: meta\.title \|\| id, fingerprint: meta\.fingerprint,/g) || []).length === 1
+    && (listWin.match(/status: meta\.status, owner: m\.id, updatedAt: await cardUpdatedAt\(rel, meta\.recordedAt\),/g) || []).length === 1
+    && !R100_TEXTKEY.test(listWin)
+    && !/## 陈述|## 证明/.test(listWin)
+    && /return \{ ok: true, mode: 'list', count: listOut\.length, list: listOut,/.test(rlWin)
+    && /const listMode = q\.list === true \|\| q\.list === 'true'/.test(rlWin),
+    'R100', 'S21/D5: the header list emits EXACTLY the seven header keys (id / kind / title / fingerprint / status / owner / updatedAt) and NOTHING else — the list branch reads the stored fingerprint and the recorded time back instead of recomputing (and never touches the body) — while `list` defaults to false so every pre-S21 call keeps its behaviour')
+  gate(!!danglingWin
+    && /if \(wantId && out\.length === 0\) \{/.test(rlWin)
+    && /ok: false, code: 'V5_INVALID_ARGUMENT',/.test(danglingWin)
+    && /message: '读不到对象 ' \+ wantId/.test(danglingWin)
+    && /next: \{/.test(danglingWin)
+    && /kind: 'expand-by-id', tool: 'vibe_v5_read_library'/.test(danglingWin)
+    && !/ok: true/.test(danglingWin)
+    && !/text:/.test(danglingWin),
+    'R101', 'S21/D5: expanding one object BY ID is a named refusal when nothing matches — `ok:false` + `V5_INVALID_ARGUMENT` + the offending id in the message + a `next` recovery pointer — never an empty body and never a look-alike (no `ok:true` and no `text:` anywhere on that path)')
+  gate(!!scanWin && !!defectWin
+    && /cards\.push\(\{ name, file: rel, kind: kindLabel, summary: first, sha256: sha256Hex\(leanHashText\(txt\)\) \}\)/.test(scanWin)
+    && /return \{ lib: libRows\.length, proved: provedRows\.length, objects: Object\.keys\(formalRecords\(\)\)\.length, libCards: libScan\.cards, provedCards: provedScan\.cards \}/.test(v5rRaw)
+    && /lib: Array\.isArray\(r\.libCards\) \? r\.libCards : \[\],/.test(v5rRaw)
+    && /proved: Array\.isArray\(r\.provedCards\) \? r\.provedCards : \[\],/.test(v5rRaw)
+    && /sha256: \(s\.formalRecords\(\)\[k\] \|\| \{\}\)\.sha256 \|\| ''/.test(v5rRaw)
+    && /sha256: sha,/.test(v5rRaw)
+    && /sha256: '',/.test(defectWin)
+    && !/sha256Hex/.test(v5rRaw.slice(v5rRaw.indexOf("registerTool('vibe_v5_lean_lib'"), v5rRaw.indexOf("registerTool('vibe_v5_lean_read'"))),
+    'R102', "S21/D1/D3: the Lean face REUSES its existing sha256 — the reuse header carries it per archived file, the object line carries the recorded one, the archive writes it and a fidelity DEFECT clears it — and the `lean_lib` handler recomputes no digest of its own, so a withdrawn proof can never be read as the current content identity")
+  notes.push('S21 (v5r): fingerprint sites=' + (v5rRaw.match(/contentFingerprint\(/g) || []).length
+    + '; card persists it=' + /'- 内容指纹: ' \+ fingerprint,/.test(v5rRaw)
+    + '; list keys=7=' + ((listWin.match(/title: meta\.title \|\| id, fingerprint: meta\.fingerprint,/) || []).length === 1)
+    + '; list carries no text=' + !R100_TEXTKEY.test(listWin)
+    + '; dangling named refusal=' + (!!danglingWin && /ok: false, code: 'V5_INVALID_ARGUMENT',/.test(danglingWin) && /next: \{/.test(danglingWin))
+    + '; lean sha256 reused=' + (/cards\.push\(\{ name, file: rel, kind: kindLabel, summary: first, sha256: sha256Hex\(leanHashText\(txt\)\) \}\)/.test(scanWin) && !/sha256Hex/.test(v5rRaw.slice(v5rRaw.indexOf("registerTool('vibe_v5_lean_lib'"), v5rRaw.indexOf("registerTool('vibe_v5_lean_read'"))))
+    + '; defect clears sha256=' + /sha256: '',/.test(defectWin))
+  const R103_RULES = ['【指针传播 · 头部列表（机制约束）】', '跨对象引用只以**头部列表**形式存在', '要正文就用 id 调 `vibe_v5_read_library` 展开',
+    '**指纹与头部列表不一致，必须重新拉取**', '引用他人结论**必须**带 id', '**具名阻塞并上报**',
+    '**禁止**自行猜测、改写、拼写对象 id', '`vibe_v5_lean_lib` / `vibe_v5_lean_read`']
+  const R103_MISSING = R103_RULES.filter((r) => hlWin.indexOf(r) === -1)
+  const R103_BODY = ['## 陈述', '## 证明尝试', '## 核心内容'].filter((b) => hlWin.indexOf(b) !== -1)
+  const R103_CALLS = (v5rRaw.match(/headerListContractBlock\(\)/g) || []).length
+  const R103_CALL_OFFSETS = (() => {
+    const out = []
+    let i = v5rRaw.indexOf('L.push(pointerContractBlock())')
+    while (i !== -1) { out.push(i); i = v5rRaw.indexOf('L.push(pointerContractBlock())', i + 1) }
+    return out
+  })()
+  const R103_ORDERED = R103_CALL_OFFSETS.every((i) => {
+    const next = v5rRaw.indexOf('L.push(stateBlock(member', i)
+    return next > i && next - i < 200
+  })
+  gate(!!hlWin
+    && (v5rRaw.match(/function headerListContractBlock\(\) \{/g) || []).length === 1
+    // `headerListContractBlock()` 只剩两处：它的**定义** ＋ 会话侧包装 `pointerContractBlock()` 里的**一次**调用
+    // （八个注入点改用包装 ⇒ 由下面的 `R103_CALL_OFFSETS.length === 8` 守住"恰好八个"）。
+    && R103_CALLS === 2
+    && R103_CALL_OFFSETS.length === 8
+    && R103_ORDERED
+    && R103_MISSING.length === 0
+    && R103_BODY.length === 0
+    && /vibe_v5_read_library/.test(hlWin)
+    && !/\$\{/.test(hlWin)
+    && /const pointerPropagationOn = \(\) => params\.pointerPropagation !== false/.test(v5rRaw)
+    && /pointerPropagation: true,/.test(v5rRaw)
+    && /if \(!pointerPropagationOn\(\)\) return \[\]/.test(v5rRaw)
+    && (v5rRaw.match(/L\.push\(stateBlock\(member/g) || []).length === 8,
+    'R103', "S21/D4: the injected contract is ONE definition carrying all eight rules (full tool names, no interpolation that could print `undefined`/`NaN`) and it is pushed by ALL EIGHT member-facing prompt builders — every `stateBlock(member` is immediately preceded by it — so the section is rebuilt on every round/reload instead of surviving only as post-compaction memory, while no card body text ever enters a prompt. Plus the S21 switch: the injection goes through the session-side `pointerContractBlock()`, which returns an EMPTY array when `pointerPropagation` is false, so turning it off removes every byte of the block while the eight call sites stay identical")
+  notes.push('S21 (v5r): contract rules missing=' + JSON.stringify(R103_MISSING)
+    + '; body markers in block=' + JSON.stringify(R103_BODY)
+    + '; call sites=' + R103_CALL_OFFSETS.length + '/' + ((v5rRaw.match(/L\.push\(stateBlock\(member/g) || []).length)
+    + '; ordered before state block=' + R103_ORDERED)
   notes.push('R10 (v5r): gates=' + 7 + '; 过程标注=' + countOf(/尚未生效·仅供参考/g) + '; provisional: true=' + countOf(/provisional: true/g))
 }
 
