@@ -118,6 +118,10 @@ vmu.middleware.entries:
 
 **三态语义回顾**（§7）：`open`＝放行但留痕／`closed`＝拒绝该操作／`abort`＝中止本轮或本阶段；**任何失败都必须记审计**（谁、哪条、哪个钩子、原始错误）✓。
 
+> **调度现实（2026-10-09 校准 ✗✓）**：上表是**登记表** ✓；**真正有生产者（`bus.emit`）的钩子**是 —— `member/wake-before|after`、`meeting/round-start|end`、`ballot/cast|tally`、`task/assign|transition`、`settle/before|after`、`prompt/assemble`、`control/paused|resumed|heartbeat` ✓。
+> **已登记但当前没有生产者（7 个，诚实 ✗）**：`turn/reply-parsed`、`record/append-before`、`record/appended`、`prompt/section-assembled`、`budget/exceeded`、`pack/loading`、`pack/loaded` ⇒ **挂上它们目前不会触发** ✗（归档/预算/整合包的动作走的是工具面与内核路径 ✓）。
+> **门禁**：`tests/audit-vmu-docs.test.mjs` 的钩子生产检查要求"**登记 ⇒ 有 emit 点，或被显式列入"未触发"清单**" ✓✓ —— 新增钩子不写生产者就红 ✓，而清单里混进"其实已经有生产者"的钩子同样红 ✓（防止清单腐化 ✓）。
+
 ---
 
 ## 5. M1 声明式规则：条件 DSL 与动作集

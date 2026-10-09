@@ -175,6 +175,26 @@ const freshCopy = (tag) => {
     'M12 a corrupted generated table makes the GENERATOR --check exit 1', String(g.stderr || '').split('\n')[0])
 }
 
+// ---- M13/M14: the hook producer check, in BOTH directions ------------------------------------------
+{
+  const c = freshCopy('m13')
+  // A registered hook that LOSES its producer must be caught (it would silently never fire).
+  const p = join(c.code, 'kernel', 'tasks.js')
+  writeFileSync(p, readFileSync(p, 'utf8').replace("await bus.emit('settle/after'", "await bus.emit('settle/after-DISABLED'"), 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /every registered vmu hook is either EMITTED or explicitly listed/.test(r.out) && /settle\/after/.test(r.out),
+    'M13 a registered hook that loses its producer is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m14')
+  // …and the declared "not yet emitted" list must not go stale: give one of its hooks a producer.
+  const p = join(c.code, 'kernel', 'tasks.js')
+  writeFileSync(p, readFileSync(p, 'utf8').replace("await bus.emit('settle/before'", "await bus.emit('budget/exceeded'"), 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && (/does not hide hooks that already gained a producer/.test(r.out) || /every registered vmu hook is either EMITTED/.test(r.out)),
+    'M14 a declared-not-emitted hook that GAINS a producer is a NAMED red', r.out.split('\n')[1])
+}
+
 // ---- the unmutated copy must stay GREEN ----------------------------------------------------------
 {
   const c = freshCopy('control')

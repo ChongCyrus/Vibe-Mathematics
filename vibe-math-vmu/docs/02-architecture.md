@@ -21,36 +21,39 @@
 
 ---
 
-## 2. 内核分区与模块边界（草案；单文件规模上限待定，建议 ≤1200 行）
+## 2. 内核分区与模块边界（**按实际目录重写，2026-10-09 ✓**）
 
-| 分区 | 模块（建议文件名） | 职责（**能力，不含策略**） | 对外暴露 |
+| 分区 | 真实模块（`vibe-math-vmu/` ✓） | 职责（**能力，不含策略**） | 对外暴露 |
 |---|---|---|---|
-| **A 会话与成员** | `kernel/members.js` | 角色**槽位**、编制登记、唤醒与回合、成员状态机、解聘/回收 | 服务 + 工具 + 钩子 |
-| **B 耐久与投影** | `kernel/store.js`、`kernel/fold.js`、`kernel/migrate.js` | `Store` 端口（事务/版本/迁移/订阅）、fold 投影、白名单校验、崩溃恢复 | 服务（公开读面） |
-| **C 提示词管线** | `kernel/prompt/*.js` | 段注册、上下文注入、变量、工具面、装配出口、快照 | 服务 + 钩子 + 文件契约 |
-| **D 归档与记忆** | `kernel/library.js`、`kernel/records.js` | 成果库/卡片、分轨记录、内容指纹、头部列表、按 id 展开、检索 | 工具 + 文件布局契约 |
-| **E 会议与表决** | `kernel/meeting.js`、`kernel/ballot.js` | 召集/议程/轮次/举手/纪要/收束 **原语**；票型/法定数/未定论/复议 **原语**；状态机**骨架** | 服务 + 工具 + 钩子 |
-| **F 任务与工作流** | `kernel/tasks.js`、`kernel/workflow-bridge.js` | 任务台账/依赖/分派、阶段机、工作流脚本桥、心跳与定时 | 服务 + 工具 + 桥 |
-| **G 形式化与计算** | `kernel/lean.js`、`kernel/math.js` | Lean 归档/复用 sha256/按名取原文；计算模块接线；子进程/终端封装 | 工具 + 共享模块 |
-| **H 资源与安全** | `kernel/budget.js`、`kernel/guard.js` | 预算与上限、审批/授权接线、工具过滤与守卫、写保护与路径约束、审计留痕 | 服务 + 钩子 |
-| **I 总线与扩展点** | `kernel/bus.js`、`kernel/middleware/*.js`、`kernel/pack.js` | DSH 钩子的**统一封装**、vmu 内部钩子、四形态中间件装载、pack 装载、**公开接口清单与版本** | 服务 + 注册面 |
+| **A 会话与成员** | `kernel/members.js` | 角色**槽位**、编制登记、唤醒、在活上限、解聘/回收 | `vmu.members` ✓ + 钩子 |
+| **B 耐久与投影** | `kernel/store.js`、**`kernel/work.js`** ✓ | `Store` 端口（fold／白名单／函数式 patch／原子写／备份／迁移）、**在途工作台账**（重启后标记 `interrupted` ✓） | `vmu.store`、`vmu.work` ✓ |
+| **C 提示词管线** | `kernel/prompt/index.js` | 段注册、四维绑定、覆盖与回滚、变量白名单、截断计数、装配出口 | `vmu.prompt` ✓ + `prompt/assemble` 钩子 ✓ |
+| **D 归档与记忆** | `kernel/library.js` | 成果卡、分轨记录、内容指纹（单点 sha256）、头部列表（**行数上限＋计数** ✓）、按 id 展开 | 工具面 `vibe_vmu_records` ✓ + 文件布局契约 |
+| **E 会议与表决** | `kernel/meeting.js`、`kernel/ballot.js` | 召集/议程/轮次/举手/收束原语；票型/法定数/未定论/复议原语；状态机骨架 | 工厂 `kernel.meeting()`／`kernel.ballot()` ✓ + 钩子 |
+| **F 任务与工作流** | `kernel/tasks.js` | 任务台账/依赖/分派、阶段机（`stageGate`）、`settle/*` | `vmu.tasks` ✓ + 钩子 |
+| **G 形式化与计算** | `kernel/math.js`、`kernel/script-bridge.js`、**`host-math.js`** ✓ | 引擎适配（**数据描述表** ✓）、脚本作业桥、**真宿主接缝**（`register/params/fs/spawn` ✓） | 继承工具 `math_computation` ✓ + `vibe_vmu_script` ✓ |
+| **H 资源与控制** | `kernel/bus.js`（能力/失败策略）、`host-hooks.js`（**工具预算强制** ✓）、`kernel/index.js`（**控制状态机** ✓） | 预算与上限、暂停/恢复/心跳、失败三态与熔断 | `vibe_vmu_control` ✓ + 钩子 |
+| **I 总线与扩展点** | `kernel/bus.js`、`kernel/loader.js`、`kernel/rules.js`、`kernel/registry.js`、`kernel/pack.js` | 钩子统一封装、四形态中间件装载、pack 装载、公开接口版本 | `vmu.middleware` ✓ + 注册面 |
 
-**分区 ↔ 公开服务 ↔ 钩子域（与 03-§2 咬合，消"登记了但无人引用"✗）**
+> **与草案的差异（都按代码改 ✓）**：草案里的 `fold.js`／`migrate.js`／`records.js`／`workflow-bridge.js`／`lean.js`／`budget.js`／`guard.js`／`middleware/*.js` **都不存在** ✗（职责已并入 `store.js`／`library.js`／`script-bridge.js`／`math.js`／`bus.js`＋`loader.js`＋`rules.js` ✓）；新增 `work.js` 与三个宿主模块 ✓。**真实 `kernel/` 共 16 个文件** ✓（含 `prompt/index.js` ✓）。
 
-| 分区 | **公开服务（03-§2）** | 主要 vmu 钩子域（05-§4.2） |
+**分区 ↔ 公开服务 ↔ 钩子域（**按实际 emit 点重写** ✓；"未触发"＝已登记但没有生产者的钩子 ✗）**
+
+| 分区 | 公开服务（`registry.register` 实际发布 ✓） | 实际 **emit** 的 vmu 钩子（逐条可 grep ✓） |
 |---|---|---|
-| A 会话与成员 | **`vmu.members`** | `member/wake-*`、`turn/reply-parsed` |
-| B 耐久与投影 | **`vmu.store`** | `session/flush`、`fs/write-intent` |
-| C 提示词管线 | **`vmu.prompts`** | `prompt/assemble`、`prompt/section` |
-| D 归档与记忆 | **`vmu.library`** | `record/append-before`、`record/appended` |
-| E 会议与表决 | **`vmu.meetings`** | `meeting/round-*`、`ballot/cast`、`ballot/tally` |
-| F 任务与工作流 | **`vmu.tasks`** | `task/assign`、`task/transition`、`settle/*` |
-| G 形式化与计算 | （工具面为主，经 `vmu.kernel` 暴露作业状态） | `math/*` 判定点（策略外置） |
-| H 资源与安全 | **`vmu.budget`** | `budget/exceeded`、`tools/pre-execute` |
-| **总线与扩展点** | **`vmu.bus`**、**`vmu.middleware`**、**`vmu.packs`** | 全部钩子的**注册与路由**（不额外触发） |
-| 总控与生命周期 | **`vmu.kernel`**、**`vmu.settings`** | `pack/loading`、`pack/loaded`、`settings/changed` |
+| A | `vmu.members` ✓ | `member/wake-before`、`member/wake-after` ✓（`members.js` ✓） |
+| B | `vmu.store`、`vmu.work` ✓ | —（无钩子） |
+| C | `vmu.prompt` ✓ | `prompt/assemble` ✓（`prompt/index.js` ✓）；**`prompt/section-assembled` 登记但未触发** ✗ |
+| D | `vmu.library` ✓ | **`record/append-before`／`record/appended` 登记但未触发** ✗（归档走工具面 ✓，中间件暂时拦不到 ✗） |
+| E | （工厂，无独立服务 ✓） | `meeting/round-start`、`meeting/round-end`、`ballot/cast`、`ballot/tally` ✓ |
+| F | `vmu.tasks` ✓ | `task/assign`、`task/transition`、`settle/before`、`settle/after` ✓ |
+| G | `math_computation`（工具，条件注册 ✓） | **`math/*` 无钩子** ✗（判定点外置在 pack/中间件 ✓） |
+| H | —（框架级，经桥与内核 ✓） | `control/paused`、`control/resumed`、`control/heartbeat` ✓ |
+| I | `vmu.middleware` ✓ | 全部钩子的**注册与路由**（不额外触发 ✓） |
+| 总控 | —（`vmu.kernel`／`vmu.settings`／`vmu.bus`／`vmu.packs` **草案里写了但并未发布** ✗） | **`pack/loading`／`pack/loaded`／`budget/exceeded`／`turn/reply-parsed`／`session/flush` 登记但未触发** ✗ |
 
-> **咬合规则（门禁 D11）**：03-§2 登记的每个服务**必须**在本表出现（反之亦然）；新增服务 ⇒ 两处同改，否则红 ✓。
+> **咬合规则（门禁）** ✓：① 03-§2 的服务表必须与 `registry.register` 一致（**待按代码重写** ✗）；② **`VU_HOOKS` 里每个钩子要么有 emit 点、要么被显式登记为"未触发"** ⇒ 由 `tests/audit-vmu-docs.test.mjs` 的**钩子生产检查**强制 ✓（新增钩子不写生产者就会红 ✓）。
+> **未触发清单（7 个，诚实 ✗）**：`turn/reply-parsed`、`record/append-before`、`record/appended`、`prompt/section-assembled`、`budget/exceeded`、`pack/loading`、`pack/loaded` ＋ 宿主侧白名单 `session/flush` ✓ —— 它们**注册了默认失败策略**，但**目前没有生产者** ✗（要么接上，要么别当"可用挂点"写 ✓）。
 
 **模块规则（静态门强制）**：跨模块只经公开接口；不得直接读对方私有状态；不得隐式全局；不得循环依赖。
 
@@ -139,31 +142,38 @@ DSH boot
 
 ---
 
-## 6. 目录布局（建议；待与 DSH bundle 语义对齐后定稿）
+## 6. 目录布局（**按实际树重写，2026-10-09 ✓**）
 
 ```
-vibe-math-vmu/
-├── package.json              # bundle manifest（dsh.bundle.patch / dsh.client / engines.dsh）
-├── cordis.patch.yml          # 插入 @deepseek-ai/dsh-agent-preset 声明行 + 插件行
-├── preset-declaration.js     # 预设声明（plugins 列表；apply[Symbol.for('cordis.group')]=true）
-├── index.js                  # 插件入口 apply(ctx, config)
-├── kernel/                   # L1（按 A–I 分区拆模块）
-├── settings/                 # L2（schema 单一源 + 分层合并 + 审计）
-├── middleware/               # L3（四形态装载器 + 内置规则动作集）
-├── packs/                    # L4（v5r-pack/…；每个含 pack.yml/settings.yml/middleware/prompts）
-├── prompts/                  # 内核级提示词段与模板（pack 可覆盖）
-├── docs/                     # 00..14（本套文档）
-└── tests/                    # 门禁：静态门 / 场景 / 变异族 / 语料 / e2e
+vibe-math-vmu/                     # 随包发布（package.json#files ✓）
+├── vibe-math-vmu.js               # 插件入口 apply(ctx, config)：装配内核/适配器/桥/整合包/提示词/数学/台账 ✓
+├── host.js                        # 宿主工具面（6 个工具的 spec 与注册，幂等串行 ✓）
+├── host-hooks.js                  # 宿主钩子桥（含**工具预算强制**与 control 钩子挂载 ✓）
+├── host-spawn.js                  # 子进程接缝（调用时解析可执行文件 ✓）
+├── host-math.js                   # 共享数学模块的**真宿主接缝** ✓
+├── math-computation.js / math-engines.js   # 共享模块（**原样复用**，字节一致门 ✓）
+├── settings/schema.js             # L2：54 键单一源（含 hot／who／doc ✓）
+├── kernel/                        # L1（16 个文件 ✓）
+│   ├── index.js  bus.js  store.js  work.js  library.js  members.js
+│   ├── meeting.js  ballot.js  tasks.js  math.js  rules.js
+│   ├── loader.js  script-bridge.js  registry.js  pack.js
+│   └── prompt/index.js
+├── packs/institute-min.js         # L4 示例整合包（真实 JS manifest ✓；`_template` **未提供** ✗）
+├── docs/00..14                    # 本套文档（15 篇；仓内门禁守卫 ✓）
+└── agent.cordis.yml               # 预设声明（插件行 ＋ persona ✓）
+
+（仓库根，非本包）tests/            # 门禁：vmu 场景 ＋ 两份文档审计 ＋ 发布形状 ✓
 ```
+> **与草案的差异** ✓：草案里的 `package.json`（bundle manifest）／`cordis.patch.yml`／`preset-declaration.js`／`index.js`／`middleware/`／`prompts/`／`packs/*.yml` **都不存在** ✗ —— 本包是**预设自带的插件目录**（声明在 `agent.cordis.yml` ✓），中间件与提示词段**不落盘**（来自 `config.vmu` ✓，见 12-§2.1 ✓）。
 
 ---
 
-## 7. 待决（与 01-O1..O5 同步）
+## 7. 待决（**全部已裁 ✓**，与 01-§5 D13 同步）
 
-1. **模块规模上限**与"跨模块 import 白名单"的具体形状（静态门实现细节）。
-2. **总线封装深度**：是完全屏蔽 DSH 钩子（只暴露 vmu 钩子名），还是同时允许"透传 DSH 原生事件"（能力 vs 简洁的取舍）。
-3. **pack 的加载时机**：boot 期静态装载 vs 运行期可切换（影响状态迁移与审计）。
-4. **提示词段的作用域模型**：全局 / 按角色槽位 / 按阶段 / 按任务 四维是否需要组合优先级。
+1. **模块规模上限与 import 白名单** ⇒ **已裁**：单文件建议 ≤1200 行（`kernel/index.js` 为大头、已拆出 `work.js` ✓）；跨模块**只经公开接口**（静态门：`audit-vmu-docs` 的服务面 ＋ 模块清单检查 ✓）。
+2. **总线封装深度** ⇒ **已裁 D13-O7**：只暴露 vmu 钩子名；"原生 DSH 事件透传"默认关闭、需显式开启 ✓。
+3. **pack 加载时机** ⇒ **已裁**：**boot 期**（`config.packs` ✓）＋ 运行期可对**内联 manifest** 做 `plan/apply/unload` ✓（`vibe_vmu_pack` 工具 ✓）。
+4. **提示词作用域模型** ⇒ **已裁 D13-O6**：固定优先级 `角色 < 阶段 < 成员 < 任务`，不做任意嵌套 ✓（`BINDING_PRIORITY` ✓）。
 
 ---
 

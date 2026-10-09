@@ -278,6 +278,47 @@ ok(unregisteredInCode.length === 0,
     missing.join(','))
 }
 
+// ---- I. every registered vmu hook is EMITTED or explicitly declared as not-yet-emitted -----------------
+// A registered hook with no producer is a挂点 that silently never fires - exactly the failure mode docs/02
+// §2 used to hide (it listed hook domains that nothing emits). The check is two-sided on purpose: a hook
+// that has no producer must be declared, AND a declared hook that HAS gained a producer must leave the list.
+{
+  const busSrc = readFileSync(join(VMU, 'kernel', 'bus.js'), 'utf8')
+  const from = busSrc.indexOf('export const VU_HOOKS')
+  const block = busSrc.slice(from, busSrc.indexOf('])', from))
+  const registered = [...new Set([...block.matchAll(/'([a-z0-9-]+\/[a-z0-9-]+)'/g)].map((m) => m[1]))]
+  ok(registered.length >= 15, 'the registered vmu hooks were read out of bus.js', registered.length)
+
+  const emitted = new Set()
+  const kernelFiles = [join(VMU, 'vibe-math-vmu.js'), join(VMU, 'host-hooks.js')]
+  for (const dir of ['kernel', 'packs']) {
+    const abs = join(VMU, dir)
+    if (!existsSync(abs)) continue
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        for (const sub of readdirSync(join(abs, entry.name), { withFileTypes: true })) {
+          if (sub.name.endsWith('.js')) kernelFiles.push(join(abs, entry.name, sub.name))
+        }
+      } else if (entry.name.endsWith('.js') && entry.name !== 'bus.js') kernelFiles.push(join(abs, entry.name))
+    }
+  }
+  for (const file of kernelFiles) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/bus\.emit\('([^']+)'/g)) emitted.add(m[1])
+  }
+  ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
+
+  // Declared gaps: registered, no producer yet. Keeping this list HONEST is the point (docs/05 §4.3).
+  const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before', 'record/appended',
+    'prompt/section-assembled', 'budget/exceeded', 'pack/loading', 'pack/loaded'])
+  const missing = registered.filter((h) => !emitted.has(h) && !KNOWN_UNEMITTED.has(h))
+  ok(missing.length === 0,
+    'every registered vmu hook is either EMITTED or explicitly listed as not-yet-emitted',
+    missing.join(','))
+  const stale = [...KNOWN_UNEMITTED].filter((h) => emitted.has(h))
+  ok(stale.length === 0,
+    'and the not-yet-emitted list does not hide hooks that already gained a producer', stale.join(','))
+}
+
 const out = '=== VMU DOCS AUDIT: ' + passed + ' passed, ' + failed + ' failed ==='
 console.log(out)
 for (const f of failures) console.log('  FAIL ' + f)
