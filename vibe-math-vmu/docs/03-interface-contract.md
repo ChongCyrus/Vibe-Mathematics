@@ -28,41 +28,45 @@
 
 ---
 
-## 2. Services（提案；签名待定稿）
+## 2. Services（**按实际发布面重写，2026-10-09 ✓**）
 
-| 服务键 | 职责 | 主要方法（提案） | apiVersion |
+**① 真正**发布**的服务（`kernel/index.js` 的 `registry.register` ✓；括号内为出现条件 ✓）**
+
+| 服务键 | 职责 | 主要方法（**与代码一致** ✓） | apiVersion |
 |---|---|---|---|
-| `vmu.kernel` | 生命周期与总控（启动/暂停/收束/健康） | `state()`、`pause(reason)`、`resume()`、`settle(stage)`、`health()` | 1 |
-| `vmu.store` | 耐久端口（事务/版本/迁移/订阅） | **已实现** ✓ `open(spec)`、`read(key)`、`write(key,value,{expect})`、`patch(key,fn)`、`subscribe(key,fn)`、`migrate()`、`export()/import()`、**`stats()`** | 1 |
-| `vmu.settings` | 设置读改与审计 | **原语已实现** ✓（`settings/schema.js`：`SETTING_DEFS`／`resolveSettings`／`validateValue`／`assertDeclared`／`assertNoUserTime`／`toJsonSchema`／`buildSchemastery`）＋ **服务包装 `get/resolved/set/auditTail/jsonSchema` 待实现** ⏳ | 1 |
-| `vmu.middleware` | 中间件装载与观测 | **部分实现**：条目的静态校验＝`validateEntry(entry)` ✓；观测/启停＝总线上的 `status()/disable()/enable()/setDryRun()` ✓；**`list()` 与 `dryRun(entries, samples)` 待实现** ⏳ | 1 |
-| `vmu.bus` | 钩子总线（内部＋DSH 桥接） | **已实现** ✓ `emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?}`、`on(entry,handler)`、`trace(traceId)`、`status()`、`disable(id,reason)`、`enable(id)`、`setDryRun(v)`、**`wrapHostWaterfall(next)`** | 1 |
-| `vmu.prompts` | 提示词管线 | **已实现** ✓ `register(section)`、**`assemble(ctx)→{ok,text,sources[],truncation[]}`**、`override(section,text,by)`、`rollback(section)`、`snapshot(scopes)`、`bindToHost(adapter)`、`setState(text)`、`status()` | 1 |
-| `vmu.library` | 归档与记忆 | `list(filter)`、`expand(id)`、`fingerprint(kind, parts)`、`append(record, {track})`、`truncationReport()` | 1 |
-| `vmu.meetings` | 会议/表决原语 | `convene(agenda, kind)`、`round()`、`handUp(id)`、`ballot(target, kind)`、`cast(vote)`、`tally(ballot)`、`close(ballot, reason)` | 1 |
-| `vmu.tasks` | 任务与阶段 | `create(task)`、`assign(id, who)`、`transition(id, to)`、`list(filter)`、`stage()` | 1 |
-| `vmu.budget` | 预算与上限 | `usage(scope)`、`check(op, scope)`、`exceeded()`、`degrade(reason)` | 1 |
-| `vmu.members` | 成员与角色**槽位** | `roster()`、`roles()`、`assignRole(id, slot)`、`wake(id, ask)`、`end(id, reason)` | 1 |
-| `vmu.packs` | 整合包装载 | `available()`、`active()`、`load(name, {dryRun})`、`unload(name)`、`conflicts()` | 1 |
+| `vmu.library`（有 `root` ✓） | 归档与记忆 | `append(rec,{member?})`、`record(member,track,text)`、`list(filter)`、`expand(id,{capBytes})`、`storedFingerprint(id)`、`fingerprint(kind,parts)`、`truncationReport()`、`status()` | 1 |
+| `vmu.members` ✓ | 成员与角色**槽位** | `roles()`、`roster()`、`hire({id,slot})`、`assignRole(id,slot)`、`end(id,reason)`、`wake(id,ask,{role?,phase?})`、`may(id,permission)`、`status()` | 1 |
+| `vmu.tasks` ✓ | 任务与阶段 | `create({title,…})`、`assign(id,who)`、`transition(id,to,{reason})`、`list(filter)`、`stage()`、`advance({to,reason})`、`rollback({reason})`、`status()` | 1 |
+| `vmu.prompt` ✓ | 提示词管线 | `register(section)`、`assemble(ctx)`、`override(section,text,by)`、`rollback(section)`、`snapshot(scopes)`、`bindToHost(adapter)`、`setState(text)`、`status()` | 1 |
+| `vmu.middleware` ✓ | 中间件总线（观测/启停/校验） | `status()`、`entries()`、`disable(id,reason)`、`enable(id)`、`setDryRun(v)`、`validateEntry(entry)` | 1 |
+| `vmu.store`（有 `root` ✓） | 耐久端口 | `open(expected)`、`read(key)`、`write(key,value)`、`patch(key,fn)`、`migrate()`、`import(snapshot)`、`stats()` | 1 |
+| `vmu.work`（有 `root` ✓） | **在途工作台账** | `start({owner,kind,objective})`、`settle(id,{outcome})`、`interrupt(id,reason)`、`recover({reason})`、`list()`、`pending()`、`interrupted()`、`status()` | 1 |
+| `math_computation`（声明了数学意图 ✓） | 继承的数学工具（D14 原名 ✓） | 由共享模块注册（`op=probe\|run\|receipt\|install` ✓） | 1 |
 
-### 2.1 方法签名（**草案 v1；P0 落地时以本表为验收基线**）
+**② 未发布：内核**内部句柄**与**工厂（**不是服务** ✗ —— 草案把它们当服务写了 ✗）**
 
-> 统一约定：所有方法返回 `{ ok: true, ... }` 或 `{ ok: false, code, message, hint? }`；**带副作用者必须返回"发生了什么"的可审计摘要**；每个服务由 `apiVersion` 版本化（D13-O3）；**异步侧一律 `await`**（无回调式隐式状态 ✓）。
-
-| 服务 | 方法（参数 → 返回） | 具名拒（示例） |
+| 名字 | 真实形态（✓） | 说明 |
 |---|---|---|
-| `vmu.kernel` | `state()→KernelState`／`pause(reason)→{pausedAt}`／`resume()→{resumed[]}`／`settle(stage)→{stage, effects[]}`／`health()→{ok, checks[]}` | `VMU_STATE` |
-| `vmu.store` ✓**已实现** | `open(spec)→{opened,version,migration?}`／`read(key)→Value`（**克隆**，调用者改不动 fold ✓）／`write(key,value,{expect?})→{ok,key,version,changed}`／**`patch(key,fn)→{ok,key,version,changed}`**／`subscribe(key,fn)→Disposer`／`migrate()→MigrationReport`／`export()→Snapshot`／`import(s)→{ok,version}`／**`stats()`** | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION`／`VMU_INVALID_ARGUMENT`（未登记键 ✓） |
-| `vmu.settings` ⏳**原语已实现** | 原语：`resolveSettings(layers)→{values,provenance}`／`validateValue(key,value)`／`assertDeclared(key)`／`assertNoUserTime(key)`／`toJsonSchema()→Schema`／`buildSchemastery(carrier)`；**服务包装 `get/resolved/set/auditTail/jsonSchema` 待实现** | `VMU_INVALID_ARGUMENT`（未声明键/域外值 ✓）／`VMU_NOT_PERMITTED`（用户给时刻 ✓）／`VMU_ENGINE_UNAVAILABLE`（缺载体 ✓） |
-| `vmu.middleware` ⏳**部分实现** | `validateEntry(entry)→problems[]` ✓／`status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}` ✓／`disable(id,reason)` ✓／`enable(id)` ✓／`setDryRun(v)` ✓；**`list()`／`dryRun(ids?,samples)` 待实现** | `VMU_MIDDLEWARE_FAILED`（校验/冲突/越权/失败 ✓） |
-| `vmu.bus` ✓**已实现** | `emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?}`／`on(entry,handler)→id`／`add(entry)→entry`／`entries()→Entry[]`／`trace(id)→Trace[]`／`status()`／`disable(id,reason)`／`enable(id)`／`setDryRun(v)`／`isDryRun()→boolean`／**`wrapHostWaterfall(next)→async(payload)`** | `VMU_MIDDLEWARE_REJECTED`（显式拒 ✓）／`VMU_MIDDLEWARE_FAILED`（异常/越权/冲突 ✓）／`VMU_INVALID_ARGUMENT`（未知 id／缺 next ✓） |
-| `vmu.prompts` ✓**已实现** | `register(s)→entry`／**`assemble(ctx)→{ok,text,sources[],truncation[],at}`**／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)→[{scope,text}]`／`bindToHost(adapter)→{ok,sections}`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`（不可覆盖段／越权覆盖 ✓）／`VMU_INVALID_ARGUMENT`（未登记变量/名/号段 ✓）／`VMU_NO_SUCH_OBJECT`（未登记的绑定目标 ✓）／`VMU_ENGINE_UNAVAILABLE`（缺宿主适配器 ✓） |
-| `vmu.library` ✓**已实现** | `fingerprint(kind,parts)→hex`（**单点计算** ✓）／`append(rec,{member?})→{ok,id,fingerprint,deduplicated}`（**同内容幂等** ✓）／`record(member,track,text)→{ok,file}`（未声明 track ⇒ 具名拒 ✓）／`list(filter)→Head[]`（**七键、不含正文、每次重建** ✓）／`expand(id,{capBytes})→{ok,head,body,truncated,path}`／`storedFingerprint(id)→{ok,id,fingerprint}`（**读回而非重算** ✓）／`truncationReport()→{path,kept,dropped,mode}[]`／`status()` | `VMU_NO_SUCH_OBJECT`（悬空 id ✓）／`VMU_INVALID_ARGUMENT`（空陈述/未知 kind/未知 track ✓） |
-| `vmu.meetings` | `convene(agenda,kind)→{id}`／`round(id)→Round`／`handUp(id,member)→{position}`／`ballot(id,target,kind)→{ballotId}`／`cast(ballotId,vote)→{accepted}`／`tally(ballotId)→{outcome,reason?}`／`close(ballotId,reason)→{decided}`／`reopen(ballotId,reason)→{open}` | `VMU_STATE`／`VMU_MEETING_TOO_SMALL` |
-| `vmu.tasks` | `create(task)→{id}`／`assign(id,who)→{owner}`／`transition(id,to)→{state}`／`list(filter)→Task[]`／`stage()→{current,stages[]}` | `VMU_STATE`／`VMU_NOT_PERMITTED` |
-| `vmu.budget` | `usage(scope)→{cap,used}`／`check(op,scope)→{allowed}`／`exceeded()→{which,cap,used}`／`degrade(reason)→{mode}` | `VMU_RESOURCE_BUDGET` |
-| `vmu.members` ✓**已实现** | `roles()→Slot[]`（容量/占用/不透明权限 ✓）／`roster()→Member[]`／`assignRole(id,slot)→{ok,id,slot,occupied,capacity}`／`hire({id,slot})→同左`（学院级上限 ⇒ 具名拒 ✓）／`end(id,reason)→{ok,id,state,reason}`（记录原因 ✓）／`wake(id,ask,{role?,phase?})→{ok,envelope,delivered}`（**注入接缝**；缺接缝 ⇒ 具名拒 ✓）／`may(id,permission)→{ok,allowed,...}`（**只做包含判断** ✓）／`status()` | `VMU_RESOURCE_BUDGET`（槽满/超编，**报当前数与上限** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_STATE`（已结束成员 ✓）／`VMU_ENGINE_UNAVAILABLE`（无唤醒接缝 ✓）／`VMU_INVALID_ARGUMENT`（未声明槽位 ✓） |
-| `vmu.packs` | `available()→PackRef[]`／`active()→PackRef[]`／`load(name,{dryRun?})→{changed,plan[]}`／`unload(name)→{changed}`／`conflicts()→Conflict[]` | `VMU_PACK_CONFLICT`／`VMU_PACK_MISSING` |
+| `kernel.bus` / `kernel.rules` / `kernel.loader` / `kernel.bridge` / `kernel.registry` | 内核对象上的**只读句柄** ✓ | **未**注册进注册面 ✗ ⇒ pack 不能 `requires` 它们 ✗ |
+| `kernel.meeting(opts)` / `kernel.ballot(opts)` | **逐对象工厂** ✓ | 会议/表决是**原语**：每场会/每次表决一个实例 ✓（草案的 `vmu.meetings` 服务**不存在** ✗） |
+| `kernel.control()` / `pause` / `resume` / `stop` / `beat` | 控制面 ✓（§3.1 的 `vibe_vmu_control` ✓） | 草案的 `vmu.kernel`（`state/pause/resume/settle/health`）**不存在** ✗ |
+| `kernel.setSettingsValue` / `unsetSettingsValue` / `settingsSnapshot` / `settingDef` ＋ `settings/schema.js` 的原语 | 设置**原语** ✓ | 草案的 `vmu.settings` 服务包装**不存在** ✗（观测经 `status().settings.resolved` ✓） |
+| `createPackLoader({kernel,registry})` | **装载器工厂**（入口持有 ✓） | 草案的 `vmu.packs` 服务**不存在** ✗（工具面是 `vibe_vmu_pack` ✓） |
+| 预算/上限 | **分散在 `members`／`tasks` 的容量检查里** ✓ | 草案的 `vmu.budget` 服务**不存在** ✗（`VMU_RESOURCE_BUDGET` 由它们抛出 ✓；`budget/exceeded` 钩子**无生产者** ✗，见 05-§4.3 ✓） |
+
+### 2.1 方法签名（**已实现者按代码；未实现者一律标 ⛔**）
+
+> 统一约定：所有方法返回 `{ ok: true, ... }` 或 `{ ok: false, code, message, hint? }`；**带副作用者必须返回"发生了什么"的可审计摘要**；每个服务由 `apiVersion` 版本化（D13-O3）；**异步侧一律 `await`** ✓。
+
+| 服务 | 方法（参数 → 返回；**已核** ✓） | 具名拒 |
+|---|---|---|
+| `vmu.library` | `fingerprint(kind,parts)→hex`（**单点计算** ✓）／`append(rec,{member?})→{ok,id,fingerprint,deduplicated}`／`record(member,track,text)→{ok,file}`／`list(filter)→Head[]`（**七键、不含正文、行数上限＋计数** ✓）／`expand(id,{capBytes})→{ok,head,body,truncated,path}`／`storedFingerprint(id)→{ok,id,fingerprint}`（**读回而非重算** ✓）／`truncationReport()`／`status()`（**异步** ✓） | `VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT` |
+| `vmu.members` | `roles()`／`roster()`／`hire({id,slot})`／`assignRole(id,slot)`／`end(id,reason)`／`wake(id,ask,{role?,phase?})`（**注入接缝**；缺则具名拒 ✓）／`may(id,permission)`（**只做包含判断** ✓）／`status()` | `VMU_RESOURCE_BUDGET`（**报当前数与上限** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_STATE`／`VMU_ENGINE_UNAVAILABLE` |
+| `vmu.tasks` | `create({title,objective?,owner?,deps?,priority?})→{ok,id,state}`／`assign(id,who)`／`transition(id,to,{reason})`／`list()`／`stage()`／`advance({to,reason})`（**先过 `stageGate`** ✓）／`rollback({reason})`／**`brief(id)`／`briefOf(id)`／`clearBrief(id)`**（任务简报＝给该任务负责人的执行流程 ✓）／`history(id?)`／`status()` | `VMU_STATE`（依赖未满足／非法转换／**暂停中** ✓）／`VMU_RESOURCE_BUDGET` |
+| `vmu.prompt` | `register(s)→entry`／`assemble(ctx)→{ok,text,sources[],truncation[],at}`／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)`／`bindToHost(adapter)`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`／`VMU_INVALID_ARGUMENT`／`VMU_NO_SUCH_OBJECT`／`VMU_ENGINE_UNAVAILABLE` |
+| `vmu.middleware` | `status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}`／`entries()`／`disable(id,reason)`／`enable(id)`／`setDryRun(v)`／`isDryRun()`／`emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?,decision}`／`on(entry,handler)→id`／`add(entry)→entry`／`trace(traceId)→Trace[]`／`wrapHostWaterfall(next)→async(payload)` | `VMU_MIDDLEWARE_FAILED`／`VMU_MIDDLEWARE_REJECTED`／`VMU_INVALID_ARGUMENT` |
+| `vmu.store` | `open(expected)→{opened,version,migration?}`／`read(key)→Value`（**克隆** ✓）／`write(key,value)→{ok,key,version,changed}`／`patch(key,fn)→同左`（**fold 内函数式** ✓）／`subscribe(key,fn)→Disposer`／`migrate()`／`export()→Snapshot`／`import(snapshot)`／`stats()` | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION`／`VMU_INVALID_ARGUMENT`（未登记键 ✓） |
+| `vmu.work` | `start({owner,kind,objective})→{ok,entry}`／`settle(id,{outcome})→{ok,settled,remaining}`／`interrupt(id,reason)`／`recover({reason})→{ok,recovered,entries[]}`／`list()`／`pending()`／`interrupted()`／`status()` | `VMU_STATE`（**暂停中** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_STORE_FAILED`（store 未 open ✓） |
 
 **三条接口纪律**：① **能力缺失用 `ok:false` ＋ 具名码**，不得抛裸异常给上层 ✗（框架内部异常按中间件失败策略处置 ✓）；② **返回对象一律可 JSON 序列化**（便于审计与场景比对 ✓）；③ **幂等性**：`read/list/status/tally` 幂等；`set/append/cast` 等写操作**必须能被审计去重**（同一 `traceId` 不重复生效 ✓——沿用 v5r 的幂等纪律 ✓）。
 

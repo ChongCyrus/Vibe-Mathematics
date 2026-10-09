@@ -17,51 +17,66 @@
 
 ---
 
-## 2. 目录与清单规范
+## 2. 目录与清单规范（**按实际实现重写，2026-10-09 ✓**）
+
+**一个 pack ＝ 一个 JS 模块**（**没有** YAML 清单、**没有**目录约定 ✗ —— 运行时不读任何 YAML ✓）：
 
 ```
-packs/<name>/
-├── pack.yml                # 清单（唯一入口；见 §3）
-├── settings.yml            # 该 pack 的默认设置（可被上层覆盖）
-├── middleware/             # M1 rules / M2 modules / M3 scripts 引用
-│   ├── rules/*.yml
-│   ├── modules/*.js
-│   └── scripts/*.mjs
-├── prompts/                # 提示词包（段模板、覆盖文件、绑定）
-│   └── bindings.yml
-├── migrations/             # 可选：耐久键迁移（若引入新键）
-└── README.md               # 人类可读：这套机制在做什么、代价、适用场景
+vibe-math-vmu/packs/<id>.js        # 随包整合包：export const PACK = { … }
+                                   # 或：在 profile 行的 config.packs 里给**内联 manifest**（同一个对象 ✓）
 ```
+
+**清单字段（`kernel/pack.js` 的 `validatePack` 真正认的集合 ✓）**
+
+| 字段 | 形状 | 校验／行为 |
+|---|---|---|
+| `id` | kebab-case ✓ | **必填**；非法 ⇒ `id must be a kebab-case identifier` ✓ |
+| `version` | semver 样 ✓ | 可选（`1.0.0…` ✓） |
+| `packContractVersion` | 整数 ✓ | 可选；交给 `registry.checkPack` 比对公开契约版本 ✓ |
+| `requires` | **`[{service, minVersion}]`**（**不是** map ✗） | 与**已发布服务**比对（`vmu.library`／`vmu.members`／`vmu.tasks`／`vmu.prompt`／`vmu.middleware`／`vmu.store`／`vmu.work`／`math_computation` ✓）；缺失/过旧 ⇒ 计划里**具名列出** ✓ |
+| `codes` | `string[]` | 每个必须形如 **`VMU_PACK_<ID>_<REASON>`** ✓（R-d ✓） |
+| `slots` | `[{id, capacity?}]` ✓ | kebab id＋整数容量 ✓ |
+| `tracks` | `string[]` ✓ | 归档分轨名 ✓ |
+| `rules` | `[{id, on, when, then, …}]` ✓ | **M1 规则体内联** ✓（`on` 必填 ✓） |
+| `middleware` | `[{id, …}]` ✓ | **追加到总线的条目** ✓（注意：`kind:'rules'` 的条目**不会**被编译 ⇒ 规则要放 `rules:` ✗✓） |
+| `aliases` | `[{from, to}]` ✓ | 旧名 → 新名映射 ✓（D6 ✓） |
+| `settings` | **键→值映射** ✓（如 `{'vmu.meetings.quorumCap': 3}` ✓） | 作为**一层**在装载期施加 ✓（与现有值冲突且未声明 `vmu.packs.allowOverride` ⇒ **具名拒** O4 ✓） |
+
+> **未知字段会被静默忽略** ✗✓（`validatePack` 不校验额外键 ✓）⇒ 写错字段名**不会报错**，只会"什么都没发生" ✗ —— 因此**以本表为准**，并在计划里核对 `actions` 是否出现你期望的条目 ✓。
 
 ---
 
-## 3. `pack.yml` 规范（提案）
+## 3. 清单规范（**真实 JS 形态；照抄 `packs/institute-min.js` ✓**）
 
-```yaml
-id: v5r
-name: v5r 学术院运行模式
-version: 1.0.0
-apiVersion: 1                 # 需要的 vmu 公开接口版本（R7）
-requires: { vmu: '>=1.0 <2' }
-conflicts: [v3]               # 互斥 pack（装载即报冲突）
-description: |
-  以"学术院 + 求真表决 + 论文收束"为核心的运行模式。
-capabilities:
-  - meetings.ballot.freeze    # 依赖的能力（内核提供；缺失即拒装）
-  - library.fingerprint
-settings: settings.yml        # 默认设置（低优先级层）
-middleware:                   # 追加到中间件清单（带 source=pack:v5r）
-  - { id: proof-before-debate, kind: rules,  file: middleware/rules/proof-before-debate.yml, order: 100 }
-  - { id: meeting-completion,  kind: module, file: middleware/modules/meeting-completion.js, order: 200 }
-prompts: prompts/bindings.yml
-scripts: []
-migrations: []
+```js
+// vibe-math-vmu/packs/my-institute.js
+export const PACK = {
+  id: 'my-institute',
+  version: '1.0.0',
+  packContractVersion: 1,
+  requires: [{ service: 'vmu.tasks', minVersion: 1 }],      // ← 必须是数组，不是 map ✗
+  codes: ['VMU_PACK_<ID>_<REASON>'],                          // ← 必须是 VMU_PACK_<ID>_<REASON> ✓（此处为占位形态）
+  settings: { 'vmu.meetings.quorumCap': 3 },                // ← 键→值映射（一层）✓
+  slots: [{ id: 'chair', capacity: 1 }, { id: 'member', capacity: 8 }],
+  tracks: ['progress', 'rejected'],
+  rules: [{                                                 // ← M1 规则（内联 when/then ✓）
+    id: 'my-institute-no-vote-without-proof',
+    kind: 'rules',
+    on: ['tools/pre-execute'],
+    when: { all: [{ tool: ['vibe_vmu_records'] }] },
+    then: [{ deny: { code: 'VMU_PACK_<ID>_<REASON>', message: '示例规则' } }],
+  }],
+  middleware: [],                                           // ← 追加条目（不含 rules 体 ✗）
+  aliases: [{ from: 'my_old_tool', to: 'vibe_vmu_records' }],
+}
 ```
-**装载规则**
-- `capabilities` 缺失 ⇒ **具名拒**（`VMU_PACK_MISSING` ＋ 说明缺哪个能力）；
-- `conflicts` 命中 ⇒ **具名拒**（`VMU_PACK_CONFLICT` ＋ 说明与谁冲突、当前 active 列表）；
-- **dry-run**：装载前跑一遍（设置合并、中间件静态校验与干跑、提示词装配快照），**报告"会改变什么"**；
-- **卸载**：移除该 pack 的中间件/提示词/设置默认（**不删数据**）；若其迁移改动过耐久键 ⇒ 提示"需回退迁移"（见 07-§2）。
+
+**装载规则（真实现 ✓）**
+- **`requires` 不满足** ⇒ 计划里具名列出（`missing`／`tooOld`／契约版本 ✓）并**拒绝 apply** ✓；
+- **冲突** ⇒ 三类：**已应用**、**设置重叠**（需 `vmu.packs.allowOverride` ✓）、**总线 id 重复** ⇒ 一律**具名拒** `VMU_PACK_CONFLICT` ✓（O4：**不静默覆盖** ✓）；文档草案里的 `conflicts:` 字段**不被读取** ✗；
+- **`plan` 是纯报告** ✓（报告"会改什么"，连续两次不改变任何状态 ✓）⇒ 工具面 `vibe_vmu_pack {action:'plan'}` ✓；
+- **`apply` 原子** ✓：中途失败 ⇒ 回滚已施加的动作 ✓（`unload` 用**禁用**而非删除总线条目 ⇒ "加过再禁用"在审计里可见 ✓）；
+- **`unload`** ⇒ 逐项回滚设置/条目/别名，并报告**残留**（`residueFree` ✓）；**迁移**（`migrations`）**未被读取** ✗ ⇒ 不承诺回退迁移 ✓。
 
 ---
 
@@ -195,7 +210,9 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ---
 
-## 9. pack 模板（**逐字骨架**：照抄即可开工）
+## 9. pack 模板
+
+> **⚠️ 校正（2026-10-09 ✗✓）**：本节的 YAML/目录骨架是**目标形态**，**当前没有对应文件** ✗ —— `packs/_template/` **不存在**，`kernel/pack.js` **也不读 YAML** ✗。**唯一随包的真实模板是 `vibe-math-vmu/packs/institute-min.js`**（85 行、内联 JS manifest ✓，可直接复制改名 ✓）；清单字段的**权威列表**见 §2 的表 ✓。下列骨架仅作**未来形态**参考 ✓。
 
 ```
 packs/_template/

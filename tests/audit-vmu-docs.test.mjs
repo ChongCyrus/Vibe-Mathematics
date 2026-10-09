@@ -113,12 +113,16 @@ ok(unregisteredInCode.length === 0,
 
 // ---- D. docs 03 §2.1 rows vs the public surfaces the modules expose ------------------------------
 {
+  // The PUBLISHED services only (docs/03 §2 table ①). The bus is an internal handle, not a published
+  // service, so it is not parity-checked here - and `vmu.prompt` is singular, which is what the code says.
   const MODULES = {
     'vmu.library': 'kernel/library.js',
     'vmu.members': 'kernel/members.js',
+    'vmu.tasks': 'kernel/tasks.js',
     'vmu.store': 'kernel/store.js',
-    'vmu.bus': 'kernel/bus.js',
-    'vmu.prompts': 'kernel/prompt/index.js',
+    'vmu.prompt': 'kernel/prompt/index.js',
+    'vmu.middleware': 'kernel/bus.js',
+    'vmu.work': 'kernel/work.js',
   }
   const publicKeys = (src) => {
     const SKIP = ['if', 'for', 'while', 'return', 'const', 'let', 'switch', 'try', 'catch', 'function']
