@@ -183,9 +183,9 @@ vmu.packs.active: [v5r]
 | `vmu.records.fingerprintPolicy` | enum | `content-only` | `content-only`∣`content+display` | 会话 | H2 | office | ✅ 已接线 | 内容指纹口径（默认排除展示头） |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
 | `vmu.records.meetingKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery） |
-| `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 提示词覆盖目录（仓内相对路径） |
-| `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 四维绑定（优先级 角色<阶段<成员<任务） |
-| `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | 允许覆盖提示词者 |
+| `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ✅ 已接线 | 提示词覆盖目录（仓内相对路径） |
+| `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | 四维绑定（优先级 角色<阶段<成员<任务） |
+| `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | 允许覆盖提示词者 |
 | `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
 | `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | ✅ 已接线 | 法定数规则（仅规则，不含"何时开会"） |
 | `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限 |

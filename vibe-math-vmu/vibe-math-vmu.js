@@ -24,7 +24,8 @@ import { createPackLoader } from './kernel/pack.js'
 import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL } from 'node:url'
-import { basename } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
+import { readFileSync } from 'node:fs'
 
 export const name = 'vibe-math-vmu'
 
@@ -67,7 +68,59 @@ export function apply(ctx, config = {}) {
     try { spawnSeam = createHostSpawn({ ctx, defaultCwd: typeof config.workspace === 'string' ? config.workspace : null }) }
     catch (e) { spawnError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
   }
-  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam }, clock ? { clock } : {}))
+  // ---- PROMPT MANAGEMENT (the user's explicit clause: 通过 settings/中间件 设置·安排·管理·编辑提示词) --------
+  // Sections come from the plugin's config (`promptSections`, or the legacy single `prompt` string); bindings
+  // come from `config.promptBindings` OR the declared setting `vmu.prompts.bindings`; overrides come from
+  // `config.promptOverrides` OR from the declared `vmu.prompts.overridesDir` (relative to `root`). The
+  // EFFECTIVE text (override > section file > inline) is what the HOST systemPrompt section receives, because
+  // the pipeline alone would assemble text nobody sees.
+  const readRel = (rel) => {
+    try { const p = root && !isAbsolute(rel) ? join(root, rel) : rel; return readFileSync(p, 'utf8') } catch { return null }
+  }
+  const promptSections = (() => {
+    const out = []
+    if (typeof config.prompt === 'string' && config.prompt.length > 0) out.push({ name: 'vmu', text: config.prompt })
+    const list = config.promptSections
+    if (Array.isArray(list)) {
+      for (const s of list) if (s && typeof s.name === 'string') out.push(s)
+    } else if (list && typeof list === 'object') {
+      for (const [name, v] of Object.entries(list)) {
+        if (typeof v === 'string') out.push({ name, text: v })
+        else if (v && typeof v === 'object') {
+          out.push({ name, text: typeof v.text === 'string' ? v.text : undefined,
+            file: typeof v.file === 'string' ? v.file : undefined, order: v.order })
+        }
+      }
+    }
+    return out
+  })()
+  const promptOverrides = Object.assign({},
+    config.promptOverrides && typeof config.promptOverrides === 'object' ? config.promptOverrides : {})
+  const overridesDir = typeof settings['vmu.prompts.overridesDir'] === 'string' ? settings['vmu.prompts.overridesDir'] : null
+  if (overridesDir) {
+    for (const s of promptSections) {
+      const text = readRel(join(overridesDir, s.name + '.md'))
+      if (typeof text === 'string') promptOverrides[s.name] = text
+    }
+  }
+  const promptBindings = Array.isArray(config.promptBindings) ? config.promptBindings
+    : (Array.isArray(settings['vmu.prompts.bindings']) ? settings['vmu.prompts.bindings'] : [])
+  const whoMayOverride = Array.isArray(config.whoMayOverride) ? config.whoMayOverride
+    : (Array.isArray(settings['vmu.prompts.whoMayOverride']) ? settings['vmu.prompts.whoMayOverride'] : ['office'])
+  const effectivePrompts = promptSections.map((s) => {
+    const overridden = typeof promptOverrides[s.name] === 'string'
+    const fromFile = typeof s.file === 'string'
+    return {
+      name: s.name,
+      order: Number.isInteger(s.order) ? s.order : 600,
+      text: overridden ? promptOverrides[s.name] : (typeof s.text === 'string' ? s.text : (fromFile ? (readRel(s.file) || '') : '')),
+      source: overridden ? 'override' : (fromFile ? 'file' : 'inline'),
+    }
+  }).filter((s) => s.text.length > 0)
+
+  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam,
+    sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
+  clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
   // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the
   // middleware the configuration declares has to be ACTIVATED - that is what start() is for.
@@ -125,13 +178,14 @@ export function apply(ctx, config = {}) {
     }, 'vmu:tools')
   }
 
-  // A prompt section is injected ONLY when the configuration declares one (zero mechanism otherwise).
-  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&
-      typeof ctx.systemPrompt.section === 'function') {
+  // The host section carries the EFFECTIVE text of every declared/overridden section (joined into the one
+  // section name the host already accepts). No declaration ⇒ no effect at all (zero mechanism, R1).
+  if (effectivePrompts.length > 0 && ctx && ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
     effect(() => {
       const order = typeof ctx.systemPrompt.getSectionOrder === 'function'
         ? ctx.systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
-      const dispose = ctx.systemPrompt.section({ name: 'vmu', order, text: config.prompt })
+      const text = effectivePrompts.map((s) => s.text).join('\n\n')
+      const dispose = ctx.systemPrompt.section({ name: 'vmu', order, text })
       return typeof dispose === 'function' ? dispose : () => {}
     }, 'vmu:prompt')
   }
@@ -226,6 +280,10 @@ export function apply(ctx, config = {}) {
     kernel,
     adapter,
     instance,
+    // The entry's own prompt view: WHICH declaration produced each section's effective text (inline / file /
+    // override). The kernel pipeline reports the declaring LAYER plus an `overridden` flag, which is a
+    // different (and complementary) question - docs/06 §7 states both so the two are never conflated.
+    prompts: () => effectivePrompts.map((s) => ({ name: s.name, order: s.order, source: s.source, chars: s.text.length })),
     loadedModules: () => loadedModules.slice(),
     moduleErrors: () => moduleErrors.slice(),
     packLoader: () => packLoader,

@@ -121,6 +121,21 @@ vmu.prompts.bindings:
 | 顺序号 | `getSectionOrder/getContextOrder` | 内核保留号段：`0–199` 事实层（state/时间）、`200–399` 章程/角色、`400–599` 机制契约、`600–899` pack 段、`900+` 覆盖/中间件 |
 | 观测 | `system-prompt/change` | 变更后刷新快照与状态面 |
 
+### 7.1 入口真正接了什么（**2026-10-09 校准 ✗✓**；此前本文只描述管线、没写装配 ✗）
+
+| 项 | 真实现 | 证据 |
+|---|---|---|
+| 段声明 | 插件行 `config.promptSections`（`{name, text}` 或 `{name, file}` ✓）或旧写法 `config.prompt`（单段，段名 `vmu` ✓） | 入口的 `promptSections` 归一化 ✓ |
+| 段的文本来源 | 入口区分 `inline`／`file`／`override` ✓，经 `handle.prompts()` 暴露 ✓ | 入口 `effectivePrompts` ＋ `prompts()` ✓ |
+| 覆盖 | `config.promptOverrides`（`{段名: 文本}` ✓）与 settings `vmu.prompts.overridesDir`（读 `<root>/<dir>/<段名>.md` ✓）；**覆盖 > `file` > `text`** ✓ | 入口 `readRel` ＋覆盖合并 ✓；场景见 `tests/vmu-entry.test.mjs` 第 8 组 ✓ |
+| 绑定 | `config.promptBindings` **或** settings `vmu.prompts.bindings` ✓（四维优先级 `role < phase < member < task` ✓） | 入口 → `createKernel({bindings})` → `createPromptPipeline` ✓ |
+| 谁可覆盖 | `config.whoMayOverride` **或** settings `vmu.prompts.whoMayOverride` ✓ | 同上 ✓ |
+| 宿主可见性 | **一个** `systemPrompt` 分节（名 `vmu` ✓）承载**生效后**的合并文本 ✓；无声明 ⇒ **不注册** ✓ | 入口 `effect(..., 'vmu:prompt')` ✓；零机制断言见 `tests/vmu-entry.test.mjs` 第 2 组 ✓ |
+| 状态面 | `vibe_vmu_status` ⇒ `prompt.sections[].source`（**声明层** ✓）＋ `.overridden`（布尔 ✓）＋ `prompt.bindings`（条数 ✓）＋ `prompt.truncation` ✓ | `kernel/prompt/index.js` 的 `status()` ✓ |
+
+> **纪律**：**"入口视图"与"管线视图"不是同一件事** ✗✓ —— 入口答"这段文本从哪来（inline/file/override）"，管线答"这个段由谁声明（kernel/pack/settings）＋是否被覆盖"。文档必须分开写 ✓。
+> **未实现** ✗：**运行期改提示词的工具面**（改法是改配置/覆盖文件后重启实例 ✓）；把任务提示词按 `owner` **注入到具体成员会话**仍是**行内**能力（由 pack/中间件经 `ev.api` 驱动 ✓），整链路**尚未真机验收** ✗。
+
 ---
 
 ## 8. 快照、门禁与"文档即门禁"

@@ -184,7 +184,56 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(moduleRoot, { recursive: true, force: true })
 }
 
-// ---- 8. self-probe ----------------------------------------------------------------------------
+// ---- 8. PROMPT MANAGEMENT: sections / bindings / overrides really reach the model -------------------
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-prompt-'))
+  await mkdir(join(dir, 'briefs'), { recursive: true })
+  await writeFile(join(dir, 'briefs', 't-42.md'), 'TASK-BRIEF-FROM-FILE', 'utf8')
+  const sections = []
+  const h = fakeCtx({ systemPrompt: { section: (s) => { sections.push(s); return () => {} }, getSectionOrder: () => 500 } })
+  const handle = entry.apply(h.ctx, {
+    clock, root: dir,
+    promptSections: [
+      { name: 'charter', text: 'CHARTER-TEXT' },
+      { name: 'task-brief', file: 'briefs/t-42.md' },
+    ],
+    promptBindings: [{ section: 'task-brief', task: ['t-42'], owner: 'm-2' }],
+  })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(sections.length === 1, 'exactly one host systemPrompt section is registered (carrying the effective text)', sections.length)
+  const text = String(sections[0] && sections[0].text)
+  ok(/CHARTER-TEXT/.test(text) && /TASK-BRIEF-FROM-FILE/.test(text),
+    'the inline section AND the file-backed section both reach the host, in declaration order', text.slice(0, 60))
+  const st = handle.kernel.status().prompt
+  ok(st.sections.length === 2 && st.bindings === 1,
+    'the kernel pipeline sees the same sections and the binding count', JSON.stringify({ n: st.sections.length, b: st.bindings }))
+  ok(st.sections.find((s) => s.name === 'task-brief').source !== undefined,
+    'the pipeline reports each section together with its declaring layer')
+  const own = handle.prompts()
+  ok(own.length === 2 && own.find((s) => s.name === 'charter').source === 'inline' &&
+     own.find((s) => s.name === 'task-brief').source === 'file',
+    'and the entry distinguishes inline / file / override for the text that actually reaches the host',
+    JSON.stringify(own))
+
+  // An override directory wins over the declared text, and the model sees the OVERRIDE (not the original).
+  await mkdir(join(dir, 'prompts', 'overrides'), { recursive: true })
+  await writeFile(join(dir, 'prompts', 'overrides', 'charter.md'), 'OVERRIDDEN-CHARTER', 'utf8')
+  const sections2 = []
+  const h2 = fakeCtx({ systemPrompt: { section: (s) => { sections2.push(s); return () => {} } } })
+  const handle2 = entry.apply(h2.ctx, {
+    clock, root: dir, promptSections: [{ name: 'charter', text: 'CHARTER-TEXT' }],
+    vmu: { 'vmu.prompts.overridesDir': 'prompts/overrides' },
+  })
+  await new Promise((r) => setTimeout(r, 20))
+  const text2 = String(sections2[0] && sections2[0].text)
+  ok(/OVERRIDDEN-CHARTER/.test(text2) && !/CHARTER-TEXT/.test(text2),
+    'vmu.prompts.overridesDir really overrides the text that reaches the host', text2.slice(0, 40))
+  ok(handle2.kernel.status().prompt.sections[0].overridden === true,
+    'and the pipeline status marks the section as overridden')
+  await rm(dir, { recursive: true, force: true })
+}
+
+// ---- 9. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

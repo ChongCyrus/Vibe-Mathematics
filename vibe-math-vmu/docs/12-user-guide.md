@@ -101,18 +101,32 @@ then:
 
 ---
 
-## 5. 第三步：管提示词（把"执行流程"交给相应负责人）
+## 5. 第三步：管提示词（把"执行流程"交给相应负责人）—— **真实接线，2026-10-09 校准 ✓**
+
+**段的来源（真实现 ✗✓）**：段在**插件行的 `config` 里声明**（`promptSections` ✓；旧写法 `prompt: "<单段文本>"` 仍支持 ✓），绑定与覆盖可来自 `config` **或**已声明的 settings ✓：
 
 ```yaml
-vmu.prompts.bindings:
-  # 给某角色加评审规则
-  - { section: reviewer-rubric, role: reviewer, file: rubrics/reviewer.md }
-  # 给某任务派发执行流程（负责人唤醒时注入）
-  - { section: task-brief, task: ['t-42'], owner: 'm-2', file: tasks/t-42.md }
+# <profile>/cordis.patch.yml 的插件行 config:
+        promptSections:
+          - { name: charter,     text: "…（内联文本）…" }
+          - { name: task-brief,  file: briefs/t-42.md }      # 相对 config.root 读取
+        promptBindings:                                       # 也等价于 settings['vmu.prompts.bindings']
+          - { section: task-brief, task: ['t-42'], owner: 'm-2' }
+        promptOverrides:
+          charter: "…（直接覆盖该段）…"
+        whoMayOverride: ['office']
+        vmu:
+          'vmu.prompts.overridesDir': prompts/overrides        # 目录里的 <段名>.md 覆盖同名段 ✓
 ```
-- 覆盖：把同名文件放进 `vmu.prompts.overridesDir` 即可覆盖（**状态块不可覆盖**，只能追加）；
-- 回滚：覆盖是"引用替换"，改回引用即可（审计里有旧引用）；
-- 验证：`vibe_vmu_status` ⇒ `prompts.sections` 看**来源**（内核/pack/中间件/覆盖文件）。
+
+- **生效顺序（真实现）**：`promptOverrides`／`overridesDir` > 段的 `file` > 段的 `text` ✓；**宿主实际收到的是"覆盖后"的合并文本** ✓（不是原文本 ✗）——这就是"运行中编辑提示词"的落点 ✓；
+- **谁看得到**：宿主 `systemPrompt` 的**一个**分节（名字 `vmu` ✓）承载全部生效段（按声明顺序拼接 ✓）；**没有声明段 ⇒ 完全不注册** ✓（零机制 ✓）；
+- **验证（两种视图，别混 ✗）**：
+  - `vibe_vmu_status` ⇒ **`prompt.sections[].source`**（**声明层**：`kernel`／`pack`／`settings`…）＋ **`prompt.sections[].overridden`**（该段是否被覆盖 ✓）＋ `prompt.bindings`（绑定条数 ✓）＋ `prompt.truncation`（截断计数 ✓）；
+  - 入口自身视图 `handle.prompts()` ⇒ **`inline`／`file`／`override`**（这段文本究竟从哪来 ✓）；
+- **回滚**：覆盖是"引用替换"，删掉覆盖文件/键即回原段 ✓（绑定与覆盖都来自配置，改回即生效 ✓）。
+
+> **诚实边界** ✗：`whoMayOverride` 已传入管线并参与"谁可覆盖"判定 ✓，但**运行期没有工具面**去改提示词 ✗（改法是改配置／改覆盖文件并重启该实例 ✓）；四维绑定的**运行时注入**（按角色/阶段/成员/任务派发）验收见 06-§7 ✓。
 
 ---
 
