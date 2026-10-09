@@ -38,19 +38,24 @@
 **为何还要投影**：文档表、静态门、`set` 域检查、IDE 补全都需要**JSON Schema** ⇒ 由选定载体**单向派生**（禁止手写第二份）。
 
 ```js
-// settings/schema.js（示意）
-import { Schema } from '@deepseek-ai/schemastery'      // 选定载体（真实包两种写法都有）
+// settings/schema.js（示意；**实现已落地**，见 vibe-math-vmu/settings/schema.js）
+// 真实结构是"一张声明表 + 两个派生器"：表是唯一源，Schemastery/JSON Schema 都由它派生。
+import { Schema } from '@deepseek-ai/schemastery'   // 载体是**注入**的（见下注），此处仅示意形态
 export const Settings = Schema.object({
-  'vmu.limits.toolCallsPerTurnCap': Schema.natural().default(0).description('单回合工具调用上限；0＝不限'),
-  'vmu.limits.maxLiveMembers':      Schema.natural().default(0).description('本所在活成员上限；0＝不设'),
+  'vmu.limits.toolCallsPerTurnCap': Schema.number().min(0).step(1).default(0).description('单回合工具调用上限；0＝不限'),
+  'vmu.limits.maxLiveMembers':      Schema.number().min(0).step(1).default(0).description('本所在活成员上限；0＝不设'),
   'vmu.meetings.quorumRule':        Schema.union([Schema.const('m-unanimous'), Schema.const('all-unanimous')]).default('m-unanimous'),
   'vmu.prompts.overridesDir':       Schema.string().default('prompts/overrides'),
-  'vmu.middleware.entries':         Schema.array(Schema.object({ /* 见 05 手册 */ })).default([]),
+  'vmu.middleware.entries':         Schema.array(Schema.any()).default([]),
   'vmu.packs.active':               Schema.array(Schema.string()).default([]),
   // …
 })
-export const SettingsJsonSchema = toJsonSchema(Settings)   // 单向派生；文档/门禁/域检查共用
+export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门禁/域检查共用
 ```
+
+> **两个实现要点（与 `settings/schema.js` 一致 ✓）**
+> 1. **不要用 `Schema.natural()`** ✗ —— 官方规范与真实包中**都没有这个 API**；非负整数写成 `Schema.number().min(0).step(1)` ✓；对象元素数组用 `Schema.array(Schema.any())` ✓。
+> 2. **模块不做静态宿主 import** ✗✓：本仓是 **bundle 不是宿主**（`@deepseek-ai/schemastery` 在此不可解析），且仓库测试用**纯 Node** `import()` 插件文件 ⇒ 数据表/校验器/解析器/JSON Schema **零依赖**，载体由宿主在激活时**注入** `buildSchemastery(carrier)`，缺席即**具名拒** `VMU_ENGINE_UNAVAILABLE` ✓。
 
 **规则**
 - 键名**必须**带命名空间前缀（见 §4）；`static Config`（插件 Config）与之**同名同义**，避免两套词。
