@@ -268,3 +268,27 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 
 ### 9.5 与发布门禁的关系
 §7 的发布门禁是**机器可跑**的部分；**真机集是它的前置证据**：没有 §9.3 的证据，发布门禁的"全绿"**只代表 mock 面** ⇒ 出口条件里必须附**真机证据路径** ✓。
+
+### 9.6 真机矩阵（截至 2026-10-09；每条后面是证据目录 ✓）
+
+> 全部在**隔离** `DSH_HOME`（`D:\_tmp\dshvmu`）＋ **脚本化 SLV**（`_oneoff/vm-drive/dsh-drive.mjs`，显式 `--preset vibe-math-vmu`）下取得；**用户的 `desktop` profile 与仓库均零改动** ✓。
+
+| 期集（§9.4） | 项 | 结论 | 证据 |
+|---|---|---|---|
+| P0 | 预设能装（注册面可见） | **PASS** ✓ | `live/2026-10-09/preset-registration/` |
+| P0 | 会话能起 | **PASS** ✓ | `…/session-boot/` |
+| P0 | 预设激活（persona 逐字 ＋ 工具面） | **PASS** ✓✓ | `…/p0-final/` |
+| P0 | `status` 能读 | **PASS** ✓✓ | `…/p0-final/` |
+| P0 | 设置能改（含热改等级回执） | **PASS** ✓✓ | `…/p0-configured/` |
+| P1 | 耐久写（记录 ＋ `state.json` 落盘） | **PASS** ✓✓ | `…/p1-durable-write/` |
+| P1 | **杀进程后恢复**（同 id／同指纹） | **PASS** ✓✓ | `…/p1-durable-recover/` |
+| P2 | M1 规则真机生效（拒绝含中间件 id） | **PASS** ✓✓ | `…/p2-real-hooks/` |
+| P2 | **M2 代码模块真机生效**（装载＋决定） | **PASS** ✓✓ | `…/p2-m2-in-host/` |
+| P2 | M4 整合包真机应用（规则 enabled） | **PASS** ✓✓ | `…/p2-pack-in-host-single/` |
+| P2 | 实例身份自证（多实例可辨） | **PASS** ✓✓ | `…/p2-instance-identity/` |
+| P2 | **M3 脚本形态真机运行** | **未做** ✗ | —— |
+| P3 | v5r-pack 对照跑 | **未做** ✗ | —— |
+| P4 | 公开服务版本可读（`contract()`） | **部分** ✓（库内 ✓；真机未读） | —— |
+| P5 | 发布清单全过 ＋ GUI（O2 前置） | **未做** ✗ | —— |
+
+> **诚实口径**：上表**只写已取得证据的行** ✓；未做的一律写"未做"✗，**不得**用库内测试冒充真机 ✓。
