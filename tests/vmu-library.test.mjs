@@ -144,7 +144,21 @@ const mk = (opts = {}) => m.createLibrary(Object.assign({ root, clock: () => '20
   ok(big.truncated === false && lib.truncationReport().length === 1, 'an untruncated read adds no count')
 }
 
-// ---- 8. self-probe ----------------------------------------------------------------------------
+// ---- 8. status() composes the library's own facts (the gap that let a real bug ship) -----------
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-lib-status-'))
+  const lib = m.createLibrary({ root, tracks: ['progress', 'rejected'], headListAt: 7 })
+  await lib.append({ kind: 'proposition', statement: 'P', proof: 'pf' }, {})
+  await lib.append({ kind: 'method', statement: 'M', proof: 'pf' }, {})
+  const st = await lib.status()
+  ok(st.root === root && st.records === 2, 'status() reports the root and the record count', JSON.stringify({ root: st.root, records: st.records }))
+  ok(st.headListAt === 7 && st.tracks.join(',') === 'progress,rejected', 'status() reports the declared switches')
+  ok(Array.isArray(st.truncation) && st.truncation.length === 0, 'status() reports truncation as a list (this line threw a ReferenceError before it was fixed)')
+  ok(st.kinds.proposition === 1 && st.kinds.method === 1, 'status() counts records by kind', JSON.stringify(st.kinds))
+  await rm(root, { recursive: true, force: true })
+}
+
+// ---- 9. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(MODULE, 'utf8')
   const guard = "      if (!rec) {\n        throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id),"

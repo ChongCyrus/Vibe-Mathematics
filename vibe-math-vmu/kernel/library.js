@@ -248,7 +248,7 @@ export function createLibrary({
         truncateMode,
         records: index.size,
         kinds: [...index.values()].reduce((acc, r) => { acc[r.kind] = (acc[r.kind] || 0) + 1; return acc }, {}),
-        truncation: truncationReport(),
+        truncation: truncation.map((t) => Object.assign({}, t)),
       }
     },
   }
