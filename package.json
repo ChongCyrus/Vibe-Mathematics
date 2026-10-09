@@ -210,6 +210,7 @@
     "vibe-math-vmu/kernel/ballot.js",
     "vibe-math-vmu/kernel/meeting.js",
     "vibe-math-vmu/kernel/tasks.js",
+    "tests/vmu-tasks.test.mjs",
     "tests/vmu-settings.test.mjs",
     "tests/vmu-store.test.mjs",
     "tests/vmu-bus.test.mjs",
