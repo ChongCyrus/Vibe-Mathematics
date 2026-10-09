@@ -270,7 +270,7 @@ function lptOrder(list) {
   return list.slice().sort((a, b) => (weightOf(b) - weightOf(a)) || (label(a) < label(b) ? -1 : 1))
 }
 
-// ── Gate scopes (GATE_SCOPE=quick|full; default full = exactly today's sweep) ──────────────────────
+// ── Gate scopes (GATE_SCOPE=quick|vmu|full; default full = exactly today's sweep) ──────────────────
 // `quick` is the ITERATION subset: v5 work + the shared parity/contract surfaces + the registration
 // surface, with EVERY `*.mutants.mjs` excluded (the 26 families are ~2/3 of the sweep's sum) and the
 // 135 s shared sensitivity probe left to `full`. MEASURED with the probe still included at concurrency 2:
@@ -284,20 +284,45 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
 // suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
 const QUICK_EXPECTED_JOBS = 24
+// `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
+// gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
+// the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
+// math modules and their contract, the runner's own self-tests, temp hygiene). It deliberately EXCLUDES
+// every preset-INTERNAL behavioural family: a vmu change never touches another preset's plugin source,
+// so those families are reached at full scope by `GATE_INCREMENTAL` (target-derived) and by the
+// non-incremental release sweep, which stays REQUIRED at every milestone (see the same note above).
+const VMU_ONLY = ['vmu-settings', 'vmu-store', 'vmu-bus', 'run-tests.mutants',
+  'audit-preset-rows', 'audit-preset-mechanism', 'audit-preset-declaration-group',
+  'audit-installer-compat', 'audit-installer-policy', 'audit-installer-assertions.mutants',
+  'audit-package-membership', 'audit-readme-counts', 'audit-path-discipline',
+  'audit-artifact-docs', 'audit-math-computation-parity', 'audit-math-computation-contract',
+  'audit-registration', 'temp-hygiene']
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
-  if (scope !== 'quick') return list
-  return list
-    .filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
-    .filter((j) => QUICK_ONLY.some((x) => label(j).includes(x)))
+  if (scope !== 'quick' && scope !== 'vmu') return list
+  const only = scope === 'vmu' ? VMU_ONLY : QUICK_ONLY
+  const filtered = list.filter((j) => only.some((x) => label(j).includes(x)))
+  return scope === 'quick'
+    ? filtered.filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
+    : filtered
 }
 // Scope is parsed HERE (not next to the job list) so every helper below - including the ones the
 // `--self-check` block calls - sees an initialised value. `full` is the identity.
 const GATE_SCOPE = String(process.env.GATE_SCOPE || flag('scope')[0] || 'full').toLowerCase()
-if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'full') {
-  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|full)')
+if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'vmu' && GATE_SCOPE !== 'full') {
+  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|vmu|full)')
   process.exit(2)
 }
+// An ITERATION scope must NEVER change machine behaviour. Diagnostics (`--self-check`), explicit
+// selection (`--only`), the documented counts (`--counts`) and baseline writing are properties of the
+// REPOSITORY, not of an edit loop: a scope that narrowed them would (a) make documented counts depend on
+// how the run was invoked, and (b) break any guard that spawns this runner as a child - exactly the two
+// failures the vmu scope produced on its first run (`run-tests.mutants.mjs` children inherited the scope,
+// so its `--only audit-prompt-invariants` timeout POSITIVE saw zero jobs and its `--self-check` baseline
+// diverged, and `audit-readme-counts` read a scoped total of 27 instead of 110). `--json` is deliberately
+// NOT in this list: a machine-readable ITERATION report is a legitimate use of a scope.
+const MACHINE_MODE = has('counts') || has('self-check') || flag('only').length > 0
+const SCOPE = MACHINE_MODE ? 'full' : GATE_SCOPE
 
 // ── INCREMENTAL FULL: a family's TARGETS are the repo files it reads/copies/mutates ────────────────
 // DERIVED FROM EACH HARNESS'S OWN SOURCE (never guessed): `const PRESET`/`const MAIN` fields, `editFile:`
@@ -412,8 +437,8 @@ function planIncremental(list) {
   if (String(process.env.GATE_INCREMENTAL || '') !== '1') {
     return { enabled: false, reason: 'GATE_INCREMENTAL not set (default = full sweep)', skipped: [] }
   }
-  if (GATE_SCOPE !== 'full') {
-    return { enabled: false, reason: 'GATE_SCOPE=' + GATE_SCOPE + ' (incremental applies to full only)', skipped: [] }
+  if (SCOPE !== 'full') {
+    return { enabled: false, reason: 'GATE_SCOPE=' + SCOPE + ' (incremental applies to full only)', skipped: [] }
   }
   if (String(process.env.GATE_RELEASE || '') === '1') {
     return { enabled: false, reason: 'GATE_RELEASE=1 (release/tag => forced full sweep)', skipped: [] }
@@ -695,7 +720,7 @@ function deriveJobs() {
 // Scope first (curated subset), then the CLI filters, then scheduling. `full` is the identity, i.e. the
 // default behaviour is byte-for-byte what it was before this change. (GATE_SCOPE itself is parsed above,
 // beside the scope helpers, so the incremental planner and the self-check can both use it.)
-let suites = applyScope(deriveJobs(), GATE_SCOPE)
+let suites = applyScope(deriveJobs(), SCOPE)
 if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))
 if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
 suites = lptOrder(suites)
