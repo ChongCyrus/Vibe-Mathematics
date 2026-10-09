@@ -1,19 +1,20 @@
 // vmu preset entry — the capability scenario for vibe-math-vmu.js (docs/03 §1, docs/11 §9).
 //
-// The entry point is where the whole design finally meets a real host, so the scenarios are about the
-// HOST-VISIBLE promise and the host's own lifecycle contract:
+// The entry point is where the design meets a real host, so the scenarios cover the host-visible promise,
+// the host's lifecycle contract, and the shape the REAL host accepted (execute + JSON string + content-part
+// render, learned from the first scripted live run and from this repo's working preset):
 //   · the module loads under PLAIN NODE (no host import at all) - which is why it declares no `Config`;
-//   · with no configuration it registers exactly ONE tool (`vibe_vmu_status`) and subscribes to nothing;
+//   · with no configuration it registers exactly ONE tool (`vibe_vmu_status`) and injects no prompt;
 //   · with `vmu.core.enabled=false` it registers NOTHING;
-//   · every registration goes through `ctx.effect(fn, label)` and hands back a cleanup, as the host's own
-//     guidance requires - and calling that cleanup unregisters;
+//   · every registration goes through `ctx.effect(fn, label)` (labels are observable), and the host owns
+//     the unwind;
 //   · a prompt section is injected ONLY when the configuration declares one;
-//   · settings arrive as plain data and an undeclared key is still refused by name (R4).
+//   · declared middleware is ACTIVATED (kernel.start()) and an undeclared setting key is still refused.
 //
 // `--self-probe` copies the entry, removes the "prompt only when declared" condition and requires the
 // zero-prompt assertion to fail.
 
-import { readFile, writeFile, mkdtemp, mkdir, rm, cp } from 'node:fs/promises'
+import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -43,6 +44,7 @@ const fakeCtx = (extra = {}) => {
     }, extra),
   }
 }
+const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
 
 // ---- 1. the entry loads under plain Node and declares the documented shape ---------------------
 {
@@ -53,19 +55,20 @@ const fakeCtx = (extra = {}) => {
   ok(typeof entry.apply === 'function', 'the entry exposes apply(ctx, config)')
 }
 
-// ---- 2. ZERO MECHANISM IN THE HOST: no config ⇒ exactly one tool, no prompt, nothing subscribed --
+// ---- 2. ZERO MECHANISM IN THE HOST: no config ⇒ exactly one tool, no prompt ---------------------
 {
   const host = fakeCtx()
   const handle = entry.apply(host.ctx, { clock })
   await new Promise((r) => setTimeout(r, 0))
   const names = host.state.specs.map((s) => s.name)
   ok(names.join(',') === 'vibe_vmu_status', 'with no configuration exactly ONE tool is registered (status)', names.join(','))
-  ok(host.state.effects.join(',') === 'vmu:tools', 'only the tools effect ran - no prompt section, no other effect', host.state.effects.join(','))
+  ok(host.state.effects.includes('vmu:tools') && !host.state.effects.includes('vmu:prompt'),
+    'the tools effect ran and NO prompt effect did', host.state.effects.join(','))
   ok(handle.kernel.status().registrations.length === 0, 'the assembled kernel registered no middleware')
   ok(handle.status().plan.count === 1, 'the adapter plan agrees with what was registered')
-  const st = await host.state.specs[0].handler({})
+  const st = await call(host.state.specs[0])
   ok(st.ok === true && st.active === true && st.registrations.length === 0,
-    'status reports a STARTED kernel that registered nothing at all (that is what zero mechanism means)',
+    'status reports a STARTED kernel that registered nothing (that is what zero mechanism means)',
     JSON.stringify({ active: st.active, registrations: st.registrations }))
 }
 
@@ -74,7 +77,8 @@ const fakeCtx = (extra = {}) => {
   const host = fakeCtx()
   entry.apply(host.ctx, { clock, vmu: { 'vmu.core.enabled': false } })
   await new Promise((r) => setTimeout(r, 0))
-  ok(host.state.specs.length === 0, 'a disabled kernel registers NO tools in the host (inert means invisible)', host.state.specs.length)
+  ok(host.state.specs.length === 0 && host.state.effects.length === 0,
+    'a disabled kernel registers NO tools in the host (inert means invisible)', host.state.specs.length)
 }
 
 // ---- 4. declared middleware and a declared root add their tools, and the rule is live -----------
@@ -91,19 +95,18 @@ const fakeCtx = (extra = {}) => {
   const denied = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_v5_poll_vote' }, {})
   ok(denied.ok === false && denied.refused.code === 'VMU_NOT_PERMITTED', 'the declared M1 rule is live in the assembled kernel')
   const setTool = host.state.specs.find((s) => s.name === 'vibe_vmu_set')
-  const bad = await setTool.handler({ key: 'vmu.ghost.key', value: '1' })
+  const bad = await call(setTool, { key: 'vmu.ghost.key', value: '1' })
   ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT', 'an undeclared setting key is still refused by name')
-  const good = await setTool.handler({ key: 'vmu.meetings.wakeRetries', value: '4' })
+  const good = await call(setTool, { key: 'vmu.meetings.wakeRetries', value: '4' })
   ok(good.ok === true && good.value === 4, 'a declared setting can be changed through the tool')
-  // lifecycle: the host cleanup unregisters everything
   for (const cleanup of handle.cleanups) cleanup()
-  ok(host.state.disposed === names.length, 'the effects hand back cleanups that unregister every tool', host.state.disposed + '/' + names.length)
+  ok(host.state.disposed === 0, 'with ctx.effect the host owns the unwind (our cleanup must not double-dispose)', host.state.disposed)
 
   // ---- 5. a prompt section ONLY when declared ---------------------------------------------------
   const quiet = fakeCtx({ systemPrompt: { section: () => () => {}, getSectionOrder: () => 5 } })
   entry.apply(quiet.ctx, { clock })
   await new Promise((r) => setTimeout(r, 0))
-  ok(quiet.state.effects.join(',') === 'vmu:tools', 'no prompt section is injected when none is declared', quiet.state.effects.join(','))
+  ok(!quiet.state.effects.includes('vmu:prompt'), 'no prompt section is injected when none is declared', quiet.state.effects.join(','))
   const loud = fakeCtx({ systemPrompt: { section: (s) => { loud.state.sections.push(s); return () => {} }, getSectionOrder: () => 5 } })
   entry.apply(loud.ctx, { clock, prompt: 'vmu: only locked objects may be voted on' })
   ok(loud.state.sections.length === 1 && loud.state.sections[0].text.includes('locked objects'),
@@ -137,7 +140,7 @@ if (SELF_PROBE) {
       systemPrompt: { section: (s) => { state.sections.push(s); return () => {} }, getSectionOrder: () => 5 } }
     mm.apply(ctx, { clock })
     // With the guard removed a prompt section is injected although none was declared: the assertion fails.
-    ok(state.effects.join(',') === 'vmu:tools', 'self-probe: guard removed => the zero-prompt assertion fails (as required)', state.effects.join(','))
+    ok(!state.effects.includes('vmu:prompt'), 'self-probe: guard removed => the zero-prompt assertion fails (as required)', state.effects.join(','))
     await rm(dir, { recursive: true, force: true })
   }
   console.log('=== VMU ENTRY SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')

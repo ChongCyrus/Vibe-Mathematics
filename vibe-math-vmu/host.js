@@ -1,20 +1,29 @@
 // vmu host adapter — attaching the assembled kernel to the DSH tool surface (docs/03 §3, docs/11 §9).
 //
-// Everything up to here proves the kernel works when DRIVEN. This file is the part that makes it reachable
-// from inside a real host, and it is written under the same first promise: INERT BY DEFAULT.
-//   · `vmu.core.enabled === false`  ⇒ NOTHING is registered (inert means invisible, not "a tool that says
-//     it is off");
-//   · enabled with nothing declared ⇒ exactly ONE tool, `vibe_vmu_status`, because being able to SEE that
-//     the kernel is inert is the point of the default;
-//   · the other tools appear only when the thing they expose exists (a records tool with no durable root
-//     is not registered at all - the status tool reports the missing seam instead of shipping a tool that
-//     can only refuse);
-//   · tools are described with the repository's own documented DSL (parameters with `required` INSIDE each
-//     parameter, boolean `additionalProperties` on object parameters, and an `output` with schema+render),
-//     so `audit-math-computation-contract` and the host's own guards agree with us.
+// TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
+// (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
+// host's registration shape is the one this repository's own working preset uses
+// (`vibe-math-v5r.js:10934-10938`):
 //
-// Refusals are returned as NAMED structured failures (`ok:false` + code + hint), never swallowed: a model
-// must be able to read WHY something was refused (R11).
+//     ctx.effect(() => tools.register({
+//       name, description, parameters,
+//       output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
+//       execute: async (args, exec) => JSON.stringify(result),      // ← execute, and it returns a STRING
+//     }))
+//
+// Three details matter, and all three differ from the first version of this file:
+//   · the executor is `execute(args, exec)`, NOT `handler`;
+//   · the executor returns a STRING (JSON), and `output.schema` says so;
+//   · `output.render` returns a CONTENT-PART ARRAY, not a string.
+// A tool registered with the wrong key is accepted silently and simply never appears, which is exactly
+// why a library-level test with a self-invented shape cannot catch it (the host can).
+//
+// The first promise still holds: INERT BY DEFAULT.
+//   · `vmu.core.enabled === false`   ⇒ NOTHING registered (inert means invisible);
+//   · enabled with nothing declared  ⇒ exactly ONE tool, `vibe_vmu_status`, because being able to SEE that
+//     the kernel is inert is the point of the default;
+//   · a tool appears only when the thing it exposes exists (no records tool without a durable root);
+//   · refusals are returned as NAMED structured JSON, never swallowed.
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -26,15 +35,29 @@ export const TOOL_NAMES = Object.freeze({
   records: 'vibe_vmu_records',
 })
 
-const OUTPUT = Object.freeze({
-  schema: { type: 'object', additionalProperties: true, properties: { ok: { type: 'boolean' } }, required: ['ok'] },
-  render: (result) => JSON.stringify(result, null, 2),
-  presentationMeta: { title: 'vibe-math-unify' },
+/**
+ * The host-verified output envelope: a JSON string rendered as one text part.
+ *
+ * The host's exact predicate (`dsh-tools/lib/index.js:2881`, read from the installed asar) is:
+ *   output === undefined || typeof output !== 'object' || typeof output.render !== 'function'
+ *     || (output.presentationMeta !== undefined && typeof output.presentationMeta !== 'function')
+ *     ⇒ throw TypeError('tool "<name>" must declare output { schema, render, presentationMeta? }')
+ * So `presentationMeta`, when present, must be a FUNCTION - an object is rejected, and the message does
+ * not say which clause failed. That is exactly the defect the first scripted live run exposed; this file
+ * therefore omits it (as the repository's working preset does).
+ */
+export const OUTPUT = Object.freeze({
+  schema: { type: 'string' },
+  render: (_args, value) => [{ type: 'text', text: String(value) }],
 })
 
 const param = (type, description, extra = {}) => Object.assign({ type, required: false, description }, extra)
 
-/** The tool catalogue, filtered by what actually exists (docs/04 §11 ownership: mechanism only). */
+/**
+ * The tool catalogue. Each entry carries an internal `run(args, exec)` returning a plain object; the
+ * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
+ * the surface honest (docs/04 §11 ownership: mechanism only).
+ */
 export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {} }) {
   const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
   const specs = []
@@ -44,8 +67,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     name: TOOL_NAMES.status,
     description: 'vmu 内核状态：装配了哪些服务/接缝、注册了哪些中间件、生效的整合包、以及是否"零机制惰性"。只读。',
     parameters: {},
-    output: OUTPUT,
-    handler: async () => {
+    run: async () => {
       try {
         return Object.assign({ ok: true }, kernel.status())
       } catch (e) {
@@ -63,8 +85,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         key: param('string', '设置键，必须已在 docs/04 §11 登记', { required: true }),
         value: param('string', '新值（按声明的类型解析：布尔/数字/JSON 数组或对象/字符串）'),
       },
-      output: OUTPUT,
-      handler: async ({ key, value } = {}) => {
+      run: async ({ key, value } = {}) => {
         try {
           assertDeclared(key)
         } catch (e) {
@@ -100,8 +121,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         action: param('string', 'list（默认）｜disable｜enable', { required: true, enum: ['list', 'disable', 'enable'] }),
         id: param('string', '中间件条目 id（disable/enable 必填）'),
       },
-      output: OUTPUT,
-      handler: async ({ action = 'list', id } = {}) => {
+      run: async ({ action = 'list', id } = {}) => {
         try {
           if (action === 'list') return Object.assign({ ok: true, action }, kernel.bus.status())
           if (!id) return refused('VMU_INVALID_ARGUMENT', 'disable/enable 需要 id')
@@ -127,15 +147,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
       },
-      output: OUTPUT,
-      handler: async ({ action = 'list', id, kind, statement, proof } = {}) => {
+      run: async ({ action = 'list', id, kind, statement, proof } = {}) => {
         try {
           if (action === 'list') return Object.assign({ ok: true, action }, { records: await kernel.library.list() })
           if (action === 'expand') return Object.assign({ ok: true, action }, await kernel.library.expand(id))
-          if (action === 'append') {
-            const r = await kernel.library.append({ kind, statement, proof })
-            return Object.assign({ ok: true, action }, r)
-          }
+          if (action === 'append') return Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_INVALID_ARGUMENT', String(e.message), e.hint)
@@ -148,47 +164,102 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 }
 
 /**
- * Install the tools into a host context. `ctx.tools.register(spec)` returns a disposer (verified against
- * our own DSH surface recon); a host that offers `defineTool` may be used instead, and the adapter does not
- * care which, because both end up as one registration per spec.
+ * The host's parameter shape, learned the hard way from the live run:
+ *   Invalid schema for function 'vibe_vmu_status': schema must be a JSON Schema of 'type: "object"',
+ *   got 'type: null'
+ * The PROVIDER (not the host) rejects a function whose parameter schema is not an object schema, and it
+ * rejects the WHOLE REQUEST - which shows up as a silent zero-token turn. So every tool's parameters are
+ * published as `{ type:'object', properties, required, additionalProperties:false }`, with `required` as
+ * the top-level array (exactly what the repository's working preset builds via objParams()).
+ */
+export function toHostParameters(params = {}) {
+  const properties = {}
+  const required = []
+  for (const [name, def] of Object.entries(params)) {
+    const { required: isRequired, ...rest } = def
+    properties[name] = rest
+    if (isRequired === true) required.push(name)
+  }
+  return { type: 'object', properties, additionalProperties: false, required }
+}
+
+/** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
+export function toHostSpec(spec) {
+  return {
+    name: spec.name,
+    description: spec.description,
+    parameters: toHostParameters(spec.parameters || {}),
+    output: OUTPUT,
+    execute: async (args, exec) => {
+      try {
+        return JSON.stringify(await spec.run(args || {}, exec))
+      } catch (e) {
+        return JSON.stringify({ ok: false, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
+          message: String((e && e.message) || e), hint: (e && e.hint) || null })
+      }
+    },
+  }
+}
+
+/**
+ * Install the tools into a host context. Registrations go through `ctx.effect(..., label)` when the host
+ * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
+ * fall back to keeping the returned disposers otherwise.
  */
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {} } = {}) {
   const disposers = []
   const registered = []
   let installed = false
+  let ownedByHost = false
+
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log }))
 
   return {
     /** What WOULD be registered (pure: no host calls) - the host-side zero-mechanism proof. */
     plan() {
       const disabled = settings['vmu.core.enabled'] === false
-      const specs = disabled ? [] : toolSpecs({ kernel, settings, assertDeclared, log })
-      return { enabled: !disabled, names: specs.map((s) => s.name), count: specs.length,
+      const list = specs()
+      return { enabled: !disabled, names: list.map((s) => s.name), count: list.length,
         reason: disabled ? 'vmu.core.enabled = false: the adapter registers nothing' : undefined }
     },
 
     async install() {
-      if (installed) return { ok: true, already: true, names: registered.slice() }
+      if (installed) return { ok: true, already: true, names: registered.slice(), ownedByHost }
       if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
         throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
           hint: 'pass a DSH context; the adapter never invents a tool surface' })
       }
-      const plan = this.plan()
-      if (plan.count === 0) {
+      const list = specs()
+      if (list.length === 0) {
         installed = true
         log('vmu is disabled: nothing registered')
-        return { ok: true, installed: 0, names: [], note: plan.reason }
+        return { ok: true, installed: 0, names: [], note: 'vmu.core.enabled = false: the adapter registers nothing' }
       }
-      for (const spec of toolSpecs({ kernel, settings, assertDeclared, log })) {
-        const toRegister = typeof defineTool === 'function' ? defineTool(spec) : spec
-        const dispose = await ctx.tools.register(toRegister)
-        disposers.push(typeof dispose === 'function' ? dispose : () => {})
+      const hasEffect = typeof ctx.effect === 'function'
+      ownedByHost = hasEffect
+      for (const spec of list) {
+        const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
+        if (hasEffect) {
+          // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
+          // here is the promise from tools.register().
+          const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
+          if (typeof dispose === 'function') disposers.push(dispose)
+        } else {
+          const dispose = await ctx.tools.register(hostSpec)
+          if (typeof dispose === 'function') disposers.push(dispose)
+        }
         registered.push(spec.name)
       }
       installed = true
-      return { ok: true, installed: registered.length, names: registered.slice() }
+      return { ok: true, installed: registered.length, names: registered.slice(), ownedByHost }
     },
 
     async uninstall() {
+      if (ownedByHost) {
+        registered.length = 0
+        installed = false
+        return { ok: true, ownedByHost: true, note: 'the host unwinds these registrations through ctx.effect' }
+      }
       const failures = []
       for (const d of disposers.splice(0)) { try { d() } catch (e) { failures.push(String(e && e.message)) } }
       registered.length = 0
@@ -197,8 +268,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     },
 
     status() {
-      return { installed, registered: registered.slice(), plan: this.plan(),
-        note: 'with nothing declared only vibe_vmu_status is registered; with vmu.core.enabled=false nothing is' }
+      return { installed, ownedByHost, registered: registered.slice(), plan: this.plan(),
+        note: 'with nothing declared only vibe_vmu_status is registered; with vmu.core.enabled=false nothing is; execute() returns a JSON string rendered as one text part' }
     },
   }
 }

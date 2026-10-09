@@ -68,13 +68,23 @@ export function apply(ctx, config = {}) {
   }
 
   const cleanups = []
-  effect(() => {
-    const installing = adapter.install()
-    const cleanup = () => { try { adapter.uninstall() } catch { /* the host is going away anyway */ } }
-    cleanups.push(cleanup)
-    installing.catch(() => { /* a failed install is reported through adapter.status() */ })
-    return cleanup
-  }, 'vmu:tools')
+  // INERT MEANS INVISIBLE: when the kernel is switched off, not even an effect is registered.
+  const switchedOff = settings['vmu.core.enabled'] === false
+  let installError = null
+  if (!switchedOff) {
+    effect(() => {
+      const installing = adapter.install()
+      const cleanup = () => { try { adapter.uninstall() } catch { /* the host is going away anyway */ } }
+      cleanups.push(cleanup)
+      // A registration that fails must SAY SO (R11: a silent failure is worse than a named one). The first
+      // scripted live run found this the hard way: the tools never appeared and nothing was logged.
+      installing.catch((e) => {
+        installError = { code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e), hint: (e && e.hint) || null }
+        try { process.stderr.write('vmu: tool registration failed: ' + installError.code + ' ' + installError.message + '\n') } catch { /* stderr may be gone */ }
+      })
+      return cleanup
+    }, 'vmu:tools')
+  }
 
   // A prompt section is injected ONLY when the configuration declares one (zero mechanism otherwise).
   if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&
@@ -93,7 +103,8 @@ export function apply(ctx, config = {}) {
     /** Resolves once the tools are registered and the declared middleware is activated. */
     ready: () => Promise.all([started, Promise.resolve(adapter.status())]).then(([, st]) => st),
     started: () => started,
-    status: () => adapter.status(),
+    status: () => Object.assign(adapter.status(), { installError }),
+    installError: () => installError,
     cleanups,
   }
 }
