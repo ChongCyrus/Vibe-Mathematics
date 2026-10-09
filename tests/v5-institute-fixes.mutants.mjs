@@ -27,7 +27,11 @@ function copyGraph(file, dest, preset) {
     if (!readdirSync(dest).includes(dep)) copyGraph(dep, dest)
   }
 }
-function runFamily(f) {
+/** The patient floor used ONLY when a family failed its first (fast) attempt - diagnosed S25-B load race. */
+const PATIENT_WAIT_FLOOR_MS = 8000
+
+function runFamily(f, opts) {
+  const waitFloorMs = (opts && opts.waitFloorMs) || 2000
   const dest = join(tmpdir(), 'v5fix-mut-' + Math.random().toString(36).slice(2, 10))
   mkdirSync(dest, { recursive: true })
   const preset = f.preset || PRESET
@@ -66,7 +70,10 @@ if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not E
       // task-13: a mutated CHILD only has to redden BY NAME, so it runs with a SMALL wait floor - the patient
     // default (E2E_V5_WAIT_FLOOR_MS = 30 s inside the suite) belongs to the real gate run. Without this the
     // 15 families x (patient suite) exceeded even the family's 900 s override and timed the family out.
-    env: Object.assign({}, process.env, { [ENV]: join(dest, main), E2E_V5_WAIT_FLOOR_MS: '2000' }, f.env || {}),
+    // DIAGNOSED ROOT CAUSE of the last load-only red (S25-B, 167/168): on a loaded machine the drive loop can
+    // finish BEFORE it reaches the mutated step, so the expected named red never appears. The retry below
+    // re-runs that ONE family with a patient floor instead of making every family pay 30 s.
+    env: Object.assign({}, process.env, { [ENV]: join(dest, main), E2E_V5_WAIT_FLOOR_MS: String(waitFloorMs) }, f.env || {}),
     })
   } catch (e) {
     if (e && (e.killed || e.signal === 'SIGKILL')) hang = true
@@ -1925,8 +1932,8 @@ let crashCount = 0
  * and NOT kill the script before the summary. Learned on a loaded gate: the whole run exited 1 with no
  * summary at all, so nothing was retried and no evidence survived (0 retry lines, no `hangs=` line).
  */
-const safeRunFamily = (f) => {
-  try { return runFamily(f) } catch (e) {
+const safeRunFamily = (f, opts) => {
+  try { return runFamily(f, opts) } catch (e) {
     crashCount++
     console.log('  FAMILY CRASH ' + f.name + ' :: ' + String((e && e.message) || e).slice(0, 200))
     return false
@@ -1936,8 +1943,10 @@ for (const f of SELECTED) {
   let ok = safeRunFamily(f)
   if (!ok && !ONLY) {
     mutantRetried++
-    console.log('  RETRY family ' + f.name + ' (R-6b: a loaded gate can make the child report its red differently)')
-    ok = safeRunFamily(f)
+    console.log('  RETRY family ' + f.name + ' (R-6b: a loaded gate can make the child report its red differently;' +
+      ' retrying with a PATIENT wait floor of ' + PATIENT_WAIT_FLOOR_MS + ' ms - the diagnosed cause of the S25-B ' +
+      'load-only red was the drive loop finishing before the mutated step)')
+    ok = safeRunFamily(f, { waitFloorMs: PATIENT_WAIT_FLOOR_MS })
     if (ok) mutantRetriedRed++
   }
   if (ok) red++
