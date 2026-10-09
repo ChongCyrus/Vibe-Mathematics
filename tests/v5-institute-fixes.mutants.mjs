@@ -1661,14 +1661,16 @@ const V5R_FAMILIES = [
     expect: /S25-C：\*\*非院士提议 ⇒ 具名拒\*\*/,
   },
   {
-    // S25-B（issue #13 #2）：把 track 解析写死成 narrative ⇒ 所有分轨都写回 progress.md
-    // ⇒ `s25b-progress-tracks` 的"rejected ⇒ rejected.md"必红（单点）。
-    name: 'S25B: the track resolver hard-codes narrative (every track writes progress.md)',
+    // S25-B（issue #13 #2）：**只把 `rejected` 这一条轨道写死成 narrative**。
+    // 起初的变异是把整个解析写死（`const T = 'narrative'` ✓），但该守卫此后长成**五条断言**
+    // （缺省／rejected／obstacle／非法具名拒／回到缺省 ✓）⇒ 整体写死会**同时打断多条** ✗，
+    // 违背本族"单点必红"的要求 ✓。收窄成"只有 rejected 走错档"⇒ 恰好红一条（且是期望的那条）✓。
+    name: 'S25B: the track resolver misroutes ONLY the rejected track (it writes progress.md)',
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's25b-progress-tracks' },
     from: "      const T = (track === undefined || track === null || track === '') ? 'narrative' : String(track)",
-    to: "      const T = 'narrative'",
+    to: "      const T = (String(track) === 'rejected') ? 'narrative' : ((track === undefined || track === null || track === '') ? 'narrative' : String(track))",
     expect: /S25-B：\*\*track=rejected ⇒ 落 rejected\.md\*\*/,
   },
   {
