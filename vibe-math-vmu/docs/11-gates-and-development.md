@@ -178,6 +178,7 @@ node scripts/release-check.mjs             # 发布前清单
 
 | 档 | 触发时机 | 命令 | 实测成本 | 覆盖什么 |
 |---|---|---|---|---|
+| **T0 预检**（**新增，硬前置** ✓） | **任何 T2/T3 之前**（用户 2026-10-09 要求："先全面自查无误再跑，避免跑半天才发现问题" ✓） | `_oneoff/vmu/tools/preflight.mjs [--for-t3]` | **≈1 min** ✓ | ① `--counts` 与文档计数一致 ✓；② `build-preset-rows --check` 无漂移 ✓；③ 预设/installer/包成员/计数/路径/数学契约/产物文档 等**共享面门禁全跑** ✓；④ **`files[] ↔ installer PRESETS ↔ 工作树` 三方一致性**（**上一轮 T3 才发现的那类漏登记** ✗✓，已被固化为预检项 ✓）；⑤ vmu 文档 linter（17 关 ✓）；⑥ `run-tests --self-check` ✓；⑦ `--for-t3` 额外要求**工作树干净**（无未接线的未跟踪件 ✗） |
 | **T1 迭代档** | **每一次改动**（默认档） | `GATE_SCOPE=vmu` | **≈60–100 s** ✓ | vmu 全部作业 ＋ **所有共享面门禁**（预设行/生成物、installer、包成员、文档计数、路径纪律、产物文档、共享数学模块与契约、runner 自测、临时卫生 ✓） |
 | **T2 共享编排档** | 改动 **`tests/run-tests.mjs`／`tests/helpers/**`／`scripts/build-preset-rows.mjs`／`cordis.patch.yml`／`installer.js`／`package.json`** 时 | `GATE_INCREMENTAL=1`（**全量**，按 `FAMILY_TARGETS` 跳过"目标文件没变"的族 ✓，未登记者**照跑** ✓） | 通常 **≈2–5 min** ✓ | T1 ＋ **受影响的跨预设族**（含 v2–v5r 的行为面 ✓）；跳过的是**我根本没碰**的目标族 ✓ |
 | **T3 发布/阶段档** | **每 2–3 个阶段**（如 P2+P3 合并一次）＋ **任何发布/推送发布物之前** ＋ 收尾 | `GATE_RELEASE=1`（**非增量全量** ✓） | **≈25 min** ✓ | 全部 117 作业，含 24 分钟那条 v5r 族 ✓ |
