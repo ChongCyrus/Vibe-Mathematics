@@ -200,6 +200,8 @@
     "vibe-math-vmu/docs/12-user-guide.md",
     "vibe-math-vmu/docs/13-migration.md",
     "vibe-math-vmu/docs/14-open-items-and-roadmap.md",
+    "vibe-math-vmu/settings/schema.js",
+    "tests/vmu-settings.test.mjs",
     "docs/release-notes/RELEASE-NOTES-2.0.22.md",
     "docs/release-notes/RELEASE-NOTES-2.1.0.md",
     "docs/release-notes/RELEASE-NOTES-2.2.0.md",
