@@ -1830,8 +1830,19 @@ let posRed = 0
 // 未设变量 ⇒ 行为与今天逐字一致（正控照跑、判据照旧）。
 const ONLY = String(process.env.MUTANTS_ONLY || '').trim()
 if (ONLY) console.error('mutants: only=' + ONLY + ' (DIRECTED run - 本次为定向运行，非全量证据)')
-if (!ONLY) {
-for (const sc of SCENARIOS) {
+// MUTANTS_POSITIVES_ONLY=1 ⇒ 只跑正向对照（用于单独验证对照与其重试路径，不产生变异证据）。
+const POSITIVES_ONLY = String(process.env.MUTANTS_POSITIVES_ONLY || '').trim() === '1'
+// POSITIVES_SELFTEST=1 ⇒ 只跑一个**必定不会绿**的假场景，自证"重试路径确实被执行、且重试仍红必须计入红"。
+const POSITIVES_SELFTEST = String(process.env.POSITIVES_SELFTEST || '').trim() === '1'
+/**
+ * R-6b: a positive control can go red on a LOADED gate without the product being wrong — the drive loop is
+ * simply earlier than the assertion (see the same lesson recorded at tests/run-tests.mjs:211). One retry in a
+ * FRESH workspace is allowed, and it is RECORDED: the summary prints how many were retried and how many went
+ * green on retry, so a reader can never mistake a retry-green for a first-try green. A retry that is ALSO red
+ * still counts as red. This removes the "one flaky family forces a 25-minute re-run" cost without hiding it.
+ */
+const RETRY_LIMIT = 1
+const runPositive = (sc) => {
   const dest = join(tmpdir(), 'v5r-scen-' + Math.random().toString(36).slice(2, 10))
   mkdirSync(dest, { recursive: true })
   copyGraph('vibe-math-v5r.js', dest, 'vibe-math-v5r')
@@ -1844,13 +1855,38 @@ for (const sc of SCENARIOS) {
     })
   } catch (e) { code = (e && e.status) || 1; out = String((e && e.stdout) || '') + String((e && e.stderr) || '') }
   const ms = Date.now() - t0
-  const green = code === 0 && /SCENARIO GREEN: /.test(out)
-  if (!green) posRed++
-  console.log((green ? '  ok   ' : '  FAIL ') + 'positive v5r scenario ' + sc + ' [' + ms + 'ms]' + (green ? '' : ' :: exit=' + code))
-  TIMES.push(['positive:' + sc, ms])
   rmSync(dest, { recursive: true, force: true })
+  return { green: code === 0 && /SCENARIO GREEN: /.test(out), ms, code }
 }
-console.log('scenario positive controls green: ' + (SCENARIOS.length - posRed) + '/' + SCENARIOS.length)
+if (!ONLY) {
+const LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : SCENARIOS
+let retried = 0
+let retriedGreen = 0
+for (const sc of LIST) {
+  let r = runPositive(sc)
+  if (!r.green) {
+    for (let attempt = 1; attempt <= RETRY_LIMIT && !r.green; attempt++) {
+      retried++
+      const again = runPositive(sc)
+      console.log('  RETRY positive v5r scenario ' + sc + ' (attempt ' + attempt + ', R-6b: a loaded gate can ' +
+        'assert before the drive loop reaches the configure step) :: ' + (again.green ? 'GREEN on retry' : 'STILL RED'))
+      if (again.green) retriedGreen++
+      r = again
+    }
+  }
+  if (!r.green) posRed++
+  console.log((r.green ? '  ok   ' : '  FAIL ') + 'positive v5r scenario ' + sc + ' [' + r.ms + 'ms]' + (r.green ? '' : ' :: exit=' + r.code))
+  TIMES.push(['positive:' + sc, r.ms])
+}
+console.log('scenario positive controls green: ' + (LIST.length - posRed) + '/' + LIST.length +
+  (retried ? ' (' + retried + ' retried, ' + retriedGreen + ' green on retry - recorded per 14-§1 R-6b)' : ''))
+if (POSITIVES_SELFTEST) {
+  const ok = retried === 1 && posRed === 1
+  console.log('POSITIVES SELFTEST: retry path exercised=' + (retried === 1) + ' stillRedCountedRed=' + (posRed === 1) +
+    ' => ' + (ok ? 'GUARD CAN FAIL AND IS COUNTED (as required)' : 'GUARD MISBEHAVES'))
+  process.exit(ok ? 0 : 1)
+}
+if (POSITIVES_ONLY) process.exit(posRed === 0 ? 0 : 1)
 }
 let red = 0
 const ALL_FAMILIES = FAMILIES.concat(V5R_FAMILIES)
