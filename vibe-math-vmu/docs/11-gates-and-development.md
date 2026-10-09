@@ -292,7 +292,7 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 > `Cannot read properties of undefined (reading 'includes')` ✗。我们传入的 spec（`argv`／`cwd`／`stdio:{stdin,stdout.maxBytes,stderr.maxBytes}`／`graceMs`）与**本仓可用预设 v5r 的调用逐字段一致** ✓，且已按 v5r 的做法先 `resolveExecutable(argv[0])` ✓；⇒ **高度怀疑是隔离 `DSH_HOME` 下 provider 的环境差异**（scrubbed parent env 缺项 ✗），**不是** vmu 规格问题 ✓。按 §9.2⑥ 记 **NON-RESULT**，并记录下一步诊断（对照非隔离 home 复跑 / 读 provider 的环境读取点 ✓）。
 >
 > **已排除的四项（2026-10-09 追加 ✓）**：① 不是 id 查找 ✗（`list` 正确 ✓）；② 不是"接缝未绑定" ✗（该缺陷已修，错误随之前进 ✓）；③ 不是 spec 形状 ✗（与 v5r 逐字段相同 ✓）；④ **不是 PATH 缺失** ✗（在脚本声明里显式给出 776 字符的 `env.PATH` 后，仍是同一个 TypeError ✓，证据 `live/2026-10-09/p2-m3-env/` ✓）。⇒ 剩余可能是 provider 的**平台/容器模式探测**路径或该 provider 版本的缺陷 ✗；**本项不再占用真机轮次** ✗，成果：库级＋单元级 M3 全绿 ✓，真机如实记 NON-RESULT ✓。
-| P3 | v5r-pack 对照跑 | **未做** ✗ | —— |
+| P3 | v5r-pack 对照跑（**面级对照已完成** ✓；行为级 A/B 未做 ✗） | **部分** ✓ | `p3-v5r-side/` ＋ `p3-vmu-side/`；报告 `_oneoff/vmu/design/04-v5r-contrast-live.md` ✓ |
 | P4 | 公开服务版本可读（`contract()`） | **部分** ✓（库内 ✓；真机未读） | —— |
 | P5 | 发布清单全过 ＋ GUI（O2 前置） | **未做** ✗ | —— |
 
