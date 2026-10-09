@@ -280,6 +280,12 @@ export function createKernel({
           clock,
         })
         : null
+      // Publication follows DECLARATION: a service that did not exist a moment ago must appear in the
+      // contract as soon as it does, otherwise a pack's alias to it is refused for the wrong reason.
+      if (members) {
+        try { registry.register('vmu.members', { apiVersion: 1 }, { kind: 'service', description: 'role slots and roster' }) }
+        catch (e) { if (!e || !/already registered/.test(String(e.message))) throw e }
+      }
       return { ok: true, slots: list.length, hasRoster: members !== null }
     },
 
@@ -305,6 +311,33 @@ export function createKernel({
 
     /** The settings this assembly was constructed with (used by pack planning and residue checks). */
     settingsSnapshot() { return Object.assign({}, settings) },
+
+    /**
+     * Apply a pack's settings as a LAYER on the constructed values (docs/10 §2). Conflicts are refused
+     * unless the configuration explicitly allows overrides (O4), and the caller gets back exactly what it
+     * must restore: the pre-existing values for the keys it overwrote. Keys the pack introduced are simply
+     * removed on rollback, so no phantom setting survives an unload.
+     */
+    applyPackSettings(incoming = {}, { by = null } = {}) {
+      const applied = []
+      const previous = {}
+      for (const [key, value] of Object.entries(incoming)) {
+        const existed = Object.prototype.hasOwnProperty.call(settings, key)
+        if (existed && settings['vmu.packs.allowOverride'] !== true) {
+          throw refuse('VMU_PACK_CONFLICT', 'pack setting ' + key + ' would overwrite an active value',
+            'declare vmu.packs.allowOverride to make the override explicit (O4)')
+        }
+        if (existed) previous[key] = settings[key]
+        settings[key] = value
+        applied.push(key)
+      }
+      packNotes.push({ id: by, at: clock(), what: 'settings-applied', keys: applied.slice() })
+      return { ok: true, applied, previous }
+    },
+
+    /** The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly. */
+    setSettingsValue(key, value) { settings[key] = value; return { ok: true, key } },
+    unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
     /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
     notePackApplied(id) { packNotes.push({ id, at: clock(), what: 'applied' }); return { ok: true } },

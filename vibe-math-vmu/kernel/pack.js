@@ -119,17 +119,21 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' is already applied', 'unload it before applying again (O4)')
       }
       const undo = []
+      const runAll = async () => {
       // Settings are a LAYER, not a mutation: if this assembly gives no way to apply a pack's settings,
       // the pack is refused rather than silently losing them (a silently dropped setting is a lie).
-      if (Object.keys(manifest.settings || {}).length > 0 && typeof kernel.applyPackSettings !== 'function') {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares settings but this kernel has no settings layer for packs',
-          'construct the kernel with a pack-settings layer, or move the values into the pack manifest\'s slots/tracks/rules')
-      }
-      // Aliases first: a later failure must not leave a half-published name.
-      for (const a of manifest.aliases || []) {
-        if (!registry) throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no registry to alias into')
-        registry.alias(a.from, a.to, { reason: 'pack ' + manifest.id, since: manifest.version || null })
-        undo.push(() => { if (registry.removeAlias) registry.removeAlias(a.from) })
+      if (Object.keys(manifest.settings || {}).length > 0) {
+        if (typeof kernel.applyPackSettings !== 'function') {
+          throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares settings but this kernel has no settings layer for packs',
+            'construct the kernel with a pack-settings layer, or move the values into the pack manifest\'s slots/tracks/rules')
+        }
+        const res = kernel.applyPackSettings(manifest.settings, { by: manifest.id })
+        undo.push(() => {
+          for (const key of res.applied) {
+            if (Object.prototype.hasOwnProperty.call(res.previous, key) && kernel.setSettingsValue) kernel.setSettingsValue(key, res.previous[key])
+            else if (kernel.unsetSettingsValue) kernel.unsetSettingsValue(key)
+          }
+        })
       }
       for (const s of manifest.slots || []) {
         if (!kernel.declareSlots) throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel cannot declare role slots')
@@ -152,6 +156,22 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         const entry = Object.assign({}, m)
         kernel.bus.add(entry)
         undo.push(() => removeEntry(kernel.bus, entry.id))
+      }
+      // Aliases LAST: a pack may alias a service that its own slot/track declarations bring into
+      // existence, and publication follows declaration (kernel/index.js declareSlots).
+      for (const a of manifest.aliases || []) {
+        if (!registry) throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no registry to alias into')
+        registry.alias(a.from, a.to, { reason: 'pack ' + manifest.id, since: manifest.version || null })
+        undo.push(() => { if (registry.removeAlias) registry.removeAlias(a.from) })
+      }
+      }
+
+      // ATOMIC: a pack that fails halfway is rolled back, so a failed apply never leaves a half-institution.
+      try {
+        await runAll()
+      } catch (e) {
+        for (const undoOne of undo.slice().reverse()) { try { undoOne() } catch { /* best effort during rollback */ } }
+        throw e
       }
       const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo }
       applied.set(manifest.id, record)
