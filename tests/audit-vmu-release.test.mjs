@@ -23,6 +23,9 @@ const REPO = resolve(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
 const DOCS = process.env.VMU_DOCS_DIR ? resolve(process.env.VMU_DOCS_DIR) : join(VMU, 'docs')
 const PKG = process.env.VMU_PKG ? resolve(process.env.VMU_PKG) : join(REPO, 'package.json')
+// The preset file is injectable too, so the mutant family can break the preset declaration without ever
+// touching the real one (the same seam discipline as the docs and package paths).
+const PRESET = process.env.VMU_PRESET ? resolve(process.env.VMU_PRESET) : join(VMU, 'agent.cordis.yml')
 
 let passed = 0, failed = 0
 const failures = []
@@ -78,7 +81,7 @@ const shipped = new Set(pkg.files || [])
 
 // ---- H. the shipped preset declares this package's plugin row ------------------------------------
 {
-  const preset = readFileSync(join(VMU, 'agent.cordis.yml'), 'utf8')
+  const preset = readFileSync(PRESET, 'utf8')
   ok(/vibe-math-vmu\.js/.test(preset), 'the preset declares the vmu plugin entry (preset-local plugin reference)')
   ok(/vibe-math-vmu/.test(preset), 'and the preset names the plugin row id')
   ok(/──\s*Vibe Math Unify/.test(preset), 'the preset keeps its anchor header (the generated-rows guard depends on it)')
