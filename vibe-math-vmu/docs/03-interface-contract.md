@@ -57,11 +57,11 @@
 | `vmu.middleware` ⏳**部分实现** | `validateEntry(entry)→problems[]` ✓／`status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}` ✓／`disable(id,reason)` ✓／`enable(id)` ✓／`setDryRun(v)` ✓；**`list()`／`dryRun(ids?,samples)` 待实现** | `VMU_MIDDLEWARE_FAILED`（校验/冲突/越权/失败 ✓） |
 | `vmu.bus` ✓**已实现** | `emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?}`／`on(entry,handler)→id`／`trace(id)→Trace[]`／`status()`／`disable(id,reason)`／`enable(id)`／`setDryRun(v)`／**`wrapHostWaterfall(next)→async(payload)`** | `VMU_MIDDLEWARE_REJECTED`（显式拒 ✓）／`VMU_MIDDLEWARE_FAILED`（异常/越权/冲突 ✓） |
 | `vmu.prompts` ✓**已实现** | `register(s)→entry`／**`assemble(ctx)→{ok,text,sources[],truncation[],at}`**／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)→[{scope,text}]`／`bindToHost(adapter)→{ok,sections}`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`（不可覆盖段／越权覆盖 ✓）／`VMU_INVALID_ARGUMENT`（未登记变量/名/号段 ✓）／`VMU_NO_SUCH_OBJECT`（未登记的绑定目标 ✓）／`VMU_ENGINE_UNAVAILABLE`（缺宿主适配器 ✓） |
-| `vmu.library` | `list(filter)→Head[]`（**不含正文**）／`expand(id)→{head,body}`／`fingerprint(kind,parts)→hex`／`append(rec,{track})→{id,fingerprint}`／`truncationReport()→{path,kept,dropped}[]` | `VMU_NO_SUCH_OBJECT` |
+| `vmu.library` ✓**已实现** | `fingerprint(kind,parts)→hex`（**单点计算** ✓）／`append(rec,{member?})→{ok,id,fingerprint,deduplicated}`（**同内容幂等** ✓）／`record(member,track,text)→{ok,file}`（未声明 track ⇒ 具名拒 ✓）／`list(filter)→Head[]`（**七键、不含正文、每次重建** ✓）／`expand(id,{capBytes})→{ok,head,body,truncated,path}`／`storedFingerprint(id)→{ok,id,fingerprint}`（**读回而非重算** ✓）／`truncationReport()→{path,kept,dropped,mode}[]`／`status()` | `VMU_NO_SUCH_OBJECT`（悬空 id ✓）／`VMU_INVALID_ARGUMENT`（空陈述/未知 kind/未知 track ✓） |
 | `vmu.meetings` | `convene(agenda,kind)→{id}`／`round(id)→Round`／`handUp(id,member)→{position}`／`ballot(id,target,kind)→{ballotId}`／`cast(ballotId,vote)→{accepted}`／`tally(ballotId)→{outcome,reason?}`／`close(ballotId,reason)→{decided}`／`reopen(ballotId,reason)→{open}` | `VMU_STATE`／`VMU_MEETING_TOO_SMALL` |
 | `vmu.tasks` | `create(task)→{id}`／`assign(id,who)→{owner}`／`transition(id,to)→{state}`／`list(filter)→Task[]`／`stage()→{current,stages[]}` | `VMU_STATE`／`VMU_NOT_PERMITTED` |
 | `vmu.budget` | `usage(scope)→{cap,used}`／`check(op,scope)→{allowed}`／`exceeded()→{which,cap,used}`／`degrade(reason)→{mode}` | `VMU_RESOURCE_BUDGET` |
-| `vmu.members` | `roster()→Member[]`／`roles()→Slot[]`／`assignRole(id,slot)→{slot}`／`wake(id,ask)→{turnId}`／`end(id,reason)→{ended}` | `VMU_NOT_MEMBER`／`VMU_RESOURCE_BUDGET` |
+| `vmu.members` ✓**已实现** | `roles()→Slot[]`（容量/占用/不透明权限 ✓）／`roster()→Member[]`／`assignRole(id,slot)→{ok,id,slot,occupied,capacity}`／`hire({id,slot})→同左`（学院级上限 ⇒ 具名拒 ✓）／`end(id,reason)→{ok,id,state,reason}`（记录原因 ✓）／`wake(id,ask,{role?,phase?})→{ok,envelope,delivered}`（**注入接缝**；缺接缝 ⇒ 具名拒 ✓）／`may(id,permission)→{ok,allowed,...}`（**只做包含判断** ✓）／`status()` | `VMU_RESOURCE_BUDGET`（槽满/超编，**报当前数与上限** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_STATE`（已结束成员 ✓）／`VMU_ENGINE_UNAVAILABLE`（无唤醒接缝 ✓）／`VMU_INVALID_ARGUMENT`（未声明槽位 ✓） |
 | `vmu.packs` | `available()→PackRef[]`／`active()→PackRef[]`／`load(name,{dryRun?})→{changed,plan[]}`／`unload(name)→{changed}`／`conflicts()→Conflict[]` | `VMU_PACK_CONFLICT`／`VMU_PACK_MISSING` |
 
 **三条接口纪律**：① **能力缺失用 `ok:false` ＋ 具名码**，不得抛裸异常给上层 ✗（框架内部异常按中间件失败策略处置 ✓）；② **返回对象一律可 JSON 序列化**（便于审计与场景比对 ✓）；③ **幂等性**：`read/list/status/tally` 幂等；`set/append/cast` 等写操作**必须能被审计去重**（同一 `traceId` 不重复生效 ✓——沿用 v5r 的幂等纪律 ✓）。
@@ -101,6 +101,14 @@
 - **四条更细的硬约束（C′ 终版，源码级）** ✗✓：① **对象型参数必须显式写布尔 `additionalProperties`**（`dsh-tools/.../schema.js:158-160`）；② **参数级 `required` 只能写 `true`**；③ **`type` 与 `oneOf` 不可同时出现**；④ `output` 的强制是**显式守卫**：`dsh-tools/lib/index.js:2881` `throw new TypeError('tool "<name>" must declare output { schema, render, presentationMeta? }')` ✓；
 - **`restrict` 只能减**（官方逐字）；其"四类输入抛错"的说法**未核** ✗ ⇒ 需要"加/改"的场合由 vmu **自建注册面**负责，不依赖 DSH restrict；
 - 每个工具都必须有：**具名拒**、`status` 可观测面、以及"被中间件拦截时"的审计留痕。
+
+### 3.1 继承工具面（**保留原名**；见 01-§5 的 **D14**）
+
+| 工具名 | 来源 | 实现位置 | 说明 |
+|---|---|---|---|
+| **`math_computation`** ✓**已接入** | **共享模块**（清点判决"原样复用" ✓） | `vibe-math-vmu/math-computation.js` ＋ `kernel/math.js` 适配 | 名字**不改为** `vibe_vmu_*` ✗：改名会破坏各预设的**字节一致性**（`audit-math-computation-parity` ✓），且 v2–v5r 全用此名 ✓；旧名↔新名的映射由 **pack 别名层**（D6）负责 ✓ |
+
+> **纪律**：`vibe_vmu_*` 是 **vmu 自建工具**的命名空间 ✓；**继承面**以原名登记在本表 ✓，不得悄悄改名 ✗（改名 = 破坏性变更，须走 03-§7 的版本与迁移流程 ✓）。
 
 ---
 
