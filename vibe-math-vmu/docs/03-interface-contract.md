@@ -45,6 +45,27 @@
 | `vmu.members` | 成员与角色**槽位** | `roster()`、`roles()`、`assignRole(id, slot)`、`wake(id, ask)`、`end(id, reason)` | 1 |
 | `vmu.packs` | 整合包装载 | `available()`、`active()`、`load(name, {dryRun})`、`unload(name)`、`conflicts()` | 1 |
 
+### 2.1 方法签名（**草案 v1；P0 落地时以本表为验收基线**）
+
+> 统一约定：所有方法返回 `{ ok: true, ... }` 或 `{ ok: false, code, message, hint? }`；**带副作用者必须返回"发生了什么"的可审计摘要**；每个服务由 `apiVersion` 版本化（D13-O3）；**异步侧一律 `await`**（无回调式隐式状态 ✓）。
+
+| 服务 | 方法（参数 → 返回） | 具名拒（示例） |
+|---|---|---|
+| `vmu.kernel` | `state()→KernelState`／`pause(reason)→{pausedAt}`／`resume()→{resumed[]}`／`settle(stage)→{stage, effects[]}`／`health()→{ok, checks[]}` | `VMU_STATE` |
+| `vmu.store` | `open(spec)→void`／`read(key)→Value`／`write(key,value,{expect?})→WriteResult`／**`patch(key,fn)→WriteResult`**／`subscribe(key,fn)→Disposer`／`migrate()→MigrationReport`／`export()→Snapshot`／`import(s,opts?)→void` | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION` |
+| `vmu.settings` | `get(key)→Value`／`resolved(key)→{value,layer,overridden[]}`／`set(pairs,{layer,by,reason?})→{changed[]}`／`auditTail(n)→Entry[]`／`jsonSchema()→Schema` | `VMU_INVALID_ARGUMENT`／`VMU_NOT_PERMITTED` |
+| `vmu.middleware` | `list()→Entry[]`／`validate(entry)→{ok,problems[]}`／`dryRun(ids?,samples)→{hits[],would[]}`／`status()→{entries[],hits,failures,breakers[]}`／`disable(id,reason)→{disabled}` | `VMU_MIDDLEWARE_FAILED` |
+| `vmu.bus` | `emit(hook,payload,{scope?,traceId?})→{handled,decisions[],traceId}`／`on(hook,meta,fn)→Disposer`／`trace(id)→Trace` | `VMU_MIDDLEWARE_REJECTED` |
+| `vmu.prompts` | `sections()→Section[]`／`register(s)→{name}`／`resolve(binding)→{text,sources[],truncation}`／`snapshot(scopes)→{snapshots[]}` | `VMU_NOT_PERMITTED`（不可覆盖段） |
+| `vmu.library` | `list(filter)→Head[]`（**不含正文**）／`expand(id)→{head,body}`／`fingerprint(kind,parts)→hex`／`append(rec,{track})→{id,fingerprint}`／`truncationReport()→{path,kept,dropped}[]` | `VMU_NO_SUCH_OBJECT` |
+| `vmu.meetings` | `convene(agenda,kind)→{id}`／`round(id)→Round`／`handUp(id,member)→{position}`／`ballot(id,target,kind)→{ballotId}`／`cast(ballotId,vote)→{accepted}`／`tally(ballotId)→{outcome,reason?}`／`close(ballotId,reason)→{decided}`／`reopen(ballotId,reason)→{open}` | `VMU_STATE`／`VMU_MEETING_TOO_SMALL` |
+| `vmu.tasks` | `create(task)→{id}`／`assign(id,who)→{owner}`／`transition(id,to)→{state}`／`list(filter)→Task[]`／`stage()→{current,stages[]}` | `VMU_STATE`／`VMU_NOT_PERMITTED` |
+| `vmu.budget` | `usage(scope)→{cap,used}`／`check(op,scope)→{allowed}`／`exceeded()→{which,cap,used}`／`degrade(reason)→{mode}` | `VMU_RESOURCE_BUDGET` |
+| `vmu.members` | `roster()→Member[]`／`roles()→Slot[]`／`assignRole(id,slot)→{slot}`／`wake(id,ask)→{turnId}`／`end(id,reason)→{ended}` | `VMU_NOT_MEMBER`／`VMU_RESOURCE_BUDGET` |
+| `vmu.packs` | `available()→PackRef[]`／`active()→PackRef[]`／`load(name,{dryRun?})→{changed,plan[]}`／`unload(name)→{changed}`／`conflicts()→Conflict[]` | `VMU_PACK_CONFLICT`／`VMU_PACK_MISSING` |
+
+**三条接口纪律**：① **能力缺失用 `ok:false` ＋ 具名码**，不得抛裸异常给上层 ✗（框架内部异常按中间件失败策略处置 ✓）；② **返回对象一律可 JSON 序列化**（便于审计与场景比对 ✓）；③ **幂等性**：`read/list/status/tally` 幂等；`set/append/cast` 等写操作**必须能被审计去重**（同一 `traceId` 不重复生效 ✓——沿用 v5r 的幂等纪律 ✓）。
+
 **约定**：所有方法**只返回结构化数据**（无副作用者返回快照）；**带副作用者必须返回"发生了什么"的可审计摘要**；任何拒绝都必须带 `{ok:false, code, message, hint?}`。
 
 ---
