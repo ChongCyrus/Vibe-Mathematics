@@ -35,6 +35,23 @@
 | **H 资源与安全** | `kernel/budget.js`、`kernel/guard.js` | 预算与上限、审批/授权接线、工具过滤与守卫、写保护与路径约束、审计留痕 | 服务 + 钩子 |
 | **I 总线与扩展点** | `kernel/bus.js`、`kernel/middleware/*.js`、`kernel/pack.js` | DSH 钩子的**统一封装**、vmu 内部钩子、四形态中间件装载、pack 装载、**公开接口清单与版本** | 服务 + 注册面 |
 
+**分区 ↔ 公开服务 ↔ 钩子域（与 03-§2 咬合，消"登记了但无人引用"✗）**
+
+| 分区 | **公开服务（03-§2）** | 主要 vmu 钩子域（05-§4.2） |
+|---|---|---|
+| A 会话与成员 | **`vmu.members`** | `member/wake-*`、`turn/reply-parsed` |
+| B 耐久与投影 | **`vmu.store`** | `session/flush`、`fs/write-intent` |
+| C 提示词管线 | **`vmu.prompts`** | `prompt/assemble`、`prompt/section` |
+| D 归档与记忆 | **`vmu.library`** | `record/append-before`、`record/appended` |
+| E 会议与表决 | **`vmu.meetings`** | `meeting/round-*`、`ballot/cast`、`ballot/tally` |
+| F 任务与工作流 | **`vmu.tasks`** | `task/assign`、`task/transition`、`settle/*` |
+| G 形式化与计算 | （工具面为主，经 `vmu.kernel` 暴露作业状态） | `math/*` 判定点（策略外置） |
+| H 资源与安全 | **`vmu.budget`** | `budget/exceeded`、`tools/pre-execute` |
+| **总线与扩展点** | **`vmu.bus`**、**`vmu.middleware`**、**`vmu.packs`** | 全部钩子的**注册与路由**（不额外触发） |
+| 总控与生命周期 | **`vmu.kernel`**、**`vmu.settings`** | `pack/loading`、`pack/loaded`、`settings/changed` |
+
+> **咬合规则（门禁 D11）**：03-§2 登记的每个服务**必须**在本表出现（反之亦然）；新增服务 ⇒ 两处同改，否则红 ✓。
+
 **模块规则（静态门强制）**：跨模块只经公开接口；不得直接读对方私有状态；不得隐式全局；不得循环依赖。
 
 **为什么必须模块化（实测依据，2026-10-09）**：`vibe-math-v5r/vibe-math-v5r.js` 是**单闭包单体** —— 只有两个模块级导出（`resolveKnownTool :93`、`__testHelpers :11478`），**其余约 11.5k 行全部在 `export function apply(ctx) :413` 一个函数体内**，45 条 `// ---- ` banner **只是同一闭包里的注释分区，不是模块边界** ✗。后果：① 任何"局部复用"都得先**抽函数**（无法 `import` 一个子系统）；② 行号/文件规模不可控（纯 LF 11,597 行 / 833 KB）；③ 跨代复用只能发生在**已抽出的少数纯件**上（`math-computation.js`、`math-engines.js`、纯算法如 `applyV5Event :589`／`judgeVerdict :6593`／`aggregateOpinion :6557`、提示词 builder 群）。
