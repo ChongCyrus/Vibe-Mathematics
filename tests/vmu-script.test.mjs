@@ -67,8 +67,12 @@ const fakeSubprocess = ({ exitCode = 0, stdout = '{"ok":true,"summary":"done"}',
 {
   ok(sm.hasHostSpawn(fakeSubprocess().ctx) === true, 'a host with a subprocess service is detected')
   ok(sm.hasHostSpawn({ get: () => undefined }) === false, 'a host without one is detected too')
-  await expectThrow(async () => sm.createHostSpawn({ ctx: { get: () => undefined } }), 'VMU_ENGINE_UNAVAILABLE',
-    'building the seam without a service is refused by name (never faked)')
+  // The seam RESOLVES the service at call time (a plugin can apply before the service mounts), so building
+  // it always succeeds and the refusal happens when it is actually used.
+  const noService = sm.createHostSpawn({ ctx: { get: () => undefined } })
+  await expectThrow(() => noService({ file: 'x' }), 'VMU_ENGINE_UNAVAILABLE',
+    'calling the seam without a service is refused by name (never faked)')
+  ok(sm.createHostSpawn !== undefined, 'building a seam is not itself a failure (late services are handled)')
 }
 
 // ---- 2. argv, output and the two ending kinds ---------------------------------------------------

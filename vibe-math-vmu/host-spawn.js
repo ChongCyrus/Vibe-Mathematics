@@ -49,15 +49,19 @@ export function createHostSpawn({
   clock = () => Date.now(),
   delay = (ms) => new Promise((r) => setTimeout(r, ms)),
 } = {}) {
-  const sub = (() => {
+  // The service is resolved AT CALL TIME, not at construction: the live run showed that a plugin's apply()
+  // can run before the host's subprocess service is mounted, and binding "no service" at that instant made
+  // every script run refuse forever (VMU_ENGINE_UNAVAILABLE) although the service was there a moment later.
+  const subprocessOf = () => {
     try { return ctx && typeof ctx.get === 'function' ? ctx.get('subprocess') : null } catch { return null }
-  })()
-  if (!sub || typeof sub.spawn !== 'function') {
-    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam can be bound',
-      'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
   }
 
   return async function spawnSeam(request = {}) {
+    const sub = subprocessOf()
+    if (!sub || typeof sub.spawn !== 'function') {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam is bound',
+        'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
+    }
     const started = clock()
     const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs > 0 ? request.timeoutMs : null
     const argv = []
@@ -68,6 +72,19 @@ export function createHostSpawn({
     }
     for (const a of request.args || []) argv.push(String(a))
     if (argv.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an executable to run')
+
+    // RESOLVE argv[0] FIRST: the host's own working preset does exactly this (`sub.resolveExecutable(cmd)`
+    // returns a string path which then becomes argv[0]). Spawning an unresolved bare name made the host
+    // throw inside its resolution path ("Cannot read properties of undefined (reading 'includes')").
+    if (typeof sub.resolveExecutable === 'function') {
+      try {
+        const resolved = await sub.resolveExecutable(String(argv[0]))
+        if (typeof resolved === 'string' && resolved.length > 0) argv[0] = resolved
+      } catch (e) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'cannot resolve executable ' + argv[0] + ': ' + String((e && e.message) || e),
+          'the host resolves executables against its scrubbed PATH; an unresolvable command is a named failure')
+      }
+    }
 
     let handle
     try {

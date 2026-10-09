@@ -58,11 +58,12 @@ export function apply(ctx, config = {}) {
   const root = typeof config.root === 'string' && config.root.length > 0 ? config.root : null
   const clock = typeof config.clock === 'function' ? config.clock : undefined
 
-  // M3 SCRIPT BRIDGE: the subprocess seam is built from the HOST's service when it exists; without it the
-  // bridge stays unbound and every run is refused by name (VMU_ENGINE_UNAVAILABLE), never faked.
+  // M3 SCRIPT BRIDGE: the subprocess seam is bound whenever the context CAN carry services, and it resolves
+  // the host's service AT CALL TIME (a plugin's apply can run before the service mounts; binding "absent" at
+  // that instant would refuse every script run forever). Without a service the run refuses by name.
   let spawnSeam = null
   let spawnError = null
-  if (hasHostSpawn(ctx)) {
+  if (ctx && typeof ctx.get === 'function') {
     try { spawnSeam = createHostSpawn({ ctx, defaultCwd: typeof config.workspace === 'string' ? config.workspace : null }) }
     catch (e) { spawnError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
   }

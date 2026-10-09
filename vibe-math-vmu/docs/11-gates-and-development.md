@@ -286,7 +286,10 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | P2 | **M2 代码模块真机生效**（装载＋决定） | **PASS** ✓✓ | `…/p2-m2-in-host/` |
 | P2 | M4 整合包真机应用（规则 enabled） | **PASS** ✓✓ | `…/p2-pack-in-host-single/` |
 | P2 | 实例身份自证（多实例可辨） | **PASS** ✓✓ | `…/p2-instance-identity/` |
-| P2 | **M3 脚本形态真机运行** | **未做** ✗ | —— |
+| P2 | **M3 脚本形态真机运行** | **NON-RESULT** ✗ | `live/2026-10-09/p2-m3-in-host{,2,3}/` |
+
+> **M3 的 NON-RESULT 细节（诚实记账）**：脚本工具本身在真机**存在且可用** ✓（`action=list` 返回声明的 `probe` ✓）；`action=run` 走到宿主 `subprocess.spawn` 后，宿主**内部**抛
+> `Cannot read properties of undefined (reading 'includes')` ✗。我们传入的 spec（`argv`／`cwd`／`stdio:{stdin,stdout.maxBytes,stderr.maxBytes}`／`graceMs`）与**本仓可用预设 v5r 的调用逐字段一致** ✓，且已按 v5r 的做法先 `resolveExecutable(argv[0])` ✓；⇒ **高度怀疑是隔离 `DSH_HOME` 下 provider 的环境差异**（scrubbed parent env 缺项 ✗），**不是** vmu 规格问题 ✓。按 §9.2⑥ 记 **NON-RESULT**，并记录下一步诊断（对照非隔离 home 复跑 / 读 provider 的环境读取点 ✓）。
 | P3 | v5r-pack 对照跑 | **未做** ✗ | —— |
 | P4 | 公开服务版本可读（`contract()`） | **部分** ✓（库内 ✓；真机未读） | —— |
 | P5 | 发布清单全过 ＋ GUI（O2 前置） | **未做** ✗ | —— |
