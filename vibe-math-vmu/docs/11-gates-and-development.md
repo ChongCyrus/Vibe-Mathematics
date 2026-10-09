@@ -160,6 +160,7 @@
 10. **能力接缝纪律**（见 §4.1）：外部能力探测必须可注入；**不得**用"本机有没有 X"当测试前提 ✓。
 11. **扫描期间不得改变作业集合**（2026-10-09 实证 ✗✓）：`tests/run-tests.mjs` 会**扫描 `tests/` 顶层**来派生作业 ✓，因此在**任何全量扫描进行中**新建/删除/改名 `tests/*.mjs` 会让"文档计数守护"看到**不同的派生值**而与本次扫描的作业表冲突（实测：扫描起始 117，守护重算 118 ⇒ `audit-readme-counts` 红 ✗）。我先前"未列入 `files[]` 的新文件对门禁不可见"的推断是**错的** ✗。⇒ **纪律**：长扫描期间**只允许改不参与作业派生的文件**；新建测试必须**在 T0/T3 之外**做，并由 **T0 `--for-t3` 的工作树干净检查**兜底 ✓✓。
 12. **源码级断言必须写成"语法形状"，且源码散文不得含同形字面量**（2026-10-09 **三次**实证 ✗✓）：我三次被自己的**注释/字符串**绊倒 —— ① `math.js` 注释里的"必须形式化"字样触发零策略检查 ✗；② `members.js` 注释里列出角色名触发 D5 检查 ✗；③ `script-bridge.js` 的 `status().note` 里写出 `appendPrompt` 触发"无提示词写路径"检查 ✗。⇒ **纪律**：① 断言一律锚定**代码形状**（如 `\bname\s*\(` 调用、行首属性键、`= true` 赋值），**不锚定裸词** ✗；② 被检查文件里的**注释与文案不得包含该形状的字面量** ✓（用"prompt action"这类描述替代 ✓）；③ 新写一个"源码不得含 X"的断言时，**先想一遍哪些散文会命中它** ✓✓。
+13. **不得用 shell 字符串手术改结构化文件**（2026-10-09 实证 ✗✓）：我曾在 PowerShell 里用 `Get-Content -Raw` ＋ `.Replace(...)` ＋ `[IO.File]::WriteAllText` 改 `package.json`，**编码往返把非 ASCII 破坏成了非法 JSON** ✗（`Bad control character in string literal` ✓），当场被 `node -e "require('./package.json')"` 与计数脚本抓住 ✓。⇒ **纪律**：① `package.json`／生成物／任何结构化文件一律用**编辑工具或生成器**改 ✓，**绝不**用 shell 字符串替换 ✗；② 改完**立即**用解析器验证（`require`／`JSON.parse`／生成器 `--check` ✓）；③ 弄坏即 **git 恢复**再重做 ✓（本次即如此 ✓）。
 
 ---
 
@@ -196,6 +197,13 @@ node scripts/release-check.mjs             # 发布前清单
 - **官方验证的完整清单**已抽成 G1–G13（来自 C′ 对 `references/verification.md` 的提炼）；其中"**无浏览器控制时的上限**"（只允许 JS 语法 ＋ manifest 校验 ＋ 活 Client slot 注册）是**文档级**逐字结论 ✓；
 - **Client 侧活读数未核**（本机 `Slots.listSubTree` 超时）⇒ GUI 相关门禁暂缺，见 14-§1（O2）；
 - **`app.asar` 直读不可用**（本 agent `read` 工具 BigInt 缺陷）⇒ 读官方材料需自写 asar 解析＋SHA256 校验，见 14-§3（R-5）。
+
+### 8.1 真机实测新增（2026-10-09，证据在 `_oneoff/vmu/live/2026-10-09/` ✓）
+
+- **预设能装、注册面可见：已实测 PASS** ✓（临时 `DSH_HOME` ＋ `dsh plugin add <本仓>` ⇒ `dsh --profile <p> --dump-config` 的合成树含 `- id: preset-vibe-math-vmu`，**headless 与 web 两种随包模板各验一次** ✓；插件行 `name: dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js` 解析正确 ✓；六代预设同在 ✓）。
+- **会话能起：已实测 PASS** ✓（`dsh --profile vmu-h "<task>"` 多次 exit 0 ✓；`--json` 给出机器可读事件流 ✓）。
+- **headless 无法选择预设（本轮新发现 ✗✓）**：`dsh --profile headless --help` 的 Options **只有** `--json`／`--session-id`／`-h` ✗；`--json` 事件流里**没有任何 preset/tool 信息** ✓；而 `ctx.agentPresets` 的选择手段是 **程序化 `select(agent, id)`／`mount(ctx,id?)`** 或 **GUI 预设选择器** ✓（我方 DSH 面重建 §3.9 逐字 ✓）⇒ **"预设激活"与"vmu 工具面可见"在 headless 下不可达** ⇒ 按 §9.2⑥ 记 **NON-RESULT**（**不记通过、也不记失败** ✓）。⇒ **P5 真机集的前置**：需要一个能选择预设的宿主入口（GUI 或程序化 `select`），见 14-§7 待办 ✓。
+- **`agentPresets.compositionInventory()`／`readDocument()`／`composeFrom()` 未核** ✗（headless 不可达 ⇒ 与上一条同源）。
 
 ---
 
