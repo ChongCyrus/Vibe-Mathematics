@@ -1912,12 +1912,23 @@ if (String(process.env.MUTANTS_SELFTEST || '').trim() === '1') {
  */
 let mutantRetried = 0
 let mutantRetriedRed = 0
+/**
+ * A family that CRASHES (its child timed out, its output was unparseable, ...) must count as a failed family
+ * and NOT kill the script before the summary. Learned on a loaded gate: the whole run exited 1 with no
+ * summary at all, so nothing was retried and no evidence survived (0 retry lines, no `hangs=` line).
+ */
+const safeRunFamily = (f) => {
+  try { return runFamily(f) } catch (e) {
+    console.log('  FAMILY CRASH ' + f.name + ' :: ' + String((e && e.message) || e).slice(0, 200))
+    return false
+  }
+}
 for (const f of SELECTED) {
-  let ok = runFamily(f)
+  let ok = safeRunFamily(f)
   if (!ok && !ONLY) {
     mutantRetried++
     console.log('  RETRY family ' + f.name + ' (R-6b: a loaded gate can make the child report its red differently)')
-    ok = runFamily(f)
+    ok = safeRunFamily(f)
     if (ok) mutantRetriedRed++
   }
   if (ok) red++

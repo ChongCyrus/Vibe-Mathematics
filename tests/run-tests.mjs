@@ -250,7 +250,10 @@ function jobLimit(job) {
 // order fully deterministic (no randomness anywhere). Unknown/new files get DEFAULT_WEIGHT and run last.
 // ROLLBACK: deleting the single `suites = lptOrder(suites)` line restores plain alphabetical order.
 const DURATION_WEIGHTS = {
-  'v5-institute-fixes.mutants.mjs': 906.9,
+  // MEASURED over four full sweeps this session: 1483.6 / 1509.9 / 1981.6 s (31-33 min on a loaded machine)
+  // plus 1319-1456 s in the history below. The old weight (906.9) under-stated it by ~2x, which mis-scheduled
+  // the headstart window; 1800 s is the measured midpoint, and the 2400 s timeout above still covers the worst.
+  'v5-institute-fixes.mutants.mjs': 1800,
   'v2-fix-probes.mutants.mjs': 453.6,
   'v3-fix-probes.mutants.mjs': 249.5,
   'audit-math-computation-sensitivity.mjs': 127.6,
