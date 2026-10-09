@@ -57,7 +57,7 @@ const shipped = new Set(pkg.files || [])
 // ---- G. the real-machine matrix keeps its discipline ---------------------------------------------
 {
   const text = readFileSync(join(DOCS, '11-gates-and-development.md'), 'utf8')
-  const section = text.split('### 9.6')[1] || ''
+  const section = (text.split('### 9.6')[1] || '').split('\n### ')[0]
   const rows = section.split('\n').filter((l) => /^\|/.test(l) && !/^\|\s*-+/.test(l) && !/^\|\s*期集/.test(l))
   ok(rows.length >= 8, 'the real-machine matrix has rows', rows.length)
   const ALLOWED = ['PASS', 'NON-RESULT', '未做', '部分']

@@ -297,3 +297,16 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | P5 | 发布清单全过 ＋ GUI（O2 前置） | **未做** ✗ | —— |
 
 > **诚实口径**：上表**只写已取得证据的行** ✓；未做的一律写"未做"✗，**不得**用库内测试冒充真机 ✓。
+
+### 9.7 T3（非增量全量）运行记录
+
+| 时间 | 命令 | 结果 | 备注 |
+|---|---|---|---|
+| 2026-10-09 19:55–20:26（31 min） | `GATE_RELEASE=1 node tests/run-tests.mjs`（前置 `preflight.mjs --for-t3` **PASS** ✓，工作树干净 ✓） | `TOTAL 132 PASS 131 FAIL 1` ✗ | 唯一红：`v5-institute-fixes.mutants.mjs`（1512.7 s ✓） |
+
+**该红的定位（本轮已完成 ✓）**：红不是 v5 行为缺陷 ✗，而是**变异族自身的漂移** ✗✓ ——
+- 被判红的断言来自 **`tests/selfdrive-v5.mjs:2782-2791`**（`s25b-progress-tracks` 场景 ✓），而该套件在**同一轮 T3 里 PASS** ✓（`ALL GREEN` ✓）⇒ **基线绿、仅变异下红** ✓；
+- 变异 `S25B: the track resolver hard-codes narrative`（`v5-institute-fixes.mutants.mjs:1664-1672` ✓）把 track 解析**写死成 narrative** ⇒ **同时**打断 `rejected` 与 `obstacle` 两条落盘断言 ✗，而该族要求"**单点必红**" ✓ ⇒ 期望模式（只匹配 `rejected ⇒ rejected.md`）**过窄** ✗；
+- ⇒ 处置：**测试侧**收窄变异（只写死 `rejected` 分支 ✓）或放宽期望（接受任一被打破的落盘断言 ✓），**不动 v5 行为** ✓（"守卫要能失败"与"变异要单点"两条同时满足 ✓）。
+
+> **纪律收获（第三次同类 ✓）**：**变异锚点/期望会随被测代码漂移而腐化** ✗✓（本会话已三次：我自己的 stale `--self-probe` 锚 ✓、M1 删除不存在的文档 ✗、以及本条 ✓）⇒ 变异族必须把**锚点命中**本身作为断言 ✓（`indexOf(anchor) === -1 ⇒ 立即红` ✓），并在**每次 T3** 里被真正跑到 ✓✓ —— 这正是"T3 每 2–3 期集一次"不可被省掉的原因 ✓。
