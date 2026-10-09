@@ -105,6 +105,14 @@ export function createRegistry({ services = {}, tools = {}, clock = () => new Da
       return { ok: true, from, to, deprecated: deprecated === true }
     },
 
+    /** Remove an alias. Used by pack unload, so a pack leaves no published name behind (O4). */
+    removeAlias(from) {
+      const a = aliases.get(from)
+      if (!a) throw refuse('VMU_NO_SUCH_OBJECT', 'no alias named ' + String(from), 'known aliases: ' + ([...aliases.keys()].join(', ') || '(none)'))
+      aliases.delete(from)
+      return { ok: true, from, to: a.to }
+    },
+
     /** Resolve any name (canonical or alias) to its canonical entry, reporting the alias that was used. */
     resolve(name) {
       const direct = entries.get(name)

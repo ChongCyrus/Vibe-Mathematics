@@ -101,7 +101,7 @@ export function createKernel({
 
   const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock })
 
-  const library = root
+  let library = root
     ? createLibrary({
       root,
       tracks: tracks || settings['vmu.records.tracks'],
@@ -112,7 +112,11 @@ export function createKernel({
     })
     : null
 
-  const members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings })
+  // `members` and `library` are re-declarable: a PACK owns the institution (slots, tracks), so applying a
+  // pack must be able to declare them. Re-declaring a library rebuilds its index from disk, so no record
+  // is lost by the swap (docs/10 §2).
+  let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings })
+  const packNotes = []
   const tasks = createTasks({
     stages: stages || settings['vmu.tasks.stages'] || [],
     maxOpenTasks: maxOpenTasks !== undefined ? maxOpenTasks : (settings['vmu.tasks.maxOpenTasks'] || 0),
@@ -168,8 +172,10 @@ export function createKernel({
     bus,
     prompt,
     store,
-    library,
-    members,
+    // Getters, not captured values: a pack can re-declare the institution (slots/tracks) AFTER the kernel
+    // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 §2).
+    get library() { return library },
+    get members() { return members },
     tasks,
     rules,
     loader,
@@ -263,6 +269,48 @@ export function createKernel({
 
     activePacks() { return packs.slice() },
 
+    /** A pack declares the institution's ROLE SLOTS; the kernel only holds them (D5). */
+    declareSlots(list = []) {
+      members = list.length > 0
+        ? createMembers({
+          slots: list,
+          maxLiveMembers: maxLiveMembers !== undefined ? maxLiveMembers : (settings['vmu.limits.maxLiveMembers'] || 0),
+          deliver,
+          bus,
+          clock,
+        })
+        : null
+      return { ok: true, slots: list.length, hasRoster: members !== null }
+    },
+
+    /** A pack declares the record TRACKS. Rebuilding the library re-reads the directory, so nothing is lost. */
+    declareTracks(list = []) {
+      if (!root) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no library root, so tracks cannot be declared',
+          'construct it with { root }')
+      }
+      if (list.length === 0) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a pack must declare at least one track', 'tracks are a closed set (docs/07 §4.2)')
+      }
+      library = createLibrary({
+        root,
+        tracks: list.slice(),
+        headListAt: settings['vmu.records.headListAt'],
+        truncateMode: settings['vmu.records.truncateMode'],
+        fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
+        clock,
+      })
+      return { ok: true, tracks: library.status ? list.slice() : list.slice() }
+    },
+
+    /** The settings this assembly was constructed with (used by pack planning and residue checks). */
+    settingsSnapshot() { return Object.assign({}, settings) },
+
+    /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
+    notePackApplied(id) { packNotes.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
+    notePackUnloaded(id) { packNotes.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
+    packNotes() { return packNotes.map((n) => Object.assign({}, n)) },
+
     /** Observability (R11): the whole assembly in one place, with each part reporting its own state. */
     status() {
       return {
@@ -274,7 +322,9 @@ export function createKernel({
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,
-        library: library ? library.status() : null,
+        // The library's own status() is ASYNC (it rebuilds the index from disk), so this synchronous view
+        // only reports presence and asks the caller to await requireLibrary().status() for the detail.
+        library: library ? { present: true, detail: 'await requireLibrary().status() for tracks/records/kinds/truncation' } : null,
         members: members ? members.status() : null,
         tasks: tasks.status(),
         rules: rules.status(),
