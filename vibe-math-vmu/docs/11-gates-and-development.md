@@ -41,6 +41,32 @@
 
 ---
 
+### 2.1 可追溯表（**一行一表**，仿 v5r `12-traceability` 范式：便于正则守卫 ✓）
+
+> 每行**一条**：`要求 → 门禁 id → 文档落点 → 场景/族命名约定`。命名约定是**可机器检查**的：门禁实现后，场景名与族名必须按此拼写，否则红 ✓。
+
+| 要求 | 门禁 id | 文档落点 | 场景/族命名约定 |
+|---|---|---|---|
+| R1 内核零策略 | `S-zpolicy` | 01-§2／11-§4 | 静态门（无场景）；词表数据文件 `settings/zpolicy-words.json` |
+| R2 能力齐备 | `T-surface`＋`B-cap-*` | 02-§2／03-§2 | `s-cap-<area>-usable`／`s-cap-<area>-hookable` |
+| R3 四可 | `S-schema`＋`B-set-*`＋`C-status` | 04-§2／04-§11 | `s-set-<key>-echo`／`-reject`／`-hot`／`-audit` |
+| R4 单一源 | `S-schema`＋`C-docgen` | 04-§3 | `s-docgen-table-eq-schema` |
+| R5 四形态 | `B-mw-*`＋`M-mw-*` | 05-§3 | `s-mw-{rules,module,script,plugin}`＋`m-mw-*` |
+| R6 钩子契约化 | `T-hooks` | 05-§4 | `s-hooks-registry-eq-code` |
+| R7 稳定接口 | `S-api`＋`T-surface` | 03-§7 | `s-api-no-private-access` |
+| R8 提示词可管理 | `C-corpus`＋`B-prompt-*` | 06-§3／06-§4 | `c-prompt-<pack>-<role>-<phase>` |
+| R9 归档与记忆 | `B-lib-*` | 07-§4 | `s-lib-{fingerprint,dangling,tracks,truncation}` |
+| R10 耐久可信 | `B-store-*`＋`S-nolog` | 07-§1／07-§3 | `s-store-{concurrent,recover,migrate,no-session-log}` |
+| R11 可观测 | `C-status`＋`B-refuse-*` | 03-§8／04-§2 | `s-refuse-named-<code>` |
+| R12 可复现 | `B-determinism` | 01-§3.1／11-§4.1 | `s-determinism-<area>-twice` |
+| R13 门禁即文档 | `S-map` | 11-§2／11-§2.1 | `s-map-no-gap`（本表自身可被解析校验） |
+| R14 无屎山 | `S-size`＋`S-import` | 02-§2 | `s-size-<file>`／`s-import-whitelist` |
+| R15 可迁移 | `B-parity-v5r`＋`C-parity-report` | 10-§5 | `b-parity-<scenario>`／`c-parity-report-classified` |
+
+**自身可校验性**：`s-map-no-gap` 解析**本表**（一行一条）⇒ ① R1..R15 全覆盖；② 每个门禁 id 在 11-§2 出现；③ 每个文档落点存在 ⇒ 任一不满足即红 ✓（这正是"门禁即文档"的自指闭环 ✓）。
+
+---
+
 ## 3. 每篇文档的验收判据索引（与 00-§3 联动）
 
 | 文档 | 它承诺什么 | 对应门禁 |

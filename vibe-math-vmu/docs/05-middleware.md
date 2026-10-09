@@ -96,6 +96,25 @@ vmu.middleware.entries:
 
 > **命名纪律**：DSH 底座钩子**沿用同名**（便于对照官方文档），vmu 内部钩子用 `域/动作[-时机]` 形式；**两者都必须在本文登记**。
 
+### 4.3 vmu 内部钩子的**默认失败策略**与作用域（逐条；补齐 §4.2 表的语义列）
+
+| vmu 钩子 | 默认失败策略 | 作用域 | 说明 |
+|---|---|---|---|
+| `member/wake-before` / `-after` | **closed** | 成员 | 唤醒前拦截应偏安全侧 |
+| `turn/reply-parsed` | **closed** | 成员 | 解析结果直接影响后续，失败应拒绝而非放行 |
+| `meeting/round-start` / `-end` | closed | 会议 | 影响流程推进 |
+| `ballot/cast` | **closed** | 表决 | 投票完整性 |
+| `ballot/tally` | **closed** | 表决 | 计票正确性 |
+| `record/append-before` | closed | 成员/会话 | 归档写入完整性 |
+| `record/appended` | **open** | 成员/会话 | 事后观测，失败不影响主流程 |
+| `task/assign` / `task/transition` | closed | 任务 | 状态机完整性 |
+| `prompt/section-assembled` | **open** | 成员 | 后处理，失败降级为"不处理" |
+| `budget/exceeded` | **abort** | 会话 | 资源越界属关键路径 ⇒ 中止本轮并具名上报 |
+| `pack/loading` / `pack/loaded` | closed | 会话 | 装载一致性 |
+| `settle/before` / `-after` | closed | 阶段 | 收束条件必须成立 |
+
+**三态语义回顾**（§7）：`open`＝放行但留痕／`closed`＝拒绝该操作／`abort`＝中止本轮或本阶段；**任何失败都必须记审计**（谁、哪条、哪个钩子、原始错误）✓。
+
 ---
 
 ## 5. M1 声明式规则：条件 DSL 与动作集
@@ -261,3 +280,5 @@ scope: { role: ['reviewer'], phase: ['review'], session: 'self' }   # 角色/阶
 - **M3（脚本/工作流）桥的执行语义**（`workflow/*` 事件可见性、脚本读写权限边界）**未核** ⇒ 需 P4 实测；
 - **能力清单（`capabilities`）的运行时强制方式**未定（谁校验、越权如何具名拒）；
 - **条件 DSL 谓词全集**（尤其 `subject` 具名状态谓词）需与 03-§4 同步扩展 ⇒ 现仅首批。
+
+> **未核登记处**：以上各项已并入 **14-§2（U1–U12）** 与 **14-§1（O1–O7，均已裁定为 D13）** ✓。

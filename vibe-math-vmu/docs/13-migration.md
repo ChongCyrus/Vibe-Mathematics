@@ -112,3 +112,5 @@
 - **别名层的弃用期与移除条件未定**；
 - **v5r 的 4 处实测接线缺口**（README 26 处"四个"／persona-surface 与 persona-sensitivity 口径不一致／VARIANTS 未加 v5r 变体／描述与文件头仍写"四个"）⇒ vmu 接线时**必须一次补齐**，但具体补齐清单待 P0 前定稿；
 - **`screenshots.json` 恰好四张 PNG** 与 `audit-readme-bilingual` 的"四张 `-en.svg`"断言 ✗ ⇒ vmu 是否新增截图/双语资源未定。
+
+> **未核登记处**：以上各项已并入 **14-§2（U1–U12）** 与 **14-§1（O1–O7，均已裁定为 D13）** ✓。
