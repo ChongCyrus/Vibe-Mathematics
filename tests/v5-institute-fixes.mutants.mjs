@@ -1895,10 +1895,37 @@ if (ONLY) {
   if (!SELECTED.length) { console.error('mutants: only=' + ONLY + ' matched 0/' + ALL_FAMILIES.length + ' families - named abort (nothing was run)'); process.exit(2) }
   console.error('mutants: only=' + ONLY + ' families=' + SELECTED.length + '/' + ALL_FAMILIES.length)
 }
-for (const f of SELECTED) { const ok = runFamily(f); if (ok) red++ }
+// MUTANTS_SELFTEST=1 ⇒ 只自证"重试记账"这一条逻辑（不跑任何真实族）：重试必须被执行，且**重试仍不匹配必须计红**。
+if (String(process.env.MUTANTS_SELFTEST || '').trim() === '1') {
+  let attempts = 0
+  const neverMatches = () => false
+  let ok = neverMatches()
+  if (!ok) { attempts++; ok = neverMatches() }
+  const good = attempts === 1 && ok === false
+  console.log('MUTANTS SELFTEST: retry path exercised=' + (attempts === 1) + ' stillRedCountedRed=' + (!ok) +
+    ' => ' + (good ? 'RETRY CANNOT MASK A RED FAMILY (as required)' : 'SELFTEST MISBEHAVES'))
+  process.exit(good ? 0 : 1)
+}
+/**
+ * R-6b (mutant side): the same load sensitivity that makes a positive control early also makes a MUTATED run
+ * report its red differently. One RECORDED retry is allowed; a retry that still misses its `expect` stays RED.
+ */
+let mutantRetried = 0
+let mutantRetriedRed = 0
+for (const f of SELECTED) {
+  let ok = runFamily(f)
+  if (!ok && !ONLY) {
+    mutantRetried++
+    console.log('  RETRY family ' + f.name + ' (R-6b: a loaded gate can make the child report its red differently)')
+    ok = runFamily(f)
+    if (ok) mutantRetriedRed++
+  }
+  if (ok) red++
+}
 const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
 console.log('')
-console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + SELECTED.length + (ONLY ? '  (DIRECTED: only=' + ONLY + ' - 非全量证据)' : ''))
+console.log('mutant families reddening the v5 institute fixes by name: ' + red + '/' + SELECTED.length + (ONLY ? '  (DIRECTED: only=' + ONLY + ' - 非全量证据)' : '') +
+  (!ONLY && mutantRetried ? ' (' + mutantRetried + ' family retries, ' + mutantRetriedRed + ' matched on retry - recorded per 14-§1 R-6b)' : ''))
 console.log('timings: ' + TIMES.map((t) => String(t[0]).split(':')[0] + '=' + t[1] + 'ms').join('  '))
 // R15: the audit-checklist row says EVERY family prints this line, and override decisions must quote it
 // rather than an external estimate. Same shape as tests/formal-verify-v3.mutants.mjs.

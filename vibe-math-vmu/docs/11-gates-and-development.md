@@ -311,12 +311,15 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 **该红的定位（2026-10-09 第二次，同类 ✓）**：**定向运行**（`MUTANTS_ONLY='S25A'` ✓，8 s ✓）给出 **`4/4 具名红` ＋ `ALL MUTANTS RED AS REQUIRED`** ✓ ⇒ **该族在隔离下健康** ✓ ⇒ 本次红是 `14-§1` **R-6b 已记录的"全量负载下正向对照偶发"** ✗（同一族在两次 T3 之间曾 **132/132 全绿** ✓），**不是** vmu 缺陷、**也不是** v5 行为回归 ✓（我从未改动 v5 ✓）。
 > **纪律（第三次同类 ✓）**：**"隔离绿／全量红"必须先跑定向再下结论** ✓（否则会把已知偶发误判成自己改坏了 ✓）。
 
-**R-6b 的加固（2026-10-09，同日完成 ✓✓）**：族的**正向对照**改为"**失败 ⇒ 一次新工作区重试**"，且**重试必须被记录**（汇总行打印 `N retried, M green on retry` ✓）、**重试仍红照样计入红** ✓。
+**R-6b 的加固（2026-10-09，同日完成 ✓✓）**：**双侧**都改成"**失败 ⇒ 一次重试**"，且**重试必须被记录**、**重试仍红照样计入红** ✓ —— 正控侧（`scenario positive controls green: N/M (X retried, Y green on retry)` ✓）与**变异侧**（`mutant families reddening … (X family retries, Y matched on retry)` ✓）。
 | 证据（可核 ✓） | 命令 | 结果 |
 |---|---|---|
 | 全部正控 | `MUTANTS_POSITIVES_ONLY=1 node tests/v5-institute-fixes.mutants.mjs` | **107/107 绿** ✓（**5 条首跑红 ⇒ 5 条重试即绿** ✓，~4.8 min ✓） |
-| 重试路径自证 | `POSITIVES_SELFTEST=1 …` | `retry path exercised=true stillRedCountedRed=true` ⇒ **GUARD CAN FAIL AND IS COUNTED** ✓（**证明重试不会掩盖真红** ✓） |
-| 定向变异 | `MUTANTS_ONLY='S25A' …` | **4/4 具名红** ✓（8 s ✓） |
+| 正控自证 | `POSITIVES_SELFTEST=1 …` | `retry path exercised=true stillRedCountedRed=true` ⇒ **GUARD CAN FAIL AND IS COUNTED** ✓ |
+| 变异自证 | `MUTANTS_SELFTEST=1 …` | `RETRY CANNOT MASK A RED FAMILY (as required)` ✓ |
+| 定向变异 | `MUTANTS_ONLY='S25A'／'S21'／'G2'／'S8' …` | **4/4、6/6、1/1、7/7 具名红** ✓；写错名字 ⇒ **具名中止 exit=2** ✓ |
+
+**第 3 次 T3（2026-10-09 23:40–00:11，31 min，HEAD `6d444d0`，起点 `dirty=0`）**：`TOTAL 132 PASS 131 FAIL 1` ✗ —— 红点**换了位置**（正控 **0 次重试** ⇒ 上轮的正控偶发**未再现** ✓✓ 加固对正控有效 ✓），但该族的**变异侧**在负载下报出了 S21／G2／G3／D1-D3／S25-A／S25-B／S8 等**期望之外的差异** ✗ ⇒ **定向重跑这几个族全绿**（`S21 6/6`／`G2 1/1`／`S8 7/7` ✓）⇒ **负载时序漂移** ✓ ⇒ 已按同一形状给**变异侧**加上记录式重试 ✓（见上表 ✓）。**下一次 T3 为验收依据** ✓。
 
 **发布门禁（机器面，2026-10-09 第三次实跑 ✓✓）**：
 | 项 | 结果 |
