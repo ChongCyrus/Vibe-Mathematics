@@ -47,7 +47,7 @@ const TRANSFORMS = [
   },
   {
     why: 'comment follows the row above (`./vibe-math-vN.js` → the package subpath)',
-    find: /a preset-local plugin \(\.\/vibe-math-v\d+r?\.js\)/,
+    find: /(?:a preset-local plugin|this package's plugin) \(\.\/vibe-math-(?:v\d+r?|vmu)\.js\)/,
     replace: (v) => `this package's plugin (dsh-vibe-math/vibe-math-${v}/vibe-math-${v}.js)`,
   },
   {
@@ -57,7 +57,7 @@ const TRANSFORMS = [
   },
   {
     why: '`present` (deliverable cards) has no host row — it must be declared inside the preset',
-    find: /(?=# ── Vibe Math V\d )/,
+    find: /(?=# ── Vibe Math (?:V\d|Unify) )/,
     replace: "- id: present\n  name: '@deepseek-ai/dsh-tool-present'\n\n",
   },
 ]
