@@ -105,6 +105,27 @@ const m = await import(pathToFileURL(MODULE).href)
   ok(!/proved false|isRefutation:\s*true/.test(src), 'the source never marks anything as a refutation')
 }
 
+// ---- 5b. R-b: settled() is the ONLY path to `passed` (exit 0 AND an unchanged content hash) -----
+{
+  const good = m.settled({ ok: true, code: 0 }, { hashBefore: 'abc123', hashAfter: 'abc123' })
+  ok(good.settled === true && good.state === 'passed' && good.isRefutation === false,
+    'exit 0 with an unchanged hash is the only way to settle as passed', JSON.stringify(good))
+  const moved = m.settled({ ok: true, code: 0 }, { hashBefore: 'abc123', hashAfter: 'def456' })
+  ok(moved.settled === false && moved.state === 'attempted' && /changed while compiling/.test(moved.reason),
+    'a file that changed mid-compile stays attempted, with the hash transition named', moved.reason)
+  const noHash = m.settled({ ok: true, code: 0 })
+  ok(noHash.settled === false && noHash.state === 'attempted' && /no content hash/.test(noHash.reason),
+    'a success WITHOUT a hash cannot settle (it is indistinguishable from a mid-compile change)')
+  const failed = m.settled({ ok: false, code: 'MATH_NONZERO_EXIT' }, { hashBefore: 'a', hashAfter: 'a' })
+  ok(failed.settled === false && failed.state === 'attempted', 'a failed run never settles')
+  const unavailable = m.settled({ ok: false, kind: 'unavailable', code: 'VMU_ENGINE_UNAVAILABLE' })
+  ok(unavailable.settled === false && /unavailable/.test(unavailable.reason), 'an unavailable engine settles nothing')
+  const surface = m.createMathSurface({ host: makeFakeHost({ installed: ['python3'] }).host })
+  ok(surface.settled === m.settled && surface.status().settledRule === m.LEAN_SETTLED_RULE,
+    'the surface exposes the rule itself, so a caller cannot invent a laxer one')
+  ok(m.LEAN_SETTLED_RULE === 'exit-0-and-content-hash-unchanged', 'the rule carries its v5r lineage in its name')
+}
+
 // ---- 6. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(MODULE, 'utf8')

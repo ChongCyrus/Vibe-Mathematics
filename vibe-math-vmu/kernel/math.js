@@ -70,6 +70,35 @@ export function classifyOutcome(outcome) {
 }
 
 /**
+ * R-b (P3 containment §6): the ONLY way a formalisation may ever be recorded as settled (`passed`).
+ * v5r's rule is kept verbatim because it closes a real hole - a compile that "succeeded" while the file
+ * changed underneath is not evidence about the file anyone is looking at:
+ *
+ *     settled  <=>  exit 0  AND  the compiled content hash is unchanged
+ *
+ * Everything else stays `attempted` (and an unavailable engine stays `unavailable`). This is a report
+ * about the TOOLING, never a verdict about the mathematics: `isRefutation` remains false below.
+ */
+export const LEAN_SETTLED_RULE = 'exit-0-and-content-hash-unchanged'
+
+export function settled(outcome, { hashBefore = null, hashAfter = null } = {}) {
+  if (!outcome || outcome.ok !== true) {
+    return { settled: false, state: 'attempted', rule: LEAN_SETTLED_RULE, isRefutation: false,
+      reason: outcome && outcome.kind === 'unavailable' ? 'the engine is unavailable, so nothing was settled' : 'the run did not exit cleanly' }
+  }
+  if (hashBefore === null || hashAfter === null) {
+    return { settled: false, state: 'attempted', rule: LEAN_SETTLED_RULE, isRefutation: false,
+      reason: 'no content hash was supplied: a success without a hash cannot be distinguished from a file that changed mid-compile' }
+  }
+  if (hashBefore !== hashAfter) {
+    return { settled: false, state: 'attempted', rule: LEAN_SETTLED_RULE, isRefutation: false,
+      reason: 'the compiled file changed while compiling (hash ' + String(hashBefore).slice(0, 12) + ' -> ' + String(hashAfter).slice(0, 12) + ')' }
+  }
+  return { settled: true, state: 'passed', rule: LEAN_SETTLED_RULE, isRefutation: false,
+    reason: 'exit 0 and the compiled content is unchanged' }
+}
+
+/**
  * Create the surface over an injected host. `settings` is the resolved settings map; the only keys this
  * surface reads are the harmless capability switches (docs/04 §11), never a policy about truth.
  */
@@ -108,6 +137,10 @@ export function createMathSurface({ host, settings = {} } = {}) {
       return mathAvailabilityLine(probeReport, lang, mathMode || settings['vmu.math.mode'])
     },
 
+    /** R-b: the only way a formalisation may be recorded as settled. Exposed so callers cannot invent a
+     *  laxer rule of their own (a caller that skips this and marks `passed` on exit 0 is the v5r bug). */
+    settled,
+
     /** Observability (R11): what is on offer, and what it refuses to decide. */
     status() {
       return {
@@ -118,6 +151,7 @@ export function createMathSurface({ host, settings = {} } = {}) {
         onUnavailable: ON_UNAVAILABLE,
         failureCodes: MATH_FAILURE_CODES.length,
         neverRefutes: true,
+        settledRule: LEAN_SETTLED_RULE,
       }
     },
   }
