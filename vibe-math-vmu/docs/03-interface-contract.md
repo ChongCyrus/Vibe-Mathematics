@@ -33,11 +33,11 @@
 | 服务键 | 职责 | 主要方法（提案） | apiVersion |
 |---|---|---|---|
 | `vmu.kernel` | 生命周期与总控（启动/暂停/收束/健康） | `state()`、`pause(reason)`、`resume()`、`settle(stage)`、`health()` | 1 |
-| `vmu.store` | 耐久端口（事务/版本/迁移/订阅） | `open(spec)`、`read(key)`、`write(key, value, {expect})`、`patch(key, fn)`、`subscribe(key, fn)`、`migrate()`、`export()/import()` | 1 |
-| `vmu.settings` | 设置读改与审计 | `get(key)`、`resolved(key)`、`set(key, value, {layer, by, reason})`、`auditTail(n)`、`jsonSchema()` | 1 |
-| `vmu.middleware` | 中间件装载与观测 | `list()`、`validate(entry)`、`dryRun(entries, samples)`、`status()`、`disable(id)` | 1 |
-| `vmu.bus` | 钩子总线（内部＋DSH 桥接） | `emit(hook, payload, {scope})`、`on(hook, meta, fn)`、`trace(traceId)` | 1 |
-| `vmu.prompts` | 提示词管线 | `sections()`、`register(section)`、`resolve(binding)`、`snapshot()` | 1 |
+| `vmu.store` | 耐久端口（事务/版本/迁移/订阅） | **已实现** ✓ `open(spec)`、`read(key)`、`write(key,value,{expect})`、`patch(key,fn)`、`subscribe(key,fn)`、`migrate()`、`export()/import()`、**`stats()`** | 1 |
+| `vmu.settings` | 设置读改与审计 | **原语已实现** ✓（`settings/schema.js`：`SETTING_DEFS`／`resolveSettings`／`validateValue`／`assertDeclared`／`assertNoUserTime`／`toJsonSchema`／`buildSchemastery`）＋ **服务包装 `get/resolved/set/auditTail/jsonSchema` 待实现** ⏳ | 1 |
+| `vmu.middleware` | 中间件装载与观测 | **部分实现**：条目的静态校验＝`validateEntry(entry)` ✓；观测/启停＝总线上的 `status()/disable()/enable()/setDryRun()` ✓；**`list()` 与 `dryRun(entries, samples)` 待实现** ⏳ | 1 |
+| `vmu.bus` | 钩子总线（内部＋DSH 桥接） | **已实现** ✓ `emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?}`、`on(entry,handler)`、`trace(traceId)`、`status()`、`disable(id,reason)`、`enable(id)`、`setDryRun(v)`、**`wrapHostWaterfall(next)`** | 1 |
+| `vmu.prompts` | 提示词管线 | **已实现** ✓ `register(section)`、**`assemble(ctx)→{ok,text,sources[],truncation[]}`**、`override(section,text,by)`、`rollback(section)`、`snapshot(scopes)`、`bindToHost(adapter)`、`setState(text)`、`status()` | 1 |
 | `vmu.library` | 归档与记忆 | `list(filter)`、`expand(id)`、`fingerprint(kind, parts)`、`append(record, {track})`、`truncationReport()` | 1 |
 | `vmu.meetings` | 会议/表决原语 | `convene(agenda, kind)`、`round()`、`handUp(id)`、`ballot(target, kind)`、`cast(vote)`、`tally(ballot)`、`close(ballot, reason)` | 1 |
 | `vmu.tasks` | 任务与阶段 | `create(task)`、`assign(id, who)`、`transition(id, to)`、`list(filter)`、`stage()` | 1 |
@@ -52,11 +52,11 @@
 | 服务 | 方法（参数 → 返回） | 具名拒（示例） |
 |---|---|---|
 | `vmu.kernel` | `state()→KernelState`／`pause(reason)→{pausedAt}`／`resume()→{resumed[]}`／`settle(stage)→{stage, effects[]}`／`health()→{ok, checks[]}` | `VMU_STATE` |
-| `vmu.store` | `open(spec)→void`／`read(key)→Value`／`write(key,value,{expect?})→WriteResult`／**`patch(key,fn)→WriteResult`**／`subscribe(key,fn)→Disposer`／`migrate()→MigrationReport`／`export()→Snapshot`／`import(s,opts?)→void` | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION` |
-| `vmu.settings` | `get(key)→Value`／`resolved(key)→{value,layer,overridden[]}`／`set(pairs,{layer,by,reason?})→{changed[]}`／`auditTail(n)→Entry[]`／`jsonSchema()→Schema` | `VMU_INVALID_ARGUMENT`／`VMU_NOT_PERMITTED` |
-| `vmu.middleware` | `list()→Entry[]`／`validate(entry)→{ok,problems[]}`／`dryRun(ids?,samples)→{hits[],would[]}`／`status()→{entries[],hits,failures,breakers[]}`／`disable(id,reason)→{disabled}` | `VMU_MIDDLEWARE_FAILED` |
-| `vmu.bus` | `emit(hook,payload,{scope?,traceId?})→{handled,decisions[],traceId}`／`on(hook,meta,fn)→Disposer`／`trace(id)→Trace` | `VMU_MIDDLEWARE_REJECTED` |
-| `vmu.prompts` | `sections()→Section[]`／`register(s)→{name}`／`resolve(binding)→{text,sources[],truncation}`／`snapshot(scopes)→{snapshots[]}` | `VMU_NOT_PERMITTED`（不可覆盖段） |
+| `vmu.store` ✓**已实现** | `open(spec)→{opened,version,migration?}`／`read(key)→Value`（**克隆**，调用者改不动 fold ✓）／`write(key,value,{expect?})→{ok,key,version,changed}`／**`patch(key,fn)→{ok,key,version,changed}`**／`subscribe(key,fn)→Disposer`／`migrate()→MigrationReport`／`export()→Snapshot`／`import(s)→{ok,version}`／**`stats()`** | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION`／`VMU_INVALID_ARGUMENT`（未登记键 ✓） |
+| `vmu.settings` ⏳**原语已实现** | 原语：`resolveSettings(layers)→{values,provenance}`／`validateValue(key,value)`／`assertDeclared(key)`／`assertNoUserTime(key)`／`toJsonSchema()→Schema`／`buildSchemastery(carrier)`；**服务包装 `get/resolved/set/auditTail/jsonSchema` 待实现** | `VMU_INVALID_ARGUMENT`（未声明键/域外值 ✓）／`VMU_NOT_PERMITTED`（用户给时刻 ✓）／`VMU_ENGINE_UNAVAILABLE`（缺载体 ✓） |
+| `vmu.middleware` ⏳**部分实现** | `validateEntry(entry)→problems[]` ✓／`status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}` ✓／`disable(id,reason)` ✓／`enable(id)` ✓／`setDryRun(v)` ✓；**`list()`／`dryRun(ids?,samples)` 待实现** | `VMU_MIDDLEWARE_FAILED`（校验/冲突/越权/失败 ✓） |
+| `vmu.bus` ✓**已实现** | `emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?}`／`on(entry,handler)→id`／`trace(id)→Trace[]`／`status()`／`disable(id,reason)`／`enable(id)`／`setDryRun(v)`／**`wrapHostWaterfall(next)→async(payload)`** | `VMU_MIDDLEWARE_REJECTED`（显式拒 ✓）／`VMU_MIDDLEWARE_FAILED`（异常/越权/冲突 ✓） |
+| `vmu.prompts` ✓**已实现** | `register(s)→entry`／**`assemble(ctx)→{ok,text,sources[],truncation[],at}`**／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)→[{scope,text}]`／`bindToHost(adapter)→{ok,sections}`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`（不可覆盖段／越权覆盖 ✓）／`VMU_INVALID_ARGUMENT`（未登记变量/名/号段 ✓）／`VMU_NO_SUCH_OBJECT`（未登记的绑定目标 ✓）／`VMU_ENGINE_UNAVAILABLE`（缺宿主适配器 ✓） |
 | `vmu.library` | `list(filter)→Head[]`（**不含正文**）／`expand(id)→{head,body}`／`fingerprint(kind,parts)→hex`／`append(rec,{track})→{id,fingerprint}`／`truncationReport()→{path,kept,dropped}[]` | `VMU_NO_SUCH_OBJECT` |
 | `vmu.meetings` | `convene(agenda,kind)→{id}`／`round(id)→Round`／`handUp(id,member)→{position}`／`ballot(id,target,kind)→{ballotId}`／`cast(ballotId,vote)→{accepted}`／`tally(ballotId)→{outcome,reason?}`／`close(ballotId,reason)→{decided}`／`reopen(ballotId,reason)→{open}` | `VMU_STATE`／`VMU_MEETING_TOO_SMALL` |
 | `vmu.tasks` | `create(task)→{id}`／`assign(id,who)→{owner}`／`transition(id,to)→{state}`／`list(filter)→Task[]`／`stage()→{current,stages[]}` | `VMU_STATE`／`VMU_NOT_PERMITTED` |
