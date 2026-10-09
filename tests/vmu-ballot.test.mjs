@@ -175,6 +175,30 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- V7: a pause freezes the ballot (open AND cast) ---------------------------------------------------
+{
+  let paused = true
+  const b = m.createBallot({ target: 'prop-pause', eligible: members, isPaused: () => paused })
+  let refused = null
+  try { await b.open() } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_STATE' && /paused/.test(String(refused.message)),
+    'a paused kernel refuses to OPEN a ballot', String(refused && refused.message))
+  paused = false
+  await b.open()
+  paused = true
+  refused = null
+  try { await b.cast(members[0], 'for') } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_STATE' && /paused/.test(String(refused.message)),
+    'and it refuses CASTING while paused (a ballot that can still be voted is not frozen)',
+    String(refused && refused.message))
+  paused = false
+  let afterResume = null
+  try { await b.cast(members[0], 'for') } catch (e) { afterResume = e }
+  ok(!afterResume || !(afterResume.code === 'VMU_STATE' && /paused/.test(String(afterResume.message))),
+    'after the resume the PAUSE gate no longer blocks the cast (any other refusal is the vote rule, not control flow)',
+    String(afterResume && afterResume.code))
+}
+
 console.log('=== VMU BALLOT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

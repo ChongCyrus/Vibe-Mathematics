@@ -59,10 +59,18 @@ export function createMeeting({
   deliver = null,
   bus = null,
   clock = () => new Date().toISOString(),
+  // The three meeting controls (docs/04 §11) - each one a REAL consumer, not a declaration:
+  // roundTimeoutMs = a round that ran too long refuses further input BY NAME;
+  // quotesPerMessageMax = over the cap is REFUSED; quoteDepthMax = too deep is FOLDED AND COUNTED.
+  roundTimeoutMs = 0,
+  quotesPerMessageMax = 2,
+  quoteDepthMax = 3,
+  isPaused = () => false,
 } = {}) {
   const state = { value: 'idle' }
   const history = []
   const rounds = []
+  const quoteFolds = []
   const inputs = {}
   const silent = {}
   const refused = {}
@@ -88,6 +96,9 @@ export function createMeeting({
     /** Convene: the roster and the agenda are checked by the pluggable `canConvene`. */
     async convene(agendaText, { roster: override } = {}) {
       if (state.value !== 'idle') throw refuse('VMU_STATE', 'this meeting was already convened', 'state=' + state.value)
+      // A pause freezes the meeting's start too (docs/08 §5): control flow is not ledger-only.
+      if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this meeting cannot be convened',
+        'resume() first (vibe_vmu_control {action:"resume"})')
       const useRoster = Array.isArray(override) ? override.slice() : roster.slice()
       const verdict = await canConvene({ roster: useRoster, kind, agenda: agendaText })
       if (!verdict || verdict.ok !== true) {
@@ -134,14 +145,50 @@ export function createMeeting({
     },
 
     /** An ACCEPTED input: only this can mark a member as answered (docs/08 §2.2). */
-    async speak(member, text) {
+    async speak(member, text, { quotes = [] } = {}) {
       if (state.value !== 'in_session') throw refuse('VMU_STATE', 'no round is in session', 'state=' + state.value)
       if (!asked.includes(member)) throw refuse('VMU_NOT_PERMITTED', 'this member was not asked in the current round: ' + String(member))
       if (typeof text !== 'string' || text.trim().length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'an input needs non-empty text')
+      // CONTROL FLOW (docs/08 §5): a pause freezes the meeting too, not only the task ledger.
+      if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: ' + String(member) + ' cannot speak',
+        'resume() first (vibe_vmu_control {action:"resume"})')
+      // ROUND TIMEOUT (vmu.meetings.roundTimeoutMs; 0 = unlimited): the round's own openedAt is the datum.
+      if (roundTimeoutMs > 0 && currentRound && currentRound.openedAt) {
+        const elapsed = Date.parse(clock()) - Date.parse(currentRound.openedAt)
+        if (Number.isFinite(elapsed) && elapsed > roundTimeoutMs) {
+          record('input-refused', { round: currentRound.n, member, reason: 'round-timeout', elapsedMs: elapsed })
+          throw refuse('VMU_STATE', 'round ' + currentRound.n + ' timed out ' + elapsed + 'ms after it opened (budget ' + roundTimeoutMs + 'ms)',
+            'vmu.meetings.roundTimeoutMs is machine-enforced (docs/04 §11); close the round and open a new one')
+        }
+      }
+      // QUOTE BUDGET (vmu.meetings.quotesPerMessageMax): over the cap is a NAMED refusal, as declared.
+      const quoteList = Array.isArray(quotes) ? quotes : []
+      if (quotesPerMessageMax > 0 && quoteList.length > quotesPerMessageMax) {
+        record('input-refused', { round: currentRound.n, member, reason: 'quote-cap', quotes: quoteList.length, cap: quotesPerMessageMax })
+        throw refuse('VMU_INVALID_ARGUMENT', 'per message at most ' + quotesPerMessageMax + ' quote(s), got ' + quoteList.length,
+          'vmu.meetings.quotesPerMessageMax is machine-enforced (docs/04 §11)')
+      }
+      // QUOTE DEPTH (vmu.meetings.quoteDepthMax): too deep is FOLDED AND COUNTED, never a refusal (as declared).
+      const folded = []
+      const kept = quoteList.map((q) => {
+        const depth = Number(q && q.depth) || 0
+        if (quoteDepthMax > 0 && depth > quoteDepthMax) {
+          folded.push({ id: (q && q.id) || null, depth, cap: quoteDepthMax })
+          return Object.assign({}, q, { folded: true, depth })
+        }
+        return q
+      })
+      if (folded.length > 0) {
+        record('quotes-folded', { round: currentRound.n, member, folded: folded.length, cap: quoteDepthMax })
+        quoteFolds.push({ at: clock(), round: currentRound.n, member, folded: folded.slice() })
+      }
       inputs[member] = text
-      currentRound.answers[member] = { at: clock(), chars: text.length }
-      record('input-accepted', { round: currentRound.n, member, chars: text.length })
-      return { ok: true, member, round: currentRound.n, answered: asked.filter((m) => inputs[m]).length, of: asked.length }
+      currentRound.answers[member] = { at: clock(), chars: text.length, quotes: kept.length, folded: folded.length }
+      record('input-accepted', { round: currentRound.n, member, chars: text.length, quotes: kept.length, folded: folded.length })
+      return { ok: true, member, round: currentRound.n, answered: asked.filter((m) => inputs[m]).length, of: asked.length,
+        quotes: kept.length, folded: folded.length,
+        foldingNotice: folded.length > 0 ? folded.length + ' quote(s) exceeded depth ' + quoteDepthMax + ' and were folded (counted below)' : null,
+        quoteFolds: folded.slice() }
     },
 
     /**

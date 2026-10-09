@@ -186,6 +186,45 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- B6: the three meeting controls are REAL consumers (timeout / quote cap / quote depth) ----------
+{
+  let nowMs = Date.parse('2026-10-09T00:00:00.000Z')
+  let paused = false
+  const meeting = m.createMeeting({ id: 'mt-b6', roster, deliver: async () => {}, roundTimeoutMs: 1000,
+    quotesPerMessageMax: 2, quoteDepthMax: 3, isPaused: () => paused, clock: () => new Date(nowMs).toISOString() })
+  await meeting.convene('an agenda')
+  await meeting.openRound({ members: roster })
+  const fine = await meeting.speak(roster[0], 'within budget', { quotes: [{ id: 'q1', depth: 1 }] })
+  ok(fine.ok === true && fine.quotes === 1 && fine.folded === 0, 'within both quote budgets the input is accepted', JSON.stringify(fine))
+
+  let refused = null
+  try { await meeting.speak(roster[0], 'too many quotes', { quotes: [{ depth: 1 }, { depth: 1 }, { depth: 1 }] }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_INVALID_ARGUMENT' && /at most 2 quote/.test(String(refused.message)),
+    'quotesPerMessageMax REFUSES BY NAME with the numbers (as declared)', String(refused && refused.message))
+
+  const deep = await meeting.speak(roster[0], 'too deep', { quotes: [{ id: 'deep', depth: 9 }] })
+  ok(deep.ok === true && deep.folded === 1 && /folded/i.test(String(deep.foldingNotice)),
+    'quoteDepthMax FOLDS and COUNTS instead of refusing (as declared - the opposite policy of the cap)',
+    JSON.stringify(deep).slice(0, 140))
+
+  nowMs += 5000
+  refused = null
+  try { await meeting.speak(roster[1], 'too late') } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_STATE' && /timed out/.test(String(refused.message)) && /1000ms/.test(String(refused.message)),
+    'roundTimeoutMs refuses further input after the round budget', String(refused && refused.message))
+
+  paused = true
+  const other = m.createMeeting({ id: 'mt-b6b', roster, deliver: async () => {}, isPaused: () => paused })
+  refused = null
+  try { await other.convene('x') } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_STATE' && /paused/.test(String(refused.message)),
+    'a paused kernel refuses to CONVENE a meeting (control flow is not ledger-only)', String(refused && refused.message))
+  refused = null
+  try { await meeting.speak(roster[1], 'still paused') } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_STATE' && /paused/.test(String(refused.message)),
+    'and a pause freezes speech in an already-running round')
+}
+
 console.log('=== VMU MEETING: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

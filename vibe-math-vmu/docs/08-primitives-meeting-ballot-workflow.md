@@ -111,7 +111,17 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 **仍未实现（诚实 ✗）**：
 - **判定点** `control.can-pause` / `on-idle` / `on-timeout` / `degrade` **不存在** ✗（暂停是框架动作，不是中间件判定点 ✓；要定制就在 `control/paused` 上挂观察型规则 ✓）；
 - **没有定时器/看门狗**：心跳由调用方驱动 ✗（内核不自带 scheduler；"空闲触发"需宿主 timer 服务 ⇒ 未接 ✗）；
-- **暂停只挡"任务"** ✓：会议/表决/归档**尚未**接同一门禁 ✗（06/08 的其它原语不受 pause 影响 ⇒ 见 08-§8 未核项 ✓）。
+- **暂停的门禁范围（本轮已扩 ✓）**：**任务 ✓ ＋ 会议（convene/openRound 与 speak）✓ ＋ 表决（open 与 cast）✓**；**归档/记录面尚未接** ✗（`library.append` 不受 pause 影响 ⇒ 见 §8 未核项 ✓）。
+
+### 5.1 会议的三个控制键（**本轮已真正强制 ✓**）
+
+| 键 | 语义（真实现 ✓） | 强制点 |
+|---|---|---|
+| `vmu.meetings.roundTimeoutMs` | 单轮超时（0＝不限 ✓）；超时后**再发言被具名拒** `VMU_STATE`（文案含"已过 N ms／预算 M ms" ✓） | `speak()` 用该轮自己的 `openedAt` 计算 ✓ |
+| `vmu.meetings.quotesPerMessageMax` | 每条发言最多引用几条（默认 2 ✓）；**超限 ⇒ 具名拒** `VMU_INVALID_ARGUMENT`（含"at most 2 quote(s), got 3" ✓） | `speak(member, text, { quotes })` ✓（**本轮新增的加法式参数** ✓） |
+| `vmu.meetings.quoteDepthMax` | 引用链深度上限（默认 3 ✓）；**超深 ⇒ 折叠并计数**（**不拒** ✓，回执带 `folded` 与 `foldingNotice` ✓，审计记 `quotes-folded` ✓） | 同上 ✓ |
+
+> **纪律（两种相反策略，别混 ✗）**：**条数超限＝拒绝，深度超限＝折叠＋计数** ✓ —— 这是文档早就声明的差别 ✓，本轮才成为真实现 ✓（此前 `speak` 连 `quotes` 参数都没有 ✗）。
 
 ---
 

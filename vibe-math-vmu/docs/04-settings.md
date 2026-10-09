@@ -193,9 +193,9 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | P3：同一对象的复算轮次上限（不得无限复算） |
 | `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H1 | office | ✅ 已接线 | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
 | `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |
-| `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | 单轮超时；0＝不限 |
-| `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H1 | role:chair | ⚠️ 未接线（改了不会有行为变化） | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
-| `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ⚠️ 未接线（改了不会有行为变化） | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
+| `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | 单轮超时；0＝不限 |
+| `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H1 | role:chair | ✅ 已接线 | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
+| `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
 | `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | 未完成任务上限；0＝不限 |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | 阶段列表；默认空＝不假装有流程 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | P3：数学工具可用性（共享模块默认 auto） |

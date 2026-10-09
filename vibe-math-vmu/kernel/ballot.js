@@ -57,6 +57,7 @@ export function createBallot({
   tally = defaultTally,
   bus = null,
   clock = () => new Date().toISOString(),
+  isPaused = () => false,
 } = {}) {
   const votes = new Map()
   const history = []
@@ -79,6 +80,9 @@ export function createBallot({
 
     /** Open the ballot. A refusal here does not change any state. */
     async open() {
+      // A pause freezes new ballots (docs/08 §5): the ledger is not the only thing control flow gates.
+      if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: no ballot can be opened',
+        'resume() first (vibe_vmu_control {action:"resume"})')
       if (state === 'open' || state === 'frozen') {
         throw refuse('VMU_STATE', 'the ballot is already open', 'state=' + state)
       }
@@ -118,6 +122,9 @@ export function createBallot({
      * record in history explains what was refused - and which never enters the tally.
      */
     async cast(member, value, { kind = 'decisive' } = {}) {
+      // A pause also freezes CASTING: a ballot whose voters can keep voting is not frozen at all (§5).
+      if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this ballot cannot be voted in',
+        'resume() first (vibe_vmu_control {action:"resume"})')
       if (state !== 'open' && state !== 'frozen') {
         record('cast-refused', { member, reason: 'ballot is not open', state })
         throw refuse('VMU_STATE', 'the ballot is not open', 'state=' + state)

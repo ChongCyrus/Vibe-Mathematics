@@ -263,8 +263,13 @@ export function createKernel({
     registry,
 
     /** Per-object primitives: the kernel supplies the factory, the pack supplies the policy. */
-    ballot: (opts = {}) => createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock }, opts)),
-    meeting: (opts = {}) => createMeeting(Object.assign({ bus, clock, deliver }, opts)),
+    ballot: (opts = {}) => createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
+      isPaused: () => controlState.state === 'paused' }, opts)),
+    meeting: (opts = {}) => createMeeting(Object.assign({ bus, clock, deliver,
+      roundTimeoutMs: settings['vmu.meetings.roundTimeoutMs'] || 0,
+      quotesPerMessageMax: settings['vmu.meetings.quotesPerMessageMax'] || 0,
+      quoteDepthMax: settings['vmu.meetings.quoteDepthMax'] || 0,
+      isPaused: () => controlState.state === 'paused' }, opts)),
 
     /**
      * Start: register the middleware the settings DECLARE, and nothing else. With an empty declaration
