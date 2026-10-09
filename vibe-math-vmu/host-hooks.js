@@ -81,6 +81,10 @@ export function toPostExecuteDecision(decision) {
 export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } = {}) {
   const attached = []
   const refused = []
+  // The per-turn tool budget (vmu.limits.toolCallsPerTurnCap): counted here because the HOST is what sees
+  // tool calls, and reset on the host's turn-end event. Refusals are counted for observability.
+  let turnCalls = 0
+  let budgetRefusals = 0
 
   const declaredHooks = () => {
     const entries = Array.isArray(settings['vmu.middleware.entries']) ? settings['vmu.middleware.entries'] : []
@@ -95,6 +99,13 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
     for (const e of busEntries) {
       if (!e || e.enabled === false) continue
       for (const h of [].concat(e.on || [])) if (BRIDGED_HOOKS.includes(h)) hooks.add(h)
+    }
+    // A FRAMEWORK limit is not middleware: with `vmu.limits.toolCallsPerTurnCap` set, the bridge must attach
+    // the pre-execute hook (and the turn-end hook that resets the count) even when NO middleware is declared -
+    // otherwise the promised cap would silently only work for configurations that happen to have middleware.
+    if (Number(settings['vmu.limits.toolCallsPerTurnCap']) > 0) {
+      hooks.add('tools/pre-execute')
+      hooks.add('agent/turn-stopping')
     }
     return [...hooks]
   }
@@ -117,6 +128,21 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
           const next = args[args.length - 1]
           const delegating = typeof next === 'function'
           const exec = args[0] || {}
+          // A TURN-END resets the per-turn tool budget; the budget itself is read AT CALL TIME, so an H0
+          // change takes effect on the very next call (docs/04 §5). Without this, the promised
+          // `vmu.limits.toolCallsPerTurnCap` was a knob with no enforcement anywhere.
+          if (hook === 'agent/turn-stopping') { turnCalls = 0 }
+          if (hook === 'tools/pre-execute') {
+            const cap = Number(settings['vmu.limits.toolCallsPerTurnCap']) || 0
+            turnCalls += 1
+            if (cap > 0 && turnCalls > cap) {
+              budgetRefusals += 1
+              const reason = 'VMU_RESOURCE_BUDGET: this turn already used ' + (turnCalls - 1) + ' of ' + cap +
+                ' tool calls [framework vmu.limits.toolCallsPerTurnCap]'
+              log('vmu refused a tool call: ' + reason)
+              return { kind: 'deny', reason }
+            }
+          }
           const payload = { tool: exec.name || exec.tool || null, args: exec.args || {}, agent: exec.agent || null, hook }
           let decided = null
           try {
@@ -167,7 +193,8 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
 
     status() {
       return { attached: attached.map((a) => a.hook), planned: declaredHooks(), refusedUnsupported: refused.slice(),
-        note: 'with no declared entry on a host hook, no listener is registered; pre-execute refuses input rewriting instead of silently ignoring it' }
+        turnCalls, budgetRefusals,
+        note: 'with no declared entry on a host hook, no listener is registered; pre-execute refuses input rewriting instead of silently ignoring it; the per-turn tool budget is enforced here and resets on the host turn-end event' }
     },
   }
 

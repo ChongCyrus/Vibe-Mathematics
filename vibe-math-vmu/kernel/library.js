@@ -208,7 +208,14 @@ export function createLibrary({
         (filter.kind === undefined || r.kind === filter.kind) &&
         (filter.member === undefined || r.member === filter.member))
       rows.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-      return rows.slice(0, Math.max(1, headListAt === 0 ? rows.length : Math.max(headListAt, rows.length))).map(head)
+      // A ROW CAP, and it is COUNTED when it bites (docs/07 §4.4: truncation is never silent). The previous
+      // bound was `Math.max(headListAt, rows.length)`, which always resolved to rows.length - so the knob had
+      // NO observable effect at all (found by the 2026-10-09 docs-vs-code audit, its finding #35). `0` = all.
+      const heads = rows.map(head)
+      if (!(headListAt > 0) || heads.length <= headListAt) return heads
+      const kept = heads.slice(0, headListAt)
+      truncation.push({ path: 'head-list', kept: kept.length, dropped: heads.length - kept.length, mode: 'head-list-at' })
+      return kept
     },
 
     /** Expand one record by id. A dangling id is refused by name - never an empty body (docs/07 §4.3). */

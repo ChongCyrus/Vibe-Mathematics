@@ -65,7 +65,7 @@ export const SETTING_DEFS = Object.freeze([
 
   // ---- records ------------------------------------------------------------------------------
   { key: 'vmu.records.tracks', type: 'stringList', def: ['progress', 'routes', 'obstacles', 'rejected', 'state'], hot: HOT.H1, who: 'office', doc: '记录分轨（负向知识有独立档）' },
-  { key: 'vmu.records.headListAt', type: 'positiveInteger', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表字段数（目录常驻、正文按需）' },
+  { key: 'vmu.records.headListAt', type: 'natural', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数' },
   { key: 'vmu.records.truncateMode', type: 'enum', domain: ['keepChars', 'keepHeadTail', 'dropMiddle'], def: 'keepChars', hot: HOT.H1, who: 'office', doc: '截断策略（必须计数，禁静默）' },
   { key: 'vmu.records.fingerprintPolicy', type: 'enum', domain: ['content-only', 'content+display'], def: 'content-only', hot: HOT.H2, who: 'office', doc: '内容指纹口径（默认排除展示头）' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },

@@ -238,7 +238,8 @@ scope: { role: ['reviewer'], phase: ['review'], session: 'self' }   # 角色/阶
    **工具面（本轮新增 ✓）**：`vibe_vmu_middleware {action:'validate', rule:'<JSON>'}` ⇒ `{ok, problems, vocabulary}`；`{action:'validate', id:'<已声明 id>'}` ✓。
 2. **干跑（真实现 ✓）**：`vibe_vmu_middleware {action:'dryRun', id:'<id>'|rule:'<JSON>', samples:'[<事件>…]'}` ⇒ `{ok, evaluated, hits, would}`，**对总线零副作用**（`hits` 不增、条目不变，仅 `rules.stats.dryRuns` 前进 ✓）；另有全局开关 `vmu.middleware.dryRun=true`（总线只报不做 ✓）。
    **M2 例外（诚实 ✗）**：代码模块的干跑需要真实事件载荷，**没有**逐模块 dryRun 入口 ⇒ 只做装载期校验 ✓。
-3. **观测**：`vibe_vmu_status` ⇒ `bus.entries[]`（启用/顺序/命中/连续失败/熔断 ✓）、`rules.stats`、`loader.status()`、`bridge.status()`，以及 **`auditTail`（最后 20 条审计 ✓）**；每次拦截经 `traceId` 串起"事件→命中规则→动作→结果" ✓。
+3. **观测**：`vibe_vmu_status` ⇒ `bus.entries[]`（启用/顺序/命中/连续失败/熔断 ✓）、`rules.stats`、`loader.status()`、`bridge.status()`（含 **`turnCalls`／`budgetRefusals`** ✓）、以及 **`auditTail`（最后 20 条审计 ✓）**；每次拦截经 `traceId` 串起"事件→命中规则→动作→结果" ✓。
+   **框架级上限不走中间件**（2026-10-09 校准 ✓）：`vmu.limits.toolCallsPerTurnCap > 0` 时，**宿主钩子桥会自行挂上 `tools/pre-execute` 与 `agent/turn-stopping`** ✓ —— 于是它在**没有任何中间件**的配置里也照样强制 ✓✓（此前该上限只是声明、无人执行 ✗），超限时**具名拒** `VMU_RESOURCE_BUDGET`（文案含"已用 N / 上限 M" ✓），回合结束时计数归零 ✓。
 4. **禁用回归**：禁用后行为回到"无该中间件"的基线 ✓（`{action:'disable'}` ⇒ `{action:'enable'}`，有场景 ✓）。
 
 ---

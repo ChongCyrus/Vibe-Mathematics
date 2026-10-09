@@ -173,6 +173,29 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- B6: vmu.limits.toolCallsPerTurnCap is ENFORCED here, and resets on the host turn-end event ------
+{
+  const host = fakeCtx()
+  const kernel = km.createKernel({ clock })
+  const settings = { 'vmu.limits.toolCallsPerTurnCap': 2 }
+  const bridge = hm.attachHostHooks({ ctx: host.ctx, kernel, settings })
+  bridge.attach()
+  const pre = host.state.listeners['tools/pre-execute'][0]
+  ok(typeof pre === 'function', 'the pre-execute listener is registered when the setting is declared')
+  const call = () => pre({ name: 'vibe_vmu_status', args: {}, agent: null }, async () => 'delegated')
+  ok((await call()) === 'delegated', 'within the budget the call is DELEGATED to the host (no interference)')
+  ok((await call()) === 'delegated', 'the second call is still within the budget')
+  const third = await call()
+  ok(third && third.kind === 'deny' && /VMU_RESOURCE_BUDGET/.test(String(third.reason)) && /of 2 tool calls/.test(String(third.reason)),
+    'the call that EXCEEDS the budget is refused by name, with the numbers in the reason', JSON.stringify(third))
+  ok(bridge.status().budgetRefusals === 1 && bridge.status().turnCalls === 3,
+    'and the refusal is counted in the bridge status (observability keeps up)', JSON.stringify(bridge.status()).slice(0, 120))
+  // The host ends the turn: the budget resets, so the next turn starts clean.
+  const stop = host.state.listeners['agent/turn-stopping'] && host.state.listeners['agent/turn-stopping'][0]
+  if (typeof stop === 'function') await stop({}, async () => 'next')
+  ok((await call()) === 'delegated', 'after the host ends the turn the budget is reset (the next turn is not punished)')
+}
+
 console.log('=== VMU HOST HOOKS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -183,6 +183,23 @@ if (SELF_PROBE) {
 }
 
 await rm(root, { recursive: true, force: true })
+// ---- B6: vmu.records.headListAt is a REAL row cap, and the drop is counted (bug #35) -----------------
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-lib-head-'))
+  const lib = m.createLibrary({ root, tracks: ['progress'], headListAt: 1 })
+  for (const statement of ['first', 'second', 'third']) {
+    await lib.append({ kind: 'proposition', statement, proof: 'p-' + statement })
+  }
+  const capped = await lib.list()
+  ok(capped.length === 1, 'headListAt: 1 really caps the head list at one row (it used to cap at nothing)', capped.length)
+  const rep = lib.truncationReport()
+  ok(rep.some((t) => t.path === 'head-list' && t.kept === 1 && t.dropped === 2),
+    'and the omission is COUNTED, never silent (docs/07 §4.4)', JSON.stringify(rep))
+  const open = m.createLibrary({ root, tracks: ['progress'], headListAt: 0 })
+  ok((await open.list()).length === 3, 'headListAt: 0 means "keep everything"')
+  await rm(root, { recursive: true, force: true })
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

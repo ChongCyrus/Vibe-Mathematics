@@ -172,13 +172,13 @@ vmu.packs.active: [v5r]
 | `vmu.core.enabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | 内核总开关（关闭＝完全不介入） |
 | `vmu.core.storeBackend` | enum | `json-fold` | `json-fold`∣`storage-domain` | 会话 | **H3** | office | ⚠️ 未接线（改了不会有行为变化） | 耐久后端（O1：默认 fold；换后端须过同一套门禁） |
 | `vmu.core.logLevel` | enum | `info` | `debug`∣`info`∣`warn`∣`error` | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 日志级别（不进模型上下文） |
-| `vmu.limits.toolCallsPerTurnCap` | int ≥0 | `0` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 单回合工具调用上限；0＝不限 |
+| `vmu.limits.toolCallsPerTurnCap` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | 单回合工具调用上限；0＝不限 |
 | `vmu.limits.maxLiveMembers` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | 在活成员上限；0＝不设（机器强制） |
 | `vmu.limits.memoryCeilingMb` | int ≥0 | `0` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 内存上限（超限拒绝新建成员）；0＝不设 |
 | `vmu.limits.wallClockMs` | int ≥0 | `0` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻） |
 | `vmu.limits.maxParallel` | int ≥1 | `3` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | 并发上限（P3：吸收 v5r 的 maxParallel；机器强制） |
 | `vmu.records.tracks` | string[] | `[progress,routes,obstacles,rejected,state]` | — | 会话 | H1 | office | ✅ 已接线 | 记录分轨（负向知识有独立档） |
-| `vmu.records.headListAt` | int ≥1 | `7` | — | 会话 | H1 | office | ✅ 已接线 | 头部列表字段数（目录常驻、正文按需） |
+| `vmu.records.headListAt` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
 | `vmu.records.truncateMode` | enum | `keepChars` | `keepChars`∣`keepHeadTail`∣`dropMiddle` | 会话 | H1 | office | ✅ 已接线 | 截断策略（必须计数，禁静默） |
 | `vmu.records.fingerprintPolicy` | enum | `content-only` | `content-only`∣`content+display` | 会话 | H2 | office | ✅ 已接线 | 内容指纹口径（默认排除展示头） |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
