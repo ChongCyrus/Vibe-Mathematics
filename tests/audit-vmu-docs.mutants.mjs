@@ -158,12 +158,20 @@ const freshCopy = (tag) => {
 }
 {
   const c = freshCopy('m11')
-  const p = join(c.docs, '12-user-guide.md')
-  const text = readFileSync(p, 'utf8')
-  writeFileSync(p, text.split('config.packs').join('thePackField').split('config.modules').join('theModuleField').split('config.scripts').join('theScriptField'), 'utf8')
+  // The wiring surface is documented in SEVERAL docs (12, 05, 10, 03 …), so a single-file edit no longer
+  // removes it: the mutant must erase it from the whole copied doc set (found when the check stopped biting).
+  let touched = 0
+  for (const entry of readdirSync(c.docs)) {
+    if (!entry.endsWith('.md')) continue
+    const p = join(c.docs, entry)
+    const text = readFileSync(p, 'utf8')
+    const next = text.split('config.packs').join('thePackField').split('config.modules').join('theModuleField').split('config.scripts').join('theScriptField')
+    if (next !== text) { writeFileSync(p, next, 'utf8'); touched++ }
+  }
   const r = runAudit(c.docs, c.code)
-  ok(r.code !== 0 && /the docs state the real wiring surface/.test(r.out),
-    'M11 an undocumented wiring surface is a NAMED red', r.out.split('\n')[1])
+  ok(touched > 0 && r.code !== 0 && /the docs state the real wiring surface/.test(r.out),
+    'M11 an undocumented wiring surface is a NAMED red (erased from ' + touched + ' docs)',
+    r.code !== 0 ? r.out.split('\n')[1] : 'the audit stayed GREEN with no wiring surface documented')
 }
 {
   const c = freshCopy('m12')

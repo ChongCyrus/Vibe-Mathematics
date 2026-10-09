@@ -48,10 +48,22 @@ function runtimeSources() {
 
 const SOURCES = runtimeSources()
 const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8')).join('\n')
+/** Each source with its text, so the CARRIER column can name the first file that actually reads a key. */
+const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/^[\\/]/, '').replace(/\\/g, '/'), text: readFileSync(f, 'utf8') }))
 
 /** Does any runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
   return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') || SOURCE_TEXT.includes('`' + key + '`')
+}
+
+/**
+ * WHERE the key is read (the first runtime source that names it), or null. The 接线 column says WHETHER the
+ * knob works; this one says WHO reads it - so a reader can go straight to the consumer instead of trusting
+ * the manual (docs/04 §7).
+ */
+export function carrierOf(key) {
+  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"') || f.text.includes('`' + key + '`'))
+  return hit ? hit.rel : null
 }
 
 const MODE_WRITE = process.argv.includes('--write')
@@ -87,16 +99,19 @@ const renderHot = (def) => (def.hot === 'H3' ? '**H3**' : def.hot)
 const renderWho = (def) => (String(def.who).startsWith('role:') ? def.who : def.who)
 
 const HEADER = [
-  '| 键 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 说明 |',
-  '|---|---|---|---|---|---|---|---|---|',
+  '| 键 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |',
+  '|---|---|---|---|---|---|---|---|---|---|',
 ]
 
 const WIRED = '✅ 已接线'
 const NOT_WIRED = '⚠️ 未接线（改了不会有行为变化）'
 
-const rows = SETTING_DEFS.map((def) => '| `' + def.key + '` | ' + (TYPE_LABEL[def.type] || def.type) + ' | ' +
-  renderDefault(def) + ' | ' + renderDomain(def) + ' | 会话 | ' + renderHot(def) + ' | ' + renderWho(def) + ' | ' +
-  (hasConsumer(def.key) ? WIRED : NOT_WIRED) + ' | ' + def.doc + ' |')
+const rows = SETTING_DEFS.map((def) => {
+  const carrier = carrierOf(def.key)
+  return '| `' + def.key + '` | ' + (TYPE_LABEL[def.type] || def.type) + ' | ' +
+    renderDefault(def) + ' | ' + renderDomain(def) + ' | 会话 | ' + renderHot(def) + ' | ' + renderWho(def) + ' | ' +
+    (hasConsumer(def.key) ? WIRED : NOT_WIRED) + ' | ' + (carrier ? '`' + carrier + '`' : '—') + ' | ' + def.doc + ' |'
+})
 
 const generated = HEADER.concat(rows).join('\n')
 

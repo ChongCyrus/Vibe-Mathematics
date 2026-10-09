@@ -175,43 +175,53 @@ then:
 
 ---
 
-## 6. M2 / M3 / M4 规格
+## 6. M2 / M3 / M4 规格（**可照抄；签名与宿主接缝已按实现校准 ✓**）
 
-### 6.1 M2 代码模块
+### 6.1 M2 代码模块（**怎么挂上去 ＋ 模块形状**）✓
 
-```js
-// middleware/modules/meeting-policy.js
-export const meta = { id: 'meeting-policy', apiVersion: 1 }          // 公开接口版本（R7）
-export const capabilities = ['read-state', 'deny', 'appendPrompt']   // 能力声明（强制）
-export default ({ hooks, log, kernel }) => ({
-  hooks: {
-    'meeting/round-start': async (ev) => {
-      if (ev.setting('vmu.meetings.quorumRule') !== 'm-unanimous') return   // 必须 return（放行）
-      if (ev.roster.length < 2) return { deny: { code: 'VMU_MEETING_TOO_SMALL', message: '…' } }
-      return { appendPrompt: [{ section: 'meeting-policy', text: '本轮只允许…' }] }
-    },
-  },
-})
-```
-**硬要求**：声明 `apiVersion` 与 `capabilities`；只经 `api` 暴露的读面访问状态；**必须 return**（禁止隐式吞掉）；异常按 §7 处理。
-
-### 6.2 M3 脚本/工作流
-
+**声明**（插件行的 `config.modules` ✓，见 12-§2.1）：
 ```yaml
-- id: nightly-audit
-  kind: script
-  script: scripts/audit.workflow.mjs
-  args: { scope: records, out: 'Shared/Audit' }
-  timeoutMs: 600000
-  failure: open
+        modules:
+          - 'D:/work/modules/meeting-policy.js'      # 路径 ⇒ 动态 import，取命名导出
+          # 或内联：{ id: meeting-policy, module: { meta, capabilities, hooks } }
 ```
-**约定**：脚本通过**公开接口**读状态/写归档；返回结构化结果（`{ok, summary, findings[]}`）；**结果不进成员提示词**（除非用 `appendPrompt` 显式注入）。
 
-### 6.3 M4 外部插件
+**模块文件（真实现形状 ✓）**：
+```js
+// modules/meeting-policy.js
+export const meta = { id: 'meeting-policy', apiVersion: 1 }        // 必填；id 必须与声明一致 ✓
+export const capabilities = ['read-args', 'deny', 'appendPrompt'] // 必填；未声明就使用能力 ⇒ 具名拒 ✓
+export const hooks = {
+  'meeting/round-start': async (ev) => {
+    // 读设置：门面对象上给的是 `api`（**不是** `ev.setting` ✗✓）：{ hooks, log, kernel, setting }
+    if (ev.api && typeof ev.api.setting === 'function' && ev.api.setting('vmu.meetings.quorumRule') !== 'm-unanimous') return   // 放行必须显式 return ✓
+    // 事件的**载荷**是钩子自己的：`meeting/round-start` 给 { id, kind, agenda, round } ✓（**没有** roster ✗）
+    if (Number(ev.round) > 1) return { deny: { code: 'VMU_NOT_PERMITTED', message: '示例：只允许第一轮' } }
+    return { appendPrompt: [{ section: 'meeting-policy', text: '本轮只允许…' }] }
+  },
+}
+```
+**硬要求**：`meta.id`／`apiVersion`／`capabilities`／`hooks` 缺一即拒 ✓；钩子名必须在**登记表**内 ✓；**必须显式 return**（返回 `undefined` ＝ 放行 ✓，异常按 §7 的失败策略 ✓）；**声明外能力**被使用 ⇒ 运行时**具名拒** ✓。
 
-- 只消费 vmu **公开服务**（03 号契约登记，带 `apiVersion`）；
-- **不得**读内核私有符号、不得假设文件布局（除 07 号公开契约）；
-- 破坏性变更：`apiVersion` bump ＋ 迁移说明（13 号文档）。
+### 6.2 M3 脚本/工作流（**真实现：`file` ＋ 结构化 JSON 结果**）✓
+
+**声明**（插件行的 `config.scripts` ✓；声明了才注册 `vibe_vmu_script` ✓）：
+```yaml
+        scripts:
+          - id: nightly-audit
+            file: node                                  # 交给宿主解析的可执行文件 ✓（不是脚本路径）
+            args: ['-e', 'console.log(JSON.stringify({ok:true,summary:"audit done",findings:[]}))']
+            timeoutMs: 60000
+            failure: open
+```
+**约定（真实现 ✓）**：脚本的 **stdout 必须是 JSON**（至少含布尔 `ok` ✓）—— 自由文本会被**具名拒** ✓；`file` 是**可执行文件**（宿主 `resolveExecutable` 解析 ✓），**没有** `script:` 字段 ✗；结果**只回调用方**、不进提示词 ✓；超时 ⇒ `timedOut` 且桥转 `VMU_JOB_TIMEOUT` ✓。
+
+### 6.3 M4 外部插件 / 整合包（**真实消费面**）✓
+
+- 只消费**已发布服务**（03-§2 表①：`vmu.library`／`members`／`tasks`／`prompt`／`middleware`／`store`／`work`／`math_computation` ✓）；**内部句柄**（`kernel.bus` 等）**不是**公开面 ✗ ⇒ 不能在 `requires` 里要求它们 ✓；
+- 声明方式＝ pack 的 `requires: [{ service, minVersion }]` ✓（**数组**，不是 map ✗），装载期与注册面比对 ⇒ 缺失/过旧**具名列出** ✓；
+- **不得**读内核私有符号、不得假设文件布局（除 07 号公开契约 ✓）；`apiVersion` bump ＋ 迁移说明（13 号 ✓）；
+- 示例见 `packs/institute-min.js`（**唯一随包真实清单** ✓）与 10-§3 ✓。
 
 ---
 
