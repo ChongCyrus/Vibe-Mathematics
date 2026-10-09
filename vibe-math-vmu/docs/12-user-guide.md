@@ -14,13 +14,49 @@
 
 ---
 
-## 2. 安装与选择
+## 2. 安装、选择与**真实接线**
 
 ```bash
 # 本仓（开发/自用）
-node installer.js            # 或按仓库 README 的安装方式
-# 选择预设：vibe-math-vmu；再选择整合包（pack）
+node installer.js            # 安装预设（含本包全部文件与 15 篇文档 ✓）
+# 选择预设：vibe-math-vmu（GUI 预设选择器，或宿主 API agentPresets.select(agent, 'vibe-math-vmu')）
 ```
+
+### 2.1 配置住在哪里（**先前本文没写，读者无法照做 ✗；2026-10-09 校准 ✓**）
+
+vmu 是**插件**：它的配置来自**该插件在 profile 里的那一行**（`config`），**不是** `settings.yml` ✗ ——
+运行时代码里**没有任何 YAML/文件读取** ✓（设置与中间件都是内存态数据 ✓）。
+
+```yaml
+# <profile>/cordis.patch.yml（或预设自带的插件行）
+- insert:
+    - id: vibe-math-vmu
+      name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
+      config:
+        instance: my-vmu            # 可选；多实例排障用（回执里自证身份）
+        root: 'D:/work/vmu-data'    # 可选；有它才有耐久库与 vibe_vmu_records
+        packs: ['institute-min']    # 整合包：随包 id（解析 ./packs/<id>.js 的 PACK）或内联 manifest
+        modules: ['D:/work/mod.js'] # M2 代码模块：文件路径（动态 import）或内联 { id, module }
+        scripts:                    # M3 脚本：声明了才注册 vibe_vmu_script
+          - id: probe
+            file: node
+            args: ['-e', 'console.log(JSON.stringify({ok:true,summary:"ran"}))']
+            timeoutMs: 20000
+        vmu:                        # settings：点分键（键名必须已登记，见 04 §11）
+          'vmu.middleware.entries':
+            - id: proof-gate
+              kind: rules
+              on: [tools/pre-execute]
+              when: { all: [{ tool: ['vibe_vmu_records'] }, { not: { subject: 'has_locked_formal_proof' } }] }
+              then: [{ deny: { code: VMU_NOT_PERMITTED, message: '该对象尚无定稿的形式化证明' } }]
+```
+
+> **两个必须知道的边界** ✗：
+> ① **M1 规则必须内联 `when`/`then`** —— `kind:'rules'` 的条目**没有** `file:` 读取路径 ✗（写 `file:` 会被忽略）；
+> ② **`config` 里的非法值目前不校验** ✗（只有工具 `vibe_vmu_set` 走 04 §11 的登记检查 ✓）⇒ 见 §10 未核项。
+>
+> 术语对照（本文与 03/10 一致 ✓）：`config.root`／`config.instance`／`config.packs`／`config.modules`／`config.scripts`／`config.vmu` 就是上面 `config:` 下的同名字段 ✓。
+
 选择顺序建议：**先用现成 pack 跑通 → 再改 settings → 最后写中间件**。
 
 ---
@@ -56,10 +92,10 @@ then:
       code: VMU_INVALID_ARGUMENT
       message: "只有已被正式证明或证伪、且已定稿的对象才能进入表决"
 ```
-**上线前三件事**（都会告诉你"会命中谁、会做什么"）：
-1. `vibe_vmu_mw {op:'validate', id:'proof-gate'}` —— 静态校验；
-2. `vibe_vmu_mw {op:'dryRun', id:'proof-gate'}` —— **干跑，不产生副作用**；
-3. `vibe_vmu_mw {op:'status'}` —— 看命中次数与最近失败。
+**上线前后怎么看它**（⚠️ **校正 ✗✓**：此前这里写的 `vibe_vmu_mw {op:'validate'|'dryRun'|'status'}` 是 **⛔ 未实现**的工具 ✗ —— 真名是 `vibe_vmu_middleware`，且它**没有** validate/dryRun 动作 ✓）：
+1. `vibe_vmu_middleware {action:'list'}` —— 看条目 `id`／`on`／`failure`／`enabled`／`hits`／`consecutiveFailures` ✓；
+2. `vibe_vmu_middleware {action:'disable', id:'proof-gate'}` ⇒ `{action:'enable', id:'proof-gate'}` —— **禁用/启回**（禁用后行为回基线 ✓）；
+3. **静态校验与干跑目前只有库面** ✗：`kernel.rules.dryRun(rule, samples)`（M1）与 `kernel.loader.validate(entry, module)`（M2）—— **⛔ 尚无工具面** ✓（见 05-§9 与 03-§3.2）。
 
 **写错也不会炸** ✗：中间件异常按 `failure: open|closed|abort` 处置，**并留审计**；连续失败会**熔断**并通知。
 

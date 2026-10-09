@@ -70,29 +70,43 @@
 
 ---
 
-## 3. Tools（`vibe_vmu_*`；首版提案）
+## 3. Tools（`vibe_vmu_*`）
 
 > 目标：**能力齐备但不内置策略**；工具只回答"能做"，"是否/何时做"由中间件与提示词决定。
-> **别名层**：pack 可声明映射（如 `vibe_v5_say → vibe_vmu_say`），使旧语料/旧提示词可复用（D6）。
+> **别名层**：pack 可声明映射（如 `vibe_v5_poll_vote → vmu.tasks`），使旧语料/旧提示词可复用（D6）。
+> **登记纪律（2026-10-09 真机校准 ✗✓）**：本表 = 宿主**实际注册**的集合，唯一真值是 `vibe-math-vmu/host.js` 的 `TOOL_NAMES` ✓；**未实现的计划工具必须标注 `⛔ 未实现`**，且文档任何地方不得把未实现的工具写成操作步骤 ✗ —— 这条由 `tests/audit-vmu-docs.test.mjs` 的 **F 组**断言强制 ✓（加此断言时，本文件原有 20 个工具名里 **15 个是幻影** ✗）。
 
-| 工具 | 语义（一句话） | 必填 | 具名拒（示例） |
-|---|---|---|---|
-| `vibe_vmu_status` | 只读总览：阶段/成员/会议/表决/预算/设置生效值/中间件状态 | — | — |
-| `vibe_vmu_report` | 面向人的报告（可裁剪字段） | — | — |
-| `vibe_vmu_set` | 改设置（受权限与热改等级约束，全程审计） | `key`/`pairs` | `VMU_INVALID_ARGUMENT`、`VMU_NOT_PERMITTED` |
-| `vibe_vmu_members` | 花名册与角色槽位（只读） | — | — |
-| `vibe_vmu_hire` / `vibe_vmu_fire` | 增/减成员（走内核槽位；**"临时工"由 pack 定义**） | `slot`/`id` | `VMU_RESOURCE_BUDGET`、`VMU_STATE` |
-| `vibe_vmu_say` | 发消息（群聊/私聊；可被中间件拦截） | `text` | `VMU_NOT_PERMITTED` |
-| `vibe_vmu_meeting` | 会议原语：召集/议程/举手/收束 | `op` | `VMU_STATE`、`VMU_NOT_PERMITTED` |
-| `vibe_vmu_ballot` | 表决原语：开板/投票/计票/结束 | `op`,`target` | `VMU_STATE`、`VMU_NOT_PERMITTED` |
-| `vibe_vmu_record_progress` | 记录（`track` 分轨，截断计数） | `content` | `VMU_INVALID_ARGUMENT` |
-| `vibe_vmu_record_{proposition,method,subproblem}` | 成果卡（库） | `statement` 等 | `VMU_INVALID_ARGUMENT` |
-| `vibe_vmu_read_library` | 读库：`{list:true}`＝头部列表；`{id}`＝展开 | — | `VMU_NO_SUCH_OBJECT`（悬空 id 必须具名拒） |
-| `vibe_vmu_task` | 任务：建/派/迁移/查 | `op` | `VMU_STATE` |
-| `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面（复用 sha256 内容身份） | 视 op | `VMU_LEAN_*` |
-| `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度（含"待续标记"语义） | — | `VMU_STATE` |
-| `vibe_vmu_pack` | 整合包：查看/装载/卸载（含 dry-run） | `op` | `VMU_PACK_*` |
-| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | `op` | `VMU_MIDDLEWARE_*` |
+### 3.1 已实现（真机已验证的 5 个；零配置时只有第 1 个 ✓）
+
+| 工具 | 语义 | 参数（宿主视图） | 出现条件 | 具名拒 |
+|---|---|---|---|---|
+| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份** | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
+| `vibe_vmu_set` | 改一个设置；未声明的键一律具名拒；回执含热改等级与可改者 | `key`(必填)、`value` | 有声明键时 | `VMU_INVALID_ARGUMENT`、`VMU_PACK_CONFLICT` |
+| `vibe_vmu_middleware` | 中间件：`action=list\|disable\|enable` | `action`(必填，枚举)、`id` | 有声明条目**或**总线已有条目 | `VMU_INVALID_ARGUMENT`、`VMU_NO_SUCH_OBJECT` |
+| `vibe_vmu_records` | 记录面：`action=list\|expand\|append` | `action`(必填)、`id`、`kind`、`statement`、`proof` | 有 `root`（耐久库在场） | `VMU_INVALID_ARGUMENT`、`VMU_NO_SUCH_OBJECT` |
+| `vibe_vmu_script` | M3 脚本：`action=list\|run`（结果**只回调用方**，不进提示词） | `action`(必填)、`id`、`args`(JSON 数组字符串) | profile 行声明了 `config.scripts` | `VMU_NO_SUCH_OBJECT`、`VMU_INVALID_ARGUMENT`、`VMU_ENGINE_UNAVAILABLE` |
+
+> **真实接线面（此前文档完全没写 ✗）**：这 5 个工具由 **profile 行的 `config`** 装配 —— `config.root`（耐久库 ⇒ `records`）、`config.vmu['vmu.middleware.entries']`（总线 ⇒ `middleware`）、`config.scripts`（⇒ `script`）、`config.instance`（身份自证）、`config.packs`（整合包装载）。**没有** `settings.yml`／`pack.yml`／`middleware/*.yml` 这类落盘配置 ✗（运行时**不读任何 YAML 文件** ✓）。
+
+### 3.2 规划中（`⛔ 未实现`，**当前不可调用**）
+
+> 这些名字宿主**没有注册**；保留在此仅为规划追溯 ✓。
+
+| 工具（规划） | 意图 | 状态 |
+|---|---|---|
+| `vibe_vmu_report` | 面向人的报告（可裁剪字段） | ⛔ 未实现 |
+| `vibe_vmu_members` | 花名册与角色槽位（只读） | ⛔ 未实现（库面 `kernel.members` ✓） |
+| `vibe_vmu_hire` / `vibe_vmu_fire` | 增/减成员（走内核槽位） | ⛔ 未实现 |
+| `vibe_vmu_say` | 发消息（可被中间件拦截） | ⛔ 未实现 |
+| `vibe_vmu_meeting` | 会议原语：召集/议程/举手/收束 | ⛔ 未实现（库面 `kernel.meeting()` ✓） |
+| `vibe_vmu_ballot` | 表决原语：开板/投票/计票/结束 | ⛔ 未实现（库面 `kernel.ballot()` ✓） |
+| `vibe_vmu_record_progress` / `vibe_vmu_record_{proposition,method,subproblem}` | 记录与成果卡 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `append` 覆盖 ✓） |
+| `vibe_vmu_read_library` | 读库：头部列表／按 id 展开 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `list`/`expand` 覆盖 ✓） |
+| `vibe_vmu_task` | 任务：建/派/迁移/查 | ⛔ 未实现（库面 `kernel.tasks` ✓） |
+| `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面 | ⛔ 未实现 |
+| `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ 未实现（内核**没有** pause/resume ✗） |
+| `vibe_vmu_pack` | 整合包：查看/装载/卸载 | ⛔ 未实现（装载现由 `config.packs` 完成；库面 `createPackLoader().plan/apply/unload` ✓） |
+| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓；**`validate`/`dryRun` 目前没有工具面** ✗（库面 `kernel.rules.dryRun` ✓ 见 05-§9） |
 
 **工具面纪律**（对 DSH 的对接约束，**来源已分级标注** ✓）：
 - **参数 DSL（源码级）**：`parameters: { <名>: { type, required: true, description, enum } }` —— **`required` 写在参数内部**，**不是**顶层 `required[]` 数组 ✗；

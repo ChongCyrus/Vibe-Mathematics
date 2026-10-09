@@ -126,7 +126,7 @@ id: reject-debate-without-proof
 on: [tools/pre-execute]
 when:
   all:
-    - tool: [vibe_vmu_propose_verify]
+    - tool: [vibe_vmu_records]      # 真机已注册的工具（`vibe_vmu_propose_verify` 等 ⛔ 未实现的名字不得用 ✗）
     - not: { subject: has_locked_formal_proof }   # 由内核提供的**具名谓词**
 then:
   - deny:
@@ -142,7 +142,7 @@ then:
 | `tool` / `not.tool` | 工具名匹配（列表或通配） | `tool: [vibe_vmu_*]` |
 | `member` / `role` / `phase` | 调用者身份与阶段 | `role: [chair]` |
 | `arg` | 参数匹配（路径/正则/存在性） | `arg: { path: track, eq: rejected }` |
-| `setting` | 设置当前生效值 | `setting: { key: vmu.limits.x, gt: 0 }` |
+| `setting` | 设置当前生效值 | `setting: { key: vmu.limits.toolCallsPerTurnCap, gt: 0 }` |
 | `count` | 计数（本回合/本阶段/全局） | `count: { of: tool_calls, member: self, gte: 12 }` |
 | `subject` | **内核具名状态谓词**（如 `has_locked_formal_proof`、`in_frozen_ballot`） | 由 03 号契约登记 |
 | `match` | 文本/正则（对提示词或结果） | `match: { on: prompt, re: '…' }` |

@@ -285,6 +285,7 @@
     "tests/audit-installer-compat.test.mjs",
     "tests/audit-installer-policy.test.mjs",
     "scripts/build-preset-rows.mjs",
+    "scripts/generate-vmu-settings-table.mjs",
     "scripts/update-doc-counts.mjs",
     "scripts/clean-temp.mjs",
     "scripts/release-check.mjs",

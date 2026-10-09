@@ -173,12 +173,12 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ## 7. pack 作者指南（最短路径）
 
-1. 复制 `packs/_template/`（随 vmu 提供）；
+1. 复制 `packs/institute-min.js` 作为起点（**唯一随包的真实示例** ✓；`packs/_template/` 是 **⛔ 未实现**的规划路径 ✗ —— §9 的骨架属目标形态，当前没有该文件）；
 2. 写 `pack.yml`（id/version/apiVersion/requires/conflicts/capabilities）；
 3. 写 `settings.yml`（**只放"量"**，流程进中间件）；
 4. 写中间件（**优先 M1**；复杂逻辑才 M2；长流程才 M3）；
 5. 写提示词包（段模板 + 绑定；**不要改状态块**）；
-6. `vibe_vmu_pack {op:'validate'}` ⇒ `{op:'dryRun'}` ⇒ `{op:'load'}`；
+6. **装载**：在 profile 行的 `config.packs: ['<id>']`（或内联 manifest）里声明 ⇒ 插件装载期 `plan → apply` ✓；`vibe_vmu_pack` 是 **⛔ 未实现**的工具 ✗（库面是 `createPackLoader().plan/apply/unload` ✓）；
 7. 跑对照（若有历史参照）⇒ 写 README（机制、代价、取舍、已知差异）。
 
 ---
@@ -268,7 +268,7 @@ export default ({ log }) => ({
 
 **`README.md` 必须回答**：① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发/预算/提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默）。
 
-**上线三步**：`vibe_vmu_pack {op:'validate'}` ⇒ `{op:'dryRun'}` ⇒ `{op:'load'}` ✓。
+**装载（当前唯一路径）**：profile 行的 `config.packs: ['<id>']`（或内联 manifest）⇒ 插件装载期 `plan → apply`（冲突即具名拒 ✓）。`vibe_vmu_pack {op:'validate'|'dryRun'|'load'}` 是 **⛔ 未实现**的工具 ✗（§3 里"装载前跑一遍"的报告目前只能由库面 `createPackLoader().plan()` 产生 ✓）。
 
 ---
 

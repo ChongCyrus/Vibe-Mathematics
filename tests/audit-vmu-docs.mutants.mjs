@@ -114,7 +114,68 @@ const freshCopy = (tag) => {
     'M6 an undocumented public surface is a NAMED red', r.out.split('\n')[1])
 }
 
-// ---- the unmutated copy must stay GREEN (the mutants prove the audit, they must not be its cause) --
+// ---- M7..M11: the 2026-10-09 surface checks (tools / keys / wired-markers / wiring docs / generator) ---
+// M7 an unchecked phantom tool in the docs   -> "every documented tool the host does NOT register is marked"
+// M8 a tool removed from TOOL_NAMES          -> "every tool the host registers is registered in 03-§3"
+// M9 a bogus vmu.* key named in the docs     -> "every vmu.* key named in the docs exists in settings/schema.js"
+// M10 a wired key marked 未接线               -> "no key is marked unwired although a runtime source reads it"
+// M11 the wiring surface erased from the docs -> "the docs state the real wiring surface"
+// M12 the generated settings table corrupted  -> the GENERATOR's own --check must exit 1 (VMU_SETTINGS_DOC seam)
+{
+  const c = freshCopy('m7')
+  const p = join(c.docs, '12-user-guide.md')
+  writeFileSync(p, readFileSync(p, 'utf8') + '\n直接调用 `vibe_vmu_total_magic {op:\'go\'}` 即可。\n', 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /every documented tool the host does NOT register is marked/.test(r.out) && /vibe_vmu_total_magic/.test(r.out),
+    'M7 an unmarked phantom tool is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m8')
+  const p = join(c.code, 'host.js')
+  // ADD a tool the contract does not register (the other direction: a host surface with no contract row).
+  writeFileSync(p, readFileSync(p, 'utf8').replace("  script: 'vibe_vmu_script',", "  script: 'vibe_vmu_script',\n  magic: 'vibe_vmu_magic_tool',"), 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /every tool the host registers is registered in 03/.test(r.out) && /vibe_vmu_magic_tool/.test(r.out),
+    'M8 a host tool the contract omits is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m9')
+  const p = join(c.docs, '12-user-guide.md')
+  writeFileSync(p, readFileSync(p, 'utf8') + '\n把 `vmu.limits.definitelyNotAKey` 设为 3。\n', 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /every vmu\.\* key named in the docs exists/.test(r.out) && /definitelyNotAKey/.test(r.out),
+    'M9 a key the schema does not declare is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m10')
+  const p = join(c.docs, '04-settings.md')
+  const text = readFileSync(p, 'utf8')
+  // Flip one row that IS wired: its marker must be load-bearing.
+  writeFileSync(p, text.replace(/(\| `vmu\.middleware\.entries` \|.*?)\| ✅ 已接线 \|/, '$1| ⚠️ 未接线（改了不会有行为变化） |'), 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /no key is marked unwired although a runtime source reads it/.test(r.out),
+    'M10 a false 未接线 marker is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m11')
+  const p = join(c.docs, '12-user-guide.md')
+  const text = readFileSync(p, 'utf8')
+  writeFileSync(p, text.split('config.packs').join('thePackField').split('config.modules').join('theModuleField').split('config.scripts').join('theScriptField'), 'utf8')
+  const r = runAudit(c.docs, c.code)
+  ok(r.code !== 0 && /the docs state the real wiring surface/.test(r.out),
+    'M11 an undocumented wiring surface is a NAMED red', r.out.split('\n')[1])
+}
+{
+  const c = freshCopy('m12')
+  const p = join(c.docs, '04-settings.md')
+  writeFileSync(p, readFileSync(p, 'utf8').replace('| `vmu.limits.maxLiveMembers` |', '| `vmu.limits.maxLiveMembersRENAMED` |'), 'utf8')
+  const g = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-vmu-settings-table.mjs'), '--check'],
+    { env: Object.assign({}, process.env, { VMU_SETTINGS_DOC: p }), encoding: 'utf8' })
+  ok(g.status !== 0 && /STALE/.test(String(g.stderr || '')),
+    'M12 a corrupted generated table makes the GENERATOR --check exit 1', String(g.stderr || '').split('\n')[0])
+}
+
+// ---- the unmutated copy must stay GREEN ----------------------------------------------------------
 {
   const c = freshCopy('control')
   const r = runAudit(c.docs, c.code)

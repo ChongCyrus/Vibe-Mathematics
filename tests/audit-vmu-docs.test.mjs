@@ -175,6 +175,106 @@ ok(unregisteredInCode.length === 0,
   ok(missing.length === 0, 'every doc that must declare its open questions has a 未核项 section', missing.join(','))
 }
 
+// ---- F. the TOOL surface: what the docs name vs what the host registers ---------------------------
+// The doc set is the interface contract, so a tool the manual tells a reader to call must exist - or the
+// line that names it must SAY it does not exist yet. Twelve phantom tool names (`vibe_vmu_mw`,
+// `vibe_vmu_pack`, ...) shipped in the manuals as if they were callable, and no gate noticed.
+{
+  const hostSrc = readFileSync(join(VMU, 'host.js'), 'utf8')
+  const from = hostSrc.indexOf('export const TOOL_NAMES')
+  const block = hostSrc.slice(from, hostSrc.indexOf('})', from))
+  const implemented = new Set([...block.matchAll(/'(vibe_vmu_[a-z_]+)'/g)].map((m) => m[1]))
+  ok(implemented.size >= 5, 'TOOL_NAMES was read out of host.js', [...implemented].join(','))
+
+  const documented = new Map()
+  for (const [name, text] of docText) {
+    text.split('\n').forEach((line, i) => {
+      for (const m of line.matchAll(/\b(vibe_vmu_[a-z_]+)\b/g)) {
+        if (!documented.has(m[1])) documented.set(m[1], [])
+        documented.get(m[1]).push({ doc: name, line: i + 1, text: line })
+      }
+    })
+  }
+  const missingInContract = [...implemented].filter((t) => !contract.includes('`' + t + '`'))
+  ok(missingInContract.length === 0, 'every tool the host registers is registered in 03-§3', missingInContract.join(','))
+
+  const MARKERS = /未实现|未接线|规划|提案|roadmap|⛔|待实现|目标形态|尚未/
+  const unmarked = []
+  for (const [name, hits] of documented) {
+    if (implemented.has(name)) continue
+    if (!hits.some((h) => MARKERS.test(h.text))) {
+      unmarked.push(name + ' (' + hits[0].doc + ':' + hits[0].line + ')')
+    }
+  }
+  ok(unmarked.length === 0,
+    'every documented tool the host does NOT register is marked as unimplemented on the line that names it',
+    unmarked.slice(0, 10).join(' | '))
+}
+
+// ---- G. the SETTINGS surface: documented keys must exist, and the wired column must be honest -----
+{
+  const { SETTING_DEFS } = await import(pathToFileURL(join(VMU, 'settings', 'schema.js')).href)
+  const keys = new Set(SETTING_DEFS.map((d) => d.key))
+  const namespaces = new Set([...keys].map((k) => k.split('.').slice(0, 2).join('.')))
+  // Dotted names that are SERVICE/registry names or namespaces, not setting keys.
+  const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 'vmu.tasks', 'vmu.store', 'vmu.bus',
+    'vmu.kernel', 'vmu.settings', 'vmu.rules', 'vmu.bridge', 'vmu.loader', 'vmu.registry', 'vmu.meetings',
+    'vmu.budget', 'vmu.packs', 'vmu.middleware', 'vmu.records', 'vmu.core', 'vmu.limits', 'vmu.safety',
+    'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status'])
+  const bogus = new Set()
+  for (const [name, text] of docText) {
+    for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
+      const k = m[0]
+      if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
+      bogus.add(k + ' (' + name + ')')
+    }
+  }
+  ok(bogus.size === 0, 'every vmu.* key named in the docs exists in settings/schema.js', [...bogus].slice(0, 8).join(' | '))
+
+  const settingsDoc = docText.get(DOC_FILES.find((n) => /^04-/.test(n))) || ''
+  // Concrete key rows only: the table also carries namespace PATTERN rows (`vmu.core.*`) which describe a
+  // family rather than a key, so they neither need a wired marker nor count towards the key total.
+  const rows = settingsDoc.split('\n').filter((l) => /^\| `vmu\.[a-zA-Z0-9.]+`/.test(l))
+  ok(rows.length === SETTING_DEFS.length, '04 §11 has exactly one row per declared key', rows.length + '/' + SETTING_DEFS.length)
+  const unmarkedRows = rows.filter((r) => !/已接线|未接线/.test(r))
+  ok(unmarkedRows.length === 0, 'every settings row states whether the key is WIRED (no silent promises)',
+    unmarkedRows.slice(0, 3).map((r) => (r.split('|')[1] || '').trim()).join(','))
+
+  // Independently recompute the wired set: a key is wired when its literal appears in the runtime sources.
+  const runtimeFiles = ['vibe-math-vmu.js', 'host.js', 'host-hooks.js', 'host-spawn.js'].map((f) => join(VMU, f))
+  const walkRuntime = (dir, depth) => {
+    if (depth > 3 || !existsSync(dir)) return
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', 'docs', 'settings'].includes(e.name)) continue
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walkRuntime(p, depth + 1)
+      else if (e.name.endsWith('.js') && !['math-computation.js', 'math-engines.js'].includes(e.name)) runtimeFiles.push(p)
+    }
+  }
+  walkRuntime(VMU, 0)
+  const runtimeText = runtimeFiles.filter((f) => existsSync(f)).map((f) => readFileSync(f, 'utf8')).join('\n')
+  const trulyUnwired = new Set(SETTING_DEFS.filter((d) => !runtimeText.includes("'" + d.key + "'")).map((d) => d.key))
+  const claimedUnwired = new Set(rows.filter((r) => /未接线/.test(r))
+    .map((r) => ((r.match(/`(vmu\.[a-zA-Z0-9.]+)`/) || [])[1])).filter(Boolean))
+  const claimedWired = new Set(rows.filter((r) => /已接线/.test(r))
+    .map((r) => ((r.match(/`(vmu\.[a-zA-Z0-9.]+)`/) || [])[1])).filter(Boolean))
+  const lyingWired = [...claimedWired].filter((k) => trulyUnwired.has(k))
+  const lyingUnwired = [...claimedUnwired].filter((k) => !trulyUnwired.has(k))
+  ok(lyingWired.length === 0, 'no key is claimed WIRED while no runtime source reads it', lyingWired.slice(0, 8).join(','))
+  ok(lyingUnwired.length === 0, 'no key is marked unwired although a runtime source reads it', lyingUnwired.slice(0, 8).join(','))
+  ok(claimedUnwired.size > 0, 'the doc set admits which keys are declared-but-not-wired (today: ' + claimedUnwired.size + ')')
+}
+
+// ---- H. the real WIRING surface is documented ----------------------------------------------------
+// The shipped plugin is configured with `config.packs` / `config.modules` / `config.scripts` on its profile
+// row. None of those appeared anywhere in the docs, so no reader could actually install a pack or a module.
+{
+  const all = [...docText.values()].join('\n')
+  const missing = ['config.packs', 'config.modules', 'config.scripts'].filter((k) => !all.includes(k))
+  ok(missing.length === 0, 'the docs state the real wiring surface (config.packs / config.modules / config.scripts)',
+    missing.join(','))
+}
+
 const out = '=== VMU DOCS AUDIT: ' + passed + ' passed, ' + failed + ' failed ==='
 console.log(out)
 for (const f of failures) console.log('  FAIL ' + f)

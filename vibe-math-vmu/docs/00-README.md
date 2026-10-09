@@ -62,18 +62,30 @@
 
 ---
 
-## 5. 快速上手（占位；待 12 定稿后替换为可跑示例）
+## 5. 快速上手（**已换成可跑的真实接线** ✓；完整步骤见 12-§2）
+
+vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`config`），**不是**落盘的 `settings.yml`／`pack.yml` ✗（运行时**不读任何 YAML 文件** ✓）。
 
 ```yaml
-# 目标形态（示意，非最终）
-pack: v5r
-settings:
-  vmu.limits.toolCallsPerTurnCap: 12
-  vmu.prompts.overrides.review-gate: "docs/prompts/review-gate.md"
-middleware:
-  - rules/reject-without-proof.yml      # M1 声明式
-  - modules/meeting-policy.js           # M2 代码模块
+# <profile>/cordis.patch.yml（或预设自带的插件行）
+- insert:
+    - id: vibe-math-vmu
+      name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
+      config:
+        root: 'D:/work/vmu-data'        # 可选：有它才有耐久库与 vibe_vmu_records
+        packs: ['institute-min']        # 整合包（随包 id 或内联 manifest）
+        modules: ['D:/work/mod.js']     # M2 代码模块（文件路径或内联 module）
+        scripts: [{ id: probe, file: node, args: ['-e', 'console.log(JSON.stringify({ok:true,summary:"ran"}))'] }]
+        vmu:                            # settings：点分键（54 个，见 04 §11；表由 schema 生成 ✓）
+          'vmu.middleware.entries':     # M1 声明式规则**必须内联** when/then（无 YAML 读取 ✗）
+            - id: proof-gate
+              kind: rules
+              on: [tools/pre-execute]
+              when: { all: [{ tool: ['vibe_vmu_records'] }] }
+              then: [{ deny: { code: VMU_NOT_PERMITTED, message: '示例规则' } }]
 ```
+
+**零配置也能跑** ✓（那时只注册 `vibe_vmu_status` 一个只读工具 ✓）。工具面的**唯一真值**是 `host.js` 的 `TOOL_NAMES`（5 个；见 03-§3 ✓）。
 
 ---
 
