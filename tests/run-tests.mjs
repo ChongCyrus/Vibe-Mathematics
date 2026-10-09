@@ -291,7 +291,7 @@ const QUICK_EXPECTED_JOBS = 24
 // every preset-INTERNAL behavioural family: a vmu change never touches another preset's plugin source,
 // so those families are reached at full scope by `GATE_INCREMENTAL` (target-derived) and by the
 // non-incremental release sweep, which stays REQUIRED at every milestone (see the same note above).
-const VMU_ONLY = ['vmu-settings', 'vmu-store', 'vmu-bus', 'run-tests.mutants',
+const VMU_ONLY = ['vmu-', 'run-tests.mutants',
   'audit-preset-rows', 'audit-preset-mechanism', 'audit-preset-declaration-group',
   'audit-installer-compat', 'audit-installer-policy', 'audit-installer-assertions.mutants',
   'audit-package-membership', 'audit-readme-counts', 'audit-path-discipline',
