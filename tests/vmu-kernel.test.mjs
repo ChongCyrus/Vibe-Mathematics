@@ -197,6 +197,43 @@ if (SELF_PROBE) {
   ok(k.status().auditTail.length > before, 'bus actions append to the audit tail (auditing is observable)')
 }
 
+// ---- V7: control flow is a GATE, and the heartbeat has a budget -------------------------------------
+{
+  const fails = async (fn, code, name) => {
+    try { await fn(); ok(false, name, 'did not throw') } catch (e) { ok(e && e.code === code, name, e && e.code) }
+  }
+  const k = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings: { 'vmu.limits.wallClockMs': 60000 } })
+  ok(k.control().state === 'running' && k.control().beats === 0, 'a fresh kernel is running, with no beats')
+  const t = await k.tasks.create({ title: 'work' })
+  ok(t.id && k.tasks.list().length === 1, 'work is accepted while running')
+  const paused = await k.pause('freeze')
+  ok(paused.ok === true && k.control().state === 'paused' && k.control().pausedReason === 'freeze',
+    'pause records WHY it was taken (a label would not)', JSON.stringify(paused))
+  await fails(() => k.tasks.create({ title: 'more' }), 'VMU_STATE', 'a paused kernel refuses NEW work by name')
+  await fails(() => k.tasks.transition(t.id, 'doing'), 'VMU_STATE', 'and it refuses transitions too')
+  const resumed = await k.resume('thaw')
+  ok(resumed.ok === true && k.control().state === 'running' && resumed.resumedFrom === 'freeze',
+    'resume restores the running state and reports what it resumed from', JSON.stringify(resumed))
+  await k.tasks.transition(t.id, 'doing')
+  ok(k.tasks.list()[0].state === 'doing', 'work flows again after resume')
+  await k.beat('alive')
+  ok(k.control().beats === 1 && k.control().lastBeatAt === '2026-10-09T00:00:00.000Z', 'the heartbeat is recorded')
+  ok(k.status().control && k.status().control.state === 'running', 'status() exposes the control surface')
+  const stopped = await k.stop('done')
+  ok(stopped.state === 'stopped' && k.control().stops === 1, 'stop is part of the same state machine')
+  await fails(() => k.pause('again'), 'VMU_STATE', 'a stopped kernel cannot be paused')
+
+  // The staleness budget is a real consumer of vmu.limits.wallClockMs.
+  let nowMs = Date.parse('2026-10-09T00:00:00.000Z')
+  const k2 = m.createKernel({ clock: () => new Date(nowMs).toISOString(), settings: { 'vmu.limits.wallClockMs': 1000 } })
+  await k2.beat()
+  ok(k2.control().stale === false, 'a fresh heartbeat is not stale')
+  nowMs += 5000
+  ok(k2.control().stale === true && k2.control().sinceLastBeatMs === 5000,
+    'a heartbeat older than the declared budget is reported STALE (wallClockMs now has a consumer)',
+    JSON.stringify(k2.control()).slice(0, 140))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -156,6 +156,8 @@ export function createKernel({
     stages: stages || settings['vmu.tasks.stages'] || [],
     maxOpenTasks: maxOpenTasks !== undefined ? maxOpenTasks : (settings['vmu.tasks.maxOpenTasks'] || 0),
     stageGate,
+    // `control` is declared below; the arrow is only CALLED at runtime, so this is not a use-before-init.
+    isPaused: () => controlState.state === 'paused',
     bus,
     clock,
   })
@@ -182,6 +184,25 @@ export function createKernel({
   const packs = []
   const registrations = []
   let started = false
+  // CONTROL FLOW (docs/08 §5; the user's explicit domain). The kernel owns the STATE; a pause is a real
+  // gate (task work is refused while paused) rather than a label nobody reads.
+  const controlState = { state: 'running', pausedAt: null, pausedReason: null, resumes: 0, stops: 0, beats: 0, lastBeatAt: null, stoppedReason: null }
+  /** The control VIEW, as a plain closure: an object-literal method cannot be called from a sibling method
+   *  (the property name is not a binding), so the view lives here and both `control()` and `status()` use it. */
+  const controlView = () => {
+    const budget = Number(settings['vmu.limits.wallClockMs']) || 0
+    let stale = false
+    let sinceMs = null
+    if (budget > 0 && controlState.lastBeatAt) {
+      sinceMs = Date.parse(clock()) - Date.parse(controlState.lastBeatAt)
+      stale = Number.isFinite(sinceMs) && sinceMs > budget
+    }
+    return { state: controlState.state, pausedAt: controlState.pausedAt, pausedReason: controlState.pausedReason,
+      resumes: controlState.resumes, stops: controlState.stops, beats: controlState.beats,
+      lastBeatAt: controlState.lastBeatAt, stoppedReason: controlState.stoppedReason,
+      wallClockMs: budget, sinceLastBeatMs: sinceMs, stale,
+      note: 'a paused kernel refuses task mutations by name (VMU_STATE); the heartbeat is observation only' }
+  }
 
   function createMembersList(opts) {
     const declaredSlots = opts.slots && opts.slots.length ? opts.slots : []
@@ -245,10 +266,15 @@ export function createKernel({
         note: registrations.length === 0 ? 'no middleware declared: the kernel registered nothing' : undefined }
     },
 
-    async stop() {
+    async stop(reason = null) {
+      controlState.state = 'stopped'
+      controlState.stops += 1
+      controlState.stoppedReason = reason ? String(reason) : null
       started = false
       registrations.length = 0
-      return { ok: true, stopped: true }
+      const decided = await bus.emit('control/paused', { reason: 'stopped', at: clock() }, {})
+      return { ok: true, stopped: true, state: controlState.state, reason: controlState.stoppedReason,
+        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
 
     /** The capability seams, refused by name when they are missing (docs/11 §4.1). */
@@ -374,6 +400,42 @@ export function createKernel({
     setSettingsValue(key, value) { settings[key] = value; markSettingWriter(settings, key, 'runtime'); return { ok: true, key, source: 'runtime' } },
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
+    /**
+     * CONTROL FLOW (docs/08 §5). `pause` is a GATE, not a label: while paused every task mutation is refused
+     * by name, and the bus is told (`control/paused` / `control/resumed` / `control/heartbeat`) so middleware
+     * can react. The heartbeat answers "is anyone actually working", and `wallClockMs` is the staleness budget
+     * (a real consumer for a key that used to be decoration - docs/04 §11).
+     */
+    async pause(reason = 'paused') {
+      if (controlState.state === 'stopped') throw refuse('VMU_STATE', 'a stopped kernel cannot be paused')
+      controlState.state = 'paused'
+      controlState.pausedAt = clock()
+      controlState.pausedReason = String(reason)
+      const decided = await bus.emit('control/paused', { reason: controlState.pausedReason, at: controlState.pausedAt }, {})
+      return { ok: true, state: controlState.state, reason: controlState.pausedReason, at: controlState.pausedAt,
+        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+    },
+    async resume(reason = null) {
+      if (controlState.state !== 'paused') throw refuse('VMU_STATE', 'the kernel is not paused (state: ' + controlState.state + ')')
+      controlState.state = 'running'
+      controlState.resumes += 1
+      const wasReason = controlState.pausedReason
+      controlState.pausedAt = null
+      controlState.pausedReason = null
+      const decided = await bus.emit('control/resumed', { pausedFor: wasReason, reason: reason ? String(reason) : null, at: clock() }, {})
+      return { ok: true, state: controlState.state, resumedFrom: wasReason,
+        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+    },
+    async beat(note = null) {
+      controlState.beats += 1
+      controlState.lastBeatAt = clock()
+      const decided = await bus.emit('control/heartbeat', { beats: controlState.beats, at: controlState.lastBeatAt, note: note ? String(note) : null }, {})
+      return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
+        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+    },
+    /** The control surface: state, history and whether the heartbeat went stale (docs/04 §11 wallClockMs). */
+    control: () => controlView(),
+
     /** The declaration of a setting (hot class, who may change it) - used by the host tool for its receipt. */
     settingDef(key) { return SETTING_DEFS.find((d) => d.key === key) || null },
 
@@ -422,6 +484,7 @@ export function createKernel({
         members: members ? members.status() : null,
         tasks: tasks.status(),
         rules: rules.status(),
+        control: controlView(),
         loader: loader.status(),
         bridge: bridge.status(),
         registry: registry.status(),

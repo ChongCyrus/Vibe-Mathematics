@@ -157,7 +157,8 @@ export function apply(ctx, config = {}) {
   const packsDeclared = (Array.isArray(config.packs) && config.packs.length > 0) ||
     (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
   const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
-    packLoader: packsDeclared ? () => packLoaderRef : null },
+    packLoader: packsDeclared ? () => packLoaderRef : null,
+    controlTool: config.control !== undefined },
   declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // The math surface is LAZY (kernel/math.js), so the shared module registers its tool only when asked. The

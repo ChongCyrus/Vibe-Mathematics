@@ -143,6 +143,7 @@ then:
 | 中断后继续未完成的工作 | 依赖**在途工作台账**（默认能力）：恢复时框架提示负责人"你还有未完成的工作" |
 | 临时对比实验 | `vibe_vmu_set { vmu.packs.active: [] }` 或关掉某中间件（禁用后行为回基线） |
 | **打开数学计算面** | 在插件行声明 `math: true`（或任一 `vmu.math.*` 键 ✓）⇒ 发布继承过来的 `math_computation`（先用 `{op:'probe'}` 列出本机可用引擎 ✓；**未声明 ⇒ 不出现** ✓，零机制不受管理面豁免 ✓） |
+| **暂停/恢复整个流程** | 声明 `control: true` ⇒ `vibe_vmu_control {action:'pause', reason:'…'}`（**暂停后任务新建/转换会被具名拒** ✓）⇒ `{action:'resume'}` ✓；`{action:'beat'}` 记心跳，`vmu.limits.wallClockMs` 超时即 `stale:true` ✓ |
 
 ---
 

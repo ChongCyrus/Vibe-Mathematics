@@ -97,16 +97,21 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 
 ---
 
-## 5. 控制流（Pause / Resume / Stop / 心跳）
+## 5. 控制流（Pause / Resume / Stop / 心跳）—— **实现现状，2026-10-09 校准 ✓**
 
-| 动作 | 语义 | 关键要求 |
+| 动作 | 语义（真实现 ✓） | 证据／边界 |
 |---|---|---|
-| `pause(reason)` | 停止新唤醒；在途回合自然结束 | 在途工作**标为待续**（见 07-§3）；原因入审计 |
-| `resume()` | 恢复调度；**对"仍在役"的成员清掉待续标记**（已经不缺它） | 不清会永远误报（v5r 实测教训） |
-| `stop(reason)` | 终止并回收 | 释放子代理；状态一致（无幽灵在飞） |
-| 心跳/定时 | 空闲触界、看门狗、超时 | 所有定时都经**注入的时钟**（R12 可复现）；预算感知（超限降级而非硬撑） |
+| `kernel.pause(reason)` | 控制状态 → `paused`；**任务的新建与状态转换被具名拒** `VMU_STATE` ✓（"暂停而不挡工作"只是标签 ✗）；发 `control/paused` ✓ | 场景见 `tests/vmu-kernel.test.mjs` V7 组 ✓ |
+| `kernel.resume(reason)` | → `running`，回执带 `resumedFrom` ✓；发 `control/resumed` ✓ | 同上 ✓ |
+| `kernel.stop(reason)` | → `stopped`，清空注册；发 `control/paused{reason:'stopped'}` ✓；**已停止不能再 pause** ✓ | 同上 ✓ |
+| `kernel.beat(note)` | 心跳计数 + 时间戳；发 `control/heartbeat` ✓ | `status().control.beats/lastBeatAt` ✓ |
+| `kernel.control()`／`status().control` | `{state, pausedAt, pausedReason, resumes, stops, beats, lastBeatAt, wallClockMs, sinceLastBeatMs, stale}` ✓ | **`vmu.limits.wallClockMs` 的真实消费者** ✓（超预算 ⇒ `stale:true` ✓） |
+| 工具面 | `vibe_vmu_control {action:'status'\|'pause'\|'resume'\|'stop'\|'beat'}` ✓，**仅在声明 `control:` 时出现** ✓（零机制 ✓） | 场景见 `tests/vmu-entry.test.mjs` V7 组 ✓ |
 
-**判定点**：`control.can-pause` / `control.on-idle` / `control.on-timeout` / `control.degrade`。
+**仍未实现（诚实 ✗）**：
+- **判定点** `control.can-pause` / `on-idle` / `on-timeout` / `degrade` **不存在** ✗（暂停是框架动作，不是中间件判定点 ✓；要定制就在 `control/paused` 上挂观察型规则 ✓）；
+- **没有定时器/看门狗**：心跳由调用方驱动 ✗（内核不自带 scheduler；"空闲触发"需宿主 timer 服务 ⇒ 未接 ✗）；
+- **暂停只挡"任务"** ✓：会议/表决/归档**尚未**接同一门禁 ✗（06/08 的其它原语不受 pause 影响 ⇒ 见 08-§8 未核项 ✓）。
 
 ---
 

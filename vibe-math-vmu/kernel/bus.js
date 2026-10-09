@@ -47,6 +47,7 @@ export const VU_HOOKS = Object.freeze([
   'record/append-before', 'record/appended', 'task/assign', 'task/transition',
   'prompt/section-assembled', 'budget/exceeded', 'pack/loading', 'pack/loaded',
   'settle/before', 'settle/after',
+  'control/paused', 'control/resumed', 'control/heartbeat',
 ])
 
 /** Default failure policy per hook, so an entry that omits one still behaves safely (docs/05 §4.3). */
@@ -60,6 +61,9 @@ export const DEFAULT_FAILURE = Object.freeze({
   'budget/exceeded': 'abort',
   'pack/loading': 'closed', 'pack/loaded': 'closed',
   'settle/before': 'closed', 'settle/after': 'closed',
+  // Control flow is OBSERVATION for middleware (a watcher may react), so the framework keeps running when a
+  // listener fails: an open policy here is what stops a broken watcher from freezing the whole run.
+  'control/paused': 'open', 'control/resumed': 'open', 'control/heartbeat': 'open',
 })
 
 export function refuse(code, message, hint) {

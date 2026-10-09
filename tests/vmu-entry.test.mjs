@@ -297,7 +297,38 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     plain.state.specs.map((s) => s.name).join(','))
 }
 
-// ---- 11. self-probe ---------------------------------------------------------------------------
+// ---- 11. V7: the control tool appears only when declared, and a pause taken through it REALLY gates work
+{
+  const plain = fakeCtx()
+  entry.apply(plain.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(!plain.state.specs.some((s) => s.name === 'vibe_vmu_control'),
+    'without a control declaration no control tool appears (zero mechanism, R1)',
+    plain.state.specs.map((s) => s.name).join(','))
+
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, control: true })
+  await new Promise((r) => setTimeout(r, 30))
+  const spec = h.state.specs.find((s) => s.name === 'vibe_vmu_control')
+  ok(spec !== undefined, 'declaring control publishes the control tool')
+  if (spec) {
+    const paused = JSON.parse(await spec.execute({ action: 'pause', reason: 'operator hold' }, {}))
+    ok(paused.ok === true && paused.state === 'paused', 'pause is callable and reports the new state', JSON.stringify(paused))
+    let refused = null
+    try { await handle.kernel.tasks.create({ title: 'blocked work' }) } catch (e) { refused = e && e.code }
+    ok(refused === 'VMU_STATE', 'a pause taken through the TOOL really blocks kernel work (not a label)', String(refused))
+    const status = JSON.parse(await spec.execute({ action: 'status' }, {}))
+    ok(status.state === 'paused' && status.pausedReason === 'operator hold', 'status reports the paused state and reason')
+    const resumed = JSON.parse(await spec.execute({ action: 'resume' }, {}))
+    ok(resumed.ok === true && resumed.state === 'running', 'resume restores running')
+    const task = await handle.kernel.tasks.create({ title: 'accepted again' })
+    ok(task && task.id, 'and work is accepted again after the resume')
+    const beat = JSON.parse(await spec.execute({ action: 'beat', note: 'alive' }, {}))
+    ok(beat.ok === true && beat.beats === 1, 'the heartbeat is callable through the tool')
+  }
+}
+
+// ---- 12. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

@@ -35,6 +35,7 @@ export const TOOL_NAMES = Object.freeze({
   records: 'vibe_vmu_records',
   script: 'vibe_vmu_script',
   pack: 'vibe_vmu_pack',
+  control: 'vibe_vmu_control',
 })
 
 /**
@@ -60,7 +61,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false }) {
   const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
   const specs = []
 
@@ -303,6 +304,32 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     })
   }
 
+  // 7) control flow (docs/08 §5) — only when the configuration declares control intent. A pause is a GATE:
+  // while paused the kernel refuses task mutations by name, and the bus is told so middleware can react.
+  if (controlTool) {
+    specs.push({
+      name: TOOL_NAMES.control,
+      description: 'vmu 控制流：action=status|pause|resume|stop|beat。暂停是**真门禁**（任务变更会被具名拒）；beat 是心跳（观察，供 wallClockMs 判定 stale）。',
+      parameters: {
+        action: param('string', 'status（默认）｜pause｜resume｜stop｜beat', { required: true, enum: ['status', 'pause', 'resume', 'stop', 'beat'] }),
+        reason: param('string', 'pause/stop 的原因（写入控制面与审计）'),
+        note: param('string', 'beat 的备注（可选）'),
+      },
+      run: async ({ action = 'status', reason, note } = {}) => {
+        try {
+          if (action === 'status') return Object.assign({ ok: true, action }, kernel.control())
+          if (action === 'pause') return Object.assign({ ok: true, action }, await kernel.pause(reason || 'paused by tool'))
+          if (action === 'resume') return Object.assign({ ok: true, action }, await kernel.resume(reason || null))
+          if (action === 'stop') return Object.assign({ ok: true, action }, await kernel.stop(reason || null))
+          if (action === 'beat') return Object.assign({ ok: true, action }, await kernel.beat(note || null))
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
   return specs
 }
 
@@ -349,7 +376,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -357,7 +384,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, controlTool }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {

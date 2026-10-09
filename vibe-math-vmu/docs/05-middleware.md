@@ -112,6 +112,9 @@ vmu.middleware.entries:
 | `budget/exceeded` | **abort** | 会话 | 资源越界属关键路径 ⇒ 中止本轮并具名上报 |
 | `pack/loading` / `pack/loaded` | closed | 会话 | 装载一致性 |
 | `settle/before` / `-after` | closed | 阶段 | 收束条件必须成立 |
+| `control/paused` | **open** | 会话 | 控制流是**观察面**（中间件可反应）；监听器出错**不该冻住整个运行** ⇒ 默认放行并留痕 ✓ |
+| `control/resumed` | **open** | 会话 | 同上 ✓ |
+| `control/heartbeat` | **open** | 会话 | 心跳纯观察 ✓；`stale` 由 `vmu.limits.wallClockMs` 判定（04 §11 已接线 ✓） |
 
 **三态语义回顾**（§7）：`open`＝放行但留痕／`closed`＝拒绝该操作／`abort`＝中止本轮或本阶段；**任何失败都必须记审计**（谁、哪条、哪个钩子、原始错误）✓。
 
