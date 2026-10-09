@@ -58,7 +58,7 @@ const engine = m.createRulesEngine({
   ok(engine.validate({ id: 'x', on: ['h'], when: { all: [{ tool: ['a'] }, { not: { role: ['b'] } }] }, then: [{ allow: {} }] }).length === 0,
     'a well-formed rule validates clean')
   const badDeny = engine.validate({ id: 'x', on: ['h'], when: {}, then: [{ deny: { message: 'no' } }] })
-  ok(badDeny.some((p) => /registered VMU_\* code/.test(p)), 'a deny without a registered code is refused', badDeny.join(' | '))
+  ok(badDeny.some((p) => /must match VMU_\[A-Z0-9_\]\+/.test(p)), 'a deny without a VMU_-shaped code is refused', badDeny.join(' | '))
   ok(engine.validate({ id: 'x', on: ['h'], when: { arg: { eq: 1 } }, then: [{ allow: {} }] }).some((p) => /arg: needs/.test(p)),
     'a malformed arg clause is refused')
   ok(engine.validate({ id: 'x', on: [], when: {}, then: [{ allow: {} }] }).some((p) => /on must be a hook name or a non-empty list/.test(p)),
@@ -171,6 +171,20 @@ if (SELF_PROBE) {
   }
   console.log('=== VMU RULES SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
+}
+
+// ---- a rule code MAY contain digits (a pack id like `v5r-core` yields VMU_PACK_V5R_CORE_*) ------------
+{
+  const r = m.createRulesEngine({ clock: () => '2026-10-09T00:00:00.000Z', subjects: { has_locked_formal_proof: () => true } })
+  const withDigit = { id: 'digit-code', kind: 'rules', on: ['tools/pre-execute'], when: { tool: ['x'] },
+    then: [{ deny: { code: 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS', message: 'x' } }] }
+  ok(r.validate(withDigit).length === 0,
+    'a pack code may contain DIGITS (validatePack demands the VMU_PACK_<ID>_ prefix, and ids like v5r-core have digits)',
+    JSON.stringify(r.validate(withDigit)))
+  const bad = Object.assign({}, withDigit, { then: [{ deny: { code: 'pack_lowercase', message: 'x' } }] })
+  ok(r.validate(bad).some((p) => /must match VMU_\[A-Z0-9_\]\+/.test(p)),
+    'and a code that does not start with VMU_ is still refused, with the real requirement in the message',
+    JSON.stringify(r.validate(bad)))
 }
 
 console.log('=== VMU RULES: ' + passed + ' passed, ' + failed + ' failed ===')

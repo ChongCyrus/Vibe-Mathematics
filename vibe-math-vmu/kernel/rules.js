@@ -109,7 +109,7 @@ export function validateRule(rule) {
     if (key === 'deny') {
       const d = action.deny
       if (!isPlainObject(d) || typeof d.message !== 'string') problems.push('then[' + i + '].deny: needs { code, message }')
-      else if (typeof d.code !== 'string' || !/^VMU_[A-Z_]+$/.test(d.code)) problems.push('then[' + i + '].deny.code must be a registered VMU_* code')
+      else if (typeof d.code !== 'string' || !/^VMU_[A-Z0-9_]+$/.test(d.code)) problems.push('then[' + i + '].deny.code must match VMU_[A-Z0-9_]+ (digits ARE allowed: a pack id like `v5r-core` yields VMU_PACK_V5R_CORE_*)')
     }
     if (key === 'rewriteArgs' && !isPlainObject(action.rewriteArgs)) problems.push('then[' + i + '].rewriteArgs: must be an object')
     if (key === 'appendPrompt' && !(isPlainObject(action.appendPrompt) || Array.isArray(action.appendPrompt))) {

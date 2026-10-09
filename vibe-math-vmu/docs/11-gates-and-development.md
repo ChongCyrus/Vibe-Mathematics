@@ -337,7 +337,7 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | **V2** | 运行机制 = **框架 ＋ settings ＋ 中间件（＋代理自组织）** | ✅ | 四形态中间件 ＋ 总线 ＋ **宿主钩子桥**（真机 M1 拒绝含中间件 id ✓、M2 模块拒绝 ✓、M4 整合包应用 ✓）；**零机制**：无配置只注册 1 个只读工具 ✓ | M3 真机 NON-RESULT ✗ | 11-§9.6 |
 | **V3** | 提供**尽可能多**的六域**基础设施**（学术/数学、会议、工作流、控制流、归档、计算） | ⚠️ **库面很宽，工具面很窄** | `kernel/` 15 模块（meeting/ballot/tasks/library/members/store/math/rules/loader/script-bridge/pack/registry…）；`host.js:31-36` 只有 **5** 个工具 | 使用者**无法在会话里直接驱动**多数能力（会议/表决/任务/归档只能由中间件模块经 `ev.api` 调） | B2＋③ |
 | **V4** | **可调控参数**尽可能多且真的可调 | ⚠️ **54 键：24 已接线／30 未接线** | `docs/04 §11`（**生成器按运行时代码扫描产出接线列** ✓）；`scripts/generate-vmu-settings-table.mjs` | 30 键"改了不会有行为变化" ✗ | B6 |
-| **V5** | 用 settings ＋ 中间件即可**复现 v2–v5r 架构**（整合包） | ❌ | 方案在 `10-§5`（五步法＋四分类 ✓）；`packs/institute-min.js` 是**演示包** | **没有 v5r-pack／v3-pack** ✗ | P3（A/B 之后） |
+| **V5** | 用 settings ＋ 中间件即可**复现 v2–v5r 架构**（整合包） | ⚠️ **v5r 语义包已存在并会真正触发** ✓（`packs/v5r-core.js`：席位／法定数／M1 规则／**随包 M2 模块**／别名 ✓，场景断言见 `tests/vmu-entry.test.mjs` 第 13 组 ✓） | `packs/v5r-core.js` ✓；`packs/institute-min.js`（形状示例，规则指向 v5 旧名 ⇒ 不触发 ✗）；`10-§5` ✓ | **行为级 A/B 未做** ✗（需场景夹具）；**v3-pack 未做** ✗ | 10-§5.1 的方法 ⇒ P3 收尾 |
 | **V6** | 可通过 settings／中间件**设置、安排、管理提示词** | ⚠️ 管线已实现，**入口未接线** | `kernel/prompt/index.js`（段/四维绑定/覆盖/whoMayOverride/截断计数/state 不可覆盖 ✓，有测试）；但入口未把 `bindings/overrides/whoMayOverride` 交给内核 ✗ | **使用者现在无法通过配置改提示词** ✗（这是明确的愿景条款） | **B3（高优先）** |
 | **V7** | **控制流**（暂停/恢复/停止/心跳） | ❌ | 只有 `kernel.stop()`（`kernel/index.js:225-229`）；**没有** pause/resume/heartbeat ✗ | 控制流域缺一半 | ③ |
 | **V8** | 会议／表决／工作流**原语** | ✅ 库面 | `kernel/{meeting,ballot,tasks}.js` ＋ 场景测试（含 **v5r `s8-freeze-say` 等价回归** ✓）；22 个 vmu 场景作业全绿 ✓ | 无工具面；议程/动议实体、分钟确认未做 | B2＋A |

@@ -350,7 +350,40 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
-// ---- 13. self-probe ---------------------------------------------------------------------------
+// ---- 13. V5: the v5r-core PACK actually loads AND actually fires -------------------------------------
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-v5r-core-'))
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, root: dir, packs: ['v5r-core'] })
+  await new Promise((r) => setTimeout(r, 80))
+  ok(handle.packErrors().length === 0, 'v5r-core loads without error', JSON.stringify(handle.packErrors()).slice(0, 200))
+  ok(handle.appliedPacks().some((p) => p.id === 'v5r-core'), 'and it is recorded as applied', JSON.stringify(handle.appliedPacks()))
+  const roles = handle.kernel.requireMembers().roles().map((r) => r.id)
+  ok(roles.includes('chair') && roles.includes('member') && roles.includes('temp'),
+    'its slots are declared (chair/member/temp) - v5r\'s roster as opaque slots (D5)', roles.join(','))
+  const st = handle.kernel.status()
+  ok(st.settings.resolved['vmu.meetings.quorumRule'].source === 'pack:v5r-core' &&
+     st.settings.resolved['vmu.meetings.quorumRule'].value === 'm-unanimous',
+    'its settings layer is in effect and REPORTED as coming from the pack',
+    JSON.stringify(st.settings.resolved['vmu.meetings.quorumRule']))
+  const ids = st.bus.entries.map((e) => e.id)
+  ok(ids.includes('v5r-core-no-adhoc-scripts') && ids.includes('v5r-core-settled-records-only'),
+    'both its M1 rule and its M2 module are on the bus', ids.join(','))
+
+  // M1 FIRES: script runs are refused through the real hook.
+  const scriptDecision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {} }, {})
+  ok(scriptDecision.ok === false && scriptDecision.refused && scriptDecision.refused.code === 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS',
+    'the M1 rule fires on a tool the host REALLY registers', JSON.stringify(scriptDecision.refused))
+  // M2 FIRES (and stays silent for other tools).
+  const recordDecision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_records', args: { action: 'append' } }, {})
+  ok(recordDecision.ok === false && recordDecision.refused && recordDecision.refused.code === 'VMU_PACK_V5R_CORE_NOT_SETTLED',
+    'the pack-carried M2 module fires too', JSON.stringify(recordDecision.refused))
+  const other = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_status', args: {} }, {})
+  ok(other.ok === true, 'and it stays silent for tools it does not govern (no blanket denial)')
+  await rm(dir, { recursive: true, force: true })
+}
+
+// ---- 14. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"
