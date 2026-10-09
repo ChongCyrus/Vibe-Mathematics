@@ -40,7 +40,10 @@ export function refuse(code, message, hint) {
 
 const textPart = (text) => [{ type: 'text', text: String(text) }]
 
-/** Map a vmu bus decision to the host's pre-execute decision (or null to abstain). */
+/**
+ * Map a vmu bus decision to the host's pre-execute decision (or null to abstain). The denial REASON names
+ * the middleware that decided, because the host's refusal is the only thing the model and the audit see.
+ */
 export function toPreExecuteDecision(decision, { hook = 'tools/pre-execute' } = {}) {
   if (!decision || typeof decision !== 'object') return null
   if (decision.rewriteArgs) {
@@ -48,9 +51,15 @@ export function toPreExecuteDecision(decision, { hook = 'tools/pre-execute' } = 
       message: 'the host\'s ' + hook + ' excludes input rewriting (the arguments are already recorded and presented)',
       hint: 'use a code module that returns a decision the host supports, or change the call before dispatch' }
   }
-  if (decision.deny) return { kind: 'deny', reason: [decision.deny.code, decision.deny.message].filter(Boolean).join(': ') }
-  if (decision.cancel) return { kind: 'cancel' }
-  if (decision.ask) return { kind: 'ask', reason: decision.ask.reason || 'vmu middleware requires approval' }
+  if (decision.deny) {
+    const by = decision.deny.by ? ' [middleware ' + decision.deny.by + ']' : ''
+    return { kind: 'deny', reason: [decision.deny.code, decision.deny.message].filter(Boolean).join(': ') + by }
+  }
+  if (decision.cancel) {
+    const by = decision.cancel.by ? ' [middleware ' + decision.cancel.by + ']' : ''
+    return { kind: 'cancel', reason: [decision.cancel.code, decision.cancel.message, decision.cancel.reason].filter(Boolean).join(': ') + by }
+  }
+  if (decision.ask) return { kind: 'ask', reason: (decision.ask.reason || 'vmu middleware requires approval') + (decision.ask.by ? ' [middleware ' + decision.ask.by + ']' : '') }
   return null
 }
 
