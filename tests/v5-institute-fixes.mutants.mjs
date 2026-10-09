@@ -1863,6 +1863,10 @@ const runPositive = (sc) => {
 const SCENARIO_LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : SCENARIOS
 let retried = 0
 let retriedGreen = 0
+// Named lists of WHAT failed. Declared HERE (before the positives loop) because the positives phase already
+// appends to `failedPositives`, and a later declaration would be a TDZ ReferenceError.
+const failedFamilies = []
+const failedPositives = []
 if (!ONLY) {
 const LIST = SCENARIO_LIST
 for (const sc of LIST) {
@@ -1877,7 +1881,7 @@ for (const sc of LIST) {
       r = again
     }
   }
-  if (!r.green) posRed++
+  if (!r.green) { posRed++; failedPositives.push(sc) }
   console.log((r.green ? '  ok   ' : '  FAIL ') + 'positive v5r scenario ' + sc + ' [' + r.ms + 'ms]' + (r.green ? '' : ' :: exit=' + r.code))
   TIMES.push(['positive:' + sc, r.ms])
 }
@@ -1937,6 +1941,7 @@ for (const f of SELECTED) {
     if (ok) mutantRetriedRed++
   }
   if (ok) red++
+  else failedFamilies.push(f.name)
 }
 const totalMs = TIMES.reduce((a, t) => a + t[1], 0)
 console.log('')
@@ -1958,8 +1963,13 @@ const verdict = (verdictBad ? 'FAIL' : 'PASS') + ' v5-institute-fixes.mutants: f
   ' hangs=' + hangs.length + ' skipped=' + skipped.length
 console.log(verdict)
 if (verdictBad) {
+  // The gate renders only the last ~60 chars of a job's tail, so the SHORT line below is what a sweep shows;
+  // the FAILURES list is what failureDetail() extracts verbatim. Both carry NAMES, never just a count.
+  console.log('FAIL v5-inst fix: ' + (failedFamilies.length + failedPositives.length) + ' item(s) failed')
   console.log('FAILURES:')
   console.log('  - ' + verdict)
+  for (const n of failedFamilies.slice(0, 30)) console.log('  - family did not redden by name: ' + n)
+  for (const n of failedPositives.slice(0, 30)) console.log('  - positive control STILL red after retry: ' + n)
   process.exit(1)
 }
 console.log('ALL MUTANTS RED AS REQUIRED')
