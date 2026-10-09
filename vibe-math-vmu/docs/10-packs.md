@@ -195,7 +195,84 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ---
 
-## 9. 未核项
+## 9. pack 模板（**逐字骨架**：照抄即可开工）
+
+```
+packs/_template/
+├── pack.yml
+├── settings.yml
+├── middleware/rules/example.yml
+├── middleware/modules/example.js
+├── prompts/bindings.yml
+└── README.md
+```
+
+**`pack.yml`**
+```yaml
+id: _template
+name: 示例整合包（请改名）
+version: 0.1.0
+apiVersion: 1                     # 需要的 vmu 公开接口版本（03-§7 / D13-O3）
+requires: { vmu: '>=1.0 <2' }
+conflicts: []
+description: |
+  一句话说明这套"运行机制"想达到什么、代价是什么。
+capabilities: []                  # 依赖的内核能力；缺失 ⇒ 装载即 VMU_PACK_MISSING
+settings: settings.yml
+middleware: []
+prompts: prompts/bindings.yml
+scripts: []
+migrations: []
+```
+
+**`settings.yml`**（**只放"量"，流程进中间件**）
+```yaml
+vmu.limits.toolCallsPerTurnCap: 12
+vmu.meetings.quorumRule: m-unanimous
+```
+
+**`middleware/rules/example.yml`**（M1：可静态校验、可干跑、无副作用能力）
+```yaml
+id: _template.example
+on: [tools/pre-execute]
+when:
+  all:
+    - tool: [vibe_vmu_ballot]
+    - not: { subject: has_locked_formal_proof }
+then:
+  - deny:
+      code: VMU_INVALID_ARGUMENT
+      message: "只有已被正式证明或证伪、且已定稿的对象才能进入表决"
+      hint: "先由有权限者登记 formal_proof"
+```
+
+**`middleware/modules/example.js`**（M2：**必须**声明 `meta.apiVersion` 与 `capabilities`，且**每个分支都要 return**）
+```js
+export const meta = { id: '_template.example', apiVersion: 1 }
+export const capabilities = ['read-state', 'deny', 'appendPrompt']
+export default ({ log }) => ({
+  hooks: {
+    'meeting/round-start': async (ev) => {
+      if (ev.roster.length >= 2) return                        // ← 必须 return（放行）
+      return { deny: { code: 'VMU_MEETING_TOO_SMALL', message: '本轮参与人数不足' } }
+    },
+  },
+})
+```
+
+**`prompts/bindings.yml`**（提示词包：**不得改状态块**）
+```yaml
+- { section: charter, role: reviewer, file: ../../prompts/reviewer-charter.md }
+- { section: task-brief, task: ['t-1'], owner: 'm-2', file: task-1-brief.md }
+```
+
+**`README.md` 必须回答**：① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发/预算/提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默）。
+
+**上线三步**：`vibe_vmu_pack {op:'validate'}` ⇒ `{op:'dryRun'}` ⇒ `{op:'load'}` ✓。
+
+---
+
+## 10. 未核项
 
 - **v5r-pack 的差异清单未生成**（待 P3 对照跑；D8 要求逐条报裁）；
 - **OL4 冲突策略已自裁**（检测即报错），但**未实测**多 pack 同时装载的最坏情形；

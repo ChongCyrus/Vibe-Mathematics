@@ -155,7 +155,48 @@ vmu.packs.active: [v5r]
 
 ---
 
-## 11. 未核项
+## 11. 参数总表（**首版；机器可核**：与 schema 键集合必须完全一致）
+
+> 列含义：**H**＝热改等级（H0 立即／H1 下一回合／H2 下一会话／H3 只读）；**谁**＝可改者（office＝会话根；role:槽位＝可下放）。**本表由 schema 派生**（手写副本仅作首版基线，P0 后由生成器替换 ✓）。
+
+| 键 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 说明 |
+|---|---|---|---|---|---|---|---|
+| `vmu.core.enabled` | bool | `true` | — | 会话 | H2 | office | 内核总开关（关闭＝完全不介入） |
+| `vmu.core.storeBackend` | enum | `json-fold` | `json-fold`∣`storage-domain` | 会话 | **H3** | office | 耐久后端（O1：默认 fold；换后端须过同一套门禁） |
+| `vmu.core.logLevel` | enum | `info` | `debug`∣`info`∣`warn`∣`error` | 会话 | H0 | office | 日志级别（不进模型上下文） |
+| `vmu.limits.toolCallsPerTurnCap` | int ≥0 | `0` | — | 会话 | H0 | office | 单回合工具调用上限；**0＝不限** |
+| `vmu.limits.maxLiveMembers` | int ≥0 | `0` | — | 会话 | H0 | office | 在活成员上限；**0＝不设**（机器强制，拒绝具名） |
+| `vmu.limits.memoryCeilingMb` | int ≥0 | `0` | — | 会话 | H0 | office | 内存上限（超限拒绝新建成员）；0＝不设 |
+| `vmu.limits.wallClockMs` | int ≥0 | `0` | — | 会话 | H0 | office | 阶段墙钟硬上限；**时间由框架设置，不接受用户传时间** |
+| `vmu.records.tracks` | string[] | `[progress,routes,obstacles,rejected,state]` | 受控枚举 | 会话 | H1 | office | 记录分轨（负向知识有独立档） |
+| `vmu.records.headListAt` | int ≥1 | `7` | — | 会话 | H1 | office | 头部列表字段数（"目录常驻、正文按需"） |
+| `vmu.records.truncateMode` | enum | `keepChars` | `keepChars`∣`keepHeadTail`∣`dropMiddle` | 会话 | H1 | office | 截断策略（**必须计数，禁静默**） |
+| `vmu.records.fingerprintPolicy` | enum | `content-only` | `content-only`∣`content+display` | 会话 | H2 | office | 内容指纹口径（默认**排除展示头**） |
+| `vmu.prompts.overridesDir` | path | `prompts/overrides` | 仓内相对路径 | 会话 | H0 | office | 提示词覆盖目录 |
+| `vmu.prompts.bindings` | obj[] | `[]` | `{section,role?,phase?,member?,task?,owner?,file?,text?}` | 会话 | H0 | office | 四维绑定（优先级 角色<阶段<成员<任务） |
+| `vmu.prompts.whoMayOverride` | enum[] | `[office]` | `office`∣`role:<slot>` | 会话 | H1 | office | 允许覆盖者 |
+| `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | 法定数规则（**仅规则，不含"何时开会"**） |
+| `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | 单轮超时（0＝不限） |
+| `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | 未完成任务上限（0＝不限） |
+| `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | 阶段列表；**默认空＝不假装有流程** |
+| `vmu.math.engines` | string[] | `[]` | 适配器名 | 会话 | H2 | office | 引擎优先级；**默认空＝具名降级** |
+| `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | 编译超时（0＝作业级默认） |
+| `vmu.safety.pathPolicy` | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | 写保护范围 |
+| `vmu.safety.approvalRequired` | string[] | `[]` | 动作名 | 会话 | H1 | office | 需审批的动作（走宿主审批面） |
+| `vmu.safety.delegableKeys` | string[] | `[]` | 键名 | 会话 | H1 | office | 可下放给角色槽位的键 |
+| `vmu.middleware.entries` | obj[] | `[]` | 见 05-§2 | 会话 | H0 | office | 中间件清单（**默认空＝零机制**） |
+| `vmu.middleware.hookTimeoutMs` | int ≥1 | `2000` | — | 会话 | H0 | office | 单钩子预算 |
+| `vmu.middleware.breakerThreshold` | int ≥1 | `3` | — | 会话 | H0 | office | 连续失败熔断阈值 |
+| `vmu.middleware.dryRun` | bool | `false` | — | 会话 | H0 | office | 干跑（只报不做） |
+| `vmu.packs.active` | string[] | `[]` | pack id | 会话 | **H2** | office | 生效整合包（冲突按 O4 报错） |
+| `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | 是否允许 pack 间显式覆盖 |
+| `vmu.packs.activeOverrides` | string[] | `[]` | `<pack>:<mwId>` | 会话 | H1 | office | 显式覆盖声明（不声明即报错） |
+
+**三条硬纪律（本表的门禁）**：① 表内键集合 ≡ schema 键集合（无多无少）；② 每个键都有回显＋非法拒＋热改＋审计四类断言；③ **本表不得手写第二份**（P0 后由生成器产出）；④ "时间/随机"类**一律不接受用户输入**（`vmu.limits.wallClockMs` 是**框架侧上限**，不是用户可设的截止时刻 ✓）。
+
+---
+
+## 12. 未核项
 
 - **热改等级的实际生效点**（哪些键真能做到 H0 立即）**未实测** ⇒ 需 P0 实现后用场景验证（本文给的是**设计承诺**）；
 - **JSON Schema 投影工具**未定（Schemastery 是否自带 `toJSONSchema`，或需自写）⇒ 未核；
