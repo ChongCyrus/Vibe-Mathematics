@@ -33,6 +33,7 @@ import { createRulesEngine } from './rules.js'
 import { createLoader } from './loader.js'
 import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
+import { SETTING_DEFS } from '../settings/schema.js'
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -338,6 +339,9 @@ export function createKernel({
     /** The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly. */
     setSettingsValue(key, value) { settings[key] = value; return { ok: true, key } },
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
+
+    /** The declaration of a setting (hot class, who may change it) - used by the host tool for its receipt. */
+    settingDef(key) { return SETTING_DEFS.find((d) => d.key === key) || null },
 
     /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
     notePackApplied(id) { packNotes.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
