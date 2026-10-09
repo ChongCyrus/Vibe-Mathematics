@@ -81,8 +81,11 @@ const mk = async (settings = {}) => {
     'applying a pack whose requirements are unmet is refused by name')
   const withSettings = loader.plan({ id: 'wants-settings', settings: { 'vmu.records.headListAt': 9 } })
   ok(withSettings.ok === true, 'planning a pack that carries settings is fine (it is a plan, not an application)')
-  await expectThrow(() => loader.apply({ id: 'wants-settings', settings: { 'vmu.records.headListAt': 9 } }), 'VMU_ENGINE_UNAVAILABLE',
-    'applying a pack whose SETTINGS this assembly cannot apply is refused, not silently dropped')
+  const appliedSettings = await loader.apply({ id: 'wants-settings', settings: { 'vmu.records.headListAt': 9 } })
+  ok(appliedSettings.ok === true && kernel.settingsSnapshot()['vmu.records.headListAt'] === 9,
+    'a pack\'s settings ARE applied by the kernel settings layer (they are never silently dropped)')
+  await expectThrow(() => loader.apply({ id: 'wants-settings-2', settings: { 'vmu.records.headListAt': 4 } }), 'VMU_PACK_CONFLICT',
+    'a pack that would overwrite an ACTIVE setting is refused unless overrides are declared (O4)')
   await rm(root, { recursive: true, force: true })
 }
 
