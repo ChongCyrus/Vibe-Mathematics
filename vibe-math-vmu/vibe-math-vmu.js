@@ -21,6 +21,7 @@ import { createKernel } from './kernel/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
+import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL } from 'node:url'
 import { basename } from 'node:path'
@@ -57,7 +58,15 @@ export function apply(ctx, config = {}) {
   const root = typeof config.root === 'string' && config.root.length > 0 ? config.root : null
   const clock = typeof config.clock === 'function' ? config.clock : undefined
 
-  const kernel = createKernel(Object.assign({ settings, root }, clock ? { clock } : {}))
+  // M3 SCRIPT BRIDGE: the subprocess seam is built from the HOST's service when it exists; without it the
+  // bridge stays unbound and every run is refused by name (VMU_ENGINE_UNAVAILABLE), never faked.
+  let spawnSeam = null
+  let spawnError = null
+  if (hasHostSpawn(ctx)) {
+    try { spawnSeam = createHostSpawn({ ctx, defaultCwd: typeof config.workspace === 'string' ? config.workspace : null }) }
+    catch (e) { spawnError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
+  }
+  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam }, clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
   // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the
   // middleware the configuration declares has to be ACTIVATED - that is what start() is for.
@@ -67,7 +76,7 @@ export function apply(ctx, config = {}) {
   // (the live run showed `packs: []` from one instance and a pack rule from the other). `config.instance`
   // makes the answer unambiguous; the default is stable so tests stay deterministic.
   const instance = typeof config.instance === 'string' && config.instance.length > 0 ? config.instance : 'vmu-default'
-  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance },
+  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [] },
     declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // With a durable root, OPEN the store: the durable layer must exist on disk, not merely be constructible.

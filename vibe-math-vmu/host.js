@@ -33,6 +33,7 @@ export const TOOL_NAMES = Object.freeze({
   set: 'vibe_vmu_set',
   middleware: 'vibe_vmu_middleware',
   records: 'vibe_vmu_records',
+  script: 'vibe_vmu_script',
 })
 
 /**
@@ -58,7 +59,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [] }) {
   const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
   const specs = []
 
@@ -164,6 +165,52 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     })
   }
 
+  // 5) scripts (M3) — only when the configuration DECLARES scripts. Results go back to the caller and
+  // nowhere else: this tool has no prompt path at all (docs/06 §5).
+  if (Array.isArray(scripts) && scripts.length > 0) {
+    specs.push({
+      name: TOOL_NAMES.script,
+      description: '列出或运行本次运行声明的 M3 脚本。action=list|run；结果只回给调用方，**绝不自动进入提示词**。',
+      parameters: {
+        action: param('string', 'list（默认）｜run', { required: true, enum: ['list', 'run'] }),
+        id: param('string', '脚本 id（run 必填）'),
+        args: param('string', 'JSON 数组形式的附加参数（可选）'),
+      },
+      run: async ({ action = 'list', id, args } = {}) => {
+        try {
+          if (action === 'list') {
+            return { ok: true, action, scripts: scripts.map((s) => ({ id: s && s.id, file: s && s.file, timeoutMs: (s && s.timeoutMs) || null })) }
+          }
+          if (action !== 'run') return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+          const script = scripts.find((s) => s && s.id === id)
+          if (!script) {
+            return refused('VMU_NO_SUCH_OBJECT', 'no declared script with id ' + String(id),
+              'declared: ' + scripts.map((s) => s && s.id).join(', '))
+          }
+          let extra = []
+          if (typeof args === 'string' && args.trim().length > 0) {
+            try { extra = JSON.parse(args) } catch { return refused('VMU_INVALID_ARGUMENT', 'args must be a JSON array of strings') }
+            if (!Array.isArray(extra)) return refused('VMU_INVALID_ARGUMENT', 'args must be a JSON array of strings')
+          }
+          // Build the request CONDITIONALLY: the bridge's validator refuses a present-but-wrong cwd, so an
+          // absent optional field must stay absent (null is not a string).
+          const request = {
+            file: script.file,
+            args: (script.args || []).concat(extra.map(String)),
+            timeoutMs: script.timeoutMs || 0,
+            failure: script.failure || 'open',
+          }
+          if (typeof script.cwd === 'string' && script.cwd.length > 0) request.cwd = script.cwd
+          if (script.env && typeof script.env === 'object' && !Array.isArray(script.env)) request.env = script.env
+          const result = await kernel.bridge.run(request)
+          return Object.assign({ ok: true, action, script: id }, result)
+        } catch (e) {
+          return refused(e.code || 'VMU_MIDDLEWARE_FAILED', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
   return specs
 }
 
@@ -210,7 +257,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [] } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -218,7 +265,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
