@@ -303,6 +303,16 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | 时间 | 命令 | 结果 | 备注 |
 |---|---|---|---|
 | 2026-10-09 19:55–20:26（31 min） | `GATE_RELEASE=1 node tests/run-tests.mjs`（前置 `preflight.mjs --for-t3` **PASS** ✓，工作树干净 ✓） | `TOTAL 132 PASS 131 FAIL 1` ✗ | 唯一红：`v5-institute-fixes.mutants.mjs`（1512.7 s ✓） |
+| 2026-10-09 20:32–21:03（31 min） | 同上（修复红因之后 ✓，HEAD `ea81436` ✓、`dirty=0` ✓） | **`TOTAL 132 PASS 132 FAIL 0`** ✓✓ | **全仓非增量门禁全绿** ✓（含全部 vmu 工作 ✓） |
+
+**P5 发布门禁（机器面，2026-10-09 实跑 ✓✓）**：
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 静态检查 ＋ 真实 `npm pack` ＋ tarball 行尾扫描 | `node scripts/release-check.mjs` | **ALL CHECKS PASSED** ✓（tarball sha1 `d2420a2b…` ✓、**296 文件** ✓、**290 文本文件无 CRLF** ✓） |
+| 谓词非空证明 | `node scripts/release-check.mjs --self-test` | 全过 ✓（含"过时 compatNote 会被抓" ✓） |
+| 变异族 | `node tests/release-check.mutants.mjs` | `ALL MUTANTS RED AS REQUIRED` ✓ ＋ 对照绿 ✓ |
+
+> **发布本身（版本号 ＋ `npm publish` ＋ GitHub Release）**：**未做** ✗ —— 属"**较大影响决策**" ✓，须由用户批准 ✓（§7 的"发布前把草稿交用户确认" ✓）。门禁的**机器面已全绿** ✓。
 
 **该红的定位（本轮已完成 ✓）**：红不是 v5 行为缺陷 ✗，而是**变异族自身的漂移** ✗✓ ——
 - 被判红的断言来自 **`tests/selfdrive-v5.mjs:2782-2791`**（`s25b-progress-tracks` 场景 ✓），而该套件在**同一轮 T3 里 PASS** ✓（`ALL GREEN` ✓）⇒ **基线绿、仅变异下红** ✓；
