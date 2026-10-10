@@ -144,6 +144,8 @@ then:
 | 临时对比实验 | `vibe_vmu_set { vmu.packs.active: [] }` 或关掉某中间件（禁用后行为回基线） |
 | **打开数学计算面** | 在插件行声明 `math: true`（或任一 `vmu.math.*` 键 ✓）⇒ 发布继承过来的 `math_computation`（先用 `{op:'probe'}` 列出本机可用引擎 ✓；**未声明 ⇒ 不出现** ✓，零机制不受管理面豁免 ✓） |
 | **暂停/恢复整个流程** | 声明 `control: true` ⇒ `vibe_vmu_control {action:'pause', reason:'…'}`（**暂停后任务新建/转换会被具名拒** ✓）⇒ `{action:'resume'}` ✓；`{action:'beat'}` 记心跳，`vmu.limits.wallClockMs` 超时即 `stale:true` ✓ |
+| **在会话里开一场会并表决** | 声明 `meetings: true`（或 `ballot: true` ✓）⇒ `vibe_vmu_meeting`：`{action:'open', agenda:'…', roster:['r-1','r-2']}` ⇒ 拿 `id` ✓；`{action:'speak', id, member:'r-1', text:'…'}` ✓；`{action:'ballot', target:'prop-1'}` ⇒ 拿 `ballotId` ✓；`{action:'vote', ballotId, member:'r-1', value:'for'}` ✓（**口语票值会被面上归一化**为 1/0 ✓，权威拒绝仍来自原语 ✓）；`{action:'tally', ballotId}` 出结果 ✓；未知 id ⇒ **`VMU_NO_SUCH_OBJECT`** ✓（先 `{action:'list'}` 看活对象 ✓） |
+| **在会话里驱动任务板** | 声明 `tasks: true`（**或**给 `vmu.tasks.stages` 一个非空数组 ✓）⇒ `vibe_vmu_task`：`{action:'create', title:'…'}` ⇒ 拿 `id` ✓；`{action:'assign', id, owner}` ✓；`{action:'transition', id, to:'doing'}` ✓（**依赖/阶段门/暂停门仍由内核强制** ✓）；`{action:'brief', id}` 取该任务的执行流程 ✓；`{action:'history'}` 看轨迹 ✓ |
 
 ---
 
