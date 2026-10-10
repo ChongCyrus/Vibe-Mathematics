@@ -10,7 +10,7 @@
 export const apiVersion = 1
 // task-234: the instant→ms rule is the SHARED one (kernel/timevalue.js), aliased because this module already
 // has a local `ms` for "days → milliseconds". Numbers stay numbers (0/1000 are instants, never years).
-import { ms as toMs } from './timevalue.js'
+import { ms as toMs, msStrict } from './timevalue.js'
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
 /** 已接线的 11 个键（**字面量**读取 ⇒ 设置表/文档审计按文本扫描即可发现 ✓）。 */
@@ -115,6 +115,11 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     say({ type: 'hr/refused', at: clock(), op, code, enforced: list, enforcedScope: ENFORCED_SCOPE })
     return e
   }
+  // task-238 (the FIFTEENTH case): a GIVEN instant that cannot be interpreted is a NAMED refusal that carries
+  // the received value and the expected shape. `deny` keeps it counted in this module's refusal tally.
+  const strictOf = (op, v, label, enforced) => {
+    try { return msStrict(v, label) } catch (e) { throw deny(op, 'VMU_INVALID_ARGUMENT', e.message, e.hint, enforced, { received: e.received, label }) }
+  }
   const ok = (op, enforced, fired, extra) => {
     const list = (enforced || []).slice()
     const would = check(op, list)
@@ -141,7 +146,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     mark(enforced, 'vmu.hr.recruitCycleDays')
     mark(enforced, 'vmu.hr.recruitWindowOpenMs')
     if (!given(openedAt)) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs { openedAt }', 'pass the opening instant (epoch 0 is a legal instant)', enforced)
-    const t = toMs(given(when) ? when : clock()), o = toMs(openedAt)
+    const t = given(when) ? strictOf('recruit', when, 'recruit `at`', enforced) : toMs(clock()), o = strictOf('recruit', openedAt, 'recruit `openedAt`', enforced)
     if (!Number.isFinite(t) || !Number.isFinite(o)) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs ISO instants', 'pass ISO strings, or a finite millisecond number (0 is legal)', enforced)
     const closesAt = o + C.recruitWindowOpenMs
     if (t > closesAt) throw deny('recruit', CODES.CYCLE_CLOSED, 'the recruitment cycle is CLOSED: window closed at ' + new Date(closesAt).toISOString() + ' (cycle ' + C.recruitCycleDays + 'd)', 'open a new cycle (vmu.hr.recruitCycleDays=' + C.recruitCycleDays + ')', enforced, { openingId: openingId ? String(openingId) : null, closesAt: new Date(closesAt).toISOString(), at: at(when) })
@@ -153,7 +158,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     const enforced = []
     mark(enforced, 'vmu.hr.performanceCadenceDays')
     if (!who) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs { who }', 'pass the member id', enforced)
-    const t = toMs(given(when) ? when : clock()), l = given(lastAt) ? toMs(lastAt) : t
+    const t = given(when) ? strictOf('performance', when, 'performance `at`', enforced) : toMs(clock()), l = given(lastAt) ? strictOf('performance', lastAt, 'performance `lastAt`', enforced) : t
     if (!Number.isFinite(t) || !Number.isFinite(l)) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs ISO instants', 'pass ISO strings', enforced)
     if (t - l > daysToMs(C.performanceCadenceDays)) {
       throw deny('performance', CODES.CYCLE_CLOSED, 'the performance cycle is overdue for ' + String(who) + ': last=' + new Date(l).toISOString() + ' cadence=' + C.performanceCadenceDays + 'd', 'close the cycle (cadence ' + C.performanceCadenceDays + 'd)', enforced, { who: String(who), lastAt: new Date(l).toISOString(), cadenceDays: C.performanceCadenceDays, at: at(when) })
@@ -177,7 +182,10 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     mark(enforced, 'vmu.hr.tenureQuorum')
     if (Number(votes) < C.tenureQuorum) throw deny('tenure', CODES.TENURE_QUORUM_MISSING, 'the tenure quorum is not met for ' + String(who) + ': votes=' + Number(votes) + ' < quorum=' + C.tenureQuorum, 'collect at least ' + C.tenureQuorum + ' votes', enforced, { who: String(who), votes: Number(votes), quorum: C.tenureQuorum, at: at(when) })
     if (!given(trackStart)) throw deny('tenure', 'VMU_INVALID_ARGUMENT', 'tenure needs { trackStart }', 'pass the track start instant (epoch 0 is a legal instant)', enforced)
-    const s = toMs(trackStart), t = toMs(given(when) ? when : clock())
+    const s = strictOf('tenure', trackStart, 'tenure `trackStart`', enforced), t = given(when) ? strictOf('tenure', when, 'tenure `at`', enforced) : toMs(clock())
+    // RULE F (task-238): the injected clock is still checked — a clock that cannot be interpreted must fail by
+    // name, not make `t > due` silently false (which would wave the tenure deadline through).
+    if (!Number.isFinite(s) || !Number.isFinite(t)) throw deny('tenure', 'VMU_INVALID_ARGUMENT', 'tenure needs ISO instants', 'pass ISO strings, or a finite millisecond number (epoch 0 is legal)', enforced)
     const trackEnd = s + C.tenureTrackMonths * 30 * 86400000
     const due = trackEnd + daysToMs(C.tenureDecisionWindowDays)
     if (t > due && !given(decisionAt)) {
@@ -196,7 +204,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
       throw deny('appeal', CODES.APPEAL_OPEN, 'an appeal is OPEN for ' + String(who) + ' (opened ' + String(openedAt) + ')', 'resolve the appeal before any automatic decision', enforced, { who: String(who), openedAt: String(openedAt), at: at(when) })
     }
     if (given(openedAt)) {
-      const o = toMs(openedAt), t = toMs(given(when) ? when : clock())
+      const o = strictOf('appeal', openedAt, 'appeal `openedAt`', enforced), t = given(when) ? strictOf('appeal', when, 'appeal `at`', enforced) : toMs(clock())
       if (Number.isFinite(o) && Number.isFinite(t) && t - o > daysToMs(C.appealWindowDays)) {
         throw deny('appeal', CODES.APPEAL_OPEN, 'the appeal window has CLOSED for ' + String(who) + ': opened ' + String(openedAt) + ' window=' + C.appealWindowDays + 'd', 'the appeal can no longer be filed (window ' + C.appealWindowDays + 'd)', enforced, { who: String(who), windowDays: C.appealWindowDays, at: at(when) })
       }

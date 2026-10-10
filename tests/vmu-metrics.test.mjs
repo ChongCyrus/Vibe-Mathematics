@@ -258,5 +258,19 @@ const DECLARED = { 'vmu.metrics.indicators': ['throughput', 'refusalRate'] }
   throwsNamed(() => m.noteUnwired({}), 'VMU_INVALID_ARGUMENT', 'unwired: a nameless gap is refused by name')
 }
 
+// task-238 (sentinel convergence): `NaN` is the kernel's ONLY "cannot interpret" sentinel — this face used to
+// return `null` from its own parser, which was one of the three disagreeing faces. The refusal naming is now
+// checked here (the code path was already refused; what was missing was the received value + one sentinel).
+{
+  const { ms } = await import('../vibe-math-vmu/kernel/timevalue.js')
+  const c = fakeClock(0)
+  const m = createMetrics({ clock: c.clock, settings: DECLARED })
+  const e = throwsNamed(() => m.observe({ name: 'throughput', value: 1, at: 'not-a-date' }), 'VMU_INVALID_ARGUMENT', 'unparseable `at` ⇒ named refusal (shared ms() + Number.isFinite)')
+  ok(!!e && String(e.hint).includes('not-a-date'), 'the refusal NAMES the received value')
+  throwsNamed(() => m.observe({ name: 'throughput', value: 1, at: NaN }), 'VMU_INVALID_ARGUMENT', 'a NaN instant is refused too (NaN is the one sentinel)')
+  ok(m.observe({ name: 'throughput', value: 1, at: 0 }).ok === true, 'control: at 0 is still accepted (epoch 0 is a legal instant)')
+  ok(Number.isNaN(ms('nope')) && Number.isNaN(ms(NaN)) && ms(0) === 0, 'control: the shared entry point keeps NaN as its sentinel and 0 as a legal instant')
+}
+
 console.log('=== VMU METRICS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

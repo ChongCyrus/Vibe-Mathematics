@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto'
 // task-231: the instant→ms rule is a SINGLE source of truth (kernel/timevalue.js) — it used to be duplicated
 // here and in domaingate.js. See that module for the bare-year trap: Date.parse('1000') is the YEAR 1000
 // (-30610224000000), never NaN, so a number must be handled as a number BEFORE any stringification.
-import { ms } from './timevalue.js'
+import { ms, msStrict } from './timevalue.js'
 
 export const apiVersion = 1
 export const ENFORCED_SCOPE = 'evaluated-so-far'
@@ -214,9 +214,13 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     mark(enforced, 'vmu.compliance.calendarDir')
     mark(enforced, 'vmu.compliance.calendarTemplate')
     const when = given(at) ? String(at) : String(clock())      // display form (echoed verbatim in the receipt)
-    const whenMs = given(at) ? ms(at) : ms(clock())            // comparison form (numbers stay epoch-ms)
     if (!given(dueAt)) throw deny('calendar', 'VMU_INVALID_ARGUMENT', 'calendar needs { dueAt }', 'pass the compliance due date', enforced)
-    const dueMs = ms(dueAt)
+    // task-238 (the FIFTEENTH case): an UNINTERPRETABLE instant is a NAMED refusal, never a silent pass. Before
+    // this, `dueAt: 'nope'` fell through the comparison and the calendar returned ok:true — the deadline was
+    // silently lost. `msStrict` names the received value AND the expected shape; the refusal is counted here.
+    const judged = (v, label) => { try { return msStrict(v, label) } catch (e) { throw deny('calendar', 'VMU_INVALID_ARGUMENT', e.message, e.hint, enforced, { received: e.received, label }) } }
+    const whenMs = given(at) ? judged(at, 'calendar `at`') : ms(clock())
+    const dueMs = judged(dueAt, 'calendar `dueAt`')
     const overDue = Number.isFinite(dueMs) && Number.isFinite(whenMs) ? dueMs < whenMs : String(dueAt) < when
     if (overDue) {
       throw deny('calendar', 'VMU_COMPLIANCE_CALENDAR_MISSED', 'the compliance calendar entry is overdue: due ' + String(dueAt) + ' < now ' + when, 'file the missing calendar entry in ' + C.calendarDir + '/' + C.calendarTemplate, enforced, { dueAt: String(dueAt), at: when, dueMs, whenMs })

@@ -26,6 +26,10 @@ export function refuse(code, message, hint) {
 
 export const WORK_KEY = 'work'
 
+// Same reason as meeting.js: the injected clock may be numeric (the kernel's guarded clock is), and
+// `Date.parse(<number>)` is NaN - which used to collapse the id suffix to a constant.
+import { ms as toMs } from './timevalue.js'
+
 export function createWorkLedger({ store, clock = () => new Date().toISOString(), isPaused = () => false } = {}) {
   if (!store || typeof store.patch !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the work ledger needs a durable store',
@@ -64,8 +68,16 @@ export function createWorkLedger({ store, clock = () => new Date().toISOString()
         throw refuse('VMU_INVALID_ARGUMENT', 'in-flight work needs a non-empty owner (docs/07 §3)',
           'the owner is who must be told "you still have unfinished work" after a restart')
       }
+      // RULE F caught this in the SAME round it was written: `toMs(clock()) || 0` turned an unparseable clock
+      // into a silent zero. A clock the host injected that cannot be read is a host error, not something to
+      // absorb, so it refuses by name - and the id suffix is then built from a value that is actually finite.
+      const startedMs = toMs(clock())
+      if (!Number.isFinite(startedMs)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'the injected clock must return finite epoch-ms or an ISO timestamp',
+          'the work ledger refuses to absorb an unreadable clock as zero; received: ' + JSON.stringify(clock()))
+      }
       const entry = {
-        id: typeof id === 'string' && id.length > 0 ? id : 'w-' + (++seq) + '-' + Math.abs(Date.parse(clock()) || 0).toString(36),
+        id: typeof id === 'string' && id.length > 0 ? id : 'w-' + (++seq) + '-' + Math.abs(startedMs).toString(36),
         owner: String(owner),
         kind: String(kind),
         objective: objective === null ? null : String(objective),

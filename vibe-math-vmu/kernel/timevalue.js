@@ -11,12 +11,18 @@
 //   (0 < -3.06e13 is FALSE) and an overdue entry passes unnoticed. The failure is therefore SILENT, never a
 //   crash: numbers must be handled AS NUMBERS, before any stringification.
 //
-// CONTRACT
-//   ms(v) ⇒ milliseconds since the epoch, or NaN when the value cannot be interpreted.
+// CONTRACT (task-238 — the UNAMBIGUOUS one; three faces used to disagree)
+//   SENTINEL: `NaN` is the ONLY "cannot interpret" value in this kernel. `null` is NOT a sentinel here (a
+//   caller who used `null` for "unparseable" was one of the three disagreeing faces).
+//   ms(v)       ⇒ epoch-ms, or NaN when the value cannot be interpreted. PURE, never throws.
+//   msStrict(v) ⇒ epoch-ms, or a NAMED refusal (`VMU_INVALID_ARGUMENT` carrying the ORIGINAL value and the
+//                 expected shape). Use it at any call site that cannot continue with an uninterpretable time.
+//   Callers that use the loose `ms()` MUST handle the NaN explicitly (`Number.isFinite(...)`) — the RULE F
+//   gate in tests/audit-declaration-criterion.test.mjs reddens any import-alias call site without such a guard.
 //     · a finite NUMBER is already epoch-ms and is returned untouched (0 included — epoch 0 is a legal instant);
 //     · anything else is parsed as an ISO/date string (`ms('1970-01-01T00:00:00.000Z') === 0`);
-//     · unparseable input ⇒ NaN (the caller decides how to refuse; this helper never throws and never guesses).
-// This module has NO settings, NO clock and NO state: it is a pure function plus its documentation.
+//     · unparseable input ⇒ NaN / named refusal (the helper never guesses and never silently falls back).
+// This module has NO settings, NO clock and NO state: it is pure functions plus their documentation.
 
 /** Public-interface version of this module's surface (docs/03 §7). */
 export const apiVersion = 1
@@ -25,6 +31,24 @@ export const apiVersion = 1
 export function ms(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : NaN
   return Date.parse(String(v))
+}
+
+/**
+ * Strict twin of `ms()`: an uninterpretable value is a NAMED refusal that carries what was received and what
+ * is accepted, so the caller never has to guess which of its inputs was wrong (task-238, the fifteenth case).
+ */
+export function msStrict(v, label = 'instant') {
+  const out = ms(v)
+  if (Number.isFinite(out)) return out
+  const e = new Error(label + ' cannot be interpreted as a time: ' + JSON.stringify(v && typeof v === 'object' ? String(v) : v) +
+    ' — expected an ISO timestamp string (e.g. "2026-01-01T00:00:00.000Z") or a finite epoch-ms number (0 is legal)')
+  e.code = 'VMU_INVALID_ARGUMENT'
+  e.hint = 'numbers are epoch-ms and are never re-parsed as dates; strings must be ISO timestamps'
+  e.received = v === undefined ? 'undefined' : (typeof v === 'object' && v !== null ? String(v) : v)
+  e.label = label
+  e.enforced = []
+  e.enforcedScope = 'evaluated-so-far'
+  throw e
 }
 
 export default ms

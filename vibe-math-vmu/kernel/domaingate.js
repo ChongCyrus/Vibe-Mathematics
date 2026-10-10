@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 // task-231: the instant→ms rule is a SINGLE source of truth (kernel/timevalue.js). It was duplicated here and
 // in compliance.js; the trap it documents (Date.parse('1000') = the YEAR 1000, never NaN) is why numbers must
 // be handled as numbers BEFORE any stringification.
-import { ms } from './timevalue.js'
+import { ms, msStrict } from './timevalue.js'
 
 export const apiVersion = 1
 export const DOMAINS = Object.freeze(['clinical', 'animal'])
@@ -85,10 +85,16 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
     return { ok: true, domain: d, requires: merged.requires, declaredAt: clock() }
   }
 
+  // task-238 (the FIFTEENTH case): an UNINTERPRETABLE instant is a NAMED refusal on EVERY input of this module,
+  // never a silently stored string. `judge()` VALIDATES (and discards the number): the module keeps storing the
+  // caller's verbatim form (`'0'` stays `'0'`, an ISO stays ISO), so no existing receipt shape changes.
+  const judge = (v, label) => { msStrict(v, label); return v }
   /** consent：登记/撤回知情同意（版本化；撤回留痕 ⇒ 可追溯）。 */
   function consent({ studyId, version, effectiveAt, withdrawnAt = null, by = null } = {}) {
     if (!studyId) throw refuse('VMU_INVALID_ARGUMENT', 'consent needs { studyId }', 'pass { studyId }')
     if (!version) throw refuse('VMU_INVALID_ARGUMENT', 'consent needs { version }', 'a consent without a version cannot be checked later')
+    if (given(effectiveAt)) judge(effectiveAt, 'consent `effectiveAt`')
+    if (given(withdrawnAt)) judge(withdrawnAt, 'consent `withdrawnAt`')
     const at = given(effectiveAt) ? effectiveAt : clock()
     const list = consents.get(String(studyId)) || []
     const rec = {
@@ -104,6 +110,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
 
   /** 撤回：显式留痕（可追溯），并把撤回时刻写进历史。 */
   function withdraw({ studyId, version, at = null, by = null } = {}) {
+    if (given(at)) judge(at, 'withdraw `at`')
     const list = consents.get(String(studyId)) || []
     const target = [...list].reverse().find((r) => (version === undefined ? true : r.version === String(version)))
     if (!target) throw refuse('VMU_GATE_UNSATISFIED', 'no consent to withdraw for study ' + String(studyId), 'call consent({ studyId, version }) first')
@@ -117,6 +124,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
 
   /** checkConsent：版本不一致 ⇒ 具名拒；已撤回 ⇒ 拒（并给撤回时刻）。 */
   function checkConsent({ studyId, version, at = null } = {}) {
+    if (given(at)) judge(at, 'checkConsent `at`')
     const list = consents.get(String(studyId)) || []
     const when = given(at) ? at : clock()
     if (!list.length) throw refuse('VMU_GATE_UNSATISFIED', 'no consent on file for study ' + String(studyId), 'register it first: consent({ studyId, version, effectiveAt })')
@@ -158,11 +166,14 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
 
   /** review：IACUC/伦理审查登记；过期或方案号缺失 ⇒ 拒；3R/设施/培训逐项校验；ledgerRef 只引用 22 卷 id。 */
   function review({ protocolId, approvedAt, expiresAt, threeR = null, anesthesia = null, facility = null, training = null, ledgerRef = null, at = null } = {}) {
+    if (given(at)) judge(at, 'review `at`')
     const when = String(given(at) ? at : clock())
     if (protocolId === undefined || protocolId === null || String(protocolId).trim() === '') {
       throw refuse('VMU_REGISTRATION_MISSING', 'review needs { protocolId }: the protocol registration number is missing', 'register the protocol id (IACUC/IRB number) before any work starts')
     }
     if (!given(expiresAt)) throw refuse('VMU_IACUC_EXPIRED', 'review needs { expiresAt }: an approval without an expiry cannot be gated', 'pass the approval expiry date (epoch 0 is a legal instant — it will then read as expired)')
+    judge(expiresAt, 'review `expiresAt`')     // task-238: 'nope' must not silently compare as a string
+    if (given(approvedAt)) judge(approvedAt, 'review `approvedAt`')
     if (String(expiresAt) <= when) {
       throw refuse('VMU_IACUC_EXPIRED', 'the approval for ' + String(protocolId) + ' expired at ' + String(expiresAt) + ' (now ' + when + ')', 'renew the approval before starting any work')
     }
@@ -195,6 +206,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
 
   /** gate：机器可判定的闸。未声明包 ⇒ 明确"无闸"（gated:false，**不是**"通过"）；否则缺项 ⇒ 具名拒。 */
   function gate({ domain, at = null, studyId = null, protocolId = null, consentVersion = undefined } = {}) {
+    if (given(at)) judge(at, 'gate `at`')
     const d = String(domain || '')
     const pack = packs.get(d)
     const when = String(given(at) ? at : clock())

@@ -48,6 +48,10 @@ export function defaultCanConvene({ roster }) {
  * Create a meeting. `deliver` is the ask seam; `roundComplete`, `canConvene`, `closePolicy` and
  * `handPolicy` are the pluggable decision points.
  */
+// The instant normaliser is SHARED: `clock` is injected by the caller, and the kernel hands this module a NUMERIC
+// clock, so `Date.parse(clock())` would be NaN and the round-timeout check below would silently stop working.
+import { ms as toMs } from './timevalue.js'
+
 export function createMeeting({
   id = null,
   kind = 'general',
@@ -154,7 +158,7 @@ export function createMeeting({
         'resume() first (vibe_vmu_control {action:"resume"})')
       // ROUND TIMEOUT (vmu.meetings.roundTimeoutMs; 0 = unlimited): the round's own openedAt is the datum.
       if (roundTimeoutMs > 0 && currentRound && currentRound.openedAt) {
-        const elapsed = Date.parse(clock()) - Date.parse(currentRound.openedAt)
+        const elapsed = toMs(clock()) - toMs(currentRound.openedAt)
         if (Number.isFinite(elapsed) && elapsed > roundTimeoutMs) {
           record('input-refused', { round: currentRound.n, member, reason: 'round-timeout', elapsedMs: elapsed })
           throw refuse('VMU_STATE', 'round ' + currentRound.n + ' timed out ' + elapsed + 'ms after it opened (budget ' + roundTimeoutMs + 'ms)',

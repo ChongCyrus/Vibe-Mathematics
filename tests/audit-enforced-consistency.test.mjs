@@ -664,8 +664,16 @@ for (const [mod, m] of [...byModule].sort()) {
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
     'capacity.js': 'capacity', 'hr.js': 'hr', 'migration.js': 'migration',
   }
-  const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
-  ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))
+  // PURE-FUNCTION MODULES: a module with no factory cannot be driven the way the scenarios drive services, so a
+  // silent hole here would be worse than an explicit one. It is exempt ONLY when its own refusal path is covered
+  // by unit assertions AND by its consumers - and the reason is written down here, in the open.
+  const PURE_FUNCTION_MODULES = {
+    'timevalue.js': 'no factory (exports ms / msStrict / apiVersion). msStrict refuses by name with the received '
+      + 'value, and that path is asserted in its own suite and exercised by four consumer faces (hr, compliance, '
+      + 'domaingate, metrics) whose refusals this gate already covers.',
+  }
+  const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')) && !PURE_FUNCTION_MODULES[f])
+  ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate (or exempted with a written reason)', uncovered.join(', '))
   ok(inCode.length >= 3, 'the scan found the enforced-carrying modules', inCode.join(', '))
   console.log('modules with `enforced` in code: ' + inCode.join(', '))
   for (const f of uncovered) finding('UNCOVERED-MODULE', f, 'mentions enforced in code but has no scenario here')

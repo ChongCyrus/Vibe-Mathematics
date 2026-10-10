@@ -126,6 +126,20 @@ ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.0
   ok(mine !== null && theirs !== null, 'CROSS-FACE CONSISTENCY: both faces (sharing ms()) treat 0 as a past instant, each with its own named code')
 }
 
+// task-238 (the FIFTEENTH case): an UNINTERPRETABLE instant is a NAMED refusal in every face. This face used
+// to return ok:true for `dueAt: 'nope'` and the deadline was silently lost. The refusal must name the RECEIVED
+// value and the EXPECTED shape; the valid 0 / ISO / missing paths must not regress (asserted above).
+{
+  const grab = (fn) => { try { fn(); return null } catch (e) { return e } }
+  const badDue = grab(() => mk().calendar({ dueAt: 'nope', at: '2026-01-01T00:00:00.000Z' }))
+  ok(!!badDue && badDue.code === 'VMU_INVALID_ARGUMENT', 'unparseable `dueAt` ⇒ NAMED refusal (never ok:true)')
+  ok(!!badDue && String(badDue.message).includes('nope'), 'the refusal NAMES the received value')
+  ok(!!badDue && /ISO timestamp|epoch-ms/.test(String(badDue.message)), 'the refusal states the EXPECTED shape')
+  const badAt = grab(() => mk().calendar({ dueAt: 0, at: 'nope' }))
+  ok(!!badAt && badAt.code === 'VMU_INVALID_ARGUMENT' && String(badAt.message).includes('`at`'), 'unparseable `at` ⇒ named refusal (the comparison would be meaningless)')
+  ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }).ok === true, 'control: valid ISO instants still pass (no regression)')
+}
+
 console.log('')
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

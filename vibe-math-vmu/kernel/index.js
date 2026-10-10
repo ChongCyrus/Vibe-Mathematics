@@ -85,6 +85,9 @@ import { createIp } from './ip.js'
 import { createFunding } from './funding.js'
 import { createCompliance } from './compliance.js'
 import { createStorePolicy } from './storepolicy.js'
+// The shared instant normaliser (round 49): the guarded clock this kernel passes around returns a NUMBER, so any
+// `Date.parse(clock())` would be NaN and quietly disable whatever it guarded.
+import { ms as toMs } from './timevalue.js'
 // Round 33: capacity (seats/pool/quota/preemption with named victims) and hr (recruitment cycle, performance
 // evidence, tenure, appeals, offboarding, rotation). Both reuse registered codes only; the hr face names the
 // contract/timesheet/leave semantics it does NOT implement because no keys or codes exist for them.
@@ -761,7 +764,7 @@ export function createKernel({
     let stale = false
     let sinceMs = null
     if (budget > 0 && controlState.lastBeatAt) {
-      sinceMs = Date.parse(clock()) - Date.parse(controlState.lastBeatAt)
+      sinceMs = toMs(clock()) - toMs(controlState.lastBeatAt)
       stale = Number.isFinite(sinceMs) && sinceMs > budget
     }
     return { state: controlState.state, pausedAt: controlState.pausedAt, pausedReason: controlState.pausedReason,

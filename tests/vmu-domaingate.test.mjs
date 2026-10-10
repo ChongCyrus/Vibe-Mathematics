@@ -134,6 +134,18 @@ ok(JSON.stringify(f1.status().reviews) === JSON.stringify(f2.status().reviews), 
   ok(mine !== null && theirs !== null, 'CROSS-FACE CONSISTENCY: both faces (sharing ms()) treat 0 as a past instant, each with its own named code')
 }
 
+// task-238 (the FIFTEENTH case): `consent` used to STORE an unparseable instant as a raw string (no refusal),
+// and `review({ expiresAt: 'nope' })` silently "passed" the expiry comparison. Both are named refusals now,
+// and the value is still echoed verbatim when it is valid (0 stays "0", an ISO stays ISO).
+{
+  refuses(() => mk().consent({ studyId: 's-238', version: 'v1', withdrawnAt: 'nope' }), 'VMU_INVALID_ARGUMENT', ['withdrawnAt', 'nope'], 'unparseable withdrawnAt ⇒ named refusal naming the value')
+  refuses(() => mk().consent({ studyId: 's-238', version: 'v1', effectiveAt: 'nope' }), 'VMU_INVALID_ARGUMENT', ['effectiveAt', 'nope'], 'unparseable effectiveAt ⇒ named refusal naming the value')
+  refuses(() => mk().review({ protocolId: 'p-238', expiresAt: 'nope' }), 'VMU_INVALID_ARGUMENT', ['expiresAt', 'nope'], 'unparseable expiresAt ⇒ named refusal (it used to compare as a string and pass)')
+  refuses(() => mk().gate({ domain: 'clinical', at: 'nope' }), 'VMU_INVALID_ARGUMENT', ['`at`', 'nope'], 'unparseable `at` on gate() ⇒ named refusal')
+  ok(mk().consent({ studyId: 's-238', version: 'v1', withdrawnAt: 0 }).withdrawnAt === '0', 'control: withdrawnAt 0 is still accepted and echoed verbatim (no regression)')
+  ok(mk().consent({ studyId: 's-238', version: 'v1', effectiveAt: '1970-01-01T00:00:00.000Z' }).effectiveAt === '1970-01-01T00:00:00.000Z', 'control: a valid ISO instant is stored verbatim (no regression)')
+}
+
 console.log('')
 console.log('=== VMU DOMAINGATE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

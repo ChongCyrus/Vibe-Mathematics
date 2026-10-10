@@ -23,6 +23,9 @@
 //     repeated reads are byte-identical
 export const apiVersion = 1
 
+// task-238: the kernel's single instant→ms entry point (sentinel = NaN; `msStrict` refuses by name).
+import { ms } from './timevalue.js'
+
 export function refuse(code, message, hint) {
   const e = new Error(message)
   e.code = code
@@ -198,10 +201,11 @@ export function createMetrics({ clock = () => 0, log = null, settings = {}, bus 
       if (typeof value !== 'number' || !Number.isFinite(value)) {
         throw deny('VMU_INVALID_ARGUMENT', 'observe needs a finite numeric value for ' + name, 'value was: ' + String(value))
       }
-      const atMs = at === null
-        ? clock()
-        : (typeof at === 'number' && Number.isFinite(at) ? at : (typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? Date.parse(at) : null))
-      if (atMs === null) throw deny('VMU_INVALID_ARGUMENT', 'observe `at` must be ms or an ISO timestamp', 'omit it to use the injected clock')
+      // task-238 (sentinel convergence): `NaN` is the kernel's ONLY "cannot interpret" sentinel (the old `null`
+      // here was one of the three disagreeing faces). `ms()` is the single entry point and the call site checks
+      // `Number.isFinite` explicitly — the RULE F gate reddens a call site without that check.
+      const atMs = at === null || at === undefined ? ms(clock()) : ms(at)
+      if (!Number.isFinite(atMs)) throw deny('VMU_INVALID_ARGUMENT', 'observe `at` must be ms or an ISO timestamp', 'omit it to use the injected clock; received: ' + JSON.stringify(at))
       if (by !== null && typeof by !== 'string') throw deny('VMU_INVALID_ARGUMENT', 'observe `by` must be a string (who recorded it)', 'explainability requires naming the recorder')
 
       // ZERO MECHANISM: with no declared indicators nothing is recorded — and the skip is COUNTED, never silent.

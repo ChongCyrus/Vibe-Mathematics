@@ -138,6 +138,17 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   ok(a0.openedAt === '0' && aIso.openedAt === ISO, 'appeal: each receipt echoes the caller value verbatim (0 stays "0", the ISO stays ISO)')
 }
 
+// task-238 (the FIFTEENTH case): an unparseable instant is a NAMED refusal carrying the RECEIVED value (`hr`
+// refused before, but the message did not say which value was wrong). Valid 0 / ISO inputs are unchanged.
+{
+  refuses(() => mk().recruit({ by: 'u', openedAt: 'nope' }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable openedAt ⇒ named refusal carrying the received value')
+  refuses(() => mk().performance({ who: 'r-1', lastAt: 'nope', evidence: ['ev'] }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable lastAt ⇒ named refusal carrying the received value')
+  refuses(() => mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 'nope' }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable trackStart ⇒ named refusal carrying the received value')
+  refuses(() => mk().appeal({ who: 'r-1', openedAt: 'nope', resolved: true }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable appeal openedAt ⇒ named refusal (with resolved, so the strict check is what fires)')
+  ok(mk().recruit({ by: 'u', openedAt: 0, at: 0 }).ok === true, 'control: openedAt 0 is still accepted (no regression)')
+  ok(mk().recruit({ by: 'u', openedAt: '1970-01-01T00:00:00.000Z', at: '1970-01-01T00:00:00.000Z' }).ok === true, 'control: the ISO epoch is still accepted (no regression)')
+}
+
 console.log('')
 console.log('=== VMU HR: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

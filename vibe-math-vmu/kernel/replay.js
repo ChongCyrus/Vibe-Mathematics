@@ -381,6 +381,11 @@ export function createReplay({ clock = () => 0, log = null, settings = {}, bus =
       for (const row of rows) {
         const ev = row && typeof row === 'object' ? row : null
         if (!ev || !kindOf(ev)) continue
+        // **第十六例修复** ✗✓✓：第二循环原缺此守卫 ⇒ `ev.ts` 非法/缺失时 `ts = NaN` ⇒ `NaN > until` **恒假**
+        //   ⇒ 该行**不被过滤、被当有效事件**（NaN 穿透 ✗）。现在与第一循环（L352）**同形** ✓：
+        //   非法/缺失 `ts` ⇒ **记入 `malformed` ＋ 跳过** ✓（**只多不漏** ✓）；合法 `ts` 的过滤语义**逐字不变** ✓。
+        if (ev.ts !== undefined && !Number.isFinite(ev.ts) && !Number.isFinite(Date.parse(ev.ts))) { malformed.push(typeof row === 'string' ? row.slice(0, 80) : '[non-event]'); continue }
+        if (ev.ts === undefined) { malformed.push(typeof row === 'string' ? row.slice(0, 80) : '[non-event]'); continue }
         const ts = typeof ev.ts === 'number' ? ev.ts : Date.parse(ev.ts)
         if (until !== null && ts > until) continue
         const kind = kindOf(ev)

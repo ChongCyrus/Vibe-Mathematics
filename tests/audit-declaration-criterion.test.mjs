@@ -481,6 +481,52 @@ export function auditVacuousAssertions({ files, window = 3 }) {
   return { violations, coverage }
 }
 
+/**
+ * RULE F (task-238 — the FIFTEENTH case): the shared timevalue entry point has ONE sentinel (`NaN`) and ONE
+ * strict twin (`msStrict`). A call to a LOOSE alias (`ms`, or `ms as toMs`) must handle "cannot interpret" at
+ * the call site — a `Number.isFinite(...)`/`Number.isNaN(...)` check on the same line or within `window`
+ * lines. A call to a STRICT alias is self-guarding and always clean. Comments are not call sites.
+ * Why: three faces used to disagree on an unparseable instant (one refused, one returned ok:true, one stored
+ * the raw string) — the gate turns "handled it" into a machine criterion instead of a promise.
+ */
+export function auditTimeValueHandling({ sources, window = 3 }) {
+  const violations = []
+  const coverage = []
+  for (const f of sources) {
+    const src = String(f.src)
+    const imp = /import\s*\{([^}]*)\}\s*from\s*'\.\/timevalue\.js'/.exec(src)
+    if (!imp) continue
+    const loose = []
+    const strict = []
+    for (const raw of imp[1].split(',')) {
+      const m = /^(\w+)(?:\s+as\s+(\w+))?$/.exec(raw.trim())
+      if (!m) continue
+      const local = m[2] || m[1]
+      if (m[1] === 'ms') loose.push(local)
+      else if (m[1] === 'msStrict') strict.push(local)
+    }
+    if (!loose.length && !strict.length) continue
+    const lines = src.split('\n')
+    lines.forEach((line, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(line)) return            // comments are not call sites (block comments too)
+      const code = line.split('//')[0]
+      if (!code.trim()) return
+      const hits = (aliases) => aliases.find((a) => new RegExp('(?<![\\w$.])' + a + '\\s*\\(').test(code))
+      const strictHit = hits(strict)
+      const looseHit = hits(loose)
+      if (strictHit && !looseHit) { coverage.push({ file: basename(f.file), line: i + 1, alias: strictHit, strict: true, guarded: true }); return }
+      if (!looseHit) return
+      const near = lines.slice(i, i + window + 1).join('\n')
+      const guarded = /Number\.isFinite\s*\(|Number\.isNaN\s*\(|\bisNaN\s*\(/.test(near)
+      coverage.push({ file: basename(f.file), line: i + 1, alias: looseHit, strict: false, guarded })
+      if (!guarded) {
+        violations.push(basename(f.file) + ':' + (i + 1) + ' calls ' + looseHit + '(...) without handling NaN (add Number.isFinite(...) or use msStrict)')
+      }
+    })
+  }
+  return { violations, coverage }
+}
+
 // ── real inventory (paths matter: the kernel lives under the preset directory) ────────────────────────
 
 const scriptFiles = listFiles(SCRIPTS, (f) => f.endsWith('.mjs'))
@@ -720,6 +766,32 @@ for (const v of ruleE.violations.slice(0, 60)) console.log('    RULE-E-HIT ' + v
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+}
+
+// ---- RULE F (task-238): every loose `ms()`/alias call site must handle an uninterpretable instant ---------
+{
+  // Runtime call sites only: the kernel (this gate's own fixture strings are not call sites — scanning them
+  // would make RULE F redden on its own self-proofs).
+  const ruleF = auditTimeValueHandling({ sources: kernelFiles.map((f) => ({ file: f, src: readIf(f) })) })
+  red(ruleF.violations, 'RULE F (every ms()/alias call site handles an uninterpretable instant)')
+  ok(ruleF.coverage.length >= 3, 'RULE F: the scan really found call sites (non-vacuous: ' + ruleF.coverage.length + ')')
+  ok(ruleF.coverage.some((c) => c.strict), 'RULE F: at least one call site uses the strict self-guarding form')
+  ok(ruleF.coverage.every((c) => c.strict || c.guarded), 'RULE F: every loose call site carries a finiteness guard')
+  // self-proof ①: a call site with NO guard ⇒ RED
+  const f1 = auditTimeValueHandling({ sources: [{ file: 'fixture-unguarded.js', src: "import { ms } from './timevalue.js'\nconst t = ms(at)\nreturn t\n" }] })
+  ok(f1.violations.length === 1, 'RULE F self-proof ①: ms(at) with no Number.isFinite guard ⇒ RED')
+  // self-proof ②: the same call site WITH a guard ⇒ GREEN
+  const f2 = auditTimeValueHandling({ sources: [{ file: 'fixture-guarded.js', src: "import { ms } from './timevalue.js'\nconst t = ms(at)\nif (!Number.isFinite(t)) throw new Error('no')\n" }] })
+  ok(f2.violations.length === 0 && f2.coverage[0].guarded === true, 'RULE F self-proof ②: the guarded call site is GREEN')
+  // self-proof ③: the strict entry point is self-guarding ⇒ GREEN
+  const f3 = auditTimeValueHandling({ sources: [{ file: 'fixture-strict.js', src: "import { msStrict } from './timevalue.js'\nconst t = msStrict(at, 'at')\n" }] })
+  ok(f3.violations.length === 0 && f3.coverage[0].strict === true, 'RULE F self-proof ③: msStrict(...) is GREEN (it refuses by name itself)')
+  // self-proof ④: a COMMENT mentioning the helper is not a call site ⇒ GREEN (no false positive)
+  const f4 = auditTimeValueHandling({ sources: [{ file: 'fixture-comment.js', src: "import { ms } from './timevalue.js'\n// ms(at) would need a guard\n" }] })
+  ok(f4.violations.length === 0 && f4.coverage.length === 0, 'RULE F self-proof ④: a comment is not a call site (no false positive)')
+  // self-proof ⑤: an ALIASED import (ms as toMs) is tracked ⇒ RED when unguarded
+  const f5 = auditTimeValueHandling({ sources: [{ file: 'fixture-alias.js', src: "import { ms as toMs } from './timevalue.js'\nconst t = toMs(at)\n" }] })
+  ok(f5.violations.length === 1 && f5.coverage[0].alias === 'toMs', 'RULE F self-proof ⑤: an aliased import (ms as toMs) is tracked too')
 }
 
 console.log('  RULE A coverage: ' + JSON.stringify(ruleA.coverage))
