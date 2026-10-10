@@ -51,6 +51,9 @@ import { createBidding } from './bidding.js'
 import { createSkills } from './skills.js'
 import { createPublication } from './publication.js'
 import { createFormal } from './formal.js'
+import { createMathJobs } from './mathjobs.js'
+import { createExternal } from './external.js'
+import { createDomainGate } from './domaingate.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -293,7 +296,15 @@ export function createKernel({
   // fresh claims (a retired claim frees its slot); all three are zero-mechanism by default.
   const skills = createSkills({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
   const publication = createPublication({ settings: { get: (k) => settings[k] }, bus, clock, log, library, repropack })
-  const formal = createFormal({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn: null, library })
+  const formal = createFormal({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn, library })
+  // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
+  // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
+  // missing engine surfaces as a named refusal rather than a silent no-op.
+  const mathjobs = createMathJobs({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn })
+  // Batch-3/5 tails: external fetching (N11) and the clinical/animal approval gates. Both are inert by default
+  // (`vmu.external.enabled=false`, no domain pack declared), and both refuse by name rather than inventing data.
+  const external = createExternal({ settings: { get: (k) => settings[k] }, bus, clock, log, fetchFn: null })
+  const domaingate = createDomainGate({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -337,6 +348,8 @@ export function createKernel({
   registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 §8)' })
   registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 §7)' })
   registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
+  registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 §8)' })
+  registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 §9)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -429,6 +442,9 @@ export function createKernel({
     get skills() { return skills },
     get publication() { return publication },
     get formal() { return formal },
+    get mathjobs() { return mathjobs },
+    get external() { return external },
+    get domaingate() { return domaingate },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

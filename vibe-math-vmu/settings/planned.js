@@ -773,7 +773,6 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.schedule.defaultTimezone", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.schedule.dstPolicy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.schedule.recurrenceEnabled", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.schedule.triggerVia", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.scheduler.actionsAllowed", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
   { key: "vmu.scheduler.maxTriggers", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
   { key: "vmu.scheduler.timeSource", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },

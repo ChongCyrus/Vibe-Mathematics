@@ -497,6 +497,24 @@ vmu.packs.active: [v5r]
 | `vmu.formal.requireArtifacts` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 是否必须有产物（当前只读入未强制 ✗） |
 | `vmu.formal.maxArtifacts` | int ≥0 | `32` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 产物条数上限（溢出必计数） |
 | `vmu.formal.maxSourceBytes` | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 源码字节上限（触界报丢弃字节 ✗） |
+| `vmu.external.conflictPolicy` | enum | `refuse-on-conflict` | `refuse-on-conflict`∣`newest-wins` | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 多源冲突策略（两种都必须把冲突报出来 ✗✓） |
+| `vmu.external.maxResults` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 单次取数结果上限（截断必计数） |
+| `vmu.external.offline` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 离线模式（只许命中缓存 ✓ 零网络） |
+| `vmu.external.sources` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 允许的来源清单（空＝不限制） |
+| `vmu.compliance.maxReports` | int ≥1 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | 合规上报条数上限（溢出必计数） |
+| `vmu.compliance.saeLimitMs` | int ≥0 | `86400000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | SAE 上报时限（毫秒；默认 24h） |
+| `vmu.compliance.aeLimitMs` | int ≥0 | `259200000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | AE 上报时限（毫秒；默认 72h） |
+| `vmu.schedule.triggerVia` | enum | `none` | `none`∣`middleware`∣`script` | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 到期是否触发流程（默认 none＝只报告 ✗✓） |
+| `vmu.schedule.maxPending` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 待触发项上限（0＝不限；超限具名拒 ✓） |
+| `vmu.schedule.timeSource` | enum | `tick-only` | `tick-only`∣`host-timer` | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 时间来源（tick-only＝只用 tick() 推进 ✓；host-timer 需注入 timer 接缝 ✗） |
+| `vmu.schedule.actionsAllowed` | string[] | `[emit-hook,prompt]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 允许的触发动作白名单（越界注册即拒 ✓） |
+| `vmu.schedule.triggers` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 声明式触发器种子 |
+| `vmu.schedule.overdueGraceMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗） |
+| `vmu.schedule.coalesceMissed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 漏跑是否合并（合并也要报 missed ✓） |
+| `vmu.schedule.maxRecurrences` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 重复项上限（0＝不限） |
+| `vmu.schedule.minIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最小间隔（低于即拒 ✓） |
+| `vmu.schedule.maxHorizonMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最远调度视界（0＝不限；超出即拒 ✓） |
+| `vmu.schedule.cancelNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 取消必须给理由（留痕 ✓） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |
@@ -737,9 +755,9 @@ vmu.packs.active: [v5r]
 | `vmu.external.crossref.mailto` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.datacite.maxRelated` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.datacite.requireRights` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.external.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.external.enabled` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.endpoints` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.external.maxBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.external.maxBytes` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.maxCacheEntries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.mergePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.offlineFirst` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
@@ -751,11 +769,11 @@ vmu.packs.active: [v5r]
 | `vmu.external.pubmed.maxMeshTerms` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.pubmed.preferAuthoritative` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.requireReceipt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.external.stalePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.external.stalePolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.swh.maxTreeEntries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.swh.requireSwhid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.external.timeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.external.ttlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.external.ttlMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.criticalSlots` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.maxSlotsPerInstance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.newcomerQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -1263,11 +1281,10 @@ vmu.packs.active: [v5r]
 | `vmu.schedule.defaultTimezone` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.dstPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.recurrenceEnabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.schedule.triggerVia` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.actionsAllowed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.maxTriggers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.timeSource` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.triggers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.scheduler.actionsAllowed` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.scheduler.maxTriggers` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.scheduler.timeSource` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.scheduler.triggers` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.script.stderrCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stdoutCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.timeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |

@@ -391,6 +391,28 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.formal.requireArtifacts', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '是否必须有产物（当前只读入未强制 ✗）' },
   { key: 'vmu.formal.maxArtifacts', type: 'natural', def: 32, hot: HOT.H1, who: 'office', doc: '产物条数上限（溢出必计数）' },
   { key: 'vmu.formal.maxSourceBytes', type: 'natural', def: 262144, hot: HOT.H1, who: 'office', doc: '源码字节上限（触界报丢弃字节 ✗）' },
+  // batch-3/5 tails: the keys external.js and domaingate.js really read.
+  { key: 'vmu.external.conflictPolicy', type: 'enum', domain: ['refuse-on-conflict', 'newest-wins'], def: 'refuse-on-conflict', hot: HOT.H1, who: 'office', doc: '多源冲突策略（两种都必须把冲突报出来 ✗✓）' },
+  { key: 'vmu.external.maxResults', type: 'positiveInteger', def: 100, hot: HOT.H1, who: 'office', doc: '单次取数结果上限（截断必计数）' },
+  { key: 'vmu.external.offline', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '离线模式（只许命中缓存 ✓ 零网络）' },
+  { key: 'vmu.external.sources', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '允许的来源清单（空＝不限制）' },
+  { key: 'vmu.compliance.maxReports', type: 'positiveInteger', def: 1000, hot: HOT.H1, who: 'office', doc: '合规上报条数上限（溢出必计数）' },
+  { key: 'vmu.compliance.saeLimitMs', type: 'natural', def: 86400000, hot: HOT.H1, who: 'office', doc: 'SAE 上报时限（毫秒；默认 24h）' },
+  { key: 'vmu.compliance.aeLimitMs', type: 'natural', def: 259200000, hot: HOT.H1, who: 'office', doc: 'AE 上报时限（毫秒；默认 72h）' },
+  // batch-1 slice 10 (scheduler). INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.6);
+  // the module also tolerates the older `vmu.scheduler.*` spellings, but only THIS family is declared - one
+  // meaning, one name, and the declared name is the one the volume actually documents for the schedule face.
+  { key: 'vmu.schedule.triggerVia', type: 'enum', domain: ['none', 'middleware', 'script'], def: 'none', hot: HOT.H1, who: 'office', doc: '到期是否触发流程（默认 none＝只报告 ✗✓）' },
+  { key: 'vmu.schedule.maxPending', type: 'natural', def: 8, hot: HOT.H1, who: 'office', doc: '待触发项上限（0＝不限；超限具名拒 ✓）' },
+  { key: 'vmu.schedule.timeSource', type: 'enum', domain: ['tick-only', 'host-timer'], def: 'tick-only', hot: HOT.H1, who: 'office', doc: '时间来源（tick-only＝只用 tick() 推进 ✓；host-timer 需注入 timer 接缝 ✗）' },
+  { key: 'vmu.schedule.actionsAllowed', type: 'stringList', def: ['emit-hook', 'prompt'], hot: HOT.H1, who: 'office', doc: '允许的触发动作白名单（越界注册即拒 ✓）' },
+  { key: 'vmu.schedule.triggers', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: '声明式触发器种子' },
+  { key: 'vmu.schedule.overdueGraceMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗）' },
+  { key: 'vmu.schedule.coalesceMissed', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '漏跑是否合并（合并也要报 missed ✓）' },
+  { key: 'vmu.schedule.maxRecurrences', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '重复项上限（0＝不限）' },
+  { key: 'vmu.schedule.minIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '最小间隔（低于即拒 ✓）' },
+  { key: 'vmu.schedule.maxHorizonMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '最远调度视界（0＝不限；超出即拒 ✓）' },
+  { key: 'vmu.schedule.cancelNeedsReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '取消必须给理由（留痕 ✓）' },
   { key: 'vmu.handover.packBudgetBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '上下文包预算（触界必报丢弃）' },
   { key: 'vmu.handover.compress', type: 'enum', domain: ['none', 'summary'], def: 'summary', hot: HOT.H1, who: 'office', doc: '压缩方式' },
   { key: 'vmu.handover.requireFingerprint', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '每项须带指纹' },
