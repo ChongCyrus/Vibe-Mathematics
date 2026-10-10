@@ -459,6 +459,11 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
       if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
       const text = readFileSync(p, 'utf8')
       const all = [...new Set([...text.matchAll(/key: "(vmu\.migration\.[^"]+)"/g)].map((m) => m[1]))].sort()
+      // ROUND 74: the declared universe INCLUDES this module own WIRED_KEYS.
+      // A wired key is CORE (settings/schema.js); counting only planned.js made this number silently become
+      // zero the moment the wired keys were migrated into the schema (measured: nine module suites red).
+      for (const k of (typeof WIRED_KEYS !== 'undefined' ? WIRED_KEYS : [])) if (!all.includes(k)) all.push(k)
+      all.sort()
       return { keys: all, count: all.length, source: 'settings/planned.js' }
     } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
   }
