@@ -219,4 +219,43 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // `--check` is what the regeneration chain calls: drift must be a FAILURE, not a printout.
   if (!write && stale) { console.log('  DRIFT: settings/schema.js is not what the modules yield - run with --write'); process.exitCode = 1 }
   if (write && stale) console.log('  WROTE ' + defs.length + ' wired keys into ' + SCHEMA)
+
+  // INVARIANTS (round 79): the block is the only place these keys are declared, and every one of them carries a
+  // type and a default - a null default is allowed ONLY when the doc says the value could not be recovered, so
+  // "unknown" is visible in the registry instead of looking like a real value. These run in BOTH modes, which is
+  // what makes the chain enforce them rather than merely print them.
+  const problems = []
+  const blockKeys = defs.map((d) => d.key)
+  if (new Set(blockKeys).size !== blockKeys.length) problems.push('the block declares a key twice')
+  const preexisting = new Set()
+  {
+    let without = schemaText
+    const b = without.indexOf(BEGIN)
+    if (b !== -1) { const e = without.indexOf(END, b); if (e !== -1) without = without.slice(0, b) + without.slice(e + END.length) }
+    for (const m of without.matchAll(/key:\s*['"]([^'"]+)['"]/g)) preexisting.add(m[1])
+  }
+  for (const d of defs) {
+    // The doc rule is checked against the FILE, not against this script's own output: `render([d])` would always
+    // contain the marker, which made the check unfailable - a vacuous assertion of exactly the kind this project
+    // hunts. Measured: with `render` the negative case (marker removed from the file) stayed green.
+    const line = schemaText.split('\n').find((l) => l.includes("'" + d.key + "'"))
+    if (d.literal === null && !(line && /未从源码取回/.test(line))) problems.push(d.key + ' has no default AND the file does not say so')
+    if (preexisting.has(d.key)) problems.push(d.key + ' is declared both in the block and in the hand-written schema')
+  }
+  // Nothing may be silently dropped: every wired key is emitted, pre-existing, or a documented service surface.
+  const emitted = new Set(blockKeys)
+  for (const m of perModule) {
+    const src = readFileSync(join(KERNEL, m.module), 'utf8')
+    for (const k of wiredKeysOf(src)) {
+      if (emitted.has(k) || preexisting.has(k) || skipped.includes(k)) continue
+      problems.push(m.module + ' reads ' + k + ' but it is neither declared nor documented as a service surface')
+    }
+  }
+  if (problems.length) {
+    for (const p of problems.slice(0, 10)) console.log('  INVARIANT VIOLATED: ' + p)
+    console.log('  INVARIANTS: ' + problems.length + ' problem(s)')
+    process.exitCode = 1
+  } else {
+    console.log('  INVARIANTS ok: ' + defs.length + ' emitted, ' + preexisting.size + ' pre-existing, ' + skipped.length + ' service surfaces, ' + missing.length + ' with an honest null default')
+  }
 }
