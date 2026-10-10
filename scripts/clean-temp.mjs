@@ -62,13 +62,21 @@ export function planSweep(entries, { prefixes, ageHours = 6, now = Date.now() } 
     .map((e) => e.name)
 }
 
-/** Read the top level of a temp root into planner entries. Only DIRECTORIES are considered. */
+/**
+ * Read the top level of a temp root into planner entries.
+ *
+ * ROUND 58: this used to skip FILES (`if (!d.isDirectory()) continue`), which meant a scratch script or a gate
+ * log written straight into the temp root was never swept - it just accumulated for ever. The safety does not
+ * come from "only directories", it comes from the PREFIX + AGE pair below, so files are now listed too and are
+ * subject to exactly the same two tests. (The suite prefixes are extracted from the suites; the scratch prefixes
+ * are the narrow, explicit allowlist of names THIS project's own tooling writes.)
+ */
 export function listTop(root) {
   const out = []
   let names = []
   try { names = readdirSync(root, { withFileTypes: true }) } catch (e) { return out }
   for (const d of names) {
-    if (!d.isDirectory()) continue
+    if (!d.isDirectory() && !d.isFile()) continue
     let mtimeMs = 0
     try { mtimeMs = statSync(join(root, d.name)).mtimeMs } catch (e) { continue }
     out.push({ name: d.name, mtimeMs })
@@ -88,6 +96,18 @@ export function sweep({ root = tmpdir(), prefixes, ageHours = 6, dryRun = false,
   }
   log('temp-hygiene: root=' + root + ' scanned=' + all.length + ' stale=' + doomed.length + ' deleted=' + deleted + ' failed=' + failed + ' ageHours=' + ageHours)
   return { root, scanned: all.length, planned: doomed.length, deleted, failed }
+}
+
+/**
+ * Scratch prefixes THIS project's own tooling writes into the temp root (round 58). Deliberately a short,
+ * explicit allowlist - never a glob - so a stale file from some other program is never touched. Everything here
+ * is subject to the same age threshold as the suite dirs: **if it has not been reused for 6 h, it is deleted.**
+ */
+export const SCRATCH_PREFIXES = ['vmu-', 'probe-', 't1-', 'vmu_', 'tmp-vmu']
+
+/** Every prefix the sweep may delete: suite workspaces (extracted from tests) + our own scratch names. */
+export function sweepPrefixes(testsDir = TESTS) {
+  return suitePrefixes(testsDir).concat(SCRATCH_PREFIXES)
 }
 
 /** `D:\_tmp` when the D: drive is usable; otherwise null (keep the ambient temp root). Never throws. */
@@ -179,6 +199,18 @@ if (has('self-test')) {
   check(!planned.includes('unrelated-stale') && !planned.includes('vibestale-nodash'), 'TEMP-HYGIENE: only exact suite prefixes are swept (no glob-like overreach)')
   const live = suitePrefixes()
   check(live.length >= 3, 'TEMP-HYGIENE: the prefix table is EXTRACTED from the suites (found ' + live.length + ': ' + live.slice(0, 4).join(', ') + ' …)')
+  // ROUND 58: scratch FILES are swept by the same prefix+age pair, and foreign files still never are.
+  const scratch = [
+    { name: 'vmu-spec-census.mjs', mtimeMs: now - 7 * 3600 * 1000 },   // OUR scratch, stale ⇒ MUST be planned
+    { name: 'vmu-census-new.mjs', mtimeMs: now - 60 * 1000 },          // OUR scratch, fresh ⇒ must NOT be planned
+    { name: 'probe-clocks.mjs', mtimeMs: now - 30 * 3600 * 1000 },     // OUR probe, stale   ⇒ MUST be planned
+    { name: 'notes-from-someone-else.md', mtimeMs: now - 30 * 3600 * 1000 }, // foreign stale ⇒ must NOT be planned
+  ]
+  const plannedScratch = planSweep(scratch, { prefixes: sweepPrefixes(), ageHours: 6, now })
+  check(plannedScratch.includes('vmu-spec-census.mjs') && plannedScratch.includes('probe-clocks.mjs'),
+    'TEMP-HYGIENE: STALE scratch FILES with our own prefixes ARE swept (they used to be skipped forever)')
+  check(!plannedScratch.includes('vmu-census-new.mjs'), 'TEMP-HYGIENE: a FRESH scratch file is never swept (6 h rule holds for files too)')
+  check(!plannedScratch.includes('notes-from-someone-else.md'), 'TEMP-HYGIENE: a foreign stale file is never swept (the allowlist is explicit, not a glob)')
   // task-15: the leftover-PROCESS predicate, tested on fixtures so the property is checkable and mutable.
   const procs = [
     { pid: 1, parent: 999, parentGone: true, cmd: 'node tests/run-tests.mjs --temp-dry-run' },  // excluded via selfPids ONLY
@@ -225,7 +257,7 @@ if (isCli) {
   if (!root) { const pref = preferredTempRoot(); if (useTempRoot(pref)) console.log('temp-hygiene: using temp root ' + pref) }
   const res = sweep({
     root: val('root', tmpdir()),
-    prefixes: suitePrefixes(),
+    prefixes: sweepPrefixes(),
     ageHours: Number(val('age-hours', '6')),
     dryRun: has('dry-run'),
     log: (m) => console.log(m),
