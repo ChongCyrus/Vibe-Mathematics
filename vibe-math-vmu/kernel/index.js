@@ -46,6 +46,8 @@ import { createAudit } from './audit.js'
 import { createAlerts } from './alerts.js'
 import { createRetention } from './retention.js'
 import { createDelegation } from './delegation.js'
+import { createMemory } from './memory.js'
+import { createBidding } from './bidding.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -280,6 +282,10 @@ export function createKernel({
   // Batch-3 slice 2: reproduction packs (docs/16 L12). Data is referenced by pointer by default; a missing
   // required member is named rather than silently omitted.
   const repropack = createReproPack({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
+  // Batch-2 slices 10-11: institutional memory and the auction. Memory's `may`/`authorize` always refuse,
+  // and the auction's price never depends on reputation unless the institution explicitly turns that on.
+  const memory = createMemory({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
+  const bidding = createBidding({ settings: { get: (k) => settings[k] }, bus, clock, log, members, trust })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -317,6 +323,9 @@ export function createKernel({
   registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 §17)' })
   registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 §15)' })
   registry.register('vmu.repropack', { apiVersion: 1 }, { kind: 'service', description: 'reproduction packs: required members named, seed mandatory, diffs located (docs/16 L12)' })
+  registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 §9)' })
+  registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 §10)' })
+  registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09·15)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -404,6 +413,8 @@ export function createKernel({
     get fairness() { return fairness },
     get charter() { return charter },
     get repropack() { return repropack },
+    get memory() { return memory },
+    get bidding() { return bidding },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

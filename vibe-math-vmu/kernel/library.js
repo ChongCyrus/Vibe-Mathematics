@@ -54,6 +54,7 @@ export function createLibrary({
   fingerprintPolicy = 'content-only',
   bodyCapBytes = BODY_CAP_BYTES,
   clock = () => new Date().toISOString(),
+  storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
 } = {}) {
   if (typeof root !== 'string' || root.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'createLibrary needs a workspace root', 'pass { root }')
@@ -168,6 +169,29 @@ export function createLibrary({
   const isPermanent = (meta) => !!(meta && (meta.permanent === 'true' || meta.status === 'permanent'))
   const trashDirOf = (file) => join(dirname(file), TRASH_DIR)
   const bodyOf = (raw) => raw.replace(/^---\n[\s\S]*?\n---\n?/, '')
+
+  /**
+   * Revision helpers (task-87). Revisions live beside the record as `<id>@<rev>.md`; rev numbers are
+   * POSITIVE integers, monotonic and never reused. In `storeMode='diff'` the BASELINE revision (the
+   * lowest one) is never pruned, matching the retention contract.
+   */
+  const REV_RE = /@(\d+)\.md$/
+  const revisionFiles = async (dir, id) => {
+    let files = []
+    try { files = await readdir(dir) } catch { return [] }
+    return files.filter((f) => f.startsWith(id + '@') && REV_RE.test(f)).map((f) => ({ rev: Number(REV_RE.exec(f)[1]), file: join(dir, f) })).sort((a, b) => a.rev - b.rev)
+  }
+  const highWaterPath = (dir, id) => join(dir, '.' + id + '.rev')
+  const readHighWater = async (dir, id) => {
+    try { const n = Number(String(await readFile(highWaterPath(dir, id), 'utf8')).trim()); return Number.isInteger(n) && n > 0 ? n : 0 } catch { return 0 }
+  }
+  // monotonic ACROSS pruning: a freed rev number is never handed out again (high-water mark on disk)
+  const nextRev = async (dir, id) => {
+    const revs = await revisionFiles(dir, id)
+    const maxFile = revs.length ? revs[revs.length - 1].rev : 0
+    const hw = await readHighWater(dir, id)
+    return Math.max(maxFile, hw) + 1
+  }
   const readTrash = async () => {
     const out = []
     let members = []
@@ -339,6 +363,11 @@ export function createLibrary({
       const file = join(dirname(rec.file), id + '@' + String(rev) + '.md')
       if (!(await exists(file))) throw refuse('VMU_NO_SUCH_OBJECT', 'no revision ' + String(rev) + ' for ' + id, 'revisions are stored as <id>@<rev>.md next to the record')
       const meta = parseRecord(await readFile(file, 'utf8'))
+      // task-87: in diff store mode the BASELINE revision (lowest rev) is never pruned.
+      if (storeMode === 'diff') {
+        const all = await revisionFiles(dirname(rec.file), id)
+        if (all.length && all[0].rev === Number(rev)) throw refuse('VMU_RETENTION_CONFLICT', 'revision ' + String(rev) + ' of ' + id + ' is the baseline and cannot be pruned while storeMode=diff', 'baseline revisions are protected (vmu.records.history.storeMode)')
+      }
       if (isPermanent(meta)) throw refuse('VMU_RETENTION_CONFLICT', 'revision ' + String(rev) + ' of ' + id + ' is marked permanent', 'permanent records are protected (docs/20 §6)')
       gate(file, 'library delete')
       const at = nowIso(clock)
@@ -366,6 +395,57 @@ export function createLibrary({
     async listTrash() {
       const rows = await readTrash()
       return rows.map((r) => ({ id: r.id, kind: r.kind, title: r.title, fingerprint: r.fingerprint, status: r.status, owner: r.owner, updatedAt: r.updatedAt, trashedAt: r.trashedAt, reason: r.reason }))
+    },
+
+    /**
+     * === Revision write path (task-87) ===
+     * Freeze the current record as `<id>@<rev>.md`. Every commit is traceable (who/when/why) and the rev
+     * number is monotonic and never reused. The write goes through the SAME gate as every other write.
+     */
+    async commitRevision({ id, by = null, reason = null } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list; ids are never guessed')
+      if (!by) throw refuse('VMU_INVALID_ARGUMENT', 'commitRevision needs by (who freezes this revision)', 'pass by:<member>; the trace must name who committed')
+      const dir = dirname(rec.file)
+      const rev = await nextRev(dir, id)
+      const file = join(dir, id + '@' + rev + '.md')
+      gate(file, 'library write')
+      const raw = await readFile(rec.file, 'utf8')
+      const at = nowIso(clock)
+      const meta = { ...parseRecord(raw), rev, by: String(by), reason: reason === null ? '' : String(reason), at, baseline: rev === 1 ? 'true' : 'false' }
+      let body
+      try { body = bodyOf(raw) } catch (e) { throw refuse('VMU_IO_FAILED', 'commitRevision failed at step read-body: ' + String((e && e.message) || e), 'step=read-body') }
+      try { await writeFile(file, render(meta, body), 'utf8') } catch (e) { throw refuse('VMU_IO_FAILED', 'commitRevision failed at step write-revision: ' + String((e && e.message) || e), 'step=write-revision') }
+      // High-water mark: survives pruning, so a freed rev number is never reused (monotonic contract).
+      try { await writeFile(highWaterPath(dir, id), String(rev), 'utf8') } catch (e) { throw refuse('VMU_IO_FAILED', 'commitRevision failed at step write-highwater: ' + String((e && e.message) || e), 'step=write-highwater') }
+      return { ok: true, id, rev, by: String(by), reason: reason === null ? null : String(reason), at, path: file, fingerprint: rec.fingerprint, step: 'done' }
+    },
+
+    /** Read one frozen revision (read-only). */
+    async revision({ id, rev } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list')
+      if (rev === undefined || rev === null) throw refuse('VMU_INVALID_ARGUMENT', 'revision needs rev', 'pass rev:<n>; use revisions({id}) to list them')
+      const file = join(dirname(rec.file), id + '@' + String(rev) + '.md')
+      if (!(await exists(file))) throw refuse('VMU_NO_SUCH_OBJECT', 'no revision ' + String(rev) + ' for ' + id, 'revisions() lists the frozen versions')
+      const raw = await readFile(file, 'utf8')
+      const meta = parseRecord(raw)
+      return { ok: true, id, rev: Number(rev), by: meta.by || null, reason: meta.reason || null, at: meta.at || null, baseline: meta.baseline === 'true', fingerprint: meta.fingerprint || null, body: bodyOf(raw) }
+    },
+
+    /** List frozen revisions (read-only, counted truncation like every other list). */
+    async revisions({ id, limit = 0 } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list')
+      const all = await revisionFiles(dirname(rec.file), id)
+      const items = all.map((r) => ({ rev: r.rev, path: r.file }))
+      if (!(limit > 0) || items.length <= limit) return { id, items, total: items.length, dropped: 0, storeMode }
+      const kept = items.slice(0, limit)
+      truncation.push({ path: 'revisions:' + id, kept: kept.length, dropped: items.length - kept.length, mode: 'revision-limit' })
+      return { id, items: kept, total: items.length, dropped: items.length - kept.length, storeMode }
     },
 
     async status() {
