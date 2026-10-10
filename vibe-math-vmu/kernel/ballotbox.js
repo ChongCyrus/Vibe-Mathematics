@@ -55,7 +55,12 @@ export function createBallotBox(opts) {
 
   const refusals = new Map()
   const bumpRefusal = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1) }
-  const deny = (code, msg, hint) => { bumpRefusal(code); return refuse(code, msg, hint) }
+  const deny = (code, msg, hint, enforced) => {
+    bumpRefusal(code)
+    // 拒绝一律**带上 `enforced`**（数组 ✓，可空 ✓，**不得 `undefined`** ✗✓）—— 照 `mathtools.js` 口径 ✓
+    const keys = Array.isArray(enforced) ? enforced.slice() : []
+    return Object.assign(refuse(code, msg, hint), { enforced: keys })
+  }
 
   const boxes = new Map()
   let seq = 0
@@ -101,9 +106,14 @@ export function createBallotBox(opts) {
   const open = (a) => {
     const args = a || {}
     const c = cfg()
-    const enforced = ['vmu.ballot.method', 'vmu.ballot.secrecy', 'vmu.ballot.minVotes', 'vmu.ballot.tieRule', 'vmu.ballot.abstainAllowed', 'vmu.ballot.runoffTopN']
+    // **真实求值列表**（求值点即列举点 ✓；未求值/未改变行为者**不得**出现 ✗✓）
+    const enforced = []
+    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    evalKey('vmu.ballot.method')                                        // 用于 method 白名单校验 ⇒ 真求值 ✓
+    if (c.secrecy === true) evalKey('vmu.ballot.secrecy')               // 只有"开"才改变可观测行为（sealed=true）✓
+    // 注：`abstainAllowed` **不在此处列举** ✗✓（open 读了它但不改变本次结果 ⇒ 留到真正起作用的 cast 拒绝处 ✓）
     const allowed = ['plurality', 'approval', 'runoff']
-    if (allowed.indexOf(c.method) === -1) return deny('VMU_BALLOT_METHOD_UNSUPPORTED', '不支持的 method：' + c.method, '可用：' + allowed.join('、'))
+    if (allowed.indexOf(c.method) === -1) return deny('VMU_BALLOT_METHOD_UNSUPPORTED', '不支持的 method：' + c.method, '可用：' + allowed.join('、'), enforced.slice())
     const question = String(args.question || '').trim()
     const options = Array.isArray(args.options) ? args.options.map(String) : []
     if (!question || options.length < 2) return deny('VMU_CONFLICT', 'open 需要 question 与 ≥2 个 options', '给出问题与选项')
@@ -124,8 +134,9 @@ export function createBallotBox(opts) {
     const c = cfg()
     const enforced = []
     if (String(args.choice) === 'abstain') {
-      enforced.push('vmu.ballot.abstainAllowed')
-      if (!c.abstainAllowed) return deny('VMU_BALLOT_ABSTAIN_NOT_ALLOWED', '该配置不允许弃权（abstainAllowed=false）', '打开它，或给出选项')
+      // **只在它真的改变本次结果时入列** ✗✓：`abstainAllowed=false` 且本次是弃权 ⇒ 入列 ✓；
+      // `true` 时弃权**照样成功** ⇒ **不入列** ✓（否则就是"读"而非"起作用" ✗）。
+      if (!c.abstainAllowed) return deny('VMU_BALLOT_ABSTAIN_NOT_ALLOWED', '该配置不允许弃权（abstainAllowed=false）', '打开它，或给出选项', ['vmu.ballot.abstainAllowed'])
       box.abstain.set(by, clock())
       return { ok: true, boxId: box.id, kind: 'abstain', sealed: box.sealed, enforced }
     }
@@ -140,7 +151,7 @@ export function createBallotBox(opts) {
     }
     box.votes.set(by, String(choice))
     if (c.proxyMode === 'on' && args.proxyFor) { enforced.push('vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) enforced.push('vmu.ballot.proxyChainMaxDepth') }
-    if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { enforced.push('vmu.ballot.quadraticCreditCap'); return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap, '调小 credits') }
+    if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap + '（`vmu.ballot.quadraticCreditCap`）', '调小 credits', ['vmu.ballot.quadraticCreditCap']) }
     return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced }
   }
 
@@ -164,8 +175,12 @@ export function createBallotBox(opts) {
     const floor = Math.max(c.minVotes, Math.ceil((box.options.length ? 1 : 0) * 0 + c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length)))
     // **法定人数不足 ⇒ 具名拒（不是"未通过"）** ✗✓
     if (floorBase < floor) {
-      return Object.assign(deny('VMU_BALLOT_MIN_VOTES_NOT_MET', '法定人数不足：' + floorBase + ' < ' + floor + ' ⇒ **本次不是"未通过"，而是"未成立"** ✗✓',
-        '继续收票/催票；不得把不足法定人数的结果当否决 ✗'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase }, enforced })
+      // **点名是哪把尺子不够** ✗✓（`minVotes` 还是 `minVotesRatio`）—— 求值点即列举点 ✓
+      const ratioFloor = Math.ceil(c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length))
+      const boundBy = c.minVotes >= ratioFloor ? 'vmu.ballot.minVotes' : 'vmu.ballot.minVotesRatio'
+      if (enforced.indexOf(boundBy) === -1) enforced.push(boundBy)
+      return Object.assign(deny('VMU_BALLOT_MIN_VOTES_NOT_MET', '法定人数不足：' + floorBase + ' < ' + floor + '（受限键：`' + boundBy + '`）⇒ **本次不是"未通过"，而是"未成立"** ✗✓',
+        '继续收票/催票；不得把不足法定人数的结果当否决 ✗'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase, boundBy }, enforced })
     }
     const tally = {}
     for (const v of box.votes.values()) tally[v] = (tally[v] || 0) + 1

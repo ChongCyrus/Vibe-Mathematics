@@ -510,6 +510,7 @@ const CORE_DEFS = Object.freeze([
   // N1/N4 (round 18): the tamper-evident audit chain and the state-version/migration primitive.
   { key: 'vmu.audit.chain.verifyCap', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '分段验证上限（0＝全链；**只验前 N 行时必须如实报未验** ✗✓）' },
   { key: 'vmu.audit.chain.algorithm', type: 'string', def: 'sha256', hot: HOT.H1, who: 'office', doc: '链哈希算法声明（仅回显；实际由注入 hash 决定 ✗）' },
+  { key: 'vmu.audit.macKey', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '审计链 HMAC 的**密钥引用**（**secret 引用，绝不写密钥材料** ✗✓；经注入的 `secrets` 缝解析 ✓；未给 ⇒ 链保持无密钥并**自曝 `keyed:false`** ✗✓）' },
   { key: 'vmu.state.current', type: 'string', def: '1', hot: HOT.H1, who: 'office', doc: '当前状态版本' },
   { key: 'vmu.state.requireVersion', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓）' },
   { key: 'vmu.state.maxMigrationSteps', type: 'positiveInteger', def: 8, hot: HOT.H1, who: 'office', doc: '迁移步数上限（超限具名拒并给当前/上限 ✓）' },

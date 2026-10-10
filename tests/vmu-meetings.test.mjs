@@ -395,6 +395,102 @@ const err = (fn) => errOf(fn)
   ok(codeOf(() => ro.t.quorum({ meeting: 'nope' })) === 'VMU_NO_SUCH_OBJECT', 'reading an unknown meeting is a named refusal')
 }
 
+// ── enforced[] honesty on the REFUSAL path (round-12 gate audit-enforced-consistency) ───────────────
+{
+  const grab = (fn) => { try { fn(); return null } catch (e) { return e } }
+  // 1) the two findings the gate named: the refusal must carry the key that fired
+  const mat = mk({ 'vmu.meetings.materialsRequired': true })
+  const e1 = grab(() => mat.t.open({ roster }))
+  ok(e1 && Array.isArray(e1.enforced) && e1.enforced.includes('vmu.meetings.materialsRequired'),
+    'enforced[+] meetings.open(materialsRequired): the refusal carries enforced[] naming the key (gate finding #1)', e1 && JSON.stringify(e1.enforced))
+  const act = opened({ 'vmu.meetings.minutesActionsRequired': true })
+  const e2 = grab(() => act.h.t.close({ meeting: act.id }))
+  ok(e2 && Array.isArray(e2.enforced) && e2.enforced.includes('vmu.meetings.minutesActionsRequired'),
+    'enforced[+] meetings.close(minutesActionsRequired): the refusal carries enforced[] naming the key (gate finding #2)', e2 && JSON.stringify(e2.enforced))
+  // 2) EVALUATION POINT = ENUMERATION POINT: a refusal names every rail whose switch was consulted earlier
+  const chain = mk({ 'vmu.meetings.confirmPreviousMinutes': true, 'vmu.meetings.committeeReportRequired': true })
+  const cid = chain.t.open({ type: 'committee', roster }).meeting
+  const e3a = grab(() => chain.t.close({ meeting: cid }))
+  ok(e3a && e3a.enforced.includes('vmu.meetings.confirmPreviousMinutes'),
+    'enforced[+] the first firing rail is named (confirmPreviousMinutes)', e3a && JSON.stringify(e3a.enforced))
+  chain.t.confirmMinutes({ meeting: cid })
+  const e3 = grab(() => chain.t.close({ meeting: cid }))
+  ok(e3 && e3.enforced.includes('vmu.meetings.confirmPreviousMinutes') && e3.enforced.includes('vmu.meetings.committeeReportRequired'),
+    'enforced[+] a later refusal lists the rail consulted EARLIER in the same call (incremental trail)', e3 && JSON.stringify(e3.enforced))
+  const quit = opened({ 'vmu.meetings.speechMaxMs': 10, 'vmu.meetings.verbatimEnabled': false })
+  const e4 = grab(() => quit.h.t.speak({ meeting: quit.id, member: 'acad', ms: 999, verbatim: true }))
+  ok(e4 && e4.enforced.includes('vmu.meetings.speechMaxMs'),
+    'enforced[+] the FIRST rail to fire is the one named (speechMaxMs fires before verbatimEnabled)', e4 && JSON.stringify(e4.enforced))
+  // 3) EVERY refusal path carries an ARRAY enforced (never undefined / null)
+  const notMember = { has: () => false }
+  const triggers = [
+    ['ctor clock', () => createMeetings({ clock: 7 }), null],
+    ['no such meeting', () => mk({}).t.speak({ meeting: 'nope', member: 'acad' }), null],
+    ['no open meeting', () => mk({}).t.close({ meeting: 'x' }), null],
+    ['typeCatalog', () => mk({ 'vmu.meetings.typeCatalog': ['ordinary'] }).t.open({ type: 'secret', roster }), null],
+    ['liveCap', () => { const h = mk({ 'vmu.meetings.liveCap': 1 }); h.t.open({ roster }); return h.t.open({ roster }) }, null],
+    ['committeeMax', () => mk({ 'vmu.meetings.committeeMax': 2 }).t.open({ type: 'committee', roster, size: 9 }), null],
+    ['materialsRequired', () => mk({ 'vmu.meetings.materialsRequired': true }).t.open({ roster }), null],
+    ['attend bad member', () => { const o = opened({}); return o.h.t.attend({ meeting: o.id }) }, null],
+    ['attend not member', () => { const o = opened({}, { members: notMember }); return o.h.t.attend({ meeting: o.id, member: 'zz' }) }, null],
+    ['leave not present', () => { const o = opened({}); return o.h.t.leave({ meeting: o.id, member: 'r-9' }) }, null],
+    ['leaveEarlyPolicy', () => { const o = opened({ 'vmu.meetings.leaveEarlyPolicy': 'deny' }); o.h.t.attend({ meeting: o.id, member: 'r-1' }); return o.h.t.leave({ meeting: o.id, member: 'r-1' }) }, null],
+    ['speak not present', () => { const o = opened({}); return o.h.t.speak({ meeting: o.id, member: 'r-9' }) }, null],
+    ['disciplineMuteMs', () => { const o = opened({ 'vmu.meetings.disciplineWarnMax': 1, 'vmu.meetings.disciplineMuteMs': 9999 }); o.h.t.attend({ meeting: o.id, member: 'r-1' }); o.h.t.warn({ meeting: o.id, member: 'r-1' }); o.h.t.warn({ meeting: o.id, member: 'r-1' }); return o.h.t.speak({ meeting: o.id, member: 'r-1' }) }, null],
+    ['speechMaxMs', () => { const o = opened({ 'vmu.meetings.speechMaxMs': 1 }); return o.h.t.speak({ meeting: o.id, member: 'acad', ms: 99 }) }, null],
+    ['speechExtendMax', () => { const o = opened({ 'vmu.meetings.speechDefaultMs': 10, 'vmu.meetings.speechExtendMs': 5, 'vmu.meetings.speechExtendMax': 1 }); o.h.t.speak({ meeting: o.id, member: 'acad', ms: 20 }); return o.h.t.speak({ meeting: o.id, member: 'acad', ms: 20 }) }, null],
+    ['speechQuotaPerMember', () => { const o = opened({ 'vmu.meetings.speechQuotaPerMember': 1 }); o.h.t.speak({ meeting: o.id, member: 'acad' }); return o.h.t.speak({ meeting: o.id, member: 'acad' }) }, null],
+    ['budgetTurns', () => { const o = opened({ 'vmu.meetings.budgetTurns': 1 }); o.h.t.speak({ meeting: o.id, member: 'acad' }); return o.h.t.speak({ meeting: o.id, member: 'acad' }) }, null],
+    ['verbatimEnabled', () => { const o = opened({ 'vmu.meetings.verbatimEnabled': false }); return o.h.t.speak({ meeting: o.id, member: 'acad', verbatim: true }) }, null],
+    ['interruptAllow', () => { const o = opened({ 'vmu.meetings.interruptAllow': false }); return o.h.t.interrupt({ meeting: o.id, member: 'acad' }) }, null],
+    ['interruptQuota', () => { const o = opened({ 'vmu.meetings.interruptQuota': 1 }); o.h.t.interrupt({ meeting: o.id, member: 'acad' }); return o.h.t.interrupt({ meeting: o.id, member: 'acad' }) }, null],
+    ['emergencyKinds', () => { const o = opened({}); return o.h.t.motion({ meeting: o.id, member: 'acad', kind: 'emergency' }) }, null],
+    ['motion materials', () => { const o = opened({ 'vmu.meetings.materialsRequired': true }); return o.h.t.motion({ meeting: o.id, member: 'acad' }) }, null],
+    ['quorumMin', () => { const o = opened({ 'vmu.meetings.quorumMin': 3 }); return o.h.t.vote({ meeting: o.id, member: 'acad' }) }, null],
+    ['quorumLossPolicy', () => { const o = opened({ 'vmu.meetings.quorumMin': 2, 'vmu.meetings.quorumLossPolicy': 'suspend' }); o.h.t.attend({ meeting: o.id, member: 'r-1' }); o.h.t.leave({ meeting: o.id, member: 'r-1' }); return o.h.t.vote({ meeting: o.id, member: 'acad' }) }, null],
+    ['quorumRecountMs', () => { const o = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumRecountMs': 100 }); return o.h.t.vote({ meeting: o.id, member: 'acad' }) }, null],
+    ['chairNeutral', () => { const o = opened({ 'vmu.meetings.chairNeutral': true }); o.h.t.attend({ meeting: o.id, member: 'r-1' }); o.h.t.motion({ meeting: o.id, member: 'r-1' }); o.h.t.vote({ meeting: o.id, member: 'r-1', motion: 'mo1', value: 1 }); return o.h.t.vote({ meeting: o.id, member: 'acad', motion: 'mo1', value: 1 }) }, null],
+    ['vote no such motion', () => { const o = opened({}); return o.h.t.vote({ meeting: o.id, member: 'acad', motion: 'mo9' }) }, null],
+    ['transferChair target', () => { const o = opened({}); return o.h.t.transferChair({ meeting: o.id }) }, null],
+    ['chairTransferAudit', () => { const o = opened({ 'vmu.meetings.chairTransferAudit': true }); return o.h.t.transferChair({ meeting: o.id, to: 'r-1' }) }, null],
+    ['recessMaxMs', () => { const o = opened({ 'vmu.meetings.recessMaxMs': 10 }); return o.h.t.recess({ meeting: o.id, ms: 99 }) }, null],
+    ['recess already', () => { const o = opened({}); o.h.t.recess({ meeting: o.id, ms: 1 }); return o.h.t.recess({ meeting: o.id, ms: 1 }) }, null],
+    ['resume not recessed', () => { const o = opened({}); return o.h.t.resume({ meeting: o.id }) }, null],
+    ['recessResumeRequiresMotion', () => { const o = opened({ 'vmu.meetings.recessResumeRequiresMotion': true }); o.h.t.recess({ meeting: o.id, ms: 1 }); return o.h.t.resume({ meeting: o.id }) }, null],
+    ['disciplineExpelAllowed', () => { const o = opened({ 'vmu.meetings.disciplineExpelAllowed': false }); return o.h.t.expel({ meeting: o.id, member: 'acad' }) }, null],
+    ['confidentialityQuotePolicy', () => { const o = opened({ 'vmu.meetings.confidentialityQuotePolicy': 'deny' }); return o.h.t.quote({ meeting: o.id, text: 'x' }) }, null],
+    ['appealScope', () => { const o = opened({ 'vmu.meetings.appealScope': 'none' }); return o.h.t.fileAppeal({ meeting: o.id, member: 'acad' }) }, null],
+    ['appealDeadlineMs', () => { const o = opened({ 'vmu.meetings.appealDeadlineMs': 1, 'vmu.meetings.appealReasonRequired': false }); o.h.set(9999); return o.h.t.fileAppeal({ meeting: o.id, member: 'acad' }) }, null],
+    ['appealReasonRequired', () => { const o = opened({}); return o.h.t.fileAppeal({ meeting: o.id, member: 'acad' }) }, null],
+    ['wake no seam', () => opened({}).h.t.wake({ member: 'acad' }), null],
+    ['wakeFailurePolicy', () => createMeetings({ clock: () => 0, settings: { 'vmu.meetings.wakeFailurePolicy': 'refuse' }, wake: () => ({ ok: false, error: 'x' }) }).wake({ member: 'r-1' }), null],
+    ['confirmPreviousMinutes', () => { const o = opened({ 'vmu.meetings.confirmPreviousMinutes': true }); return o.h.t.close({ meeting: o.id }) }, null],
+    ['committeeReportRequired', () => { const o = opened({ 'vmu.meetings.committeeReportRequired': true }, {}, { type: 'committee' }); return o.h.t.close({ meeting: o.id }) }, null],
+    ['minutesActionsRequired', () => { const o = opened({ 'vmu.meetings.minutesActionsRequired': true }); return o.h.t.close({ meeting: o.id }) }, null],
+  ]
+  const missingEnforced = []
+  const thrown = []
+  const noThrow = []
+  for (const [label, fn] of triggers) {
+    const e = grab(fn)
+    if (!e) { noThrow.push(label); continue }
+    thrown.push(label)
+    if (!Array.isArray(e.enforced)) missingEnforced.push(label + '=' + String(e.enforced))
+    else if (!Array.isArray(e.evaluated)) missingEnforced.push(label + ':no-evaluated')
+  }
+  ok(noThrow.length === 0, 'every refusal trigger really refuses (the table is meaningful)', JSON.stringify(noThrow))
+  ok(missingEnforced.length === 0,
+    'EVERY refusal path in meetings.js carries an ARRAY enforced[] (never undefined/null) — ' + thrown.length + ' triggers',
+    JSON.stringify(missingEnforced))
+  ok(thrown.length >= 35, 'the refusal table covers the whole module surface', String(thrown.length))
+  // 4) reverse: a key that was NOT evaluated must not appear in a refusal
+  const quiet = grab(() => mk({ 'vmu.meetings.materialsRequired': true }).t.open({ roster }))
+  const absent = ['vmu.meetings.liveCap', 'vmu.meetings.typeCatalog', 'vmu.meetings.committeeMax', 'vmu.meetings.quorumMin']
+    .filter((k) => quiet.enforced.includes(k))
+  ok(absent.length === 0, 'a refusal does NOT claim keys that were not evaluated', JSON.stringify(absent))
+  ok(quiet.enforced.length === 1, 'the materialsRequired refusal names exactly the one key consulted', JSON.stringify(quiet.enforced))
+}
+
 if (failed === 0) {
   console.log('=== VMU MEETINGS: ' + passed + ' passed, 0 failed ===')
   process.exit(0)

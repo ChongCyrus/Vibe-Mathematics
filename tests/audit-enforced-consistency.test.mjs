@@ -1,0 +1,340 @@
+// tests/audit-enforced-consistency.test.mjs — the C2 gate: one noun, one meaning.
+//
+// WHY (independent reviewer, round 12): three modules gave `enforced` three different meanings - `meetings` was
+// "evaluated for THIS call", `records` added `fired`, and `ballotbox.open()` carried a HARD-CODED list - so the
+// hardest discipline in this project ("the key was READ" vs "the key DID something") silently stopped being
+// checkable there. This gate measures the noun instead of trusting the prose, with five rules:
+//
+//   ① NO DUPLICATES      - within one receipt, a key appears at most once;
+//   ② DETERMINISM        - the same scenario twice yields element-wise identical lists (injected clock);
+//   ③ BEHAVIOUR LISTED   - for every scenario whose trigger/non-trigger pair CHANGES behaviour, `enforced` must
+//                          differ; two identical lists mean a STATIC list (the ballotbox defect class);
+//   ④ UNEVALUATED ABSENT - a key the code path never consults must not appear (reverse direction);
+//   ⑤ ARRAY, NEVER null  - every `enforced` found is an array, and a REFUSAL carries one too (mathtools sets
+//                          `e.enforced = keys`; a refusal with `enforced === undefined` fails this rule).
+//
+// Plus: every kernel module that mentions `enforced` IN CODE must be covered here (a new module is a new blind
+// spot until it is), and FOUR deliberately-wrong self-proofs show each checker can actually fail.
+//
+// The gate is allowed to be RED: it reports what the TREE does, and it names the module, the call and the key.
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { join, resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { stripComments } from './_lib/strip-comments.mjs'
+import { createBallotBox } from '../vibe-math-vmu/kernel/ballotbox.js'
+import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
+import { createRecords } from '../vibe-math-vmu/kernel/records.js'
+import { createMathTools } from '../vibe-math-vmu/kernel/mathtools.js'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO = resolve(HERE, '..')
+const KERNEL = join(REPO, 'vibe-math-vmu', 'kernel')
+const CLOCK = () => 1000000
+const KEY = 'enforced'
+
+let passed = 0, failed = 0
+const findings = []
+const ok = (cond, name, detail) => { if (cond) passed++; else { failed++; console.log('  FAIL ' + name + (detail === undefined ? '' : ' :: ' + detail)) } }
+const finding = (kind, name, detail) => { findings.push({ kind, name, detail }); console.log('  FINDING ' + kind + ' :: ' + name + (detail ? ' :: ' + detail : '')) }
+
+// ---------------------------------------------------------------------------------------------------------
+// collection: every `enforced` value reachable in a result or a thrown refusal
+// ---------------------------------------------------------------------------------------------------------
+/**
+ * Collect every `enforced` field reachable from a value (depth-limited, cycle-safe).
+ * Returns { arrays, nonArrays, count } where nonArrays names fields that are present but not arrays.
+ */
+export function collectEnforced(root, maxDepth = 5) {
+  const arrays = []
+  const nonArrays = []
+  const seen = new Set()
+  const walk = (o, path, d) => {
+    if (!o || typeof o !== 'object' || d > maxDepth || seen.has(o)) return
+    seen.add(o)
+    for (const [k, v] of Object.entries(o)) {
+      if (k === KEY) {
+        if (Array.isArray(v)) arrays.push({ path: path + '.' + k, value: v })
+        else nonArrays.push({ path: path + '.' + k, value: v === null ? null : typeof v })
+      } else if (v && typeof v === 'object') walk(v, path + '.' + k, d + 1)
+    }
+  }
+  walk(root, '$', 0)
+  return { arrays, nonArrays, count: arrays.length + nonArrays.length }
+}
+
+/** The five checkers, pure, so the self-proof can mutate their inputs. */
+export function checkDuplicates(run) {
+  const bad = []
+  for (const a of run.arrays) {
+    const dup = a.value.filter((k, i) => a.value.indexOf(k) !== i)
+    if (dup.length) bad.push('DUPLICATE-ENFORCED: ' + run.label + ' :: ' + [...new Set(dup)].join(','))
+  }
+  return bad
+}
+export function checkArrayShape(run) {
+  const bad = []
+  for (const n of run.nonArrays) bad.push('NON-ARRAY-ENFORCED: ' + run.label + ' :: ' + n.path + ' = ' + JSON.stringify(n.value))
+  if (run.threw && !run.refusalEnforcedIsArray) bad.push('REFUSAL-WITHOUT-ENFORCED: ' + run.label + ' :: thrown ' + run.code + ' with enforced === undefined')
+  if (!run.threw && run.count === 0) bad.push((run.refused ? 'REFUSAL-NO-ENFORCED: ' : 'NO-ENFORCED-REPORTED: ') + run.label + ' :: the call reported no enforced[] at all')
+  return bad
+}
+export function checkDeterministic(a, b) {
+  // compare the COLLECTED LISTS only (the labels differ by construction: they name the two runs)
+  return JSON.stringify(a.arrays) === JSON.stringify(b.arrays) ? [] : ['NONDETERMINISTIC: ' + a.label + ' :: ' + JSON.stringify(a.arrays) + ' vs ' + JSON.stringify(b.arrays)]
+}
+export function checkBehaviourListed(limiting, permissive, key) {
+  const a = JSON.stringify(limiting.arrays)
+  const b = JSON.stringify(permissive.arrays)
+  const bad = []
+  if (a === b) bad.push('STATIC-LIST: ' + limiting.label + ' :: behaviour changed but enforced[] is identical (' + key + ')')
+  // ATTRIBUTION (round 13): if NEITHER run reports the key, the scenario claims a key this call never evaluates -
+  // that is a TABLE error (misattributed key), not a module defect, and it must be named as such.
+  const reported = [limiting, permissive].some((r) => r.arrays.some((x) => x.value.includes(key)))
+  if (!reported) bad.push('KEY-NOT-ENFORCED-BY-THIS-OPERATION: ' + limiting.label + ' :: ' + key + ' is never reported by this call (scenario attribution error)')
+  return bad
+}
+export function checkUnevaluatedAbsent(run, key) {
+  const hit = run.arrays.find((a) => a.value.includes(key))
+  return hit ? ['UNEVALUATED-KEY-LISTED: ' + run.label + ' :: ' + key + ' appears although the path never consults it'] : []
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// scenario table - every `expectDiff: true` pair was MEASURED to change behaviour before being written here
+// ---------------------------------------------------------------------------------------------------------
+const put = (rc, extra = {}) => rc.put(Object.assign({ track: 'progress', kind: 'progress', title: 't', body: 'b', settled: true }, extra))
+
+const SCENARIOS = [
+  { module: 'ballotbox', call: 'open', key: 'vmu.ballot.secrecy', expectDiff: true,
+    limiting: { settings: { 'vmu.ballot.secrecy': false } }, permissive: { settings: { 'vmu.ballot.secrecy': true } },
+    make: (settings, variant) => createBallotBox({ clock: CLOCK, log: () => {}, settings }),
+    run: (bb) => bb.open({ question: 'q', options: ['a', 'b'] }) },
+  { module: 'ballotbox', call: 'cast(vote)', key: 'vmu.ballot.abstainAllowed', expectDiff: true, absentIn: 'permissive',
+    // ROUND-13 CORRECTION (Lead ruling): `vmu.ballot.abstainAllowed` belongs to CAST, not to OPEN. Measured:
+    //   open(secrecy)                       -> ['vmu.ballot.method'] regardless of abstainAllowed
+    //   cast({choice:'abstain'}), allowed=false -> ['vmu.ballot.abstainAllowed']   (it caused THIS refusal)
+    //   cast({choice:'a'}),       allowed=false -> []                              (never consulted)
+    // The key is reported exactly when it changed THIS call's outcome - which is the rule, not a static list.
+    limiting: { settings: { 'vmu.ballot.abstainAllowed': false }, input: { choice: 'abstain' } },
+    permissive: { settings: { 'vmu.ballot.abstainAllowed': false }, input: { choice: 'a' } },
+    make: (settings) => createBallotBox({ clock: CLOCK, log: () => {}, settings }),
+    run: (bb, variant) => { const o = bb.open({ question: 'q', options: ['a', 'b'] }); return bb.cast({ boxId: o.boxId, by: 'm1', choice: variant.input.choice }) } },
+  { module: 'ballotbox', call: 'cast(abstain)', key: 'vmu.ballot.abstainAllowed', expectDiff: true,
+    limiting: { settings: { 'vmu.ballot.abstainAllowed': false } }, permissive: { settings: { 'vmu.ballot.abstainAllowed': true } },
+    make: (settings) => createBallotBox({ clock: CLOCK, log: () => {}, settings }),
+    run: (bb) => { const o = bb.open({ question: 'q', options: ['a', 'b'] }); return bb.cast({ boxId: o.boxId, by: 'm1', choice: 'abstain' }) } },
+  { module: 'ballotbox', call: 'close', key: 'vmu.ballot.auditReadOnly', expectDiff: true,
+    limiting: { settings: { 'vmu.ballot.auditReadOnly': true } }, permissive: { settings: { 'vmu.ballot.auditReadOnly': false } },
+    make: (settings) => createBallotBox({ clock: CLOCK, log: () => {}, settings }),
+    run: (bb) => { const o = bb.open({ question: 'q', options: ['a', 'b'] }); bb.cast({ boxId: o.boxId, by: 'm1', choice: 'a' }); return bb.close({ boxId: o.boxId }) } },
+
+  { module: 'meetings', call: 'attend(late)', key: 'vmu.meetings.lateAfterMs', expectDiff: true,
+    limiting: { settings: { 'vmu.meetings.lateAfterMs': 0 } }, permissive: { settings: { 'vmu.meetings.lateAfterMs': 1000 } },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }),
+    run: (mg) => { const o = mg.open({ type: 'ordinary', roster: ['a', 'b'], at: 0 }); return mg.attend({ meeting: o.meeting, member: 'a', at: 5000 }) } },
+  { module: 'meetings', call: 'open', key: 'vmu.meetings.typeCatalog', expectDiff: true,
+    limiting: { settings: { 'vmu.meetings.typeCatalog': [] } }, permissive: { settings: { 'vmu.meetings.typeCatalog': ['ordinary'] } },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }),
+    run: (mg) => mg.open({ type: 'ordinary', roster: ['a'] }) },
+  { module: 'meetings', call: 'close', key: 'vmu.meetings.minutesRetentionMs', expectDiff: true,
+    limiting: { settings: { 'vmu.meetings.minutesRetentionMs': 0 } }, permissive: { settings: { 'vmu.meetings.minutesRetentionMs': 1000 } },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }),
+    run: (mg) => { const o = mg.open({ type: 'ordinary', roster: ['a'] }); return mg.close({ meeting: o.meeting }) } },
+  { module: 'meetings', call: 'open', key: 'vmu.meetings.lateAfterMs', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.meetings.lateAfterMs': 1000 } }, permissive: { settings: { 'vmu.meetings.lateAfterMs': 1000 } },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }),
+    run: (mg) => mg.open({ type: 'ordinary', roster: ['a'] }) },
+
+  { module: 'records', call: 'put', key: 'vmu.records.retention.tierThreshold', expectDiff: true,
+    limiting: { settings: { 'vmu.records.retention.tierThreshold': 0 } }, permissive: { settings: { 'vmu.records.retention.tierThreshold': 100 } },
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }),
+    run: (rc) => put(rc, { body: 'x'.repeat(300) }) },
+  { module: 'records', call: 'get', key: 'vmu.records.bodyCapBytes', expectDiff: true,
+    limiting: { settings: { 'vmu.records.bodyCapBytes': 10 }, input: { includeBody: true } },
+    permissive: { settings: { 'vmu.records.bodyCapBytes': 10 }, input: { includeBody: false } },
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }),
+    run: (rc, variant) => { const p = put(rc, { body: 'y'.repeat(200) }); return rc.get({ id: p.id, includeBody: variant.input.includeBody }) } },
+  { module: 'records', call: 'remove', key: 'vmu.records.trash.autoPurge', expectDiff: true,
+    limiting: { settings: { 'vmu.records.trash.autoPurge': false } }, permissive: { settings: { 'vmu.records.trash.autoPurge': true } },
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }),
+    run: (rc) => { const p = put(rc, { title: 'r1' }); return rc.remove({ id: p.id, reason: 'probe', by: 'me' }) } },
+  { module: 'records', call: 'get(no body)', key: 'vmu.records.bodyCapBytes', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.records.bodyCapBytes': 10 } }, permissive: { settings: { 'vmu.records.bodyCapBytes': 10 } },
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }),
+    run: (rc) => { const p = put(rc, { body: 'z'.repeat(200) }); return rc.get({ id: p.id, includeBody: false }) } },
+
+  { module: 'mathtools', call: 'plan', key: 'vmu.math.cache.enabled', expectDiff: true,
+    limiting: { settings: { 'vmu.math.cache.enabled': false } }, permissive: { settings: { 'vmu.math.cache.enabled': true } },
+    make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }),
+    run: (mt) => mt.plan({ op: 'optim/minimize', args: {} }) },
+  { module: 'mathtools', call: 'plan', key: 'vmu.math.sandbox.network', expectDiff: true, absentIn: 'permissive',
+    limiting: { settings: { 'vmu.math.sandbox.network': 'deny' }, input: { needsNetwork: false } },
+    permissive: { settings: { 'vmu.math.sandbox.network': 'deny' }, input: { needsNetwork: undefined } },
+    make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }),
+    run: (mt, variant) => mt.plan({ op: 'optim/minimize', args: {}, needsNetwork: variant.input.needsNetwork }) },
+  { module: 'mathtools', call: 'plan', key: 'vmu.math.units.enabled', expectDiff: true,
+    limiting: { settings: { 'vmu.math.units.enabled': false } }, permissive: { settings: { 'vmu.math.units.enabled': true } },
+    make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }),
+    run: (mt) => mt.plan({ op: 'optim/minimize', args: {}, units: { x: 'm' } }) },
+  { module: 'mathtools', call: 'plan(non-net)', key: 'vmu.math.sandbox.network', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.math.sandbox.network': 'deny' } }, permissive: { settings: { 'vmu.math.sandbox.network': 'deny' } },
+    make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }),
+    run: (mt) => mt.plan({ op: 'stats/mean', args: {} }) },
+]
+
+// REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
+// a refusal that does not is a finding, because "why was it refused" must name what was enforced.
+const REFUSAL_SCENARIOS = [
+  { module: 'meetings', call: 'open(materialsRequired)', settings: { 'vmu.meetings.materialsRequired': true },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }), run: (mg) => mg.open({ type: 'ordinary', roster: ['a'], materials: null }) },
+  { module: 'meetings', call: 'close(minutesActionsRequired)', settings: { 'vmu.meetings.minutesActionsRequired': true },
+    make: (settings) => createMeetings({ clock: CLOCK, log: () => {}, settings }), run: (mg) => { const o = mg.open({ type: 'ordinary', roster: ['a'] }); return mg.close({ meeting: o.meeting }) } },
+  { module: 'records', call: 'put(quota)', settings: { 'vmu.records.retention.maxBytes': 50 },
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }), run: (rc) => put(rc, { body: 'q'.repeat(200) }) },
+  { module: 'records', call: 'remove(no by)', settings: {},
+    make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }), run: (rc) => { const p = put(rc); return rc.remove({ id: p.id }) } },
+  { module: 'mathtools', call: 'plan(requireSeed)', settings: { 'vmu.math.repro.requireSeed': true },
+    make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }), run: (mt) => mt.plan({ op: 'optim/minimize', args: {} }) },
+]
+
+// ---------------------------------------------------------------------------------------------------------
+// the runner
+// ---------------------------------------------------------------------------------------------------------
+const runVariant = (scn, variant, label) => {
+  const service = scn.make(variant.settings || {})
+  try {
+    const result = scn.run(service, variant)
+    const c = collectEnforced(result)
+    const refused = !!result && typeof result === 'object' && (result.ok === false || typeof result.code === 'string')
+    return { label, ok: true, threw: false, code: refused ? result.code : null, refused, arrays: c.arrays, nonArrays: c.nonArrays, count: c.count }
+  } catch (e) {
+    const refusal = e && typeof e === 'object' ? { enforced: e.enforced } : {}
+    const c = collectEnforced(e)
+    return { label, ok: false, threw: true, code: (e && e.code) || 'UNKNOWN', arrays: c.arrays.concat(collectEnforced(refusal).arrays), nonArrays: c.nonArrays, count: c.count, refusalEnforcedIsArray: Array.isArray(e && e.enforced) }
+  }
+}
+
+const byModule = new Map()
+const attributionRows = []
+const keySetOf = (run) => new Set(run.arrays.flatMap((a) => a.value))
+for (const scn of SCENARIOS) {
+  const label = scn.module + '.' + scn.call + ' [' + scn.key + ']'
+  const lim = runVariant(scn, scn.limiting, label + ' limiting')
+  const per = runVariant(scn, scn.permissive, label + ' permissive')
+  const lim2 = runVariant(scn, scn.limiting, label + ' limiting#2')
+  if (!byModule.has(scn.module)) byModule.set(scn.module, { diff: 0, keys: [] })
+  const m = byModule.get(scn.module)
+  {
+    const lk = keySetOf(lim)
+    const pk = keySetOf(per)
+    attributionRows.push({
+      label, key: scn.key,
+      limHas: lk.has(scn.key), perHas: pk.has(scn.key),
+      reported: lk.has(scn.key) || pk.has(scn.key),
+      absentIn: scn.absentIn || null,           // 'both' | 'permissive' | 'limiting' - rule ④ rows
+      identical: JSON.stringify(lim.arrays) === JSON.stringify(per.arrays),
+      diff: [...new Set([...lk, ...pk])].filter((k) => lk.has(k) !== pk.has(k)),
+    })
+  }
+
+  const shape = checkArrayShape(lim).concat(checkArrayShape(per))
+  ok(shape.length === 0, 'rule ⑤ array-not-null: ' + label, shape[0])
+  for (const f of shape) finding(f.split(':')[0], label, f)
+
+  const dup = checkDuplicates(lim).concat(checkDuplicates(per))
+  ok(dup.length === 0, 'rule ① no duplicates: ' + label, dup[0])
+  for (const f of dup) finding('DUPLICATE', label, f)
+
+  const det = checkDeterministic(lim, lim2)
+  ok(det.length === 0, 'rule ② deterministic: ' + label, det[0])
+  for (const f of det) finding('NONDETERMINISTIC', label, f)
+
+  if (scn.expectDiff) {
+    const st = checkBehaviourListed(lim, per, scn.key)
+    ok(st.length === 0, 'rule ③ behaviour listed: ' + label, st[0])
+    if (st.length) finding('STATIC-LIST', label, scn.key)
+    else { m.diff++; m.keys.push(scn.key) }
+  }
+  if (scn.absentIn) {
+    const targets = scn.absentIn === 'both' ? [lim, per] : [scn.absentIn === 'permissive' ? per : lim]
+    const abs = targets.map((t) => checkUnevaluatedAbsent(t, scn.key)).flat()
+    ok(abs.length === 0, 'rule ④ unevaluated absent: ' + label, abs[0])
+    for (const f of abs) finding('UNEVALUATED-LISTED', label, scn.key)
+  }
+}
+
+// REFUSAL DISCIPLINE runs
+const refusalRuns = REFUSAL_SCENARIOS.map((scn) => {
+  const label = scn.module + '.' + scn.call
+  const r = runVariant(scn, { settings: scn.settings }, label)
+  const arrayOk = r.threw && r.refusalEnforcedIsArray
+  ok(arrayOk, 'rule ⑤ refusal carries enforced[]: ' + label, r.threw ? ('threw ' + r.code + ' with enforced=' + JSON.stringify(r.refusalEnforcedIsArray)) : 'did NOT refuse as expected')
+  if (!arrayOk && r.threw) finding('REFUSAL-WITHOUT-ENFORCED', label, r.code)
+  return r
+})
+
+// per-module coverage: at least 3 behaviour-changing scenarios
+for (const [mod, m] of [...byModule].sort()) {
+  ok(m.diff >= 3, 'at least 3 behaviour-changing scenarios for ' + mod, 'got ' + m.diff)
+}
+
+// module scan: every kernel module that mentions `enforced` IN CODE must be covered here
+{
+  const files = readdirSync(KERNEL).filter((f) => f.endsWith('.js')).sort()
+  const inCode = files.filter((f) => new RegExp('\\b' + KEY + '\\b').test(stripComments(readFileSync(join(KERNEL, f), 'utf8'), { strings: true })))
+  const covered = new Set(SCENARIOS.map((s) => s.module).concat(REFUSAL_SCENARIOS.map((s) => s.module)))
+  const alias = { 'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools' }
+  const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
+  ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))
+  ok(inCode.length >= 3, 'the scan found the enforced-carrying modules', inCode.join(', '))
+  console.log('modules with `enforced` in code: ' + inCode.join(', '))
+  for (const f of uncovered) finding('UNCOVERED-MODULE', f, 'mentions enforced in code but has no scenario here')
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// SELF-PROOF: deliberately wrong inputs must make each checker fail BY NAME
+// ---------------------------------------------------------------------------------------------------------
+const mkRun = (label, value) => ({ label, threw: false, code: null, count: 1, arrays: [{ path: '$.enforced', value }], nonArrays: [], refusalEnforcedIsArray: false })
+const selfProofs = [
+  ['a DUPLICATE key inside one receipt', () => checkDuplicates(mkRun('probe.dup', ['k', 'k', 'j'])), /DUPLICATE-ENFORCED/],
+  ['a STATIC list AND a misattributed key (two named reds from one self-proof)', () => {
+    const staticCase = checkBehaviourListed(mkRun('probe.static', ['k']), mkRun('probe.static', ['k']), 'k')
+    const misattributed = checkBehaviourListed(mkRun('probe.misattr', ['other']), mkRun('probe.misattr', ['other2']), 'k')
+    return staticCase.concat(misattributed).filter((f) => /STATIC-LIST|KEY-NOT-ENFORCED/.test(f))
+  }, /KEY-NOT-ENFORCED/],
+  ['an `enforced: null` field', () => checkArrayShape({ label: 'probe.null', threw: false, code: null, count: 1, arrays: [], nonArrays: [{ path: '$.enforced', value: null }] }), /NON-ARRAY-ENFORCED/],
+  ['a refusal with `enforced === undefined`', () => checkArrayShape({ label: 'probe.refusal', threw: true, code: 'VMU_X', count: 0, arrays: [], nonArrays: [], refusalEnforcedIsArray: false }), /REFUSAL-WITHOUT-ENFORCED/],
+  ['a non-deterministic pair', () => checkDeterministic(mkRun('probe.det', ['a']), mkRun('probe.det', ['b'])), /NONDETERMINISTIC/],
+  ['an unevaluated key that appears anyway', () => checkUnevaluatedAbsent(mkRun('probe.absent', ['other', 'k']), 'k'), /UNEVALUATED-KEY-LISTED/],
+]
+for (const [label, run, expect] of selfProofs) {
+  const res = run()
+  const named = res.find((f) => expect.test(f))
+  ok(res.length > 0 && !!named, 'self-proof: ' + label + ' ⇒ RED by name', named || JSON.stringify(res))
+  console.log('self-proof red: ' + label + ' :: ' + (named || 'NO NAMED FAILURE'))
+}
+// control: a correct receipt must stay GREEN through every checker
+{
+  const good = mkRun('probe.control', ['k1', 'k2'])
+  const clean = checkDuplicates(good).concat(checkArrayShape(good)).concat(checkDeterministic(good, mkRun('probe.control', ['k1', 'k2']))).concat(checkBehaviourListed(good, mkRun('probe.control', ['k3']), 'k1')).concat(checkUnevaluatedAbsent(good, 'k9'))
+  ok(clean.length === 0, 'control: a correct receipt passes every rule', JSON.stringify(clean))
+}
+
+// ---------------------------------------------------------------------------------------------------------
+console.log('')
+console.log('key ↔ operation attribution table (round-13 self-check; each key must be reported by ITS call):')
+for (const r of attributionRows) {
+  // the rule ④ rows assert ABSENCE on a named side; every other row asserts that ITS call reports the key
+  let status
+  if (r.absentIn === 'both') status = r.limHas || r.perHas ? 'MISMATCH ' : 'reverse-ok'
+  else if (r.absentIn === 'permissive') status = r.perHas ? 'MISMATCH ' : 'reverse-ok'
+  else if (r.absentIn === 'limiting') status = r.limHas ? 'MISMATCH ' : 'reverse-ok'
+  else status = r.reported ? 'ok       ' : 'MISMATCH '
+  console.log('  ' + status + ' ' + r.label +
+    ' :: keyIn(lim,per)=(' + r.limHas + ',' + r.perHas + ')' + (r.absentIn ? ' rule ④ absentIn=' + r.absentIn : '') +
+    ' listsIdentical=' + r.identical + ' symmetricDiff={' + r.diff.join(',') + '}')
+}
+console.log('scenarios=' + SCENARIOS.length + ' (per module: ' + [...byModule].map(([m, s]) => m + '=' + s.diff + ' behaviour-changing').join(', ') + ')')
+console.log('refusal scenarios=' + refusalRuns.length + ' :: ' + refusalRuns.map((r) => r.label + '=' + (r.threw ? (r.refusalEnforcedIsArray ? 'enforced[]' : 'NO-enforced') : 'no-refusal')).join(', '))
+console.log('findings=' + findings.length + (findings.length ? ' :: ' + findings.map((f) => f.kind + '@' + f.name).join(' | ') : ' (none ✓)'))
+console.log('=== VMU ENFORCED CONSISTENCY: ' + passed + ' passed, ' + failed + ' failed ===')
+process.exit(failed === 0 ? 0 : 1)

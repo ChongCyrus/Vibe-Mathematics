@@ -79,7 +79,8 @@ const RING = 200
 
 export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null } = {}) {
   if (typeof clock !== 'function') {
-    throw refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
+    // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
+    throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
   }
   const sget = (key) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? DEFAULTS[key] : v }
@@ -134,14 +135,28 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const live = new Map()          // meetingId -> meeting
   const archive = []              // closed meetings (minutes retention pruning happens here)
 
+  /**
+   * Named refusal that ALWAYS carries the audit trail of the keys evaluated so far (round-12 gate
+   * `audit-enforced-consistency`): a refusal with `enforced === undefined` makes "the key was read" and
+   * "the key had an effect" indistinguishable exactly when a request is rejected. An explicitly EMPTY array
+   * is fine — `undefined`/`null` is not. Keys enter the list at the moment they are CONSULTED (see `mark`).
+   */
   const deny = (code, message, hint, enforced) => {
     counters.refused += 1
     refusals.set(code, (refusals.get(code) || 0) + 1)
-    say({ type: 'meetings/refused', at: clock(), code, message, enforced: arr(enforced) })
-    return refuse(code, message, hint)
+    const keys = Array.isArray(enforced) ? enforced.slice() : []
+    say({ type: 'meetings/refused', at: clock(), code, message, enforced: keys })
+    const e = refuse(code, message, hint)
+    e.enforced = keys
+    e.evaluated = keys.slice()
+    return e
   }
-  const cap = (code, label, value, limit, key) => {
-    throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + limit, '现值=' + value + ', 上限=' + limit + ' (' + key + ')', [key])
+  /** Evaluation point = enumeration point: call this the moment a key is consulted. */
+  const mark = (list, key) => { if (!list.includes(key)) list.push(key); return list }
+  const cap = (code, label, value, limit, key, evaluated) => {
+    const keys = Array.isArray(evaluated) ? evaluated.slice() : []
+    mark(keys, key)
+    throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + limit, '现值=' + value + ', 上限=' + limit + ' (' + key + ')', keys)
   }
   /** A meeting-scoped refusal: recorded in the meeting's `minutes.refused` list FIRST (that is what makes
    *  `vmu.meetings.minutesIncludeRefused` observable) and then thrown as a named refusal. */
@@ -151,10 +166,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     }
     return deny(code, message, hint, enforced)
   }
-  const capIn = (m, code, label, value, limit, key) => {
+  const capIn = (m, code, label, value, limit, key, evaluated) => {
     const hint = '现值=' + value + ', 上限=' + limit + ' (' + key + ')'
-    if (m && m.minutes && Array.isArray(m.minutes.refused)) m.minutes.refused.push({ at: clock(), code, message: label + ' exceeds ' + key + ': ' + value + ' > ' + limit, enforced: [key] })
-    throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + limit, hint, [key])
+    const keys = Array.isArray(evaluated) ? evaluated.slice() : []
+    mark(keys, key)
+    if (m && m.minutes && Array.isArray(m.minutes.refused)) m.minutes.refused.push({ at: clock(), code, message: label + ' exceeds ' + key + ': ' + value + ' > ' + limit, enforced: keys.slice() })
+    throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + limit, hint, keys)
   }
   const meetingOf = (id) => live.get(String(id))
   const requireMeeting = (id) => {
@@ -199,23 +216,23 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const enforced = []
       const ms = at === null ? clock() : at
       if (K.typeCatalog.length) {
-        enforced.push('vmu.meetings.typeCatalog')
+        mark(enforced, 'vmu.meetings.typeCatalog')
         if (!K.typeCatalog.includes(String(type))) {
           throw deny('VMU_NO_SUCH_OBJECT', 'meeting type "' + type + '" is not in vmu.meetings.typeCatalog',
-            'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', ['vmu.meetings.typeCatalog'])
+            'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', enforced)
         }
       }
       if (K.liveCap > 0) {
-        enforced.push('vmu.meetings.liveCap')
-        if (live.size >= K.liveCap) cap('VMU_QUOTA_EXCEEDED', 'live meetings', live.size, K.liveCap, 'vmu.meetings.liveCap')
+        mark(enforced, 'vmu.meetings.liveCap')
+        if (live.size >= K.liveCap) cap('VMU_QUOTA_EXCEEDED', 'live meetings', live.size, K.liveCap, 'vmu.meetings.liveCap', enforced)
       }
       if (K.committeeMax > 0 && size !== null) {
-        enforced.push('vmu.meetings.committeeMax')
-        if (n(size) > K.committeeMax) cap('VMU_QUOTA_EXCEEDED', 'committee size', n(size), K.committeeMax, 'vmu.meetings.committeeMax')
+        mark(enforced, 'vmu.meetings.committeeMax')
+        if (n(size) > K.committeeMax) cap('VMU_QUOTA_EXCEEDED', 'committee size', n(size), K.committeeMax, 'vmu.meetings.committeeMax', enforced)
       }
       if (K.materialsRequired) {
-        enforced.push('vmu.meetings.materialsRequired')
-        if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a meeting cannot open without materials', 'pass { materials: <pointer> } — the pointer belongs to 07/22 and is only referenced here', ['vmu.meetings.materialsRequired'])
+        mark(enforced, 'vmu.meetings.materialsRequired')
+        if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a meeting cannot open without materials', 'pass { materials: <pointer> } — the pointer belongs to 07/22 and is only referenced here', enforced)
       }
       const id = 'm' + (counters.opened + 1)
       const m = {
@@ -267,7 +284,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         enforced.push('vmu.meetings.leaveEarlyPolicy')
         if (K.leaveEarlyPolicy === 'deny') {
           throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.leaveEarlyPolicy="deny": leaving before close() is not allowed',
-            'close() the meeting first, or set vmu.meetings.leaveEarlyPolicy to "allow"/"note"', ['vmu.meetings.leaveEarlyPolicy'])
+            'close() the meeting first, or set vmu.meetings.leaveEarlyPolicy to "allow"/"note"', enforced)
         }
         m.minutes.entries.push({ at: ms, kind: 'left-early', member: String(member) })
       }
@@ -303,19 +320,19 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (mute && now < mute.until) {
         enforced.push('vmu.meetings.disciplineMuteMs')
         throw denyIn(m, 'VMU_MEETING_DISCIPLINE_DENIED', 'member is muted until ' + mute.until + ': ' + String(member),
-          'vmu.meetings.disciplineMuteMs=' + K.disciplineMuteMs + ' (muted at ' + mute.at + ')', ['vmu.meetings.disciplineMuteMs'])
+          'vmu.meetings.disciplineMuteMs=' + K.disciplineMuteMs + ' (muted at ' + mute.at + ')', enforced)
       }
       // speech time
       const wanted = speechMs === null ? K.speechDefaultMs : n(speechMs)
       if (K.speechMaxMs > 0 && wanted > K.speechMaxMs) {
         enforced.push('vmu.meetings.speechMaxMs')
-        capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speech time (ms)', wanted, K.speechMaxMs, 'vmu.meetings.speechMaxMs')
+        capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speech time (ms)', wanted, K.speechMaxMs, 'vmu.meetings.speechMaxMs', enforced)
       }
       if (K.speechExtendMax > 0) {
         const used = m.speechUsed.get(String(member)) || { count: 0, extensions: 0 }
         enforced.push('vmu.meetings.speechExtendMax')
         if (used.extensions >= K.speechExtendMax) {
-          capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speech extensions', used.extensions, K.speechExtendMax, 'vmu.meetings.speechExtendMax')
+          capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speech extensions', used.extensions, K.speechExtendMax, 'vmu.meetings.speechExtendMax', enforced)
         }
         if (K.speechExtendMs > 0 && wanted > K.speechDefaultMs) {
           used.extensions += 1
@@ -327,7 +344,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         const used = m.speechUsed.get(String(member)) || { count: 0, extensions: 0 }
         enforced.push('vmu.meetings.speechQuotaPerMember')
         if (used.count >= K.speechQuotaPerMember) {
-          capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speeches per member', used.count, K.speechQuotaPerMember, 'vmu.meetings.speechQuotaPerMember')
+          capIn(m, 'VMU_MEETING_SPEECH_TIMEBOUND', 'speeches per member', used.count, K.speechQuotaPerMember, 'vmu.meetings.speechQuotaPerMember', enforced)
         }
       }
       // meeting budget (turns/tokens/wall)
@@ -336,20 +353,20 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       let soft = null
       if (K.budgetTurns > 0 && m.turns > K.budgetTurns) {
         enforced.push('vmu.meetings.budgetTurns')
-        soft = budgetVerdict(m, 'turns', m.turns, K.budgetTurns)
+        soft = budgetVerdict(m, 'turns', m.turns, K.budgetTurns, enforced)
       }
       if (K.budgetTokens > 0 && m.tokens > K.budgetTokens) {
         enforced.push('vmu.meetings.budgetTokens')
-        soft = budgetVerdict(m, 'tokens', m.tokens, K.budgetTokens)
+        soft = budgetVerdict(m, 'tokens', m.tokens, K.budgetTokens, enforced)
       }
       if (K.budgetWallMs > 0 && now - m.wallStartMs > K.budgetWallMs) {
         enforced.push('vmu.meetings.budgetWallMs')
-        soft = budgetVerdict(m, 'wallMs', now - m.wallStartMs, K.budgetWallMs)
+        soft = budgetVerdict(m, 'wallMs', now - m.wallStartMs, K.budgetWallMs, enforced)
       }
       if (verbatim && !K.verbatimEnabled) {
         enforced.push('vmu.meetings.verbatimEnabled')
         throw denyIn(m, 'VMU_NOT_PERMITTED', 'vmu.meetings.verbatimEnabled=false: verbatim capture is disabled',
-          'set vmu.meetings.verbatimEnabled=true, or speak without { verbatim: true }', ['vmu.meetings.verbatimEnabled'])
+          'set vmu.meetings.verbatimEnabled=true, or speak without { verbatim: true }', enforced)
       }
       const used = m.speechUsed.get(String(member)) || { count: 0, extensions: 0 }
       used.count += 1
@@ -373,12 +390,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       enforced.push('vmu.meetings.interruptAllow')
       if (!K.interruptAllow) {
         throw deny('VMU_MEETING_INTERRUPT_DENIED', 'vmu.meetings.interruptAllow=false: interrupting is not allowed in this meeting',
-          'let the current speaker finish, or set vmu.meetings.interruptAllow=true', ['vmu.meetings.interruptAllow'])
+          'let the current speaker finish, or set vmu.meetings.interruptAllow=true', enforced)
       }
       if (K.interruptQuota > 0) {
         const used = m.interrupts.get(String(member)) || 0
         enforced.push('vmu.meetings.interruptQuota')
-        if (used >= K.interruptQuota) cap('VMU_MEETING_INTERRUPT_DENIED', 'interrupts', used, K.interruptQuota, 'vmu.meetings.interruptQuota')
+        if (used >= K.interruptQuota) cap('VMU_MEETING_INTERRUPT_DENIED', 'interrupts', used, K.interruptQuota, 'vmu.meetings.interruptQuota', enforced)
         m.interrupts.set(String(member), used + 1)
       }
       counters.speeches += 1
@@ -415,11 +432,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.emergencyKinds.length) enforced.push('vmu.meetings.emergencyKinds')
       if (String(kind) === 'emergency' && !emergency) {
         throw deny('VMU_MEETING_EMERGENCY_NOT_ALLOWED', '"emergency" is not an allowed motion kind here',
-          'allowed emergency kinds: ' + (K.emergencyKinds.join(', ') || '(none — vmu.meetings.emergencyKinds is empty)'), ['vmu.meetings.emergencyKinds'])
+          'allowed emergency kinds: ' + (K.emergencyKinds.join(', ') || '(none — vmu.meetings.emergencyKinds is empty)'), enforced)
       }
       if (K.materialsRequired) {
         enforced.push('vmu.meetings.materialsRequired')
-        if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a motion needs its materials', 'pass { materials: <pointer> } (the pointer is owned by 07/22)', ['vmu.meetings.materialsRequired'])
+        if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a motion needs its materials', 'pass { materials: <pointer> } (the pointer is owned by 07/22)', enforced)
       }
       const q = quorumOf(m)
       let need = q.required
@@ -447,33 +464,35 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const now = at === null ? clock() : at
       if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'the roster seam rejected it', [])
       const q = quorumOf(m)
+      if (K.quorumMin > 0) mark(enforced, 'vmu.meetings.quorumMin')
+      if (K.quorumRatio > 0) mark(enforced, 'vmu.meetings.quorumRatio')
       if (!q.met) {
-        enforced.push('vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio')
         if (m.state === 'suspended') {
+          mark(enforced, 'vmu.meetings.quorumLossPolicy')
           throw denyIn(m, 'VMU_MEETING_QUORUM_LOST', 'quorum is lost and vmu.meetings.quorumLossPolicy="suspend"',
-            '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumLossPolicy)', ['vmu.meetings.quorumLossPolicy'])
+            '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumLossPolicy)', enforced)
         }
         if (K.quorumRecountMs > 0) {
-          enforced.push('vmu.meetings.quorumRecountMs')
+          mark(enforced, 'vmu.meetings.quorumRecountMs')
           throw denyIn(m, 'VMU_MEETING_QUORUM_LOST', 'quorum is not met; the next recount is in ' + K.quorumRecountMs + 'ms',
-            '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumRecountMs)', ['vmu.meetings.quorumRecountMs'])
+            '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumRecountMs)', enforced)
         }
         throw denyIn(m, 'VMU_MEETING_QUORUM_LOST', 'quorum is not met: ' + q.present + '/' + q.required,
-          '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumMin/quorumRatio)', ['vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio'])
+          '现值=' + q.present + ', 需要=' + q.required + ' (vmu.meetings.quorumMin/quorumRatio)', enforced)
       }
       const target = motion === null ? null : m.motions.find((x) => x.id === String(motion))
-      if (motion !== null && !target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'), [])
+      if (motion !== null && !target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'), enforced)
       if (String(member) === m.chair && K.chairNeutral) {
-        enforced.push('vmu.meetings.chairNeutral')
+        mark(enforced, 'vmu.meetings.chairNeutral')
         const forCount = target ? [...target.votes.values()].filter((v) => v === 1).length : 0
         const against = target ? [...target.votes.values()].filter((v) => v === 0).length : 0
         if (forCount !== against && target) {
           throw denyIn(m, 'VMU_NOT_PERMITTED', 'vmu.meetings.chairNeutral=true: the chair may vote only to break a tie',
-            'current tally ' + forCount + ':' + against + ' is not tied (vmu.meetings.chairNeutral)', ['vmu.meetings.chairNeutral'])
+            'current tally ' + forCount + ':' + against + ' is not tied (vmu.meetings.chairNeutral)', enforced)
         }
       }
-      if (K.unansweredInDenominator) enforced.push('vmu.meetings.unansweredInDenominator')
-      if (K.attendanceMode !== 'roster') enforced.push('vmu.meetings.attendanceMode')
+      if (K.unansweredInDenominator) mark(enforced, 'vmu.meetings.unansweredInDenominator')
+      if (K.attendanceMode !== 'roster') mark(enforced, 'vmu.meetings.attendanceMode')
       if (target) target.votes.set(String(member), value === 0 ? 0 : 1)
       counters.votes += 1
       const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : { for: 0, against: 0, abstain: 0 }
@@ -493,7 +512,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         enforced.push('vmu.meetings.chairTransferAudit')
         if (!(typeof reason === 'string' && reason.trim())) {
           throw deny('VMU_REASON_REQUIRED', 'vmu.meetings.chairTransferAudit=true requires a reason for the transfer',
-            'pass { reason: "…" } — an unaudited chair transfer is indistinguishable from an accident', ['vmu.meetings.chairTransferAudit'])
+            'pass { reason: "…" } — an unaudited chair transfer is indistinguishable from an accident', enforced)
         }
       }
       if (!m.roster.includes(to)) m.roster.push(to)
@@ -512,7 +531,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const now = at === null ? clock() : at
       if (K.recessMaxMs > 0) {
         enforced.push('vmu.meetings.recessMaxMs')
-        if (n(ms) > K.recessMaxMs) cap('VMU_MEETING_RECESS_LIMIT', 'recess (ms)', n(ms), K.recessMaxMs, 'vmu.meetings.recessMaxMs')
+        if (n(ms) > K.recessMaxMs) cap('VMU_MEETING_RECESS_LIMIT', 'recess (ms)', n(ms), K.recessMaxMs, 'vmu.meetings.recessMaxMs', enforced)
       }
       if (m.state === 'recess') throw deny('VMU_STATE', 'already in recess: ' + m.id, 'resume() first', [])
       m.state = 'recess'
@@ -535,7 +554,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.recessResumeRequiresMotion) {
         enforced.push('vmu.meetings.recessResumeRequiresMotion')
         if (!motion) throw deny('VMU_STATE', 'vmu.meetings.recessResumeRequiresMotion=true: resuming needs a motion',
-          'pass { motion: "<id>" } — a recess does not end by itself', ['vmu.meetings.recessResumeRequiresMotion'])
+          'pass { motion: "<id>" } — a recess does not end by itself', enforced)
       }
       m.state = 'open'
       m.recess = null
@@ -575,7 +594,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const enforced = ['vmu.meetings.disciplineExpelAllowed']
       if (!K.disciplineExpelAllowed) {
         throw deny('VMU_MEETING_DISCIPLINE_DENIED', 'vmu.meetings.disciplineExpelAllowed=false: expulsion is not allowed',
-          'use warn()/mute() instead, or set vmu.meetings.disciplineExpelAllowed=true', ['vmu.meetings.disciplineExpelAllowed'])
+          'use warn()/mute() instead, or set vmu.meetings.disciplineExpelAllowed=true', enforced)
       }
       const now = at === null ? clock() : at
       m.present.delete(String(member))
@@ -592,7 +611,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const enforced = ['vmu.meetings.confidentialityDefault', 'vmu.meetings.confidentialityQuotePolicy']
       if (K.confidentialityQuotePolicy === 'deny') {
         throw deny('VMU_MEETING_CONFIDENTIAL_DENIED', 'vmu.meetings.confidentialityQuotePolicy="deny": quoting is not allowed',
-          'the meeting level is "' + m.confidentiality + '" (vmu.meetings.confidentialityDefault)', ['vmu.meetings.confidentialityQuotePolicy'])
+          'the meeting level is "' + m.confidentiality + '" (vmu.meetings.confidentialityDefault)', enforced)
       }
       const out = K.confidentialityQuotePolicy === 'redact' ? '[redacted]' : String(text)
       const receipt = { at: at === null ? clock() : at, action: 'quote', meeting: m.id, level: m.confidentiality, policy: K.confidentialityQuotePolicy, quoted: out, enforced }
@@ -607,17 +626,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const now = at === null ? clock() : at
       if (K.appealScope === 'none' || (K.appealScope === 'procedural' && String(kind) !== 'procedural')) {
         throw deny('VMU_MEETING_APPEAL_OUT_OF_SCOPE', 'appeal kind "' + kind + '" is out of scope (vmu.meetings.appealScope=' + K.appealScope + ')',
-          'allowed: ' + K.appealScope, ['vmu.meetings.appealScope'])
+          'allowed: ' + K.appealScope, enforced)
       }
       if (m && K.appealDeadlineMs > 0) {
         enforced.push('vmu.meetings.appealDeadlineMs')
         const deadline = m.openedAt + K.appealDeadlineMs
-        if (now > deadline) cap('VMU_TRUST_APPEAL_WINDOW', 'appeal time (ms)', now - m.openedAt, K.appealDeadlineMs, 'vmu.meetings.appealDeadlineMs')
+        if (now > deadline) cap('VMU_TRUST_APPEAL_WINDOW', 'appeal time (ms)', now - m.openedAt, K.appealDeadlineMs, 'vmu.meetings.appealDeadlineMs', enforced)
       }
       if (K.appealReasonRequired && !(typeof reason === 'string' && reason.trim())) {
         enforced.push('vmu.meetings.appealReasonRequired')
         throw deny('VMU_REASON_REQUIRED', 'vmu.meetings.appealReasonRequired=true: an appeal needs a reason',
-          'pass { reason: "…" } — an unexplained appeal cannot be adjudicated', ['vmu.meetings.appealReasonRequired'])
+          'pass { reason: "…" } — an unexplained appeal cannot be adjudicated', enforced)
       }
       const appeal = { id: 'ap' + (counters.appeals + 1), at: now, by: String(member), kind: String(kind), reason: reason === null ? null : String(reason), decided: null }
       counters.appeals += 1
@@ -681,7 +700,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (out.ok === false) {
         if (K.wakeFailurePolicy === 'refuse') {
           throw deny('VMU_STATE', 'the wake failed and vmu.meetings.wakeFailurePolicy="refuse"',
-            'seam error: ' + String(out.error || 'unknown') + ' (vmu.meetings.wakeFailurePolicy)', ['vmu.meetings.wakeFailurePolicy'])
+            'seam error: ' + String(out.error || 'unknown') + ' (vmu.meetings.wakeFailurePolicy)', enforced)
         }
         if (K.wakeFailurePolicy === 'skip') { counters.skippedWakes += 1; return { ok: true, woken: false, skipped: true, skippedWakes: counters.skippedWakes, enforced } }
         return { ok: true, woken: false, retry: true, enforced }
@@ -694,20 +713,28 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = requireMeeting(meeting)
       const enforced = []
       const now = at === null ? clock() : at
-      if (K.confirmPreviousMinutes && !m.previousConfirmed) {
-        enforced.push('vmu.meetings.confirmPreviousMinutes')
-        throw deny('VMU_MINUTES_NOT_CONFIRMED', 'vmu.meetings.confirmPreviousMinutes=true: the previous minutes are not confirmed',
-          'call confirmMinutes() before closing (vmu.meetings.confirmPreviousMinutes)', ['vmu.meetings.confirmPreviousMinutes'])
+      // Each rail is marked the moment its switch is CONSULTED (not only when it fires), so a refusal by a
+      // LATER rail still shows that these earlier rails were active in this call.
+      if (K.confirmPreviousMinutes) {
+        mark(enforced, 'vmu.meetings.confirmPreviousMinutes')
+        if (!m.previousConfirmed) {
+          throw deny('VMU_MINUTES_NOT_CONFIRMED', 'vmu.meetings.confirmPreviousMinutes=true: the previous minutes are not confirmed',
+            'call confirmMinutes() before closing (vmu.meetings.confirmPreviousMinutes)', enforced)
+        }
       }
-      if (K.committeeReportRequired && m.type === 'committee' && !report) {
-        enforced.push('vmu.meetings.committeeReportRequired')
-        throw deny('VMU_STATE', 'vmu.meetings.committeeReportRequired=true: a committee meeting needs a report',
-          'pass { report: <pointer> } (the report is stored by 07/22)', ['vmu.meetings.committeeReportRequired'])
+      if (K.committeeReportRequired) {
+        mark(enforced, 'vmu.meetings.committeeReportRequired')
+        if (m.type === 'committee' && !report) {
+          throw deny('VMU_STATE', 'vmu.meetings.committeeReportRequired=true: a committee meeting needs a report',
+            'pass { report: <pointer> } (the report is stored by 07/22)', enforced)
+        }
       }
-      if (K.minutesActionsRequired && !(Array.isArray(actions) && actions.length)) {
-        enforced.push('vmu.meetings.minutesActionsRequired')
-        throw deny('VMU_MINUTES_ACTION_REQUIRED', 'vmu.meetings.minutesActionsRequired=true: closing needs at least one action item',
-          'pass { actions: [ … ] } (vmu.meetings.minutesActionsRequired)', ['vmu.meetings.minutesActionsRequired'])
+      if (K.minutesActionsRequired) {
+        mark(enforced, 'vmu.meetings.minutesActionsRequired')
+        if (!(Array.isArray(actions) && actions.length)) {
+          throw deny('VMU_MINUTES_ACTION_REQUIRED', 'vmu.meetings.minutesActionsRequired=true: closing needs at least one action item',
+            'pass { actions: [ … ] } (vmu.meetings.minutesActionsRequired)', enforced)
+        }
       }
       if (Array.isArray(actions)) m.minutes.actions = actions.slice()
       if (report) m.committeeReport = report
@@ -774,8 +801,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
   }
 
-  function budgetVerdict(m, label, value, limit) {
-    if (K.budgetOnExceed === 'refuse') capIn(m, 'VMU_RESOURCE_BUDGET', label, value, limit, 'vmu.meetings.' + label)
+  function budgetVerdict(m, label, value, limit, evaluated) {
+    if (K.budgetOnExceed === 'refuse') capIn(m, 'VMU_RESOURCE_BUDGET', label, value, limit, 'vmu.meetings.' + label, evaluated)
     if (K.budgetOnExceed === 'warn') {
       counters.softBudget += 1
       say({ type: 'meetings/budget-soft', at: clock(), label, value, limit })

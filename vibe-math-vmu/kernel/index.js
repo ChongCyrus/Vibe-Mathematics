@@ -159,6 +159,9 @@ export function createKernel({
   spawn = null,
   deliver = null,
   bus: injectedBus = null,
+  // The HOST owns key material. Without this seam the tamper-evident chain is unkeyed and says so; with it the
+  // chain becomes keyed and a re-forged chain is refused. The kernel never invents a key.
+  secrets = null,
 } = {}) {
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard nobody uses changes
   // nothing - a backwards clock would still extend every TTL and keep every pending idempotency entry alive
@@ -166,6 +169,9 @@ export function createKernel({
   // exactly the modules whose semantics depend on elapsed time; the rest of the kernel keeps the raw clock.
   const clockguard = createClockGuard({ clock, log: (m) => log('clockguard: ' + m), settings: { get: (k) => settings[k] } })
   const guardedClock = () => clockguard.now()
+  // A3 CONSUMER (round 24): the projection migrator existed but no projection used it, so a version bump silently
+  // discarded the durable ledger. It is built early enough to be handed to the ledger at construction.
+  const projmigrate = createProjectionMigrator({ settings: { get: (k) => settings[k] }, bus: null, clock, log })
   const enabled = settings['vmu.core.enabled'] !== false
   const dryRun = settings['vmu.middleware.dryRun'] === true
 
@@ -258,6 +264,11 @@ export function createKernel({
     }),
     bus: injectedBus, clock, log,
     anchor: auditAnchor,
+    // HMAC is used ONLY when the host supplies a secrets seam; otherwise the chain stays unkeyed and SAYS so
+    // (`keyed:false`, and the note states that anyone who can recompute can re-forge it). A key derived from
+    // nothing would make `keyed:true` a lie, which is worse than an honest unkeyed chain.
+    macKey: secrets ? { ref: 'vmu.audit.macKey' } : undefined,
+    secrets,
     hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
 
   const bus = injectedBus || createBus({
@@ -389,7 +400,8 @@ export function createKernel({
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
   // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
   // the kernel store (so idempotency survives the restart that a retry usually follows).
-  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, store })
+  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, store,
+    migrate: projmigrate })
   // K5 (round 16): read-only replay of the audit log. It never writes back into any service - rebuilding state
   // is a pure function, and gaps in the log are reported rather than papered over.
   const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, audit, idempotency })
@@ -410,7 +422,8 @@ export function createKernel({
   // distinguishable), and the projection migrator is what keeps an old on-disk projection from being silently
   // dropped when the kernel's own version moves.
   const mathtools = createMathTools({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, spawn, library })
-  const projmigrate = createProjectionMigrator({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
+  // projection is migrated instead of silently discarded.
   // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the
   // receipt lists the keys it actually enforced, and anything unwired is named rather than silently ignored).
   const meetings = createMeetings({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })

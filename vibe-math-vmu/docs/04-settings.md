@@ -603,6 +603,7 @@ vmu.packs.active: [v5r]
 | `vmu.ratelimit.perScope` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ratelimit.js` | 按作用域覆盖限额 |
 | `vmu.audit.chain.verifyCap` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 分段验证上限（0＝全链；**只验前 N 行时必须如实报未验** ✗✓） |
 | `vmu.audit.chain.algorithm` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 链哈希算法声明（仅回显；实际由注入 hash 决定 ✗） |
+| `vmu.audit.macKey` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 审计链 HMAC 的**密钥引用**（**secret 引用，绝不写密钥材料** ✗✓；经注入的 `secrets` 缝解析 ✓；未给 ⇒ 链保持无密钥并**自曝 `keyed:false`** ✗✓） |
 | `vmu.state.current` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 当前状态版本 |
 | `vmu.state.requireVersion` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓） |
 | `vmu.state.maxMigrationSteps` | int ≥1 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/projmigrate.js` | 迁移步数上限（超限具名拒并给当前/上限 ✓） |

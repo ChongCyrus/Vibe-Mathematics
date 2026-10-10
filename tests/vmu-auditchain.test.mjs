@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('FAIL ' + label) } }
-const rejects = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, hint: e && e.hint, op: e && e.op, differing: e && e.differing, mirror: e && e.mirror, primary: e && e.primary, reason: e && e.reason } } }
+const rejects = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, msg: String(e && e.message), hint: e && e.hint, op: e && e.op, differing: e && e.differing, mirror: e && e.mirror, primary: e && e.primary, reason: e && e.reason } } }
 
 let now = 1000
 const hasher = (pre) => createHash('sha256').update(pre).digest('hex')
@@ -271,7 +271,7 @@ const build = (n) => {
   const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: broken })
   const { rows } = build(2)
   const r = rejects(() => c.verifyChain({ rows, useAnchor: true }))
-  ok(r.threw && r.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE', 'unreadable anchor ⇒ named refusal (not silently unanchored)')
+  ok(r.threw && r.code === 'VMU_AUDIT_CHAIN_ANCHOR_CORRUPT', 'a throwing reader ⇒ ANCHOR_CORRUPT (task-140: damage is not "never written")')
   const empty = { name: 'empty', write() {}, read() { return null } }
   const c2 = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: empty })
   const r2 = rejects(() => c2.verifyChain({ rows, useAnchor: true }))
@@ -356,6 +356,42 @@ const mkMac = (key) => ({ data }) => createHash('sha256').update(key + '::' + da
   const f1 = c2.append({ row: { seq: 0, what: 'update', at: 1 } })
   ok(f1.autoCheckpoint && f1.autoCheckpoint.triggered === true && f1.autoCheckpoint.failed === true, 'a failing automatic checkpoint is REPORTED on the row receipt')
   ok(c2.status().checkpointTriggers === 1 && c2.status().checkpointFailures === 1, 'trigger and failure are both counted')
+}
+
+// ===== task-140: callerExpected vs anchorVerified + CORRUPT vs UNREADABLE =====
+
+// 27) default useAnchor:false ⇒ anchorVerified:false, and no claim of a verified anchor
+{
+  const store = { name: 'primary', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: store })
+  const { rows } = build(3)
+  c.checkpoint({ rows, persist: true })
+  const byCaller = c.verifyChain({ rows, expectHead: rows[2].hash, expectSeq: 2 })
+  ok(byCaller.ok === true && byCaller.callerExpected === true, 'caller-supplied expectations are labelled callerExpected:true')
+  ok(byCaller.anchorVerified === false && byCaller.anchored === false, 'useAnchor:false ⇒ anchorVerified:false and anchored:false (no mixing)')
+  ok(/anchorVerified: false/.test(String(byCaller.note)) && /CALLER/.test(String(byCaller.note)), 'the note says the expectations came from the caller')
+  ok(/anchor seam IS wired but useAnchor was false/.test(String(byCaller.note)), 'a wired-but-unused anchor is called out in the note')
+  const byAnchor = c.verifyChain({ rows, useAnchor: true })
+  ok(byAnchor.anchorVerified === true && byAnchor.anchored === true, 'useAnchor:true ⇒ anchorVerified:true and anchored:true')
+  ok(/anchorVerified: true/.test(String(byAnchor.note)), 'the note states the anchor was read back and used')
+}
+
+// 28) CORRUPT (damaged / reader error / wrong shape) is DISTINCT from UNREADABLE (never written)
+{
+  const { rows } = build(2)
+  const throwing = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'dmg', write() {}, read() { throw new Error('EIO: bad sector') } } })
+  const r1 = rejects(() => throwing.verifyChain({ rows, useAnchor: true }))
+  ok(r1.threw && r1.code === 'VMU_AUDIT_CHAIN_ANCHOR_CORRUPT', 'a reader exception ⇒ ANCHOR_CORRUPT (damaged), not UNREADABLE')
+  const envelope = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'env', write() {}, read() { return { ok: false, error: 'unparsable JSON at line 1' } } } })
+  const r2 = rejects(() => envelope.verifyChain({ rows, useAnchor: true }))
+  ok(r2.threw && r2.code === 'VMU_AUDIT_CHAIN_ANCHOR_CORRUPT', 'a {ok:false,error} envelope ⇒ ANCHOR_CORRUPT')
+  const wrongShape = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'shape', write() {}, read() { return 'not-a-checkpoint' } } })
+  const r3 = rejects(() => wrongShape.verifyChain({ rows, useAnchor: true }))
+  ok(r3.threw && r3.code === 'VMU_AUDIT_CHAIN_ANCHOR_CORRUPT', 'an unknown shape ⇒ named refusal')
+  const neverWritten = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'fresh', write() {}, read() { return null } } })
+  const r4 = rejects(() => neverWritten.verifyChain({ rows, useAnchor: true }))
+  ok(r4.threw && r4.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE' && /ever persisted/.test(String(r4.msg)), 'null ⇒ UNREADABLE ("never written") — a DIFFERENT code from CORRUPT')
+  ok(r1.code !== r4.code, 'damaged and never-written are distinguishable')
 }
 
 console.log('=== VMU AUDITCHAIN: ' + pass + ' passed, ' + fail + ' failed ===')

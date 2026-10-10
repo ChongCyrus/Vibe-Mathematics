@@ -151,7 +151,7 @@ export function canonicalize(value) {
  * `writerId` names THIS ledger instance in the projection, so a concurrent overwrite can be DETECTED on load
  * (round 10 / task-123): detection, not mutual exclusion — see the notes in `status()`.
  */
-export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null, store = null, writerId = null } = {}) {
+export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null, store = null, writerId = null, migrate = null } = {}) {
   if (typeof clock !== 'function') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createIdempotency needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
   }
@@ -212,6 +212,57 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   let staleWrites = 0
   let lastLoadStale = null
   let adoptedForeignWrites = 0
+  // ── A3 (task-141): EXPLICIT migration of an older projection instead of a hard version rejection ─────
+  // Round 11: a v1 projection was refused outright, so a version bump silently cost cross-restart
+  // idempotency (the ledger stayed memory-only). With a `migrate` seam the OLD document is migrated
+  // explicitly (recompute checksum + version tag) and `status().migratedFrom` discloses it; WITHOUT a seam
+  // the refusal stays — named, never silent, and the ledger stays degraded.
+  const LEDGER_KIND = 'idempotency'
+  let migratedFrom = null
+  let migrationsApplied = 0
+  let lastMigration = null
+  let migrationError = null
+  const hasMigrateSeam = () => !!(migrate && (typeof migrate.read === 'function' || typeof migrate === 'function'))
+  const ensureMigrationRegistered = () => {
+    if (!migrate || typeof migrate.register !== 'function') return
+    try {
+      const known = typeof migrate.status === 'function' ? (migrate.status().kinds || []).some((k) => k && k.kind === LEDGER_KIND) : false
+      if (known) return
+      migrate.register({
+        kind: LEDGER_KIND, version: CANONICAL_VERSION, fingerprint: LEDGER_KEY,
+        migrate: [{
+          from: 1, to: CANONICAL_VERSION, by: 'kernel', why: 'v1 had no seq/writerId and its checksum covered a different shape',
+          run: (doc) => Object.assign({}, doc, {
+            version: CANONICAL_VERSION,
+            seq: Number.isInteger(doc.seq) && doc.seq >= 0 ? doc.seq : 0,
+            writerId: typeof doc.writerId === 'string' ? doc.writerId : null,
+            savedAt: Number.isFinite(doc.savedAt) ? doc.savedAt : now(),
+            checksum: checksumOf(Array.isArray(doc.entries) ? doc.entries : []),
+            migratedFrom: 1,
+          }),
+        }],
+      })
+    } catch (e) { /* a shared migrator may already hold the kind: registering twice is not an error here */ }
+  }
+  /** Migrate an older projection through the seam. Returns {ok} or {ok:false, reason, code, noPath}. */
+  const migrateProjection = (doc) => {
+    const from = doc && doc.version
+    if (!hasMigrateSeam()) {
+      return { ok: false, noPath: true, code: 'VMU_NOT_FOUND', reason: 'the stored projection is version ' + String(from) + ' but this ledger writes version ' + CANONICAL_VERSION + ': NOT loaded, and no `migrate` seam was injected (no migration path → the document is kept, never dropped)' }
+    }
+    ensureMigrationRegistered()
+    try {
+      const out = typeof migrate === 'function'
+        ? migrate({ kind: LEDGER_KIND, doc, to: CANONICAL_VERSION })
+        : migrate.read({ kind: LEDGER_KIND, doc })
+      if (!out || out.ok === false) return { ok: false, code: (out && out.code) || 'VMU_MIGRATE_DRYRUN_FAILED', reason: 'the migration of the stored projection FAILED (v' + String(from) + ' → v' + CANONICAL_VERSION + '): ' + String((out && out.reason) || (out && out.note) || 'the seam reported failure') + ' — NOT loaded, the ledger stays degraded' }
+      const next = out.doc || (out.migrated && out.doc)
+      if (!next || typeof next !== 'object') return { ok: false, code: 'VMU_MIGRATE_DRYRUN_FAILED', reason: 'the migration seam returned no document: NOT loaded' }
+      return { ok: true, doc: next, from: out.from === undefined ? from : out.from, steps: Array.isArray(out.steps) ? out.steps.length : 0, checksumChanged: out.checksumChanged === true, checksum: out.checksum === undefined ? null : out.checksum }
+    } catch (e) {
+      return { ok: false, code: (e && e.code) || 'VMU_MIGRATE_DRYRUN_FAILED', reason: 'the migration of the stored projection FAILED: ' + String((e && e.message) || e) + ' — NOT loaded, the ledger stays degraded (the original document is unchanged)' }
+    }
+  }
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -328,10 +379,23 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     }
     if (doc.version !== CANONICAL_VERSION) {
       bump(unwired, 'store-version-mismatch', 1)
-      durableReason = 'the stored projection is version ' + String(doc.version) + ' but this ledger writes version ' + CANONICAL_VERSION + ': NOT loaded'
-      durableDegraded = true
-      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
-      return { ok: false, versionMismatch: true }
+      const mig = migrateProjection(doc)
+      if (!mig.ok) {
+        // A3: no path / a failed migration ⇒ NAMED refusal, the document is KEPT and the ledger stays degraded.
+        migrationError = { at: now(), from: doc.version, to: CANONICAL_VERSION, code: mig.code, reason: mig.reason, noPath: mig.noPath === true }
+        durableReason = mig.reason
+        durableDegraded = true
+        say({ type: 'idempotency/store-unwired', at: now(), why: durableReason, migrationCode: mig.code })
+        return { ok: false, versionMismatch: true, migrationFailed: mig.noPath !== true, migrationNoPath: mig.noPath === true, migrationCode: mig.code }
+      }
+      doc = mig.doc
+      migratedFrom = mig.from
+      migrationsApplied += 1
+      migrationError = null
+      lastMigration = { at: now(), from: mig.from, to: CANONICAL_VERSION, steps: mig.steps, checksumChanged: mig.checksumChanged, checksum: mig.checksum, by: 'kernel', wroteBack: false }
+      durableReason = 'the stored projection was MIGRATED v' + String(mig.from) + ' → v' + CANONICAL_VERSION + ' through the injected migrate seam (' + mig.steps + ' explicit step(s), checksum recomputed)'
+      say({ type: 'idempotency/store-migrated', at: now(), from: mig.from, to: CANONICAL_VERSION, steps: mig.steps, checksumChanged: mig.checksumChanged })
+      bump(unwired, 'store-migrated', 1)
     }
     const sum = checksumOf(doc.entries)
     if (typeof doc.checksum !== 'string' || doc.checksum !== sum) {
@@ -743,6 +807,14 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         durableLoadError: loadError,
         durableLastWriteAt: lastPersistAt,
         durableLastError: lastPersistError,
+        // A3 (task-141): the projection migration is DISCLOSED, never silent.
+        migrateSeam: hasMigrateSeam(),
+        migrateSeamKind: migrate ? (typeof migrate === 'function' ? 'function' : 'projmigrate') : null,
+        migratedFrom,
+        migrationsApplied,
+        lastMigration: lastMigration ? Object.assign({}, lastMigration) : null,
+        migrationError: migrationError ? Object.assign({}, migrationError) : null,
+        migrationPolicy: 'an older projection is migrated EXPLICITLY (checksum recomputed + version tag) when a `migrate` seam is injected; without one it is REFUSED BY NAME and the ledger stays degraded — a document is never silently dropped',
         ledgerKey: LEDGER_KEY,
         seq: knownSeq,
         writerId: writer,

@@ -159,6 +159,55 @@ test('keysUsed() equals the wired set and each is really read', () => {
   passed += 1
 })
 
+// ⑪ enforced 语义：open() 是**真实求值列表**（不是静态清单 ✓）——"行为变了必须在列"
+test('open() enforced is the REAL evaluation list: it changes when behaviour changes', () => {
+  const off = box({ 'vmu.ballot.secrecy': false }).open(OPEN)
+  const on = box({ 'vmu.ballot.secrecy': true }).open(OPEN)
+  assert.notDeepEqual(on.enforced, off.enforced, 'secrecy 开/关 ⇒ open 的 enforced **必须不同** ✓')
+  assert.ok(on.enforced.indexOf('vmu.ballot.secrecy') !== -1, '开了 secrecy（改变了 sealed）⇒ 必须在列 ✓')
+  assert.ok(off.enforced.indexOf('vmu.ballot.secrecy') === -1, '关了 secrecy（未改变行为）⇒ **不得**在列 ✓')
+  assert.ok(off.enforced.indexOf('vmu.ballot.method') !== -1, 'method 真参与校验 ⇒ 在列 ✓')
+  for (const k of ['vmu.ballot.minVotes', 'vmu.ballot.tieRule', 'vmu.ballot.runoffTopN', 'vmu.ballot.rollCallOrder']) {
+    assert.ok(off.enforced.indexOf(k) === -1, 'open() 未求值 ⇒ 不得出现：' + k)
+  }
+  assert.equal(new Set(off.enforced).size, off.enforced.length, 'enforced 不得有重复项')
+  passed += 1
+})
+
+// ⑫ 每一条拒绝都必须带数组型 `enforced`（可空，**不得 undefined** ✗✓）＋"行为变了必须在列"正反例
+test('every refusal carries an array enforced (never undefined) and names the key that caused it', () => {
+  const b = box({ 'vmu.ballot.abstainAllowed': false })
+  const o = b.open(OPEN)
+  const r = b.cast({ boxId: o.boxId, by: 'r-1', choice: 'abstain' })
+  assert.equal(r.code, 'VMU_BALLOT_ABSTAIN_NOT_ALLOWED')
+  assert.ok(Array.isArray(r.enforced), 'enforced 必须是数组（不得 undefined）')
+  assert.ok(r.enforced.indexOf('vmu.ballot.abstainAllowed') !== -1, '导致拒绝的键**必须在列**：' + JSON.stringify(r.enforced))
+  const okBox = box({ 'vmu.ballot.abstainAllowed': true })
+  const o2 = okBox.open(OPEN)
+  assert.equal(okBox.cast({ boxId: o2.boxId, by: 'r-1', choice: 'abstain' }).ok, true)
+  const bad = box({ 'vmu.ballot.method': 'nope' })
+  const m = bad.open(OPEN)
+  assert.ok(Array.isArray(m.enforced) && m.enforced.indexOf('vmu.ballot.method') !== -1, 'method 拒绝必须点名 method：' + JSON.stringify(m.enforced))
+  const noBox = b.cast({ boxId: 'bx-404', by: 'r-1', choice: 'a' })
+  assert.ok(Array.isArray(noBox.enforced), '找错票箱也必须带数组')
+  const dupBox = box({})
+  const o3 = dupBox.open(OPEN)
+  dupBox.cast({ boxId: o3.boxId, by: 'r-1', choice: 'a' })
+  assert.ok(Array.isArray(dupBox.cast({ boxId: o3.boxId, by: 'r-1', choice: 'b' }).enforced), '重复投票也必须带数组')
+  const floor = box({ 'vmu.ballot.minVotes': 5 })
+  const o4 = floor.open(OPEN)
+  const fr = floor.close({ boxId: o4.boxId })
+  assert.ok(Array.isArray(fr.enforced), '法定人数不足也必须带数组')
+  assert.ok(fr.enforced.indexOf('vmu.ballot.minVotes') !== -1, '必须点名**哪把尺子**不够（minVotes ✓）：' + JSON.stringify(fr.enforced))
+  assert.ok(/受限键/.test(fr.message), 'message 也要点名：' + fr.message)
+  const cred = box({ 'vmu.ballot.quadraticCreditCap': 1 })
+  const o5 = cred.open(OPEN)
+  const cr = cred.cast({ boxId: o5.boxId, by: 'r-1', choice: 'a', credits: 5 })
+  assert.equal(cr.code, 'VMU_CONFLICT')
+  assert.ok(cr.enforced.indexOf('vmu.ballot.quadraticCreditCap') !== -1, 'credits 拒必须点名该键：' + JSON.stringify(cr.enforced))
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

@@ -19,6 +19,23 @@ function throwsNamed(fn, code, label) {
     failed += 1; console.log('FAIL ' + label + ' (code=' + (e && e.code) + ' want ' + code + ')'); return null
   }
 }
+/**
+ * A refusal must be NAMED **and** carry `enforced` (rule ①): an array (possibly empty), never undefined, never
+ * with duplicates. Optionally assert which keys MUST be listed (rule ③: "it changed behaviour ⇒ it is listed").
+ */
+function throwsNamedE(fn, code, label, mustInclude = []) {
+  let e = null
+  try { fn() } catch (err) { e = err }
+  if (!e) { failed += 1; console.log("FAIL " + label + " (no refusal)"); return null }
+  if (e.code !== code) { failed += 1; console.log("FAIL " + label + " (code=" + e.code + " want " + code + ")"); return null }
+  const problems = []
+  if (!Array.isArray(e.enforced)) problems.push("enforced is " + typeof e.enforced + " (not an array)")
+  else if (new Set(e.enforced).size !== e.enforced.length) problems.push("enforced has duplicates: " + e.enforced.join(","))
+  for (const k of mustInclude) if (!Array.isArray(e.enforced) || !e.enforced.includes(k)) problems.push("missing " + k)
+  if (problems.length) { failed += 1; console.log("FAIL " + label + " (" + problems.join("; ") + ")"); return e }
+  passed += 1
+  return e
+}
 function fakeClock(start = 0) { let t = start; return { now: () => t, advance: (ms) => { t += ms }, clock: () => t } }
 function fakeLog() { const rows = []; return { rows, append: (e) => { rows.push(e) } } }
 function fakeBus({ throwOnEmit = false } = {}) {
@@ -104,7 +121,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   // 5 · head.maxItems (cap ⇒ named refusal with 现值/上限)
   const small = createRecords({ clock: c.clock, settings: S({ 'vmu.records.head.maxItems': 2 }) })
   put(small, { title: 'a', body: 'body a' }); put(small, { title: 'b', body: 'body b' })
-  const e5 = throwsNamed(() => put(small, { title: 'c', body: 'body c' }), 'VMU_QUOTA_EXCEEDED', 'head.maxItems −: exceeding the per-track cap is refused')
+  const e5 = throwsNamedE(() => put(small, { title: 'c', body: 'body c' }), 'VMU_QUOTA_EXCEEDED', 'head.maxItems −: exceeding the per-track cap is refused WITH enforced', ['vmu.records.head.maxItems'])
   ok(!!e5 && /2\/2/.test(e5.message) && /head\.maxItems/.test(String(e5.hint)), 'head.maxItems −: the refusal gives 现值/上限 and names the key')
   ok(small.list().count === 2, 'head.maxItems: nothing was evicted silently')
 
@@ -156,6 +173,15 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   ok(longSlug.put({ track: 'progress', kind: 'progress', title: 'abcdefghijk', body: 'x', settled: true }).slug === 'abcdefghijk', 'maxLength: a slug inside the cap is untouched')
 
   // 11 · naming.conflictSuffix
+  // 11b · enforced 去重（批评者第 12 轮：`naming.maxLength` 触界时同一键曾出现两次 ✗ ⇒ 必须唯一 ✓）
+  {
+    const dup = createRecords({ clock: c.clock, settings: S({ 'vmu.records.naming.maxLength': 8 }) })
+    const r = dup.put({ track: 'progress', kind: 'progress', title: 'a-very-long-title-that-truncates', body: 'x', settled: true })
+    const list = Array.isArray(r.enforced) ? r.enforced : []
+    ok(new Set(list).size === list.length, 'enforced must never contain the same key twice (got ' + JSON.stringify(list) + ')')
+    ok(list.includes('vmu.records.naming.maxLength'), 'a truncation ⇒ maxLength is listed')
+    ok(list.filter((k) => k === 'vmu.records.naming.maxLength').length === 1, 'maxLength appears exactly once')
+  }
   const suf = createRecords({ clock: c.clock, settings: S({ 'vmu.records.naming.conflictSuffix': '-2' }) })
   suf.put({ track: 'progress', kind: 'progress', title: 'same', body: 'one', settled: true })
   const s2 = suf.put({ track: 'progress', kind: 'progress', title: 'same', body: 'two', settled: true })
@@ -191,7 +217,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   // 14 · retention.maxBytes
   const quota = createRecords({ clock: c.clock, settings: S({ 'vmu.records.retention.maxBytes': 10, 'vmu.records.trash.countInQuota': false }) })
   ok(quota.put({ track: 'progress', kind: 'progress', title: 'q1', body: '12345', settled: true }).ok === true, 'maxBytes +: a record inside the budget is accepted')
-  const e14 = throwsNamed(() => quota.put({ track: 'progress', kind: 'progress', title: 'q2', body: '123456', settled: true }), 'VMU_QUOTA_EXCEEDED', 'maxBytes −: exceeding the track budget is refused')
+  const e14 = throwsNamedE(() => quota.put({ track: 'progress', kind: 'progress', title: 'q2', body: '123456', settled: true }), 'VMU_QUOTA_EXCEEDED', 'maxBytes −: exceeding the track budget is refused', ['vmu.records.retention.maxBytes'])
   ok(!!e14 && /10/.test(e14.message) && /retention\.maxBytes/.test(String(e14.hint)), 'maxBytes −: the refusal gives 现值/上限 and names the key')
 
   // 15 · retention.tierThreshold
@@ -413,6 +439,94 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   ok(refuse('X', 'y', 'z').code === 'X' && refuse('X', 'y', 'z').hint === 'z', 'refuse(): the named-error helper keeps code/hint')
   ok(slugify('Hello World', 'ascii', 80).slug === 'hello-world' && chunkBody('abcd', 2).length === 2, 'helpers: slugify/chunkBody are exported and deterministic')
   ok(r.status().note.includes('enforced') && r.status().note.includes('fired'), 'status: the note explains the enforced/fired contract')
+}
+
+// ── 6. every refusal path carries `enforced`, and no receipt anywhere has duplicates ─────────────────
+{
+  const c = fakeClock(0)
+  const S2 = (extra = {}) => Object.assign({ 'vmu.records.requireSettledRecords': false }, extra)
+  const universe = new Set(WIRED_KEYS.concat(EXTRA_WIRED_KEYS))
+  const check = (e, label, must = []) => {
+    if (!e) { failed += 1; console.log('FAIL enforced: ' + label + ' (no refusal)'); return null }
+    ok(Array.isArray(e && e.enforced), 'enforced: ' + label + ' carries an ARRAY (never undefined)')
+    ok(!!e && e.enforced.every((k) => universe.has(k)), 'enforced: ' + label + ' lists only wired keys')
+    ok(!!e && new Set(e.enforced).size === e.enforced.length, 'enforced: ' + label + ' has no duplicates')
+    if (must.length) ok(must.every((k) => e.enforced.includes(k)), 'enforced: ' + label + ' names the key that fired (' + must.join(',') + ')')
+    return e
+  }
+  // the two items the C2 gate named, checked explicitly once more
+  const q = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.head.maxItems': 1 }) })
+  put(q, { title: 'a', body: 'body a' })
+  check(throwsNamedE(() => put(q, { title: 'b', body: 'body b' }), 'VMU_QUOTA_EXCEEDED', 'sweep: put ⇒ quota'), 'put(quota)', ['vmu.records.head.maxItems'])
+  const rq = createRecords({ clock: c.clock, settings: S2() })
+  const rec0 = put(rq, { body: 'body' })
+  check(throwsNamedE(() => rq.remove({ id: rec0.id, reason: 'no actor' }), 'VMU_INVALID_ARGUMENT', 'sweep: remove ⇒ no by'), 'remove(no by)', ['vmu.records.trash.retainDays'])
+
+  // the 22 refusal sites of the module, one by one
+  const t1 = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.tracks': ['progress'] }) })
+  check(throwsNamedE(() => put(t1, { track: 'routes', body: 'x' }), 'VMU_INVALID_ARGUMENT', 'sweep: tracks'), 'put(bad track)', ['vmu.records.tracks'])
+  const t2 = createRecords({ clock: c.clock, settings: { 'vmu.records.requireSettledRecords': true } })
+  check(throwsNamedE(() => t2.put({ track: 'progress', kind: 'progress', title: 'x', body: 'y' }), 'VMU_STATE', 'sweep: requireSettled'), 'put(unsettled)', ['vmu.records.requireSettledRecords'])
+  const t3 = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.allowedKinds': ['progress'] }) })
+  check(throwsNamedE(() => put(t3, { kind: 'lesson', body: 'x' }), 'VMU_INVALID_ARGUMENT', 'sweep: allowedKinds'), 'put(bad kind)', ['vmu.records.allowedKinds'])
+  const t4 = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.retention.maxBytes': 3, 'vmu.records.trash.countInQuota': false }) })
+  check(throwsNamedE(() => put(t4, { body: 'abcdefgh' }), 'VMU_QUOTA_EXCEEDED', 'sweep: maxBytes'), 'put(bytes quota)', ['vmu.records.retention.maxBytes'])
+  const t5 = createRecords({ clock: c.clock, settings: S2() })
+  check(throwsNamedE(() => t5.get({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'sweep: get'), 'get(unknown)')
+  check(throwsNamedE(() => t5.list({ track: 'nope' }), 'VMU_INVALID_ARGUMENT', 'sweep: list track'), 'list(bad track)', ['vmu.records.tracks'])
+  check(throwsNamedE(() => t5.list({ fields: ['title'] }), 'VMU_HEAD_FIELD_IMMUTABLE', 'sweep: head fields'), 'list(core trimmed)', ['vmu.records.headFields'])
+  check(throwsNamedE(() => t5.supersede({ id: 'r-404', reason: 'x' }), 'VMU_NO_SUCH_OBJECT', 'sweep: supersede id'), 'supersede(unknown)')
+  const sup = put(t5, { body: 'v0' })
+  check(throwsNamedE(() => t5.supersede({ id: sup.id }), 'VMU_REASON_REQUIRED', 'sweep: supersede reason'), 'supersede(no reason)', ['vmu.records.history.storeMode'])
+  check(throwsNamedE(() => t5.remove({ id: 'r-404', by: 'office' }), 'VMU_NO_SUCH_OBJECT', 'sweep: remove id'), 'remove(unknown)')
+  const perm = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.retention.permanentMarker': 'locked' }) })
+  const prec = perm.put({ track: 'progress', kind: 'progress', title: 'p', body: 'x', settled: true, tags: ['locked'] })
+  check(throwsNamedE(() => perm.remove({ id: prec.id, by: 'office', reason: 'x' }), 'VMU_RETENTION_CONFLICT', 'sweep: permanent'), 'remove(permanent)', ['vmu.records.retention.permanentMarker'])
+  check(throwsNamedE(() => t5.purge({ at: 'soon' }), 'VMU_INVALID_ARGUMENT', 'sweep: purge at'), 'purge(bad at)', ['vmu.records.trash.retainDays'])
+  check(throwsNamedE(() => t5.restore({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'sweep: restore id'), 'restore(unknown)')
+  check(throwsNamedE(() => t5.restore({ id: sup.id }), 'VMU_STATE', 'sweep: restore state'), 'restore(live)')
+  check(throwsNamedE(() => t5.compact({ track: 'nope' }), 'VMU_INVALID_ARGUMENT', 'sweep: compact track'), 'compact(bad track)', ['vmu.records.retention.keepEvery'])
+  check(throwsNamedE(() => t5.attachExternal({ id: 'r-404', uri: 'file:///x' }), 'VMU_NO_SUCH_OBJECT', 'sweep: external id'), 'attachExternal(unknown)')
+  check(throwsNamedE(() => t5.attachExternal({ id: sup.id, uri: 'no-scheme' }), 'VMU_EXTERNAL_QUERY_INVALID', 'sweep: external scheme missing'), 'attachExternal(schemeless)', ['vmu.records.external.allowedSchemes'])
+  const sc = createRecords({ clock: c.clock, settings: S2({ 'vmu.records.external.allowedSchemes': ['file'] }), exists: () => true })
+  const screc = put(sc, { body: 'z' })
+  check(throwsNamedE(() => sc.attachExternal({ id: screc.id, uri: 'http://x/y' }), 'VMU_EXTERNAL_DISABLED', 'sweep: scheme denied'), 'attachExternal(denied)', ['vmu.records.external.allowedSchemes'])
+  const vf = createRecords({ clock: c.clock, settings: S2(), exists: () => false })
+  const vfrec = put(vf, { body: 'z' })
+  check(throwsNamedE(() => vf.attachExternal({ id: vfrec.id, uri: 'file:///missing' }), 'VMU_EXTERNAL_UNAVAILABLE', 'sweep: never verified'), 'attachExternal(missing)', ['vmu.records.external.verifyExists'])
+  check(throwsNamedE(() => t5.externals({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'sweep: externals id'), 'externals(unknown)')
+  check(throwsNamedE(() => createRecords({ clock: 'not a function' }), 'VMU_INVALID_ARGUMENT', 'sweep: factory clock'), 'factory(no clock)')
+
+  // "behaviour changed ⇒ it IS listed" / negative: a refusal that evaluated nothing lists exactly []
+  const empty = throwsNamedE(() => t5.get({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'sweep: empty enforced is allowed')
+  ok(Array.isArray(empty.enforced) && empty.enforced.length === 0, 'enforced −: a refusal that evaluated no key lists an EMPTY array (not undefined, not a guess)')
+  ok(!empty.enforced.includes('vmu.records.head.maxItems'), 'enforced −: an untouched key is NOT listed on the refusal path')
+
+  // no duplicates + fired ⊆ enforced in EVERY receipt of a full scenario
+  const c2 = fakeClock(10)
+  const full = createRecords({ clock: c2.clock, settings: S2({ 'vmu.records.bodyCapBytes': 4, 'vmu.records.headListAt': 2, 'vmu.records.history.depth': 1, 'vmu.records.retention.tierThreshold': 5, 'vmu.records.trash.retainDays': 0, 'vmu.records.trash.autoPurge': true, 'vmu.records.body.chunkedReturn': true, 'vmu.records.chunk.thresholdBytes': 1, 'vmu.records.chunk.chunkBytes': 2 }), exists: () => true })
+  const receipts = []
+  receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'one', body: 'abcdefgh', settled: true }))
+  receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'one', body: 'abcdefgh', settled: true }))
+  receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'two', body: 'ijklmnop', settled: true }))
+  receipts.push(full.list())
+  receipts.push(full.list({ fields: CORE_HEAD_FIELDS.concat(['title']) }))
+  receipts.push(full.get({ id: 'r-1' }))
+  receipts.push(full.supersede({ id: 'r-1', reason: 'r', body: 'zz' }))
+  receipts.push(full.history({ id: 'r-1' }))
+  receipts.push(full.attachExternal({ id: 'r-1', uri: 'file:///x' }))
+  receipts.push(full.externals({ id: 'r-1' }))
+  receipts.push(full.compact({ track: 'progress' }))
+  receipts.push(full.remove({ id: 'r-2', by: 'office', reason: 'done' }))
+  receipts.push(full.purge())
+  const all = receipts.slice()   // status() is a REPORT, not an operation receipt: it has no enforced/fired
+  ok(all.every((r) => Array.isArray(r.enforced)), 'receipts: every operation receipt carries an array `enforced`')
+  ok(all.every((r) => !Array.isArray(r.enforced) || new Set(r.enforced).size === r.enforced.length), 'receipts: NO receipt has duplicate `enforced` entries (whole module)')
+  ok(all.every((r) => !r.fired || new Set(r.fired).size === r.fired.length), 'receipts: NO receipt has duplicate `fired` entries (whole module)')
+  ok(all.every((r) => !r.fired || r.fired.every((k) => r.enforced.includes(k))), 'receipts: fired ⊆ enforced everywhere (a fired key was necessarily evaluated)')
+  ok(all.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key')
+  const firedSomewhere = new Set(receipts.flatMap((r) => r.fired || []))
+  ok(firedSomewhere.size >= 5, 'receipts: the scenario really fired several knobs (' + firedSomewhere.size + ')')
 }
 
 console.log('=== VMU RECORDS: ' + passed + ' passed, ' + failed + ' failed ===')
