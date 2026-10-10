@@ -108,13 +108,27 @@ export function createHostSpawn({
     }
 
     let handle
+    // ENV NORMALISATION — the M3 ROOT CAUSE, found once the bridge stopped swallowing the host stack. The host's
+    // own validation calls `.includes` ON EACH ENV VALUE, so a value of `undefined` crashes it BEFORE any handle
+    // exists (TypeError: Cannot read properties of undefined (reading 'includes')). Only strings can be
+    // environment variables: coerce primitives, DROP the rest, and count what was dropped instead of quietly
+    // shipping a shape the host cannot accept.
+    const rawEnv = request.env && typeof request.env === 'object' && !Array.isArray(request.env) ? request.env : {}
+    const env = {}
+    const envDropped = []
+    for (const [k, v] of Object.entries(rawEnv)) {
+      if (typeof v === 'string') env[k] = v
+      else if (typeof v === 'number' || typeof v === 'boolean') env[k] = String(v)
+      else envDropped.push(k)
+    }
+    const envKeys = Object.keys(env).length
     try {
       handle = sub.spawn({
         argv,
         cwd: request.cwd || defaultCwd || undefined,
         stdio: { stdin: 'ignore', stdout: { maxBytes: stdoutCapBytes }, stderr: { maxBytes: stderrCapBytes } },
         ...(budget ? { graceMs: budget } : {}),
-        ...(request.env && Object.keys(request.env).length > 0 ? { env: request.env } : {}),
+        ...(envKeys > 0 ? { env } : {}),
       })
     } catch (e) {
       // The host validates argv/cwd/env and throws BEFORE a handle exists (documented contract).

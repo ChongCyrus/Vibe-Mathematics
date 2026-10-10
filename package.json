@@ -250,6 +250,7 @@
     "tests/vmu-math.test.mjs",
     "tests/vmu-guard.test.mjs",
     "tests/vmu-lean.test.mjs",
+    "tests/vmu-spawn.test.mjs",
     "tests/vmu-members.test.mjs",
     "tests/vmu-ballot.test.mjs",
     "tests/vmu-meeting.test.mjs",

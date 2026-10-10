@@ -262,7 +262,17 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             failure: script.failure || 'open',
           }
           if (typeof script.cwd === 'string' && script.cwd.length > 0) request.cwd = script.cwd
-          if (script.env && typeof script.env === 'object' && !Array.isArray(script.env)) request.env = script.env
+          if (script.env && typeof script.env === 'object' && !Array.isArray(script.env)) {
+            // Same rule as the spawn seam, applied at the SOURCE: only strings can be environment variables. An
+            // `undefined` value used to be forwarded verbatim and made the host throw inside its own validation
+            // (the live M3 root cause). Primitives are coerced; anything else is dropped, never shipped broken.
+            const env = {}
+            for (const [k, v] of Object.entries(script.env)) {
+              if (typeof v === 'string') env[k] = v
+              else if (typeof v === 'number' || typeof v === 'boolean') env[k] = String(v)
+            }
+            if (Object.keys(env).length > 0) request.env = env
+          }
           const result = await kernel.bridge.run(request)
           return Object.assign({ ok: true, action, script: id }, result)
         } catch (e) {
