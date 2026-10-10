@@ -57,26 +57,32 @@ const EXPECT = {
   records: G('PROBE_NEEDS_ARGS', '缺：记录体（track/kind/body）'),
   store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('PROBE_NEEDS_ARGS', '缺：事务体'),
   work: G('PROBE_NEEDS_ARGS', '缺：工作项'),
-  workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` ⇒ **有默认阶梯且放行（ok）** ✓；被探 op 缺参 ⇒ **具名拒** ✓（缺参归 NEEDS_ARGS 计数，不算 mismatch ✓）'),
+  workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 op 缺参 ⇒ 实测 **`op 抛出`** ✗（归 `probe-error` 计数，**不算 mismatch** ✓）—— 旧 note 曾写"缺参 ⇒ 具名拒" ✗，与实测不符，已按实测改写 ✓'),
   // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
   'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
   // ── 在途新模块：**必须被裁定** ✓（第 33 轮规则收紧 ✓）—— 从模块实测反推 ✓
   instruments: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；其 17 键中 14 已接／3 未接（`ledgerDir`／`dataCaptureRef`／`downtimePolicy` ✗）'),
-  // **在途未落地的新模块** ⇒ **显式待办**（✓ 计数不红；**第 33 轮规则**要求"出现即须裁定" ✓）
-  conference: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（本轮实测前不得编造 ✗）'),
-  ip: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（同上 ✗）'),
+  // **按实测升级为真期望**（第 34 轮 ✓；零机制**不传 settings** 实测 ✓，**不编造** ✗）
+  conference: G('ok 或 object', '实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）'),
+  ip: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）'),
   // Round 32 (continued). storepolicy's expectation is MEASURED, not guessed: status() answers ok:true with its
   // policy (backend/rooted/durable/remote/onVersionTooHigh), while a real write with no root returns a NAMED
   // refusal carrying vmU.store.root and the scope field. compliance and funding never reached the matrix as
   // unadjudicated because their probes need arguments, so they are counted under PROBE_NEEDS_ARGS, not decided
   // here by invention.
-  storepolicy: G('ok 或 object', '存储策略面：零机制 ⇒ **策略可读、不拒**（`status()` 实测 `ok:true` ＋ `backend/rooted/durable/remote/onVersionTooHigh` ✓）；真实写入缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ＋ 口径 ✓（15/15 键已接 ✓）'),
+  storepolicy: G('ok 或 object', '零机制 `status()` 实测 **ok**，自曝 `enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 策略面**可读、不拒** ✓；**本行探针之外另测**：真实 `write()` 缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ✓（15/15 键已接 ✓）—— 旧 note 曾写"status 带 backend/rooted/durable/remote" ✗，与实测不符，已按实测改写 ✓'),
   // These two landed while this round was in flight and their probes DID reach the matrix, so the "appears without
   // an adjudication" rule flags them one at a time. They are registered as EXPLICIT to-dos with what is already
   // known, rather than given expectations nobody measured - "undecided" is visible and counted, "missing" is not.
-  funding: G('EXPECT_UNDECIDED', '本轮在途落地 ⇒ **下一轮按实测反推裁定**（16/16 键已接；**全部返回型拒绝** ⇒ 期望很可能是“具名拒或 ok” ✓，但**须实测** ✗）'),
-  compliance: G('EXPECT_UNDECIDED', '本轮在途落地 ⇒ **下一轮按实测反推裁定**（16 wired ＋ 1 planned；`exportControlCheck` 归 domaingate ✓）'),
+  funding: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；16/16 键已接 ✓）'),
+  compliance: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**；16 wired ＋ 1 planned，`exportControlCheck` 归 domaingate ✓）'),
+  // Round 35: capacity / hr landed while this round was in flight and their probes DID reach the matrix (both
+  // answered), so they are adjudicated from the MEASUREMENT above, not from invention:
+  //   capacity · list()  ⇒ ok, enforced=[0] fired=[0] enforcedScope=evaluated-so-far
+  //   hr       · status() ⇒ ok, enforcedScope=evaluated-so-far
+  capacity: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；12/12 键已接 ✓）'),
+  hr: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；11/11 键已接、**零新码** ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 

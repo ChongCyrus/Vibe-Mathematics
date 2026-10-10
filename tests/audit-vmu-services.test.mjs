@@ -57,6 +57,8 @@ const SURFACES = {
   'vmu.funding': 'funding',         // round 32 (funding rules: budget balance, cost share, settlement)
   'vmu.compliance': 'compliance',   // round 32 (research compliance; export control stays with domaingate)
   'vmu.storepolicy': 'storepolicy', // round 32 (storage policy layer only - no IO)
+  'vmu.capacity': 'capacity',       // round 33 (seats/pool/quota/preemption)
+  'vmu.hr': 'hr',                   // round 33 (personnel rules; seats stay with members)
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }

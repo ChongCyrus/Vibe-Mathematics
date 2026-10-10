@@ -78,6 +78,12 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.records.requireSettledRecords', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '只允许写入已结算记录（v5r 机制；由包携带默认 true）' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
+  // task-196 REGISTRATION ALIGNMENT: both keys were WIRED for real (audit age-out; deterministic LZSS packing)
+  // while the registry still called them `planned: true, def: null`. Defaults mirror the CODE fallbacks:
+  //   kernel/audit.js → retentionDays <= 0 means retention DISABLED       ⇒ default 0
+  //   kernel/pack.js  → `snap['vmu.pack.compression'] === true` (strict)  ⇒ default false
+  { key: 'vmu.audit.retentionDays', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '审计按天老化（天）；0 或负＝禁用老化（kernel/audit.js 的回落语义，禁用时不删任何行）' },
+  { key: 'vmu.pack.compression', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '打包启用确定性 LZSS（kernel/pack.js 以 === true 判定；缺省＝关闭，禁用时不压缩）' },
 
   // ---- prompts ------------------------------------------------------------------------------
   { key: 'vmu.prompts.overridesDir', type: 'path', def: 'prompts/overrides', hot: HOT.H0, who: 'office', doc: '提示词覆盖目录（仓内相对路径）' },

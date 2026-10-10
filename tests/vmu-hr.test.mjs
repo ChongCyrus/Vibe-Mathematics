@@ -1,0 +1,80 @@
+// tests/vmu-hr.test.mjs — 独立可跑：kernel/hr.js（mathtools 标准：11 键划分/enforced/口径/wouldEvaluate/7 个已登记码）。
+import { createHr, WIRED_KEYS, UNSUPPORTED_SEMANTICS, WOULD_EVALUATE, CODES, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/hr.js'
+
+let passed = 0, failed = 0
+const ok = (c, label) => { if (c) { passed++; console.log('  ok - ' + label) } else { failed++; console.error('  FAIL - ' + label) } }
+const refuses = (fn, code, extra, label) => {
+  try { fn(); failed++; console.error('  FAIL - ' + label + ' (no refusal)') } catch (e) {
+    const list = Array.isArray(e.enforced)
+    const scopeOk = e.enforcedScope === ENFORCED_SCOPE
+    const sub = Array.isArray(e.wouldEvaluate) && list && e.enforced.every((k) => e.wouldEvaluate.indexOf(k) !== -1)
+    const exOk = !extra || Object.entries(extra).every(([k, v]) => String(e[k]) === String(v))
+    const hintOk = typeof e.hint === 'string' && e.hint.length > 0
+    if (e.code === code && list && scopeOk && sub && exOk && hintOk) { passed++; console.log('  ok - ' + label + ' :: ' + e.code + ' :: enforced=' + e.enforced.length) }
+    else { failed++; console.error('  FAIL - ' + label + ' :: code=' + (e && e.code) + ' enforced=' + JSON.stringify(e && e.enforced) + ' ok=' + list + '/' + scopeOk + '/' + sub + '/' + exOk) }
+  }
+}
+const CLOCK = () => '2026-07-01T00:00:00.000Z'
+const mk = (settings = {}) => createHr({ clock: CLOCK, settings })
+const day = 86400000
+
+console.log('-- 0) 11 键恰好划分 ＋ 无自造码 --')
+ok(apiVersion === 1 && ENFORCED_SCOPE === 'evaluated-so-far', 'module surface: apiVersion=1 and the D3 scope literal')
+ok(WIRED_KEYS.length === 11, 'all 11 declared vmu.hr.* keys are wired (' + WIRED_KEYS.length + ')')
+ok(Object.values(CODES).every((c) => /^VMU_HR_/.test(c)) && Object.values(CODES).length === 7, 'only the 7 registered VMU_HR_* codes are used (no invented codes)')
+ok(Object.keys(UNSUPPORTED_SEMANTICS).length === 6, 'the 6 requested-but-unregistered semantics are NAMED (contract/timesheet/leave/overlap/qualification/probation)')
+ok(Object.keys(WOULD_EVALUATE).length === 6, 'WOULD_EVALUATE declares the per-op key sets (records.js OP_WOULD 口径)')
+
+console.log('-- recruit（窗口/周期 ⇒ VMU_HR_CYCLE_CLOSED）--')
+const a = mk()
+refuses(() => a.recruit({ openingId: 'o-1', openedAt: '2026-06-01T00:00:00.000Z', at: '2026-06-20T00:00:00.000Z' }), CODES.CYCLE_CLOSED, null, 'a closed recruitment window is refused by name')
+const ar = a.recruit({ openingId: 'o-1', openedAt: '2026-06-29T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' })
+ok(ar.ok === true && ar.enforcedScope === ENFORCED_SCOPE && ar.fired.every((k) => ar.enforced.indexOf(k) !== -1) && !!ar.closesAt, 'an open window passes with closesAt and fired ⊆ enforced')
+
+console.log('-- performance（节奏/证据 ⇒ CYCLE_CLOSED＋PERF_EVIDENCE_MISSING）--')
+const b = mk()
+refuses(() => b.performance({ who: 'r-1', lastAt: '2026-01-01T00:00:00.000Z', evidence: ['x'] }), CODES.CYCLE_CLOSED, null, 'an overdue cadence is refused')
+refuses(() => b.performance({ who: 'r-1', lastAt: '2026-06-30T00:00:00.000Z', evidence: [] }), CODES.PERF_EVIDENCE_MISSING, null, 'missing evidence is refused by its own code')
+ok(b.performance({ who: 'r-1', lastAt: '2026-06-30T00:00:00.000Z', evidence: ['e1'] }).ok === true, 'in-cadence with evidence passes')
+
+console.log('-- tenure（人类决策/法定人数/决定到期 ⇒ 三个码）--')
+const c = mk()
+refuses(() => c.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 5, auto: true }), CODES.AUTODECISION_FORBIDDEN, null, 'an automatic tenure decision is forbidden (humanDecisionRequired)')
+refuses(() => c.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 1 }), CODES.TENURE_QUORUM_MISSING, null, 'a missing quorum is refused')
+refuses(() => c.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 3 }), CODES.TENURE_DECISION_DUE, null, 'a due decision (track + window elapsed) is refused')
+ok(c.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 3, decisionAt: '2026-06-01T00:00:00.000Z' }).ok === true, 'a recorded decision passes')
+
+console.log('-- appeal / offboard / rotation --')
+const d = mk()
+refuses(() => d.appeal({ who: 'r-3', openedAt: '2026-06-20T00:00:00.000Z' }), CODES.APPEAL_OPEN, null, 'an unresolved appeal is refused (APPEAL_OPEN)')
+ok(d.appeal({ who: 'r-3', openedAt: '2026-06-20T00:00:00.000Z', resolved: true }).ok === true, 'a resolved appeal passes')
+refuses(() => d.offboard({ who: 'r-3', done: ['handover'] }), CODES.OFFBOARDING_INCOMPLETE, null, 'an incomplete offboarding checklist is refused')
+const od = d.offboard({ who: 'r-3', done: ['handover', 'keys', 'records'] })
+ok(od.ok === true && od.checklist === 3, 'a complete checklist passes (checklist items counted)')
+ok(d.rotation({ pool: ['r-1', 'r-2'] }).mode === 'round-robin', 'the rotation mode reaches the receipt (the key changes observable behaviour)')
+
+console.log('-- 逐码计数 / 只读纯净 / 零机制 / 确定性 / settings 对 --')
+const st = d.status()
+ok(st.counts.refusals[CODES.APPEAL_OPEN] === 1 && st.counts.refusals[CODES.OFFBOARDING_INCOMPLETE] === 1, 'per-code counts are exact: ' + JSON.stringify(st.counts.refusals))
+const w0 = st.counts.writes
+d.status(); d.status()
+ok(d.status().counts.writes === w0, 'read-only status() does not increase the write counter (writes=' + w0 + ')')
+const z = mk()
+ok(z.status().mechanism.zeroMechanismSafe === true && z.rotation({}).ok === true && z.status().partition.total === 11, 'zero-mechanism does not crash and still partitions 11 keys')
+const h1 = mk(), h2 = mk()
+h1.rotation({ pool: ['a'] }); h2.rotation({ pool: ['a'] })
+ok(JSON.stringify(h1.status().counts) === JSON.stringify(h2.status().counts), 'two instances with the same clock agree exactly (determinism)')
+const off = mk({ 'vmu.hr.humanDecisionRequired': false, 'vmu.hr.performanceEvidenceRequired': false, 'vmu.hr.tenureQuorum': 0 })
+ok(off.tenure({ who: 'r-9', trackStart: '2023-01-01T00:00:00.000Z', votes: 0, auto: true, decisionAt: '2026-01-15T00:00:00.000Z' }).ok === true, 'settings pair (1): humanDecisionRequired=false + auto=true passes (the key really governs)')
+ok(off.performance({ who: 'r-9', lastAt: '2026-06-30T00:00:00.000Z', evidence: [] }).ok === true, 'settings pair (1): performanceEvidenceRequired=false ⇒ missing evidence is allowed')
+const win = mk({ 'vmu.hr.appealWindowDays': 1 })
+ok(win.appeal({ who: 'r-9', openedAt: '2026-06-30T12:00:00.000Z', at: '2026-07-01T00:00:00.000Z', resolved: true }).ok === true, 'settings pair (2): a 1-day appeal window is read from settings (in-window passes)')
+refuses(() => win.appeal({ who: 'r-9', openedAt: '2026-05-01T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' }), CODES.APPEAL_OPEN, null, 'settings pair (2): beyond the 1-day window the appeal is refused (window really governs)')
+ok(JSON.stringify(off.status().policy.offboardingChecklist) === JSON.stringify(['handover', 'keys', 'records']), 'settings pair (2): the default checklist is visible (customisable per 22 卷)')
+const strict = mk({ 'vmu.hr.tenureQuorum': 5, 'vmu.hr.recruitWindowOpenMs': 1000 })
+refuses(() => strict.tenure({ who: 'r-9', trackStart: '2023-01-01T00:00:00.000Z', votes: 3 }), CODES.TENURE_QUORUM_MISSING, { quorum: 5 }, 'settings pair (3): quorum=5 refuses 3 votes (and reports quorum=5)')
+refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' }), CODES.CYCLE_CLOSED, null, 'settings pair (3): a 1-second window closes immediately')
+
+console.log('')
+console.log('=== VMU HR: ' + passed + ' passed, ' + failed + ' failed ===')
+if (failed) process.exit(1)

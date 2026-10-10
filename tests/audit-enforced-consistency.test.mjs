@@ -34,11 +34,15 @@ import { createIp } from '../vibe-math-vmu/kernel/ip.js'
 import { createCompliance } from '../vibe-math-vmu/kernel/compliance.js'
 import { createFunding } from '../vibe-math-vmu/kernel/funding.js'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
+import { createCapacity } from '../vibe-math-vmu/kernel/capacity.js'
+import { createHr } from '../vibe-math-vmu/kernel/hr.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const KERNEL = join(REPO, 'vibe-math-vmu', 'kernel')
 const CLOCK = () => 1000000
+// hr drives its rails from ISO timestamps (a numeric clock makes its own comparisons throw VMU_INVALID_ARGUMENT).
+const ISO_CLOCK = () => '2026-07-01T00:00:00.000Z'
 const KEY = 'enforced'
 const GOOD_SEAM = async () => ({ ok: true, status: 200, headers: {}, bytes: 64, body: { results: [{ id: 'x', title: 'T', doi: '10.1/x', concepts: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }], mesh: ['m1'], related: ['r1'], abstract: 'a'.repeat(50), authors: [{ name: 'A' }] }] } })
 
@@ -431,6 +435,56 @@ const SCENARIOS = [
     limiting: { settings: { 'vmu.store.backend': 'memory' } }, permissive: { settings: { 'vmu.store.backend': 'memory' } },
     make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
     run: (s) => s.release({ name: 'a' }) },
+
+  // ---- ROUND-19 (task-200): capacity / hr ----
+  // capacity (GATE_SCENARIOS ①): the pool rail is always evaluated; 20h into a 10h pool is REFUSED while a 1000h
+  // pool accepts the same call ⇒ outcome form.
+  { module: 'capacity', call: 'reserve(machineHoursPool)', key: 'vmu.capacity.machineHoursPool', outcomeDiff: true,
+    limiting: { settings: { 'vmu.capacity.machineHoursPool': 10, 'vmu.capacity.overcommitRatio': 1 } },
+    permissive: { settings: { 'vmu.capacity.machineHoursPool': 1000, 'vmu.capacity.overcommitRatio': 1 } },
+    make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.reserve({ domain: 'd1', hours: 20 }) },
+  // capacity: safetyBriefingRequired is consulted only for a declared facility - true refuses, false admits.
+  { module: 'capacity', call: 'reserve(safetyBriefingRequired)', key: 'vmu.capacity.safetyBriefingRequired', outcomeDiff: true,
+    limiting: { settings: { 'vmu.capacity.safetyBriefingRequired': true, 'vmu.capacity.facilities': ['lab'] } },
+    permissive: { settings: { 'vmu.capacity.safetyBriefingRequired': false, 'vmu.capacity.facilities': ['lab'] } },
+    make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.reserve({ domain: 'd', facility: 'lab', hours: 1 }) },
+  // capacity (GATE_SCENARIOS ③): a 10-day forecast beyond a 3-day horizon is STALE (refused), a 300-day horizon passes.
+  { module: 'capacity', call: 'forecast(forecastHorizonDays)', key: 'vmu.capacity.forecastHorizonDays', outcomeDiff: true,
+    limiting: { settings: { 'vmu.capacity.forecastHorizonDays': 3 } }, permissive: { settings: { 'vmu.capacity.forecastHorizonDays': 300 } },
+    make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.forecast({ days: 10 }) },
+  // capacity (GATE_SCENARIOS ② as the rule-④ carrier): the reserve rail never consults the forecast keys.
+  { module: 'capacity', call: 'reserve(GATE ②)', key: 'vmu.capacity.forecastHorizonDays', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.capacity.machineHoursPool': 100, 'vmu.capacity.overcommitRatio': 0.5 } },
+    permissive: { settings: { 'vmu.capacity.machineHoursPool': 100, 'vmu.capacity.overcommitRatio': 0.5 } },
+    make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.reserve({ domain: 'd1', hours: 80 }) },
+
+  // hr (all rails THROW): humanDecisionRequired forbids an automatic tenure decision while the human path needs a
+  // decisionAt inside the window ⇒ the outcome differs (forbidden vs due vs ok).
+  { module: 'hr', call: 'tenure(humanDecisionRequired)', key: 'vmu.hr.humanDecisionRequired', outcomeDiff: true,
+    limiting: { settings: { 'vmu.hr.humanDecisionRequired': true }, input: { votes: 5, auto: true } },
+    permissive: { settings: { 'vmu.hr.humanDecisionRequired': false }, input: { votes: 3, decisionAt: '2026-06-01T00:00:00.000Z' } },
+    make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
+    run: (h, variant) => h.tenure(Object.assign({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z' }, variant.input)) },
+  // hr: offboardingChecklist decides whether the offboarding set is complete (refused vs admitted).
+  { module: 'hr', call: 'offboard(offboardingChecklist)', key: 'vmu.hr.offboardingChecklist', outcomeDiff: true,
+    limiting: { settings: {}, input: { done: ['handover'] } },
+    permissive: { settings: {}, input: { done: ['handover', 'keys', 'records'] } },
+    make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
+    run: (h, variant) => h.offboard({ who: 'r-3', done: variant.input.done }) },
+  // hr: appealWindowDays is consulted while an appeal is open (refused) and cleared once it is resolved.
+  { module: 'hr', call: 'appeal(appealWindowDays)', key: 'vmu.hr.appealWindowDays', outcomeDiff: true,
+    limiting: { settings: {}, input: { resolved: false } }, permissive: { settings: {}, input: { resolved: true } },
+    make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
+    run: (h, variant) => h.appeal({ who: 'r-4', openedAt: '2026-06-20T00:00:00.000Z', resolved: variant.input.resolved }) },
+  // hr reverse: offboarding never consults the appeal window.
+  { module: 'hr', call: 'offboard', key: 'vmu.hr.appealWindowDays', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
+    run: (h) => h.offboard({ who: 'r-3', done: ['handover', 'keys', 'records'] }) },
 ]
 
 // REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
@@ -464,6 +518,12 @@ const REFUSAL_SCENARIOS = [
   { module: 'storepolicy', call: 'acquire(lock clash)', settings: { 'vmu.store.backend': 'memory', 'vmu.store.lock': true, 'vmu.store.lock.timeoutMs': 100, 'vmu.store.lock.retries': 3, 'vmu.store.lock.backoffMs': 50 },
     make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
     run: (s) => { s.acquire({ name: 'a', by: 'm1' }); return s.acquire({ name: 'a', by: 'm2' }) } },
+  { module: 'capacity', call: 'reserve(pool exhausted)', settings: { 'vmu.capacity.machineHoursPool': 10, 'vmu.capacity.overcommitRatio': 1 },
+    make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.reserve({ domain: 'd1', hours: 20 }) },
+  { module: 'hr', call: 'tenure(auto decision)', settings: { 'vmu.hr.humanDecisionRequired': true },
+    make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
+    run: (h) => h.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 5, auto: true }) },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -572,6 +632,7 @@ for (const [mod, m] of [...byModule].sort()) {
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'instruments.js': 'instruments', 'ip.js': 'ip',
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
+    'capacity.js': 'capacity', 'hr.js': 'hr',
   }
   const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))

@@ -286,6 +286,8 @@
     "vibe-math-vmu/kernel/funding.js",
     "vibe-math-vmu/kernel/compliance.js",
     "vibe-math-vmu/kernel/storepolicy.js",
+    "vibe-math-vmu/kernel/capacity.js",
+    "vibe-math-vmu/kernel/hr.js",
     "tests/vmu-library-remove.test.mjs",
     "tests/vmu-library-revisions.test.mjs",
     "tests/vmu-transaction.test.mjs",

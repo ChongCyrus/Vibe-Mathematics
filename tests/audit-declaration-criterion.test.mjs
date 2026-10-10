@@ -94,18 +94,103 @@ export function auditRegistryReconciliation({ sources, gateSources, registryMark
   return { violations, coverage }
 }
 
-/** Discover self-reported field names that ACTUALLY appear in the sources (the table is not the limit). */
+/**
+ * Discover self-reported field names MECHANICALLY, from the source STRUCTURE — task-201 (twelfth case):
+ * the previous version was a prefix whitelist, so a field matching no known prefix (e.g. `reallyRan`) was
+ * invisible to the very gate that introduced it. Two independent extractors are unioned:
+ *   (a) the legacy prefix shape (kept, so its 8 fields are never lost);
+ *   (b) top-level keys of every `return { … }` object literal whose value is a CLAIM-shaped literal
+ *       (a boolean, a number, or a `.length`) — a claim is exactly what a gate can verify.
+ */
 export const SELF_REPORT_SHAPE = /\b(usedBy[A-Za-z]*|verifiedBy[A-Za-z]*|scanned[A-Za-z]*|counted[A-Za-z]*|attested[A-Za-z]*|receipted[A-Za-z]*|reached[A-Za-z]*|runtimeWrites|lastRuntimeWrite)\b/g
+
+/** The declared table (must reconcile BOTH ways with the mechanical discovery). */
+export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
+  // the original prefix-shape fields (task-177/179) — their coverage must never be lost
+  'usedByProduction', 'verifiedBy', 'scanned', 'counted', 'countedContributors', 'countedInQuota',
+  'reached', 'runtimeWrites', 'lastRuntimeWrite',
+  // task-201: this gate's OWN new fields (it can see them now) and the fields it returns in `coverage`
+  'reallyRan', 'mentionedOnly', 'scannedByGate', 'scannedRows',
+  // fields the mechanical (claim-family) extraction discovered across the kernel — declared after review
+  'accounts', 'alreadyRecused', 'attested', 'collusionScan', 'extraWiredCount', 'ran', 'receipted',
+  'recorded', 'refused', 'reputationGrantsAuthority', 'reused', 'trustUsedForAuthority',
+  'unknownKindRefused', 'unknownVersionRefused', 'unverifiable', 'unverified', 'unwiredCount',
+  'usedBy', 'usedBytes', 'verified', 'wired', 'wiredCount',
+  // a fixture-only field name (it exists only inside this gate's own negative fixture, and is scanned here)
+  'surprisingScan',
+])
+
+/** Top-level keys of every `return { … }` object literal in one source. */
+export function extractReturnKeys(src) {
+  const keys = new Set()
+  const re = /return\s*\{/g
+  let m
+  while ((m = re.exec(String(src)))) {
+    let i = m.index + m[0].length, depth = 1, buf = ''
+    for (; i < src.length && depth > 0; i++) {
+      const ch = src[i]
+      if (ch === '{') depth++
+      else if (ch === '}') { depth--; if (depth === 0) break }
+      buf += ch
+    }
+    let d = 0, cur = ''
+    const parts = []
+    for (const ch of buf) {
+      if (ch === '{' || ch === '[' || ch === '(') d++
+      else if (ch === '}' || ch === ']' || ch === ')') d--
+      if (ch === ',' && d === 0) { parts.push(cur); cur = '' } else cur += ch
+    }
+    parts.push(cur)
+    for (const p of parts) {
+      const km = /^\s*(?:\.\.\.)?([A-Za-z_$][\w$]*)\s*:/.exec(p)
+      if (km) keys.add(km[1])
+    }
+  }
+  return [...keys].sort()
+}
+
+/** Claim-shaped keys: the returned value is a literal boolean/number/empty literal or a `.length`. */
+export function claimShapedKeys(src) {
+  const out = new Set()
+  for (const k of extractReturnKeys(src)) {
+    if (!SELF_REPORT_CLAIM_FAMILY.test(k)) continue     // a *self-report* claim, not every status key
+    const re = new RegExp('\\b' + k.replace(/\$/g, '\\$') + '\\s*:\\s*(?:true|false|-?\\d+(?:\\.\\d+)?|\\[\\]|\\{\\}|[A-Za-z_$][\\w$.]*\\.length\\b)')
+    if (re.test(String(src))) out.add(k)
+  }
+  return [...out].sort()
+}
+
+/**
+ * The CLAIM FAMILY (task-201): a field is a self-report when its NAME says something was counted,
+ * verified, scanned, reached, ran, mentioned, attested, recorded, wired or proven — regardless of the
+ * exact prefix. This is what generalises the old whitelist without flooding on ordinary status keys.
+ */
+export const SELF_REPORT_CLAIM_FAMILY = /(counted|counts|verified|verif|scanned|scan|usedby|used|reached|reach|ran|mentioned|attested|receipted|recorded|claimed|wired|proven|proved|checked|coverage)/i
+
+/** The union the audit actually uses. */
 export function discoverSelfReportedFields(sources) {
   const found = new Set()
-  for (const s of sources) for (const m of s.src.matchAll(SELF_REPORT_SHAPE)) found.add(m[1])
+  for (const s of sources) {
+    for (const m of String(s.src).matchAll(SELF_REPORT_SHAPE)) found.add(m[1])
+    for (const k of claimShapedKeys(s.src)) found.add(k)
+  }
   return [...found].sort()
 }
 
-/** RULE C: every DISCOVERED self-reported field must be scanned by some gate. */
-export function auditSelfReportedStatus({ sources, gateSources, declared = ['usedByProduction', 'verifiedBy', 'scanned'] }) {
-  const violations = []
+/** Reconcile the DECLARED table with the mechanical discovery (ghost AND blind spot are both red). */
+export function auditSelfReportTable({ sources, declared = DECLARED_SELF_REPORT_FIELDS }) {
   const discovered = discoverSelfReportedFields(sources)
+  const violations = []
+  for (const f of declared) if (!discovered.includes(f)) violations.push('declared self-report field "' + f + '" is not discovered anywhere (ghost entry)')
+  for (const f of discovered) if (!declared.includes(f)) violations.push('discovered self-report field "' + f + '" is MISSING from the declared table (blind spot)')
+  return { violations, discovered, declared: [...declared] }
+}
+
+/** RULE C: every DISCOVERED self-reported field must be scanned by some gate. */
+export function auditSelfReportedStatus({ sources, gateSources, declared = DECLARED_SELF_REPORT_FIELDS }) {
+  const violations = []
+  const table = auditSelfReportTable({ sources, declared })
+  const discovered = table.discovered
   const coverage = []
   for (const s of sources) {
     const fields = discovered.filter((f) => s.src.includes(f))
@@ -115,16 +200,19 @@ export function auditSelfReportedStatus({ sources, gateSources, declared = ['use
       coverage.push({ file: basename(s.file), field: f, scannedByGate: gate, declared: declared.includes(f) })
     }
   }
-  return { violations, coverage, discovered }
+  return { violations, coverage, discovered, tableViolations: table.violations }
 }
 
 // ── real inventory (paths matter: the kernel lives under the preset directory) ────────────────────────
 
 const scriptFiles = listFiles(SCRIPTS, (f) => f.endsWith('.mjs'))
-const gateFiles = listFiles(TESTS, (f) => f.endsWith('.mjs') && f !== 'audit-declaration-criterion.test.mjs').concat([join(TESTS, 'run-tests.mjs')]).filter((f) => existsSync(f))
+const SELF_FILE = join(TESTS, 'audit-declaration-criterion.test.mjs')
+// task-201: this gate scans ITSELF too — its own new self-report fields (`reallyRan`, `mentionedOnly`) are
+// claims like any other, and it asserts on them, so they are discovered AND scanned.
+const gateFiles = listFiles(TESTS, (f) => f.endsWith('.mjs')).concat([join(TESTS, 'run-tests.mjs')]).filter((f) => existsSync(f))
 const gateSources = gateFiles.map((f) => ({ file: f, src: readIf(f) }))
 const kernelFiles = listFiles(join(REPO, 'vibe-math-vmu', 'kernel'), (f) => f.endsWith('.js'))
-const sourceFiles = kernelFiles.concat(scriptFiles).map((f) => ({ file: f, src: readIf(f) }))
+const sourceFiles = kernelFiles.concat(scriptFiles).concat([SELF_FILE]).map((f) => ({ file: f, src: readIf(f) }))
 ok(kernelFiles.length > 0, 'the inventory really found kernel sources under vibe-math-vmu/kernel (non-vacuous scan)')
 ok(sourceFiles.length > 0 && sourceFiles.every((s) => s.src.length > 0), 'every scanned source was actually read (non-vacuous)')
 
@@ -167,11 +255,13 @@ const ruleB = auditRegistryReconciliation({ sources: sourceFiles, gateSources })
 const ruleC = auditSelfReportedStatus({ sources: sourceFiles, gateSources })
 console.log('  RULE B coverage: ' + JSON.stringify(ruleB.coverage))
 console.log('  RULE C discovered: ' + JSON.stringify(ruleC.discovered))
-console.log('  RULE C coverage: ' + JSON.stringify(ruleC.coverage))
 red(ruleB.violations, 'RULE B (registries are reconciled against fact)')
+// task-201: the declared self-report table is reconciled in BOTH directions (ghost / blind spot).
+red(ruleC.tableViolations, 'RULE C TABLE (declared self-report fields ↔ mechanical discovery)')
 red(ruleC.violations, 'RULE C (every discovered self-reported field is scanned by a gate)')
 ok(ruleB.coverage.some((c) => c.markers.includes('EXPECT') && c.reconciledBy), 'the EXPECT registry in the matrix generator is reconciled by a named gate')
 ok(ruleC.coverage.some((c) => ['usedByProduction', 'verifiedBy'].includes(c.field) && c.scannedByGate === true), 'the usedByProduction/verifiedBy surface is scanned by a gate')
+ok(ruleC.discovered.includes('runtimeWrites') || ruleC.discovered.includes('lastRuntimeWrite'), 'the mechanical discovery still sees the runtime-write surface')
 
 // ── 4) deliberate-breakage fixtures: the checker must be able to go red ──────────────────────────────
 
@@ -212,6 +302,21 @@ ok(ruleC.coverage.some((c) => ['usedByProduction', 'verifiedBy'].includes(c.fiel
     ok(dGhost.violations.some((v) => /ghost entry/.test(v)), 'fixture D: a declared-but-unimplemented flag (ghost) is flagged')
     const dMissing = auditFlagTables({ scriptSources: [{ file: 's.mjs', src: "if (process.argv.includes('--self-test')) {}\n" }], selfProof: ['--selftest'], diagnostic: [] })
     ok(dMissing.violations.some((v) => /--self-test is implemented but MISSING/.test(v)), 'fixture D: an undeclared self-proof spelling is flagged (blind spot)')
+
+    // fixture E: THE TWELFTH CASE — a field matching NO known prefix must still be discovered and flagged
+    const e = auditSelfReportedStatus({ sources: [{ file: 'fake-kernel.js', src: 'function status(){ return { reallyRan: true } }' }], gateSources: [{ file: 'gate', src: 'nothing here scans it' }] })
+    ok(e.discovered.includes('reallyRan'), 'fixture E (twelfth case): a prefix-less field (reallyRan) IS discovered mechanically')
+    ok(e.violations.length === 1 && /reallyRan/.test(e.violations[0]), 'fixture E: …and it goes RED when no gate scans it')
+    const eMentioned = auditSelfReportedStatus({ sources: [{ file: 'fake-kernel.js', src: 'function status(){ return { mentionedOnly: false } }' }], gateSources: [{ file: 'gate', src: 'no scan' }] })
+    ok(eMentioned.discovered.includes('mentionedOnly') && eMentioned.violations.length === 1, 'fixture E: mentionedOnly is discovered and flagged too (the gate can see its own new fields)')
+    const eScanned = auditSelfReportedStatus({ sources: [{ file: 'fake-kernel.js', src: 'function status(){ return { reallyRan: true } }' }], gateSources: [{ file: 'gate', src: 'assert(status().reallyRan === true)' }] })
+    ok(eScanned.violations.length === 0, 'fixture E (control): a scanning gate clears it')
+
+    // fixture F: the declared table must reconcile BOTH ways
+    const fGhost = auditSelfReportTable({ sources: [{ file: 'x.js', src: 'function status(){ return { dropped: 0 } }' }], declared: ['ghostField', 'dropped'] })
+    ok(fGhost.violations.some((v) => /ghostField.*ghost entry/.test(v)), 'fixture F: a declared-but-undiscovered field is flagged as a ghost')
+    const fBlind = auditSelfReportTable({ sources: [{ file: 'x.js', src: 'function status(){ return { surprisingScan: true } }' }], declared: [] })
+    ok(fBlind.violations.some((v) => /surprisingScan.*blind spot/.test(v)), 'fixture F: a discovered-but-undeclared field is flagged as a blind spot')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
