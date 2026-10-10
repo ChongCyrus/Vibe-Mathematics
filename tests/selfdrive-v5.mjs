@@ -3253,41 +3253,30 @@ const paperTex = existsSync(join(paperDir, 'paper.tex')) ? readFileSync(join(pap
 const paperMeta = existsSync(join(paperDir, 'paper.meta.json')) ? JSON.parse(readFileSync(join(paperDir, 'paper.meta.json'), 'utf8')) : null
 assert(/## 1\. /.test(paperMd) && /## 9\. /.test(paperMd), '★ the delivered paper carries the 9-section skeleton')
 assert(/\\documentclass/.test(paperTex) && /\\begin\{document\}/.test(paperTex), '★ the tex version is produced as well')
-// ★ A2 (task-232): the old assertion hard-coded "no LaTeX on this host" ⇒ it turned RED on a machine that HAS
-// an engine (compile.status 'failed' = engine found but the compile failed, e.g. missing packages/timeout —
-// a DIFFERENT thing from 'not-detected' = no engine found at all; see docs/final-paper.md "检测顺序" and
-// docs/AUDIT-CHECKLIST.md "引擎面：存在则真跑、缺席则响亮 SKIP（绝不静默通过、绝不让门禁在无引擎机器上变红）").
-// The assertion now branches on what THIS host really has; BOTH branches assert a real property (no silent skip).
+// ★ task-235 CONTRACT (docs/final-paper.md §8, three machine-distinguishable states):
+//   1) status:'not-detected'                        = no engine could be RESOLVED (attempts: [], triedPaths names the probes)
+//   2) status:'failed' + railRefused:true           = engine resolved but NO attempt ever STARTED (started:false, exitCode:null)
+//   3) status:'failed' + railRefused:false          = an engine really RAN and the compile failed (started:true, numeric exitCode)
+// The old assertion(s) read `status` alone, so states 2 and 3 were indistinguishable — that is exactly what task-232
+// flagged and task-235 fixed. `status` semantics are UNCHANGED (no renaming, per the ruling); `railRefused` is the
+// machine-readable discriminator, plus per-attempt `started`.
 const LATEX_ORDER = ['xelatex', 'latexmk', 'pdflatex', 'lualatex', 'tectonic']
 const latexOnPath = LATEX_ORDER.filter((bin) => (process.env.PATH || '').split(delimiter).filter(Boolean)
   .some((d) => existsSync(join(d, bin)) || existsSync(join(d, bin + '.exe'))))
 const compileMeta = (paperMeta && paperMeta.compile) || {}
-if (latexOnPath.length === 0) {
-  // LOUD, REASONED branch (never a silent skip — AUDIT-CHECKLIST "引擎面：存在则真跑、缺席则响亮 SKIP，
-  // 绝不让门禁在无引擎机器上变红"). BOTH outcomes below assert a real property.
-  console.log('  HOST-BRANCH(LaTeX): none of [' + LATEX_ORDER.join(', ') + '] is on PATH ⇒ asserting the no-engine property')
-  assert(!!paperMeta && typeof compileMeta.status === 'string' && compileMeta.status.length > 0,
-    '★ no LaTeX on this host: the meta still records a compile status (' + JSON.stringify(compileMeta) + ')')
-  if (compileMeta.status === 'not-detected') {
-    console.log('  HOST-BRANCH(LaTeX): meta.status = not-detected ✓ (the documented no-engine outcome)')
-    assert(compileMeta.status === 'not-detected' && existsSync(join(paperDir, 'paper.tex')) && existsSync(join(paperDir, 'paper.md')),
-      '★ no LaTeX on this host: the meta records compile=not-detected and the md+tex are still delivered (' + JSON.stringify(compileMeta) + ')')
-  } else {
-    // MEASURED (task-232, PATH-stripped run): this plugin reports 'failed' with attempts[].exitCode === null —
-    // i.e. a LAUNCH failure is labelled 'failed', not 'not-detected'. That is an implementation/contract
-    // question (RELEASE-NOTES-2.8.0: 'not-detected' is reached when an explicit paperLatexCommand cannot be
-    // resolved), so this branch states the honest property instead of inventing a status for the host.
-    console.log('  HOST-BRANCH(LaTeX) LOUD FINDING: no engine on PATH, yet meta.status = "' + compileMeta.status + '" (attempts) — the rail refused to run, but it does NOT report not-detected')
-    assert(Array.isArray(compileMeta.attempts) && compileMeta.attempts.length > 0,
-      '★ no LaTeX on this host: the compile rail is still exercised and recorded (' + JSON.stringify(compileMeta.attempts) + ')')
-  }
-} else {
-  console.log('  HOST-BRANCH(LaTeX): on PATH = [' + latexOnPath.join(', ') + '] ⇒ the meta must record the REAL compile outcome (never not-detected)')
-  assert(!!paperMeta && compileMeta.status !== 'not-detected',
-    '★ LaTeX IS on this host: the meta records the real compile outcome (never not-detected) (' + JSON.stringify(compileMeta) + ')')
-  assert(Array.isArray(compileMeta.attempts) && compileMeta.attempts.length > 0 && compileMeta.attempts.every((a) => a && typeof a.engine === 'string'),
-    '★ and the real compile attempt is recorded (engine + attempts), so the compile rail really ran (' + JSON.stringify(compileMeta.attempts) + ')')
-}
+// Visible host note (NOT a divergent assertion): this suite's host stub exposes only `subprocess.spawn` and has no
+// `subprocess.run`, so `runPaperProcess` can never launch a compiler here — the harness can only exercise state 2,
+// on ANY host. State 3 needs a host whose subprocess.run really returns an exit code (named in the task report).
+console.log('  HOST-BRANCH(LaTeX): engines on PATH = [' + (latexOnPath.join(', ') || 'none') + '] ; this harness stub has no subprocess.run ⇒ state 2 (railRefused) is expected')
+assert(!!paperMeta && compileMeta.status === 'failed',
+  '★ the compile rail degrades to status=failed and still delivers md+tex (' + JSON.stringify(compileMeta) + ')')
+assert(compileMeta.railRefused === true,
+  '★ railRefused=true: the engine is resolved but NO attempt could START (started:false, exitCode:null) — machine-distinguishable from a real compile failure (' + JSON.stringify({ railRefused: compileMeta.railRefused, attempts: compileMeta.attempts }) + ')')
+assert(Array.isArray(compileMeta.attempts) && compileMeta.attempts.length > 0 &&
+  compileMeta.attempts.every((a) => a && typeof a.engine === 'string' && a.started === false && a.exitCode === null),
+  '★ every attempt records the cannot-start shape (engine named, started=false, exitCode=null), so railRefused is not a guess (' + JSON.stringify(compileMeta.attempts) + ')')
+assert(existsSync(join(paperDir, 'paper.tex')) && existsSync(join(paperDir, 'paper.md')),
+  '★ and the md+tex are still delivered despite the refused compile rail')
 assert(existsSync(join(paperDir, 'paper.log.md')), 'the paper log records who wrote and reviewed what')
 const concl = existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Problems', 'conclusion.md'))
 assert(concl, 'a conclusion record was written on completion')

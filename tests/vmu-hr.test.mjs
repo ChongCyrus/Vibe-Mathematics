@@ -105,6 +105,39 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   refuses(() => mk({ 'vmu.hr.appealWindowDays': 1 }).appeal({ who: 'r-1', openedAt: 0, at: day }), CODES.APPEAL_OPEN, null, 'an epoch-0 appeal really ages: past the window it is refused (0 is not ignored)')
 }
 
+// task-234: the instant→ms rule is now the SHARED kernel/timevalue.js one (the local `num()` copy is gone).
+// Each changed site must treat a NUMBER as epoch-ms and an ISO string as the SAME instant — and a numeric
+// 1000 must never be re-read as the year 1000.
+{
+  const { ms } = await import('../vibe-math-vmu/kernel/timevalue.js')
+  const ISO = '1970-01-01T00:00:00.000Z'
+  ok(ms(0) === 0 && ms(1000) === 1000, 'shared ms(): a finite NUMBER is epoch-ms (0 included)')
+  ok(ms(ISO) === 0 && ms(0) === ms(ISO), 'shared ms(): an ISO string and the matching number are the SAME instant')
+  ok(!Number.isNaN(ms('1000')) && ms('1000') !== 1000, 'the bare-year trap stays explicit: ms("1000") is the year 1000, not 1000 and not NaN')
+  // recruit: numeric vs ISO, and the numeric 1000 must not become the year 1000
+  const r0 = mk().recruit({ by: 'u', openedAt: 0, at: 0 })
+  const rIso = mk().recruit({ by: 'u', openedAt: ISO, at: ISO })
+  ok(r0.openedAt === 0 && rIso.openedAt === 0 && r0.closesAt === rIso.closesAt, 'recruit: openedAt 0 and openedAt <ISO epoch> give the SAME receipt (number = epoch-ms)')
+  const r1k = mk().recruit({ by: 'u', openedAt: 1000, at: 1000 })
+  ok(r1k.openedAt === 1000 && r1k.closesAt === new Date(1000 + mk().status().policy.recruitWindowOpenMs).toISOString(), 'recruit: openedAt 1000 is 1000 ms after the epoch (NOT the year 1000)')
+  ok(r1k.closesAt !== new Date(-30610224000000 + mk().status().policy.recruitWindowOpenMs).toISOString(), 'recruit: the year-1000 reading is NOT what the module computes (the trap is closed)')
+  // performance
+  const p0 = mk().performance({ who: 'r-1', lastAt: 0, evidence: ['ev'], at: 0 })
+  const pIso = mk().performance({ who: 'r-1', lastAt: ISO, evidence: ['ev'], at: ISO })
+  ok(p0.ok === true && pIso.ok === true && p0.cadenceDays === pIso.cadenceDays, 'performance: lastAt 0 / at 0 and their ISO equivalents are judged identically')
+  ok(p0.at === '0' && pIso.at === ISO, 'performance: the receipt echoes each caller value verbatim (the ONLY difference is the display form)')
+  // tenure (quorum satisfied so the track dates are what gets exercised)
+  const t0 = mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 0, votes: 0, decisionAt: 0, at: 0 })
+  const tIso = mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: ISO, votes: 0, decisionAt: ISO, at: ISO })
+  ok(t0.ok === true && tIso.ok === true && t0.trackMonths === tIso.trackMonths && t0.quorum === tIso.quorum, 'tenure: trackStart/decisionAt 0 and their ISO equivalents are judged identically')
+  ok(t0.at === '0' && tIso.at === ISO, 'tenure: the receipt echoes each caller value verbatim (the ONLY difference is the display form)')
+  // appeal: an epoch-0 appeal is SEEN (both spellings refuse with the same code)
+  const a0 = (() => { try { mk().appeal({ who: 'r-1', openedAt: 0, at: 0 }); return null } catch (e) { return e } })()
+  const aIso = (() => { try { mk().appeal({ who: 'r-1', openedAt: ISO, at: ISO }); return null } catch (e) { return e } })()
+  ok(a0 && aIso && a0.code === CODES.APPEAL_OPEN && aIso.code === CODES.APPEAL_OPEN, 'appeal: openedAt 0 and the ISO epoch are both read as "an appeal is open"')
+  ok(a0.openedAt === '0' && aIso.openedAt === ISO, 'appeal: each receipt echoes the caller value verbatim (0 stays "0", the ISO stays ISO)')
+}
+
 console.log('')
 console.log('=== VMU HR: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

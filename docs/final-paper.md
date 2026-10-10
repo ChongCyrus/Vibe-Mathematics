@@ -152,6 +152,16 @@
   （`ctexart` / `article`）再试一次；到达上限就**保留 tex+md**，`paper.meta.json` 记
   `compile: 'failed'`（或未检测到时的 `'not-detected'`），**警告 + 上报**，但**不阻塞定稿**、
   **不抛错**、**不覆盖已有 pdf**，也绝不改写论文内容。
+- **`compile.status` 的三种可区分形态**（**task-235 契约**；`paper.meta.json` 里**机器可读** ✓）：
+  1. `status: 'not-detected'` —— **解析不到引擎**（`paperLatexCommand` 非空但解析不到，或按语言探测的候选**全都不存在**）：
+     此时 `attempts: []`，`triedPaths` 列出**探测过**的名字 ✓。
+  2. `status: 'failed'` **＋ `railRefused: true`** —— 引擎**解析到了但一次都没能启动**：`attempts[].started === false`
+     且 `attempts[].exitCode === null`（`subprocess.run` 不可用、拉起即失败、或 tex 写入即失败）✓。
+  3. `status: 'failed'` **＋ `railRefused: false`** —— 引擎**真的跑起来了但编译失败**：`attempts[].started === true`，
+     `exitCode` 为**非空数字** ✓。
+  ⇒ **`status` 的两态语义不变**（**不得**把"起不来"改叫 `'not-detected'` ✗）；**要区分"起不来"与"编译失败"必须读
+  `railRefused`**（及逐次尝试的 `started`）✓✓ —— 只看 `status` 无法区分第 2、3 态 ✗。`status: 'compiled'` 时报
+  `railRefused: false` ✓。
 - `paperFormat=md` 时根本不产出 tex，编译直接 `skipped`，不得产生"缺 tex 无法编译"的警告。
 - tex 模板：中文 `ctexart`（xelatex），英文 `article`；只用常见宏包（`amsmath`、`amssymb`、`amsthm`、
   `geometry`、`hyperref`、`longtable`、`booktabs`）；转义所有 `_ % & # $ { } ~ ^ \`。
