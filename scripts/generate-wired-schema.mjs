@@ -162,7 +162,7 @@ export function render(defs) {
     const doc = d.literal === null
       ? '已接线（' + d.module + ' 读取）；默认值未从源码取回 ⇒ 未定，见该模块'
       : '已接线（' + d.module + ' 读取）；默认值取自模块源码'
-    lines.push("  { key: " + JSON.stringify(d.key) + ", type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(doc) + ' },')
+    lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(doc) + ' },')
   }
   lines.push(END)
   return lines.join('\n')

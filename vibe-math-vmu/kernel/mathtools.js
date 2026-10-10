@@ -587,8 +587,14 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (!existsSync(p)) return { keys: [], source: 'unavailable', declaredMathKeys: WIRED_KEYS.length }
       const text = readFileSync(p, 'utf8')
       const all = [...new Set([...text.matchAll(/key: "(vmu\.math\.[^"]+)"/g)].map((m) => m[1]))].sort()
+      // ROUND 76: the declared universe INCLUDES this module's own WIRED_KEYS. A wired key is CORE
+      // (settings/schema.js); counting only planned.js made this number silently become zero the moment the
+      // wired keys were migrated into the schema. `keys` below stays filtered to the STILL-PLANNED ones, so the
+      // wired/planned partition the suite asserts (45 + 126 = 171) is exactly what this returns.
+      for (const k of WIRED_KEYS) if (!all.includes(k)) all.push(k)
+      all.sort()
       const keys = all.filter((k) => !WIRED_KEYS.includes(k))
-      return { keys, source: 'settings/planned.js', declaredMathKeys: all.length }
+      return { keys, source: 'settings/planned.js + settings/schema.js (own WIRED_KEYS merged)', declaredMathKeys: all.length }
     } catch (e) {
       return { keys: [], source: 'error:' + String((e && e.message) || e), declaredMathKeys: WIRED_KEYS.length }
     }

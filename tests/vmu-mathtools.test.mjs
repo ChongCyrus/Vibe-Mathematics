@@ -328,8 +328,12 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   ok(zero.plan({ op: 'stats/mean' }).ok === true, 'zero mechanism[+]: plan() answers with the documented defaults')
   ok(codeOf(() => zero.run({ op: 'stats/mean' })) === 'VMU_ENGINE_UNAVAILABLE', 'zero mechanism[-]: run() without a seam refuses by name')
   ok(codeOf(() => zero.plan({})) === 'VMU_MATH_INVALID_INPUT', 'an op-less request is a named refusal')
-  ok(zero.status().plannedKeys.length > 100 && zero.status().plannedSource === 'settings/planned.js',
-    'the planned list is read from the generated registry', zero.status().plannedSource)
+  // ROUND 76: the source is now BOTH registries. A wired key is CORE (settings/schema.js) and this face's
+  // forty-five wired keys moved there, so the still-planned list is read from planned.js while the declared
+  // universe includes the schema. Asserting the old single-file label would have made the count right and the
+  // test wrong - which is exactly what happened before this line was corrected.
+  ok(zero.status().plannedKeys.length > 100 && /settings\/planned\.js/.test(String(zero.status().plannedSource)) && /schema\.js/.test(String(zero.status().plannedSource)),
+    'the planned list is read from the generated registries (planned.js for what is still planned, schema.js for what is wired)', zero.status().plannedSource)
   // refusal counters by code
   const counted = mk({ settings: { 'vmu.math.sandbox.network': 'deny' } })
   codeOf(() => counted.t.plan({ op: 'x', needsNetwork: true })); codeOf(() => counted.t.plan({ op: 'x', needsNetwork: true }))
