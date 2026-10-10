@@ -243,6 +243,35 @@ if (SELF_PROBE) {
     'and a pause freezes speech in an already-running round')
 }
 
+// ---- ROUND 88 (R10-2a): the EXPLICIT end of debate gates aggregation, and the gate is proven reachable ----
+{
+  const dm = m.createMeeting({ id: 'mt-debate', roster, deliver: async () => {}, clock: () => 0 })
+  // Non-vacuous from the first line: before anything happens the answer must be NO **with a reason**, so a
+  // gate that always said yes would fail here rather than pass quietly.
+  const before = dm.aggregationAllowed()
+  ok(before.allowed === false && /no explicit end/.test(String(before.reason)),
+    'before any round, aggregation is NOT allowed and the answer says why (never a silent yes)', JSON.stringify(before))
+  await dm.convene('a debate')
+  await dm.openRound({ members: roster })
+  const open = dm.aggregationAllowed()
+  ok(open.allowed === false && /round is open/.test(String(open.reason)),
+    'with a round open and no explicit end, aggregation is NOT allowed', JSON.stringify(open))
+  await expectThrow(() => dm.endDebate({ by: roster[0] }), 'VMU_INVALID_ARGUMENT',
+    'endDebate without a reason is refused by name (an unexplained end is the silent-stop failure mode)')
+  const ended = dm.endDebate({ by: roster[0], reason: 'evidence is in', target: 'p-x' })
+  ok(ended.ok === true && ended.by === roster[0] && ended.reason === 'evidence is in' && ended.target === 'p-x',
+    'endDebate records WHO ended it, WHY and about WHAT', JSON.stringify(ended))
+  const after = dm.aggregationAllowed()
+  ok(after.allowed === true && /ended explicitly by/.test(String(after.reason)),
+    'AFTER the explicit end, aggregation IS allowed and names who ended it', JSON.stringify(after))
+  await expectThrow(() => dm.endDebate({ by: roster[1], reason: 'again' }), 'VMU_STATE',
+    'a SECOND end is refused (an explicit end is a fact, not a repeatable action)')
+  await dm.openRound({ members: roster })
+  const newRound = dm.aggregationAllowed()
+  ok(newRound.allowed === false,
+    'opening a NEW round clears the previous end (a new debate must be ended on its own)', JSON.stringify(newRound))
+}
+
 console.log('=== VMU MEETING: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
