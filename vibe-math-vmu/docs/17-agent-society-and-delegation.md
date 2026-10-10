@@ -423,7 +423,7 @@
 
 > **跨卷不重复定义** ✗：**资源公平策略的定义在 08**（`vmu.budget.fairnessPolicy` ✓，08-§19.6）；本卷**不另设**"公平策略"键 ✓（v0.1 曾重复登记同一旋钮，已删；本卷只保留 `vmu.fairness.*` 里**08 没有的**那些：`minShares`／`newcomerQuota`／`maxSlotsPerInstance`／`criticalSlots`／`rebalanceEveryMs` ✓）。逐条对照见 **§27 交界表** ✓。
 
-**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.auction` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
+**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓；**v0.3 增 §28/§29 两族 ✓**）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**，**另加 §28 教学族 `vmu.course.*` 24 个 ＋ §29 通知族 `vmu.notify.*` 19 个**（两族的同格式表在各自节内 ✓）⇒ **本卷合计 183 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.auction` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
 
 ---
 
@@ -520,7 +520,7 @@
 | `VMU_HUMAN_TIMEOUT` | 人类审批超时 | 等待 | 超时行为（hold/deny/allow） |
 | `VMU_SOCIETY_DISABLED` | 社会机制未声明 | 任何社会动作 | 如何声明（`vmu.*` 开关；零机制 ✓） |
 
-**计数**：§21.1 **24** ＋ §21.2 **28** ＋ §21.3 **20** ＝ **72 个拟增错误码**（另有**复用** √：`VMU_NOT_PERMITTED／VMU_NOT_MEMBER／VMU_NO_SUCH_OBJECT／VMU_INVALID_ARGUMENT／VMU_STATE／VMU_RESOURCE_BUDGET／VMU_MIDDLEWARE_REJECTED／VMU_MIDDLEWARE_FAILED／VMU_IO_FAILED／VMU_STORE_FAILED／VMU_ENGINE_UNAVAILABLE／VMU_PACK_CONFLICT／VMU_IDEMPOTENCY_KEY_REUSED`（08）／`VMU_REOPEN_*`（08）／`VMU_MEETING_*`（08）／`VMU_MINUTES_*`（08）／`VMU_TASK_*`（08）／`VMU_CONFLICT_*`（本卷）——**共享码的定义一律在 08，逐条见 §27 交界表** ✓）。
+**计数**：§21.1 **24** ＋ §21.2 **28** ＋ §21.3 **20** ＝ **72 个拟增错误码**，**另加 §28.5 教学面 19 个 ＋ §29.4 通知面 15 个** ⇒ **本卷合计 106 个拟增错误码**（另有**复用** √：`VMU_NOT_PERMITTED／VMU_NOT_MEMBER／VMU_NO_SUCH_OBJECT／VMU_INVALID_ARGUMENT／VMU_STATE／VMU_RESOURCE_BUDGET／VMU_MIDDLEWARE_REJECTED／VMU_MIDDLEWARE_FAILED／VMU_IO_FAILED／VMU_STORE_FAILED／VMU_ENGINE_UNAVAILABLE／VMU_PACK_CONFLICT／VMU_IDEMPOTENCY_KEY_REUSED`（08）／`VMU_REOPEN_*`（08）／`VMU_MEETING_*`（08）／`VMU_MINUTES_*`（08）／`VMU_TASK_*`（08）／`VMU_CONFLICT_*`（本卷）——**共享码的定义一律在 08，逐条见 §27 交界表** ✓）。
 
 ---
 
@@ -551,6 +551,10 @@
 | `vibe_vmu_identity` | **未实现 ⛔（规划）** | 主体绑定/归属/化名 |
 | `vibe_vmu_explain` | **未实现 ⛔（规划）** | 可解释报告/导出 |
 | `vibe_vmu_memory` | **未实现 ⛔（规划）** | 经验卡/技能库/压缩 |
+| `vibe_vmu_course` | **未实现 ⛔（规划）** | 课程/单元/作业/提交（§28） |
+| `vibe_vmu_grade` | **未实现 ⛔（规划）** | 评审/发布/追加改分（§28） |
+| `vibe_vmu_notify` | **未实现 ⛔（规划）** | 投递/摘要/信噪比查询（§29） |
+| `vibe_vmu_watch` | **未实现 ⛔（规划）** | 订阅/退订/列举（§29） |
 
 ### 22.3 钩子
 
@@ -561,6 +565,8 @@
 | `settle/before`／`settle/after`（结算） | **已注册 ✓** | `before` 可拒 ✓ |
 | `meeting/round-start`／`meeting/round-end`／`ballot/cast`／`ballot/tally` | **已注册 ✓**（08 治理面） | 见 08 ✓ |
 | `member/hired`／`member/ended`／`role/assigned`／`role/recalled`／`delegation/granted`／`delegation/revoked`／`trust/scored`／`trust/appealed`／`conflict/opened`／`conflict/resolved`／`consensus/reached`／`memory/consolidated`／`skill/declared`／`auction/opened`／`auction/closed`／`handover/opened`／`handover/accepted`／`mentor/paired`／`mentor/graduated`／`discipline/circuit-open`／`discipline/restored`／`topology/changed`／`charter/amended`／`identity/bound`／`fairness/rebalanced`／`collusion/suspected`／`human/approved`／`human/vetoed` | **未注册 ✗（规划，roadmap 见 §25）** | 视点而定（`*/opened|granted|scored` 可拒；`*/closed|resolved|consolidated` 观测型） |
+| **§28 教学面（未注册 ✗，规划）**：`course/opened`／`cohort/formed`／`assignment/published`／`assignment/submitted`／`review/submitted`／`feedback/published`／`grade/amended` | **未注册 ✗（规划）** | `*/published`／`*/submitted` 可拒；`*/amended` 观测型 |
+| **§29 通知面（未注册 ✗，规划）**：`notify/queued`／`notify/merged`／`notify/suppressed`／`notify/sent`／`notify/failed`／`notify/digest-ready`／`watch/subscribed`／`watch/unsubscribed` | **未注册 ✗（规划）** | `watch/subscribed` 与 `notify/queued` 可拒（拦下＝不投递 ✓）；其余观测型 |
 
 ### 22.4 协议/接缝（不是新工具）
 
@@ -616,6 +622,11 @@
 - **竞标与 08 预算的复式记账未定**：子预算扣减点（委托时/用时时）未核 ⇒ 见 `14-§2`。
 - **仲裁的"绑定力"与 08 决议的关系未定**：仲裁裁决是否等同决议（进纪要即生效 ✓）还是需要再表决 ⇒ 见 `14-§1`（O 系列）。
 - **委员会实体与 08 §15 的类型目录重叠**：本卷的"委员会拓扑"与 08 的"委员会会议类型"可能是同一件事的两种视角 ⇒ 待并 ⇒ 见 `14-§1`。
+- **成绩与机构考核的关系未定**（§28）：课程成绩是否进入 §5 的**声誉**（本卷默认**不进**：成绩≠声誉 ✓）⇒ 需裁 ⇒ 见 `14-§1`。
+- **盲评映射的保留与解绑权未定**（§28）：`blindMappingRetentionMs` 到期后能否被人类强制解绑（现为**须留痕且需权限** ✓）⇒ 见 `14-§2`。
+- **通知信噪比阈值未实证**（§29）：`vmu.notify.snrFloor` 的合理下限没有真实数据校准 ⇒ 见 `14-§2`。
+- **跨机构订阅的合规边界未定**（§29）：默认禁止 ✓，但"同一人类主体的两个机构"是否例外 ⇒ 与 20 卷（隐私合规）联裁 ⇒ 见 `14-§1`。
+- **订阅关系的可见性未定**（§29）：默认**不公开** ✓；是否应公开以避免"暗中监视"（与 §17 反垄断相关）⇒ 见 `14-§1`。
 - **化名与审计的张力**：匿名要求与"可解释/可复算"冲突时谁优先 ⇒ 见 `14-§1`。
 - **人类总览的字段集**：`vibe_vmu_society`（规划 ⛔）应暴露哪些字段（对齐 03 的观测纪律）⇒ 见 `14-§2`。
 
@@ -718,4 +729,183 @@
 
 - **17**：删**"公平策略"键**（→ 引 08 `vmu.budget.fairnessPolicy`）✓；删**"共识分类"键**（→ 用本卷 `vmu.conflict.classes`）✓；删 §21.2 的 `VMU_IDEMPOTENCY_KEY_REUSED` 行（→ 引 08）✓；键计数 **142 → 140**、码计数 **73 → 72** ✓；新增本节 §27 ✓；§0.1 增"设计目标 vs 实现保证"纪律 ✓；四处 `S-x 机器强制` 改为"设计目标（当前未实现 ✗）" ✓（两处被删键的说明也**不再写具体键名** ✗，避免被生成管线重新声明 ✓）。
 - **08**：新增 **§24 交界表**（镜像本节 ✓）；§19 表头增"**全部为 `planned`（未接线）**" ✓；§6.2 增"本节 8 条**均已实现** ✓" ✓；`vmu.budget.*` 一行的"机器强制"改为"设计原则（当前仅 `vmu.limits.*` 已实现 ✓）" ✓；§0.2 增"设计目标 vs 实现保证"第 ④ 条纪律 ✓。
+
+---
+
+## 28. G11 · 教学/研讨班与课程面（Course & Cohort；**默认不启用＝零机制** ✗✓）
+
+> **定位**：§12 的"监护与带教"只覆盖**一对一**（mentor/mentee）✗；本节补**一对多／多对多**的教学语义（课程、同期组、作业、互评、盲评、反馈发布）✓。
+> **零机制**：`vmu.course.enabled=false`（默认 ✓）⇒ 不声明就**不存在课程对象、不存在教学角色、不存在作业** ✓（与 §0.2 的 S-1 同族：内核只给 role **slot**，教学是**机构语义** ✓）。
+> **成熟度**：本节**全部为规划 ✗**（当前没有任何课程/作业/评分代码 ✅）；与教学相关的**已实现底座**只有 `vmu.members`（席位/容量）＋`vmu.library`（材料归档）＋08 的会议（研讨班＝一场会 ✓ 08-§2/§15）。
+
+### 28.1 本体（对象与字段；✗ 规划）
+
+| 对象 | 字段 | 说明 |
+|---|---|---|
+| `Course` | `id`／`title`／`syllabus[]`／`unitIds[]`／`readings[]`／`assignmentIds[]`／`rubricRef`／`instructorIds[]`／`cohortIds[]`／`state(draft｜open｜running｜closed｜archived)`／`visibility(private｜institution｜public)` | 课程是**机构语义**，不是内核对象 ✓ |
+| `Unit` | `id`／`courseId`／`order`／`objectives[]`／`materialRefs[]`／`dueAt?` | 单元＝有目标与材料的阶段 |
+| `Assignment` | `id`／`courseId`／`unitId?`／`kind(problem-set｜proof｜essay｜review｜presentation)`／`prompt`／`rubricRef`／`dueAt`／`submitMode(artifact｜inline｜both)`／`allowLate`／`maxAttempts` | **rubric 必须事先固定** ✓ |
+| `Submission` | `id`／`assignmentId`／`by`／`at`／`artifactRefs[]`／`state(submitted｜late｜withdrawn｜graded)`／`blinded` | 提交＝**只增**（撤回＝状态变更＋留痕 ✓） |
+| `Review` | `id`／`submissionId`／`reviewer?`（盲评时**不写**）／`verdict`／`score?`／`comments[]`／`evidenceRefs[]`／`rubricAnchors[]`／`at`／`published` | 评语带**证据**与**rubric 锚点**才可发布 ✓ |
+| `Cohort` | `id`／`courseId`／`memberIds[]`／`term`／`capacity` | 同期学员组（同类一起学） |
+| `Enrollment` | `{memberId,courseId,role(instructor｜ta｜student｜auditor),since,state}` | 选课＝**归属**；权限仍来自席位 ✓ |
+
+### 28.2 条目（11 字段）
+
+- **课程与单元（course/unit）** ｜ 目的：把"教什么、按什么顺序、用什么材料"变成可引用对象 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.create/addUnit/publish`（⛔ 未实现）；工具面规划 `vibe_vmu_course`（⛔ 未实现） ｜ 可调控：`vmu.course.*` ｜ 错误码：`VMU_COURSE_DISABLED`（拟增）／`VMU_COURSE_CLOSED`（拟增）／`VMU_COURSE_UNIT_UNKNOWN`（拟增）／`VMU_INVALID_ARGUMENT`（✓） ｜ 哲学：F✓（默认关）T✓D✓X✓ ｜ 实现要点：课程**不改变权限**（S-2/S-3 同族 ✓）；材料只**引用**库 id（不搬正文 ✓ 07 纪律） ｜ 依赖：席位 ✓＋库 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **同期组与选课（cohort/enrollment）** ｜ 目的：谁和谁同期、以什么身份参加 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.enroll/roster`（⛔ 未实现） ｜ 可调控：`vmu.course.cohortMax`／`enrollmentNeedsApproval`／`allowAuditors` ｜ 错误码：`VMU_COURSE_ENROLL_DENIED`（拟增）／`VMU_COURSE_COHORT_FULL`（拟增）／`VMU_SLOT_FULL`（拟增，若绑定席位容量） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**旁听＝只读**（不提交、不评分 ✓）；容量与席位容量**双重检查** ✓ ｜ 依赖：§2 席位 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **教学角色（instructor / TA / student / auditor）** ｜ 目的：把教学身份落到既有 role slot 上 ｜ 面向谁：机构 ｜ 接口形状：**pack 声明 slot** ✓（`kernel.members.roles()` ✓）＋**选课记录**（Enrollment ✗） ｜ 可调控：pack 的 `slots[]` ✓／`vmu.roles.*`（§20.1 ✓） ｜ 错误码：`VMU_SLOT_UNKNOWN`（拟增）／`VMU_NOT_PERMITTED`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**席位给权限、选课给归属** ✓（两层，不得混 ✗）；内核**不出现**"讲师"这种字面角色名（S-1 ✓） ｜ 依赖：§2／§3 ｜ 成熟度：**部分 ✓**（席位）／教学语义 ✗ ｜ 优先级：P1
+- **作业与提交（assignment/submission）** ｜ 目的：有截止、有次数、有产出的学习任务 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.submit/withdraw`（⛔ 未实现） ｜ 可调控：`vmu.course.submitMode`／`allowLate`／`latePenaltyRatio`／`maxAttempts` ｜ 错误码：`VMU_ASSIGNMENT_DUE_PASSED`（拟增）／`VMU_ASSIGNMENT_ATTEMPTS_EXHAUSTED`（拟增）／`VMU_SUBMISSION_DUPLICATE`（拟增）／`VMU_SUBMISSION_WITHDRAWN`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**先固定 rubric 再收作业** ✓；迟交按参数扣分（**默认不允许迟交、也不扣分** ✓ 最保守） ｜ 依赖：库 ✓／07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **互评与盲评（peer review / blind review）** ｜ 目的：多视角反馈＋公平 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.review`（⛔ 未实现）＋盲评映射（审计侧可解绑 ✓） ｜ 可调控：`vmu.course.reviewRounds`／`reviewersPerSubmission`／**`blindReview`（默认 true ✓）**／`selfReviewAllowed`（默认 false ✓）／`peerWeight` ｜ 错误码：`VMU_REVIEW_NOT_ELIGIBLE`（拟增）／`VMU_REVIEW_SELF_DENIED`（拟增）／`VMU_REVIEW_ROUNDS_EXHAUSTED`（拟增）／`VMU_BLIND_MAPPING_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**盲评＝评阅时不写 `reviewer`**，映射只留审计侧（与 §16 化名机制同源 ✓）；不得自评；互评**不得**成为唯一成绩来源（§12 带教复核的独立性 ✓） ｜ 依赖：§17 公平＋§5 防串谋 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **反馈发布与评分公正（feedback / fairness）** ｜ 目的：评语**有据**、成绩**可复核** ｜ 面向谁：讲师／学员／审计者 ｜ 接口形状：规划 `kernel.course.publishGrade/amend`（⛔ 未实现）；工具面规划 `vibe_vmu_grade`（⛔ 未实现） ｜ 可调控：`vmu.course.rubricRequired`（默认 true ✓）／`requireEvidence`（默认 true ✓）／`requireRubricRef`（默认 true ✓）／`gradeChangeAdditive`（默认 true ✓）／`peerWeight` ｜ 错误码：`VMU_COURSE_RUBRIC_REQUIRED`（拟增）／`VMU_REVIEW_EVIDENCE_REQUIRED`（拟增）／`VMU_REVIEW_RUBRIC_REQUIRED`（拟增）／`VMU_GRADE_IMMUTABLE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**无证据/无 rubric 锚点 ⇒ 不得发布**（不是警告 ✓）；改分＝**追加记录**（不覆盖 ✓，与 07 只增纪律一致）；同侪评分离群时**只提示复核**，不自动剔除 ✗（与 §17 "只报告不惩罚"同族 ✓） ｜ 依赖：§17／§18／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **评语与证据留痕（auditability）** ｜ 目的：成绩与评语可解释、可复算 ｜ 面向谁：审计者／人类 ｜ 接口形状：**复用 §18** 的理由字段与解释报告（`vmu.explain.*` ✗）＋07 归档 ✓ ｜ 可调控：`vmu.explain.reasonRequired` ✓（§20.6）／`vmu.course.requireEvidence`／`vmu.course.retentionMs` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增）／`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：每份评语必带 `evidenceRefs`＋`rubricAnchors`；**盲评解绑也要留痕** ✓ ｜ 依赖：§18＋07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **隐私与可见性（privacy）** ｜ 目的：作业/评语不得默认公开 ｜ 面向谁：机构／学员 ｜ 接口形状：规划 `society.courseVisibility` 判定点（⛔ 未实现） ｜ 可调控：`vmu.course.publishToLibrary`（默认 false ✓）／`vmu.course.visibility`／`blindMappingRetentionMs` ｜ 错误码：`VMU_COURSE_PRIVACY_DENIED`（拟增）／`VMU_MEMORY_VISIBILITY_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：默认**不进机构库**；跨机构默认**不可见**（与 §16/§17 的可见性纪律一致 ✓）；与 20 卷（隐私合规）的执行面衔接 ✓ ｜ 依赖：§16／§17／20 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **课程归档与结束（archive）** ｜ 目的：课程结束不等于记忆消失 ｜ 面向谁：机构 ｜ 接口形状：**复用 07**（`vmu.store`／`vmu.library` ✓）＋规划 `kernel.course.archive`（⛔ 未实现） ｜ 可调控：`vmu.course.retentionMs`／`state=archived` ｜ 错误码：`VMU_IO_FAILED`（✓）／`VMU_STORE_FAILED`（✓）／`VMU_COURSE_CLOSED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：归档保存**大纲-单元-作业-rubric-评语链**（可复算成绩 ✓）；归档后不得再提交（`VMU_COURSE_CLOSED` ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**部分 ✓**（底座）／课程归档 ✗ ｜ 优先级：P3
+- **研讨班与既有会议面的衔接（seminar＝a meeting）** ｜ 目的：不重复造"开会" ✗ ｜ 面向谁：讲师／学员 ｜ 接口形状：**复用 08**（`kernel.meeting()` ✓、`kind:'seminar'` ✓ 08-§15 类型目录）＋可选关联课程（✗ 规划） ｜ 可调控：08 的会议族 ✓（`vmu.meetings.*`）／`vmu.course.*` ｜ 错误码：`VMU_STATE`（✓）／`VMU_COURSE_DISABLED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**会议机制全部复用 08**（轮次/发言/纪要 ✓），17 只提供"这节课属于哪门课/哪些人" ✓（交界见 §28.4 ✓） ｜ 依赖：08 ✓ ｜ 成熟度：**已实现 ✓**（会议）／课程关联 ✗ ｜ 优先级：P2
+
+### 28.3 拟增键（教学族 `vmu.course.*`；全部**未接线** ✗）
+
+| 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
+|---|---|---|---|---|---|---|
+| `vmu.course.enabled` | bool | false | bool | 所办 | 重启 | 教学面总开关（**默认关＝零机制** ✓） |
+| `vmu.course.ontologyVersion` | string | `1` | 版本号 | pack | 重启 | 本体版本（迁移用，13 卷） |
+| `vmu.course.visibility` | enum | `institution` | `private｜institution｜public` | pack | 下轮 | 课程可见性（默认**仅机构内** ✓；与 `publishToLibrary` 分工：一个管"谁能看"，一个管"是否进库" ✓） |
+| `vmu.course.maxUnits` | int | 0 | ≥0 | 所办 | 立即 | 单元上限（0＝不限） |
+| `vmu.course.readingsRequired` | bool | false | bool | pack | 下轮 | 单元是否必须带读物 |
+| `vmu.course.rubricRequired` | bool | true | bool | pack | 下轮 | 发布作业前必须有 rubric |
+| `vmu.course.cohortMax` | int | 0 | ≥0 | 所办 | 立即 | 同期组容量（0＝不限） |
+| `vmu.course.allowAuditors` | bool | true | bool | pack | 下轮 | 是否允许旁听（只读 ✓） |
+| `vmu.course.enrollmentNeedsApproval` | bool | false | bool | pack | 下轮 | 选课是否需要批准 |
+| `vmu.course.submitMode` | enum | `artifact` | `artifact｜inline｜both` | pack | 下轮 | 提交形式（默认走库里的产出 ✓） |
+| `vmu.course.allowLate` | bool | false | bool | pack | 下轮 | 是否允许迟交（默认否 ✓） |
+| `vmu.course.latePenaltyRatio` | number | 0 | 0..1 | pack | 下轮 | 迟交扣分比例 |
+| `vmu.course.maxAttempts` | int | 1 | ≥1 | 所办 | 下轮 | 每人提交次数上限 |
+| `vmu.course.reviewRounds` | int | 1 | ≥1 | 所办 | 下轮 | 互评轮次（有界 ✓） |
+| `vmu.course.reviewersPerSubmission` | int | 2 | ≥1 | 所办 | 下轮 | 每份作业评阅人数 |
+| `vmu.course.blindReview` | bool | true | bool | pack | 下轮 | **盲评开关（默认开＝更公平** ✓） |
+| `vmu.course.blindMappingRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 盲评映射保留期（审计侧可解绑 ✓） |
+| `vmu.course.selfReviewAllowed` | bool | false | bool | pack | 下轮 | 是否允许自评（默认否 ✓） |
+| `vmu.course.peerWeight` | number | 0 | 0..1 | 所办 | 下轮 | 互评占成绩权重（0＝只作反馈 ✓） |
+| `vmu.course.requireEvidence` | bool | true | bool | pack | 下轮 | 评语必须带证据才可发布 |
+| `vmu.course.requireRubricRef` | bool | true | bool | pack | 下轮 | 评语必须带 rubric 锚点 |
+| `vmu.course.gradeChangeAdditive` | bool | true | bool | pack | 重启 | 成绩变更只增不改（**建议恒 true** ✓） |
+| `vmu.course.publishToLibrary` | bool | false | bool | pack | 下轮 | 课程材料是否进机构库（默认否＝隐私 ✓） |
+| `vmu.course.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 课程归档保留期 |
+
+### 28.4 交界（**不重复造机制** ✗）
+
+| 教学面需要什么 | 归谁定义 | 说明 |
+|---|---|---|
+| 研讨班"开会"本身（轮次/发言/纪要/收束） | **08** ✓ | `kernel.meeting()` ✓／`kind:'seminar'` ✓（08-§15）；本节**不重复** ✗ |
+| 权限与容量（谁能做什么、坐几个人） | **08/内核** ✓ | role slot＋`capacity` ✓；教学角色只**映射**到 slot ✓ |
+| 材料与产出的归档 | **07** ✓ | `vmu.library`／`vmu.store` ✓；作业成果＝库里的产出 ✓ |
+| 任务与阶段（作业＝任务？） | **08** ✓ | 需要"必须做的活"时用 `vmu.tasks.*` ✓；**成绩**不是任务状态 ✗ |
+| 带教一对一 | **17-§12** ✓ | mentor/mentee 是本卷的**一对一**语义；课程是**一对多** ✓ |
+| 公平与防串谋 | **17-§17** ✓ | 互评配额/离群提示走 §17 ✓ |
+| 可解释与审计 | **17-§18** ✓ | 评语证据与理由字段 ✓ |
+| 隐私与合规 | **17-§16** 声明／**20** 执行 ✓ | 默认不进库、跨机构不可见 ✓ |
+
+### 28.5 拟增错误码（教学面）
+
+`VMU_COURSE_DISABLED`（教学面未启用 ⇒ 零机制）／`VMU_COURSE_CLOSED`（课程已关闭/归档，不得提交）／`VMU_COURSE_UNIT_UNKNOWN`（单元不存在）／`VMU_COURSE_RUBRIC_REQUIRED`（发布作业缺 rubric）／`VMU_COURSE_ENROLL_DENIED`（选课被拒）／`VMU_COURSE_COHORT_FULL`（同期组满）／`VMU_COURSE_PRIVACY_DENIED`（越权查看作业/评语）／`VMU_ASSIGNMENT_UNKNOWN`（作业不存在）／`VMU_ASSIGNMENT_DUE_PASSED`（已过截止）／`VMU_ASSIGNMENT_ATTEMPTS_EXHAUSTED`（提交次数用尽）／`VMU_SUBMISSION_DUPLICATE`（重复提交）／`VMU_SUBMISSION_WITHDRAWN`（已撤回）／`VMU_REVIEW_NOT_ELIGIBLE`（无评阅资格）／`VMU_REVIEW_SELF_DENIED`（不得自评）／`VMU_REVIEW_ROUNDS_EXHAUSTED`（互评轮次用尽）／`VMU_REVIEW_EVIDENCE_REQUIRED`（评语缺证据）／`VMU_REVIEW_RUBRIC_REQUIRED`（评语缺 rubric 锚点）／`VMU_BLIND_MAPPING_DENIED`（无权解绑盲评映射）／`VMU_GRADE_IMMUTABLE`（成绩不可覆盖，只能追加）（**19 个，全部拟增** ✓）。
+
+### 28.6 拟增工具与钩子（**全部未实现** ✗）
+
+- 工具（⛔ 未实现）：`vibe_vmu_course`（课程/单元/作业/提交）、`vibe_vmu_grade`（评审/发布/追加改分）。
+- 钩子（**未注册 ✗，规划**）：`course/opened`、`cohort/formed`、`assignment/published`、`assignment/submitted`、`review/submitted`、`feedback/published`、`grade/amended`。
+
+---
+
+## 29. G17 · 通知/订阅与信噪比（Watchers & Signal-to-noise；**默认关闭** ✗✓）
+
+> **定位**：多代理协作最大的隐性成本是**噪声**（谁都@所有人、重复告警、半夜打扰）✗。本节定义"**发给谁／订阅什么／怎么合并／什么时候别打扰**" ✓。
+> **零机制**：`vmu.notify.enabled=false`（默认 ✓）⇒ 不声明就**没有订阅、没有投递、没有摘要** ✓。
+> **成熟度**：本节**全部为规划 ✗**（`vmu.notify.*` 均为 `planned` 键 ✓；`vibe_vmu_notify` 等工具 **⛔ 未实现**）；已实现底座只有 05 的钩子总线 ✓＋07 的审计留痕 ✓。
+
+### 29.1 订阅模型（`watchers[]`）
+
+```
+watchers: [{
+  id, subject: { kind: 'member|slot|institution|task|meeting|course|record|metric',
+                 ids: [...] },                 // 订阅谁/什么
+  events: ['task/transition', 'ballot/tally', ...], // 订阅哪些事件（05 的钩子名 ✓）
+  channel: 'inbox|digest|hook|file',           // 投递通道
+  quiet: { from: '22:00', to: '07:00', tz: 'local' } | null,   // 个人免打扰
+  digest: { windowMs, mode: 'immediate|batch|hourly|daily' },  // 摘要
+  priorityFloor: 'low|normal|high',            // 低于此优先级不打扰
+  enabled: true, since
+}]
+```
+**纪律**：① `subject.ids` 必须**可见**（§29.4 可见性）✓；② `events` 必须是**已注册钩子**或已登记事件（**不认识的事件 ⇒ 具名拒** ✓ 不得静默漏收 ✗）；③ `quiet`/`digest` 只影响**投递**，不影响**记录**（事件仍进审计 ✓）；④ 订阅本身是**审计对象**（谁订阅了谁、为什么 ✓ §18）。
+
+### 29.2 条目（11 字段）
+
+- **订阅（watch）** ｜ 目的：把"我想知道什么"变成声明 ｜ 面向谁：成员／机构 ｜ 接口形状：规划 `kernel.watch.subscribe/unsubscribe/list`（⛔ 未实现）；工具面规划 `vibe_vmu_watch`（⛔ 未实现） ｜ 可调控：`vmu.notify.*` ｜ 错误码：`VMU_NOTIFY_DISABLED`（拟增）／`VMU_WATCH_LIMIT`（拟增）／`VMU_WATCH_SUBJECT_UNKNOWN`（拟增）／`VMU_WATCH_EVENT_UNKNOWN`（拟增）／`VMU_WATCH_DUPLICATE`（拟增）／`VMU_WATCH_VISIBILITY_DENIED`（拟增）／`VMU_WATCH_CROSS_INSTITUTION_DENIED`（拟增）／`VMU_NOTIFY_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：订阅**不改权限**（只影响"被告知"，不影响"能做什么" ✓ S-3 同族）；未注册事件**具名拒** ✓ ｜ 依赖：05 钩子 ✓／§16 身份／§18 审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **投递通道（channel）** ｜ 目的：同一事件按不同紧迫度走不同通道 ｜ 面向谁：订阅者 ｜ 接口形状：规划 `kernel.notify.deliver`（⛔ 未实现）；工具面规划 `vibe_vmu_notify`（⛔ 未实现） ｜ 可调控：`vmu.notify.channels`（`inbox｜digest｜hook｜file`）／`vmu.notify.defaultChannel` ｜ 错误码：`VMU_WATCH_CHANNEL_UNSUPPORTED`（拟增）／`VMU_NOTIFY_CHANNEL_FAILED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：`hook` 通道＝**复用 05 的总线**（不新造通道语义 ✓）；`file` 通道走 07 归档 ✓ ｜ 依赖：05 ✓／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **去重（notification-level dedup）** ｜ 目的：同一件事不重复打扰 ｜ 面向谁：订阅者 ｜ 接口形状：规划（判定点 `society.notifyDedup` ⛔ 未实现） ｜ 可调控：`vmu.notify.dedupWindowMs`（默认 60000 ✓）／`vmu.notify.maxSubjectsPerWatcher` ｜ 错误码：`VMU_NOTIFY_DEDUPED`（拟增，**是正常回执不是错误** ✓ 但仍需可观测） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**通知级指纹＝watcher＋事件＋对象**（与 **21 的告警级指纹**＝指标＋对象＋码**不同层** ✗ 见 §29.5 ✓）；去重**必须计数**（"合并了多少" ✓ 21 同纪律） ｜ 依赖：05 事件 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **合并与摘要（merge / digest）** ｜ 目的：把 N 条小事件变成 1 份摘要 ｜ 面向谁：订阅者 ｜ 接口形状：规划 `kernel.notify.digest`（⛔ 未实现） ｜ 可调控：`vmu.notify.mergeWindowMs`／`mergeMaxPerDigest`／`digestDefaultMs` ｜ 错误码：`VMU_NOTIFY_DIGEST_PENDING`（拟增）／`VMU_NOTIFY_TRUNCATED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：摘要**不得丢事实**：被截断的必须给 `kept/dropped` 计数（与 07/21 的截断纪律一致 ✓） ｜ 依赖：§29.3 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **静默窗口（personal quiet hours）** ｜ 目的：人有下班时间 ｜ 面向谁：订阅者 ｜ 接口形状：规划（`watcher.quiet` ✗） ｜ 可调控：`vmu.notify.quietDefault`／`vmu.notify.quietTimezone` ｜ 错误码：`VMU_NOTIFY_QUIET_SUPPRESSED`（拟增，正常回执 ✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：静默期**不投递但必须留痕并计数** ✓；恢复后**补一份摘要**（与 **21 的维护静默**同纪律 ✓）；**静默不等于丢弃** ✗ ｜ 依赖：§29.3／21 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **信噪比（signal-to-noise）** ｜ 目的：让"太吵了"可度量、可干预 ｜ 面向谁：机构／人类 ｜ 接口形状：规划 `kernel.notify.metrics`（⛔ 未实现）＋**21 的指标面**（21-§4 ✓） ｜ 可调控：`vmu.notify.snrFloor`／`vmu.notify.suppressSelfEvents`（默认 true ✓）／`vmu.notify.priorityFloor` ｜ 错误码：`VMU_NOTIFY_SNR_BELOW_FLOOR`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：指标＝`delivered／merged／suppressed／failed／deduped`；低于下限**只提示**，**不得自动改订阅** ✗（与 §17 "只报告不惩罚"同族 ✓） ｜ 依赖：21-§4 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **失败语义（failure semantics）** ｜ 目的：通知坏了不能拖垮业务 ｜ 面向谁：全体 ｜ 接口形状：规划（判定点 `society.notifyFailure` ⛔ 未实现）＋**05 的失败策略** ✓ ｜ 可调控：`vmu.notify.dropOnFailure`（默认 true ✓）／`vmu.notify.failureKeepMs` ｜ 错误码：`VMU_NOTIFY_CHANNEL_FAILED`（拟增）／`VMU_MIDDLEWARE_FAILED`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**投递失败绝不阻断被通知的业务** ✓（业务回执里带 `notified:false` ✓）；但**必须留痕＋计数** ✓（不得静默 ✗） ｜ 依赖：05 ✓／07 审计 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **可见性与隐私（visibility）** ｜ 目的：谁能订阅谁 ｜ 面向谁：机构／成员 ｜ 接口形状：规划（判定点 `society.watchVisibility` ⛔ 未实现） ｜ 可调控：`vmu.notify.crossInstitution`（默认 false ✓）／§16 的可见性族 ✓ ｜ 错误码：`VMU_WATCH_VISIBILITY_DENIED`（拟增）／`VMU_WATCH_CROSS_INSTITUTION_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**私聊内容永不进入公共通知**（08 的 D6 口径 ✓）；跨机构默认**不可订阅** ✓；订阅关系本身是否公开＝参数（默认**不公开** ✓，与 §17 反垄断的"关系可见性"待裁 ✗） ｜ 依赖：§16／§17／20 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+
+### 29.3 拟增键（通知族 `vmu.notify.*`；全部**未接线** ✗）
+
+| 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
+|---|---|---|---|---|---|---|
+| `vmu.notify.enabled` | bool | false | bool | 所办 | 立即 | 通知面总开关（**默认关＝零机制** ✓） |
+| `vmu.notify.maxWatchers` | int | 0 | ≥0 | 所办 | 立即 | 每人订阅数上限（0＝不限） |
+| `vmu.notify.maxSubjectsPerWatcher` | int | 0 | ≥0 | 所办 | 立即 | 单订阅主体上限 |
+| `vmu.notify.channels` | string[] | `['inbox','digest']` | 子集 `{inbox,digest,hook,file}` | pack | 重启 | 允许的投递通道 |
+| `vmu.notify.defaultChannel` | enum | `inbox` | 同上 | pack | 下轮 | 默认通道 |
+| `vmu.notify.dedupWindowMs` | ms | 60000 | ≥0 | 所办 | 立即 | **通知级**去重窗口（watcher×事件×对象） |
+| `vmu.notify.mergeWindowMs` | ms | 0 | ≥0 | 所办 | 立即 | 合并窗口（0＝不合并） |
+| `vmu.notify.mergeMaxPerDigest` | int | 50 | ≥1 | 所办 | 立即 | 单份摘要最大条数（超出**计数并截断** ✓） |
+| `vmu.notify.quietDefault` | string | `''` | `HH:MM-HH:MM` | 所办 | 立即 | 默认免打扰时段（空＝无） |
+| `vmu.notify.quietTimezone` | string | `local` | 时区 | 所办 | 立即 | 免打扰时区 |
+| `vmu.notify.digestDefaultMs` | ms | 0 | ≥0 | 所办 | 立即 | 默认摘要周期（0＝即时） |
+| `vmu.notify.dropOnFailure` | bool | true | bool | pack | 立即 | 投递失败是否丢弃该条（**默认丢弃但不阻断** ✓） |
+| `vmu.notify.failureKeepMs` | ms | 0 | ≥0 | 所办 | 立即 | 失败留痕保留期 |
+| `vmu.notify.requireReason` | bool | true | bool | pack | 立即 | 订阅/退订必须给理由（S-4 同源 ✓） |
+| `vmu.notify.crossInstitution` | bool | false | bool | 所办 | 重启 | 是否允许跨机构订阅（默认否 ✓） |
+| `vmu.notify.suppressSelfEvents` | bool | true | bool | pack | 立即 | 抑制自己触发的事件（降噪 ✓） |
+| `vmu.notify.priorityFloor` | string | `''` | `low｜normal｜high` | pack | 立即 | 低于此优先级不打扰 |
+| `vmu.notify.snrFloor` | number | 0 | 0..1 | 所办 | 立即 | 信噪比下限（低于**只提示** ✓） |
+| `vmu.notify.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 通知记录保留期 |
+
+### 29.4 拟增错误码（通知面）
+
+`VMU_NOTIFY_DISABLED`／`VMU_WATCH_LIMIT`／`VMU_WATCH_SUBJECT_UNKNOWN`／`VMU_WATCH_EVENT_UNKNOWN`／`VMU_WATCH_CHANNEL_UNSUPPORTED`／`VMU_WATCH_DUPLICATE`／`VMU_WATCH_VISIBILITY_DENIED`／`VMU_WATCH_CROSS_INSTITUTION_DENIED`／`VMU_NOTIFY_QUIET_SUPPRESSED`／`VMU_NOTIFY_DEDUPED`／`VMU_NOTIFY_DIGEST_PENDING`／`VMU_NOTIFY_CHANNEL_FAILED`／`VMU_NOTIFY_TRUNCATED`／`VMU_NOTIFY_REASON_REQUIRED`／`VMU_NOTIFY_SNR_BELOW_FLOOR`（**15 个，全部拟增** ✓；其中 `VMU_NOTIFY_DEDUPED`／`QUIET_SUPPRESSED`／`DIGEST_PENDING` 是**正常回执**，仍必须可观测 ✓）。
+
+### 29.5 与 21／05／18 的交界（**这是本节最重要的表** ✓）
+
+| 问题 | 归 **17（本节）** ✓ | 归 **21（可观测与运维）** ✓ | 归 **05／18** ✓ |
+|---|---|---|---|
+| **发给谁 / 订阅什么** | ✅ 定义（`watchers[]`／subject／events） | — | — |
+| **投递通道** | ✅ 定义（inbox/digest/hook/file，通道**选择**） | — | 05 提供事件总线与失败策略 ✓ |
+| **通知级去重**（同一 watcher 的同一事件） | ✅ 定义（`vmu.notify.dedupWindowMs`） | — | — |
+| **告警级去重**（指标＋对象＋码 指纹） | — | ✅ 21-§5.3 定义 | — |
+| **个人免打扰（quiet hours）** | ✅ 定义（`watcher.quiet`／`quietDefault`） | — | — |
+| **维护静默（silence）与恢复摘要** | — | ✅ 21-§5.3 定义（**恢复后必须补摘要**） | — |
+| **抑制（inhibition）／升级（escalation）／阈值** | — | ✅ 21-§5.3 定义 | — |
+| **通知失败不阻断业务＋留痕** | ✅ 语义要求（`dropOnFailure`） | ✅ 21-§2 的记录纪律 | ✅ 05 的失败策略（熔断/干跑） |
+| **指标（信噪比、投递数）** | ✅ 语义（`snrFloor`） | ✅ 21-§4 的指标面/计数纪律 | — |
+| **工具/协议/错误码速查** | 本节只**声明**需求 | 21-§6.3 引用 | ✅ **18** 登记（本卷不复制 ✗） |
+| **隐私与合规执行** | ✅ 声明默认（不跨机构/不进库） | 观测其执行 | ✅ 20 执行 ✓ |
+
+**与 21-§5.3 的双向一致性** ✓：21 已写"通知通道 **经 17 的通知原语**（成员/群/记录）" ⇒ 本节正是那个原语的定义处 ✓；本节**不定义**阈值/抑制/升级/维护静默 ✗（那些在 21 ✓），21 **不定义**订阅模型 ✗（那些在本节 ✓）。
+
+### 29.6 拟增工具与钩子（**全部未实现** ✗）
+
+- 工具（⛔ 未实现）：`vibe_vmu_notify`（投递/摘要/信噪比查询）、`vibe_vmu_watch`（订阅/退订/列举）。
+- 钩子（**未注册 ✗，规划**）：`notify/queued`、`notify/merged`、`notify/suppressed`、`notify/sent`、`notify/failed`、`notify/digest-ready`、`watch/subscribed`、`watch/unsubscribed`。
+
+### 29.7 配方（新增 4 条，接 §23 的编号）
+
+| # | 目标机制 | 组合 | 可观测（断言点） | 失败模式 | 成熟度 |
+|---|---|---|---|---|---|
+| S13 | **教学班（研讨班＋作业＋盲评）** | 08 的 `kernel.meeting(kind:'seminar')` ✓ ＋ §28 课程本体（✗）＋ `blindReview=true` | 盲评时 `Review.reviewer` **缺失**（断言）；无证据发布 ⇒ `VMU_REVIEW_EVIDENCE_REQUIRED`（具名红） | 成绩无据、评阅者身份泄露 | 规划 ✗（会议面 ✓） |
+| S14 | **只报告不惩罚的成绩复核** | `peerWeight` ＋ §17 离群"只提示"＋ §18 解释报告 | 离群评分 ⇒ **提示**且成绩不变（断言） | 自动剔除异见 ⇒ 同侪压力 | 规划 ✗ |
+| S15 | **通知降噪（合并＋免打扰）** | `vmu.notify.mergeWindowMs`＋`vmu.notify.quietDefault`＋`vmu.notify.priorityFloor` | 窗口内 N 条 ⇒ **1 份摘要**且 `dropped/kept` 计数（断言）；静默期 ⇒ `VMU_NOTIFY_QUIET_SUPPRESSED` 且**记录仍在**（断言） | 半夜刷屏／静默期真丢事件 | 规划 ✗ |
+| S16 | **通知坏了业务照跑** | `vmu.notify.dropOnFailure=true` ＋ §29.5 失败语义 | 通道失败 ⇒ 业务回执 `ok:true, notified:false`（断言）＋ `VMU_NOTIFY_CHANNEL_FAILED` 留痕（具名红） | 通知故障让任务/表决连锁失败 | 规划 ✗ |
 

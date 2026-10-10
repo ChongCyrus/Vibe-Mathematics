@@ -328,6 +328,90 @@ interface VmuStore {
   **实现要点**：**截断必须计数**：只说"已截断"而不给数量等于隐瞒。
   **依赖**：对象模型。**成熟度**：✓（`BODY_CAP_BYTES`）　**优先级**：P0
 
+### 4.11 关系与反链（知识图谱面）
+
+**目的**：把"笔记＋关系"的概念升级为**可查询的关系图**：任何对象都能被"顺着关系"找到，且反链不会悄悄过期。
+**面向谁**：代理（推理与引用）、用户（阅读与影响面）、审计者（谁依赖谁）。
+**成熟度**：概念 ✓；图查询与反链维护 **计划（未实现）✗**。
+
+**关系模型（字段级 schema）**：每条关系一条记录，字段含义如下表。
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `type` | enum（见类型目录）或自由串 | ✓ | 关系类型；受控时须在词表内 |
+| `from` | objectId | ✓ | 源对象；必须存在且可读 |
+| `to` | objectId \| externalRef | ✓ | 目标对象或外部引用 |
+| `weight` | number(0–1) | ✗ | 强度/置信（区间由 `vmu.relations.weightRange` 定） |
+| `note` | string | ✗ | 人类可读理由（限长） |
+| `track` | enum(proposal/progress/paper/meeting/task) | ✗ | 关系所在轨（缺省由 `from` 所在轨推断） |
+| `createdAt` / `createdBy` | ISO 串 / id | ✓ | 溯源（append-only） |
+| `evidence` | objectId[] | ✗ | 支撑该关系的证据对象 |
+| `supersededBy` | relationId | ✗ | 关系被替换时指向新关系（不删除旧记录） |
+
+**存法**：`relations` 是**追加式**集合；修改关系＝新增一条并给旧的写 `supersededBy`（与 §4.6 溯源 append-only 同源）。
+
+**关系类型目录（默认词表）**：`supports`（支持）、`refutes`（反驳）、`refines`（细化）、`extends`（扩展）、`cites`（引用）、`supersedes`（取代）、`replicates`（复现）、`dependsOn`（依赖）、`derivesFrom`（派生）、`answers`（回答某问题）、`uses`（使用工具/数据）、`contradicts`（与 refutes 并存时的强冲突标记）。
+**受控与否**：由 `vmu.relations.controlledVocab` 决定；受控时词表取 `vmu.relations.types` 的并集，越表即 `VMU_REL_VOCAB_VIOLATION`；不受控时允许自由串，但仍建议以词表为主。
+
+**反链维护策略**：`vmu.relations.backlinkMode` 取三值——
+- `write`（写入时同步更新反链）：查询最快，写入最慢；适合对象少、查询密的场景；
+- `lazy`（惰性重建）：写入只记正向边，反链在首次查询或重建时算；适合导入/批量写入；
+- `hybrid`（默认建议）：正向同步 + 反链按需 + 定期重建。
+**陈旧检测**：反链快照带"生成时间 + 已处理边数"；当 `now - generatedAt > vmu.relations.staleAfterDays` 或读到的边数少于正向边计数时判陈旧 ⇒ 报 `VMU_REL_BACKLINK_STALE` 并**降级为全量扫描**（不得返回半份反链）。
+**跨轨**：反链查询可跨轨（proposal/progress/paper/meeting/task），由 `vmu.relations.crossTrack` 决定；**跨轨只读**，不得据此改动他轨对象。
+
+**查询面（每条给接口形状与错误码）**
+
+| 能力 | 接口形状 | 参数（通配/具体） | 错误码 |
+|---|---|---|---|
+| 邻居查询 | `neighbors(id, {dir, types, limit})` → 头部列表 | `vmu.relations.pathMaxDepth` 不适用；`limit` | 端点缺失 ⇒ `VMU_REF_DANGLING` |
+| 路径查询 | `path(from, to, {maxDepth, types})` → 边序列或"不存在" | `vmu.relations.pathMaxDepth`（默认 4） | 超深 ⇒ `VMU_REL_DEPTH_EXCEEDED` |
+| 中心性（可选） | `centrality({types, track, topK})` → 排序列表 | `vmu.relations.centralityEnabled`（默认 false） | 关闭时 ⇒ `VMU_REL_DISABLED` |
+| 环检测 | `cycles({types, limit})` → 环列表 | `vmu.relations.cycleDetection`（默认 true） | 检出环 ⇒ `VMU_REL_CYCLE_DETECTED`（**报告**，不自动改图） |
+| 类型清单 | `relationTypes()` → 词表与计数 | `vmu.relations.types` | 越表写入 ⇒ `VMU_REL_VOCAB_VIOLATION` |
+
+**一键重建与索引一致性**：`rebuildRelations({scope, batch})` 从对象头部的正向边重建反链与关系索引；增量走 `vmu.index.*`（同一套增量/重建入口，**关系索引不是真相源**——真相源是对象的正向边，与 §4.5 同规）。重建期间查询要么读旧快照（并标记 `stale`），要么等待；**不得**返回空结果冒充"没有关系"。
+
+**四条哲学关系**：自由度（词表/模式/中心性可选）／可调控（维护模式、深度、陈旧阈值）／可定义（字段 schema 与类型目录显式）／扩展性（新类型只加词表项，不改引擎）。
+**依赖**：§4.1 对象模型、§4.5 索引、§4.6 溯源。**优先级**：P1。
+
+### 4.12 日程与业务时间轨
+
+**目的**：让"下周三评审"这类**业务时间**成为结构化数据，而不是自由文本；同时**绝不**让耐久层变成调度器。
+**面向谁**：代理（排期与提醒）、用户（计划）。
+**成熟度**：**计划（未实现）✗**。
+
+**两类时间的边界（写清）**：
+- **墙钟时间（wall clock）**：系统时间戳（`createdAt`/`updatedAt`/审计时间），由框架维护，**不可被业务改写**；
+- **业务时间（business time）**：`schedule` 里的 `at`/`window`，是**用户/代理声明的计划**，由人负责其正确性；二者**不得互相推导**（不得用 `updatedAt` 当"评审时间"）。
+**业务时间不参与排序与回收**：保留策略、GC、配额一律只看墙钟时间与大小（避免"改个计划时间就能影响回收"）。
+
+**日程轨（字段级 schema）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `id` | string | ✓ | 日程项标识（稳定） |
+| `at` \| `window` | ISO 串 \| {from,to} | ✓（二选一） | 单点或时间窗；窗内视为"可安排" |
+| `what` | string | ✓ | 做什么（人类可读；**不承载流程语义**） |
+| `owner` | memberId | ✓ | 责任人 |
+| `timezone` | IANA 名 | ✗ | 缺省取 `vmu.schedule.defaultTimezone` |
+| `recurrence` | RRULE 风格串 | ✗ | 重复规则（受 `vmu.schedule.recurrenceEnabled` 控制） |
+| `kind` | enum(deadline/reminder/milestone) | ✗ | 截止 vs 提醒（见下） |
+| `refs` | objectId[] | ✗ | 关联对象（会议/任务/产物）——**引用而非内联** |
+| `status` | enum(planned/done/cancelled/overdue) | ✗ | 业务状态（由人/代理维护） |
+| `createdAt` / `createdBy` | ISO / id | ✓ | 溯源 |
+
+**纯数据、不触发流程（硬规则）**：`schedule` **只被读取与报告**，**不得**由框架自动触发任何流程（不自动开会、不自动唤醒、不自动改状态）。要触发 ⇒ **必须显式挂中间件或脚本**：`vmu.schedule.triggerVia` 取 `none`（默认）/`middleware`/`script`，并对接 **05 的钩子面**（钩子自行决定行为与失败语义；框架不代为实现）。若在 `triggerVia=none` 下发现有人试图让它触发 ⇒ `VMU_SCHEDULE_TRIGGER_FORBIDDEN`。
+
+**时区与夏令时**：`vmu.schedule.dstPolicy` 取 `wall`（按当地墙钟，DST 跳变时可能顺延）或 `absolute`（按绝对时刻，不受 DST 影响）；默认 `absolute`（可预测优先）。缺时区 ⇒ `VMU_SCHEDULE_TZ_UNKNOWN`；`window` 的 `from>to` ⇒ `VMU_SCHEDULE_WINDOW_INVALID`；`recurrence` 非法 ⇒ `VMU_SCHEDULE_RECURRENCE_INVALID`。
+
+**截止语义（deadline vs reminder）**：`kind=deadline` ⇒ 过期后状态应转 `overdue`；`kind=reminder` ⇒ 过期**不改状态**，仅报告。无论哪种，**到期只报告**：产出"已到期/即将到期"清单（`VMU_SCHEDULE_OVERDUE_REPORT` 作为报告事件，不是错误中断）；**谁提醒、怎么提醒**属告警面，见 **21 卷**（本卷不定义通知渠道）。
+
+**与会议/任务的关系**：`schedule.refs` 引用 `vmu.meetings.*` 的会议与 `tasks` 任务，**不重复定义**会议/任务的字段与门槛；日程只回答"什么时候"，不回答"怎么开、谁有票"。跨卷引用只读；删除被引用对象时，日程引用进入悬空状态（`VMU_REF_DANGLING`）并保留（与 §4.11 同规）。
+
+**四条哲学关系**：自由度（可完全不启用日程轨）／可调控（时区、DST 策略、触发器开关、提醒 vs 截止）／可定义（字段 schema 显式、纯数据定位明确）／扩展性（触发器只挂中间件，不改引擎）。
+**依赖**：§4.1 对象模型、§4.11 关系、05 钩子面、21 告警面。**优先级**：P2。
+
 ## 5. 公开 vs 内部
 
 - **公开面**：对象模型与头部字段契约、可见性规则、导出包结构、错误码族与处置建议、可调控参数家族。
