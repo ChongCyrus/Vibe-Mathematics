@@ -82,6 +82,8 @@
 
 ## 2. 实验仪器与设备（Instruments & Equipment）
 
+> **⚠ 状态更正（轮 61 核实；以下各条的"计划 ✗"字样已过期）** ✓✓：**本族已实现** —— 归属面是 **`kernel/instruments.js`**（**14/17 键已接线** ✓：责任人／能力标签／**校准到期即阻断**（`blockOnOverdue`）／预约（`reserve`／`maxHoldHours`／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／`waitlistPolicy`）／**维护排期**（`scheduleMaintenance`）／**采集挂引用**（`attachCapture`））＋ **`kernel/capacity.js`**（`facilities`＋重叠即 `VMU_CAPACITY_FACILITY_CONFLICT` ✓）✓。**仅 3 键未接线且理由已由模块写明** ✗（`ledgerDir` 无 FS 接缝／`dataCaptureRef` 需 library／`downtimePolicy` 需运维协同）。**归属表以 §14 为准** ✓（本节只保留接口形状与判定点，**不再声称未实现** ✗✓）。
+
 ### 2.1 台账与登记
 
 | 字段 | 内容 |
@@ -801,7 +803,7 @@
 
 | 族 | 裁决 | 理由（可核） |
 |---|---|---|
-| **设备台账／预约／校准／维护**（`VMU_EQUIP_*`） | **做 ✓** | 有**通用机制**（占用／冲突／候补／过期闸 ✓），与已实现的 `capacity`（池／抢占／候补 ✓）同族 |
+| **设备台账／预约／校准／维护**（`VMU_EQUIP_*`） | **已实现 ✓（轮 61 核到归属；不需新代码 ✗）** | **⓪ 前提步的实测结果** ✓✓：该族**已由 `kernel/instruments.js` 实现**（**14/17 键已接线** ✓）—— `requireOwner`／`capabilityTags`／`requireCalibration`／`calibrationDueDays`／**`blockOnOverdue`**（**校准过期即阻断** ✓＝§2.3）／**`reserve`**／`maxHoldHours`（**超占用上限** ✓）／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／**`waitlistPolicy`**（候补 ✓）／**`scheduleMaintenance`** ✓／`attachCapture`（**采集挂引用** ✓＝§2.4）／`hashAlgo`；**facility 预约与重叠拒**另由 **`kernel/capacity.js`** 承担（`facilities`／`fromMs`／`toMs`／`VMU_CAPACITY_FACILITY_CONFLICT` ✓＝§2.2）✓。**剩余 3 个键未接线且理由由模块自己写明** ✓✓：`ledgerDir`（**无 FS 接缝** ✗）、`dataCaptureRef`（**需 library 面，只引用** ✗）、`downtimePolicy`（**需运维/告警协同** ✗）⇒ **未做 ✗ 且明写** ✓ |
 | **经费台账／预算行／凭证链**（`VMU_FUNDING_*`） | **做 ✓** | `funding` 面**已实现**（16 键 ✓、分摊余数具名 ✓）⇒ 其余项是其自然延伸 |
 | **货币与舍入类型**（§3.0，**N1**） | **不做 ✗** | **⑤重复**：`funding` 已用**最小货币单位整数**＋**具名余数**（`VMU_ALLOCATION_REMAINDER` ✓）⇒ 再引入币种／汇率／审计四元组是**另一套会计系统**（**②无对应键**、**③无消费者**）⇒ 超出 vmu 初衷（**研究编排，不是账务** ✓） |
 | **生物样本库链式保管**（§2.5，**N4**） | **不做 ✗** | **③无消费者**（无实验室系统接入面 ✓）；真需要"链式保管"应**复用**已实现的 `ip`（披露闸 ✓）与 `compliance`（同意／IRB ✓），**不新建一族** |
