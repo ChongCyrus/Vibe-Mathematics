@@ -50,12 +50,26 @@ export function defaultOf(src, key) {
   // may put SEVERAL entries on one line (`'k': 30, 'k2': 7,`). Measured: capturing to end-of-line swallowed the
   // next entry and the literal was rejected as invalid, so the pair of entries was reported unrecoverable.
   const VAL = "(\\[[^\\]]*\\]|\\{[^}]*\\}|'[^']*'|\"[^\"]*\"|[^,\\n]+)"
+  const S = "settings\\[\\s*['\"]" + esc + "['\"]\\s*\\]"
   const shapes = [
     new RegExp("(?:sget|b|n)\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"),          // sget('k', 5)
     new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"), // raw(settings, 'k', true)
     new RegExp("[\"']" + esc + "[\"']\\s*:\\s*" + VAL),                                // an object-literal table
+    // A coercing helper's SECOND argument is the fallback the module really uses when the setting is absent.
+    new RegExp("(?:intOr|nat|numOr|listOr|listOf|boolOf)\\s*\\(\\s*" + S + "\\s*,\\s*" + VAL + "\\s*\\)"),
   ]
   if (alias) shapes.push(new RegExp("\\[\\s*K\\." + alias[1] + "\\s*\\]\\s*:\\s*" + VAL)) // [K.alias]: <lit>
+  /**
+   * The value a module uses when a setting is ABSENT may be expressed as a COMPARISON rather than a default
+   * argument - `external.js` does exactly that. These answers are read off the expression, never guessed:
+   * `!== false` is true when absent, `=== true` is false, a `str(...)` wrapper is the empty string. They are
+   * consulted only AFTER the literal shapes, so a table entry always wins over an inference.
+   */
+  const CONST_ANSWERS = [
+    [new RegExp(S + "\\s*!==\\s*false"), 'true'],
+    [new RegExp(S + "\\s*===\\s*true"), 'false'],
+    [new RegExp("(?:str|String)\\(\\s*" + S + "\\s*\\)"), "''"],
+  ]
   for (const re of shapes) {
     const m = re.exec(src)
     if (m && m[1] !== undefined) {
@@ -68,6 +82,8 @@ export function defaultOf(src, key) {
         || (lit.startsWith('[') && lit.endsWith(']')) || (lit.startsWith('{') && lit.endsWith('}'))) return lit
     }
   }
+  // Only now: a comparison/wrapper expresses the absent-value answer directly (see CONST_ANSWERS above).
+  for (const [re, answer] of CONST_ANSWERS) if (re.test(src)) return answer
   return undefined
 }
 

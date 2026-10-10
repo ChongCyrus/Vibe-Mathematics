@@ -674,32 +674,32 @@ vmu.packs.active: [v5r]
 | `vmu.conference.slotMinutes` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
 | `vmu.conference.topicsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
 | `vmu.conference.waiverPolicy` | string | `require-reason` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
-| `vmu.external.allowNetwork` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.arxiv.maxAbstractChars` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.arxiv.preferVersioned` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.cacheDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.crossref.includeRelations` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.crossref.mailto` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.datacite.maxRelated` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.datacite.requireRights` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.enabled` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
+| `vmu.external.allowNetwork` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.arxiv.maxAbstractChars` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.arxiv.preferVersioned` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.cacheDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.crossref.includeRelations` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.crossref.mailto` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.datacite.maxRelated` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.datacite.requireRights` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.endpoints` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
 | `vmu.external.maxBytes` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.maxCacheEntries` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
+| `vmu.external.maxCacheEntries` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.mergePolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.offlineFirst` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.openalex.mailto` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.openalex.maxConcepts` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.patent.maxResults` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.patent.requireQueryString` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
+| `vmu.external.offlineFirst` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.openalex.mailto` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.openalex.maxConcepts` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.patent.maxResults` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.patent.requireQueryString` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.primarySources` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.pubmed.maxMeshTerms` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.pubmed.preferAuthoritative` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.requireReceipt` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
+| `vmu.external.pubmed.maxMeshTerms` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.pubmed.preferAuthoritative` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.requireReceipt` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.stalePolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.swh.maxTreeEntries` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.swh.requireSwhid` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
-| `vmu.external.timeoutMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
+| `vmu.external.swh.maxTreeEntries` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.swh.requireSwhid` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.timeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.ttlMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值未从源码取回 ⇒ 未定，见该模块 |
 | `vmu.funding.accountsDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
 | `vmu.funding.approvalThresholdMinor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
