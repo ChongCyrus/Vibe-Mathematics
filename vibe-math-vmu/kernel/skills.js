@@ -61,7 +61,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
   let dropped = 0
   let seq = 0
   const key = (m, s) => m + '\u0000' + s
-  const forMemberSkill = (memberId, skill) => decls.filter((d) => d.memberId === memberId && d.skill === skill && !d.retiredAt)
+  const forMemberSkill = (memberId, skill) => decls.filter((d) => d.memberId === memberId && d.skill === skill && d.retiredAt == null)
   const levelIndex = (levels, lv) => levels.indexOf(lv)
   const downgrade = (levels, lv) => {
     const i = levelIndex(levels, lv)
@@ -98,7 +98,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       if (typeof level !== 'string' || !c.levels.includes(level)) throw refuse(CODE.vocab, 'level not in the controlled vocabulary: ' + String(level), 'levels: ' + c.levels.join(', '))
       const ev = Array.isArray(evidence) ? evidence.filter(Boolean) : (typeof evidence === 'string' && evidence ? [evidence] : [])
       if (c.evidenceRequired && ev.length === 0) throw refuse(CODE.evidence, 'a capability claim needs evidence (vmu.skills.evidenceRequired=true)', 'attach artefacts/receipts; a bare claim is not accepted')
-      const mine = decls.filter((d) => d.memberId === memberId && !d.retiredAt)
+      const mine = decls.filter((d) => d.memberId === memberId && d.retiredAt == null)
       if (mine.length >= c.maxSkillsPerMember) throw refuse(CODE.limit, 'member ' + memberId + ' already holds ' + mine.length + '/' + c.maxSkillsPerMember + ' live declarations', 'retire one, or raise vmu.skills.maxSkillsPerMember')
       const at = clock()
       const id = 'sk-' + (++seq)
@@ -163,7 +163,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       const seen = new Set()
       const rows = []
       for (const d of decls) {
-        if (d.retiredAt) continue
+        if (d.retiredAt != null) continue
         const k = key(d.memberId, d.skill)
         if (seen.has(k)) continue
         seen.add(k)
@@ -184,7 +184,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       const matches = []
       const covered = new Set()
       for (const d of decls) {
-        if (d.retiredAt) continue
+        if (d.retiredAt != null) continue
         if (want.length && !want.includes(d.skill)) continue
         const r = resolve(d.memberId, d.skill, when)
         if (!r.known) continue
@@ -227,7 +227,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       return {
         ok: true,
         declarations: decls.filter((d) => !d.retiredAt).length,
-        retired: decls.filter((d) => d.retiredAt).length,
+        retired: decls.filter((d) => d.retiredAt != null).length,
         verified: decls.filter((d) => !d.retiredAt && d.verifiedBy).length,
         unverified: decls.filter((d) => !d.retiredAt && !d.verifiedBy).length,
         attestations: attests.length, droppedFromCap: dropped,

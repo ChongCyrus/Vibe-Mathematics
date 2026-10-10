@@ -415,13 +415,13 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | 批 3 | 归档落盘适配／复现包 | `07`／`16` | — | — | **未开始** ✗ |
 | 批 4–5 | 计算与形式化／合规运营 | `09·15`／`16·20·22` | — | — | **未开始** ✗ |
 
-> **本阶段累计** ✓：**18 个内核服务** ✓（`tasks`／`prompt`／`middleware`／`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover`／`recruit`／`topology`／`fairness`／`charter` ✓）、**T1 69/69** ✓、**设置表已接线键 51 → 232** ✓（**具体数字永远以 `00-§3.2` 的生成索引为准** ✗✓ —— 本节只记里程碑 ✓）；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账、宪章的裂变/合并尚无 API ✓）。
-> **门禁新增的守门能力** ✓（都由真实缺陷逼出来 ✓）：**import 闭包必须随包**（两次救回 `MODULE_NOT_FOUND` ✗✓）、**代码读的键必须已登记**（抓出 v5r 包的真旋钮与 40+ 未登记键 ✓）、**一个旋钮只能有一个名字**（抓出 4 组别名 ✗✓）。
+> **本阶段累计** ✓：内核**已注册服务面 29 个**（含 `library`／`members`／`tasks`／`prompt`／`middleware`／`store`／`work` 等既有面 ✓；本阶段新增 **22 个**：`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover`／`recruit`／`topology`／`fairness`／`charter`／`repropack`／`memory`／`bidding`／`mathjobs` ＋ `library` 的删除/修订契约 ✓）、**T1 69/69** ✓、**设置表已接线键 51 → 293** ✓（**具体数字永远以 `00-§3.2` 的生成索引为准** ✗✓ —— 本节只记里程碑 ✓）；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账、宪章的裂变/合并尚无 API、`skills` 的退役-额度语义仍红 ✗）。
+> **门禁新增的守门能力** ✓（都由真实缺陷逼出来 ✓）：**import 闭包必须随包**（两次救回 `MODULE_NOT_FOUND` ✗✓）、**代码读的键必须已登记**（抓出 v5r 包的真旋钮与 40+ 未登记键 ✓）、**一个旋钮只能有一个名字**（抓出 4 组别名 ✗✓）、**契约面必须与模块公开面一致**（抓出 `vmu.library` 缺 5＋3 个方法 ✗✓）。
 | 批 1 · 其余 | 工作流／控制／调度 | `08-§4` | — | — | **未开始** ✗ |
 | 批 2–5 其余 | 信任/仲裁/归档/计算/合规 | `17`／`07`／`09·15`／`16·20` | — | — | **未开始** ✗ |
 
 > **本阶段累计** ✓：**9 个内核服务**（`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation` ✓）、**408 条新断言** ✓、**设置表已接线键 51 → 138（/995）** ✓；**每一块都附"未做清单" ✗**（例如委托无耐久投影、保留的分层只标记不下沉 ✓）—— 这些**不算已实现** ✗。
-> **接入时发现并修掉的真实缺陷** ✓（都是"两条门自动抓到"的 ✓）：未声明的真旋钮（v5r 包的 `requireSettledRecords` ✗）、缺的 `ratio` 类型 ✗、**同义不同名**两处（`meetings.minutesDetail` ✗、`retention.keepEvery` ✗）、以及 `roots` 权限来源**不该靠猜角色名** ✗ ⇒ 改为显式设置 `vmu.delegation.roots`（空＝S-2 拒绝一切授予，**诚实的零机制** ✓）。
+> **接入时发现并修掉的真实缺陷** ✓（绝大多数由门自动抓到 ✓）：未声明的真旋钮（v5r 包的 `requireSettledRecords` ✗）、缺的 `ratio` 类型 ✗、**同义不同名**若干处（`meetings.minutesDetail` ✗、`retention.keepEvery` ✗、`MATH_TIMEOUT` 曾被写成 `VMU_MATH_TIMEOUT` ✗）、`roots` 权限来源**不得靠猜角色名** ✗（改为显式设置 ✓）、**接线检测把注释里的名字当成"读过"** ✗（两处 ✓）、**`library` 契约面缺方法** ✗（5＋3 个 ✓）。
 
 > **登记自愈** ✓：某键被实现后，我从生成计划区把它**移入手写核心表**（`settings/schema.js` 的 `CORE_DEFS` ✓）⇒ `planned.js` 因"已存在"**自动停止**声明它 ✓，`docs/04 §11` 该行变 `✅ 已接线` ✓，`00-§3.2` 的逐卷接线数**自动上升** ✓ —— **不需要手改任何统计** ✗。
 

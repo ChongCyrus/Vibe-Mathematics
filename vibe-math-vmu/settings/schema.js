@@ -385,6 +385,12 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.denyNetwork', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '默认禁网（作为 env 传给 spawn；真正拦截在宿主 ✗）' },
   { key: 'vmu.math.workspaceOnly', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '默认限工作区（同上，拦截在宿主 ✗）' },
   { key: 'vmu.math.captureStdoutBytes', type: 'natural', def: 65536, hot: HOT.H1, who: 'office', doc: 'stdout 捕获上限（触界报丢弃字节 ✗）' },
+  // batch-4 slice 2 (formal): the formalisation-face knobs the module really reads.
+  { key: 'vmu.formal.axiomWhitelist', type: 'stringList', def: ['propext', 'Classical.choice', 'Quot.sound'], hot: HOT.H1, who: 'office', doc: '受信公理白名单（白名单外 ⇒ 具名拒并点名 ✓）' },
+  { key: 'vmu.formal.allowSorry', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否允许 sorry（默认 false：出现即拒并点名位置 ✗✓）' },
+  { key: 'vmu.formal.requireArtifacts', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '是否必须有产物（当前只读入未强制 ✗）' },
+  { key: 'vmu.formal.maxArtifacts', type: 'natural', def: 32, hot: HOT.H1, who: 'office', doc: '产物条数上限（溢出必计数）' },
+  { key: 'vmu.formal.maxSourceBytes', type: 'natural', def: 262144, hot: HOT.H1, who: 'office', doc: '源码字节上限（触界报丢弃字节 ✗）' },
   { key: 'vmu.handover.packBudgetBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '上下文包预算（触界必报丢弃）' },
   { key: 'vmu.handover.compress', type: 'enum', domain: ['none', 'summary'], def: 'summary', hot: HOT.H1, who: 'office', doc: '压缩方式' },
   { key: 'vmu.handover.requireFingerprint', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '每项须带指纹' },

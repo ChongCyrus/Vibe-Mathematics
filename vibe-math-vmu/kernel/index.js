@@ -48,6 +48,9 @@ import { createRetention } from './retention.js'
 import { createDelegation } from './delegation.js'
 import { createMemory } from './memory.js'
 import { createBidding } from './bidding.js'
+import { createSkills } from './skills.js'
+import { createPublication } from './publication.js'
+import { createFormal } from './formal.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -286,6 +289,11 @@ export function createKernel({
   // and the auction's price never depends on reputation unless the institution explicitly turns that on.
   const memory = createMemory({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
   const bidding = createBidding({ settings: { get: (k) => settings[k] }, bus, clock, log, members, trust })
+  // Batch-2/3/4 tails: skills, publication and the formalisation face. Skills' capacity counts only live and
+  // fresh claims (a retired claim frees its slot); all three are zero-mechanism by default.
+  const skills = createSkills({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
+  const publication = createPublication({ settings: { get: (k) => settings[k] }, bus, clock, log, library, repropack })
+  const formal = createFormal({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn: null, library })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -326,6 +334,9 @@ export function createKernel({
   registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 §9)' })
   registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 §10)' })
   registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09·15)' })
+  registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 §8)' })
+  registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 §7)' })
+  registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -415,6 +426,9 @@ export function createKernel({
     get repropack() { return repropack },
     get memory() { return memory },
     get bidding() { return bidding },
+    get skills() { return skills },
+    get publication() { return publication },
+    get formal() { return formal },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,
