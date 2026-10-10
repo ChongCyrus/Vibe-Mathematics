@@ -106,6 +106,26 @@ ok(mk().calendar({ dueAt: 1000, at: 1000 }).ok === true, 'due exactly now (dueMs
 refuses(() => mk().calendar({ dueAt: '1970-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }), 'VMU_COMPLIANCE_CALENDAR_MISSED', null, 'ISO dueAt in 1970 + ISO at in 2026 ⇒ overdue (the original shape still works)')
 ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }).ok === true, 'ISO future dueAt ⇒ passes (no regression)')
 
+// ── task-231: the instant→ms rule now has ONE shared implementation (kernel/timevalue.js), and both faces
+// must judge the SAME input the SAME way. The trap the helper documents: Date.parse('1000') is the YEAR 1000
+// (-30610224000000) and NOT NaN, so a number must be handled as a number before any stringification.
+{
+  const { ms } = await import('../vibe-math-vmu/kernel/timevalue.js')
+  const { createDomainGate } = await import('../vibe-math-vmu/kernel/domaingate.js')
+  ok(typeof ms === 'function' && ms(0) === 0 && ms(1000) === 1000, 'shared ms(): a finite NUMBER is epoch-ms (0 included)')
+  ok(ms('1970-01-01T00:00:00.000Z') === 0 && ms(1000) === 1000, 'shared ms(): ISO strings and numbers agree on the same instant')
+  ok(!Number.isNaN(ms('1000')) && ms('1000') === Date.parse('1000') && ms('1000') !== 1000, 'the bare-year trap is SILENT: ms("1000") = year 1000, not NaN and not 1000')
+  ok(Number.isNaN(ms('nope')) && Number.isNaN(ms(NaN)), 'unparseable input ⇒ NaN (never a throw, never a guess)')
+  ok(ms(0) < ms(1000) === true, 'the shared rule orders the two instants (0 before 1000)')
+  // CROSS-FACE: the same pair {0, 1000} must read as "0 is in the past" in BOTH faces.
+  const mine = (() => { try { mk().calendar({ dueAt: 0, at: 1000 }); return null } catch (e) { return e.code } })()
+  const dg = createDomainGate({ clock: () => 1000, settings: {} })
+  const theirs = (() => { try { dg.review({ protocolId: 'p-231', approvedAt: 0, expiresAt: 0, at: 1000 }); return null } catch (e) { return e.code } })()
+  ok(mine === 'VMU_COMPLIANCE_CALENDAR_MISSED', 'compliance: dueAt 0 with now 1000 ⇒ OVERDUE (0 is a past instant)')
+  ok(theirs === 'VMU_IACUC_EXPIRED', 'domaingate: expiresAt 0 with now 1000 ⇒ EXPIRED (the same reading of the same instants)')
+  ok(mine !== null && theirs !== null, 'CROSS-FACE CONSISTENCY: both faces (sharing ms()) treat 0 as a past instant, each with its own named code')
+}
+
 console.log('')
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

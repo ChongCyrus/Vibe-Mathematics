@@ -285,6 +285,7 @@
     "vibe-math-vmu/kernel/ip.js",
     "vibe-math-vmu/kernel/funding.js",
     "vibe-math-vmu/kernel/compliance.js",
+    "vibe-math-vmu/kernel/timevalue.js",
     "vibe-math-vmu/kernel/storepolicy.js",
     "vibe-math-vmu/kernel/capacity.js",
     "vibe-math-vmu/kernel/hr.js",

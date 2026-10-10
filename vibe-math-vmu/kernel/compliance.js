@@ -9,6 +9,10 @@
 //
 // 码＝**零新码**：全部复用 03-§8 已登记的 7 个 `VMU_COMPLIANCE_*`（含用 `item` 区分的两条"缺审批"）。
 import { createHash } from 'node:crypto'
+// task-231: the instant→ms rule is a SINGLE source of truth (kernel/timevalue.js) — it used to be duplicated
+// here and in domaingate.js. See that module for the bare-year trap: Date.parse('1000') is the YEAR 1000
+// (-30610224000000), never NaN, so a number must be handled as a number BEFORE any stringification.
+import { ms } from './timevalue.js'
 
 export const apiVersion = 1
 export const ENFORCED_SCOPE = 'evaluated-so-far'
@@ -198,11 +202,11 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
    *
    * task-230 (REAL DEFECT, fixed here): a NUMERIC instant must never be stringified before it is COMPARED.
    * `String(1000)` ⇒ `'1000'`, and `Date.parse('1000')` = **-30610224000000** — the year 1000, NOT NaN — so
-   * `{ dueAt: 0, at: 1000 }` used to compare `0 < year-1000` ⇒ false ⇒ **silently passed** ✗. `ms()` normalises
-   * both sides: a finite number IS epoch-ms, anything else is parsed as an ISO string. (Trap for the next
-   * reader: `Date.parse` on a bare year string is VALID input, so the bug is silent, never a crash.)
+   * `{ dueAt: 0, at: 1000 }` used to compare `0 < year-1000` ⇒ false ⇒ **silently passed** ✗. `ms()` (imported
+   * from kernel/timevalue.js since task-231 — SINGLE source of truth) normalises both sides: a finite number IS
+   * epoch-ms, anything else is parsed as an ISO string. (Trap for the next reader: `Date.parse` on a bare year
+   * string is VALID input, so the bug is silent, never a crash.)
    */
-  const ms = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Date.parse(String(v)))
   function calendar({ dueAt = null, at = null } = {}) {
     const enforced = []
     mark(enforced, 'vmu.compliance.auditPrepLeadDays')

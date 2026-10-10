@@ -88,6 +88,11 @@ const EXPECT = {
   // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
   migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（11/11 键已接、**零新码**、全部返回型拒绝 ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
+  // Round 48: the instant normaliser became a shared kernel tool and therefore a new file the matrix sees. It is
+  // a PURE FUNCTION module - no factory, no service, nothing to probe - so it is registered as not-applicable for
+  // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
+  // and the domain gate each had their own copy of the same normaliser, and two copies drift.
+  timevalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；它存在的原因是 `ms()` 曾在 `compliance`／`domaingate` **各有一份**（**两份实现会漂移** ✗✓ ⇒ 已抽为单一真源 ✓）'),
 }
 
 const shape = (v) => {

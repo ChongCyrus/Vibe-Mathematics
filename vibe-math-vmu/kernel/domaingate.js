@@ -6,6 +6,10 @@
 // 22 卷台账 id（本模块**不定义**台账结构）；⑧ 截断必计数；⑨ 只用注入 clock；⑩ 未声明领域包 ⇒ **明确"无闸"**
 // （不是"通过"）；只读面不改状态。
 import { createHash } from 'node:crypto'
+// task-231: the instant→ms rule is a SINGLE source of truth (kernel/timevalue.js). It was duplicated here and
+// in compliance.js; the trap it documents (Date.parse('1000') = the YEAR 1000, never NaN) is why numbers must
+// be handled as numbers BEFORE any stringification.
+import { ms } from './timevalue.js'
 
 export const apiVersion = 1
 export const DOMAINS = Object.freeze(['clinical', 'animal'])
@@ -64,11 +68,10 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   }
   const emit = (t, p) => { if (!bus || typeof bus.emit !== 'function') return null; try { return bus.emit(t, p) } catch (e) { log('domaingate: bus emit failed: ' + String((e && e.code) || e)); return null } }
 
-  // task-217 (the falsy-zero class): epoch 0 is a LEGAL instant, so "not given" is decided EXPLICITLY.
-  // `given()` is the one rule for every time input here; `ms()` accepts finite millisecond NUMBERS as well as
-  // ISO strings (a number must not be re-parsed as a year by Date.parse, and 0 must survive untouched).
+  // task-217／task-231: epoch 0 is a LEGAL instant, so "not given" is decided EXPLICITLY. `given()` is the one
+  // rule for every time input here; `ms()` (kernel/timevalue.js — the single shared implementation) accepts
+  // finite millisecond NUMBERS as well as ISO strings, so a number is never re-parsed as a year and 0 survives.
   const given = (v) => v !== undefined && v !== null
-  const ms = (v) => { if (typeof v === 'number') return Number.isFinite(v) ? v : NaN; const n = Date.parse(String(v)); return Number.isFinite(n) ? n : NaN }
 
   /** declare：声明一个领域包（clinical|animal）。未声明 ⇒ gate() 报"无闸"。 */
   function declare({ domain, pack } = {}) {

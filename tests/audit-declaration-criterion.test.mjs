@@ -254,7 +254,12 @@ export const EMPTY_ALLOWED = /EMPTY_ALLOWED/
 /** Evidence that a collection really was non-empty BEFORE the assertion (the required precondition).
  *  task-222 precision fix: an equality assertion against a POSITIVE integer (`length === 24`) also proves
  *  non-emptiness — the first version only accepted `> 0`/`!== 0`/`>= 1`, which produced many false hits. */
-export const NON_EMPTY_GUARD = /(\.length\s*>\s*0|\.length\s*!==\s*0|\.length\s*>=\s*1|\.length\s*===\s*[1-9]\d*|non-vacuous|scanned\s*>\s*0)/
+/** Evidence that a collection really was non-empty BEFORE the assertion (the required precondition).
+ *  task-233 precision fix: `>= <positive int>` (NOT `>= 0`, which is trivially true), `.size > 0` for
+ *  Set/Map, and `Object.keys(x).length > 0` all PROVE non-emptiness; they used to be false positives. */
+export const NON_EMPTY_GUARD = /(\.length\s*>\s*0|\.length\s*!==\s*0|\.length\s*>=\s*[1-9]\d*|\.length\s*===\s*[1-9]\d*|\.size\s*>\s*0|\.size\s*>=\s*[1-9]\d*|\.size\s*!==\s*0|Object\.keys\([^)]*\)\.length|non-vacuous|scanned\s*>\s*0)/
+/** The deliberately-NOT-a-guard forms (kept explicit so a fixture can prove they stay red). */
+export const NOT_A_GUARD = /\.length\s*>=\s*0|\.size\s*>=\s*0|\.length\s*!==\s*-1/
 /** Stable per-hit receiver text (task-228): the fingerprint is `file:line:shape:receiver`. */
 export function receiverOf(shape, line) {
   if (shape === 'B') {
@@ -313,28 +318,19 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'audit-preset-rows.test.mjs:174:A:for:VERSIONS',
   'audit-preset-rows.test.mjs:73:A:for:VERSIONS',
   'audit-readme-counts.mjs:79:A:for:text.matchAll',
-  'audit-seam-reachability.test.mjs:44:A:rows',
-  'audit-seam-reachability.test.mjs:46:A:nulls',
-  'audit-settings-channels.test.mjs:82:A:for:sampleKeys.slice',
   'audit-spec-traceability.mjs:104:A:for:LEAN_PARAMS',
   'audit-spec-traceability.mjs:144:A:for:cfg.writers',
   'audit-spec-traceability.mjs:162:A:for:LEAN_PARAMS',
-  'audit-spec-traceability.mjs:177:A:runRows',
   'audit-spec-traceability.mjs:75:A:for:PRESETS',
   'audit-status-report-fields.mjs:121:A:for:cases',
   'audit-vmu-docs.test.mjs:130:A:packish',
   'audit-vmu-docs.test.mjs:336:A:for:readFileSync',
   'audit-vmu-docs.test.mjs:52:A:for:DOC_FILES',
-  'audit-vmu-glossary.test.mjs:24:A:glossary.terms',
-  'audit-vmu-glossary.test.mjs:26:A:glossary.terms',
   'e2e-v4-fixes.test.mjs:1239:A:st1.busy',
-  'formal-verify-v2.test.mjs:1436:A:listJobs.jobs',
-  'formal-verify-v2.test.mjs:1769:A:capitalised',
   'formal-verify-v2.test.mjs:1810:A:for:hosts',
   'formal-verify-v4.test.mjs:1323:A:corpus',
   'formal-verify-v5.test.mjs:685:A:formal.objects',
   'formal-verify-v5.test.mjs:739:A:formal.objects',
-  'formal-verify-v5.test.mjs:807:A:for:msgs',
   'math-computation-archive-rerun.mutants.mjs:51:A:for:CASES',
   'math-computation-discovery.mutants.mjs:62:A:for:CASES',
   'math-computation-shared.test.mjs:1191:A:line',
@@ -343,15 +339,10 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'math-computation-shared.test.mjs:940:A:for:cases',
   'math-computation-v2.test.mjs:235:A:MATH_PARAM_NAMES',
   'math-computation-v2.test.mjs:237:A:MATH_PARAM_NAMES',
-  'math-computation-v2.test.mjs:574:A:subBlocks',
-  'math-computation-v2.test.mjs:683:A:for:sites',
   'math-computation-v2.test.mjs:747:A:line',
   'math-computation-v3.test.mjs:235:A:MATH_PARAM_NAMES',
   'math-computation-v3.test.mjs:237:A:MATH_PARAM_NAMES',
-  'math-computation-v3.test.mjs:574:A:subBlocks',
   'math-computation-v3.test.mjs:689:A:for:sites',
-  'math-computation-v4.test.mjs:319:A:line',
-  'math-computation-v4.test.mjs:663:A:execSpawns',
   'math-computation-v5.test.mjs:255:A:math.MATH_PARAM_NAMES',
   'math-computation-v5.test.mjs:264:A:math.MATH_PARAM_NAMES',
   'math-computation-v5.test.mjs:288:A:for:math.MATH_PARAM_NAMES',
@@ -361,53 +352,35 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'v3-fix-probes.test.mjs:472:A:files',
   'v4-final-paper.test.mjs:299:A:heads',
   'v4-final-paper.test.mjs:300:A:heads',
-  'v4-final-paper.test.mjs:314:A:paperPrompts',
-  'v4-final-paper.test.mjs:500:A:meta.compile.attempts',
   'vmu-alerts.test.mjs:290:A:after.results',
   'vmu-audit.test.mjs:142:A:items',
   'vmu-bidding-audit.test.mjs:78:A:for:Object.keys',
-  'vmu-bidding.test.mjs:145:A:st.collusion.suspects',
   'vmu-board-audit.test.mjs:94:A:for:Object.keys',
   'vmu-capacity.test.mjs:259:A:outcomes',
   'vmu-clockguard.test.mjs:98:A:skews',
   'vmu-compliance.test.mjs:31:A:ar.fired',
   'vmu-conference.test.mjs:201:A:r1.agenda.placements',
-  'vmu-conference.test.mjs:237:A:receipts',
-  'vmu-conference.test.mjs:239:A:receipts',
-  'vmu-conference.test.mjs:240:A:receipts',
   'vmu-containment.test.mjs:66:A:PACK.codes',
   'vmu-course.test.mjs:200:A:for:WIRED_COURSE_KEYS',
-  'vmu-course.test.mjs:234:A:for:receipts',
   'vmu-external.test.mjs:407:A:receipts',
   'vmu-external.test.mjs:408:A:receipts',
   'vmu-external.test.mjs:40:A:need',
   'vmu-fairness.test.mjs:30:A:rb.shares',
   'vmu-host-hooks.test.mjs:138:A:line',
   'vmu-host-hooks.test.mjs:145:A:line',
-  'vmu-host.test.mjs:126:A:for:host.state.specs',
   'vmu-host.test.mjs:149:A:spec.parameters.required',
   'vmu-host.test.mjs:277:A:after.entries',
   'vmu-hr.test.mjs:32:A:ar.fired',
   'vmu-math.test.mjs:84:A:for:cases',
   'vmu-mathtools.test.mjs:317:A:st.plannedKeys',
-  'vmu-mathtools.test.mjs:454:A:recs',
   'vmu-mathtools.test.mjs:461:A:for:failures',
-  'vmu-mathtools.test.mjs:477:A:recs',
-  'vmu-meetings.test.mjs:519:A:recs',
   'vmu-meetings.test.mjs:527:A:for:failures',
-  'vmu-meetings.test.mjs:552:A:recs',
   'vmu-metrics.test.mjs:121:A:line',
   'vmu-metrics.test.mjs:181:A:allAt',
-  'vmu-migration.test.mjs:288:A:rs.items',
-  'vmu-migration.test.mjs:290:A:rs.items',
-  'vmu-migration.test.mjs:291:A:rs.items',
   'vmu-migration.test.mjs:310:A:outcomes',
   'vmu-planned-settings.test.mjs:91:A:keys',
   'vmu-prompt.test.mjs:65:A:sections',
   'vmu-rules.test.mjs:152:A:capabilityKeys',
-  'vmu-settings.test.mjs:146:A:line',
-  'vmu-settings.test.mjs:147:A:keys',
-  'vmu-settings.test.mjs:46:A:keys',
   'vmu-settings.test.mjs:48:A:defs',
   'vmu-store.test.mjs:55:A:m.PUBLIC_KEYS',
   'vmu-storepolicy.test.mjs:148:A:for:receipts',
@@ -733,6 +706,17 @@ for (const v of ruleE.violations.slice(0, 60)) console.log('    RULE-E-HIT ' + v
     const jDel = diffFingerprints(['a.mjs:1:A:x', 'b.mjs:2:A:y'], ['a.mjs:1:A:x'])
     ok(jDel.removed.length === 1 && jDel.added.length === 0, 'fixture J③: a pure DELETION ⇒ red (the list must be synced explicitly)')
     ok(hitFingerprint({ file: 'x.mjs', line: 7, shape: 'A', receiver: 'arr' }) === 'x.mjs:7:A:arr' && A_FINGERPRINT_SHAPE === 'file:line:shape:receiver', 'fixture J④: the fingerprint shape is file:line:shape:receiver')
+
+    // fixture K (task-233): the extended non-empty guards, and the trivially-true form that must stay red
+    const kGe2 = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(arr.length >= 2, "at least two")\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(kGe2.violations.length === 0, 'fixture K①: `length >= 2` counts as a non-empty guard ⇒ green')
+    const kSet = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(set.size > 0, "non-empty set")\nok([...set].every((x) => x > 0), "all positive")\n' }] })
+    ok(kSet.violations.length === 0, 'fixture K②: `.size > 0` (Set/Map) counts as a guard ⇒ green')
+    const kGe0 = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(arr.length >= 0, "trivially true")\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(kGe0.violations.length === 1 && /\[A\]/.test(kGe0.violations[0]), 'fixture K③: `length >= 0` is TRIVIALLY TRUE ⇒ still RED (precision must not become laxity)')
+    const kKeys = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(Object.keys(obj).length > 0, "has keys")\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(kKeys.violations.length === 0, 'fixture K④: `Object.keys(x).length > 0` counts as a guard ⇒ green')
+    ok(NOT_A_GUARD.test('arr.length >= 0') && !NON_EMPTY_GUARD.test('arr.length >= 0'), 'fixture K⑤: the trivially-true form is explicitly classified as NOT a guard')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
