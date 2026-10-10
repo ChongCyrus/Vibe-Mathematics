@@ -287,7 +287,7 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | P2 | **M2 代码模块真机生效**（装载＋决定） | **PASS** ✓✓ | `…/p2-m2-in-host/` |
 | P2 | M4 整合包真机应用（规则 enabled） | **PASS** ✓✓ | `…/p2-pack-in-host-single/` |
 | P2 | 实例身份自证（多实例可辨） | **PASS** ✓✓ | `…/p2-instance-identity/` |
-| P2 | **M3 脚本形态真机运行** | **通过 ✓✓（2026-10-10 解除）** | `live/2026-10-10/p2-m3-stack4/` ✓：回执 `{"ok":true,"action":"run","script":"probe","ran":true,"exit":0,"policy":"open","timedOut":false,"summary":"script ran","findings":[],"data":null}` ✓（前三轮 `p2-m3-stack{,2,3}/` 保留对照 ✓） |
+| P2 | **M3 脚本形态真机运行** | **PASS** ✓✓（M3 已解除，2026-10-10 ✓） | `live/2026-10-10/p2-m3-stack4/` ✓：回执 `{"ok":true,"action":"run","script":"probe","ran":true,"exit":0,"policy":"open","timedOut":false,"summary":"script ran","findings":[],"data":null}` ✓（前三轮 `p2-m3-stack{,2,3}/` 保留对照 ✓） |
 
 > **M3 的解除过程（留证 ✓，2026-10-10）**：前三轮真机 NON-RESULT ✗ 的**首要原因不是宿主，而是我方接缝把诊断丢掉了** ✗ —— `kernel/script-bridge.js` 的 catch 重写了错误却没回挂 `hostStack`/`shape` ⇒ 工具面回执里**永远没有宿主栈** ✓（独立验证用**注入接缝**证明了这次丢失 ✓）。把"搬运"修好之后，栈逐帧钉死炸点：宿主 **`dsh-subprocess-local`** 的 `validateNoNullByte @ runner-launch-*.js:1509` ← `targetEnvironment:1520`（它校验 **`options.cwd`**）⇒ **该宿主不容忍 `cwd` 为 `undefined`，连"省略 `cwd` 键"也会崩 ✗**（实测 `p2-m3-stack3/` ✓）。
 > **修法（调用侧规避，不是修宿主 ✗）**：`host-spawn.js` 现在**永远传一个真实字符串 `cwd`** ✓（调用方 cwd → 配置工作区 → `process.cwd()` ✓），并对 `env` 做同样的"**只允许字符串**"归一化 ✓（`undefined` 值会炸同一个函数 ✓，两道保险 ✓）。
