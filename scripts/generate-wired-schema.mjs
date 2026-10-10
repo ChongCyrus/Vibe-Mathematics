@@ -43,11 +43,19 @@ export function wiredKeysOf(src) {
  */
 export function defaultOf(src, key) {
   const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // A module may keep a short alias for a long key and store defaults under a COMPUTED key: `records.js` maps
+  // `headMaxItems: 'vmu.records.head.maxItems'` and then writes `[K.headMaxItems]: 200`. Resolve the alias first.
+  const alias = new RegExp("([A-Za-z_$][\\w$]*)\\s*:\\s*['\"]" + esc + "['\"]").exec(src)
+  // A value may be a scalar, a bracketed list/object (which CONTAINS commas) or a quoted string - and the table
+  // may put SEVERAL entries on one line (`'k': 30, 'k2': 7,`). Measured: capturing to end-of-line swallowed the
+  // next entry and the literal was rejected as invalid, so the pair of entries was reported unrecoverable.
+  const VAL = "(\\[[^\\]]*\\]|\\{[^}]*\\}|'[^']*'|\"[^\"]*\"|[^,\\n]+)"
   const shapes = [
-    new RegExp("(?:sget|b|n)\\(\\s*'" + esc + "'\\s*,\\s*([^)\\n]+)\\)"),          // sget('k', 5) / b('k', true)
-    new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*([^)\\n]+)\\)"), // raw(settings, 'k', true)
-    new RegExp("[\"']" + esc + "[\"']\\s*:\\s*([^\\n]+)"),                         // an object-literal table
+    new RegExp("(?:sget|b|n)\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"),          // sget('k', 5)
+    new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"), // raw(settings, 'k', true)
+    new RegExp("[\"']" + esc + "[\"']\\s*:\\s*" + VAL),                                // an object-literal table
   ]
+  if (alias) shapes.push(new RegExp("\\[\\s*K\\." + alias[1] + "\\s*\\]\\s*:\\s*" + VAL)) // [K.alias]: <lit>
   for (const re of shapes) {
     const m = re.exec(src)
     if (m && m[1] !== undefined) {
