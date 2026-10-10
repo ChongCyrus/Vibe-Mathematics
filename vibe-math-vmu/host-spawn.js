@@ -17,6 +17,8 @@
 // Output caps are generous on purpose: the collected reader caps what it keeps, so a too-small cap would
 // silently truncate a receipt (the older preset learned this the hard way).
 
+import { guardSpawnCwd } from './kernel/guard.js'
+
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
@@ -62,6 +64,10 @@ export function createHostSpawn({
   stderrCapBytes = DEFAULT_STDERR_CAP,
   clock = () => Date.now(),
   delay = (ms) => new Promise((r) => setTimeout(r, ms)),
+  // The path policy needs its two inputs to reach the spawn surface (docs/04 §11). Both default to absent, and
+  // the guard is only consulted when a root is known - so a seam built without them behaves exactly as before.
+  settings = {},
+  root = null,
 } = {}) {
   // The service is resolved AT CALL TIME, not at construction: the live run showed that a plugin's apply()
   // can run before the host's subprocess service is mounted, and binding "no service" at that instant made
@@ -130,6 +136,12 @@ export function createHostSpawn({
     // not a fix of the host.
     const cwd = typeof request.cwd === 'string' && request.cwd.length > 0 ? request.cwd
       : (typeof defaultCwd === 'string' && defaultCwd.length > 0 ? defaultCwd : process.cwd())
+    // THE PATH POLICY REACHES THE SPAWN SURFACE (docs/04 §11) - OPT-IN, and deliberately so. A spawn cwd is
+    // usually the AGENT WORKSPACE, which is not necessarily the kernel's root, so applying the policy's own
+    // default here would refuse legitimate spawns (it would have re-broken the M3 path we just fixed). The
+    // guard runs only when the configuration DECLARES the policy; then a cwd outside the allowed roots is
+    // refused BY NAME before the host is touched.
+    if (root && typeof settings['vmu.safety.pathPolicy'] === 'string') guardSpawnCwd({ settings, root, cwd })
     try {
       handle = sub.spawn({
         argv,

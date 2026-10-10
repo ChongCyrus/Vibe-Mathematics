@@ -54,7 +54,7 @@ export const MATH_PARAM_MAP = Object.freeze({
 
 export function createHostMath({ ctx, settings = {}, projectRoot = null, log = () => {} } = {}) {
   const root = projectRoot || (ctx && typeof ctx.workspace === 'string' && ctx.workspace) || process.cwd()
-  const seam = createHostSpawn({ ctx, defaultCwd: root })
+  const seam = createHostSpawn({ ctx, defaultCwd: root, settings, root })
   const subprocessOf = () => { try { return ctx && typeof ctx.get === 'function' ? ctx.get('subprocess') : null } catch { return null } }
 
   /** Resolve a module-supplied (project-relative) path; the DECISION comes from the resolved policy. */

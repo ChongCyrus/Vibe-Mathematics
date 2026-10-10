@@ -66,7 +66,7 @@ export function apply(ctx, config = {}) {
   let spawnSeam = null
   let spawnError = null
   if (ctx && typeof ctx.get === 'function') {
-    try { spawnSeam = createHostSpawn({ ctx, defaultCwd: typeof config.workspace === 'string' ? config.workspace : null }) }
+    try { spawnSeam = createHostSpawn({ ctx, defaultCwd: typeof config.workspace === 'string' ? config.workspace : null, settings, root }) }
     catch (e) { spawnError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
   }
   // ---- PROMPT MANAGEMENT (the user's explicit clause: 通过 settings/中间件 设置·安排·管理·编辑提示词) --------
