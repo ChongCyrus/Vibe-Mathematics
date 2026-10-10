@@ -169,13 +169,13 @@
 | **提案码 / Proposal code** | `cross` | 03-§8.1 | 已登记但代码里找不到的码（登记 ≠ 已实现） |
 | **回执 / Receipt** | `cross` | 09-§3 | 作业结算的事实凭证（退出码＋内容哈希＋argv） |
 | **形式化 / Formalization** | `cross` | 09-§2 | 把命题交给证明助手检查；编译失败 ≠ 命题为假 |
-| **复现包 / Reproduction pack** | `cross` | 16-§L12 | 环境锁定＋种子＋脚本＋数据指针 |
+| **复现包 / Reproduction pack** | `cross` | 16-§2 | 环境锁定＋种子＋脚本＋数据指针 |
 | **指纹 / Fingerprint** | `cross` | 07-§4.3 | 内容寻址的去重与身份基准 |
-| **反链 / Backlink** | `cross` | 07-§4.x | 关系图的反向索引（G8 新增） |
-| **关系图 / Relation graph** | `cross` | 07-§4.x | 结论之间的有类型关系（G8 新增） |
-| **日程轨 / Schedule track** | `cross` | 07-§4.x | 业务时间的事实轨；纯数据、不触发流程（G6 新增） |
-| **订阅 / Subscription** | `cross` | 17-§x | 谁在什么事件上被通知（G17 新增；阈值在 21 卷） |
-| **课程/研讨班 / Course / seminar** | `cross` | 17-§x | 教学机构的可选语义（G11 新增；默认不启用） |
+| **反链 / Backlink** | `cross` | 07-§4 | 关系图的反向索引（G8 新增） |
+| **关系图 / Relation graph** | `cross` | 07-§4 | 结论之间的有类型关系（G8 新增） |
+| **日程轨 / Schedule track** | `cross` | 07-§4 | 业务时间的事实轨；纯数据、不触发流程（G6 新增） |
+| **订阅 / Subscription** | `cross` | 17-§29 | 谁在什么事件上被通知（G17 新增；阈值在 21 卷） |
+| **课程/研讨班 / Course / seminar** | `cross` | 17-§28 | 教学机构的可选语义（G11 新增；默认不启用） |
 | **去标识化 / De-identification** | `cross` | 20-§7 | 写入前的前置处理，不得事后脱敏 |
 | **伦理审查 / IRB / ethics review** | `cross` | 20-§9 | 高风险研究的前置审批闸 |
 | **紧急制动 / Kill switch** | `cross` | 20-§14 | 事发时冻结能力的总开关（触发主体待裁） |

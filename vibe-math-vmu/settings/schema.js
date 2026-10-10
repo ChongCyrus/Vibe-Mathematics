@@ -72,6 +72,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.records.headListAt', type: 'natural', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数' },
   { key: 'vmu.records.truncateMode', type: 'enum', domain: ['keepChars', 'keepHeadTail', 'dropMiddle'], def: 'keepChars', hot: HOT.H1, who: 'office', doc: '截断策略（必须计数，禁静默）' },
   { key: 'vmu.records.fingerprintPolicy', type: 'enum', domain: ['content-only', 'content+display'], def: 'content-only', hot: HOT.H2, who: 'office', doc: '内容指纹口径（默认排除展示头）' },
+  // Found by the NEW read-side gate (tests/vmu-settings.test.mjs 1c): the v5r pack DECLARES and READS this key
+  // (`packs/v5r-core.js:48/97`), yet it had never been in the schema - a real knob with a real consumer living
+  // entirely outside the registry. Registering it is exactly what the gate demands.
+  { key: 'vmu.records.requireSettledRecords', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '只允许写入已结算记录（v5r 机制；由包携带默认 true）' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
 
@@ -129,6 +133,41 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.packs.active', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '生效整合包（冲突按 O4 报错）' },
   { key: 'vmu.packs.allowOverride', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否允许 pack 间显式覆盖' },
   { key: 'vmu.packs.activeOverrides', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '显式覆盖声明（不声明即报错）' },
+
+  // ---- BATCH-1 IMPLEMENTATION SURFACES (docs/11 §9.8) --------------------------------------------
+  // These keys were DECLARED in the design volumes and lived in `settings/planned.js`. Implementing the
+  // services moved them HERE, which is what makes docs/04 §11 show them as ✅ 已接线 and what makes
+  // `scripts/generate-planned-settings.mjs` stop listing them ("existing" keys are excluded) - the registry
+  // heals itself, and no statistic is hand-edited. `who: 'office'` for all of them for now; the volumes'
+  // finer who-mapping (chair vs office vs pack) is a follow-up, recorded in the implementation log.
+  { key: 'vmu.agenda.maxItems', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '议程条目上限（0＝不限；超限具名拒）' },
+  { key: 'vmu.agenda.ownerRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '议程条目必须带负责人' },
+  { key: 'vmu.agenda.timeboxRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '议程条目必须带时间箱' },
+  { key: 'vmu.agenda.splitDepthMax', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: '议程拆分深度上限' },
+  { key: 'vmu.agenda.carryOnAdjourn', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '延会时议程顺延（声明值；运行时兜底见 04-§6.1 的层次差异）' },
+  { key: 'vmu.agenda.reorderAudit', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '议程重排必须留审计' },
+  { key: 'vmu.motions.secondThreshold', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '动议成立所需附议数' },
+  { key: 'vmu.motions.expireMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '动议失效时限（0＝不失效）' },
+  { key: 'vmu.motions.withdrawable', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '动议可否撤回' },
+  { key: 'vmu.motions.tabledMax', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '搁置上限（0＝不限）' },
+  { key: 'vmu.motions.maxOpen', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: '同时在案动议上限（0＝不限）' },
+  { key: 'vmu.motions.proceduralKinds', type: 'stringList', def: ['recess', 'extend', 'limit-speech', 'adjourn'], hot: HOT.H1, who: 'office', doc: '程序动议种类' },
+  { key: 'vmu.motions.privilegedKinds', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '特权动议种类' },
+  { key: 'vmu.motions.amendFriendlyInline', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '友好修正可内联' },
+  { key: 'vmu.motions.amendSubstantiveMode', type: 'string', def: 'one-vote', hot: HOT.H1, who: 'office', doc: '实质修正的处理方式' },
+  { key: 'vmu.board.columns', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: '看板列定义（空＝无看板：零机制）' },
+  { key: 'vmu.board.wipPerColumn', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: '按列的 WIP 上限覆盖' },
+  { key: 'vmu.board.wipDefault', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '默认 WIP 上限（0＝不限）' },
+  { key: 'vmu.board.swimlanes', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '泳道清单' },
+  { key: 'vmu.board.agingWarnMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '老化告警阈值（毫秒；0＝不告警）' },
+  { key: 'vmu.board.moveRequiresTransition', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '变列必须走迁移闸' },
+  { key: 'vmu.minutes.detail', type: 'enum', domain: ['brief', 'normal', 'full'], def: 'normal', hot: HOT.H1, who: 'office', doc: '纪要详略档' },
+  { key: 'vmu.minutes.confirmPreviousRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '起草前必须已确认上次纪要' },
+  { key: 'vmu.minutes.dissentMandatory', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '异议必须写明被拒项' },
+  { key: 'vmu.minutes.actionsOwnerRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '行动项必须有负责人' },
+  { key: 'vmu.minutes.dueRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '行动项必须有期限' },
+  { key: 'vmu.minutes.dissentRetentionMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '异议保留期（0＝永久）' },
+  { key: 'vmu.minutes.verbatimCapBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '逐字稿上限（触界报丢弃字节数，永不静默）' },
 ])
 
 /**

@@ -52,6 +52,29 @@ const MUST = ['内核', '设置', '中间件', '整合包', '挂点', '原语', 
 const missing = MUST.filter((w) => !glossary.terms.some((t) => t.zh === w))
 ok(missing.length === 0, 'the four-layer core vocabulary is in the glossary', missing.join(','))
 
+// ---- 4. `definedIn` must RESOLVE: the volume exists AND that section heading really exists ---------
+// An independent reviewer found five entries whose `definedIn` was an unparseable placeholder
+// (`07-§4.x`, `17-§x`) while the old assertion only required the string to start with `NN-§`. A pointer that
+// cannot be followed makes "definition ownership" a slogan, so the check now follows it.
+{
+  const text = new Map(volumes.map((f) => [f.slice(0, 2), readFileSync(join(DOCS, f), 'utf8')]))
+  const unresolved = []
+  for (const t of glossary.terms) {
+    const m = /^(\d\d)-§([\d.]+)$/.exec(t.definedIn)
+    if (!m) { unresolved.push(t.id + ' (' + t.definedIn + ' 不是 NN-§X 形式)'); continue }
+    const [vol, sec] = [m[1], m[2]]
+    const body = text.get(vol)
+    if (!body) { unresolved.push(t.id + ' (' + vol + ' 卷不存在)'); continue }
+    const re = new RegExp('^#{2,3} ' + sec.replace(/\./g, '\\.') + '(?:\\.|\\s|$)', 'm')
+    if (!re.test(body)) unresolved.push(t.id + ' (' + t.definedIn + ' 在 ' + vol + ' 卷找不到该编号标题)')
+  }
+  ok(unresolved.length === 0, 'every term\'s definedIn resolves to a REAL section heading',
+    unresolved.slice(0, 6).join(' | '))
+  // and no placeholders survived in any form
+  const placeholders = glossary.terms.filter((t) => /[xX]/.test(t.definedIn.replace(/[^xX]/g, '')) || /\.x$/.test(t.definedIn))
+  ok(placeholders.length === 0, 'no term points at a placeholder section', placeholders.map((t) => t.id).join(','))
+}
+
 console.log('')
 console.log('=== VMU GLOSSARY: ' + passed + ' passed, ' + failed + ' failed (' + glossary.terms.length + ' terms) ===')
 process.exit(failed === 0 ? 0 : 1)

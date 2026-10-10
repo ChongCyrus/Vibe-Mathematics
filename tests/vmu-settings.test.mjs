@@ -16,8 +16,8 @@
 //   · a layer with an undeclared key is refused, never merged into a phantom setting.
 
 import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { resolve, join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
@@ -69,6 +69,51 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
   ok(keysWithoutRow.length === 0, 'every schema key has a documented row (no undocumented knobs)', keysWithoutRow.join(','))
   ok(tableRows.length === declared.size, 'the table and the schema declare the same NUMBER of keys',
     tableRows.length + ' vs ' + declared.size)
+}
+
+// ---- 1c. every settings key the RUNTIME reads must be DECLARED (the direction nobody checked) ----------
+// The docs audit covers "a key the DOCS name must exist"; its G group covers "a key claimed wired must be read".
+// Neither covers the reverse of the second: a module READING a key that no volume ever declared had no gate at
+// all - `kernel/minutes.js` read three such keys (`vmu.minutes.detail`, `dissentRetentionMs`,
+// `verbatimCapBytes`) and the registration chain, which runs docs -> registry, could never have seen them.
+{
+  const files = []
+  const walk = (d, n) => {
+    if (n > 4) return
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'docs', 'settings'].includes(e.name)) continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p, n + 1)
+      else if (e.name.endsWith('.js') && !['math-computation.js', 'math-engines.js'].includes(e.name)) files.push(p)
+    }
+  }
+  walk(join(REPO, 'vibe-math-vmu'), 0)
+  ok(files.length >= 12, 'the runtime modules were found for the read-side key audit', files.length)
+  const read = new Map()
+  // Exemptions, each with a reason (the gate must not punish legitimate shapes):
+  //   · a PREFIX-ONLY literal (`'vmu.math.' + suffix`) is a template, not a key;
+  //   · a PACK-OWNED namespace (`vmu.v3.*`, `vmu.v5r.*`, `vmu.example.*`) is declared BY THE PACK, by design -
+  //     docs/10 §4 says a pack may own a namespace, and the schema deliberately does not list those.
+  const PACK_OWNED = /^vmu\.(?:v[2-5]r?|example|lab)\./
+  // NOT a read: `Symbol('vmu.settings.writers')` is a symbol DESCRIPTION in kernel/index.js, not a settings
+  // lookup. Exempted by exact name so the exemption cannot drift into a blanket hole.
+  const NOT_A_READ = new Set(['vmu.settings.writers'])
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/['"`](vmu\.[a-zA-Z0-9.]+)['"`]/g)) {
+      const k = m[1]
+      // 3+ segments only: two-segment names are SERVICE names (`vmu.tasks`), not settings keys.
+      if (k.split('.').length < 3) continue
+      if (k.endsWith('.') || PACK_OWNED.test(k) || NOT_A_READ.has(k)) continue
+      if (!read.has(k)) read.set(k, new Set())
+      read.get(k).add(f.replace(REPO + '\\', '').replace(REPO + '/', ''))
+    }
+  }
+  ok(read.size >= 20, 'the read-side scan found the keys the runtime actually reads', read.size)
+  // `declared` lives inside section 1b's block; `keys` is the top-level list of every schema key.
+  const declaredKeys = new Set(keys)
+  const undeclared = [...read.keys()].filter((k) => !declaredKeys.has(k)).sort()
+  ok(undeclared.length === 0, 'every settings key the runtime READS is declared in settings/schema.js',
+    undeclared.slice(0, 8).map((k) => k + ' (' + [...read.get(k)].slice(0, 1).join('') + ')').join(' | '))
 }
 
 // ---- 2. undeclared keys are defects (R4) -------------------------------------------------------

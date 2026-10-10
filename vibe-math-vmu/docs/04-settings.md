@@ -218,6 +218,7 @@ vmu.packs.active: [v5r]
 | `vmu.records.headListAt` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
 | `vmu.records.truncateMode` | enum | `keepChars` | `keepChars`∣`keepHeadTail`∣`dropMiddle` | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 截断策略（必须计数，禁静默） |
 | `vmu.records.fingerprintPolicy` | enum | `content-only` | `content-only`∣`content+display` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 内容指纹口径（默认排除展示头） |
+| `vmu.records.requireSettledRecords` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v5r-core.js` | 只允许写入已结算记录（v5r 机制；由包携带默认 true） |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/institute-min.js` | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
 | `vmu.records.meetingKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery） |
 | `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 提示词覆盖目录（仓内相对路径） |
@@ -260,12 +261,34 @@ vmu.packs.active: [v5r]
 | `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 生效整合包（冲突按 O4 报错） |
 | `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 是否允许 pack 间显式覆盖 |
 | `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 显式覆盖声明（不声明即报错） |
-| `vmu.agenda.carryOnAdjourn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.agenda.maxItems` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.agenda.ownerRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.agenda.reorderAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.agenda.splitDepthMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.agenda.timeboxRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.agenda.maxItems` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目上限（0＝不限；超限具名拒） |
+| `vmu.agenda.ownerRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目必须带负责人 |
+| `vmu.agenda.timeboxRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目必须带时间箱 |
+| `vmu.agenda.splitDepthMax` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程拆分深度上限 |
+| `vmu.agenda.carryOnAdjourn` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 延会时议程顺延（声明值；运行时兜底见 04-§6.1 的层次差异） |
+| `vmu.agenda.reorderAudit` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程重排必须留审计 |
+| `vmu.motions.secondThreshold` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 动议成立所需附议数 |
+| `vmu.motions.expireMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 动议失效时限（0＝不失效） |
+| `vmu.motions.withdrawable` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 动议可否撤回 |
+| `vmu.motions.tabledMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 搁置上限（0＝不限） |
+| `vmu.motions.maxOpen` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 同时在案动议上限（0＝不限） |
+| `vmu.motions.proceduralKinds` | string[] | `[recess,extend,limit-speech,adjourn]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 程序动议种类 |
+| `vmu.motions.privilegedKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 特权动议种类 |
+| `vmu.motions.amendFriendlyInline` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 友好修正可内联 |
+| `vmu.motions.amendSubstantiveMode` | string | `one-vote` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 实质修正的处理方式 |
+| `vmu.board.columns` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 看板列定义（空＝无看板：零机制） |
+| `vmu.board.wipPerColumn` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 按列的 WIP 上限覆盖 |
+| `vmu.board.wipDefault` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 默认 WIP 上限（0＝不限） |
+| `vmu.board.swimlanes` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 泳道清单 |
+| `vmu.board.agingWarnMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 老化告警阈值（毫秒；0＝不告警） |
+| `vmu.board.moveRequiresTransition` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/board.js` | 变列必须走迁移闸 |
+| `vmu.minutes.detail` | enum | `normal` | `brief`∣`normal`∣`full` | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 纪要详略档 |
+| `vmu.minutes.confirmPreviousRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 起草前必须已确认上次纪要 |
+| `vmu.minutes.dissentMandatory` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 异议必须写明被拒项 |
+| `vmu.minutes.actionsOwnerRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 行动项必须有负责人 |
+| `vmu.minutes.dueRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 行动项必须有期限 |
+| `vmu.minutes.dissentRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 异议保留期（0＝永久） |
+| `vmu.minutes.verbatimCapBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 逐字稿上限（触界报丢弃字节数，永不静默） |
 | `vmu.arbitration.binding` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.arbitration.mode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.arbitration.recordInMinutes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -330,12 +353,6 @@ vmu.packs.active: [v5r]
 | `vmu.ballot.secrecyRecordFact` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.tieRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.vetoMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.agingWarnMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.columns` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.moveRequiresTransition` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.swimlanes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.wipDefault` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.board.wipPerColumn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.budget.fairnessPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.budget.onExceed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.budget.perTaskShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -894,19 +911,6 @@ vmu.packs.active: [v5r]
 | `vmu.migration.rollback` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.migration.rollbackPointDensity` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.migration.stepBatch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
-| `vmu.minutes.actionsOwnerRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.minutes.confirmPreviousRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.minutes.dissentMandatory` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
-| `vmu.minutes.dueRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.amendFriendlyInline` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.amendSubstantiveMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.expireMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.maxOpen` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.privilegedKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.proceduralKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.secondThreshold` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.tabledMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.motions.withdrawable` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.names.aliasTablePath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.strict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |

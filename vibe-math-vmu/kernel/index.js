@@ -36,6 +36,10 @@ import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
 import { createLeanFace } from './lean.js'
 import { memoryCeilingExceeded } from './guard.js'
+// IMPLEMENTATION PHASE (docs/11 §9.8): the first planned primitives to become real code.
+import { createGovernance } from './governance.js'
+import { createBoard } from './board.js'
+import { createMinutes } from './minutes.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -224,6 +228,14 @@ export function createKernel({
     clock,
   })
 
+  // IMPLEMENTATION PHASE, batch 1 (docs/11 §9.8): the governance primitives (docs/08 §2 agenda + motions),
+  // the task board (docs/08 §4 columns/WIP/swimlanes/aging) and minutes (docs/08 §2 minutes/decrees/actions)
+  // stop being DECLARATIONS and become real services. They read their own `vmu.agenda.*` / `vmu.motions.*` /
+  // `vmu.board.*` / `vmu.minutes.*` keys literally, so the settings table derives their "wired" state by itself.
+  const governance = createGovernance({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const board = createBoard({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
+  const minutes = createMinutes({ settings: { get: (k) => settings[k] }, bus, clock, log, meeting: null })
+
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
     services: { kernel: Object.freeze({ read: () => (store ? store.read() : null) }), setting: (k) => settings[k] },
@@ -240,6 +252,11 @@ export function createKernel({
   registry.register('vmu.tasks', { apiVersion: 1 }, { kind: 'service', description: 'task ledger and stage machine' })
   registry.register('vmu.prompt', { apiVersion: 1 }, { kind: 'service', description: 'prompt sections, bindings, overrides' })
   registry.register('vmu.middleware', { apiVersion: 1 }, { kind: 'service', description: 'the hook bus and its four forms' })
+  // Batch-1 services (docs/11 §9.8). Registered unconditionally, like tasks/prompt/middleware: they are
+  // zero-mechanism by construction (no config ⇒ empty agenda, empty board, refusals by name).
+  registry.register('vmu.governance', { apiVersion: 1 }, { kind: 'service', description: 'agenda and motions (docs/08 §2)' })
+  registry.register('vmu.board', { apiVersion: 1 }, { kind: 'service', description: 'board columns, WIP and aging (docs/08 §4)' })
+  registry.register('vmu.minutes', { apiVersion: 1 }, { kind: 'service', description: 'minutes, decisions and action items (docs/08 §2)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -308,6 +325,10 @@ export function createKernel({
     get library() { return library },
     get members() { return members },
     get work() { return workLedger },
+    // Batch-1 implementation surfaces (docs/11 §9.8): real services, exposed the same way as tasks/prompt.
+    get governance() { return governance },
+    get board() { return board },
+    get minutes() { return minutes },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

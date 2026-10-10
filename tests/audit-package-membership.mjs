@@ -14,7 +14,7 @@
  * Env: PACKAGE_JSON=<path>  (used by the mutants harness to point at a mutated copy)
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -60,6 +60,36 @@ const volumes = readdirSync(join(REPO, 'vibe-math-vmu', 'docs'))
 ok(volumes.length >= 15, 'the design volumes on disk were found', String(volumes.length))
 const unlistedVolumes = volumes.filter((f) => !listed.has(f))
 ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in package.json#files', JSON.stringify(unlistedVolumes))
+// IMPORT CLOSURE: every RELATIVE import inside the vmu package must be shipped by the installer. This is the
+// gate for a defect class that shipped twice (kernel/work.js once, kernel/minutes.js again): a new module is
+// imported by index.js, the two installer audits stay green, and the tarball crashes on the user's machine with
+// MODULE_NOT_FOUND. The check is static and cheap: resolve each relative specifier, require the target file to
+// be listed in package.json#files (and, for runtime modules, in the installer's preset asset list).
+{
+  const VMU = join(REPO, 'vibe-math-vmu')
+  const jsFiles = []
+  const walk = (d, n) => {
+    if (n > 4) return
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p, n + 1)
+      else if (e.name.endsWith('.js')) jsFiles.push(p)
+    }
+  }
+  walk(VMU, 0)
+  const relRe = /(?:from|import)\s+['"](\.[^'"]+)['"]/g
+  const missing = []
+  for (const f of jsFiles) {
+    for (const m of readFileSync(f, 'utf8').matchAll(relRe)) {
+      const target = resolve(dirname(f), m[1])
+      const rel = 'vibe-math-vmu/' + relative(VMU, target).replace(/\\/g, '/')
+      if (!listed.has(rel)) missing.push(f.replace(REPO + '\\', '') + ' -> ' + m[1])
+    }
+  }
+  ok(missing.length === 0, 'every relative import inside the vmu package is shipped (no MODULE_NOT_FOUND class)',
+    missing.slice(0, 6).join(' | '))
+}
 ok(missingPaths.length === 0, 'every listed path exists', JSON.stringify(missingPaths))
 console.log('')
 console.log('=== PACKAGE MEMBERSHIP: ' + passed + ' passed, ' + failed + ' failed ===')
