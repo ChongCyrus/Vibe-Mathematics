@@ -83,6 +83,9 @@ export function createMeeting({
   let currentRound = null
   let asked = []
   let closedReason = null
+// ROUND 87 (R10-2a, ported from the v5r line): the explicit end of a debate. `null` means "nobody said the debate
+// is over", and aggregation is refused in that state - the sibling of I-2, which promises the same about ROUNDS.
+let debateEnded = null
   let conveneRecord = null
 
   const record = (what, detail) => {
@@ -140,6 +143,8 @@ export function createMeeting({
         answers: {}, silent: [], refused: [] }
       rounds.push(round)
       currentRound = round
+      // A new round is a NEW debate: an explicit end was about the previous one and does not carry over.
+      debateEnded = null
       state.value = 'in_session'
       if (ask !== null && typeof deliver === 'function') {
         for (const member of asked) await deliver({ meeting: id, round: round.n, member, ask: round.ask, at: clock() })
@@ -241,6 +246,40 @@ export function createMeeting({
         throw refuse('VMU_MIDDLEWARE_FAILED', 'the roundComplete decision point must return { complete: boolean }')
       }
       return verdict
+    },
+
+    /**
+     * END THE DEBATE explicitly (R10-2a, ported from the v5r line): aggregation may run only after someone SAYS
+     * SO. This is the sibling of I-2 above - `roundComplete()` is ASKED and never inferred, and this makes the
+     * same promise about AGGREGATION: no tally, no settlement and no conclusion may be derived while a debate is
+     * open unless it was ended by name, with a reason. A second end is refused rather than absorbed, because an
+     * explicit end is a FACT and not a repeatable action.
+     */
+    endDebate({ by = null, reason = null, target = null } = {}) {
+      if (state.value === 'closed') throw refuse('VMU_STATE', 'the meeting is closed: the debate ended with it')
+      if (debateEnded !== null) {
+        throw refuse('VMU_STATE', 'the debate was already ended by ' + String(debateEnded.by === null ? '(unnamed)' : debateEnded.by),
+          'open a new round instead of ending twice - an explicit end is recorded once')
+      }
+      if (typeof reason !== 'string' || !reason.trim()) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'endDebate needs a non-empty reason',
+          'say WHY the debate ends: an unexplained end is the silent-stop failure mode this rule exists to prevent')
+      }
+      debateEnded = { by: by === null ? null : String(by), reason: String(reason),
+        target: target === null ? null : String(target), at: clock() }
+      record('debate-ended', debateEnded)
+      return { ok: true, ended: true, by: debateEnded.by, reason: debateEnded.reason, target: debateEnded.target, at: debateEnded.at }
+    },
+
+    /**
+     * ASK whether aggregation may run. The gate the v5r line needed: `allowed` is true ONLY after an explicit
+     * `endDebate()`, and the answer carries its reason either way - never a silent yes.
+     */
+    aggregationAllowed() {
+      if (debateEnded !== null) {
+        return { allowed: true, reason: 'the debate was ended explicitly by ' + String(debateEnded.by === null ? '(unnamed)' : debateEnded.by), endedAt: debateEnded.at }
+      }
+      return { allowed: false, reason: currentRound ? 'a round is open and no explicit end was given' : 'no round was opened and no explicit end was given' }
     },
 
     /** Close the meeting. An incomplete round is refused unless forced, and a forced close is audited. */
