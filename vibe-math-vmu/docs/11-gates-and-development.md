@@ -409,6 +409,16 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 
 > **登记自愈** ✓：某键被实现后，我从生成计划区把它**移入手写核心表**（`settings/schema.js` 的 `CORE_DEFS` ✓）⇒ `planned.js` 因"已存在"**自动停止**声明它 ✓，`docs/04 §11` 该行变 `✅ 已接线` ✓，`00-§3.2` 的逐卷接线数**自动上升** ✓ —— **不需要手改任何统计** ✗。
 
+**每块实现的接入清单（Lead 专用 ✓，按此逐项做完才算"落地" ✓）**：
+1. **模块**：读它的公开面与未做清单 ✗；确认它只读注入的 `clock`（无 `Date.now` ✓）、拒绝全走具名 `refuse()` ✓、上限全报丢弃计数 ✓；
+2. **接线**（`kernel/index.js` ✓）：加 import ✓ → 创建实例（`settings: { get: (k) => settings[k] }` 适配器 ✓）→ `registry.register('vmu.<面>'…)` ✓ → 加 getter ✓；
+3. **键迁移**：把它真读的键从生成计划区**移入 `CORE_DEFS`** ✓（类型/默认取自实现或卷 ✓，`hot`/`who` 先统一 `H1`/`office` ✓）；
+4. **码登记**：它抛的新码 ⇒ 补进 `docs/03-§8` ✓（并用 `regen-all` 让计划码块保持同步 ✓）；
+5. **随包**：新运行时文件＋新测试 ⇒ `package.json#files` ✓ **与** `installer.js` ✓（**新门**会守 import 闭包 ✓，但 installer 的清单仍要手加 ✓）；
+6. **门禁**：`node scripts/regen-all.mjs` ✓ → 单跑新套件 ✓ → 相关老套件（kernel／entry／host／pack ✓）→ T0 ✓ → 提交 ✓；
+7. **回写**：本节的状态列 ✓ ＋ `14-§4` 的分批表 ✓ ＋ 该卷"实现现状"（若有 ✓）。
+
+
 ---
 
 ## 10. 原始愿景逐条符核表（**活文档**；每轮回写 ✓）

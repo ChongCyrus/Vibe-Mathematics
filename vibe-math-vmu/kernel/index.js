@@ -40,6 +40,8 @@ import { memoryCeilingExceeded } from './guard.js'
 import { createGovernance } from './governance.js'
 import { createBoard } from './board.js'
 import { createMinutes } from './minutes.js'
+import { createBudget } from './budget.js'
+import { createMetrics } from './metrics.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -235,6 +237,8 @@ export function createKernel({
   const governance = createGovernance({ settings: { get: (k) => settings[k] }, bus, clock, log })
   const board = createBoard({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
   const minutes = createMinutes({ settings: { get: (k) => settings[k] }, bus, clock, log, meeting: null })
+  const budget = createBudget({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const metrics = createMetrics({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -257,6 +261,8 @@ export function createKernel({
   registry.register('vmu.governance', { apiVersion: 1 }, { kind: 'service', description: 'agenda and motions (docs/08 §2)' })
   registry.register('vmu.board', { apiVersion: 1 }, { kind: 'service', description: 'board columns, WIP and aging (docs/08 §4)' })
   registry.register('vmu.minutes', { apiVersion: 1 }, { kind: 'service', description: 'minutes, decisions and action items (docs/08 §2)' })
+  registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 §12.5)' })
+  registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 §4)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -329,6 +335,8 @@ export function createKernel({
     get governance() { return governance },
     get board() { return board },
     get minutes() { return minutes },
+    get budget() { return budget },
+    get metrics() { return metrics },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

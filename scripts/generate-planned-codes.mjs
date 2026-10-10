@@ -6,9 +6,16 @@
 // was a recurring chore that also drifted. So the design-phase codes are GENERATED into a marked block inside
 // the contract: the table remains the one place a reader looks, and the block's rows are derived from the docs.
 //
-//   node scripts/generate-planned-codes.mjs --write   # refresh the block
-//   node scripts/generate-planned-codes.mjs --check   # fail (exit 1) if it is stale
-//   node scripts/generate-planned-codes.mjs --json     # machine view
+//   node scripts/generate-planned-codes.mjs --write   # refresh the block (exit 0; exit 2 when the markers are absent)
+//   node scripts/generate-planned-codes.mjs --check   # exit 0 fresh · 1 STALE · 2 no PLANNED-CODES markers (or missing input)
+//   node scripts/generate-planned-codes.mjs --json     # machine view (read-only; never writes, never needs the markers)
+//
+// EXIT CODES (three DIFFERENT faults, never collapsed into one ■):
+//   0 = the block is exactly what the docs yield (or --write just made it so);
+//   1 = STALE: the markers exist but the block is not what the docs yield (fix: --write);
+//   2 = NO MARKERS (or the contract file is missing): refusing to touch the file. Writing here is what once
+//       appended a 366-line block into an unrelated file — `splitContract` degrades to {head:text, tail:''}
+//       when the marker pair is absent, so the guard MUST run before any write path is reachable.
 //
 // RULES (mirroring tests/audit-vmu-docs.test.mjs so the two agree by construction):
 //   · codes already registered in the HAND-WRITTEN part of 03-§8 are not repeated;
@@ -105,7 +112,22 @@ export function renderBlock(defs, statusLines = []) {
 
 const isMain = process.argv[1] && process.argv[1].endsWith('generate-planned-codes.mjs')
 if (isMain) {
+  const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : 'json'
+  // ---- INPUT + MARKER GUARD (before ANY write path is reachable) ---------------------------------
+  // Round-6 reviewer experiment: pointing VMU_CONTRACT at a file WITHOUT the marker pair made
+  // `splitContract` return {head:text, tail:''}, so `--write` appended the whole 366-line block into that
+  // unrelated file. The guard below is the fix: a missing input or a missing marker pair is a NAMED refusal
+  // (exit 2), never a regeneration. The glossary generator has the same rail ("no markers ⇒ refuse").
+  if (!existsSync(CONTRACT)) {
+    console.error('planned codes registry: 输入不存在：' + CONTRACT)
+    process.exit(2)
+  }
   const text = readFileSync(CONTRACT, 'utf8')
+  if (!(text.includes(BEGIN) && text.includes(END)) && mode !== 'json') {
+    console.error('planned codes registry: no PLANNED-CODES markers in ' + CONTRACT)
+    console.error('  add the marker pair once (BEGIN + END), then --write; refusing to touch the file.')
+    process.exit(2)
+  }
   const { head, tail } = splitContract(text)
   const registered = handRegistered(head)
   const { defs, families } = collectPlannedCodes({ registered })
@@ -140,7 +162,6 @@ if (isMain) {
     '',
   ]
   const next = head.replace(/\s*$/, '\n\n') + renderBlock(defs, statusLines) + '\n' + tail.replace(/^\s*/, '\n')
-  const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : 'json'
   if (mode === 'json' || process.argv.includes('--json')) {
     console.log(JSON.stringify({ codes: defs.length, families: families.length, defs }, null, 1))
     process.exit(0)

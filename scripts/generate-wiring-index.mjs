@@ -22,12 +22,21 @@
 //   node scripts/generate-wiring-index.mjs --check    exit 1 (with the difference) if the block is stale
 //   node scripts/generate-wiring-index.mjs --json     machine-readable summary on stdout
 //
+// EXIT CODES — FOUR classes, deliberately NOT collapsed (round-6 reviewer: "输入不存在" and "设置表过期"
+// used to print the SAME sentence, which sent the reader to the wrong fix):
+//   0  ok (including the SOFT case: settings/planned.js lags the volumes ⇒ loud warning, index still written)
+//   2  INPUT MISSING: a seam (VMU_DOCS_DIR / VMU_CODE_DIR / VMU_WIRING_DOC / planned.js / schema.js) points at a
+//      path that does not exist ⇒ "输入不存在：<path>", nothing else is attempted;
+//   2  SETTINGS TABLE STALE: docs/04 §11 is not what settings/schema.js yields ⇒ the WIRED column would be
+//      wrong for every row ⇒ refuse and name the exact fix: generate-vmu-settings-table.mjs --write;
+//   1  REAL INCONSISTENCY: the block in docs/00-README.md is not what the (current) artefacts yield.
+//
 // DETERMINISM: volumes are sorted by number; every input is parsed, never typed; two runs on the same
 //   tree produce byte-identical output (the test asserts it).
 //
 // SEAMS: `VMU_DOCS_DIR` / `VMU_CODE_DIR` point at a copy (docs/11 §4.1); `VMU_WIRING_DOC` points the
 //   writer/checker at a copy of 00-README.md so the guard can be exercised without touching the real doc.
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -111,7 +120,35 @@ export function stalenessReport() {
   const out = { hard: [], soft: [] }
   for (const c of checks) {
     const r = spawnSync(process.execPath, [join(REPO, 'scripts', c.script)], { cwd: REPO, encoding: 'utf8' })
-    if (r.status !== 0) out[c.kind].push(c)
+    if (r.status !== 0) {
+      // The sub-generator's OWN last diagnostic line is carried through: without it the reader only saw
+      // "stale" even when the real cause was something else (round-6 reviewer's misleading-message finding).
+      const detail = String(r.stderr || r.stdout || '').trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+      out[c.kind].push(Object.assign({}, c, { detail: detail.slice(0, 200) }))
+    }
+  }
+  return out
+}
+
+/**
+ * Inputs whose ABSENCE is a different fault from "stale": a seam aimed at a path that does not exist.
+ * Checked BEFORE the staleness sub-generators run, so a missing tree can never be reported as "STALE".
+ */
+export function missingInputs() {
+  const wanted = [
+    ['docs 目录', DOCS_DIR, 'dir'],
+    ['vmu 代码目录', VMU_DIR, 'dir'],
+    ['wiring 文档 (00-README.md)', README_FILE, 'file'],
+    ['settings/planned.js', PLANNED_FILE, 'file'],
+    ['settings/schema.js', SCHEMA_FILE, 'file'],
+    ['docs/04-settings.md', join(DOCS_DIR, '04-settings.md'), 'file'],
+    ['docs/03-interface-contract.md', join(DOCS_DIR, '03-interface-contract.md'), 'file'],
+  ]
+  const out = []
+  for (const [what, p, kind] of wanted) {
+    let fine = existsSync(p)
+    if (fine && kind === 'dir') { try { fine = statSync(p).isDirectory() } catch (e) { fine = false } }
+    if (!fine) out.push({ what, path: p })
   }
   return out
 }
@@ -200,11 +237,23 @@ async function main() {
   const write = argv.includes('--write')
   const asJson = argv.includes('--json')
 
+  // CLASS ① INPUT MISSING — checked FIRST, so a bad seam is never reported as "stale" (round-6 finding).
+  const missing = missingInputs()
+  if (missing.length) {
+    for (const m of missing) console.error('vmu wiring index: 输入不存在：' + m.path + '（' + m.what + '）')
+    console.error('  point the seams (VMU_DOCS_DIR / VMU_CODE_DIR / VMU_WIRING_DOC) at an existing tree; nothing was read.')
+    process.exit(2)
+  }
+
+  // CLASS ② SETTINGS TABLE STALE (hard ⇒ 2) · CLASS ③ planned.js lagging (soft ⇒ warn, keep going, exit 0)
   const stale = stalenessReport()
   if (stale.hard.length) {
-    console.error('vmu wiring index: REFUSING to run — a generated input that the WIRED column depends on is STALE:')
-    for (const c of stale.hard) console.error('  · ' + c.name + '  ->  ' + c.fix)
-    console.error('  regenerate it first: a stale settings table would make every wired count wrong.')
+    console.error('vmu wiring index: 设置表过期 (settings table STALE) — docs/04 §11 is not what settings/schema.js yields,')
+    console.error('  so the WIRED column would be wrong for every row; refusing to run:')
+    for (const c of stale.hard) {
+      console.error('  · ' + c.name + '  →  先跑 ' + c.fix)
+      if (c.detail) console.error('    诊断: ' + c.detail)
+    }
     process.exit(2)
   }
   if (stale.soft.length) {

@@ -895,7 +895,7 @@ recount(ballotId):
 | `vmu.meetings.committeeReportRequired` | bool | true | bool | pack | 下轮 | 委员会是否必须报告回母会 |
 | `vmu.meetings.recessMaxMs` | ms | 0 | ≥0 | 主持人 | 立即 | 单次休会上限 |
 | `vmu.meetings.recessResumeRequiresMotion` | bool | false | bool | pack | 下轮 | 复会是否需要动议 |
-| `vmu.meetings.minutesDetail` | enum | `normal` | `brief｜normal｜full` | 所办 | 下轮 | 纪要详略 |
+| `vmu.minutes.detail` | enum | `normal` | `brief｜normal｜full` | 所办 | 下轮 | 纪要详略（**以实现名为准** ✓：`kernel/minutes.js` 真读它 ✓；原拟名 `vmu.meetings.minutesDetail` 作废 ✗ —— 独立批评者指出"同一旋钮两个名字" ✗，此处按**已接线的那一个**统一 ✓） |
 | `vmu.meetings.minutesIncludeRefused` | bool | true | bool | pack | 下轮 | 纪要必须含被拒项（**建议恒 true** ✓） |
 | `vmu.meetings.minutesActionsRequired` | bool | false | bool | pack | 下轮 | 决议是否必须带行动项 |
 | `vmu.meetings.minutesRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 纪要保留期 |

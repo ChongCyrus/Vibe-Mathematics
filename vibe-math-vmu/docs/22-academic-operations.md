@@ -62,8 +62,9 @@
 
 | # | 族 | 可依附的现有底座 | 可调控键族 | 码族 | 成熟度 |
 |---|---|---|---|---|---|
+| **0** | **货币与舍入（Money，横切规范）** | **无（本卷新增类型规范 §3.0）** | `vmu.money.*` | `VMU_MONEY_*`／`VMU_CURRENCY_*`／`VMU_FX_*`／`VMU_ROUNDING_*`／`VMU_AMOUNT_*`／`VMU_SCALE_*`／`VMU_ALLOCATION_*` | ✗ |
 | 1 | 仪器与设备 | `vibe_vmu_records`／`vibe_vmu_task`／07 `datasets` | `vmu.instruments.*` | `VMU_EQUIP_*` | ✗ |
-| 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*` | `VMU_FUNDING_*` | ✗ |
+| 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*`＋`vmu.money.*` | `VMU_FUNDING_*` | ✗ |
 | 3 | 知识产权 | `vibe_vmu_records`／16 出版面／20 许可 | `vmu.ip.*` | `VMU_IP_*` | ✗ |
 | 4 | 会务与活动 | **08 会议/表决原语** ＋ 16 评审面 | `vmu.conference.*` | `VMU_CONF_*` | ✗ |
 | 5 | 科学传播 | `vibe_vmu_records`／20 脱敏 | `vmu.outreach.*` | `VMU_OUTREACH_*` | ✗ |
@@ -72,7 +73,7 @@
 | 8 | 资源与容量 | 07 `vmu.quota.*` · 17 席位 | `vmu.capacity.*` | `VMU_CAPACITY_*` | ✗ |
 | 9 | 人事与任期 | 17 `vmu.recruit.*`／席位 | `vmu.hr.*` | `VMU_HR_*` | ✗ |
 
-> **成熟度诚实声明** ✗：本卷 **9 个族、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
+> **成熟度诚实声明** ✗：本卷 **10 个族（含 §3.0 的货币类型）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
 
 ---
 
@@ -148,6 +149,114 @@
 
 ## 3. 经费与财务（Funding & Finance）
 
+### 3.0 货币与舍入类型（Money Type —— **补 N1：钱是什么类型** ✗✓）
+
+> **为什么要有这一节** ✗：§3.1–§3.4 要"**到分**"做账户、报销、分摊、结算与对账 ✓，但那一切的前提是**先定义"钱"的表示与运算** ✗ —— 否则同一笔账在两个实现里能得到不同结果 ✓，且**无法复算** ✗。本节把"钱"定义成**可复算的整数类型** ✓，并把**浮点彻底排除** ✗✓。
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 货币类型（Money：minor units ＋ 币种 ＋ 舍入） |
+| **目的** | 让金额**唯一表示、唯一运算、唯一复算** ✓：任何比较/求和/分摊/结算都必须走**整数 minor units** ✓ |
+| **面向谁** | 财务、审计、PI、代理（写费用请求时）、pack 作者 |
+| **接口形状** | 协议 `Money` ⛔ 待实现：`{ amountMinor: integer, currency: 'ISO-4217', scale: integer }`；协议 `FxConversion` ⛔ 待实现：`{ from, to, rateSnapshotId, rate, direction, appliedAt, rounding }`；协议 `Allocation` ⛔ 待实现：`{ total, shares[], policy, remainderTo, result[] }`；服务 `vmu.money`（**计划 ✗**）：`add/sub/cmp/allocate/convert`；工具 `vibe_vmu_funding` ⛔ 未实现（金额校验与换算在它内部完成，不新增工具 ✗） |
+| **可调控参数** | `vmu.money.currencyDefault`（默认 `CNY`）、`vmu.money.roundingMode`（默认 `half-even`）、`vmu.money.scaleByCurrency`（默认 `{}`＝按 ISO-4217 表）、`vmu.money.fxSource`（默认 `manual-snapshot`）、`vmu.money.fxSnapshotDir`（默认 `Ops/FX`）、`vmu.money.fxMaxAgeDays`（默认 `7`）、`vmu.money.allocationRemainderPolicy`（默认 `largest-remainder`）、`vmu.money.rejectFloatAmounts`（默认 **`true`** ✓）、`vmu.money.maxAmountMinor`（默认 `0`＝不限）、`vmu.money.allowNegative`（默认 `false`）、`vmu.money.auditTupleFields`（默认 `["inputs","fx","rounding","result"]`） |
+| **相关错误码** | `VMU_CURRENCY_UNKNOWN` ⛔／`VMU_ROUNDING_UNDEFINED` ⛔／`VMU_FX_RATE_MISSING` ⛔／`VMU_FX_DIRECTION_MISSING` ⛔／`VMU_FX_RATE_STALE` ⛔／`VMU_AMOUNT_NOT_INTEGER` ⛔／`VMU_SCALE_MISMATCH` ⛔／`VMU_MONEY_MIXED_CURRENCY` ⛔／`VMU_MONEY_OVERFLOW` ⛔／`VMU_MONEY_NEGATIVE_FORBIDDEN` ⛔／`VMU_ALLOCATION_REMAINDER` ⛔ |
+| **四条哲学** | F：不声明 `vmu.money.*`＝无金额语义（无财务族）✓｜T：默认币种/舍入/汇率来源/年龄/余数政策全可配 ✓｜D：**币种精度表与允许的汇率来源由 pack/配置声明**，内核不认识任何具体币种 ✗✓｜X：新币种＝表里加一行；新汇率来源＝加一个快照导入器 ✓ |
+| **实现要点** | ① **硬规则（不可关闭）** ✗：**禁止浮点** —— 金额**必须**是整数 minor units；出现小数/浮点字面量 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`（`rejectFloatAmounts=false` 只允许**显式**降级并留痕，默认禁止 ✗）；② **同币种才能直接运算**：跨币种必须先有**显式** `FxConversion`（含方向与快照 id）；③ **快照留痕**：汇率含 `{snapshotId, source, asOf, version}`，超龄 ⇒ 拒；④ **守恒**：分摊后 `Σ result = total`（**断言**，差额必为 0）；⑤ **可复算**：余数归属用**稳定次序键**（如账户名/主体 id 的字典序）打破平手 ⇒ 同输入同输出 ✓；⑥ **舍入只发生在边界**（按比例分摊/汇率换算/费税），中间步骤**不**舍入 ✗ |
+| **依赖与前置** | 07 记录轨（审计四元组落盘）✓、21 观测面（可见）✓、16 的 `vmu.funding.requiredFields`（**条目字段归 16**，本卷只要求其中金额字段遵守本节 ✓）、08 工作流（审批）✓ |
+| **成熟度** | ✗ 计划（**本仓今天没有任何货币类型/舍入实现** ✓ —— 见 §17 O2） |
+| **优先级** | **P0**（§3 全部下游都依赖它；批评者第 6 轮 N1 ✓） |
+
+#### 3.0.1 表示法与硬规则
+
+```text
+Money := { amountMinor: int64, currency: ISO-4217 alpha-3, scale: int }
+规则 M1（禁止浮点）✗ : 任何金额字段都不得是 float/double/字符串数字；解析到非整数 ⇒ VMU_AMOUNT_NOT_INTEGER
+规则 M2（同币种运算）: add/sub/cmp 要求两侧 currency 与 scale 完全一致；否则 ⇒ VMU_MONEY_MIXED_CURRENCY / VMU_SCALE_MISMATCH
+规则 M3（比较走整数）: 比较金额＝比较 amountMinor（同币种同 scale 下等价）；禁止"先转成浮点再比较" ✗
+规则 M4（溢出可检）: 求和/乘法必须检出溢出（int64 边界）⇒ VMU_MONEY_OVERFLOW
+规则 M5（符号策略）: 默认禁止负金额（allowNegative=false）；退款/冲正走**显式**负号记录并留痕 ✓
+```
+
+#### 3.0.2 币种精度（scale）表
+
+| 币种（示例） | minor units（scale） | 说明 |
+|---|---|---|
+| `JPY`／`KRW` | 0 | 无小数位 |
+| `CNY`／`USD`／`EUR`／`GBP` | 2 | 常见两位 |
+| `KWD`／`BHD`／`OMR`／`TND` | 3 | 三位 |
+| 其它 | 按 ISO-4217 表 | **未登记的币种 ⇒ 具名拒** `VMU_CURRENCY_UNKNOWN` ✓ |
+| 覆盖 | `vmu.money.scaleByCurrency` | pack/运营可**显式覆盖**（覆盖必须留痕 ✓） |
+
+> 纪律：scale **不是**"显示位数"而是**账目精度** ✓ —— 展示位数可以另配，但**入账精度只由本表与覆盖决定** ✓。
+
+#### 3.0.3 舍入模式（显式、逐次记录）
+
+| 模式 | 语义 | 典型用途 |
+|---|---|---|
+| `half-up` | .5 向绝对值大的方向 | 传统财务 |
+| `half-even`（默认） | 银行家舍入，.5 取偶 | 减少统计偏差 ✓ |
+| `floor`／`ceil` | 向下/向上 | 费用下限/上限 |
+| `trunc` | 向零截断 | 保守估算 |
+
+- **未声明舍入模式 ⇒ 具名拒** `VMU_ROUNDING_UNDEFINED` ✓（禁止"默认随便舍"✗）；
+- **每次舍入都要进审计四元组**（模式＋输入＋输出＋原因）✓；
+- **中间步骤禁止舍入** ✗（先把比例与汇率算成**有理数/整数**形式，只在写入结果时舍入一次）✓。
+
+#### 3.0.4 汇率与换算（方向显式 ＋ 快照 ＋ 禁止静默）
+
+| 规则 | 内容 |
+|---|---|
+| **方向显式** | `FxConversion.from → to` 必须写明；**禁止**只给一个"汇率"而不给方向 ✗ ⇒ `VMU_FX_DIRECTION_MISSING` |
+| **快照留痕** | 汇率必须来自**快照**：`{snapshotId, source, asOf, version, rate}`；快照入 `vmu.money.fxSnapshotDir`（默认 `Ops/FX`）✓ |
+| **来源可审** | `vmu.money.fxSource`（默认 `manual-snapshot`）——**离线优先**：只接受**显式导入**的快照；**不内建联网取汇率** ✗（未做，见 §17） |
+| **时效** | 超 `vmu.money.fxMaxAgeDays`（默认 7）⇒ `VMU_FX_RATE_STALE` ✓ |
+| **禁止静默换算** | 任何跨币种动作**必须**携带 `FxConversion`；缺失 ⇒ `VMU_FX_RATE_MISSING` ✓（呼应 **O-1 令牌≠钱**：换算必须显式、留痕、可复算 ✗✓） |
+| **换算顺序** | 先按**有理数**做乘除，再按 §3.0.3 舍入一次；**不得**连续两次舍入 ✗ |
+
+#### 3.0.5 分摊与余数归属（可复算）
+
+| 策略（`vmu.money.allocationRemainderPolicy`） | 语义 | 备注 |
+|---|---|---|
+| `largest-remainder`（默认） | 最大余额法：先取整数部分，余数按小数部分从大到小分配 | 平手⇒**稳定次序键**（主体 id 字典序）打破 ✓ |
+| `first-party` | 余数全给第一位主体 | 需 pack 显式声明 ✓ |
+| `last-party` | 余数全给最后一位 | 同上 |
+
+- **守恒断言**：`Σ result = total`（差额必须为 0）✓；不守恒 ⇒ `VMU_ALLOCATION_REMAINDER` ⛔；
+- **可复算**：同输入（金额＋比例＋主体集合＋政策）⇒ **逐字节相同**的输出顺序与金额 ✓；
+- 分摊结果**必须**写入 §3.3 的 `CostShareSplit` 与 §3.0.6 的四元组 ✓。
+
+#### 3.0.6 审计四元组（与 07/21 的衔接）
+
+```text
+AuditTuple := {
+  inputs   : { amountMinor, currency, scale, parties[], ratios[] },   // 输入（原始，不可改写）
+  fx       : { snapshotId, source, asOf, from, to, rate } | null,      // 汇率（无换算则 null，且必须显式写 null ✓）
+  rounding : { mode, occurredAt, beforeMinor, afterMinor, reason },    // 舍入（未发生则 mode=null 并说明 ✓）
+  result   : { shares[], total, remainderTo }                          // 结果（含余数归属）
+}
+```
+- **每笔结算/分摊/换算产出四元组** ✓，落 **07 记录轨**（只追加）＋ 经 **21 观测面**可见/可导出 ✓；
+- `vmu.money.auditTupleFields` 可**增补**字段（**不得删除**四元组本体 ✗）；
+- 未发生换算/舍入时**必须显式写 `null` 并说明** ✓（"没做"与"漏记"必须可分 ✗）。
+
+#### 3.0.7 参数键（拟增，见 §13）
+
+`vmu.money.currencyDefault`／`vmu.money.roundingMode`／`vmu.money.scaleByCurrency`／`vmu.money.fxSource`／`vmu.money.fxSnapshotDir`／`vmu.money.fxMaxAgeDays`／`vmu.money.allocationRemainderPolicy`／`vmu.money.rejectFloatAmounts`（默认 `true` ✓）／`vmu.money.maxAmountMinor`／`vmu.money.allowNegative`／`vmu.money.auditTupleFields`。
+
+#### 3.0.8 错误码（拟增，见 §14）
+
+`VMU_CURRENCY_UNKNOWN`／`VMU_ROUNDING_UNDEFINED`／`VMU_FX_RATE_MISSING`／`VMU_FX_DIRECTION_MISSING`／`VMU_FX_RATE_STALE`／`VMU_AMOUNT_NOT_INTEGER`／`VMU_SCALE_MISMATCH`／`VMU_MONEY_MIXED_CURRENCY`／`VMU_MONEY_OVERFLOW`／`VMU_MONEY_NEGATIVE_FORBIDDEN`／`VMU_ALLOCATION_REMAINDER`。
+
+#### 3.0.9 这一节怎么由 settings＋中间件＋pack 组合出来 ✓
+
+- **settings**：默认币种、默认舍入模式、币种精度覆盖、汇率来源与时效、余数政策、是否拒浮点；
+- **中间件**：`before`（费用请求/分摊/结算前）**校验**金额为整数 minor units、同币种（跨币种则要求 `FxConversion`）、舍入模式已声明、汇率未超龄 ⇒ 任一不满足**具名拒** ✓；`after` 写 §3.0.6 四元组并广播；
+- **pack**：币种精度覆盖表、允许的汇率来源清单、余数归属政策、允许的舍入模式白名单；
+- **内核只提供**：整数运算、记录轨、钩子与设置面 —— **不认识任何币种/汇率/财务名词** ✓（F）。
+
+> **未做（诚实 ✗，已登 `14-§2`）**：**真实汇率提供者对接**（离线优先：只接受**显式导入**的快照 ✓，**不**内建联网/定时抓取 ✗）；**多币种报表的呈现规则**（汇总币种、展示精度、汇兑差额列示）✗。
+
 ### 3.1 资助账户与预算行
 
 | 字段 | 内容 |
@@ -168,7 +277,7 @@
 
 | 字段 | 内容 |
 |---|---|
-| **名称** | 费用流程（Expense Workflow） |
+| **名称** | 费用流程（Expense Workflow）——**金额一律遵守 §3.0 的 Money 规则**（整数 minor units／显式舍入／显式汇率）✓ |
 | **目的** | 每笔支出四环闭合（O-2）✓：请求（谁/为什么/多少钱/哪个预算行）→ 批准（谁按什么规则）→ 发生（采购/报销）→ 凭证（发票/收据/哈希） |
 | **面向谁** | PI、财务、采购、代理 |
 | **接口形状** | 服务 `vmu.funding.request()`／`approve()`／`recordReceipt()`（**计划 ✗**）；钩子 `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案；工具 `vibe_vmu_funding` ⛔ 未实现 |
@@ -184,7 +293,7 @@
 
 | 字段 | 内容 |
 |---|---|
-| **名称** | 成本分摊与结算（Cost Share & Settlement） |
+| **名称** | 成本分摊与结算（Cost Share & Settlement）——余数与守恒规则见 **§3.0.5** ✓ |
 | **目的** | 一笔支出在多账户/多机构间**按显式比例分摊**，且分摊后**总额守恒** ✓（可复算） |
 | **面向谁** | 财务、合作方、审计 |
 | **接口形状** | 服务 `vmu.funding.split(expenseId, splits)`／`settle(period)`（**计划 ✗**）；协议 `CostShareSplit` ⛔ |
@@ -542,7 +651,7 @@
 ### 11.1 三层职责
 | 层 | 决定什么 | 现状 |
 |---|---|---|
-| **settings**（`vmu.instruments.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期 | ✗ 全部为计划键（`planned:true`）✓ |
+| **settings**（`vmu.money.*`／`vmu.instruments.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
 | **中间件** | 在运营动作**前后**插入检查与记账（`ops/*`、`ip/*`、`compliance/*` 钩子均为**提案** ✗） | 机制已实现 ✓（05），本卷钩子未实现 ✗ |
 | **pack** | 组织政策：科目树、审批链、冲突定义、发言人、合规项清单、任期规则 | 机制已实现 ✓（10），运营 pack 未写 ✗ |
 
@@ -687,6 +796,17 @@
 | 人事 | `vmu.hr.appealWindowDays` | integer | `30` | ≥0 | pack |
 | 人事 | `vmu.hr.rotationPolicy` | string | `none` | `none`｜`periodic`｜`byRequest` | pack |
 | 人事 | `vmu.hr.humanDecisionRequired` | boolean | `true` | — | **内核强制** ✓ |
+| 货币 | `vmu.money.currencyDefault` | string | `CNY` | ISO-4217 alpha-3 | 运营席 |
+| 货币 | `vmu.money.roundingMode` | string | `half-even` | `half-up`｜`half-even`｜`floor`｜`ceil`｜`trunc` | pack |
+| 货币 | `vmu.money.scaleByCurrency` | object | `{}` | 币种→精度位数 | pack（覆盖 ISO 表需留痕） |
+| 货币 | `vmu.money.fxSource` | string | `manual-snapshot` | 来源名（离线优先） | pack |
+| 货币 | `vmu.money.fxSnapshotDir` | string | `Ops/FX` | 相对项目根 | 运营席 |
+| 货币 | `vmu.money.fxMaxAgeDays` | integer | `7` | ≥0 | 运营席 |
+| 货币 | `vmu.money.allocationRemainderPolicy` | string | `largest-remainder` | `largest-remainder`｜`first-party`｜`last-party` | pack |
+| 货币 | `vmu.money.rejectFloatAmounts` | boolean | **`true`** | —（**默认拒浮点**，不可静默关闭 ✗） | **内核强制** ✓ |
+| 货币 | `vmu.money.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
+| 货币 | `vmu.money.allowNegative` | boolean | `false` | — | pack |
+| 货币 | `vmu.money.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
 
 ---
 
@@ -758,6 +878,17 @@
 | `VMU_HR_OFFBOARDING_INCOMPLETE` | 离职清单未闭合 | 22 |
 | `VMU_HR_APPEAL_OPEN` | 申诉进行中 | 22 |
 | `VMU_HR_AUTODECISION_FORBIDDEN` | 人事自动决策被禁 | 22 |
+| `VMU_CURRENCY_UNKNOWN` | 未登记币种（无精度） | 22 |
+| `VMU_ROUNDING_UNDEFINED` | 未声明舍入模式 | 22 |
+| `VMU_FX_RATE_MISSING` | 缺汇率快照（跨币种未带换算） | 22 |
+| `VMU_FX_DIRECTION_MISSING` | 汇率方向未显式 | 22 |
+| `VMU_FX_RATE_STALE` | 汇率超龄 | 22 |
+| `VMU_AMOUNT_NOT_INTEGER` | 金额非整数 minor units（浮点/小数） | 22 |
+| `VMU_SCALE_MISMATCH` | 同币种但精度位不一致 | 22 |
+| `VMU_MONEY_MIXED_CURRENCY` | 混币种直接运算 | 22 |
+| `VMU_MONEY_OVERFLOW` | 金额溢出 | 22 |
+| `VMU_MONEY_NEGATIVE_FORBIDDEN` | 禁止负金额（未开 `allowNegative`） | 22 |
+| `VMU_ALLOCATION_REMAINDER` | 分摊余数不守恒/不可归属 | 22 |
 
 ---
 
@@ -772,12 +903,17 @@
 7. **具名：令牌≠钱（O-1）** —— 静态门：`vmu.budget.*` 与 `vmu.funding.*` 之间**不得**出现隐式换算；任何换算必须在 pack 里显式声明 ✓。
 8. **断言：容量不静默** —— 池耗尽 ⇒ `VMU_CAPACITY_EXHAUSTED` 且观测面计数；**不得**静默排队 ✓。
 9. **场景：设备过期阻断** —— 校准过期的设备产出的数据 ⇒ 引用上带**过期标记**且不可作为"可引用数据"✓。
+10. **断言：金额必为整数（§3.0 规则 M1）** —— 传一个浮点/小数金额 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`；`vmu.money.rejectFloatAmounts=true` 时**不得**有任何"自动四舍五入接受"的路径 ✗✓。
+11. **断言：分摊守恒与可复算（§3.0.5）** —— 造一组"比例除不尽"的分摊 ⇒ `Σ result = total` **必须**成立（差 1 分即 **红** `VMU_ALLOCATION_REMAINDER`）；同一输入跑两次 ⇒ 输出**逐字节相同** ✓（含余数归属对象）。
+12. **红/绿：汇率方向与时效（§3.0.4）** —— 跨币种动作**不带** `FxConversion` ⇒ **红** `VMU_FX_RATE_MISSING`；只给汇率不给方向 ⇒ **红** `VMU_FX_DIRECTION_MISSING`；快照超 `fxMaxAgeDays` ⇒ **红** `VMU_FX_RATE_STALE`；补齐后 ⇒ **绿**且四元组里 `fx` 字段**非空** ✓。
+13. **具名：审计四元组完备（§3.0.6）** —— 每笔分摊/换算/结算**必须**产出 `{inputs, fx, rounding, result}`；未发生换算/舍入时**必须**显式 `null` ＋说明 ⇒ 缺失即 **红**（"没做"与"漏记"可分）✓。
+14. **场景：混币种与精度不一致** —— 直接相加两种币种 ⇒ **红** `VMU_MONEY_MIXED_CURRENCY`；同币种但 scale 不同 ⇒ **红** `VMU_SCALE_MISMATCH` ✓。
 
 ---
 
 ## 16. 与其它卷的交叉引用（**必读**）
 
-- `03-§8`：**错误码唯一登记表**（本卷 **64** 个规划码 ⛔ 由生成管线登记）✓。
+- `03-§8`：**错误码唯一登记表**（本卷 **75** 个规划码 ⛔ 由生成管线登记）✓。
 - `04`：参数全表与热改等级（本卷 §13 的键按 04 的 H0–H3 规则落位）✓。
 - `05`：钩子全表与失败策略（本卷 `ops/*`、`ip/*`、`compliance/*` 钩子为**提案** ✗）。
 - `07`：记录轨/归档/`datasets`/`vmu.quota.*`（本卷存储与数据引用**只引用** ✗）。
@@ -806,7 +942,10 @@
 | O7 | 容量预测的数据来源（任务板？历史用量？） | 未定 | §9.4 的 `fair-share` 无输入 |
 | O8 | 人事决策的"人类在环"在无人类在场时如何处置 | 未定 | §10.5 的阻塞语义 |
 | O9 | 审计证据包的**跨机构格式**兼容性 | 未定 | §3.4/§8.3 只能自用 |
-| O10 | **64** 个规划码与既有码族的命名冲突 | 未核 | 04/03 登记前可能撞名 |
+| O10 | **75** 个规划码与既有码族的命名冲突 | 未核 | 04/03 登记前可能撞名 |
+| **O11** | **真实汇率提供者对接** ✗ | **未做**（离线优先：只接受**显式导入**的汇率快照 ✓；不内建联网/定时抓取 ✗） | §3.0.4 只能用手工快照；跨机构结算需人工导入 |
+| **O12** | **多币种报表的呈现规则** ✗ | **未做**（汇总币种、展示精度、汇兑差额列示规则未定） | §3.3/§3.4 的报表会出现"混合币种"缺口 |
+| **O13** | 币种精度表（ISO-4217）在仓库里的**载体**未定 | 未定（schema？pack？外部数据文件？） | §3.0.2 的 `scaleByCurrency` 覆盖需要基线表 |
 
 ---
 

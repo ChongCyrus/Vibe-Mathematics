@@ -168,6 +168,21 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.minutes.dueRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '行动项必须有期限' },
   { key: 'vmu.minutes.dissentRetentionMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '异议保留期（0＝永久）' },
   { key: 'vmu.minutes.verbatimCapBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '逐字稿上限（触界报丢弃字节数，永不静默）' },
+  // ---- batch-1 slice 4: budget (docs/08 §12.5) ----------------------------------------------------
+  { key: 'vmu.budget.fairnessPolicy', type: 'enum', domain: ['equal', 'priority', 'reserve'], def: 'equal', hot: HOT.H1, who: 'office', doc: '配额公平策略（实现仅接 reserve 切片；equal/priority 的排序算法未实现 ✗）' },
+  { key: 'vmu.budget.reserveRatio', type: 'ratio', def: 0, hot: HOT.H1, who: 'office', doc: '预留比例（0..1 分数；0＝不预留）' },
+  { key: 'vmu.budget.warnAtRatio', type: 'ratio', def: 0.8, hot: HOT.H1, who: 'office', doc: '告警阈值（0..1 分数；越阈只警告不拒）' },
+  { key: 'vmu.budget.onExceed', type: 'enum', domain: ['refuse', 'warn', 'pause'], def: 'refuse', hot: HOT.H1, who: 'office', doc: '触界动作：拒（具名）/警告记账/暂停' },
+  // ---- batch-1 slice 5: metrics (docs/21 §4) ------------------------------------------------------
+  { key: 'vmu.metrics.windowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '指标窗口（毫秒；0＝不限窗）' },
+  { key: 'vmu.metrics.indicators', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '指标白名单（空＝零机制：可记但不聚合）' },
+  { key: 'vmu.metrics.allowTrigger', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '指标是否允许触发动作（false ⇒ 具名拒）' },
+  { key: 'vmu.metrics.exportFormat', type: 'enum', domain: ['json', 'jsonl'], def: 'json', hot: HOT.H1, who: 'office', doc: '导出格式' },
+  // The read-side gate found these three the moment kernel/metrics.js landed: the module reads them tolerantly,
+  // so nothing broke - but a knob read by code and absent from the schema is exactly the R4 defect the gate hunts.
+  { key: 'vmu.metrics.sampleHighVolume', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '高频只读命中采样开关（变更/拒绝/结算永不采样）' },
+  { key: 'vmu.metrics.sampleRate', type: 'ratio', def: 1, hot: HOT.H1, who: 'office', doc: '采样率（0..1；实现用确定性步进而非随机，故可复现）' },
+  { key: 'vmu.metrics.seriesCap', type: 'positiveInteger', def: 200, hot: HOT.H1, who: 'office', doc: '单指标序列上限（溢出必须计数）' },
 ])
 
 /**
@@ -229,6 +244,13 @@ export function validateValue(key, value) {
     case 'natural':
       if (!Number.isInteger(value) || value < 0) throw bad('expected an integer >= 0')
       break
+    case 'ratio':
+      // NEW TYPE (found while integrating kernel/budget.js): the budget module reads `reserveRatio`/`warnAtRatio`
+      // as 0..1 FRACTIONS, and the schema had no non-integer numeric type - so the only honest options were to
+      // lie about the type or to add one. A ratio is 0..1 inclusive, and it is deliberately NOT a percentage
+      // (percentages invite a ×100 slip that no test would catch).
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw bad('expected a number in 0..1')
+      break
     case 'positiveInteger':
       if (!Number.isInteger(value) || value < 1) throw bad('expected an integer >= 1')
       break
@@ -270,6 +292,9 @@ export function buildSchemastery(carrier, defs = SETTING_DEFS) {
     switch (d.type) {
       case 'boolean': leaf = carrier.boolean().default(d.def); break
       case 'natural': leaf = carrier.number().min(0).step(1).default(d.def); break
+      // EXACTLY the shape `natural` uses (that is the proven-working numeric chain in this carrier); only the
+      // step differs. The 0..1 bound is enforced by validateValue, the path every runtime write takes.
+      case 'ratio': leaf = carrier.number().min(0).step(0.01).default(d.def); break
       case 'positiveInteger': leaf = carrier.number().min(1).step(1).default(d.def); break
       case 'enum': leaf = carrier.union(d.domain.map((v) => carrier.const(v))).default(d.def); break
       case 'stringList': leaf = carrier.array(carrier.string()).default(d.def); break

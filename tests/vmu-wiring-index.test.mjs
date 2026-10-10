@@ -15,7 +15,7 @@
 //      byte-identical before and after `--write`.
 //
 // Seams: the generator honours `VMU_WIRING_DOC` (the doc under test) and `VMU_DOCS_DIR` / `VMU_CODE_DIR`.
-import { readFileSync, writeFileSync, existsSync, rmSync, readdirSync, mkdtempSync, copyFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, rmSync, readdirSync, mkdtempSync, copyFileSync, cpSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -192,6 +192,87 @@ const rows = dataRows(block)
   ok(after !== before || blockLines(before).block.join('\n') === blockLines(after).block.join('\n'),
     'the run was idempotent on an already-current copy')
   rmSync(dir, { recursive: true, force: true })
+}
+
+// ---- F. failure classification: the four faults get four DIFFERENT answers ------------------------
+// Round-6 reviewer finding: a bad seam ("input does not exist") and a stale settings table printed the SAME
+// sentence, so the reader was sent to the wrong fix. Each class is asserted here; every case runs against a
+// TEMP copy through the documented seams, and the real doc/table are never written.
+{
+  // ① a seam aimed at a path that does not exist ⇒ exit 2, and the PATH is named
+  const missingDoc = join(tmpdir(), 'vmu-wiring-absent-' + process.pid + '.md')
+  const r1 = run(['--check'], { VMU_WIRING_DOC: missingDoc })
+  ok(r1.status === 2 && String(r1.stderr || '').includes('输入不存在') && String(r1.stderr || '').includes(missingDoc),
+    '① input missing (VMU_WIRING_DOC) ⇒ exit 2 and the path is named',
+    'exit=' + r1.status + ' ' + String(r1.stderr || '').trim().split('\n')[0].slice(0, 120))
+
+  // ①b a code dir that does not exist is the SAME class — and must NOT be reported as "stale"
+  const missingDir = join(tmpdir(), 'vmu-code-absent-' + process.pid)
+  const r2 = run(['--check'], { VMU_CODE_DIR: missingDir })
+  ok(r2.status === 2 && String(r2.stderr || '').includes('输入不存在') && !/STALE/.test(String(r2.stderr || '')),
+    '①b input missing (VMU_CODE_DIR) ⇒ exit 2 and never the word STALE',
+    'exit=' + r2.status + ' ' + String(r2.stderr || '').trim().split('\n')[0].slice(0, 120))
+
+  // ②③④ need a SELF-CONSISTENT tree copy: the real docs/04 §11 may be mid-regeneration (a concurrent writer
+  // changing schema.js/planned.js), so a copy that inherited that state would answer the wrong class and the
+  // assertions below would test the tree instead of the generator. The helper regenerates the copy's settings
+  // table — through the settings generator's OWN seam (`VMU_SETTINGS_DOC`; `VMU_DOCS_DIR` does not redirect
+  // it) — and the copy's wiring block, so each case exercises exactly ONE fault.
+  const makeTree = (tag) => {
+    const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-' + tag + '-'))
+    const docsCopy = join(dir, 'docs')
+    cpSync(DOCS, docsCopy, { recursive: true })
+    const vmuCopy = join(dir, 'vibe-math-vmu')
+    cpSync(VMU, vmuCopy, { recursive: true })
+    const readme = join(dir, '00-README.md')
+    copyFileSync(join(docsCopy, '00-README.md'), readme)
+    const env = { VMU_SETTINGS_DOC: join(docsCopy, '04-settings.md'), VMU_DOCS_DIR: docsCopy,
+      VMU_CODE_DIR: vmuCopy, VMU_WIRING_DOC: readme }
+    for (const [script, args] of [['generate-vmu-settings-table.mjs', ['--write']], ['generate-wiring-index.mjs', ['--write']]]) {
+      spawnSync(process.execPath, [join(REPO, 'scripts', script)].concat(args),
+        { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, env) })
+    }
+    return { dir, docsCopy, vmuCopy, readme, env }
+  }
+
+  // ② a STALE settings table ⇒ exit 2 + the fix command is NAMED (not the generic "regenerate something").
+  // The mutation lands in the COPY that `VMU_SETTINGS_DOC` points at, so the hard class cannot depend on
+  // whether the real docs/04 happens to be fresh at this instant.
+  const t2 = makeTree('stale')
+  const st = join(t2.docsCopy, '04-settings.md')
+  writeFileSync(st, readFileSync(st, 'utf8').replace(/(\n\| `vmu\.[A-Za-z0-9_.]+`)/, '\n| `vmu.__probe__`'), 'utf8')
+  const hard = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-vmu-settings-table.mjs'), '--check'],
+    { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t2.env) })
+  ok(hard.status !== 0, '② precondition: the mutated settings table really is stale (sub-check fails)',
+    'exit=' + hard.status)
+  const r3 = run(['--check'], t2.env)
+  ok(r3.status === 2 && /设置表过期/.test(String(r3.stderr || ''))
+    && /generate-vmu-settings-table\.mjs --write/.test(String(r3.stderr || '')),
+    '② stale settings table ⇒ exit 2 and the NAMED fix command',
+    'exit=' + r3.status + ' ' + String(r3.stderr || '').trim().split('\n').slice(0, 2).join(' | ').slice(0, 170))
+  rmSync(t2.dir, { recursive: true, force: true })
+
+  // ③ a LAGGING planned registry is the SOFT class: loud warning, index still produced ⇒ exit 0
+  const t3 = makeTree('soft')
+  const plannedCopy = join(t3.vmuCopy, 'settings', 'planned.js')
+  // planned.js writes keys with DOUBLE quotes (a single-quote regex silently matched nothing — the first
+  // version of this case passed for the wrong reason).
+  writeFileSync(plannedCopy, readFileSync(plannedCopy, 'utf8').replace(/key: "/, 'key: "zzz-lagging-'), 'utf8')
+  const soft = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-planned-settings.mjs'), '--check'],
+    { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t3.env) })
+  ok(soft.status !== 0, '③ precondition: the mutated planned.js really lags (sub-check fails)', 'exit=' + soft.status)
+  const r4 = run(['--check'], t3.env)
+  ok(r4.status === 0 && /WARNING/.test(String(r4.stderr || '')),
+    '③ lagging planned.js ⇒ WARNING but exit 0 (soft class preserved)',
+    'exit=' + r4.status + ' ' + String(r4.stderr || '').trim().split('\n')[0].slice(0, 140))
+  rmSync(t3.dir, { recursive: true, force: true })
+
+  // ④ a block that is not what the artefacts yield ⇒ exit 1 (real inconsistency, distinct from ②)
+  const t4 = makeTree('inc')
+  writeFileSync(t4.readme, readFileSync(t4.readme, 'utf8').replace(/(\| 20 \| )(\d+)/, '$1' + '777'), 'utf8')
+  const r5 = run(['--check'], t4.env)
+  ok(r5.status === 1, '④ real inconsistency inside the block ⇒ exit 1 (never 2)', 'exit=' + r5.status)
+  rmSync(t4.dir, { recursive: true, force: true })
 }
 
 if (failed === 0) {
