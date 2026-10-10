@@ -383,7 +383,44 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
-// ---- 14. self-probe ---------------------------------------------------------------------------
+// ---- 14. V5 second half: the v3-core PACK loads and its carried M2 rules really fire -----------------
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-v3-core-'))
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, root: dir, packs: ['v3-core'] })
+  await new Promise((r) => setTimeout(r, 80))
+  ok(handle.packErrors().length === 0, 'v3-core loads without error', JSON.stringify(handle.packErrors()).slice(0, 220))
+  const slots = handle.kernel.members ? handle.kernel.members.roles().map((r) => r.id + ':' + r.capacity) : []
+  ok(slots.join(',') === 'planner:1,solver:8,verifier:3',
+    'its slots are v3 roster as capacities (planner:1, solver:8, verifier:3)', slots.join(','))
+  const st = handle.kernel.status()
+  ok(st.settings.resolved['vmu.limits.maxLiveMembers'].source === 'pack:v3-core' &&
+     st.settings.resolved['vmu.limits.maxLiveMembers'].value === 4,
+    'its settings layer is in effect and attributed to the pack (maxLiveMembers <- v3 maxParallelThreshold)',
+    JSON.stringify(st.settings.resolved['vmu.limits.maxLiveMembers']))
+  const ids = st.bus.entries.map((e) => e.id)
+  ok(ids.includes('v3-core-verifier-quorum') && ids.includes('v3-core-manual-gate'),
+    'both carried M2 modules are on the bus', ids.join(','))
+
+  // M2 #1 FIRES: a tally with fewer votes than v3's verifierCount is refused BY NAME.
+  const thin = await handle.kernel.bus.emit('ballot/tally', { target: 'p-1', votes: { 'a': 'for' }, eligible: ['a', 'b', 'c'], quorumRule: 'majority' }, {})
+  ok(thin.ok === false && thin.refused && thin.refused.code === 'VMU_PACK_V3_CORE_VERIFIER_QUORUM',
+    'the verifier-quorum module refuses a thin tally by name', JSON.stringify(thin.refused))
+  const full = await handle.kernel.bus.emit('ballot/tally', { target: 'p-1', votes: { a: 'for', b: 'for', c: 'against' }, eligible: ['a', 'b', 'c'], quorumRule: 'majority' }, {})
+  ok(full.ok === true, 'and a tally with all three verifiers passes (no blanket denial)')
+
+  // M2 #2 FIRES on the mode branch, and stays silent in auto.
+  const auto = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {} }, {})
+  ok(auto.ok === true, 'in mode=auto the manual gate stays silent')
+  const manual = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {}, v3Mode: 'manual' }, {})
+  ok(manual.ok === false && manual.refused && manual.refused.code === 'VMU_PACK_V3_CORE_MANUAL_GATE',
+    'in mode=manual it refuses dispatch by name', JSON.stringify(manual.refused))
+
+  // Unload residue and plan purity are covered by tests/vmu-pack.test.mjs; here we only need "it loaded".
+  await rm(dir, { recursive: true, force: true })
+}
+
+// ---- 15. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

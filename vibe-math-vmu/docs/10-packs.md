@@ -97,6 +97,9 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 > **它不是什么（诚实 ✗）**：**不是**行为等价证明 ✓ —— 行为级 A/B（同场景两侧跑、逐条分类）**仍未做** ✗，需要场景夹具（§5.1 的方法 ✓）。`institute-min` 仍保留为**形状示例**（它的规则指向 v5 时代工具名 ⇒ **不会触发** ✗）。
 > **给 pack 作者的两条硬知识**（本轮用真包换来的 ✓✗）：① **`vmu.members` 只在你声明席位后才发布** ⇒ 带来席位的包**不得**把它列进 `requires`（鸡生蛋 ✓）；② **别名目标必须是"已发布服务"**（`vmu.tasks` ✓），**不能是工具名**（`vibe_vmu_records` ✗ ⇒ `VMU_NO_SUCH_OBJECT`）。
 
+> **现状补充（2026-10-10 ✓）：`packs/v3-core.js` 也已落地并可装载** ✓✓ —— 它表达 **v3 的机构**：三槽位 `planner:1／solver:8／verifier:3` ✓、v3 的机制默认（`vmu.limits.maxLiveMembers:4` ↔ v3 `maxParallelThreshold` ✓；`verdictMaxRounds:5` ↔ `debateMaxRounds` ✓）＋**包自有键** `vmu.v3.*`（`verifierCount`／`solverMaxRounds`／`planningHorizon`／`promoteValueThreshold`／`mode` ✓）、v3 的五条产物轨 ✓，以及**两个随包 M2 模块** ✓✓：`ballot/tally` 上强制 **verifier 法定数**（不足即具名拒 ✓）、`mode=manual` 时**拒绝派发**（具名拒 ✓；auto 下保持沉默 ✓）。场景见 `tests/vmu-entry.test.mjs` 第 14 组 ✓。
+> **为什么 v3-core 不带 M1 规则（诚实 ✗✓）**：v3 的两条定规矩是**量化/有状态**的（"至少 N 名验证者表态"、"manual 下未经放行不得跑"）——M1 的谓词 DSL **数不了票** ✓；为凑形态而写一条装饰性规则，正是本仓拒绝的那种撒谎 ✗。**这本身也是结论** ✓：**pack 是 JS ⇒ 它可以携带行为**，而 M1 的形态已由 v5r-core 演示 ✓。
+
 **目标**：用 vmu 的 settings＋中间件＋提示词包**复现 v5r 的可观测行为**；**差异逐条报用户裁定**（不自行抹平）。
 
 ### 5.1 对照方法（可执行）

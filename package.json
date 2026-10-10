@@ -218,6 +218,7 @@
     "vibe-math-vmu/kernel/pack.js",
     "vibe-math-vmu/packs/institute-min.js",
     "vibe-math-vmu/packs/v5r-core.js",
+    "vibe-math-vmu/packs/v3-core.js",
     "vibe-math-vmu/host.js",
     "vibe-math-vmu/host-hooks.js",
     "vibe-math-vmu/host-spawn.js",
