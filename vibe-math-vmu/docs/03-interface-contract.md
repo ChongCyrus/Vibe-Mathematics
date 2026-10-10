@@ -329,6 +329,13 @@
 | `VMU_SLO_BUDGET_EXHAUSTED` | **错误预算耗尽**（须给 SLI／窗口／已耗比例 ✓） | 告警面 | ✅（默认只警告；`freeze-H2` 时拒 H2 变更 ✓） |
 | `VMU_RETENTION_TRUNCATED` | 裁剪计划/动作超出上限 ⇒ **丢弃必须计数**（实现于 `kernel/retention.js` ✓） | 归档/保留 | ✅（须给**丢弃条数** ✓） |
 | `VMU_QUOTA_SOFT_EXCEEDED` | 越过**软配额**（只警告不拒；实现于 `kernel/retention.js` ✓） | 归档/配额 | ✅（须给**当前量与软限** ✓） |
+| `VMU_TRUST_VOCAB_VIOLATION` | 声誉信号**越出受控词表**（实现于 `kernel/trust.js` ✓） | 社会面/信任 | ✅（须给**允许的 kind 清单** ✓） |
+| `VMU_WORKFLOW_STAGE_UNKNOWN` | 阶段**未声明**（含迁移引用未声明阶段；实现于 `kernel/workflow.js` ✓） | 工作流 | ✅（须给**已声明阶段清单** ✓） |
+| `VMU_WORKFLOW_TASK_UNKNOWN` | 任务**无工作流状态**（实现于 `kernel/workflow.js` ✓） | 工作流 | ✅（须提示先 `advance()` ✓） |
+| `VMU_WORKFLOW_GATE_BLOCKED` | 阶段门**未满足**（实现于 `kernel/workflow.js` ✓） | 工作流 | ✅（须**点名缺哪一项** ✓） |
+| `VMU_WORKFLOW_ESCALATION_NOT_DUE` | 升级**未到时限**（实现于 `kernel/workflow.js` ✓） | 工作流 | ✅（须给**年龄与阈值** ✓） |
+| `VMU_ARBITER_UNAVAILABLE` | 选择规则要求**人类指定**仲裁者（实现于 `kernel/arbitration.js` ✓） | 仲裁 | ✅（须说明"内核不代人指定" ✓） |
+| `VMU_ARBITRATION_OFF` | 仲裁**未启用**（零机制；实现于 `kernel/arbitration.js` ✓） | 仲裁 | ✅（须给**如何启用** ✓） |
 
 **共享模块码表（**由数学/归档/脚本模块抛出 ✓；独立批评者第 5 轮发现这些码**整批在登记面之外** ✗ ⇒ 现纳入同一登记表与门禁 ✓）**
 
@@ -358,13 +365,14 @@
 | 码 | 语义 | 来源 | 状态 |
 |---|---|---|---|
 | `VMU_ACTING_NOT_ALLOWED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_AE_REPORT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_ALIAS_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_ALLOCATION_REMAINDER` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_AMOUNT_NOT_INTEGER` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
+| `VMU_ANESTHESIA_UNDECLARED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
+| `VMU_ANIMAL_LEDGER_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_APPROVAL_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_ARBITER_IS_PARTY` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
-| `VMU_ARBITER_UNAVAILABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
-| `VMU_ARBITRATION_OFF` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_ARCHIVE_RECEIPT_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 16 | ⛔ |
 | `VMU_ARCHIVE_TARGET_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 16 | ⛔ |
 | `VMU_ASSIGNMENT_ATTEMPTS_EXHAUSTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -418,6 +426,7 @@
 | `VMU_CONF_SUBMISSION_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_CONSENSUS_NOT_REACHED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_CONSENT_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
+| `VMU_CONSENT_VERSION_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_CONSENT_WITHDRAWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_COURSE_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_COURSE_COHORT_FULL` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -440,6 +449,7 @@
 | `VMU_DISCIPLINE_POSTMORTEM_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_DISCIPLINE_QUOTA` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_DISCIPLINE_SUSPENDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DOMAIN_PACK_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_DUTY_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_EQUIP_CALIBRATION_DUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_EQUIP_CAPTURE_UNLINKED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
@@ -453,6 +463,7 @@
 | `VMU_ETHICS_APPROVAL_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_EXPLAIN_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_EXPORT_VISIBILITY_BLOCKED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_FACILITY_UNACCREDITED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_FAIRNESS_CONCENTRATION` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_FAIRNESS_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_FAIRNESS_QUOTA` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -470,6 +481,7 @@
 | `VMU_FX_DIRECTION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_FX_RATE_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_FX_RATE_STALE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
+| `VMU_GATE_UNSATISFIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_GC_REFUSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_GLOSSARY_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 06 | ⛔ |
 | `VMU_GLOSSARY_UNKNOWN_TERM` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 06 | ⛔ |
@@ -488,9 +500,12 @@
 | `VMU_HR_PERF_EVIDENCE_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_HR_TENURE_DECISION_DUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_HR_TENURE_QUORUM_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
+| `VMU_HUMANE_ENDPOINT_REPORT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_HUMAN_APPROVAL_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_HUMAN_TIMEOUT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_HUMAN_VETOED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IACUC_APPROVAL_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
+| `VMU_IACUC_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_IDENTITY_ENDS_WITH_OPEN_WORK` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_IDENTITY_ISSUER_UNTRUSTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_IDENTITY_MULTI_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -553,10 +568,12 @@
 | `VMU_PRIVACY_VIOLATION` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_PROBATION_ACTIVE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_PROMPT_SECTION_DRIFT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_PROTOCOL_DEVIATION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_REASON_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_RECALL_QUORUM_NOT_MET` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_RECRUIT_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_RECRUIT_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_REGISTRATION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_REL_BACKLINK_STALE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_REL_CYCLE_DETECTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_REL_DEPTH_EXCEEDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
@@ -565,6 +582,7 @@
 | `VMU_RESOURCE_EXCEEDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_RETENTION_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_REVIEWER_OVERLOADED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 16 | ⛔ |
+| `VMU_REVIEW_DUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_REVIEW_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_REVIEW_NOT_ELIGIBLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_REVIEW_ROUNDS_EXHAUSTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -572,6 +590,7 @@
 | `VMU_REVIEW_SELF_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_ROLE_TERM_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_ROUNDING_UNDEFINED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
+| `VMU_SAE_REPORT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_SCALE_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_SCHEDULE_OVERDUE_REPORT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_SCHEDULE_RECURRENCE_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
@@ -592,12 +611,15 @@
 | `VMU_SUBMISSION_INCOMPLETE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 16 | ⛔ |
 | `VMU_SUBMISSION_WITHDRAWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_SUPPLYCHAIN_UNLOCKED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
+| `VMU_THREE_R_INCOMPLETE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_TOPOLOGY_UNSUPPORTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_TRAINING_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_TRASH_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_TRUST_APPEAL_WINDOW` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_TRUST_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_TRUST_SELF_SCORE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_TRUST_USE_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_UNBLINDING_UNLOGGED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_VERSION_CHAIN_BROKEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 16 | ⛔ |
 | `VMU_WATCH_CHANNEL_UNSUPPORTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_WATCH_CROSS_INSTITUTION_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -610,7 +632,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **138** 个码：其中 **56** 个能在运行时代码里找到 ✓，
+> 手写表登记 **145** 个码：其中 **63** 个能在运行时代码里找到 ✓，
 > **82** 个**暂时只存在于表里**（提案 ⛔）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓，删改任一码都会让 `--check` 变红 ✓。
 

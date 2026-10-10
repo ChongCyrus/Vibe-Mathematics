@@ -1,7 +1,7 @@
 # vmu 20 · 安全 · 隐私 · 合规 · 伦理（横切面基础设施卷）
 
-> 状态：**设计稿 v0.1**（本轮为"设计到极致"的第一版；实现落地后逐字校准）
-> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`02-architecture.md`、`03-interface-contract.md`（服务/工具/码的唯一登记表 ＋ 共享模块码表 ✓）、`18-command-and-protocol-reference.md`（工具与错误码的处置速查 ✓）、`04-settings.md`、`05-middleware.md`
+> 状态：**设计稿 v0.2**（v0.1＝通用伦理/隐私/合规；**v0.2 增补 §9.1–§9.4：领域合规包 ＋ 临床（N2）＋ 动物（N3）＋ 两者共用的审批闸/复审/证据包** —— 补批评者第 6 轮的 N2/N3 两处缺口；实现落地后逐字校准）
+> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`02-architecture.md`、`03-interface-contract.md`（服务/工具/码的唯一登记表 ＋ 共享模块码表 ✓）、`18-command-and-protocol-reference.md`（工具与错误码的处置速查 ✓）、`04-settings.md`、`05-middleware.md`、**`16-research-lifecycle.md`（生命周期挂点）**、**`21-observability-and-operations.md`（到期复审的提醒面）**、**`22-academic-operations.md`（台账/凭证包）**
 > 邻卷：`07`（归档与保留）、`11`（门禁与发布）、`17`（不变式与人类在环）、`12`（使用者手册）、`14`（未决项与路线图）
 > 读者：**研究者/机构管理员**（要合规地跑研究）＋ **机制作者**（要写安全规则）＋ **审计者**（要核账）。
 
@@ -140,6 +140,73 @@
 - **错误码**：`VMU_ETHICS_APPROVAL_MISSING`。
 - **成熟度** ✗ 规划。**优先级** P0。
 
+### 9.1 领域合规包（domain compliance pack）——**不内置法条**，只给挂点
+
+> **为什么**：通用 IRB/DPIA 覆盖不了**临床/医学**与**动物实验**（N2/N3）：它们的必答项、审批链与上报时限**都不相同** ✗。但平台**不是法律意见提供者**，也**不能把法条写死** ✗（法域不同、法条会变）。
+> **做法**：本卷只定义**三件可组合的东西**，具体法域由使用方拼出来 ✓。
+
+| 三件 | 是什么 | 承载面 |
+|---|---|---|
+| **① 可声明钩子点** | 把"必须在何时发生什么"落成 **M1 声明**，挂在**既有冻结钩子**上（**不新增钩子** ✗） | `05` 的 20 钩子：`member/wake-before`（开工前闸）／`record/append-before`（写前闸）／`task/assign`・`task/transition`（阶段闸）／`settle/before`（结算闸）／`pack/loading`（装载闸） |
+| **② 模板位** | 每个必答项在**记录**里有稳定字段位（`kind` ＋ 字段名），可被审计逐字段核 | **`22` 的台账/凭证面**（**只引用，不重定义** ✗）＋ `07` 的归档对象 |
+| **③ 检查表** | 机器可判定的清单：每条＝**判据＋证据指针＋失败码**，审阅人按表核账 | 本卷 §9.2/§9.3 的表；进 `11` 的 T1/T2 **场景**集 |
+
+**组合方式（本项目灵魂）**：`settings（声明键） ＋ middleware（M1 规则／M2 模块执行闸） ＋ pack（把整包分发给他人）` ⇒ **一个具体法域＝一个 pack**（引用 `10` 的打包形态与 `19` 的扩展范式 ✓）。
+**抽象上，一个领域包 = 一句可判定的话**：「*未满足 X 证据 ⇒ 不得发生 Y 动作*」，例如「*无 IACUC 方案号 ⇒ 不得开始采集*」✓。
+
+**接口形状（拟增工具，全部为计划 ✗）**：`vibe_vmu_compliance_gate`（**计划/未实现**：跑闸并给出**具名**未满足项）、`vibe_vmu_domain_pack`（**计划/未实现**：列出/校验领域包的三件套是否齐备）。
+**可调控参数（拟增键）**：`vmu.compliance.domainPacks`（数组；声明启用了哪些领域包）、`vmu.compliance.requireApprovalGate`（默认 `true`）、`vmu.compliance.evidenceKind`（默认 `"compliance-evidence"`）。
+**错误码（拟增）**：`VMU_DOMAIN_PACK_MISSING`（启用了某领域包但**必需挂点/证据位缺失**）、`VMU_GATE_UNSATISFIED`（审批闸未满足，**须点名缺哪一项**）。
+**成熟度** ✗ 计划（概念＋挂点表已定；**不含任何法条文本** ✗）。**优先级** P0。
+
+### 9.2 临床/医学研究（**N2**）
+
+> **与 §8/§9 的关系**：同意与伦理的**通用**语义在 §8/§9；本节只加**临床特有**的必答项与时限 ✓（**不重定义** ✗）。
+
+| 必答项 | **机器可判定判据** | 键（拟增） | 码（拟增） |
+|---|---|---|---|
+| **试验注册号**必填 | 开工（首例入组）前 `vmu.clinical.registrationId` **非空**；给了 `registrationIdPattern` 就必须匹配 ⇒ 否则拒 | `vmu.clinical.registrationRequired`（默认 `true`）、`vmu.clinical.registrationId`、`vmu.clinical.registrationIdPattern`（默认 `""`＝只要求非空） | `VMU_REGISTRATION_MISSING` |
+| **知情同意版本化** | 同意记录必须含 `version` ＋ `effectiveAt`（＋`withdrawnAt?`）；**受试所用版本 ≠ 当前生效版本 ⇒ 拒**；**撤回**保留历史、只标记不可用（可追溯 ✓） | `vmu.clinical.consentVersioning`（默认 `true`）；复审复用 `vmu.consent.recheckDays`（§8 ✓） | `VMU_CONSENT_VERSION_MISMATCH`（复用 `VMU_CONSENT_WITHDRAWN` ✓） |
+| **SAE/不良事件上报时限** | 事件登记含 `severity`＋`observedAt`＋`reportedAt`；`reportedAt − observedAt > 时限` ⇒ **红**（SAE 与 AE 两个时限） | `vmu.clinical.saeReportLimitHours`（默认 `24`）、`vmu.clinical.aeReportLimitHours`（默认 `72`）、`vmu.clinical.reportChannel`（默认 `""`） | `VMU_SAE_REPORT_OVERDUE`、`VMU_AE_REPORT_OVERDUE` |
+| **方案偏离登记** | 偏离须登记 `kind`（`major`/`minor`）＋`reason`＋`at`＋`action`；**`major` 未登记 ⇒ 阻塞结算**（`settle/before` 闸） | `vmu.clinical.deviationRegister`（默认 `true`） | `VMU_PROTOCOL_DEVIATION_MISSING` |
+| **数据最小化与去标识化** | **只引用 §7**（`vmu.privacy.*` 的分类/去标识/最小暴露）⇒ **本节不重定义** ✗ | —— | 复用 `VMU_PRIVACY_VIOLATION`／`VMU_DATA_CLASS_MISMATCH` |
+| **揭盲/紧急揭盲留痕** | 揭盲动作须记 `who/why/at`＋`emergency`（布尔）；**紧急揭盲须在事后复核登记** ⇒ 否则红 | `vmu.clinical.unblindingRequiresReason`（默认 `true`） | `VMU_UNBLINDING_UNLOGGED` |
+
+**成熟度** ✗ 计划（表＋键＋码；闸点接线待做）。**优先级** P0（决定"能否承载临床研究"）。
+
+### 9.3 动物实验（IACUC 式，**N3**）
+
+| 必答项 | **机器可判定判据** | 键（拟增） | 码（拟增） |
+|---|---|---|---|
+| **审批闸（未批不得开始）** | 方案须含 `protocolId`＋`species`＋`approvedAt`＋`expiresAt`；`approvedAt > now` **或** `expiresAt ≤ now` ⇒ **拒**；年度复审周期可配 | `vmu.animal.iacucRequired`（默认 `true`）、`vmu.animal.protocolId`、`vmu.animal.reviewCycleDays`（默认 `365`） | `VMU_IACUC_APPROVAL_MISSING`、`VMU_IACUC_EXPIRED` |
+| **3R 必答** | `replacement`／`reduction`／`refinement` 三项**逐条非空**（空 ⇒ 拒；逐条可核） | `vmu.animal.threeRRequired`（默认 `true`） | `VMU_THREE_R_INCOMPLETE` |
+| **麻醉镇痛声明** | 活体手术类操作须声明麻醉/镇痛方案；**豁免须给理由** | `vmu.animal.anesthesiaRequired`（默认 `true`） | `VMU_ANESTHESIA_UNDECLARED` |
+| **人道终点与意外死亡上报** | 事件须含 `kind ∈ {humane-endpoint, unexpected-death}`＋`at`＋`cause`＋`reportedAt`；超时 ⇒ 红 | `vmu.animal.deathReportLimitHours`（默认 `24`） | `VMU_HUMANE_ENDPOINT_REPORT_OVERDUE` |
+| **设施资质 / 人员培训** | 设施：`facilityId`＋`accreditation`＋`validUntil`；人员：`personId`＋`trainingId`＋`completedAt`＋有效期；**过期 ⇒ 拒** | `vmu.animal.facilityAccreditation`、`vmu.animal.trainingRequired`（默认 `true`） | `VMU_FACILITY_UNACCREDITED`、`VMU_TRAINING_EXPIRED` |
+| **动物数量与来源台账** | 字段：`species`／`count`／`source`／`supplier`／`acclimationDays`；**台账本体在 `22-§2`（仪器与设备/台账）＋`22-§8`（合规与审计运营）** ⇒ 本卷**只引用其对象 id**（`vmu.animal.ledgerRef`），**不重定义台账结构与存储** ✗ | `vmu.animal.ledgerRef` | `VMU_ANIMAL_LEDGER_MISSING` |
+
+**成熟度** ✗ 计划。**优先级** P0（决定"能否承载动物实验"）。
+
+### 9.4 两者共用：审批闸 / 到期复审 / 证据包
+
+**① 审批闸（机器可判定 ✓）**
+- **一句话判据**：`gate({ domain, at })` → **未批 / 过期 / 缺必答 ⇒ `VMU_GATE_UNSATISFIED`**，且回执**点名**缺哪一项（"哪个字段、属于哪个必答项"）✓。
+- **闸点**（复用既有钩子，**不新增** ✗）：`member/wake-before`（开工前）／`record/append-before`（写前）／`settle/before`（结算前）／`pack/loading`（装载前，用于"领域包自身是否齐备"）。
+- **与 §9 的关系**：`VMU_ETHICS_APPROVAL_MISSING`（§9 通用）与本节两域码**并存**：通用缺审批用前者，域内缺必答项用后者 ✓（**不合并**，避免"一个码两种含义"）。
+- **失败语义**：闸未满足 ⇒ **该动作不发生**（fail-closed），且**必须**留痕（谁在何时试图做什么、被哪条闸拦住）。
+
+**② 到期与复审提醒——引用 `21`，不重定义** ✗
+- 本卷只声明"**复审到期**"应产生的**告警指标/对象/码**（对象＝方案 id；指标＝`compliance.reviewDue`），**提醒机制（阈值/去重/静默/升级/通知通道）一律由 `21-§5.3` 负责** ✓。
+- 键（拟增）：`vmu.compliance.reviewAlertLeadDays`（默认 `30`）；码（拟增）：`VMU_REVIEW_DUE`（到期未复审；**提醒用**，不是拒绝）。
+
+**③ 证据包——引用 `22` 与 `07`，不重定义** ✗
+- 本卷只声明**证据包的必需成员清单**（谁能一眼看出"这个结论背后有哪些合规证据"✓）：试验注册号／知情同意版本（＋撤回）／SAE·AE 或人道终点·意外死亡上报／3R 答复／审批与资质（含有效期）／方案偏离登记／去标识化记录（§7）。
+- **打包、指纹、签名、保留与导出**一律由 `22`（凭证/证据包）与 `07`（归档/保留）负责 ✓；本卷不新增打包器 ✗。
+- 键（拟增）：`vmu.compliance.evidenceMembers`（数组；默认＝上述清单）。
+
+**成熟度** ✗ 计划。**优先级** P0。
+
+
 ---
 
 ## 10. 数据主权与跨境
@@ -212,6 +279,10 @@
 3. **场景**：至少 5 条可复跑场景（越权写入被拒／路径逃逸被拒／PII 未去标识被拒／kill switch 生效／审计链可取证）。
 4. **红**：反向变异（放开某条策略）必须产出**具名红**。
 5. 文档审计：**未实现**的 `vibe_vmu_*` 工具名**必须与标记词同行**，否则视为**红**。
+6. **域闸（断言）**：`gate({domain:'clinical'})` 且 `vmu.clinical.registrationId` 为空 ⇒ **拒**且回执**点名** `registrationId`；`gate({domain:'animal'})` 且 `expiresAt ≤ now` ⇒ **拒**且回执**点名** `expiresAt`（**未批不得开始** ✓）。
+7. **时限（断言）**：SAE 的 `reportedAt − observedAt > vmu.clinical.saeReportLimitHours` ⇒ `VMU_SAE_REPORT_OVERDUE`（**红**）；人道终点/意外死亡 > `vmu.animal.deathReportLimitHours` ⇒ `VMU_HUMANE_ENDPOINT_REPORT_OVERDUE`（**红**）。
+8. **版本（场景）**：受试所用同意版本 ≠ 当前生效版本 ⇒ `VMU_CONSENT_VERSION_MISMATCH`；**撤回后历史仍可追溯**（只标记不可用、不删历史 ✓）。
+9. **3R（具名）**：`replacement`／`reduction`／`refinement` 任一为空 ⇒ `VMU_THREE_R_INCOMPLETE`，且回执**点名**缺的是哪一项。
 
 ---
 
@@ -227,6 +298,11 @@
 | 人类在环 | **17**（不变式） | 17 与本卷互指 |
 | 使用者操作 | **12**（手册） | 12 增"安全配方" |
 | 规划项 | **14-§2** | 新增主题 **T10「安全·隐私·合规」** |
+| 领域合规包（挂点／模板位／检查表） | **05**（钩子）／**10**（pack 形态）／**19**（扩展范式） | 05 补"合规挂点"示例；10 收"领域包"形态 |
+| 台账与凭证（动物数量/来源、证据成员） | **22**（§2 仪器与设备/台账、§8 合规与审计运营、§12 接口形状总表、§13 键表） | 22 收 `vmu.animal.ledgerRef` 所指向的对象（**本卷只引用，不重定义** ✗） |
+| 复审到期提醒 | **21**（§5.3 告警面／§14 R 表） | 21 增指标 `compliance.reviewDue`（机制由 21 负责 ✓） |
+| 证据包打包/保留/签名 | **22**（凭证包）／**07**（归档与保留） | 07/22 复用既有打包与保留（本卷**不新增打包器** ✗） |
+| 合规闸点落在生命周期的哪里 | **16**（§1 L1–L24） | 16 标注"合规闸点"对应的 L 阶段（只标注，不改流程 ✓） |
 
 ---
 
@@ -238,3 +314,11 @@
 - **17 卷 S-1…S-6** 的具体编号与措辞未核（本卷仅按名称引用）；
 - **许可兼容矩阵**只给要点（GPL 传染／专利条款），**未**逐许可核对；
 - 编号登记见 **14-§2**（主题 T1–T9；本卷建议新增 **T10**）。
+- **领域合规（N2/N3）未核项** ✗：
+  1. **具体法域法条映射未做** ✗（本卷**刻意不内置法条**：只给挂点＋模板位＋检查表；法域映射属使用方 pack）⇒ 登 `14-§2`；
+  2. **外部系统对接未做** ✗（如 ClinicalTrials.gov／e-Submission 等登记与申报系统，见 N11 的**外部 API 面**）⇒ 登 `14-§2`；
+  3. **`22` 卷的台账/凭证对象名未核** ✗（本卷按 `22-§2`／`22-§8`／`22-§12` 引用；具体对象 id 与字段待核）；
+  4. **`21` 卷的告警具体键未登记** ✗（`vmu.alerts.*` 现仅通配 ⇒ 复审提醒的接线待 `21` 定键）；
+  5. **域包装载闸未实现** ✗（`pack/loading` 上"领域包自身是否齐备"的检查）；
+  6. **闸的判据函数未实现** ✗（`gate({domain,at})` 的字段级判据表已定，代码未写）；
+  7. 建议 `14-§2` 新增 **N2（临床/医学研究合规）** 与 **N3（动物实验合规）** 两条主题编号（编号登记见 **`14-§2`** ✓）。

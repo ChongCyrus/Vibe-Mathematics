@@ -46,6 +46,10 @@ import { createAudit } from './audit.js'
 import { createAlerts } from './alerts.js'
 import { createRetention } from './retention.js'
 import { createDelegation } from './delegation.js'
+import { createWorkflow } from './workflow.js'
+import { createTrust } from './trust.js'
+import { createHandover } from './handover.js'
+import { createArbitration } from './arbitration.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -256,6 +260,12 @@ export function createKernel({
   // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
   const delegation = createDelegation({ settings: { get: (k) => settings[k] }, bus, clock, log, members,
     roots: Array.isArray(settings['vmu.delegation.roots']) ? settings['vmu.delegation.roots'] : [] })
+  const workflow = createWorkflow({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
+  const trust = createTrust({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const handover = createHandover({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks, library })
+  // Batch 2 slice 3: arbitration. `minutes` is the live minutes service so a ruling can be recorded there;
+  // `mode` defaults to off (zero mechanism) so nothing is arbitrated unless the institution turns it on.
+  const arbitration = createArbitration({ settings: { get: (k) => settings[k] }, bus, clock, log, members, minutes })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -284,6 +294,10 @@ export function createKernel({
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 §5 §13)' })
   registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 §4.3 §4.8)' })
   registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 §4)' })
+  registry.register('vmu.workflow', { apiVersion: 1 }, { kind: 'service', description: 'stage whitelist, gates and escalation, no stage skipping (docs/08 §4)' })
+  registry.register('vmu.trust', { apiVersion: 1 }, { kind: 'service', description: 'auditable reputation that NEVER grants authority (S-3, docs/17 §5)' })
+  registry.register('vmu.handover', { apiVersion: 1 }, { kind: 'service', description: 'handover packets: required fields named, redacted before packing (docs/17 §11)' })
+  registry.register('vmu.arbitration', { apiVersion: 1 }, { kind: 'service', description: 'arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 §6)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -362,6 +376,10 @@ export function createKernel({
     get alerts() { return alerts },
     get retention() { return retention },
     get delegation() { return delegation },
+    get workflow() { return workflow },
+    get trust() { return trust },
+    get handover() { return handover },
+    get arbitration() { return arbitration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

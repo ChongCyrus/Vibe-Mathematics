@@ -60,6 +60,15 @@ export function volumeFiles(dir = DOCS_DIR) {
     .map((f) => ({ num: f.slice(0, 2), name: f.replace(/\.md$/, ''), file: f, text: readFileSync(join(dir, f), 'utf8') }))
 }
 
+/** Terms the glossary defines, for the discoverability sub-table (N15). Missing file = no terms, not a crash. */
+export function readGlossaryTerms() {
+  try {
+    const p = join(REPO, 'vibe-math-vmu', 'glossary.json')
+    const raw = JSON.parse(readFileSync(p, 'utf8'))
+    return Array.isArray(raw.terms) ? raw.terms : []
+  } catch { return [] }
+}
+
 /** First heading of a volume, trimmed to one short orientation phrase (table-safe). */
 export function orientationOf(text) {
   const line = String(text).split('\n').find((l) => /^#\s+/.test(l)) || ''
@@ -154,12 +163,28 @@ export function missingInputs() {
 }
 
 /** Every number the table needs, from the artefacts (pure: all inputs injected). */
-export async function collectIndex({ volumes, plannedDefs, settingsText, contractText, coreKeys }) {
+export async function collectIndex({ volumes, plannedDefs, settingsText, contractText, coreKeys, glossaryTerms = [] }) {
   const plannedPer = new Map()
   const declaredBy = new Map()
+  const families = new Map()          // volume -> Set of key families it declares (`vmu.audit` from `vmu.audit.x`)
   for (const d of plannedDefs) {
     declaredBy.set(d.key, d.volumes.slice())
-    for (const v of d.volumes) plannedPer.set(v, (plannedPer.get(v) || 0) + 1)
+    const seg = d.key.split('.')
+    const family = seg.slice(0, 2).join('.')
+    for (const v of d.volumes) {
+      plannedPer.set(v, (plannedPer.get(v) || 0) + 1)
+      if (!families.has(v)) families.set(v, new Set())
+      families.get(v).add(family)
+    }
+  }
+  // DISCOVERABILITY (the N15 gap): which volume OWNS which term. This is what makes the glossary navigable
+  // instead of merely present - a reader looking for "who defines arbitration" gets an answer from the index.
+  const termsPer = new Map()
+  for (const t of glossaryTerms) {
+    const m = /^(\d\d)-/.exec(String(t.definedIn || ''))
+    if (!m) continue
+    if (!termsPer.has(m[1])) termsPer.set(m[1], [])
+    termsPer.get(m[1]).push(t.zh)
   }
   const wired = wiredKeysOf(settingsText)
   // Wired keys are attributed to every DESIGN volume that declares them. Planned keys use the registry's
@@ -179,7 +204,7 @@ export async function collectIndex({ volumes, plannedDefs, settingsText, contrac
   return {
     plannedPer, wiredPer, plannedTotal: plannedDefs.length, wiredTotal: wired.size,
     wiredAttributedTotal: wiredAttributed.size, coreTotal: coreKeys.length,
-    codePer: codes.per, codeTotal: codes.total, volumes,
+    codePer: codes.per, codeTotal: codes.total, volumes, families, termsPer,
   }
 }
 
@@ -218,6 +243,12 @@ export function renderBlock(idx) {
     '> 读法 ✗✓：**声明的计划键 高 ≠ 今天能用** —— 只有"**其中已接线**"那一列是真的会改变行为的旋钮 ✓；'
     + '计划键改了**不会有任何行为变化**（`def: null`，表里显示"未接线"）✗。',
   ]
+  // NOTE (round 9): the N15 discoverability sub-table (which volume owns which term / key families) was built
+  // and then WITHDRAWN rather than shipped half-tested - it broke the per-volume assertions of
+  // tests/vmu-wiring-index.test.mjs, and changing an external test's parsing to fit a new block is exactly the
+  // kind of "make the gate match the artefact" move this project refuses. The collection code above
+  // (families/termsPer) stays so the next round can land the sub-table WITH its assertions.
+  void idx.families; void idx.termsPer
   return head.concat(rows, tail).join('\n')
 }
 
@@ -271,7 +302,8 @@ async function main() {
   const coreKeys = (Array.isArray(schemaMod.CORE_DEFS) ? schemaMod.CORE_DEFS
     : (schemaMod.SETTING_DEFS || []).filter((d) => d && d.planned !== true)).map((d) => d.key)
 
-  const idx = await collectIndex({ volumes, plannedDefs: PLANNED_DEFS, settingsText, contractText, coreKeys })
+  const idx = await collectIndex({ volumes, plannedDefs: PLANNED_DEFS, settingsText, contractText, coreKeys,
+    glossaryTerms: readGlossaryTerms() })
   const block = renderBlock(idx)
   const prevText = readFileSync(README_FILE, 'utf8')
   const nextText = spliceBlock(prevText, block)
