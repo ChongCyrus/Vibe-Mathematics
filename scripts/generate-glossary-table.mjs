@@ -73,7 +73,10 @@ if (isMain) {
   const { head, tail } = splitDoc(text)
   if (head === text) {
     console.error('glossary table: STALE — docs/01 has no GLOSSARY markers (add them once, then --write)')
-    process.exit(1)
+    // EXIT 2 = an INPUT SHAPE fault, exit 1 = the artefact is merely stale. The planned-code generator uses the
+    // same convention (an independent reviewer flagged that the two disagreed on this exact case), so a caller
+    // can tell "nothing to regenerate safely" from "regenerate this".
+    process.exit(2)
   }
   const next = head.replace(/\s*$/, '\n\n') + block + '\n' + tail.replace(/^\s*/, '\n')
   console.log('glossary terms=' + glossary.terms.length)

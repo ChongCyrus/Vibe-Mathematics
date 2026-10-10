@@ -42,6 +42,10 @@ import { createBoard } from './board.js'
 import { createMinutes } from './minutes.js'
 import { createBudget } from './budget.js'
 import { createMetrics } from './metrics.js'
+import { createAudit } from './audit.js'
+import { createAlerts } from './alerts.js'
+import { createRetention } from './retention.js'
+import { createDelegation } from './delegation.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -239,6 +243,19 @@ export function createKernel({
   const minutes = createMinutes({ settings: { get: (k) => settings[k] }, bus, clock, log, meeting: null })
   const budget = createBudget({ settings: { get: (k) => settings[k] }, bus, clock, log })
   const metrics = createMetrics({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
+  // path: the ring above stays the in-memory view, this service is the queryable/rotatable face over it.
+  const audit = createAudit({ settings: { get: (k) => settings[k] }, bus, clock, log, sink: auditToDisk })
+  const alerts = createAlerts({ settings: { get: (k) => settings[k] }, bus, clock, log, metrics })
+  // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
+  // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
+  // that does not come from a delegation); without roots, S-2 refuses every grant - which is the honest default.
+  const retention = createRetention({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
+  // `roots` = who holds authority that does NOT come from a delegation. It is an EXPLICIT setting rather than
+  // a guess from role names: unset means nobody can grant anything (S-2 refuses every grant), which is the
+  // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
+  const delegation = createDelegation({ settings: { get: (k) => settings[k] }, bus, clock, log, members,
+    roots: Array.isArray(settings['vmu.delegation.roots']) ? settings['vmu.delegation.roots'] : [] })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -263,6 +280,10 @@ export function createKernel({
   registry.register('vmu.minutes', { apiVersion: 1 }, { kind: 'service', description: 'minutes, decisions and action items (docs/08 §2)' })
   registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 §12.5)' })
   registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 §4)' })
+  registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 §2)' })
+  registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 §5 §13)' })
+  registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 §4.3 §4.8)' })
+  registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 §4)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -337,6 +358,10 @@ export function createKernel({
     get minutes() { return minutes },
     get budget() { return budget },
     get metrics() { return metrics },
+    get audit() { return audit },
+    get alerts() { return alerts },
+    get retention() { return retention },
+    get delegation() { return delegation },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

@@ -26,8 +26,13 @@ import { dirname, join, resolve } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const VMU_DIR = join(REPO, 'vibe-math-vmu')
+// SEAM CONVENTION: every generator honours `VMU_DOCS_DIR` (point the whole doc set at a copy). This one also
+// honours its own `VMU_SETTINGS_DOC` for a single-file redirect, which takes precedence. Before this, pointing
+// `VMU_DOCS_DIR` at a copy silently did NOT redirect this generator - an independent reviewer hit exactly that
+// while writing a mutant, so the two conventions now agree.
 const DOC = process.env.VMU_SETTINGS_DOC ? resolve(process.env.VMU_SETTINGS_DOC)
-  : join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md')
+  : process.env.VMU_DOCS_DIR ? join(resolve(process.env.VMU_DOCS_DIR), '04-settings.md')
+    : join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md')
 const SCHEMA = join(REPO, 'vibe-math-vmu', 'settings', 'schema.js')
 
 /** Every runtime source that could CONSUME a `vmu.*` key (schema.js declares, it does not consume). */

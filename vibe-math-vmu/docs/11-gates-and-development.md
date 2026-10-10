@@ -404,8 +404,15 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | 批 1 · 切片 1 | 议程＋动议 | `08-§2`／`08-§10`／`08-§13` | `kernel/governance.js` | `tests/vmu-governance.test.mjs` | **已实现 ✓**（9/0 ✓） |
 | 批 1 · 切片 2 | 看板／WIP／泳道／老化 | `08-§4`／`08-§10`／`08-§12` | `kernel/board.js` | `tests/vmu-board.test.mjs` | **已实现 ✓**（43/0 ✓；`VMU_WORKFLOW_TRANSITION_REQUIRED` 已登记 ✓） |
 | 批 1 · 切片 3 | 会议纪要／决议／行动项 | `08-§2`／`08-§10`／`08-§12` | `kernel/minutes.js` | `tests/vmu-minutes.test.mjs` | **已实现 ✓**（20/0 ✓；实现中自查修掉一个上限比较 bug ✓） |
-| 批 1 · 其余 | 工作流／预算／控制／调度／度量／审计 | `08-§4` | — | — | **未开始** ✗ |
-| 批 2–5 | 社会面／归档／计算／合规 | `17`／`07`／`09·15`／`16·20` | — | — | **未开始** ✗ |
+| 批 1 · 切片 6 | 审计（只追加/入库前脱敏/写失败具名） | `21-§2`／`07-§4.9`／`20-§6` | `kernel/audit.js` | `tests/vmu-audit.test.mjs` | **已实现 ✓**（22/0 ✓；复用内核既有落盘接缝 `auditToDisk` ✓） |
+| 批 1 · 切片 7 | 告警与 SLO（告警级去重/静默补摘要/三值） | `21-§5`／`21-§13`／`21-§14` | `kernel/alerts.js` | `tests/vmu-alerts.test.mjs` | **已实现 ✓**（57/0 ✓；与 17 卷通知面**分层**：指纹＝指标×对象×码 ✓） |
+| 批 1 · 切片 8 | 保留/回收站/配额/GC | `07-§4.3`／`07-§4.4`／`07-§4.8` | `kernel/retention.js` | `tests/vmu-retention.test.mjs` | **已实现 ✓**（55/0 ✓；**默认只报告** ✗，动手须显式 `dryRun:false` ✓） |
+| 批 2 · 切片 1 | 委托与转委（**S-2 只减权**） | `17-§4`／`17-§20` | `kernel/delegation.js` | `tests/vmu-delegation.test.mjs` | **已实现 ✓**（107/0 ✓；越权**点名越出项** ✓，零机制下**不假装已授权** ✗✓） |
+| 批 1 · 其余 | 工作流／控制／调度 | `08-§4` | — | — | **未开始** ✗ |
+| 批 2–5 其余 | 信任/仲裁/归档/计算/合规 | `17`／`07`／`09·15`／`16·20` | — | — | **未开始** ✗ |
+
+> **本阶段累计** ✓：**9 个内核服务**（`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation` ✓）、**408 条新断言** ✓、**设置表已接线键 51 → 138（/995）** ✓；**每一块都附"未做清单" ✗**（例如委托无耐久投影、保留的分层只标记不下沉 ✓）—— 这些**不算已实现** ✗。
+> **接入时发现并修掉的真实缺陷** ✓（都是"两条门自动抓到"的 ✓）：未声明的真旋钮（v5r 包的 `requireSettledRecords` ✗）、缺的 `ratio` 类型 ✗、**同义不同名**两处（`meetings.minutesDetail` ✗、`retention.keepEvery` ✗）、以及 `roots` 权限来源**不该靠猜角色名** ✗ ⇒ 改为显式设置 `vmu.delegation.roots`（空＝S-2 拒绝一切授予，**诚实的零机制** ✓）。
 
 > **登记自愈** ✓：某键被实现后，我从生成计划区把它**移入手写核心表**（`settings/schema.js` 的 `CORE_DEFS` ✓）⇒ `planned.js` 因"已存在"**自动停止**声明它 ✓，`docs/04 §11` 该行变 `✅ 已接线` ✓，`00-§3.2` 的逐卷接线数**自动上升** ✓ —— **不需要手改任何统计** ✗。
 

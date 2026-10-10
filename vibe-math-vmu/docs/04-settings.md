@@ -300,6 +300,53 @@ vmu.packs.active: [v5r]
 | `vmu.metrics.sampleHighVolume` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/metrics.js` | 高频只读命中采样开关（变更/拒绝/结算永不采样） |
 | `vmu.metrics.sampleRate` | ratio | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/metrics.js` | 采样率（0..1；实现用确定性步进而非随机，故可复现） |
 | `vmu.metrics.seriesCap` | int ≥1 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/metrics.js` | 单指标序列上限（溢出必须计数） |
+| `vmu.audit.ringMax` | int ≥1 | `64` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计环形长度（丢弃必须计数） |
+| `vmu.audit.redactKeys` | string[] | `[token,key,password,authorization]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 入库前脱敏的字段名（脱敏在写入前，不在导出时） |
+| `vmu.audit.exportFormat` | enum | `json` | `json`∣`jsonl` | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计导出格式 |
+| `vmu.alerts.thresholds` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 告警阈值声明 |
+| `vmu.alerts.dedupWindowMs` | int ≥0 | `300000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 告警级去重窗口（指纹＝指标×对象×码） |
+| `vmu.alerts.escalateAfterMs` | int ≥0 | `900000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 未确认升级时限 |
+| `vmu.alerts.silenceWindows` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 维护静默窗口（静默≠丢弃：仍计数，恢复后补摘要） |
+| `vmu.alerts.channels` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 通知通道（投递给 17 卷的通知原语） |
+| `vmu.alerts.inhibitions` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 抑制规则（抑制须点名抑制源） |
+| `vmu.alerts.autoEscalate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 超时自动升级 |
+| `vmu.alerts.maxThresholds` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 阈值声明上限（0＝不限；超限计数） |
+| `vmu.alerts.maxSilences` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 静默条目上限（0＝不限） |
+| `vmu.alerts.maxExemptions` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 豁免上限（0＝不限） |
+| `vmu.alerts.maxFingerprints` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 指纹环上限（0＝不限；丢弃计数） |
+| `vmu.alerts.maxSamples` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 评估样本上限（0＝不限） |
+| `vmu.slo.targets` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 目标声明 |
+| `vmu.slo.errorBudgetAction` | enum | `warn` | `freeze-H2`∣`warn`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 错误预算耗尽的动作（默认只警告，不冻结） |
+| `vmu.slo.exemptions` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 豁免（必须记录理由与时长） |
+| `vmu.gc.autoRun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 是否自动 GC（默认只报告不执行） |
+| `vmu.gc.graceDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 孤儿宽限期 |
+| `vmu.gc.scope` | string | `workspace` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | GC 作用范围 |
+| `vmu.gc.exemptMarkers` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 免于 GC 的标记 |
+| `vmu.quota.softBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 软配额（只警告） |
+| `vmu.quota.hardBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 硬配额（0＝不限） |
+| `vmu.quota.warnAt` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 配额告警阈值（0..1 分数） |
+| `vmu.quota.onExceed` | enum | `warn` | `warn`∣`refuse`∣`degrade` | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 超配额动作 |
+| `vmu.records.retention.keepEvery` | int ≥0 | `10` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 每 N 版保留一份 |
+| `vmu.records.retention.permanentMarker` | string | `permanent` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 永久保留标记（命中即不得裁剪） |
+| `vmu.records.retention.maxBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 单轨体积上限（0＝不限） |
+| `vmu.records.retention.tierThreshold` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 冷热分层阈值（0＝不分层） |
+| `vmu.records.trash.retainDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 回收站保留天数 |
+| `vmu.records.trash.autoPurge` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 回收站自动清除（默认关） |
+| `vmu.records.trash.countInQuota` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 回收站是否计入配额 |
+| `vmu.records.history.depth` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 历史保留深度（0＝全部） |
+| `vmu.records.history.storeMode` | string | `diff` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 历史存储方式（diff/full） |
+| `vmu.delegation.maxDepth` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托链深度上限（1＝禁止转委） |
+| `vmu.delegation.subdelegateAllowed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 是否允许转委（默认禁） |
+| `vmu.delegation.defaultTtlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托默认有效期（0＝不过期） |
+| `vmu.delegation.maxTtlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托最长有效期（0＝不限） |
+| `vmu.delegation.reasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托必须给理由 |
+| `vmu.delegation.requireExplicitScope` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 必须显式声明权限范围 |
+| `vmu.delegation.onExhausted` | enum | `refuse` | `refuse`∣`return` | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托预算耗尽时的动作 |
+| `vmu.delegation.tokenShare` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 可委托的令牌份额（0..1） |
+| `vmu.delegation.turnsShare` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 可委托的回合份额（0..1） |
+| `vmu.delegation.revokeBroadcast` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 撤销时广播 |
+| `vmu.delegation.auditChains` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/delegation.js` | 委托链必须留审计 |
+| `vmu.delegation.roots` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 不来自委托的权威持有者（空＝S-2 拒绝一切授予，诚实默认） |
 | `vmu.arbitration.binding` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.arbitration.mode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.arbitration.recordInMinutes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -326,7 +373,6 @@ vmu.packs.active: [v5r]
 | `vmu.audit.exportScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.audit.level` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.audit.recountRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.audit.redactKeys` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.audit.retentionDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、20），尚未实现（元数据以各卷为准） |
 | `vmu.audit.rotateBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.audit.rotateDaily` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
@@ -511,17 +557,6 @@ vmu.packs.active: [v5r]
 | `vmu.dedupe.crossWorkspace` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.dedupe.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.dedupe.scope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.auditChains` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.defaultTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.maxDepth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.maxTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.onExhausted` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.reasonRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.requireExplicitScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.revokeBroadcast` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.subdelegateAllowed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.tokenShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.delegation.turnsShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.allowExempt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.exemptList` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.stageDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
@@ -570,10 +605,6 @@ vmu.packs.active: [v5r]
 | `vmu.funding.requiredFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、22），尚未实现（元数据以各卷为准） |
 | `vmu.funding.settlementRoundMinor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.funding.split` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.gc.autoRun` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.gc.exemptMarkers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.gc.graceDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.gc.scope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.handover.acceptTimeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.handover.autoOpenOnEnd` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.handover.includeKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -995,10 +1026,6 @@ vmu.packs.active: [v5r]
 | `vmu.publish.jatsVersion` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.publish.requireChecklist` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.publish.versionChainStrict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.quota.hardBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.quota.onExceed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.quota.softBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.quota.warnAt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.allowedKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.body` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.body.chunkedReturn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
@@ -1016,21 +1043,12 @@ vmu.packs.active: [v5r]
 | `vmu.records.head.sort` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.headFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.history` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.history.depth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.history.storeMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.naming` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.naming.conflictSuffix` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.naming.maxLength` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.naming.slugPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.retention` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.retention.keepEvery` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.retention.maxBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.retention.permanentMarker` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.retention.tierThreshold` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.trash` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.trash.autoPurge` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.trash.countInQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.records.trash.retainDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.records.treatNegativeAsFirstClass` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.decideBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.evidenceRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
