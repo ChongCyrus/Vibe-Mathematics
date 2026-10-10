@@ -275,3 +275,67 @@
 | 数据／统计／复现 | 中（受算法与种子约束） | 算法／阈值／种子 | "四事实齐备" | 新方法＝新脚本 |
 | 评审／署名／伦理 | 中（受合规约束） | 模式／政策开关 | "无理由即拒" | 新角色／新政策 |
 | 归档／保存／协作 | 低（受格式与协议约束） | 格式剖面／迁移年限 | "可持久引用" | 新格式＝新迁移器 |
+
+---
+
+## 7. 出版与外部对接（G1／G2／G12／G19／G20）
+
+> 统一说明：以下五条**只引用** 07（归档）／08（会议与表决）／17（信任与公平）／20（安全·隐私·合规），**不重定义**它们的语义 ✗。
+
+### G1 评审人市场（审稿人库 · COI · 盲评映射 · 负载均衡）
+- **本体/字段 schema**：`reviewers[{ id, expertise[], load, conflicts[] }]`；`reviewAssignment{ reviewerId, submissionId, mode, blind, assignedAt, dueAt, status }`；`coiRecord{ reviewerId, subjectId, kind, evidence }`。
+- **接口形状**：`vibe_vmu_records {action:'append', kind:'reviewer'|'reviewAssignment'|'coi'}`（已实现 ✓ 的记录面）；
+  **规划 ✗（未实现）**：`vibe_vmu_reviewers`（**规划/未接线**：库查询与负载均衡）。
+- **字段级规则**：① **COI 校验**——`conflicts[]` 命中被审对象 ⇒ **必须回避**，否则**具名拒**；② **盲评映射**——单盲/双盲/公开由 `vmu.review.mode` 决定；映射表与解绑**必须有留痕**（谁在何时解绑）；③ **负载均衡**——同一审稿人并发分配上限可配。
+- **参数键**：`vmu.reviewers.maxLoad`（整数，默认 `3`）｜`vmu.reviewers.coiPolicy`（`"deny"|"ask"`，默认 `"deny"`）｜`vmu.reviewers.blindUnbindRequiresReason`（布尔，默认 `true`）｜`vmu.reviewers.acknowledgement`（布尔，默认 `false`，可选"致谢/报酬"登记）。
+- **错误码**：`VMU_COI_VIOLATION`（未回避）｜`VMU_REVIEWER_OVERLOADED`（超负载）｜`VMU_BLIND_UNBIND_DENIED`（无理由解绑）。
+- **交界**：会议与表决规则留在 **08** ✓（本卷只登记"评审作业"对象）；信任与公平不变式留在 **17** ✓；审稿人个人数据按 **20 卷**隐私规则处理（分类＋去标识化）✓。
+- **成熟度** ✗ 规划（记录面 ✓ 可承载；市场/负载面未接线）。**优先级** P0。
+
+### G2 出版社/期刊系统对接（JATS 式导出；网络归脚本/插件）
+- **本体/字段 schema**：`publication{ id, version, kind: 'preprint'|'accepted'|'vor'|'erratum', jatsXmlRef, checklistRef, packageRef }`；投稿检查清单 `submissionChecklist{ items:[{id, ok, evidence}] }`。
+- **接口形状**：`vibe_vmu_pack {action:'build', id:'<投稿包>'}`（**规划 ✗**：当前 pack 只做机制打包）；
+  **明写边界** ✓：**本平台只产出"可提交包"**（JATS 式 XML／PDF／补充材料／许可／可得性声明）；**投稿 API 与网络调用属外部** ⇒ **由脚本（M3）或插件完成** ✗，**不在本卷定义**。
+- **参数键**：`vmu.publish.jatsVersion`（字符串，默认 `"JATS-1.3"`）｜`vmu.publish.requireChecklist`（布尔，默认 `true`）｜`vmu.publish.versionChainStrict`（布尔，默认 `true`）。
+- **错误码**：`VMU_SUBMISSION_INCOMPLETE`（清单未过）｜`VMU_VERSION_CHAIN_BROKEN`（preprint→accepted→VoR 断链）。
+- **交界**：版本链与归档留痕归 **07** ✓；作者/CRediT 归本卷 **L17** ✓。
+- **成熟度** ✗ 规划。**优先级** P1。
+
+### G12 第三方归档注册（Zenodo/OSF/SWH 式；离线优先）
+- **本体/字段 schema**：`registration{ id, target: 'zenodo'|'osf'|'swh'|'other', fingerprint, license, metadata{title,authors,keywords}, receipt? }`。
+- **接口形状**：`vibe_vmu_records {action:'append', kind:'registration'}`（记录面 ✓）；**规划 ✗（未实现）**：`vibe_vmu_register`（**目标形态**：生成"待注册包"并登记回执）——**离线优先** ✓：**无网络也能产出待注册包**；回执（DOI/URL/时间戳）在**联网补齐后**再登记。
+- **参数键**：`vmu.archive.targets`（数组，默认 `[]`）｜`vmu.archive.offlineFirst`（布尔，默认 `true`）｜`vmu.archive.receiptRequired`（布尔，默认 `true`）。
+- **错误码**：`VMU_ARCHIVE_TARGET_UNKNOWN`｜`VMU_ARCHIVE_RECEIPT_MISSING`（声明已注册但无回执 ⇒ 具名拒）。
+- **交界**：产物与指纹归 **07 归档轨** ✓（本卷只登记"注册"这一动作与回执）。
+- **成熟度** ✗ 规划。**优先级** P1。
+
+### G19 数据/代码可得性声明与徽章
+- **本体/字段 schema**：`availability{ data:{license,url|how}, code:{license,url|how}, materials:{license,url|how}, badge:'open'|'restricted'|'closed' }`。
+- **接口形状**：`vibe_vmu_records {action:'append', kind:'availability'}`（记录面 ✓）；**规划 ✗（未实现）**：`vibe_vmu_availability`（**规划**：校验＋徽章计算）。
+- **字段级规则**：**"应要求提供"必须被拒** ✗✓（`how:"on request"`／缺失 `url` ⇒ **具名拒**）；**徽章口径** ✓：`data` 与 `code` 均给出**可解析 URL** 且许可为开放许可 ⇒ 记 `badge:'open'`；任一为受限 ⇒ `restricted`；否则 `closed`。
+- **参数键**：`vmu.avail.requireUrl`（布尔，默认 `true`）｜`vmu.avail.allowOnRequest`（布尔，**默认 `false`**）｜`vmu.avail.openLicenses`（数组，默认 `["CC0-1.0","CC-BY-4.0","MIT","Apache-2.0"]`）。
+- **错误码**：`VMU_AVAILABILITY_VAGUE`（"应要求提供"／无 URL）｜`VMU_BADGE_MISMATCH`（徽章与字段不符）。
+- **交界**：许可兼容矩阵归 **20 卷** ✓；发布版本链归本卷 **L15** ✓。
+- **成熟度** ✗ 规划。**优先级** P0。
+
+### G20 负面结果与复现失败登记
+- **本体/字段 schema**：`replication{ original, outcome: 'reproduced'|'failed'|'partial', evidence, notes }`。
+- **接口形状**：`vibe_vmu_records {action:'append', kind:'replication'}`（记录面 ✓）；**规划 ✗（未实现）**：`vibe_vmu_replication`（**提案**：复现轨查询与摘要面）。
+- **字段级规则**：**不得当作失败** ✗✓ —— `outcome:'failed'` 是**一等研究产出**，与 `negative` 轨同权；**摘要面** ✓：提供可检索的"复现失败清单"（供他人避坑）；**可选**与联邦交换联动（**规划 ✗**）。
+- **参数键**：`vmu.records.treatNegativeAsFirstClass`（布尔，默认 `true`）｜`vmu.replication.summaryEnabled`（布尔，默认 `true`）｜`vmu.replication.federationShare`（布尔，默认 `false`）。
+- **错误码**：`VMU_INVALID_ARGUMENT`（缺 `original` 或 `evidence` ⇒ 具名拒）。
+- **交界**：负结果轨已在 **L23** ✓（本条扩为"复现"子轨）；联邦交换边界归本卷 **L24** ✓。
+- **成熟度** ✗ 规划（记录面 ✓）。**优先级** P0。
+
+### 五条总表
+
+| 条 | 名称 | 成熟度 | 优先级 | 主要参数键 | 主要错误码 |
+|---|---|---|---|---|---|
+| G1 | 评审人市场 | ✗ 规划 | P0 | `vmu.reviewers.*` | `VMU_COI_VIOLATION` 等 |
+| G2 | 出版社对接（JATS 式） | ✗ 规划 | P1 | `vmu.publish.*` | `VMU_SUBMISSION_INCOMPLETE` 等 |
+| G12 | 第三方归档注册 | ✗ 规划 | P1 | `vmu.archive.*` | `VMU_ARCHIVE_RECEIPT_MISSING` 等 |
+| G19 | 可得性声明与徽章 | ✗ 规划 | P0 | `vmu.avail.*` | `VMU_AVAILABILITY_VAGUE` 等 |
+| G20 | 负结果与复现失败 | ✗ 规划 | P0 | `vmu.replication.*` | `VMU_INVALID_ARGUMENT` |
+
+> **验收** ✓（机器可判定）：① **具名**——COI 未回避／"应要求提供"／无回执／盲评无理由解绑 ⇒ **具名拒**；② **断言**——`availability` 缺 URL 必拒、`registration` 声明已注册但无 `receipt` 必拒、`replication` 缺 `evidence` 必拒；③ **场景**——各条至少一条可复跑**场景**；④ **红**——反向变异（放开策略）必须产出**具名红**。
+> **未核项**：五条的外部系统（Zenodo/OSF/SWH/JATS）**字段级对齐未做** ✗；`vibe_vmu_reviewers`／`vibe_vmu_register`／`vibe_vmu_availability`／`vibe_vmu_replication` 均为**规划/未实现** ⇒ 照抄会失败；编号登记见 **14-§2**（建议新增主题 **T11「出版与外部对接」**）。

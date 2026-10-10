@@ -207,7 +207,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
   - `middlewareAppends[]`：`{section, source}`（中间件追加了哪些段）。
 - **`snapshot(scopes)`**：对给定作用域逐个装配，返回 `{scope, text}` ⇒ **逐字快照**（回归/语料门禁的基线）。
 - **`assemble()` 的 `sources[]`**：逐段来源（`kernel`/`override`/`binding:<dim>`/`middleware:<id>`）⇒ 回答"这段字从哪来"。
-- **缺什么（计划 ✗）**：a) 没有"**逐段钩子**"（因为 emit 名不匹配，见 §17.1）；b) `budget/exceeded` 未接线；c) 无 `prompts()` 式"上回合 vs 本回合"diff（需上层实现或用 `snapshot` 自行比对）。
+- **缺什么（计划 ✗）**：a) **逐段触发粒度仍待定**（命名缺陷**已修 ✓**：实现已 emit 冻结名 `prompt/section-assembled`；见 §17.1）；b) `budget/exceeded` 未接线；c) 无 `prompts()` 式"上回合 vs 本回合"diff（需上层实现或用 `snapshot` 自行比对）；d) **G4 多语言的实现面整体未做 ✗**（见 §21）。
 
 ---
 
@@ -216,7 +216,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 | 形态 | 能改提示词的部分 | 手段 | 不能 |
 |---|---|---|---|
 | **M1 rules** | 段声明/顺序（`order`）/作用域/绑定/覆盖/截断策略 | settings 键 | 改 `state`；占内核区间 |
-| **M2 module** | 装配钩子里 `appendPrompt`（可携带 `{section,text}`/`{section,file}`）；可用 `deny` 拒绝该次装配 | `prompt/assemble` 钩子（**当前未接线**） | 改写 `state` 内容；绕过白名单；伪造变量 |
+| **M2 module** | 装配钩子里 `appendPrompt`（可携带 `{section,text}`/`{section,file}`）；可用 `deny` 拒绝该次装配 | `prompt/section-assembled` 钩子（**已接线 ✓**；逐段粒度见 §19-⑤） | 改写 `state` 内容；绕过白名单；伪造变量 |
 | **M3 script** | 同 M2（子进程、超时、失败策略） | 同上 | 同 M2 |
 | **M4 plugin** | 携带段/绑定/资源；声明依赖 | 包清单 | 占内核区间；禁止用户覆盖 |
 
@@ -258,9 +258,10 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 
 ## 17. 与 `05` 的接口（**含两处必须裁决的真实缺口**）
 
-### 17.1 `prompt/assemble` ≠ `prompt/section-assembled` ✗（`05` §5.2）
-`kernel/prompt/index.js` 的 `assemble()` emit 的是 **`prompt/assemble`**，而冻结集是 **`prompt/section-assembled`** ⇒ **总线上无人应答**（emit 名不校验）⇒ **中间件目前无法介入提示词装配**。
-**且** `assemble()` 的守卫是 `if (bus && settings['vmu.middleware.dryRun'] === undefined)` ⇒ **只要该键有定义（哪怕 `false`）就完全跳过钩子**，语义上等于"设了 dryRun 键＝关掉装配钩子"，与 `05` 的"干跑＝照常调用但不施加"不一致。⇒ 裁决项（§19-1/§19-2）。
+### 17.1 `prompt/assemble` ≠ `prompt/section-assembled` ✅ **已修复（本轮复核 ✓）**
+**历史问题**：`kernel/prompt/index.js` 的 `assemble()` 曾 emit **`prompt/assemble`**，而冻结集是 **`prompt/section-assembled`** ⇒ 总线上无人应答（emit 名不校验）⇒ 中间件无法介入装配。
+**当前事实（本轮实仓复核 ✓）**：`VU_HOOKS` 注册 **20** 个，**实际 emit 14 个**，其中**含 `prompt/section-assembled`** ✓（`tests/audit-vmu-docs.test.mjs` 的 `KNOWN_UNEMITTED` 也已缩到 6 项，不再包含它）⇒ **本条缺口已关闭**；仍待定的是**触发粒度**（每段一次 vs 一次带清单，见 §19-⑤）。
+**仍然存在的相邻问题**：`assemble()` 的守卫是 `if (bus && settings['vmu.middleware.dryRun'] === undefined)` ⇒ **只要该键有定义（哪怕 `false`）就完全跳过钩子**；§20-4 已记"已按文档统一（干跑照常调用、只不施加）"，**旧行为的兼容性未核** ✗。
 
 ### 17.2 `budget/exceeded` 未接线 ✗
 `truncateText` 只把数字写进 `truncation[]`（`status()`），**没有** `emit('budget/exceeded')` ⇒ "让用户决定截谁"目前做不到。设计意图与实现现状的差距记录在此。
@@ -305,4 +306,149 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 2. **`prompt/section-assembled` 触发粒度未定**（每段一次 vs 一次带清单 ✓）⇒ 见 §19-⑤ ✓。
 3. **`budget/exceeded` 仍未接线** ✗（谁触发截断事件未定 ✓）⇒ 见 §19-③ ✓。
 4. **`vmu.middleware.dryRun` 语义已按文档统一**（本会话已修：干跑**照常调用**、只不施加 ✓，见 `tests/vmu-prompt.test.mjs` 的断言 ✓）—— 但**旧行为的兼容性**未核 ✗（若有人依赖"定义即跳过"的旧语义 ✓）。
-5. **多语言回退的留痕级别**未定 ✗（是否每次回退都写审计 ✓）。
+5. **多语言回退的留痕级别**未定 ✗（是否每次回退都写审计 ✓）⇒ 本卷已给出设计（§21.2：**必须**留痕），实现未做 ✗。
+6. **G4 多语言的实现面整体未做** ✗：`section.lang`／回退链／语言级覆盖／术语本体一致性／产出物双语／快照带语言，**全部只有设计与判据**（见 §21），代码未动 ✗；**编号登记见 `14-§2`** ✓。
+7. **DSH 侧 locale 支持未核** ✗：宿主是否提供 locale/language 注入面（决定"实例默认语言"从哪来）⇒ 见 §21.9 与 `14-§2` ✓。
+
+---
+
+## 21. 多语言与本地化（**G4**）
+
+> **为什么单列一节**：本卷 §1–§20 的一切（段、绑定、覆盖、截断、快照）都默认"只有一种语言"。批评者的 G4 指出：**平台实质上只服务中文** ✗。本节把"**语言**"提升为一等维度，并给出**可检查**的约定，使"提示词可被用户完全接管"在多语言下**依然成立**。
+> **一句话**：**语言是段的属性，不是段的内容**；缺语言**必须**按可配的回退链降级，且**每一次降级都要留痕**（**不得静默换语言** ✗）。
+
+### 21.1 段的语言声明
+| 字段 | 类型 | 默认 | 语义 |
+|---|---|---|---|
+| `vmu.prompts.sections[].lang` | string（BCP-47 子集） | **不声明**＝"语言无关/继承实例默认" | 该段文本所属语言 |
+| `vmu.prompts.sections[].terms[]` | string[] | `[]` | 该段**引用**的术语 id（取自本体，§21.4） |
+| `vmu.prompts.locale.default` | string | 实例默认（**未核**，见 §21.9） | 会话未指定语言时的语言 |
+| `vmu.prompts.locale.fallbackChain[]` | string[] | `['zh-Hans','zh','en']` | **回退链**（自左向右） |
+
+- **允许的语言标识**：至少 `zh-Hans`／`zh-Hant`／`zh`／`en`；**大小写与分隔符按 BCP-47 规范化**（`zh-hans` ⇒ `zh-Hans`）。
+- **同一段多语言并存**：同一 `name` 可出现多条声明，**以 `lang` 区分**；`lang` 缺省的那条是"语言无关兜底"。
+- **非法语言标识 ⇒ `VMU_INVALID_ARGUMENT`**（不静默忽略：一个拼错的 `lang` 会让用户以为"翻好了"）。
+
+### 21.2 回退链与**留痕**（本节的硬规则）
+装配取段的顺序（**请求语言 → 回退链**）：
+```
+① 请求语言（会话/成员/回合）精确匹配
+② 回退链逐个尝试（zh-Hans → zh → en）
+③ 语言无关段（未声明 lang）
+④ 都不存在 ⇒ 按 vmu.prompts.locale.onMissing 处置
+```
+| `onMissing` | 行为 | 留痕 |
+|---|---|---|
+| `fallback`（默认） | 用回退命中者；**必须**在 `sources[]` 记 `lang:<请求>→<实际>` | 审计行 `lang-fallback` |
+| `skip` | 该段不参与本次装配 | 审计行 `lang-missing(skipped)` |
+| `refuse` | **拒绝整次装配**（`VMU_LOCALE_MISSING`） | 拒绝行含请求语言与回退链 |
+
+**三条不可让步**
+1. **不得静默换语言** ✗：任何回退都要在 `assemble().sources[]`、`status().locale.fallbacks[]` 与审计行里可见；
+2. **回退链可配**，但**不得**跳过 `en`（兜底语言）——否则会出现"没有任何语言能命中"的死角；
+3. **回退计数进指标**（与 `21` 可观测卷交叉）：`lang-fallback` 次数是**必测指标**（"用户以为在用中文，其实拿到英文"＝事故）。
+
+### 21.3 覆盖的分层（语言级覆盖 vs 既有 `overrides`）
+内容来源的**完整优先级**（与 §6 的覆盖规则**叠加**，不替换）：
+```
+① 绑定（binding）：binding.text/file（同语言优先）
+② 覆盖（override）：overridesByLang[section][lang]  →  overrides[section]（语言无关）
+③ 段自身：section.text / section.template（lang 匹配者）
+④ 回退链命中者（§21.2）
+```
+| 键 | 形状 | 语义 |
+|---|---|---|
+| `vmu.prompts.overrides` | `{section: text}` | **语言无关**覆盖（既有语义，保持兼容 ✓） |
+| `vmu.prompts.overridesByLang` | `{section: {lang: text}}` | **语言级**覆盖（同段不同语言**各自覆盖**） |
+
+**四条硬规则**
+1. **不可变段不得被语言覆盖绕过** ✗：`state`／`mutable:false` 段**忽略** `overrides` 与 `overridesByLang`（与 §6 同一条拒绝路径：`VMU_NOT_PERMITTED`）——**语言不能成为绕开"只读事实"的后门**；
+2. **不可变段不得被"要求翻译"绕过**：对 `state` 段声明非默认 `lang` ⇒ **拒绝**（`VMU_NOT_PERMITTED`，消息说明"事实段只按语言渲染格式、不换词"）；
+3. **语言级覆盖优先于语言无关覆盖**（②内部自左向右）；两条都不存在才回到段自身；
+4. **覆盖留痕**：`override(section, text, by, lang?)` 回执增 `lang`；审计行记 `{who, section, lang, old, new}`（与 `21` 的"谁改了什么"对齐）。
+
+### 21.4 术语一致（与**机读术语本体** `vibe-math-vmu/glossary.json`）
+**本体事实（已核 ✓）**：`glossary.json` 顶层 `{_comment, apiVersion, terms[]}`，**56 个术语**，每条形如
+`{id, zh, en, layer, definedIn, note}`（例：`{id:'middleware', zh:'中间件', en:'Middleware', layer:'L3', definedIn:'05-§1', note:'四形态的机制定义手段（M1 规则／M2 模块／M3 脚本／M4 包）'}`）；
+`01-§7 术语表` 由 `scripts/generate-glossary-table.mjs` **生成** ✓（单一真源＝本体）。
+
+**约定（可检查 ✓）**
+1. **引用术语时从本体取词** ✓：段声明 `terms[]`（**只允许本体里存在的 `id`**）；装配时按**当前语言**取本体的 `zh`（中文系）或 `en`（英文系）字段**逐字**呈现；
+2. **不得与本体的规范形冲突** ✗：段文本里若出现该术语的**规范形**（`zh`/`en` 的逐字值），必须与本体**完全一致**（含大小写/全半角/空格）；
+3. **未知术语 id ⇒ `VMU_GLOSSARY_UNKNOWN_TERM`**；**规范形冲突 ⇒ `VMU_GLOSSARY_CONFLICT`**；
+4. **处置强度可配**：`vmu.prompts.glossary.mode ∈ {enforce（默认，拒绝该段）, warn（留痕并继续）, off}`；
+5. **本体版本参与握手**：`glossary.json.apiVersion` 与管线的期望版本不一致 ⇒ `VMU_VERSION_MISMATCH`（**不许**默默用旧词表）；
+6. **本体路径可配**：`vmu.prompts.glossary.ontology`（默认 `vibe-math-vmu/glossary.json`）；路径不可读 ⇒ **不是"无术语"**，按 `mode` 处置并留痕。
+
+**可检查的断言（写进 §21.10 的验收）**：对每一段，**抽取**其 `terms[]` 与文本中出现的规范形，**逐字比对**本体对应字段；**任一处不一致 ⇒ 红**（这是"引用一致性"的机器判据，与 `01-§7` 生成物同源）。
+
+### 21.5 产出物语言（回执／报告／纪要）与**双语并存**
+| 产出物 | 语言策略 | 关键点 |
+|---|---|---|
+| **工具回执** | **请求语言优先**，缺失走回退链（§21.2） | 回执带 `lang` 与 `fallback`（可判"我收到的是不是我要的语言"） |
+| **报告/摘要** | `vmu.report.language`（默认随会话 locale）＋`vmu.report.bilingual` | 双语时**同一结论并存** |
+| **会议纪要** | 必须带 `lang` 标注；双语＝**同一条目的两个语言字段** | **不得**生成两条时间/作者不同的记录（否则史实分叉） |
+
+**双语并存的形状（硬约束）**
+```
+{ conclusion: { zh: '…', en: '…' }, at, by, lang: 'zh-Hans', translations: ['en'] }
+```
+- **一次结论、两个语言字段** ⇒ 结论**不可能**因翻译而分叉；
+- **来源标注**：哪个语言是**原始产出**（`lang`），其它是**译本**（`translations[]`）；
+- **译本可回退**：译本缺失 ⇒ 呈现原文＋"未译"标注（**不得**呈现空串或机器乱码 ✗）。
+
+### 21.6 审计与可复现（**快照必须带语言**）
+- **`snapshot(scopes)` 的条目必须含语言**：`{scope, lang, fallbacks[], text}`（**缺 `lang` 的快照不可用于 A/B** ✗）；
+- **A/B 可比性**：**仅同语言可比**；跨语言比对必须显式声明"这是**翻译对照**，不是 A/B"（否则把翻译差异误读成机制差异 ⇒ 错误结论）；
+- **缓存键含语言**：指纹＝（结构＋绑定＋覆盖＋**语言＋回退结果**）⇒ 语言切换**必须**使缓存失效（否则会拿到上个语言的文本 ✗）；
+- **追踪贯通**：`traceId` 关联的审计行增 `lang` 与 `fallback`（与 `21` 的追踪一致）；
+- **确定性不变**：给定（设置＋语言＋回退链），装配仍是**纯函数**（§1 不变量 3 在多语言下继续成立 ✓）。
+
+### 21.7 计划中的工具与配置（✗ **未实现**）
+| 名称 | 类型 | 目标形状（草案） | 状态 |
+|---|---|---|---|
+| `vibe_vmu_locale`（**计划/未实现**） | 工具 | `action=list|validate|coverage`：列出实例支持语言、校验回退链、给**语言覆盖率**（哪些段有 `en`） | ✗ 未实现 |
+| `vibe_vmu_prompts_snapshot`（**计划**，与 §20/`21` 交叉） | 工具 | 快照**带语言**导出与 diff（同语言 A/B） | ✗ 未实现 |
+| `vibe_vmu_glossary`（**计划/未实现**） | 工具 | `action=list|check`：列术语、按段/语言查引用一致性 | ✗ 未实现 |
+| `vibe_vmu_explain`（**计划**，见 `21`） | 工具 | 解释"为什么这段回退/被拒/冲突" | ✗ 未实现 |
+
+### 21.8 与既有机制的关系（一张图）
+```
+用户设置（sections/bindings/overrides/overridesByLang/locale/glossary）
+   │  §11 解析顺序
+   ▼
+装配：作用域过滤 → order 排序 → 语言选取（§21.1）→ 回退（§21.2）→ 覆盖分层（§21.3）
+   │                                                    │
+   │                                         术语取词/校验（§21.4）
+   ▼
+产出：段文本（带 lang 与 sources）→ 快照（§21.6）→ 回执/报告/纪要（§21.5）
+```
+
+### 21.9 未核项（**G4**；编号登记见 `14-§2`）
+1. **DSH 侧 locale/language 注入面**是否可用（决定 `vmu.prompts.locale.default` 的来源）⇒ **未核** ✗；
+2. **翻译工作流**（谁翻、何时翻、如何校验一致性）⇒ **未做** ✗（本卷只定"校验约定"与"双语并存形状"，不定流程）；
+3. **语言覆盖率基线**（56 术语与全部内核段是否都有 `en`）⇒ **未核** ✗；
+4. **RTL/复数/格式化**（数字/日期/单位随语言的呈现）⇒ **未核** ✗（本卷只定"数值不变、呈现可变"的原则）；
+5. **术语本体的演进**（新增/改名的兼容路径）⇒ 依赖 `13` 的废弃三阶段（**未接**）✗。
+
+### 21.10 验收（**机器可判定**）
+1. **回退必留痕（断言）**：构造"请求 `zh-Hant`、只有 `zh`/`en`"的输入 ⇒ `sources[]` **必须**含 `lang:zh-Hant→zh`，且审计行含 `lang-fallback`（缺失即**红**）；
+2. **不可变段不可被语言绕过（断言）**：对 `state` 段设 `lang`/语言级覆盖 ⇒ **必须**返回 `VMU_NOT_PERMITTED`（返回成功即红）；
+3. **术语一致性（具名判据）**：任一段的 `terms[]` 与文本规范形必须与 `glossary.json` 的 `zh`/`en` 逐字一致（差一处即红，报**具名**术语 id）；
+4. **快照可比（场景）**：同语言两次快照**逐字相同**；不同语言快照**必须**带不同 `lang` 且被标注为"翻译对照"（缺 `lang` 即红）；
+5. **双语并存（场景）**：同一结论生成 `{zh,en}` 后，`at`/`by` **必须**相同（生成两条不同时间的记录即红）；
+6. **覆盖率可查（场景）**：`vibe_vmu_locale action=coverage`（**计划/未实现**）⇒ 目标态能列出"无 `en` 版本"的段清单（当前**无实现**，故本项为**目标态验收**）。
+
+### 21.11 与其它卷的交界
+- `01-§7`：**术语表**（生成物）与 **`glossary.json` 单一真源** ⇒ 本卷 §21.4 的校验与其同源 ✓；
+- `12`（用户手册）：需要"怎么设语言/怎么加译本/覆盖率怎么看"的用户向步骤 ⇒ 本卷给机制，手册给操作 ✓；
+- `21`（可观测）：`lang-fallback` 计数、快照语言字段、审计行 `lang` ⇒ 本卷产出**指标化**（§21.2 第 3 条）✓；
+- `11`（门禁）：§21.10 的 6 条应落成 **T1/T2 场景**（`GATE_SCOPE=vmu` 之外的语料/真机层）✓；
+- `03-§8`：新增码（`VMU_LOCALE_MISSING`／`VMU_LOCALE_FALLBACK`／`VMU_GLOSSARY_CONFLICT`／`VMU_GLOSSARY_UNKNOWN_TERM`）**由生成管线登记**（本卷直接使用）✓。
+
+### 21.12 待裁决（G4）
+1. **默认语言**：实例默认是"随宿主 locale"还是"显式必需"（本卷倾向：**显式默认 + 宿主可覆盖**）？
+2. **`en` 是否强制为兜底**：本卷要求回退链**必含 `en`**；若用户只要中文环境，是否允许去掉（倾向：**不允许**，但可把 `en` 放在链尾）？
+3. **术语冲突的强度**：默认 `enforce`（拒绝该段）是否过严（备选：`warn` + 指标）？
+4. **译本责任**：双语结论里"谁是原始产出"由谁声明（作者 vs 框架）？
+5. **覆盖率是否作为发布门**（例：新增内核段必须同时给 `en`，否则发布门红）？
