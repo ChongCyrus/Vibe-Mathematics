@@ -24,6 +24,10 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const CHECK = process.argv.includes('--check')
 const STEPS = [
   ['glossary table (docs/01-§7)', 'scripts/generate-glossary-table.mjs'],
+  // ROUND 70: the wired schema MUST come before the plan registry - that registry's `coreKeys()` reads whatever
+  // settings/schema.js declares, so writing the schema second would leave the planned list holding keys the
+  // schema now owns. Ordering is the whole point of putting this here instead of running it by hand.
+  ['wired schema (settings/schema.js)', 'scripts/generate-wired-schema.mjs'],
   ['plan registry (settings/planned.js)', 'scripts/generate-planned-settings.mjs'],
   ['planned-code registry (docs/03-§8)', 'scripts/generate-planned-codes.mjs'],
   ['settings table (docs/04-§11)', 'scripts/generate-vmu-settings-table.mjs'],

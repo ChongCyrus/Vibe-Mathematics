@@ -93,7 +93,12 @@ export function collect() {
   // entries and broke the uniqueness invariant three gates check.
   const already = new Set()
   try {
-    const schemaSrc = readFileSync(SCHEMA, 'utf8')
+    // The scan must ignore MY OWN generated block, or the generator is not idempotent: on the second run every
+    // key it emitted last time would look "already declared" and the block would empty itself out. Measured:
+    // that made the regeneration chain report 7/8 in sync with nothing to write.
+    let schemaSrc = readFileSync(SCHEMA, 'utf8')
+    const b = schemaSrc.indexOf(BEGIN)
+    if (b !== -1) { const e = schemaSrc.indexOf(END, b); if (e !== -1) schemaSrc = schemaSrc.slice(0, b) + schemaSrc.slice(e + END.length) }
     for (const m of schemaSrc.matchAll(/key:\s*'([^']+)'/g)) already.add(m[1])
     for (const m of schemaSrc.matchAll(/key:\s*"([^"]+)"/g)) already.add(m[1])
   } catch (e) { /* no schema yet: nothing is declared */ }
@@ -156,6 +161,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const d of missing.slice(0, 10)) console.log('       NO-DEFAULT ' + d.key + '  (' + d.module + ')')
   const schemaText = readFileSync(SCHEMA, 'utf8')
   const next = splice(schemaText, render(defs))
-  console.log('  schema ' + (next === schemaText ? 'already in sync' : (write ? 'REWRITTEN' : 'would change') + ' (' + schemaText.split('\n').length + ' -> ' + next.split('\n').length + ' lines)'))
-  if (write && next !== schemaText) writeFileSync(SCHEMA, next)
+  const stale = next !== schemaText
+  console.log('  schema ' + (stale ? (write ? 'REWRITTEN' : 'DRIFT') : 'already in sync') + ' (' + schemaText.split('\n').length + ' -> ' + next.split('\n').length + ' lines)')
+  if (write && stale) writeFileSync(SCHEMA, next)
+  // `--check` is what the regeneration chain calls: drift must be a FAILURE, not a printout.
+  if (!write && stale) { console.log('  DRIFT: settings/schema.js is not what the modules yield - run with --write'); process.exitCode = 1 }
+  if (write && stale) console.log('  WROTE ' + defs.length + ' wired keys into ' + SCHEMA)
 }
