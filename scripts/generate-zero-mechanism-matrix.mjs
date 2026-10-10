@@ -245,6 +245,27 @@ const main = async () => {
     const named = j4.mism.some((x) => /^audit:/.test(x))
     console.log('selftest ④: 期望 vs 实测不符 ⇒ mismatches=' + j4.mism.length + '（点名 audit=' + named + ' ⇒ ' + ((j4.mism.length > 0 && named) ? 'PASS ✓' : 'FAIL ✗') + ')')
     if (!(j4.mism.length > 0 && named)) bad += 1
+    // ⑥⑦ **task-214 自证**：具名拒（有 code）与真崩溃（无 code）必须被**分开记录** ✓✓
+    //   —— 这一对正是本轮修掉的口径缺陷；两条都在**同一进程内临时覆盖 `PROBE_ARGS`**，随后还原 ✓
+    {
+      const savedMemory = { op: PROBE_ARGS.memory.op, args: { ...PROBE_ARGS.memory.args } }
+      const savedBudget = PROBE_ARGS.budget
+      try {
+        PROBE_ARGS.memory.args.scope = null            // 必然触发具名拒（vmu.memory.scopeRequired 默认 true）
+        const rNamed = await probe('memory.js')
+        const namedOk = rNamed.shape === 'refusal' && rNamed.refusal === 'VMU_MEMORY_KEY_UNSCOPED'
+        console.log('selftest ⑥: 具名拒 ⇒ shape=' + rNamed.shape + ' refusal=' + rNamed.refusal + ' (期望 refusal + 码，**不是** op 抛出 ⇒ ' + (namedOk ? 'PASS ✓' : 'FAIL ✗') + ')')
+        if (!namedOk) bad += 1
+        PROBE_ARGS.budget = { op: 'open', args: { get scope() { throw new Error('boom') } } }   // 取属性即抛：无 code ⇒ 真崩溃
+        const rCrash = await probe('budget.js')
+        const crashOk = rCrash.shape === 'op 抛出' && rCrash.refusal === '—' && /^no code: boom/.test(String(rCrash.note))
+        console.log('selftest ⑦: 真崩溃 ⇒ shape=' + rCrash.shape + ' refusal=' + rCrash.refusal + ' note=' + String(rCrash.note).slice(0, 32) + ' (期望 op 抛出 + no code ⇒ ' + (crashOk ? 'PASS ✓' : 'FAIL ✗') + ')')
+        if (!crashOk) bad += 1
+      } finally {
+        PROBE_ARGS.memory = savedMemory
+        PROBE_ARGS.budget = savedBudget
+      }
+    }
     for (const k of Object.keys(EXPECT)) if (!(k in real)) delete EXPECT[k]
     EXPECT.audit = real.audit
     console.log('=== ZERO-MECHANISM SELFTEST: ' + (bad === 0 ? 'GREEN' : 'RED') + ' (' + bad + ' failed) ===')
