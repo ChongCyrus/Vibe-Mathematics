@@ -207,6 +207,7 @@
     "vibe-math-vmu/docs/19-plugin-and-extension-development.md",
     "vibe-math-vmu/docs/20-security-privacy-and-compliance.md",
     "vibe-math-vmu/docs/21-observability-and-operations.md",
+    "vibe-math-vmu/docs/22-academic-operations.md",
     "scripts/generate-planned-codes.mjs",
     "vibe-math-vmu/settings/schema.js",
     "vibe-math-vmu/glossary.json",
