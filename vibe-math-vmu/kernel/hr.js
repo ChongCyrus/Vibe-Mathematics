@@ -73,7 +73,10 @@ const boolOf = (v, d) => (v === undefined || v === null ? d : !!v)
 const strOf = (v, d) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : d)
 const listOf = (v, d) => (Array.isArray(v) ? v.slice() : d)
 const mark = (list, k) => { if (list.indexOf(k) === -1) list.push(k); return list }
-const ms = (days) => Math.round(numOf(days, 0) * 86400000)
+// task-234 (naming): DAYS → milliseconds is a DIFFERENT rule from the shared timevalue `ms()` (instant →
+// epoch-ms). Both used to be called `ms` in one file — a reader trap; the shared helper is imported as `toMs`
+// and this one is `daysToMs`, so a reader never has to guess which "ms" they are looking at.
+const daysToMs = (days) => Math.round(numOf(days, 0) * 86400000)
 
 export function createHr({ clock = () => new Date(0).toISOString(), log = () => {}, settings = {}, bus = null } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createHr needs a clock function', 'pass { clock }')
@@ -152,7 +155,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     if (!who) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs { who }', 'pass the member id', enforced)
     const t = toMs(given(when) ? when : clock()), l = given(lastAt) ? toMs(lastAt) : t
     if (!Number.isFinite(t) || !Number.isFinite(l)) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs ISO instants', 'pass ISO strings', enforced)
-    if (t - l > ms(C.performanceCadenceDays)) {
+    if (t - l > daysToMs(C.performanceCadenceDays)) {
       throw deny('performance', CODES.CYCLE_CLOSED, 'the performance cycle is overdue for ' + String(who) + ': last=' + new Date(l).toISOString() + ' cadence=' + C.performanceCadenceDays + 'd', 'close the cycle (cadence ' + C.performanceCadenceDays + 'd)', enforced, { who: String(who), lastAt: new Date(l).toISOString(), cadenceDays: C.performanceCadenceDays, at: at(when) })
     }
     if (C.performanceEvidenceRequired) {
@@ -176,7 +179,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     if (!given(trackStart)) throw deny('tenure', 'VMU_INVALID_ARGUMENT', 'tenure needs { trackStart }', 'pass the track start instant (epoch 0 is a legal instant)', enforced)
     const s = toMs(trackStart), t = toMs(given(when) ? when : clock())
     const trackEnd = s + C.tenureTrackMonths * 30 * 86400000
-    const due = trackEnd + ms(C.tenureDecisionWindowDays)
+    const due = trackEnd + daysToMs(C.tenureDecisionWindowDays)
     if (t > due && !given(decisionAt)) {
       mark(enforced, 'vmu.hr.tenureDecisionWindowDays')
       throw deny('tenure', CODES.TENURE_DECISION_DUE, 'the tenure decision is DUE for ' + String(who) + ': track ended ' + new Date(trackEnd).toISOString() + ', window ' + C.tenureDecisionWindowDays + 'd, now ' + at(given(when) ? when : clock()), 'record the decision (window ' + C.tenureDecisionWindowDays + 'd)', enforced, { who: String(who), trackEnd: new Date(trackEnd).toISOString(), dueAt: new Date(due).toISOString(), at: at(when) })
@@ -194,7 +197,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     }
     if (given(openedAt)) {
       const o = toMs(openedAt), t = toMs(given(when) ? when : clock())
-      if (Number.isFinite(o) && Number.isFinite(t) && t - o > ms(C.appealWindowDays)) {
+      if (Number.isFinite(o) && Number.isFinite(t) && t - o > daysToMs(C.appealWindowDays)) {
         throw deny('appeal', CODES.APPEAL_OPEN, 'the appeal window has CLOSED for ' + String(who) + ': opened ' + String(openedAt) + ' window=' + C.appealWindowDays + 'd', 'the appeal can no longer be filed (window ' + C.appealWindowDays + 'd)', enforced, { who: String(who), windowDays: C.appealWindowDays, at: at(when) })
       }
     }
