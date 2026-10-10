@@ -550,9 +550,10 @@ export function createKernel({
   // alive forever. The guard is therefore built FIRST and its `now()` is handed to every module whose semantics
   // depend on elapsed time; the rest of the kernel keeps the raw clock, so the blast radius stays small.
   // ROUND 21: the math-tool policy layer makes 45 of the declared `vmu.math.*` knobs genuinely change behaviour
-  // (each call's receipt carries an `enforced[]` list, so "the key was read" and "the key did something" are
-  // distinguishable), and the projection migrator is what keeps an old on-disk projection from being silently
-  // dropped when the kernel's own version moves.
+  // (a receipt carries an `enforced[]` list WHERE THE MODULE HAS ONE - not every service keeps such an array, and
+  // the ones that do not must not be described as if they did; see docs/11 §4.2 for the guard-surface registry),
+  // and the projection migrator is what keeps an old on-disk projection from being silently dropped when the
+  // kernel's own version moves.
   const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, spawn, library })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.

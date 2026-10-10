@@ -775,7 +775,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   }
 
   // ── helpers that keep the surface honest ───────────────────────────────────────────────────────────
-  function uniq(arr) { return [...new Set(arr)].sort() }
+  // ORDER CONVENTION (round 30, unified across the knob-bearing modules): INSERTION order - the order in which
+  // the keys were first evaluated. It used to sort, which made this the only module whose array order differed
+  // from its siblings, and the order carries information (which guard ran first) that sorting discarded.
+  // De-duplication stays; only the sort is gone.
+  function uniq(arr) { return arr.filter((v, i) => arr.indexOf(v) === i) }
   function liveTrackNames() { return tracks.slice() }
   function projectView(rec, fields, at) {
     const full = view(rec, { at })

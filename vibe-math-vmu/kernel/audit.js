@@ -13,10 +13,15 @@ export const WHAT_VOCAB = Object.freeze(['create', 'update', 'delete', 'vote', '
 /** Default redaction set (20 §6). */
 export const DEFAULT_REDACT_KEYS = Object.freeze(['token', 'key', 'password', 'authorization'])
 
+/** D3 (round 30): the refusal carries the SCOPE of its list. This module has no `enforced` array of its own, so
+ *  only the scope is attached - the audited reader learns that a list, where one exists, is what was evaluated
+ *  so far rather than everything the operation would eventually read. No array is invented here. */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
 export function refuse(code, message, hint, extra) {
   const err = new Error(message)
   err.code = code
   err.hint = hint
+  err.enforcedScope = ENFORCED_SCOPE
   if (extra) Object.assign(err, extra)
   return err
 }

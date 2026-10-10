@@ -42,11 +42,15 @@ export const QUOTA_SOFT_WARNING = 'VMU_QUOTA_SOFT_EXCEEDED'
 /** Default permanent marker value (§4.3: permanent retention is explicit). */
 export const DEFAULT_PERMANENT_MARKER = 'keep-forever'
 
-/** Named refusal carrying a hint and context (same shape as the other kernels). */
+/** Named refusal carrying a hint and context (same shape as the other kernels).
+ *  D3 (round 30): it also carries `enforcedScope` - the scope of the enforced list where a module has one, so a
+ *  reader never mistakes a partial set for the whole set. This module has no such array, so none is invented. */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
 export function refuse(code, message, hint, extra) {
   const err = new Error(message)
   err.code = code
   err.hint = hint
+  err.enforcedScope = ENFORCED_SCOPE
   if (extra) Object.assign(err, extra)
   return err
 }

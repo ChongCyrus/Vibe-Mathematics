@@ -29,6 +29,7 @@ const STEPS = [
   ['settings table (docs/04-§11)', 'scripts/generate-vmu-settings-table.mjs'],
   ['wiring index (docs/00-§3.2)', 'scripts/generate-wiring-index.mjs'],
   ['documented counts (README / checklist)', 'scripts/update-doc-counts.mjs'],
+  ['zero-mechanism matrix (docs/11-§) ', 'scripts/generate-zero-mechanism-matrix.mjs', '--write'],
 ]
 
 let failed = 0

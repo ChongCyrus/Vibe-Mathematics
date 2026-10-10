@@ -26,6 +26,8 @@ let failed = 0
 function ok(cond, label, detail) { if (cond) { passed += 1 } else { failed += 1; console.log('FAIL ' + label + (detail === undefined ? '' : ' [' + detail + ']')) } }
 
 const j2 = (s) => /ZERO-MECHANISM MATRIX/.test(String(s))
+/** D9 drift rule, as a pure function: only exit 0 passes; anything else is the NAMED red MATRIX_DRIFT. */
+export function judgeDrift(code) { return Number(code) === 0 ? 'PASS' : 'FAIL MATRIX_DRIFT' }
 
 // ── the two-channel rule, as a pure function (so it can be fault-injected) ───────────────────
 export function twoChannelAgree(a, b) { return a === b }
@@ -108,7 +110,12 @@ function channelProbe() {
   let drift = '', driftCode = 0
   try { drift = execFileSync(process.execPath, [MATRIX, '--check'], { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
   catch (e) { drift = String(e.stdout || '') + String(e.stderr || ''); driftCode = e.status === undefined ? 1 : e.status }
-  ok(driftCode === 0 || /drifted|DRIFT/i.test(drift) || j2(drift), 'G2.g: the --check mode ran (drift is reported by name when the written matrix is stale)', drift.trim())
+  // D9 (reviewer round 19): drift detection was WIRED but never ENFORCED — the old assertion passed as long
+  // as the drift was *named*, so a stale matrix could sit there while every gate stayed green. Enforcement now
+  // requires exit 0; the "must be named" requirement stays as an ADDITIONAL assertion (no `||` escape).
+  ok(driftCode === 0, 'G2.g: the matrix --check must exit 0 (drift is RED, not merely reported)', 'exit=' + driftCode + ' out=' + drift.trim())
+  if (driftCode !== 0) ok(/drift/i.test(drift), 'G2.g2: a non-zero --check is still REPORTED BY NAME (additional, not a substitute)', drift.trim())
+  ok(judgeDrift(0) === 'PASS' && /^FAIL/.test(judgeDrift(1)) && /MATRIX_DRIFT/.test(judgeDrift(1)), 'G2.g3 (fault): the drift rule itself reddens on a non-zero code and NAMES it (MATRIX_DRIFT)')
   const summary = (out.split('\n').filter((l) => /ZERO-MECHANISM MATRIX/.test(l)).slice(-1)[0] || '').trim()
   const j = judgeMatrix(summary)
   ok(j.ok, 'G2.a: the matrix summary is parseable', summary)
