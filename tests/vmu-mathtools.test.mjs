@@ -421,8 +421,11 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
     'vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) {
     ok(shaping.enforced.includes(k), 'shaping[]: ' + k + ' is listed when its read shaped this result', JSON.stringify(shaping.enforced))
   }
-  ok(sig({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.optim.tolerance'),
-    'shaping[]: optim ops list optim.tolerance (not precision.tolerance)')
+  const optimRun = (over) => createMathTools({ clock: () => 1000, settings: over, spawn: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) }).run({ op: 'optim/minimize', seed: 1 })
+  ok(optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.optim.tolerance'),
+    'shaping[]: optim ops list optim.tolerance (not precision.tolerance)', JSON.stringify(optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced))
+  ok(!optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.precision.tolerance'),
+    'shaping[-]: an optim op does NOT claim precision.tolerance')
   ok(!sig({}).enforced.includes('vmu.math.precision.digits'),
     'shaping[-]: with digits=0 the rounding keys are NOT claimed (their read changes nothing)')
   const cap2 = createMathTools({ clock: () => 1000, settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.maxEntries': 1 }, spawn: () => ({ ok: true, result: { value: 1 } }) })

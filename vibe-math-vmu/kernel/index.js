@@ -235,12 +235,28 @@ export function createKernel({
   const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 }
   const logEnabled = (level) => LOG_LEVELS[level] >= (LOG_LEVELS[String(settings['vmu.core.logLevel'])] || LOG_LEVELS.info)
   const auditRing = []
+  // M1 WIRING, SECOND HALF (round 24). An independent review proved with static AND runtime checks that the
+  // anchor seam added last round was NEVER TRIGGERED: there were zero `checkpoint()` call sites in the whole
+  // repository, so the anchor file could not exist and the anti-truncation guarantee stayed asleep. A seam that
+  // is never called is indistinguishable from no seam at all. Three things change here:
+  //   1) the kernel supplies its OWN periodic trigger (`vmu.audit.chain.checkpointEvery`, whose declared default
+  //      is nonzero) so the factory anchors without any host help;
+  //   2) `auditVerify()` uses the anchor when one exists, instead of always taking the unanchored path;
+  //   3) an explicit `auditCheckpoint()` lets an operator force one and see the receipt.
+  const auditCheckpointEvery = Number.isInteger(settings['vmu.audit.chain.checkpointEvery'])
+    && settings['vmu.audit.chain.checkpointEvery'] > 0 ? settings['vmu.audit.chain.checkpointEvery'] : 100
   // N1 CONSUMER WIRING (round 20): the chain must exist BEFORE the audit ring, because the ring is where rows
-  // are born - a chain built afterwards could only verify a history nobody had fed it. It is built here, its
-  // append is called from onAudit below, and `verifyAudit()` exposes the verification over the live ring.
+  // are born - a chain built afterwards could only verify a history nobody had fed it.
   // The hash seam is real sha256 here; a host that wants its own can override it, and the module still refuses
   // rather than inventing a hash when no seam is given at all.
-  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus: injectedBus, clock, log,
+  const auditchain = createAuditChain({
+    // The module reads this knob BOTH ways (a get() seam and a plain property), and a wiring that only satisfies
+    // one of them is the same "seam nobody triggers" defect this round exists to fix - so both are provided.
+    settings: Object.assign({}, settings, {
+      get: (k) => (k === 'vmu.audit.chain.checkpointEvery' ? auditCheckpointEvery : settings[k]),
+      'vmu.audit.chain.checkpointEvery': auditCheckpointEvery,
+    }),
+    bus: injectedBus, clock, log,
     anchor: auditAnchor,
     hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
 
@@ -866,8 +882,14 @@ export function createKernel({
         active: started,
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved },
         auditTail: auditRing.slice(-20),
-        /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row. */
-        auditVerify: () => auditchain.verifyChain({ rows: auditRing }),
+        /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row.
+         *  Round 24: it uses the anchor when one exists - an unanchored verification must not be able to look
+         *  like an anchored one, and a truncated tail is only detectable against an anchor. */
+        auditVerify: () => (auditAnchor
+          ? auditchain.verifyChain({ rows: auditRing, useAnchor: true })
+          : auditchain.verifyChain({ rows: auditRing })),
+        /** Round 24: force a checkpoint now (persisted when a durable root supplies the anchor). */
+        auditCheckpoint: () => auditchain.checkpoint({ rows: auditRing, persist: true }),
         audit: { dir: auditState.dir, file: auditState.file, written: auditState.written,
           lastWriteError: auditState.lastWriteError,
           note: auditState.dir

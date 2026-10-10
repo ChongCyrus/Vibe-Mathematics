@@ -118,8 +118,10 @@ const DEFAULTS = Object.freeze({
 
 const DENSE_SIZE_SOFT_CAP = 1000        // documented constant for `linalg.sparse=true` (dense-only refusal)
 
-/** Append a key to an evaluation list without mutating the caller's array (used by the refusal trails). */
-const evalKeyList = (list, key) => (list.includes(key) ? list.slice() : list.concat([key]))
+/** Append a key to an evaluation trail (mutates and returns the SAME array). It must mutate: the shaping
+ *  rails call it as a statement, and a value-returning helper would silently become a no-op there (caught by
+ *  the round-11 assertions — "read but not listed" is exactly the defect class being fixed). */
+const evalKeyList = (list, key) => { if (!list.includes(key)) list.push(key); return list }
 
 /** The rounding kernels (`vmu.math.precision.*`) — pure and deterministic.
  *  `fixed` counts digits AFTER the decimal point (0 ⇒ round to an integer); `significant` counts significant

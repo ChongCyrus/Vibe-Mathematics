@@ -544,7 +544,7 @@ vmu.packs.active: [v5r]
 | `vmu.idempotency.retrySamePayloadOnly` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后重试是否必须同载荷（默认是；放宽 ⇔ 重试是新尝试，必须自曝 ✗✓） |
 | `vmu.idempotency.writerId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 写者标识（用于识别"更旧的覆盖" ✓；**同一部署的多个进程必须各给唯一值** ✗否则只能靠 seq 回退发现 ✓） |
 | `vmu.clock.resyncMs` | int ≥0 | `60000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 前跳冻结的**重同步上限**（累计冻结超此值 ⇒ 接受新时刻并自曝 resynced ✓；**永冻不可接受** ✗✓✓） |
-| `vmu.audit.chain.checkpointEvery` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 自动检查点节奏（每 N 行；0＝手动 ✓，触发与失败都计数 ✗） |
+| `vmu.audit.chain.checkpointEvery` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 自动检查点节奏（每 N 行；**默认 100 ⇒ 出厂即会落锚** ✓✓ —— 一个"接了却永不触发"的接缝等于没有 ✓；0＝手动 ⇒ 则必须知道**删尾不可检出** ✗） |
 | `vmu.projection.maxMigrationSteps` | int ≥1 | `16` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/projmigrate.js` | 投影迁移步数上限（超限具名拒并给当前/上限 ✓） |
 | `vmu.ballot.method` | string | `plurality` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/ballotbox.js` | 表决方法（不支持 ⇒ 具名拒 ✓） |
 | `vmu.ballot.minVotes` | int ≥0 | `0` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/ballotbox.js` | 法定票数下限（不足 ⇒ **具名拒而非"未通过"** ✗✓） |

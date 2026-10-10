@@ -445,7 +445,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.idempotency.writerId', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '写者标识（用于识别"更旧的覆盖" ✓；**同一部署的多个进程必须各给唯一值** ✗否则只能靠 seq 回退发现 ✓）' },
   { key: 'vmu.clock.resyncMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '前跳冻结的**重同步上限**（累计冻结超此值 ⇒ 接受新时刻并自曝 resynced ✓；**永冻不可接受** ✗✓✓）' },
   // A1/A3 (round 21): anchor hygiene and the projection migrator.
-  { key: 'vmu.audit.chain.checkpointEvery', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '自动检查点节奏（每 N 行；0＝手动 ✓，触发与失败都计数 ✗）' },
+  { key: 'vmu.audit.chain.checkpointEvery', type: 'positiveInteger', def: 100, hot: HOT.H1, who: 'office', doc: '自动检查点节奏（每 N 行；**默认 100 ⇒ 出厂即会落锚** ✓✓ —— 一个"接了却永不触发"的接缝等于没有 ✓；0＝手动 ⇒ 则必须知道**删尾不可检出** ✗）' },
   { key: 'vmu.projection.maxMigrationSteps', type: 'positiveInteger', def: 16, hot: HOT.H1, who: 'office', doc: '投影迁移步数上限（超限具名拒并给当前/上限 ✓）' },
   // ROUND 22: the 21 vmu.ballot.* keys that kernel/ballotbox.js genuinely honours (declaring them in core is what
   // moves them out of the generated planned set - planned.js is generated from the docs minus the core keys).
