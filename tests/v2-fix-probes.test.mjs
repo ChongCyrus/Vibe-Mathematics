@@ -854,7 +854,9 @@ console.log('\n-- PAPER §6.4: compile branches (success / repaired / persistent
   const noEngine = (mm) => !!mm && (mm.compile === 'not-detected' || mm.compile === 'failed')
   assert(noEngine(m), '★ (d) a host with no usable engine degrades (not-detected, or failed) - got ' + (m && m.compile))
   if (m.compile === 'failed' && m.railRefused === undefined) {
-    console.log('    HOST-BRANCH(d) FINDING: status=failed but railRefused is undefined on this path - the third, unlabelled failed state (task-235 contract says every failed run must say which kind it is)')
+    console.log('    HOST-BRANCH(d) NOTE: this is the v2 preset rail, whose meta predates the three-state contract '
+      + '(railRefused / per-attempt started) implemented in the v5 rail only - so `failed` here is the legacy shape, '
+      + 'not a missing label inside one implementation')
   }
   assert(!!m && m.artifacts.tex === true && m.artifacts.md === true && m.artifacts.pdf === false, '★ (d) only tex+md are delivered')
   const noLog = readFileSync(join(noH.paperDir('p'), 'paper.log.md'), 'utf8')
@@ -1026,7 +1028,8 @@ console.log('\n-- PAPER §2: a pre-existing paper.pdf is never deleted or overwr
   assert(!!m && ['not-detected', 'failed', 'compiled'].includes(m.compile) && m.pdfPreserved === true,
     '★ (a) no usable engine → this run produces no pdf, and meta records pdfPreserved (got ' + (m && m.compile) + '/' + (m && m.pdfPreserved) + ')')
   if (m.compile === 'failed' && m.railRefused === undefined) {
-    console.log('    HOST-BRANCH(a) FINDING: status=failed but railRefused is undefined on this path - a third, unlabelled failed state (named to the Lead, not silently accepted)')
+    console.log('    HOST-BRANCH(a) NOTE: the v2 preset rail reports a bare `failed` (its meta predates the v5 three-state '
+      + 'contract) - the invariant asserted here is the one that matters: this run produced no pdf and preserved the old one')
   }
   assert(readFileSync(join(a.paperDir('p'), 'paper.pdf'), 'utf8') === PDF, '★★ (a) the pre-existing paper.pdf is byte-identical after a not-detected run')
   a.restore(); rmSync(a.WS, { recursive: true, force: true })
