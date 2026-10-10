@@ -414,6 +414,9 @@
 | `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | v3 核心**验证者法定人数**不足（实现于 `packs/v3-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core.js:35`／`:86` ✓） |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | v5r 核心**未结项**（实现于 `packs/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r-core.js:33`／`:101` ✓） |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | v5r 核心**禁用临时脚本**（实现于 `packs/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r-core.js:34`／`:72` ✓） |
+| `VMU_MONEY_NEGATIVE_FORBIDDEN` | 投标价格**为负**（**价格非负；零价合法** ✓） | 治理/竞标 | ✅（**已实现** ✓；`kernel/bidding.js:295` ✓） |
+
+> **轮 55 补登记（`VMU_MONEY_NEGATIVE_FORBIDDEN`）** ✗✓：本条**不是新增**，而是**删掉一处重复登记后暴露出来的幽灵登记** ✓✓ —— 该码**一直在 `kernel/bidding.js:295` 真实抛出** ✓，此前只因**卷 22 复制了一份 90 码清单**、被生成器**顺带当作已登记** ✗ ⇒ 卷 22 的复制表删除后，`audit-vmu-docs` 立刻点名它 ✗✓ ⇒ **门禁之前量到的是"复制品"，不是"登记"本身** ✓✓（**这是本族缺陷的又一形态**）。
 
 > **本批 9 条是"实现真实产出但文档此前未登记"的码** ✓✓（由文档复核逐条 `grep` 实测发现 ✓）：`kernel/bidding.js`／`kernel/mathtools.js` 属框架/模块码 ✓，7 个 `VMU_PACK_*` 属整合包码 ✓ —— **登记 ≠ 批准新增**：它们**早已在实现里**，这里只是补上登记（**"文档有实现无"是漂移，本条即其修复** ✓）。
 
@@ -516,7 +519,6 @@
 | `VMU_CROSSBORDER_CURRENCY_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_CROSSBORDER_GATE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_CROSS_BORDER_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
-| `VMU_CURRENCY_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_DATA_CLASS_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_DEDUPE_REFCOUNT_UNDERFLOW` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_DELEGATION_BUDGET` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -626,8 +628,6 @@
 | `VMU_MIGRATE_CONFIRM_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_MIGRATE_UNCOVERED_PRESENT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_MONEY_MIXED_CURRENCY` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_MONEY_NEGATIVE_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_MONEY_OVERFLOW` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_MW_ORDER_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_NEGOTIATION_FAILED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_NETWORK_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
@@ -669,7 +669,6 @@
 | `VMU_REVIEW_RUBRIC_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_REVIEW_SELF_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_ROLE_TERM_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
-| `VMU_ROUNDING_UNDEFINED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_SAE_REPORT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_SCALE_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_SCHEDULE_OVERDUE_REPORT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
@@ -713,7 +712,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **202** 个码，**逐行**给出状态 ✓：其中 **162** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **203** 个码，**逐行**给出状态 ✓：其中 **163** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **40** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -836,6 +835,7 @@
 | `VMU_MINUTES_ACTION_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/minutes.js` | 代码里有该码字符串 ✓ |
 | `VMU_MINUTES_DISSENT_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/minutes.js` | 代码里有该码字符串 ✓ |
 | `VMU_MINUTES_NOT_CONFIRMED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/minutes.js` | 代码里有该码字符串 ✓ |
+| `VMU_MONEY_NEGATIVE_FORBIDDEN` | **已实现 ✓** | `vibe-math-vmu/kernel/bidding.js` | 代码里有该码字符串 ✓ |
 | `VMU_MOTION_EXPIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/governance.js` | 代码里有该码字符串 ✓ |
 | `VMU_MOTION_NOT_SECONDED` | **已实现 ✓** | `vibe-math-vmu/kernel/governance.js` | 代码里有该码字符串 ✓ |
 | `VMU_MOTION_TABLE_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/governance.js` | 代码里有该码字符串 ✓ |
