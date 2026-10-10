@@ -328,52 +328,14 @@ interface VmuStore {
   **实现要点**：**截断必须计数**：只说"已截断"而不给数量等于隐瞒。
   **依赖**：对象模型。**成熟度**：✓（`BODY_CAP_BYTES`）　**优先级**：P0
 
-### 4.11 关系与反链（知识图谱面）
 
-**目的**：把"笔记＋关系"的概念升级为**可查询的关系图**：任何对象都能被"顺着关系"找到，且反链不会悄悄过期。
-**面向谁**：代理（推理与引用）、用户（阅读与影响面）、审计者（谁依赖谁）。
-**成熟度**：概念 ✓；图查询与反链维护 **计划（未实现）✗**。
+### 4.11 关系与反链（知识图谱面）—— **裁决：不做 ✗**（轮 54 审判）
 
-**关系模型（字段级 schema）**：每条关系一条记录，字段含义如下表。
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `type` | enum（见类型目录）或自由串 | ✓ | 关系类型；受控时须在词表内 |
-| `from` | objectId | ✓ | 源对象；必须存在且可读 |
-| `to` | objectId \| externalRef | ✓ | 目标对象或外部引用 |
-| `weight` | number(0–1) | ✗ | 强度/置信（区间由 `vmu.relations.weightRange` 定） |
-| `note` | string | ✗ | 人类可读理由（限长） |
-| `track` | enum(proposal/progress/paper/meeting/task) | ✗ | 关系所在轨（缺省由 `from` 所在轨推断） |
-| `createdAt` / `createdBy` | ISO 串 / id | ✓ | 溯源（append-only） |
-| `evidence` | objectId[] | ✗ | 支撑该关系的证据对象 |
-| `supersededBy` | relationId | ✗ | 关系被替换时指向新关系（不删除旧记录） |
-
-**存法**：`relations` 是**追加式**集合；修改关系＝新增一条并给旧的写 `supersededBy`（与 §4.6 溯源 append-only 同源）。
-
-**关系类型目录（默认词表）**：`supports`（支持）、`refutes`（反驳）、`refines`（细化）、`extends`（扩展）、`cites`（引用）、`supersedes`（取代）、`replicates`（复现）、`dependsOn`（依赖）、`derivesFrom`（派生）、`answers`（回答某问题）、`uses`（使用工具/数据）、`contradicts`（与 refutes 并存时的强冲突标记）。
-**受控与否**：由 `vmu.relations.controlledVocab` 决定；受控时词表取 `vmu.relations.types` 的并集，越表即 `VMU_REL_VOCAB_VIOLATION`；不受控时允许自由串，但仍建议以词表为主。
-
-**反链维护策略**：`vmu.relations.backlinkMode` 取三值——
-- `write`（写入时同步更新反链）：查询最快，写入最慢；适合对象少、查询密的场景；
-- `lazy`（惰性重建）：写入只记正向边，反链在首次查询或重建时算；适合导入/批量写入；
-- `hybrid`（默认建议）：正向同步 + 反链按需 + 定期重建。
-**陈旧检测**：反链快照带"生成时间 + 已处理边数"；当 `now - generatedAt > vmu.relations.staleAfterDays` 或读到的边数少于正向边计数时判陈旧 ⇒ 报 `VMU_REL_BACKLINK_STALE` 并**降级为全量扫描**（不得返回半份反链）。
-**跨轨**：反链查询可跨轨（proposal/progress/paper/meeting/task），由 `vmu.relations.crossTrack` 决定；**跨轨只读**，不得据此改动他轨对象。
-
-**查询面（每条给接口形状与错误码）**
-
-| 能力 | 接口形状 | 参数（通配/具体） | 错误码 |
-|---|---|---|---|
-| 邻居查询 | `neighbors(id, {dir, types, limit})` → 头部列表 | `vmu.relations.pathMaxDepth` 不适用；`limit` | 端点缺失 ⇒ `VMU_REF_DANGLING` |
-| 路径查询 | `path(from, to, {maxDepth, types})` → 边序列或"不存在" | `vmu.relations.pathMaxDepth`（默认 4） | 超深 ⇒ `VMU_REL_DEPTH_EXCEEDED` |
-| 中心性（可选） | `centrality({types, track, topK})` → 排序列表 | `vmu.relations.centralityEnabled`（默认 false） | 关闭时 ⇒ `VMU_REL_DISABLED` |
-| 环检测 | `cycles({types, limit})` → 环列表 | `vmu.relations.cycleDetection`（默认 true） | 检出环 ⇒ `VMU_REL_CYCLE_DETECTED`（**报告**，不自动改图） |
-| 类型清单 | `relationTypes()` → 词表与计数 | `vmu.relations.types` | 越表写入 ⇒ `VMU_REL_VOCAB_VIOLATION` |
-
-**一键重建与索引一致性**：`rebuildRelations({scope, batch})` 从对象头部的正向边重建反链与关系索引；增量走 `vmu.index.*`（同一套增量/重建入口，**关系索引不是真相源**——真相源是对象的正向边，与 §4.5 同规）。重建期间查询要么读旧快照（并标记 `stale`），要么等待；**不得**返回空结果冒充"没有关系"。
-
-**四条哲学关系**：自由度（词表/模式/中心性可选）／可调控（维护模式、深度、陈旧阈值）／可定义（字段 schema 与类型目录显式）／扩展性（新类型只加词表项，不改引擎）。
-**依赖**：§4.1 对象模型、§4.5 索引、§4.6 溯源。**优先级**：P1。
+**原规格**（关系字段 schema／13 个 `vmu.relations.*` 键／6 个码／5 个查询接口）**已压缩为这一行**：**五问全否 ⇒ 不做 ✗**。
+- **③无消费者**：无任何代码读点；`vmu.relations.*` 这些键**在设置面里也没有登记**（本卷 77 个未登记键的一部分 ✓）。
+- **④不丢能力**：归档初衷要的是"**对象能被顺着关系找到**"，而**对象模型（§4.1）与 append-only 溯源（§4.6）已实现** ✓ ⇒ 基础形态已在。
+- **⑤与意图的界限**：把"笔记＋关系"升级为**可查询图**（中心性／环检测／反链重建）是**另一个产品** ✓，不是"文件归档"的必要条件 ⇒ 超出 vmu 初衷（**框架＋settings＋中间件＋pack** ✓）。
+- **改判条件** ✓：**出现真实消费者**（例如 `ip`／`storepolicy` 的查询需要沿关系遍历 ✓）⇒ **把本节恢复为规格**，并同时**登记键与码** ✓。**此前不再维护这份规格** ✗✓。
 
 ### 4.12 日程与业务时间轨
 
