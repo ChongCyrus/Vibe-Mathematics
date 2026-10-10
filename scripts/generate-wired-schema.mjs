@@ -77,7 +77,9 @@ export function defaultOf(src, key) {
     new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"), // raw(settings, 'k', true)
     new RegExp("[\"']" + esc + "[\"']\\s*:\\s*" + VAL),                                // an object-literal table
     // A coercing helper's SECOND argument is the fallback the module really uses when the setting is absent.
-    new RegExp("(?:intOr|nat|numOr|listOr|listOf|boolOf)\\s*\\(\\s*" + S + "\\s*,\\s*" + VAL + "\\s*\\)"),
+    new RegExp("(?:intOr|nat|numOr|listOr|listOf|boolOr|boolOf|strOr)\\s*\\(\\s*" + S + "\\s*,\\s*" + VAL + "\\s*\\)"),
+    // `settings['k'] || <lit>` is the same statement in operator form: the right side is the absent-value answer.
+    new RegExp(S + "\\s*\\|\\|\\s*" + VAL),
     // A TERNARY whose condition names the setting: the ELSE branch is the absent-value answer. Two shapes are
     // common - an enum guard (`POLICIES.includes(settings['k']) ? settings['k'] : 'refresh'`) and a type guard
     // (`Array.isArray(settings['k']) ? settings['k'] : []`). The else is read off the code, never invented.
@@ -206,7 +208,10 @@ export function render(defs) {
     const def = d.literal === null ? 'null' : d.literal
     const type = d.type === null ? 'object' : d.type
     const doc = d.literal === null
-      ? '已接线（' + d.module + ' 读取）；默认值未从源码取回 ⇒ 未定，见该模块'
+      // Not "could not be recovered" - for these the MODULE declares no default at all (it reads the key and
+      // lets its own absent-value path run). Saying "unrecovered" would blame the extractor for a property of
+      // the code, so the doc states the fact instead.
+      ? '已接线（' + d.module + ' 读取）；该模块未声明默认值（缺省行为见模块自身）'
       : '已接线（' + d.module + ' 读取）；默认值取自模块源码'
     lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(doc) + ' },')
   }
@@ -262,7 +267,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     // contain the marker, which made the check unfailable - a vacuous assertion of exactly the kind this project
     // hunts. Measured: with `render` the negative case (marker removed from the file) stayed green.
     const line = next.split('\n').find((l) => l.includes("'" + d.key + "'"))
-    if (d.literal === null && !(line && /未从源码取回/.test(line))) problems.push(d.key + ' has no default AND the file does not say so')
+    if (d.literal === null && !(line && /未声明默认值/.test(line))) problems.push(d.key + ' has no default AND the file does not say so')
     if (preexisting.has(d.key)) problems.push(d.key + ' is declared both in the block and in the hand-written schema')
   }
   // Nothing may be silently dropped: every wired key is emitted, pre-existing, or a documented service surface.
