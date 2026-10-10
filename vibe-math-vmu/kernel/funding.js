@@ -221,7 +221,9 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
       const added = []
       for (const l of list) {
         const key = lineKeyOf(l)
-        const amount = intOr(l && l.amountMinor, 0)
+        const lineAmount = moneyOr(l && l.amountMinor, 'budget line "' + key + '" `amountMinor`', enforced, fired)
+        if (!lineAmount.ok) return lineAmount.error
+        const amount = lineAmount.value
         const cur = l && l.currency !== undefined ? String(l.currency) : acc.currency
         mark(fired, 'vmu.funding.currency')
         if (cur !== acc.currency) {
@@ -287,7 +289,9 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
         counters.autoApproved += 1
       }
       // co-funding ratio: costShareMinor / amount must satisfy the declared policy
-      const share = intOr(costShareMinor, 0)
+      const shareM = moneyOr(costShareMinor, 'request `costShareMinor`', enforced, fired)
+      if (!shareM.ok) return shareM.error
+      const share = shareM.value
       if (share > 0 || K.costSharePolicy !== 'balanced') mark(fired, 'vmu.funding.costSharePolicy')
       if (amount > 0 && share > 0) {
         const ratio = share / amount

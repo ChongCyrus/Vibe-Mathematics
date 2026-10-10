@@ -364,6 +364,17 @@ const ev = { receipt: 'r-1' }
   const expNoEvidence = h.f.expense({ account: h.id, line: 'travel', amountMinor: 2.5 })
   ok(expNoEvidence.ok === false && expNoEvidence.code === 'VMU_FUNDING_RECEIPT_MISSING',
     'expense() refuses missing evidence BEFORE it looks at the amount (order recorded, not assumed)', JSON.stringify(expNoEvidence).slice(0, 170))
+  // …and once the evidence is complete, the AMOUNT is what is refused - so the check is reachable, not shadowed.
+  const expWithEvidence = h.f.expense({ account: h.id, line: 'travel', amountMinor: 2.5, evidence: { receipt: 'r-1' } })
+  ok(expWithEvidence.ok === false && expWithEvidence.code === 'VMU_AMOUNT_NOT_INTEGER',
+    'with complete evidence, a FRACTIONAL expense amount is refused by name (the check is reachable)', JSON.stringify(expWithEvidence).slice(0, 170))
+  // budget lines and cost shares are amounts too: both used to be silently coerced to zero.
+  const badLine = h.f.budget({ account: h.id, lines: [{ category: 'travel', amountMinor: 12.5 }] })
+  ok(badLine.ok === false && badLine.code === 'VMU_AMOUNT_NOT_INTEGER',
+    'a FRACTIONAL budget line amount is refused by name', JSON.stringify(badLine).slice(0, 170))
+  const badShare = h.f.request({ account: h.id, amountMinor: 100, costShareMinor: 33.5 })
+  ok(badShare.ok === false && badShare.code === 'VMU_AMOUNT_NOT_INTEGER',
+    'a FRACTIONAL cost share is refused by name', JSON.stringify(badShare).slice(0, 170))
 }
 
 if (failed === 0) {
