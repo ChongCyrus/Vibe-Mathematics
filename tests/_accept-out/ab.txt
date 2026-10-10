@@ -1,0 +1,376 @@
+================================================================================
+tests/_accept-out/ab.txt — VERBATIM STDOUT of the acceptance run
+  command : node tests/accept-ab-v5-minimal.test.mjs
+  suite   : tests/accept-ab-v5-minimal.test.mjs  (verifier-ab, task-1)
+  exit    : 0        RESULT: 78 passed, 0 failed
+  artefact verified — FINAL REVISION, hash STABLE and matching the current on-disk file:
+    bytes  = 630,189
+    sha256 = a3ba531294decabcc80c0214859496080f80b2970822c67ba6e4c647ebfbbe8c
+    mtime  = 2026-10-10T14:25:50.2703469Z
+  Stability: this revision was byte-identical across 4 consecutive full runs (each 78/78),
+    and the sha256 above was re-confirmed against the file immediately after this run.
+  Score composition: 73 = the untouched A/B acceptance assertions (A1..A3e + FIX1..FIX5 +
+    B0..B4-10). 5 more = SUPP1..SUPP5, a SUPPLEMENTARY check the Lead requested AFTER the A/B
+    assertions were final: /v5 status must read back verifyAskMaxAttempts and
+    orphanDispatchMaxAttempts (source 7880-7892, landing.md §3) at their default 3.
+    The A/B assertions were NOT modified for it.
+  Re-run history (each time the file hash changed, this suite was re-run from scratch):
+    · 629,237 B / 76ffaedf…  first round (this revision was NOT frozen)
+    · 629,765 B / 0b91aff7…  after the (a.2) orphan-dispatch notice fix (notice('office', …)
+                             -> saveChatLine, found by verifier-c)
+    · 630,189 B / a3ba5312…  CURRENT: the two ask limits added to visibleParams()
+    Superseded results are no longer cited. Any further edit to vibe-math-v5.js
+    invalidates this output.
+================================================================================
+================================================================
+accept-ab-v5-minimal — independent acceptance of the frozen plugin
+plugin URL      : file:///E:/%E5%AD%A6%E4%B9%A0%E8%B5%84%E6%96%99/python%E9%A1%B9%E7%9B%AE/dsh-vibe-math/Vibe-Mathematics/vibe-math-v5/vibe-math-v5.js
+plugin bytes    : 630189
+plugin sha256   : a3ba531294decabcc80c0214859496080f80b2970822c67ba6e4c647ebfbbe8c
+plugin mtime    : 2026-10-10T14:25:50.270Z
+node            : v22.17.0
+__testHelpers   : clamp01, clPct, posMs, blocksToText, fmtTime, idSafe, slugify, tryJson, parseReply, ParsedReply, ParseFailed, sanitizeToolFilter, registeredToolsFromError, sha256Hex, leanHashText, leanHasSearchFlag
+SPEC_BAD (69ch) : {"verdict": {"value": 1, "reason": "该判据在非齐次理想上不成立" , "contextPct": 99
+GOOD_TEXT(71ch) : {"verdict": {"value": 1, "reason": "该判据在非齐次理想上不成立" , "contextPct": 99}}
+================================================================
+
+[A] parseReply failure is discoverable
+
+  ok   - A0 __testHelpers.parseReply exists
+  ok   - A0b __testHelpers exports the ParsedReply/ParseFailed marker classes
+
+  [A/fixture] SPEC_BAD vs the repaired text
+
+  >>> SPEC_BAD length:
+      69
+  >>> GOOD_TEXT length:
+      71
+  ok   - FIX1 GOOD_TEXT is SPEC_BAD plus exactly the two closing braces
+  ok   - FIX2 GOOD_TEXT keeps SPEC_BAD byte-for-byte and adds 2 chars
+  ok   - FIX3 the spec text ALONE is not valid JSON (the premise of acceptance A)
+  ok   - FIX4 SPEC_BAD + ONE appended "}" is STILL not valid JSON — the spec text is short by TWO braces
+  ok   - FIX5 GOOD_TEXT IS valid JSON — the CONTENT is sound; only the brace count differed
+  >>> FIX5 JSON.parse(GOOD_TEXT):
+      {
+        "verdict": {
+          "value": 1,
+          "reason": "该判据在非齐次理想上不成立",
+          "contextPct": 99
+        }
+      }
+  >>> A1 input (BAD_TEXT, the spec text verbatim):
+      {"verdict": {"value": 1, "reason": "该判据在非齐次理想上不成立" , "contextPct": 99
+  >>> A1 parseReply(BAD_TEXT) keys = []:
+      object
+  ok   - A1 parseReply(BAD_TEXT) does not return a vote-shaped object (no verdict/value/contextPct)
+  ok   - A1b parseReply(BAD_TEXT) CARRIES the ParseFailed marker
+  ok   - A1c the failed result is an empty plain object (destructurable, no fake fields)
+  ok   - A1d the failed result does NOT claim to be a parsed reply
+  ok   - A1e the ParseFailed payload is the RAW text, uncut (< 500 chars)
+  >>> A1 ParseFailed payload:
+      {"verdict": {"value": 1, "reason": "该判据在非齐次理想上不成立" , "contextPct": 99
+  #  roster = acad, r-1, r-2, r-3
+  #  childOf(r-2) = c3 ｜ labelOf = r-2
+  ok   - A2 setup: r-2 has an in-flight turn to end
+  >>> A2 in-state messages containing 无法解析:
+      []
+  >>> A2 Shared/Chat mirror lines containing 无法解析:
+      [
+        "- 14:26:28｜【无法解析】r-2 这一轮（normal）的答复不是可解析的 JSON，本轮按\"未读到\"处理（既不计票，也不计弃权）｜原始输出片段：{\"verdict\": {\"value\": 1, \"reason\": \"该判据在非齐次理想上不成立\" , \"contextPct\": 99"
+      ]
+  ok   - A2 the host path recorded an "unparseable" line
+  ok   - A2 the record NAMES the member id (r-2)
+  ok   - A2b the record carries the WHOLE raw output (the spec text itself)
+  ok   - A2c the snippet is the raw model text, not a re-serialised object
+  ok   - A2d the unreadable turn created no verdict record at all
+  >>> A3 input (GOOD_TEXT = SPEC_BAD + "}}"):
+      {"verdict": {"value": 1, "reason": "该判据在非齐次理想上不成立" , "contextPct": 99}}
+  >>> A3 parseReply(GOOD_TEXT):
+      {
+        "verdict": {
+          "value": 1,
+          "reason": "该判据在非齐次理想上不成立",
+          "contextPct": 99
+        }
+      }
+  ok   - A3 parseReply(GOOD_TEXT) returns the object (verdict present)
+  ok   - A3b parseReply(GOOD_TEXT)[ParsedReply] === true
+  ok   - A3c the good parse carries no ParseFailed marker
+  ok   - A3d the helper result matches the native JSON.parse result
+  ok   - A3e [DOCUMENTED SPEC DISCREPANCY] SPEC_BAD + ONE "}" is STILL unparseable — the spec sentence "补上 } 后仍能正常解析" is FALSE for its own byte string (the text is short by two braces)
+  >>> A3e SPEC_BAD + one "}" (the spec's literal repair):
+      ParsedReply=undefined ParseFailed="{\"verdict\": {\"value\": 1, \"reason\": \"该判据在非齐次理想上不成立\" , \"contextPct\": 99}"
+
+[B] 4 voters, the 4th keeps answering broken JSON
+
+  #  vibe_v5_set activityTimeoutMs -> ok=true｜params.activityTimeoutMs=150
+  >>> B0 ask-limit keys present in the vibe_v5_set echo (informational only — this run never set them):
+      [
+        "verifyAskMaxAttempts"
+      ]
+  >>> B0 their values in the echo (must be the defaults):
+      {
+        "verifyAskMaxAttempts": 3,
+        "orphanDispatchMaxAttempts": 3
+      }
+  >>> B0 status.quorum (before):
+      {
+        "m": 3,
+        "mode": "m-unanimous",
+        "voters": [
+          "acad",
+          "r-1",
+          "r-2",
+          "r-3"
+        ],
+        "voterCount": 4,
+        "started": true,
+        "phase": "voting",
+        "rosterVersion": "r4:acad:active,r-1:active,r-2:active,r-3:active"
+      }
+  ok   - B0 the scenario really has 4 voters (got 4)
+  #  roster = acad, r-1, r-2, r-3
+  ok   - B0b the stuck member r-3 is one of the voters
+  #  prerequisite (formal_proof registration, gated=true) -> {"ok":true,"target":"p-ab-stuck","formalProof":{"status":"proved","by":"acad","at":1791642388544,"locked":true}}
+  >>> B0 propose_verify ->:
+      {
+        "ok": true,
+        "queued": "p-ab-stuck",
+        "pendingVerifyCount": 1,
+        "started": true
+      }
+  ok   - B0c the verification really started
+  #  verify-kind sends observed BEFORE the driver: 4
+  #  driver iterations = 8｜verify wakes answered per member = [["acad",1],["r-1",1],["r-2",1],["r-3",4]]
+  #  raw broken replies fired by r-3 = 4｜driver timed out = false
+  >>> B raw broken text actually sent to the host path:
+      [
+        "{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99"
+      ]
+  >>> B verify-kind sends observed (member, text head):
+      [
+        "acad｜【求真表决 —— 院士 acad 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象：p",
+        "r-1｜【求真表决 —— 常驻研究员 r-1 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象",
+        "r-2｜【求真表决 —— 常驻研究员 r-2 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象",
+        "r-3｜【求真表决 —— 常驻研究员 r-3 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象",
+        "r-3｜【求真表决 —— 常驻研究员 r-3 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象",
+        "r-3｜【求真表决 —— 常驻研究员 r-3 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象",
+        "r-3｜【求真表决 —— 常驻研究员 r-3 就对象 p-ab-stuck 投票】  本所正在对下列对象发起共识验证：   对象"
+      ]
+  ok   - B0d a verdict record exists for p-ab-stuck
+  >>> B verdict record (from State/institute.v5state.json):
+      {
+        "target": "p-ab-stuck",
+        "closed": true,
+        "outcome": "undecided",
+        "reason": "因无法取得可读答复而保留为未定论：r-3 连续 3 次未给出可解析的表决答复",
+        "round": 1,
+        "stuckVoter": "r-3",
+        "askAttempts": 3,
+        "lastUnparsed": "{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99\n",
+        "votes": {
+          "acad": {
+            "prob": 1,
+            "reason": "acad 的理由：齐次情形可约化",
+            "at": 1791642388548
+          },
+          "r-1": {
+            "prob": 1,
+            "reason": "r-1 的理由：反例给出反方向证据",
+            "at": 1791642388584
+          },
+          "r-2": {
+            "prob": 0.5,
+            "reason": "r-2 的理由：我不确定，记弃权",
+            "at": 1791642388615
+          }
+        },
+        "m": 3,
+        "P": 4,
+        "mean": 0.8333333333333334,
+        "bTrue": 2,
+        "bFalse": 0,
+        "abstain": 1
+      }
+  #  DEFAULT params.verifyAskMaxAttempts = 3 (source line 982; this run never set it)
+  #  ASK LEDGER for r-3: 4 verify-kind send(s) observed from sendMessage. askAttempts recorded by the plugin = 3. The +1 is the OPENING ask (askVoters), which the plugin does not count in askAttempts by design.
+  ok   - B1 the closed record carries a numeric askAttempts for the stuck member
+  ok   - B1b the recorded ask count is BOUNDED by the default (3 <= 3)
+  ok   - B1c the recorded ask count EQUALS the default 3 (got 3) — this is the value task B1 names
+  ok   - B1d the TOTAL observed asks to r-3 (4) are exactly askAttempts + 1 (the opening askVoters) — so the re-ask loop is bounded at 3 and carries no hidden retries
+  ok   - B1e the TOTAL asks to r-3 stay bounded by the default + the opening ask (4 <= 4)
+  ok   - B1f the stuck member emitted exactly one broken reply per ask (4 replies / 4 asks)
+  ok   - B2 terminal outcome === "undecided" (got "undecided")
+  ok   - B2b terminal outcome is NOT "false"
+  ok   - B2c the record is CLOSED
+  ok   - B2d the record names the stuck member (stuckVoter=r-3)
+  ok   - B2e the reason names the member AND the ask count
+  ok   - B2f the record carries the last unparsed raw output
+  >>> B2 Shared/Chat mirror lines for p-ab-stuck:
+      [
+        "- 14:26:28｜【求真表决】对 p-ab-stuck（命题）发起验证；法定票数 m=3，有表决权者 4 人。先独立初评（彼此不可见），未定论再公开辩论。",
+        "- 14:26:28｜【求真表决】p-ab-stuck 因无法取得可读答复而保留为未定论：r-3 连续 3 次未给出可解析的表决答复；留库为未定论，平均概率 0.83。辩论记录见 Shared/Debates/p-ab-stuck.md"
+      ]
+  ok   - B2g the group-chat mirror also carries the stuck record naming r-3
+  ok   - B2h no ballot was turned into a "false" rejection (bFalse=0)
+  >>> B3 ballots in the closed record:
+      {
+        "acad": {
+          "prob": 1,
+          "reason": "acad 的理由：齐次情形可约化",
+          "at": 1791642388548
+        },
+        "r-1": {
+          "prob": 1,
+          "reason": "r-1 的理由：反例给出反方向证据",
+          "at": 1791642388584
+        },
+        "r-2": {
+          "prob": 0.5,
+          "reason": "r-2 的理由：我不确定，记弃权",
+          "at": 1791642388615
+        }
+      }
+  ok   - B3 acad's ballot is present in the closed record
+  ok   - B3 acad's ballot value is NOT rewritten (1 === 1)
+  ok   - B3 acad's ballot reason is NOT rewritten
+  ok   - B3 r-1's ballot is present in the closed record
+  ok   - B3 r-1's ballot value is NOT rewritten (1 === 1)
+  ok   - B3 r-1's ballot reason is NOT rewritten
+  ok   - B3 r-2's ballot is present in the closed record
+  ok   - B3 r-2's ballot value is NOT rewritten (0.5 === 0.5)
+  ok   - B3 r-2's ballot reason is NOT rewritten
+  ok   - B3 no ballot for the stuck member and none dropped (3 ballots, got 3)
+  ok   - B3b the unreadable member got no fabricated ballot
+  ok   - B3c each unreadable turn is on the record (4 lines naming r-3)
+  >>> B3 unparseable lines naming r-3:
+      [
+        "- 14:26:28｜【无法解析】r-3 这一轮（verify）的答复不是可解析的 JSON，本轮按\"未读到\"处理（既不计票，也不计弃权）｜原始输出片段：{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "- 14:26:28｜【无法解析】r-3 这一轮（verify）的答复不是可解析的 JSON，本轮按\"未读到\"处理（既不计票，也不计弃权）｜原始输出片段：{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "- 14:26:28｜【无法解析】r-3 这一轮（verify）的答复不是可解析的 JSON，本轮按\"未读到\"处理（既不计票，也不计弃权）｜原始输出片段：{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99",
+        "- 14:26:28｜【无法解析】r-3 这一轮（verify）的答复不是可解析的 JSON，本轮按\"未读到\"处理（既不计票，也不计弃权）｜原始输出片段：{\"verdict\": {\"target\": \"p-ab-stuck\", \"verdict\": 1, \"reason\": \"我判为真，但我的 JSON 少了一个右花括号\", \"contextPct\": 99"
+      ]
+  ok   - B3d Shared/Debates/p-ab-stuck.md was written
+  >>> B3 debate doc:
+      # 验证辩论｜p-ab-stuck（命题）｜2026-10-10 14:26:28
+      
+      **未达门槛**：平均概率 0.83｜原因：only 2 boolean vote(s); m=3 required｜m=3｜布尔票 真2/假0/弃权1
+      
+      - 提出者：acad
+      - 类型：proposition
+      - 法定票数 m：3｜有表决权者：4
+      - 轮次：1｜阶段：initial
+      
+      ## 对象陈述
+      本判据在非齐次理想上不成立
+      
+      ## 各表决者最终意见
+      - acad：verdict=1｜acad 的理由：齐次情形可约化
+      - r-1：verdict=1｜r-1 的理由：反例给出反方向证据
+      - r-2：verdict=0.5｜r-2 的理由：我不确定，记弃权
+      
+  ok   - B3e debate doc lists acad's ballot
+  ok   - B3e debate doc lists r-1's ballot
+  ok   - B3e debate doc lists r-2's ballot
+  ok   - B3f the debate doc says 未达门槛/未定论
+  >>> B3 Verified/ contents (must NOT contain p-ab-stuck):
+      [
+        "Lean/.keep"
+      ]
+  ok   - B3g the undecided target was NOT written to Verified/
+  >>> SUPPLEMENT status.params — the two ask limits:
+      {
+        "verifyAskMaxAttempts": 3,
+        "orphanDispatchMaxAttempts": 3
+      }
+  ok   - SUPP1 status.params exposes verifyAskMaxAttempts
+  ok   - SUPP2 status.params exposes orphanDispatchMaxAttempts
+  ok   - SUPP3 verifyAskMaxAttempts reads back as the DEFAULT 3 (this run never set it)
+  ok   - SUPP4 orphanDispatchMaxAttempts reads back as the DEFAULT 3 (this run never set it)
+  ok   - SUPP5 the read-back limit EQUALS the ask count the stuck voter actually hit (3 === 3)
+
+[B4] same scenario, 4th member replies with legal JSON -> consensus + Verified/
+
+  ok   - B4-0 the scenario has 4 voters again (got 4)
+  #  prerequisite (formal_proof registration, gated=true) -> {"ok":true,"target":"p-ab-good","formalProof":{"status":"proved","by":"acad","at":1791642388897,"locked":true}}
+  ok   - B4-0b the verification started
+  #  driver iterations = 5｜verify wakes answered per member = [["acad",1],["r-1",1],["r-2",1],["r-3",1]]
+  #  bad replies fired = 0 (must be 0)｜driver timed out = false
+  ok   - B4-1 no broken reply was needed in the good run
+  #  verify-kind sends observed: acad, r-1, r-2, r-3
+  >>> B4 verdict record:
+      {
+        "target": "p-ab-good",
+        "closed": true,
+        "outcome": "true",
+        "reason": "独立验收 B4：只堵坏路",
+        "bTrue": 3,
+        "bFalse": 0,
+        "abstain": 1,
+        "m": 3,
+        "P": 4,
+        "votes": {
+          "acad": {
+            "prob": 1,
+            "reason": "acad 的理由：齐次情形可约化",
+            "at": 1791642388901
+          },
+          "r-1": {
+            "prob": 1,
+            "reason": "r-1 的理由：反例给出反方向证据",
+            "at": 1791642388939
+          },
+          "r-2": {
+            "prob": 0.5,
+            "reason": "r-2 的理由：我不确定，记弃权",
+            "at": 1791642388971
+          },
+          "r-3": {
+            "prob": 1,
+            "reason": "stuck 已修正：我判为真",
+            "at": 1791642389001
+          }
+        }
+      }
+  ok   - B4-2 the record is CLOSED
+  ok   - B4-3 outcome === "true" (unanimous true) — got "true"
+  ok   - B4-4 no stuck voter in the good run
+  ok   - B4-5 all 4 ballots are present including the formerly stuck member (got ["acad","r-1","r-2","r-3"])
+  ok   - B4-6 acad's ballot is still untouched in the good run
+  ok   - B4-6 r-1's ballot is still untouched in the good run
+  ok   - B4-6 r-2's ballot is still untouched in the good run
+  ok   - B4-7 Verified/命题/p-ab-good.md was written
+  >>> B4 Verified card:
+      # 已验证｜p-ab-good
+      - ID: p-ab-good
+      - 类型: 命题
+      - 结论: 真
+      - 概率: 1
+      - 来源: 3 名有表决权者一致判真（m=3）
+      - 表决者: acad、r-1、r-2、r-3
+      - 弃权: 1｜全组平均概率: 0.88
+      - 时间: 2026-10-10 14:26:29
+      
+      ## 陈述
+      本判据在非齐次理想上不成立
+      
+      ## 辩论记录
+      Shared/Debates/p-ab-good.md
+      
+  ok   - B4-8 the card says 结论: 真
+  ok   - B4-9 the card names the target
+  >>> B4 status.verified:
+      [
+        "p-ab-good"
+      ]
+  ok   - B4-10 status.verified lists p-ab-good
+
+================================================================
+RESULT: 78 passed, 0 failed
+================================================================
+================================================================================
+END OF VERBATIM OUTPUT
+================================================================================

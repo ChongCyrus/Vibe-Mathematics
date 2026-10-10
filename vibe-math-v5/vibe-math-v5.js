@@ -973,6 +973,13 @@ export function apply(ctx) {
       quorumCap: 3,                 // m = min(quorumCap, |voters|)
       quorumMode: 'm-unanimous',    // 'm-unanimous' (v5) | 'all-unanimous' (v4 legacy)
       verdictMaxRounds: 3,
+      // verifyAskMaxAttempts — 同一个表决者、同一张票被**唤醒询问**的次数上限（默认 3）。
+      //   ⚠ 它与 verdictMaxRounds **不是**一回事，别合并：verdictMaxRounds 管"辩论轮次"（只有全员
+      //   都投出可解析的票才会 +1）；本参数管"问同一个人同一张票问了几次"。一个成员每次都回、
+      //   但每次都回不可解析的 JSON 时，轮次计数永远停在 1、看门狗又被它的每次唤醒刷新
+      //   （castVerdict 会写 lastVoteAt），于是只有本参数能终止这个回路。
+      //   1 = 问一次读不到就收为未定论；钳制到 [1, 50]。上限到了收为**未定论**，不是否决。
+      verifyAskMaxAttempts: 3,
       // ── staffing ─────────────────────────────────────────────────────────
       maxTempPerMember: 3,          // simultaneously employed temps per academician/researcher
       maxTempTotal: 12,
@@ -986,6 +993,11 @@ export function apply(ctx) {
       chatDigestMs: 45000,
       chatDigestMax: 12,
       meetingKeepEvery: 5,
+      // orphanDispatchMaxAttempts — 同一条**无主 pending 任务**被框架派发给成员的次数上限（默认 3）。
+      //   计数只在会话内存里（照 spawnRetryAttempts 的做法）：重启后上限重新可用，因为重启后的
+      //   成员上下文跟派发时已经不是同一次尝试了。上限到了不再派发，并留一条可见记录。
+      //   钳制到 [1, 50]。
+      orphanDispatchMaxAttempts: 3,
       // ── meeting speaking model（2.9.0）────────────────────────────────────
       // 会议两阶段（轮流发言 → 举手发言）；沉默**不触发任何截止**，只看"机会是否给完"与"是否还在举手/在飞"。
       // meetingHardLimitMs — 会议墙钟硬界（**唯一兜底**）：默认 1800000（30 分钟），钳制到 [300000, 7200000]
@@ -1101,6 +1113,12 @@ export function apply(ctx) {
     // that a later wake overwrites, so reading it at `onMemberEnd` can attribute a reply to the
     // wrong ask — see the meeting-registration note in `handleReply` (11).
     const inflight = new Map()
+    // memberId -> { snippet, at }: the last thing a member SAID that could not be read as JSON. The
+    // stop record for a stuck ballot needs it (改动一 makes the failure visible; 改动二 needs to name
+    // it), and it is session memory on purpose — it only has to outlive the turn it describes, since
+    // the record it feeds is written within the same round. Cleared as soon as the member produces a
+    // readable reply, so a later round can never quote a stale snippet as if it were current.
+    const parseFailures = new Map()
     let heartbeatDisposer = null
     let meeting = null                // in-flight meeting round state
     // real1004-minutes: the id of the MOST RECENT meeting. A speech can arrive AFTER the meeting was
@@ -2600,6 +2618,37 @@ export function apply(ctx) {
       L.push('读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；')
       L.push('或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。')
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
+      if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
+      mathPushLine(L)
+      paperPushLine(L)
+      feedbackPushLine(L)
+      L.push('')
+      L.push('------------')
+      L.push(stateBlock(member))
+      L.push('------------')
+      L.push(replySpec(member.kind))
+      return L.join('\n')
+    }
+    // A prompt for "this task nobody owns is yours to take". The framework only DELIVERS it — it never
+    // claims on the member's behalf. Claiming through the member's own reply is the member's action,
+    // keeps `ownerId` pointing at a real owner (the office branch of `task_update` leaves `ownerId`
+    // empty on purpose), and needs no new caller identity: the compare-and-set then runs against the
+    // revision this round was told about.
+    function orphanPrompt(member, task) {
+      const L = []
+      L.push('【待认领任务 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
+      L.push('')
+      L.push('任务板上有一条**没有主人**的任务，一直没有人做。框架不替你决定要不要接，'
+        + '但这条已经被指派给你这一轮：先看清楚它要什么，再决定。')
+      L.push('')
+      L.push('  任务 ' + task.id + '：' + String(task.subject || '（无标题）'))
+      if (task.description) L.push('  说明：' + String(task.description).slice(0, 600))
+      if (task.acceptance) L.push('  验收：' + String(task.acceptance))
+      L.push('')
+      L.push('**怎么接**：在回复 JSON 里填 "task_claim": "' + task.id + '"（当前 revision=' + task.revision +
+        '；若它已被别人抢先认领，改写别处，不要假装你有）。')
+      L.push('接了就**真的去做**并给出可验收的结果；做完用 vibe_v5_task_update 的 complete 收尾；'
+        + '如果你判断它不该做或不该由你做，请在回复里说清理由——**不要沉默**，沉默会让它继续躺在公告栏上。')
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
       paperPushLine(L)
@@ -5014,12 +5063,40 @@ export function apply(ctx) {
       const need = voters().map((m) => m.id)
       const missing = need.filter((id) => !vs.votes[id])
       if (missing.length) {
+        // A voter that keeps emitting unreadable JSON resets the watchdog on every attempt
+        // (`castVerdict` writes `lastVoteAt`) and never lets `round` advance (that needs a readable
+        // ballot from EVERY voter), so the two existing braking mechanisms can never fire. This
+        // counter is the third: how many times have we actually ASKED this member for THIS ballot.
+        // It is a different quantity from `verdictMaxRounds` (which counts debate rounds) — merging
+        // them would make one number mean two things and silently restore the unbounded loop.
+        const askMax = Math.max(1, Math.floor(Number(params.verifyAskMaxAttempts) || 3))
+        let attempts = vs.askAttempts || {}           // 老格式没有这个字段 ⇒ 按 0 处理
         let asked = 0
         for (const id of missing) {
+          if ((Number(attempts[id]) || 0) >= askMax) {
+            // Out of asks: stop, and stop as UNRESOLVED. The product is 未定论 with a named, auditable
+            // record — never a 否决 of the object, which nobody has actually judged (the readable
+            // ballots stay untouched in `votes`, and the reason says "could not obtain a readable
+            // answer", not "the claim is false").
+            const s = parseFailures.get(id)
+            await finalizeUndecided(vs, judgeVerdict(vs), {
+              memberId: id,
+              attempts: Number(attempts[id]) || 0,
+              snippet: s ? s.snippet : '（未记录到原始输出）',
+            })
+            return
+          }
           const m = memberById(id)
           if (!m || m.phase !== 'active' || busy.has(id)) continue
           const ok = await wakeMember(m, verifyPrompt(m, vs), 'verify')
-          if (ok) asked += 1
+          if (ok) {
+            asked += 1
+            // Count the attempt only once it was really SENT: attributing a failed send to the member
+            // would retire a ballot that was never delivered.
+            attempts = Object.assign({}, attempts, { [id]: (Number(attempts[id]) || 0) + 1 })
+            vs = Object.assign({}, vs, { askAttempts: attempts })
+            await putVerdict(vs.target, vs)
+          }
         }
         if (!asked) armHeartbeat()
         return
@@ -5106,13 +5183,25 @@ export function apply(ctx) {
       await armNextVerify()
       await scheduleNext()
     }
-    async function finalizeUndecided(vs, j) {
+    // `stuck` is an OPTIONAL audit slot（老调用点不传 ⇒ 行为与以前逐字相同）：一个表决者反复给出
+    // 不可解析的答复时，用它记下"卡住的是谁、问了几次、最近说了什么"。没有它，收尾记录只会说
+    // "未达门槛"——可那一轮里其实没有任何人反对，这正是本所反复吃亏的"没找到 ≠ 不存在"。
+    async function finalizeUndecided(vs, j, stuck) {
       await writeDebateDoc(vs, false, j)
+      const reason = (stuck && stuck.memberId)
+        ? '因无法取得可读答复而保留为未定论：' + stuck.memberId + ' 连续 ' + stuck.attempts + ' 次未给出可解析的表决答复'
+        : j.reason
+      // Which voter was stuck, how many times it was asked, and what it last said. Deliberately NOT a
+      // judgement about the object: every ballot that WAS readable stays in `votes`/`history` as cast.
+      const stuckRecord = stuck ? {
+        stuckVoter: stuck.memberId, askAttempts: Number(stuck.attempts) || 0,
+        lastUnparsed: String(stuck.snippet || ''),
+      } : null
       // Keep it in the library with the group's MEAN probability — the design's
       // "留库附概率". A missing source card is skipped rather than creating garbage.
       await rewriteSource(vs.target, vs.proposer, { '状态': '未定论', '概率': Number(j.mean).toFixed(2) })
-      await putVerdict(vs.target, Object.assign({}, vs, {
-        closed: true, outcome: 'undecided', reason: j.reason, mean: j.mean,
+      await putVerdict(vs.target, Object.assign({}, vs, (stuckRecord || {}), {
+        closed: true, outcome: 'undecided', reason, mean: j.mean,
         m: j.m, P: j.P, bTrue: j.bTrue, bFalse: j.bFalse, abstain: j.abstain, closedAt: now(),
         // LOW (deep review): record the ELECTORATE too. judgeVerdict had it (ase.voters) and
         // the closed record used to drop it, so a completed decision could not be audited for who
@@ -5120,7 +5209,8 @@ export function apply(ctx) {
         voters: j.voters,
       }))
       await putDebate({ target: vs.target, at: now(), file: 'Shared/Debates/' + vs.target + '.md', outcome: 'undecided' })
-      await saveChatLine('【求真表决】' + vs.target + ' 未达门槛（' + j.reason + '）；留库为未定论，平均概率 ' +
+      await saveChatLine('【求真表决】' + vs.target + (stuck && stuck.memberId ? ' ' + reason + '；' : ' 未达门槛（' + j.reason + '）；')
+        + '留库为未定论，平均概率 ' +
         Number(j.mean).toFixed(2) + '。辩论记录见 Shared/Debates/' + vs.target + '.md')
       await markProgress()
       await armNextVerify()
@@ -5264,6 +5354,9 @@ export function apply(ctx) {
       votes[memberId] = { prob: p, reason: String(reason || ''), at: now() }
       const next = Object.assign({}, vs, { votes, lastVoteAt: now() })
       await putVerdict(vs.target, next)
+      // Its last unreadable answer is history now: dropping it here keeps a later "stuck" record from
+      // quoting an output this member has already superseded.
+      parseFailures.delete(memberId)
       const need = voters().map((m) => m.id)
       const allVoted = need.length > 0 && need.every((id) => votes[id])
       if (allVoted) await continueVerifyRound(next)
@@ -6982,6 +7075,13 @@ export function apply(ctx) {
     // the recorded ceiling without asking the host (v5:2037) — while any NON-capacity provisioning
     // error stops the auto-retry for that member (a broken provider must not be resurrected).
     const spawnRetryAttempts = new Map()
+    // taskId -> how many times the scheduler has READY-DISPATCHED this unowned task to a member, and
+    // the set of task ids already reported as exhausted. Session memory on purpose (same lifecycle as
+    // `spawnRetryAttempts`): these are attempts, not durable facts, and the durable answer to "did
+    // anybody do it" is the task's own status/owner. `orphanExhausted` exists so the stop is reported
+    // ONCE instead of on every single scheduling pass.
+    const orphanDispatchAttempts = new Map()
+    const orphanExhausted = new Set()
     // ONE predicate for "this member was refused by the host's live-child CAP" — used by the
     // automatic retry here AND by `resume`'s rebuild path, so the two can never disagree about
     // which failures are deferred work (an ordinary broken-provider failure must never be
@@ -7091,6 +7191,62 @@ export function apply(ctx) {
         else armHeartbeat()
       }
       if (filled > 0) armHeartbeat()
+      // (a.2) UNOWNED work. Branch (a) only pushes tasks that already have an owner and branch (d)
+      // only CONVENES, so a `pending` task with `ownerId === ''` had no wake path at all: it sat on
+      // the board with its method, its parameters and even its measured cost written down, while
+      // broken verifications were retried 86 times. This branch answers ONLY "does anybody have
+      // this?" — never "is it worth doing?". There is deliberately NO priority ordering: `priority`
+      // has never yet driven a scheduling decision, and hardening it would only produce a more
+      // precise fiction.
+      const orphanMax = Math.max(1, Math.floor(Number(params.orphanDispatchMaxAttempts) || 3))
+      const idlePool = activeMembers().filter((m) => !busy.has(m.id))
+      if (filled < budget && idlePool.length) {
+        for (const t of tasks) {
+          if (filled >= budget) break
+          if (t.status !== 'pending' || t.ownerId) continue
+          // KNOWN LIMITATION: a task is not otherwise referenced by a meeting or a verification, so
+          // "is this task being discussed/voted?" cannot be judged from the task record or from the
+          // object id. The conservative rule is therefore "do not touch an orphan while a meeting or
+          // a verification is in flight at all" — those are exactly the states in which the institute
+          // is already working something, and schedulePass reaches this branch only when neither is
+          // live, so this is belt-and-braces rather than the real guard.
+          if (meeting || pendingMeeting || hasVerifyInFlight()) break
+          const member = idlePool.find((m) => !busy.has(m.id) &&
+            (now() - (lastActiveAt.get(m.id) || 0)) >= idleMs)
+          if (!member) break
+          // Re-using `spawnRetryAttempts`' shape and lifecycle: the count is session memory, so a
+          // restart re-opens the budget on purpose (after a restart the members' context is no longer
+          // the attempt that was counted). The STOPPING RULE is what prevents the "dispatch → no work
+          // → dispatch again" loop; without it this branch would be the new unbounded retry.
+          const n = orphanDispatchAttempts.get(t.id) || 0
+          if (n >= orphanMax) {
+            if (!orphanExhausted.has(t.id)) {
+              orphanExhausted.add(t.id)
+              // `saveChatLine`, NOT `notice('office', …)`: `notice` is a MEMBER-addressed DM and refuses
+              // before sending unless `memberById(memberId)` is an active member — 'office' is only a
+              // pseudo-id (the offices inbox is `OFFICE_INBOX`, written by members via `say {to:'office'}`),
+              // so a notice to it returns V5_MEMBER_NOT_FOUND and records NOTHING. That was a real defect
+              // in the first cut of this branch: the stop worked, but said nothing anywhere.
+              await saveChatLine('【任务板】' + t.id + '「' + String(t.subject || '') + '」无人认领，已自动派发 ' + n +
+                ' 次仍无进展（上限 orphanDispatchMaxAttempts=' + orphanMax + '）：停止自动派发，需要人（或院士）重新分派或删除它。')
+            }
+            continue
+          }
+          const ok = await wakeWithInbox(member, () => orphanPrompt(member, t), 'normal')
+          // The count advances only on a wake that was really SENT: a failed send is not one of the
+          // member's attempts, exactly like the G2 rule that a failed send must not consume a round.
+          if (ok) {
+            orphanDispatchAttempts.set(t.id, n + 1)
+            filled += 1
+            // Keep the pass alive exactly like branch (a): the wake set `busy`, the reply drives one
+            // more pass, and that pass finds every member busy and would arm nothing — a member whose
+            // turn never ends would otherwise freeze this loop. A FAILED wake deliberately falls
+            // through instead, so it leaves by the same tail (digest + heartbeat) as a pass with no
+            // orphan at all — re-arming here would skip `armDigest()` and delay chat delivery.
+            armHeartbeat()
+          }
+        }
+      }
       // (b) urgent mail (anything addressed, or a due chat digest)
       const idle = activeMembers().filter((m) => !busy.has(m.id))
       for (const m of idle) {
@@ -7468,6 +7624,22 @@ export function apply(ctx) {
       }
       let parsed = {}
       try { parsed = parseReply(text) } catch (e) { parsed = {} }
+      // "It answered, but we could not read it" must never be the same event as "it said nothing".
+      // The old silent `{}` made a voter that kept emitting malformed JSON look like a voter that had
+      // simply not voted yet, so the institute re-asked it for ever (40+ asks in a real run) — and the
+      // retry is only diagnosable HERE, where the raw text still exists: the child's transcript is
+      // gone by the time anyone investigates. The member id, the kind of turn we asked for and a
+      // snippet of the raw output are the three things that make that possible.
+      if (parsed[ParseFailed] !== undefined) {
+        const snippet = String(parsed[ParseFailed] || '（空）')
+        parseFailures.set(member.id, { snippet, at: now() })
+        await saveChatLine('【无法解析】' + member.id + ' 这一轮（' + (turnKind || 'unknown') + '）的答复不是可解析的 JSON，'
+          + '本轮按"未读到"处理（既不计票，也不计弃权）｜原始输出片段：' + snippet)
+      } else {
+        // "Readable" supersedes "unreadable": otherwise the stuck record could quote an output the
+        // member has already replaced with a good one.
+        parseFailures.delete(member.id)
+      }
       try {
         await handleReply(member, parsed, turnKind !== undefined ? turnKind : (wakeKind.get(member.id) || 'normal'))
       } catch (e) {
@@ -7545,6 +7717,7 @@ export function apply(ctx) {
       const ints = ['leanJobsMaxParallel', 'mathTimeoutMs', 'researcherCount', 'quorumCap', 'verdictMaxRounds', 'maxTempPerMember', 'maxTempTotal',
         'compactThreshold', 'compactAfterRounds', 'maxParallel', 'activityTimeoutMs', 'stallAutoMeetingMs',
         'meetingHardLimitMs', 'meetingWakeRetries',
+        'verifyAskMaxAttempts', 'orphanDispatchMaxAttempts',
         'chatDigestMs', 'chatDigestMax', 'meetingKeepEvery', 'leanTimeoutMs']
       const bools = ['academician', 'academicianLeads', 'memberMayRejectAssign', 'finalPaper', 'paperCompilePdf', 'leanAsync']
       const strs = ['feedback', 'quorumMode', 'provider', 'model', 'staffPersona', 'formalVerify', 'leanCommand',
@@ -7590,6 +7763,15 @@ export function apply(ctx) {
       }
       // Concurrency floor, same discipline as quorumCap/verdictMaxRounds.
       if (out.leanJobsMaxParallel !== undefined && out.leanJobsMaxParallel < 1) out.leanJobsMaxParallel = 1
+      // Both are "how many times may we ask" counters, so 0/负数 is NOT "无界" (that would restore the
+      // unbounded retry this pair exists to stop) and an absurd value is not a second way to disable
+      // them: clamp, never disable.
+      if (out.verifyAskMaxAttempts !== undefined) {
+        out.verifyAskMaxAttempts = Math.max(1, Math.min(50, out.verifyAskMaxAttempts))
+      }
+      if (out.orphanDispatchMaxAttempts !== undefined) {
+        out.orphanDispatchMaxAttempts = Math.max(1, Math.min(50, out.orphanDispatchMaxAttempts))
+      }
       // The six math_computation keys are normalised by the SHARED module (one implementation
       // for all four presets — docs/math-computation.md): explicit enum/array/integer coercion,
       // so a string 'false', an unknown engine name or a sub-1000 timeout can never leak
@@ -7703,6 +7885,11 @@ export function apply(ctx) {
         quorumCap: params.quorumCap, quorumMode: params.quorumMode,
         m: quorumView().m, voterCount: voterCount(), started: voterCount() > 0,
         verdictMaxRounds: params.verdictMaxRounds,
+        // The two "how many times may we ask" limits. They are listed here because this object is
+        // EXPLICIT (see the note below): a limit an operator cannot read back is a limit they cannot
+        // check, and the whole point of these two is that a stuck retry loop must be visible.
+        verifyAskMaxAttempts: params.verifyAskMaxAttempts,
+        orphanDispatchMaxAttempts: params.orphanDispatchMaxAttempts,
         maxTempPerMember: params.maxTempPerMember, maxTempTotal: params.maxTempTotal,
         compactThreshold: params.compactThreshold, compactAfterRounds: params.compactAfterRounds,
         maxParallel: params.maxParallel, activityTimeoutMs: params.activityTimeoutMs,
@@ -8560,10 +8747,11 @@ export function apply(ctx) {
   registerTool('vibe_v5_report', 'Human-readable institute report (staffing, tasks, consensus, meetings, file locations).', objParams({}), (s) => s.report())
   registerTool('vibe_v5_set', 'Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member\'s earlier ballot is dropped). quorumMode "m-unanimous" (v5) or "all-unanimous" (v4 legacy). formalVerify: "off" (default, no extra requirement) | "encourage" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | "require" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. "lake" with leanArgs ["env","lean"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat "both"|"md"|"tex"; paperLanguage "zh"|"en"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor "academician" (default, the only editor an unattended run can reach) | "office" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative "off"|"normal" (default)|"eager" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation "off"|"auto" (default)|"on" gates the math_computation tool; mathMode "typed+shell" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | "typed" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope "user" (default) | "system" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default. feedback (default "on") = the methodology/collaboration feedback library (Shared/Feedback/): "on" records entries and injects a short per-round hint; "off" injects nothing and refuses every write BY NAME (a switch, not a severity). MEETING SPEAKING (2.9.0): meetings run in two phases — a non-mandatory round-robin (every resident gets ONE chance to decide whether to speak; choosing not to speak is recorded by name and never blocks closing) and then an open floor where anyone (including someone who already spoke) raises a hand with meeting_hand:true and may speak again; the meeting closes when everybody has had the chance AND nobody still has a hand up / is in flight. Silence never triggers any deadline; meetingHardLimitMs (default 1800000 ms, clamped to [300000,7200000]) is the ONLY bound and abandons a genuinely wedged turn (the abandoned minutes still record the full detail); meetingWakeRetries (default 5, clamped to [0,10]) counts RETRIES, so N retries means at most N+1 wake attempts (N=0 still makes exactly ONE attempt - never zero); once attempts are exhausted the member is recorded as unreached, which still counts as having had the chance and does not block closing. Votes are untouched: vote_solved still needs EVERY voter true, so silence still blocks conclusion.', objParams({
     academician: B, academicianLeads: B, memberMayRejectAssign: B, researcherCount: I,
-    quorumCap: I, quorumMode: S, verdictMaxRounds: I,
+    quorumCap: I, quorumMode: S, verdictMaxRounds: I, verifyAskMaxAttempts: I,
     maxTempPerMember: I, maxTempTotal: I,
     compactThreshold: I, compactAfterRounds: I, maxParallel: I,
     activityTimeoutMs: I, stallAutoMeetingMs: I, chatDigestMs: I, chatDigestMax: I, meetingKeepEvery: I,
+    orphanDispatchMaxAttempts: I,
     meetingHardLimitMs: I, meetingWakeRetries: I,
     formalVerify: { type: 'string', enum: ['off', 'encourage', 'require'] },
     leanCommand: S, leanArgs: SA, leanTimeoutMs: I, leanAsync: B,
@@ -8906,6 +9094,20 @@ export function apply(ctx) {
 
 const now = () => Date.now()
 
+// parseReply must keep returning `{}` (every existing caller destructures the object), so the
+// failure signal cannot be the RETURN VALUE — a module-level "last failure" slot would work but a
+// callback-concurrent second parse would overwrite it before the first caller ever reads it, and
+// `onMemberEnd` is one of the few places that really does run concurrently. The signal therefore
+// rides ON the returned object, as a non-enumerable marker: no shared mutable state, nothing to
+// read early, and the two marker classes are unreachable by a JSON-parsed object (JSON.parse
+// builds plain objects and arrays only), so a model can never forge one.
+class ParseFailed {}
+class ParsedReply {}
+// The raw text is kept (bounded) so the caller can say WHAT it could not read, instead of only
+// that it could not read. The record has to be able to name the member and its own bad output,
+// otherwise a stuck turn is undiagnosable once the child's transcript is gone.
+const PARSE_FAIL_KEEP_CHARS = 500
+
 // ---- test seam: pure, stateless helpers --------------------------------
 // These helpers were declared inside `apply()` and are now declared at module scope, so
 // `apply()` closes over exactly the same function objects this export hands out. The audit
@@ -8917,6 +9119,8 @@ const now = () => Date.now()
 // Contract: no member may touch `ctx`, session state or mutable module state. Most are pure;
 // three are deliberately non-deterministic (`uuid`/`shortId` use Math.random, `fmtTime` falls back
 // to the clock) and `parseProgress` normalises the object it is handed in place (pre-existing).
+// `parseReply` is state-free too: it reports failure by MARKING the returned object (see
+// ParsedReply/ParseFailed above) rather than by writing down module state a caller must read next.
 // Nothing here is used by the plugin at runtime except through `apply()`, and behaviour is
 // byte-identical to the previous in-`apply` declarations.
 export const __testHelpers = {
@@ -8929,6 +9133,8 @@ export const __testHelpers = {
   slugify,
   tryJson,
   parseReply,
+  ParsedReply,
+  ParseFailed,
   sanitizeToolFilter,
   registeredToolsFromError,
   sha256Hex,
@@ -9005,7 +9211,22 @@ function parseReply(text) {
       if (o && typeof o === 'object' && !Array.isArray(o)) obj = o
     }
   }
-  return obj || {}
+  if (obj) {
+    // Marked on the way out: "we read something" has to be distinguishable from "we read nothing",
+    // and the empty object below cannot say which it was.
+    Object.defineProperty(obj, ParsedReply, { value: true, enumerable: false, configurable: true })
+    return obj
+  }
+  // A REAL failure, not a silent empty turn: the caller can still destructure an object as it always
+  // did, and can now also tell that the member DID speak and could not be read. The parse layers
+  // above are untouched — this only makes their failure visible.
+  const raw = String(text || '')
+  const empty = {}
+  Object.defineProperty(empty, ParseFailed, {
+    value: raw.length > PARSE_FAIL_KEEP_CHARS ? raw.slice(0, PARSE_FAIL_KEEP_CHARS) + '…（已截断）' : raw,
+    enumerable: false, configurable: true,
+  })
+  return empty
 }
 
 function sanitizeToolFilter(filter, known){
