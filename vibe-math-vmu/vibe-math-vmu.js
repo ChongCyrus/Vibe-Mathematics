@@ -158,7 +158,12 @@ export function apply(ctx, config = {}) {
     (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
   const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
     packLoader: packsDeclared ? () => packLoaderRef : null,
-    controlTool: config.control !== undefined },
+    controlTool: config.control !== undefined,
+    // Per-domain tool faces (docs/03 §3.1) - declared intent, exactly like control: a meeting face needs a
+    // declared meeting/ballot intent, a task face needs a declared task board or declared stages.
+    meetingTool: config.meetings !== undefined || config.ballot !== undefined,
+    taskTool: config.tasks !== undefined ||
+      (Array.isArray(settings['vmu.tasks.stages']) && settings['vmu.tasks.stages'].length > 0) },
   declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // The math surface is LAZY (kernel/math.js), so the shared module registers its tool only when asked. The

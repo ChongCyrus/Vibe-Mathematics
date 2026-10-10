@@ -219,6 +219,18 @@ export function createKernel({
   // CONTROL FLOW (docs/08 §5; the user's explicit domain). The kernel owns the STATE; a pause is a real
   // gate (task work is refused while paused) rather than a label nobody reads.
   const controlState = { state: 'running', pausedAt: null, pausedReason: null, resumes: 0, stops: 0, beats: 0, lastBeatAt: null, stoppedReason: null }
+  // LIVE OBJECTS for the tool faces (docs/03 §3.1): a session's meetings and ballots, addressable by id.
+  // They are the SAME primitives the library level exposes - nothing is re-implemented, and nothing is kept
+  // when the session ends. The cap is a counted bound, not a silent drop.
+  let liveSeq = 0
+  const liveCap = 50
+  let liveEvicted = 0
+  const liveMeetings = new Map()
+  const liveBallots = new Map()
+  const rememberLive = (map, id, value) => {
+    map.set(id, value)
+    while (map.size > liveCap) { const oldest = map.keys().next().value; map.delete(oldest); liveEvicted += 1 }
+  }
   /** The control VIEW, as a plain closure: an object-literal method cannot be called from a sibling method
    *  (the property name is not a binding), so the view lives here and both `control()` and `status()` use it. */
   const controlView = () => {
@@ -272,13 +284,30 @@ export function createKernel({
     registry,
 
     /** Per-object primitives: the kernel supplies the factory, the pack supplies the policy. */
-    ballot: (opts = {}) => createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
-      isPaused: () => controlState.state === 'paused' }, opts)),
-    meeting: (opts = {}) => createMeeting(Object.assign({ bus, clock, deliver,
-      roundTimeoutMs: settings['vmu.meetings.roundTimeoutMs'] || 0,
-      quotesPerMessageMax: settings['vmu.meetings.quotesPerMessageMax'] || 0,
-      quoteDepthMax: settings['vmu.meetings.quoteDepthMax'] || 0,
-      isPaused: () => controlState.state === 'paused' }, opts)),
+    ballot: (opts = {}) => {
+      const made = createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
+        isPaused: () => controlState.state === 'paused' }, opts))
+      // LIVE OBJECTS (docs/03 §3.1): the tool face addresses a ballot by id, so the kernel keeps the session's
+      // live instances. This is not new policy - it is the SAME primitive, reachable by name. Bounded by
+      // `liveCap` so a long session cannot grow it without limit (the oldest is evicted, and that is counted).
+      if (opts && typeof opts.id === 'string' && opts.id) rememberLive(liveBallots, opts.id, made)
+      return made
+    },
+    meeting: (opts = {}) => {
+      const id = (opts && typeof opts.id === 'string' && opts.id) ? opts.id : 'm-' + (++liveSeq)
+      const made = createMeeting(Object.assign({ bus, clock, deliver,
+        roundTimeoutMs: settings['vmu.meetings.roundTimeoutMs'] || 0,
+        quotesPerMessageMax: settings['vmu.meetings.quotesPerMessageMax'] || 0,
+        quoteDepthMax: settings['vmu.meetings.quoteDepthMax'] || 0,
+        isPaused: () => controlState.state === 'paused' }, opts, { id }))
+      rememberLive(liveMeetings, id, made)
+      return made
+    },
+    /** Look up a live meeting/ballot by the id a tool face handed out (never a guess: unknown ⇒ null). */
+    liveMeeting: (id) => liveMeetings.get(String(id)) || null,
+    liveBallot: (id) => liveBallots.get(String(id)) || null,
+    liveList: () => ({ meetings: [...liveMeetings.keys()], ballots: [...liveBallots.keys()],
+      cap: liveCap, evicted: liveEvicted }),
 
     /**
      * Start: register the middleware the settings DECLARE, and nothing else. With an empty declaration
@@ -527,6 +556,8 @@ export function createKernel({
         members: members ? members.status() : null,
         tasks: tasks.status(),
         work: workLedger ? workLedger.status() : null,
+        live: { meetings: [...liveMeetings.keys()], ballots: [...liveBallots.keys()], cap: liveCap, evicted: liveEvicted,
+          note: 'session-scoped live primitives addressable by id from the tool faces; evicted is COUNTED, never silent' },
         rules: rules.status(),
         control: controlView(),
         loader: loader.status(),

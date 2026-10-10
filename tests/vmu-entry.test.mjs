@@ -420,7 +420,50 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
-// ---- 15. self-probe ---------------------------------------------------------------------------
+// ---- 15. per-domain tool faces: declared only, and they really drive the kernel primitives ----------
+{
+  const plain = fakeCtx()
+  entry.apply(plain.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  const plainNames = plain.state.specs.map((s) => s.name)
+  ok(!plainNames.includes('vibe_vmu_meeting') && !plainNames.includes('vibe_vmu_task'),
+    'without a declared meeting/task intent neither face appears (zero mechanism holds)', plainNames.join(','))
+
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, meetings: true, tasks: true })
+  await new Promise((r) => setTimeout(r, 30))
+  const meet = h.state.specs.find((s) => s.name === 'vibe_vmu_meeting')
+  const task = h.state.specs.find((s) => s.name === 'vibe_vmu_task')
+  ok(!!meet && !!task, 'declaring the intents publishes both faces', h.state.specs.map((s) => s.name).join(','))
+
+  const opened = JSON.parse(await meet.execute({ action: 'open', agenda: 'an agenda', roster: ['r-1', 'r-2'] }, {}))
+  ok(opened.ok === true && typeof opened.id === 'string', 'open convenes the meeting and opens a round', JSON.stringify(opened))
+  const spoke = JSON.parse(await meet.execute({ action: 'speak', id: opened.id, member: 'r-1', text: 'hello' }, {}))
+  ok(spoke.ok === true && spoke.answered === 1, 'speak reaches the LIVE meeting by id', JSON.stringify(spoke))
+  const listed = JSON.parse(await meet.execute({ action: 'list' }, {}))
+  ok(listed.meetings.includes(opened.id) && handle.kernel.status().live.meetings.includes(opened.id),
+    'the live registry lists it (tool face and status().live agree)', JSON.stringify(listed))
+  const ghost = JSON.parse(await meet.execute({ action: 'speak', id: 'nope', member: 'r-1', text: 'x' }, {}))
+  ok(ghost.ok === false && ghost.code === 'VMU_NO_SUCH_OBJECT', 'an unknown meeting id is refused BY NAME', JSON.stringify(ghost))
+
+  const b = JSON.parse(await meet.execute({ action: 'ballot', target: 'prop-x' }, {}))
+  ok(b.ok === true && typeof b.ballotId === 'string', 'ballot opens a live ballot', JSON.stringify(b))
+  const vote = JSON.parse(await meet.execute({ action: 'vote', ballotId: b.ballotId, member: 'r-1', value: 'for' }, {}))
+  ok(vote.ok === true, 'a vote reaches the live ballot', JSON.stringify(vote).slice(0, 120))
+  const tally = JSON.parse(await meet.execute({ action: 'tally', ballotId: b.ballotId }, {}))
+  ok(tally.ok === true, 'and the tally closes it through the same primitive the library level uses', JSON.stringify(tally).slice(0, 140))
+
+  const created = JSON.parse(await task.execute({ action: 'create', title: 'probe task' }, {}))
+  ok(created.ok === true && typeof created.id === 'string', 'task create works through the face', JSON.stringify(created))
+  const moved = JSON.parse(await task.execute({ action: 'transition', id: created.id, to: 'doing' }, {}))
+  ok(moved.ok === true, 'and the kernel still enforces the transition', JSON.stringify(moved).slice(0, 120))
+  const tl = JSON.parse(await task.execute({ action: 'list' }, {}))
+  ok(Array.isArray(tl.tasks) && tl.tasks.length >= 1, 'list returns the board')
+  const badTask = JSON.parse(await task.execute({ action: 'transition', id: 'ghost', to: 'doing' }, {}))
+  ok(badTask.ok === false && badTask.code === 'VMU_NO_SUCH_OBJECT', 'an unknown task id is refused BY NAME', JSON.stringify(badTask))
+}
+
+// ---- 16. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"
