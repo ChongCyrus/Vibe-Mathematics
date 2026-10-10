@@ -153,15 +153,22 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
   /**
    * Refuse BY NAME and report the keys EVALUATED so far (`enforced`) — always an array, deduplicated (standard
    * ②③). The refusal is counted by code and audited, so the rejection path is as inspectable as the happy path.
+   * D3: `enforcedScope` rides WITH the refusal, saying in words that the list is "evaluated so far" and not the
+   * operation's full key set. `wouldEvaluate` is provided for shape-compatibility and falls back to the evaluated
+   * list: workflow's full per-operation key set is NOT enumerable without inventing one (unlike records' OP_WOULD).
    */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
+  /** The ONE way a key enters `enforced`/`fired`: check-before-insert (same `mark` idiom as records/meetings). */
+  const mark = (list, key) => { if (key && list.indexOf(key) === -1) list.push(key); return list }
+  const markAll = (list, keys) => { for (const k of keys) mark(list, k); return list }
   const deny = (code, message, hint, extra, enforced = []) => {
     const list = uniq(Array.isArray(enforced) ? enforced : [])
     refusals.set(code, (refusals.get(code) || 0) + 1)
     counters.refusals += 1
-    say({ type: 'workflow/refused', at: clock(), code, message, enforced: list })
-    return refuse(code, message, hint, Object.assign({}, extra, { enforced: list }))
+    say({ type: 'workflow/refused', at: clock(), code, message, enforced: list, enforcedScope: ENFORCED_SCOPE })
+    return refuse(code, message, hint, Object.assign({}, extra, { enforced: list, enforcedScope: ENFORCED_SCOPE, wouldEvaluate: list.slice() }))
   }
-  const receipt = (obj, enforced, fired) => Object.assign({}, obj, { enforced: uniq(enforced), fired: uniq(fired) })
+  const receipt = (obj, enforced, fired) => Object.assign({}, obj, { enforced: uniq(enforced), fired: uniq(fired), enforcedScope: ENFORCED_SCOPE })
 
   const allowFrom = (from) => (def ? def.transitions.filter((t) => t.from === from).map((t) => t.to) : [])
   const has = (taskId) => state.has(taskId)
@@ -197,10 +204,10 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
       if (d.to !== taskId) continue
       const met = terminal(d.from)
       if (met) continue
-      if (d.soft && !c.softDepsEnforced) { advisory.push(d.from); fired.push('vmu.workflow.softDepsEnforced'); continue }
+      if (d.soft && !c.softDepsEnforced) { advisory.push(d.from); mark(fired, 'vmu.workflow.softDepsEnforced'); continue }
       blocking.push(d.from)
     }
-    if (blocking.length) fired.push('vmu.workflow.depTypes')
+    if (blocking.length) mark(fired, 'vmu.workflow.depTypes')
     return { blocking, advisory, enforced, fired }
   }
   /** The gate for a task: missing[] names exactly WHAT is missing (evidence keys are named individually). */
@@ -249,7 +256,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     const tx = (Array.isArray(transitions) ? transitions : []).map((t) => ({ from: t.from, to: t.to, name: t.name || (t.from + '->' + t.to) }))
     for (const t of tx) {
       if (!list.includes(t.from) || !list.includes(t.to)) {
-        fired.push('vmu.workflow.gateKinds')
+        mark(fired, 'vmu.workflow.gateKinds')
         throw deny('VMU_WORKFLOW_STAGE_UNKNOWN', 'transition references an undeclared stage: ' + t.from + '->' + t.to, 'declare the stage in `stages` first', { stages: list }, enforced)
       }
     }
@@ -258,12 +265,12 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     for (const d of (Array.isArray(dependencies) ? dependencies : [])) {
       // dependencies connect TASK ids (evaluated at advance() time): only the shape and the TYPE are checked here
       if (!d || typeof d.from !== 'string' || !d.from || typeof d.to !== 'string' || !d.to) {
-        fired.push('vmu.workflow.depTypes')
+        mark(fired, 'vmu.workflow.depTypes')
         throw deny('VMU_INVALID_ARGUMENT', 'a dependency needs non-empty `from` and `to` task ids', 'dependencies connect TASK ids, not stage names (the type is governed by vmu.workflow.depTypes)', { dependency: d }, enforced)
       }
       const type = d.type === undefined ? c.depTypes[0] : d.type
       if (!c.depTypes.includes(type)) {
-        fired.push('vmu.workflow.depTypes')
+        mark(fired, 'vmu.workflow.depTypes')
         throw deny('VMU_WORKFLOW_DEP_TYPE_UNSUPPORTED', 'dependency type "' + String(type) + '" is not allowed (vmu.workflow.depTypes)', 'allowed: ' + c.depTypes.join(', '), { from: d.from, to: d.to, type, allowed: c.depTypes.slice() }, enforced)
       }
       deps.push({ from: d.from, to: d.to, type, soft: d.soft === true })
@@ -272,7 +279,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     for (const [taskId, g] of Object.entries(gates || {})) {
       const kind = g && typeof g === 'object' && !Array.isArray(g) ? (g.kind === undefined ? 'entry' : g.kind) : 'entry'
       if (!c.gateKinds.includes(kind)) {
-        fired.push('vmu.workflow.gateKinds')
+        mark(fired, 'vmu.workflow.gateKinds')
         throw deny('VMU_WORKFLOW_GATE_NOT_MET', 'gate kind "' + String(kind) + '" is not allowed (vmu.workflow.gateKinds)', 'allowed kinds: ' + c.gateKinds.join(', '), { taskId, kind, allowed: c.gateKinds.slice() }, enforced)
       }
       gateSpec[taskId] = g
@@ -296,31 +303,31 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     const enforced = []
     const fired = []
     const c = cfg()
-    enforced.push('vmu.workflow.taskTimeoutMs', 'vmu.workflow.depTypes', 'vmu.workflow.softDepsEnforced', 'vmu.workflow.stageGateMode', 'vmu.workflow.priorityClasses', 'vmu.workflow.subtaskDepthMax', 'vmu.workflow.parentDoneRule')
+    markAll(enforced, ['vmu.workflow.taskTimeoutMs', 'vmu.workflow.depTypes', 'vmu.workflow.softDepsEnforced', 'vmu.workflow.stageGateMode', 'vmu.workflow.priorityClasses', 'vmu.workflow.subtaskDepthMax', 'vmu.workflow.parentDoneRule'])
     if (!def) {
-      fired.push('vmu.workflow.stageGateMode')
+      mark(fired, 'vmu.workflow.stageGateMode')
       throw deny('VMU_WORKFLOW_TRANSITION_REQUIRED', 'no workflow defined: cannot advance ' + String(taskId), 'call define({stages,transitions}) first', { taskId, to }, enforced)
     }
     if (!def.stages.includes(to)) {
-      fired.push('vmu.workflow.gateKinds')
+      mark(fired, 'vmu.workflow.gateKinds')
       throw deny('VMU_WORKFLOW_STAGE_UNKNOWN', 'unknown stage: ' + String(to), 'declared stages: ' + def.stages.join('|'), { taskId, to, stages: def.stages.slice() }, enforced)
     }
     if (priority !== null && !c.priorityClasses.includes(priority)) {
-      fired.push('vmu.workflow.priorityClasses')
+      mark(fired, 'vmu.workflow.priorityClasses')
       throw deny('VMU_INVALID_ARGUMENT', 'priority "' + String(priority) + '" is not in vmu.workflow.priorityClasses', 'allowed: ' + c.priorityClasses.join(', '), { taskId, priority, allowed: c.priorityClasses.slice() }, enforced)
     }
     const s = state.get(taskId)
     if (!s) {
       if (to !== def.stages[0]) {
-        fired.push('vmu.workflow.stageGateMode')
+        mark(fired, 'vmu.workflow.stageGateMode')
         throw deny('VMU_WORKFLOW_TRANSITION_REQUIRED', 'a new task must start at ' + def.stages[0] + ', not ' + to, 'allowed next: ' + def.stages[0], { taskId, to, from: null, allowedNext: [def.stages[0]] }, enforced)
       }
       if (parent !== null) {
         if (!state.has(parent)) throw deny('VMU_WORKFLOW_TASK_UNKNOWN', 'unknown parent task: ' + String(parent), 'create the parent first', { taskId, parent }, enforced)
         const childDepth = depthOf(parent) + 1
-        enforced.push('vmu.workflow.subtaskDepthMax')
+        mark(enforced, 'vmu.workflow.subtaskDepthMax')
         if (c.subtaskDepthMax > 0 && childDepth > c.subtaskDepthMax) {
-          fired.push('vmu.workflow.subtaskDepthMax')
+          mark(fired, 'vmu.workflow.subtaskDepthMax')
           throw deny('VMU_WORKFLOW_SUBTASK_DEPTH', 'subtask depth ' + childDepth + '/' + c.subtaskDepthMax + ' exceeded for ' + taskId + ' (vmu.workflow.subtaskDepthMax)', 'flatten the breakdown, or raise vmu.workflow.subtaskDepthMax', { taskId, parent, depth: childDepth, limit: c.subtaskDepthMax }, enforced)
         }
         counters.spawns += 1
@@ -337,31 +344,31 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     }
     const allowed = allowFrom(s.stage)
     if (!allowed.includes(to)) {
-      fired.push('vmu.workflow.stageGateMode')
+      mark(fired, 'vmu.workflow.stageGateMode')
       throw deny('VMU_WORKFLOW_TRANSITION_REQUIRED', 'illegal transition ' + s.stage + '->' + to + (def.stages.indexOf(to) > def.stages.indexOf(s.stage) + 1 ? ' (stage skipping is not allowed)' : ''),
         'allowed from ' + s.stage + ': ' + (allowed.length ? allowed.join('|') : '(terminal stage)'), { taskId, from: s.stage, to, allowedNext: allowed.slice() }, enforced)
     }
     if (timedOut(taskId)) {
-      fired.push('vmu.workflow.taskTimeoutMs')
+      mark(fired, 'vmu.workflow.taskTimeoutMs')
       throw deny('VMU_STATE', 'task ' + taskId + ' timed out: ' + (clock() - s.startedAt) + 'ms > ' + c.taskTimeoutMs + 'ms (vmu.workflow.taskTimeoutMs)',
         'raise vmu.workflow.taskTimeoutMs, or advance/reset the task before the deadline', { taskId, ageMs: clock() - s.startedAt, limitMs: c.taskTimeoutMs }, enforced)
     }
     if (c.claimRequired && !s.by && !by) {
-      fired.push('vmu.workflow.claimRequired')
+      mark(fired, 'vmu.workflow.claimRequired')
       throw deny('VMU_WORKFLOW_GATE_BLOCKED', 'claim required before advancing ' + taskId, 'pass by:<member> to claim this task (vmu.workflow.claimRequired)', { taskId, missing: ['claim'] }, enforced)
     }
     const deps = depCheck(taskId)
-    enforced.push(...deps.enforced)
-    fired.push(...deps.fired)
+    markAll(enforced, deps.enforced)
+    markAll(fired, deps.fired)
     if (deps.blocking.length) {
-      fired.push('vmu.workflow.depTypes')
+      mark(fired, 'vmu.workflow.depTypes')
       throw deny('VMU_WORKFLOW_GATE_BLOCKED', 'dependencies not met for ' + taskId + ' -> ' + to + ': waiting for ' + deps.blocking.join(', '),
         'finish ' + deps.blocking.join(' / ') + ' first (vmu.workflow.depTypes / vmu.workflow.softDepsEnforced)', { taskId, to, blockedBy: deps.blocking.slice() }, enforced)
     }
     const g = gateCheck(taskId)
-    enforced.push(...g.labels)
+    markAll(enforced, g.labels)
     if (!g.ok) {
-      fired.push('vmu.workflow.stageGateMode')
+      mark(fired, 'vmu.workflow.stageGateMode')
       if (c.stageGateMode === 'refuse') {
         throw deny('VMU_WORKFLOW_GATE_BLOCKED', 'gate not satisfied for ' + taskId + ' -> ' + to + ': missing ' + g.missing.join(', '),
           'provide ' + g.missing.join(' / ') + ' before advancing (vmu.workflow.stageGateMode=refuse)', { taskId, to, missing: g.missing.slice() }, enforced)
@@ -371,19 +378,19 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
       const kids = childrenOf(taskId)
       const unfinished = kids.filter((k) => !terminal(k))
       if (kids.length && unfinished.length) {
-        enforced.push('vmu.workflow.parentDoneRule')
+        mark(enforced, 'vmu.workflow.parentDoneRule')
         const blocked = c.parentDoneRule === 'all-terminal' ? unfinished.length > 0 : unfinished.length === kids.length
         if (blocked) {
-          fired.push('vmu.workflow.parentDoneRule')
+          mark(fired, 'vmu.workflow.parentDoneRule')
           throw deny('VMU_WORKFLOW_GATE_BLOCKED', 'parent completion rule "' + c.parentDoneRule + '" not met for ' + taskId + ': unfinished children ' + unfinished.join(', '),
             'finish ' + (c.parentDoneRule === 'all-terminal' ? 'every' : 'at least one') + ' child first, or change vmu.workflow.parentDoneRule', { taskId, to, unfinished: unfinished.slice(), rule: c.parentDoneRule }, enforced)
         }
       }
     }
     if (to === def.stages[0] && s.stage !== def.stages[0]) {
-      enforced.push('vmu.workflow.reopenPolicy')
+      mark(enforced, 'vmu.workflow.reopenPolicy')
       if (c.reopenPolicy === 'deny') {
-        fired.push('vmu.workflow.reopenPolicy')
+        mark(fired, 'vmu.workflow.reopenPolicy')
         throw deny('VMU_WORKFLOW_TRANSITION_REQUIRED', 'reopen denied by policy for ' + taskId, 'vmu.workflow.reopenPolicy=' + c.reopenPolicy, { taskId, from: s.stage, to }, enforced)
       }
       s.reopened += 1
@@ -401,7 +408,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
       out.blocked = true
       out.advisory = g.missing.slice()
       out.gateMode = 'advisory'
-      fired.push('vmu.workflow.stageGateMode')
+      mark(fired, 'vmu.workflow.stageGateMode')
       out.fired = uniq(fired)
     }
     if (deps.advisory.length) { out.softBlockedBy = deps.advisory.slice() }
@@ -416,11 +423,11 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     const deps = depCheck(taskId)
     const enforced = ['vmu.workflow.requireEvidence', 'vmu.workflow.requireAssignee', 'vmu.workflow.gateOnOpenTasks', 'vmu.workflow.gateKinds', 'vmu.workflow.depTypes', 'vmu.workflow.softDepsEnforced', 'vmu.workflow.stageGateMode']
     const fired = []
-    if (g.missing.includes('assignee')) fired.push('vmu.workflow.requireAssignee')
-    if (g.missing.some((m) => String(m).startsWith('evidence'))) fired.push('vmu.workflow.requireEvidence')
-    if (g.missing.some((m) => String(m).startsWith('open-tasks') || m === 'task-source')) fired.push('vmu.workflow.gateOnOpenTasks')
-    if (deps.blocking.length) fired.push('vmu.workflow.depTypes')
-    if (deps.advisory.length) fired.push('vmu.workflow.softDepsEnforced')
+    if (g.missing.includes('assignee')) mark(fired, 'vmu.workflow.requireAssignee')
+    if (g.missing.some((m) => String(m).startsWith('evidence'))) mark(fired, 'vmu.workflow.requireEvidence')
+    if (g.missing.some((m) => String(m).startsWith('open-tasks') || m === 'task-source')) mark(fired, 'vmu.workflow.gateOnOpenTasks')
+    if (deps.blocking.length) mark(fired, 'vmu.workflow.depTypes')
+    if (deps.advisory.length) mark(fired, 'vmu.workflow.softDepsEnforced')
     return receipt({ taskId, ok: g.ok && deps.blocking.length === 0, missing: g.missing.slice(), blockedBy: deps.blocking.slice(), advisory: deps.advisory.slice(), gateMode: c.stageGateMode, policy: Object.assign({}, c) }, enforced, fired)
   }
 
@@ -432,16 +439,16 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     if (!s) throw deny('VMU_WORKFLOW_TASK_UNKNOWN', 'no workflow state for task ' + String(taskId), 'advance() the task first', { taskId }, enforced)
     const c = cfg()
     if (c.retryMax <= 0 || s.attempts >= c.retryMax) {
-      fired.push('vmu.workflow.retryMax')
+      mark(fired, 'vmu.workflow.retryMax')
       throw deny('VMU_WORKFLOW_RETRY_EXHAUSTED', 'retry not allowed for ' + taskId + ': ' + s.attempts + '/' + c.retryMax + ' attempts (vmu.workflow.retryMax)',
         c.retryMax <= 0 ? 'retries are disabled (vmu.workflow.retryMax=0) — set a positive limit to allow them' : 'the retry budget is exhausted; escalate instead', { taskId, attempts: s.attempts, limit: c.retryMax }, enforced)
     }
     s.attempts += 1
     const raw = c.retryBaseMs * Math.pow(2, s.attempts - 1)
     const capped = Math.min(raw, c.retryCapMs)
-    if (raw > c.retryCapMs) fired.push('vmu.workflow.retryCapMs')
+    if (raw > c.retryCapMs) mark(fired, 'vmu.workflow.retryCapMs')
     const jit = jitter(taskId, s.attempts, c.retryJitterRatio)
-    if (jit !== 0) fired.push('vmu.workflow.retryJitterRatio')
+    if (jit !== 0) mark(fired, 'vmu.workflow.retryJitterRatio')
     const delayMs = Math.max(0, capped + jit)
     counters.retries += 1
     s.updatedAt = clock()
@@ -458,7 +465,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     if (!s) throw deny('VMU_WORKFLOW_TASK_UNKNOWN', 'no workflow state for task ' + String(taskId), 'advance() the task first', { taskId }, enforced)
     const c = cfg()
     const at = clock()
-    if (s.lastCheckpointAt === null) fired.push('vmu.workflow.checkpointEveryMs')
+    if (s.lastCheckpointAt === null) mark(fired, 'vmu.workflow.checkpointEveryMs')
     s.checkpoints.push({ at, note: String(note) })
     if (s.checkpoints.length > 20) s.checkpoints.shift()
     s.lastCheckpointAt = at
@@ -496,7 +503,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     }
     const c = cfg()
     if (c.compensationMode === 'registered') {
-      fired.push('vmu.workflow.compensationMode')
+      mark(fired, 'vmu.workflow.compensationMode')
       const fn = action === null ? null : compensations.get(action)
       if (!fn) {
         throw deny('VMU_WORKFLOW_COMPENSATION_FAILED', 'compensation action "' + String(action) + '" is not registered (vmu.workflow.compensationMode=registered)',
@@ -521,12 +528,12 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     if (!s) throw deny('VMU_WORKFLOW_TASK_UNKNOWN', 'no workflow state for task ' + String(taskId), 'advance() the task first', { taskId }, enforced)
     const c = cfg()
     if (!['chair', 'office', 'user'].includes(c.escalationTarget)) {
-      fired.push('vmu.workflow.escalationTarget')
+      mark(fired, 'vmu.workflow.escalationTarget')
       throw deny('VMU_WORKFLOW_ESCALATION_TARGET_UNKNOWN', 'unknown escalation target: ' + String(c.escalationTarget), 'vmu.workflow.escalationTarget ∈ {chair,office,user}', { target: c.escalationTarget }, enforced)
     }
     const age = clock() - s.updatedAt
     if (c.escalationAfterMs > 0 && age < c.escalationAfterMs) {
-      fired.push('vmu.workflow.escalationAfterMs')
+      mark(fired, 'vmu.workflow.escalationAfterMs')
       throw deny('VMU_WORKFLOW_ESCALATION_NOT_DUE', 'escalation not due for ' + taskId + ': age=' + age + 'ms threshold=' + c.escalationAfterMs + 'ms',
         'wait ' + (c.escalationAfterMs - age) + 'ms or lower vmu.workflow.escalationAfterMs', { taskId, ageMs: age, thresholdMs: c.escalationAfterMs }, enforced)
     }
@@ -557,7 +564,7 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     const c = cfg()
     if (typeof to !== 'string' || !to) throw deny('VMU_INVALID_ARGUMENT', 'handover needs a non-empty `to`', 'name the member who takes over', { taskId }, enforced)
     if (c.handoverNote && (typeof note !== 'string' || !note.trim())) {
-      fired.push('vmu.workflow.handoverNote')
+      mark(fired, 'vmu.workflow.handoverNote')
       throw deny('VMU_WORKFLOW_GATE_NOT_MET', 'handover of ' + taskId + ' requires a note (vmu.workflow.handoverNote=true)', 'write why and what is left; the note body is defined in 17-§11', { taskId, to }, enforced)
     }
     s.by = to
@@ -584,18 +591,18 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     let chosen = template
     if (chosen === null || chosen === undefined || chosen === '') {
       chosen = c.templateDefault
-      if (chosen) fired.push('vmu.workflow.templateDefault')
+      if (chosen) mark(fired, 'vmu.workflow.templateDefault')
     }
     if (!chosen) {
-      fired.push('vmu.workflow.templates')
+      mark(fired, 'vmu.workflow.templates')
       throw deny('VMU_WORKFLOW_TEMPLATE_UNKNOWN', 'no template given and vmu.workflow.templateDefault is empty', 'declare templates in vmu.workflow.templates or set vmu.workflow.templateDefault; known: ' + ([...declared.keys()].join(', ') || '(none)'), { known: [...declared.keys()] }, enforced)
     }
     if (!declared.has(chosen)) {
-      fired.push('vmu.workflow.templates')
+      mark(fired, 'vmu.workflow.templates')
       throw deny('VMU_WORKFLOW_TEMPLATE_UNKNOWN', 'unknown template: ' + String(chosen), 'known templates: ' + ([...declared.keys()].join(', ') || '(none)'), { template: chosen, known: [...declared.keys()] }, enforced)
     }
     if (priority !== null && !c.priorityClasses.includes(priority)) {
-      fired.push('vmu.workflow.priorityClasses')
+      mark(fired, 'vmu.workflow.priorityClasses')
       throw deny('VMU_INVALID_ARGUMENT', 'priority "' + String(priority) + '" is not in vmu.workflow.priorityClasses', 'allowed: ' + c.priorityClasses.join(', '), { priority, allowed: c.priorityClasses.slice() }, enforced)
     }
     counters.instantiations += 1

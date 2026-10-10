@@ -107,11 +107,16 @@ export function createDelegation({ clock = () => 0, log = null, settings = {}, b
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
   const sumOf = (map) => [...map.values()].reduce((a, b) => a + b, 0)
 
-  /** Named refusal helper: a refusal is COUNTED BY CODE before it is thrown. */
+  /**
+   * Named refusal helper: a refusal is COUNTED BY CODE before it is thrown.
+   * D3 (round 26): the refusal carries its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` states that any
+   * key list travelling with it is "what was consulted SO FAR", never the operation's full key set.
+   */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, message, hint) => {
     bump(refusals, code, 1)
-    say({ type: 'delegation/refused', at: clock(), code, message })
-    return refuse(code, message, hint)
+    say({ type: 'delegation/refused', at: clock(), code, message, enforcedScope: ENFORCED_SCOPE })
+    return Object.assign(refuse(code, message, hint), { enforcedScope: ENFORCED_SCOPE })
   }
   const record = (row) => {
     historyRows.push(Object.assign({ at: clock() }, row))

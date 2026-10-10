@@ -30,9 +30,22 @@ const j2 = (s) => /ZERO-MECHANISM MATRIX/.test(String(s))
 // ── the two-channel rule, as a pure function (so it can be fault-injected) ───────────────────
 export function twoChannelAgree(a, b) { return a === b }
 export function judgeMatrix(summary) {
-  const m = /(\d+)\s+modules,\s+(\d+)\s+mismatches,\s+(\d+)\s+unregistered,\s+(\d+)\s+probe-errors/.exec(summary)
+  // The summary gained EXPECT_UNDECIDED and an n/a count when the matrix adjudicated all sixty modules (round 28).
+  // The parser had to move with it - and the failure this caused was a real integration break, which is exactly
+  // what a gate is for. Only `mismatches` reddens; undecided, unregistered and probe-errors are counted.
+  const m = /(\d+)\s+modules,\s+(\d+)\s+mismatches,\s+(\d+)\s+unregistered(?:,\s+(\d+)\s+EXPECT_UNDECIDED)?(?:,\s+(\d+)\s+probe-errors)?(?:,\s+(\d+)\s+n\/a)?/.exec(summary)
   if (!m) return { ok: false, reason: 'unparseable summary', red: true }
-  return { ok: true, modules: Number(m[1]), mismatches: Number(m[2]), unregistered: Number(m[3]), probeErrors: Number(m[4]), red: Number(m[2]) > 0 }
+  const num = (v) => (v === undefined ? 0 : Number(v))
+  return {
+    ok: true,
+    modules: Number(m[1]),
+    mismatches: Number(m[2]),
+    unregistered: num(m[3]),
+    undecided: num(m[4]),
+    probeErrors: num(m[5]),
+    notApplicable: num(m[6]),
+    red: Number(m[2]) > 0,
+  }
 }
 
 // ── Gate 1: watch BOTH channels of a REAL kernel ────────────────────────────────────────────

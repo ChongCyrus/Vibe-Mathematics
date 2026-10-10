@@ -495,6 +495,11 @@ const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], tra
   ok(receipts.every((r) => !r.fired || new Set(r.fired).size === r.fired.length), 'receipts: NO receipt has duplicate `fired` entries')
   ok(receipts.every((r) => !r.fired || r.fired.every((k) => r.enforced.includes(k))), 'receipts: fired ⊆ enforced everywhere')
   ok(receipts.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key')
+  // D3: the evaluation scope rides with every receipt AND every refusal
+  ok(receipts.every((r) => r.enforcedScope === 'evaluated-so-far'), 'D3: every receipt states enforcedScope=evaluated-so-far')
+  const refusal = throwsE(() => w.stage({ taskId: 'ghost' }), 'VMU_WORKFLOW_TASK_UNKNOWN', 'D3: refusal carries the scope')
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
+  ok(!!refusal && Array.isArray(refusal.wouldEvaluate) && refusal.wouldEvaluate.length >= refusal.enforced.length, 'D3: the refusal also gives wouldEvaluate ⊇ enforced')
   // determinism of the lists (injected clock; no randomness)
   const runTwice = () => { const x = mk({ 'vmu.workflow.retryMax': 1, 'vmu.workflow.retryJitterRatio': 0.2 }); x.define(FLOW3); x.advance({ taskId: 'd', to: 'open', by: 'a', evidence: 'e' }); return JSON.stringify([x.retry({ taskId: 'd' }).enforced, x.gate({ taskId: 'd' }).enforced, x.status().wired]) }
   ok(runTwice() === runTwice(), 'determinism: two identical runs yield element-wise identical enforced lists')

@@ -118,11 +118,16 @@ export function createArbitration({ clock = () => 0, log = null, settings = {}, 
   const now = () => clock()
   const caseOf = (id) => cases.get(id) || null
 
-  /** Named refusal helper: a refusal is COUNTED BY CODE before it is thrown. */
+  /**
+   * Named refusal helper: a refusal is COUNTED BY CODE before it is thrown.
+   * D3 (round 26): the refusal also states its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` says in
+   * words that any key list travelling with a refusal is "what was consulted SO FAR", not the full key set.
+   */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, message, hint) => {
     bump(refusals, code, 1)
-    say({ type: 'arbitration/refused', at: now(), code, message })
-    return refuse(code, message, hint)
+    say({ type: 'arbitration/refused', at: now(), code, message, enforcedScope: ENFORCED_SCOPE })
+    return Object.assign(refuse(code, message, hint), { enforcedScope: ENFORCED_SCOPE })
   }
   const record = (row) => {
     historyRows.push(Object.assign({ at: now() }, row))

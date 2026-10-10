@@ -98,12 +98,15 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
   let capDropped = { abstract: 0, concepts: 0, meshTerms: 0, related: 0, tree: 0 }
   const refusals = new Map()
 
-  /** task-145: every refusal carries `enforced` — an ARRAY of the keys consulted so far (never undefined). */
+  /** task-145: every refusal carries `enforced` — an ARRAY of the keys consulted so far (never undefined).
+   *  D3（第 26 轮）：`enforcedScope` **随证明同行** —— 明写这是"**到此为止**"的已求值集合，
+   *  而非该操作会读的完整集合 ⇒ 审计者**不得**把部分集当全集 ✗✓（照 records／meetings 已验收口径 ✓）。 */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, message, hint, extra, evaluated) => {
     refusals.set(code, (refusals.get(code) || 0) + 1)
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     try { log('external: refused ' + code + ' [' + keys.join(',') + ']') } catch (e) { /* logging must not break a refusal */ }
-    return refuse(code, message, hint, Object.assign({ enforced: keys, evaluated: keys.slice() }, extra || {}))
+    return refuse(code, message, hint, Object.assign({ enforced: keys, enforcedScope: ENFORCED_SCOPE, evaluated: keys.slice() }, extra || {}))
   }
   const mark = (list, key) => { if (!list.includes(key)) list.push(key); return list }
 
@@ -219,6 +222,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
     const missing = need.filter((k) => fields[k] === undefined || fields[k] === null)
     if (missing.length) throw deny('VMU_EXTERNAL_RECEIPT_INCOMPLETE', 'fetch receipt is incomplete, missing: ' + missing.join(', '), 'a receipt must carry at/by/source/endpoint/queryFingerprint/resultFingerprint/cached/stale/ttlMs/ageMs', { missing }, enforced)
     if (enforced) fields.enforced = enforced.slice()
+    fields.enforcedScope = ENFORCED_SCOPE   // D3：回执级口径（"到此为止"的已求值集合 ✓）
     return fields
   }
 
@@ -253,7 +257,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
       const identity = identityOf(src, c, enforced)
       const receipt = makeReceipt({ at: clock(), by, source: src, endpoint: hit.endpoint || (src + ':' + (ref.id || 'query')), queryFingerprint: qfp, resultFingerprint: hit.fingerprint, cached: true, stale: false, ttlMs: hit.ttlMs, ageMs, identity }, c, enforced)
       receiptsLog.push(receipt)
-      return { ok: true, receipt, payload: hit.payload, conflicts: [], enforced }
+      return { ok: true, receipt, payload: hit.payload, conflicts: [], enforced, enforcedScope: ENFORCED_SCOPE }
     }
     if (hit && expired) {
       mark(enforced, 'vmu.external.stalePolicy')
@@ -270,7 +274,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
         receiptsLog.push(receipt)
         if (bus && typeof bus.emit === 'function') bus.emit('external/stale-served', { source: src, ageMs, ttlMs: hit.ttlMs })
         log('external: serving STALE cache for ' + src + ' (age=' + ageMs + 'ms, ttl=' + hit.ttlMs + 'ms)')
-        return { ok: true, receipt, payload: hit.payload, conflicts: [], staleNotice: 'VMU_EXTERNAL_STALE', enforced }
+        return { ok: true, receipt, payload: hit.payload, conflicts: [], staleNotice: 'VMU_EXTERNAL_STALE', enforced, enforcedScope: ENFORCED_SCOPE }
       }
       // refresh falls through to the seam
     }
@@ -302,7 +306,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
     const identity = identityOf(src, c, enforced)
     const receipt = makeReceipt({ at: entry.at, by, source: src, endpoint: entry.endpoint, queryFingerprint: qfp, resultFingerprint, cached: false, stale: false, ttlMs: c.ttlMs, ageMs: 0, identity, cacheDir: c.cacheDir || null, ...(synthesised ? { receiptSynthesised: true } : {}) }, c, enforced)
     receiptsLog.push(receipt)
-    return { ok: true, receipt, payload, conflicts: [], truncated, enforced, note: truncated ? 'result set was truncated by the source' : null }
+    return { ok: true, receipt, payload, conflicts: [], truncated, enforced, enforcedScope: ENFORCED_SCOPE, note: truncated ? 'result set was truncated by the source' : null }
   }
 
   /**
@@ -404,7 +408,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
       kept = items.slice(0, keep)
     }
     if (totalDropped > 0) { dropped += totalDropped; log('external: normalize dropped ' + totalDropped + ' item(s) (maxResults=' + c.maxResults + ', maxBytes=' + c.maxBytes + ')') }
-    return { items: kept, total: list.length, dropped: totalDropped, policyApplied: c.maxResults, bytes, maxBytes: c.maxBytes, enforced: keys.slice() }
+    return { items: kept, total: list.length, dropped: totalDropped, policyApplied: c.maxResults, bytes, maxBytes: c.maxBytes, enforced: keys.slice(), enforcedScope: ENFORCED_SCOPE }
   }
 
   /** fetchMany(): merge several sources and SURFACE conflicts instead of silently picking one. */
@@ -458,7 +462,7 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
         if (better.length) byId.set(id, better[0])
       }
     }
-    return { ok: true, merged: [...byId.values()].map((v) => v.item), conflicts, errors, fetches, receipts: results.map((r) => r.receipt), enforced }
+    return { ok: true, merged: [...byId.values()].map((v) => v.item), conflicts, errors, fetches, receipts: results.map((r) => r.receipt), enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   /** Read-only surfaces. */

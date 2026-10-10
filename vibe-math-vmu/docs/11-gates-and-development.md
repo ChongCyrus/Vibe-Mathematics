@@ -543,66 +543,66 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 
 | 模块 | 零机制下的返回形状 | 是否具名拒（码） | 自曝字段 | 期望（设计） |
 |---|---|---|---|---|
-| `alerts` · `status()` | ok | — | dropped=[object Object] | （**设计未定** ✗：本模块未登记期望） |
-| `arbitration` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `audit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `auditchain` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `ballot` · `open()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（同 records ✓） |
-| `bidding` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `board` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `budget` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `bus` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `charter` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `clockguard` · `status()` | null | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | （**设计未定** ✗：本模块未登记期望） |
-| `crypto` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `delegation` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `domaingate` · `status()` | ok | — | dropped=[object Object] | （**设计未定** ✗：本模块未登记期望） |
-| `external` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `fairness` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | （**设计未定** ✗：本模块未登记期望） |
-| `governance` · `keysUsed()` | array[15] | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `guard` | （无 create* 工厂） | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `handover` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `idempotency` · `list()` | ok | — | dropped=0 truncated=false | 显式 absent（零机制＝无状态可去重 ⇒ 显式 `absent` ✓） |
-| `index` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | （**设计未定** ✗：本模块未登记期望） |
-| `library` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `lifecycle` · `stages()` | refusal | VMU_LIFECYCLE_NOT_DECLARED | — | （**设计未定** ✗：本模块未登记期望） |
-| `loader` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `math` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `mathjobs` · `submit()` | refusal | VMU_MATH_INVALID_INPUT | — | （**设计未定** ✗：本模块未登记期望） |
-| `mathtools` | op 抛出 | — | — | ok + enforced:[]（零机制＝无限额可管 ⇒ 放行且 `enforced` 为空 ✓） |
-| `meeting` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `alerts` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `arbitration` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：裁决请求体（案由/双方）） |
+| `audit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `auditchain` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `ballot` · `open()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓） |
+| `bidding` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `board` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `budget` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：预算条目（额度/科目）） |
+| `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `charter` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：章程条项） |
+| `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
+| `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓） |
+| `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `delegation` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：委派授权对（from/to/范围）） |
+| `domaingate` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `fairness` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `governance` · `keysUsed()` | array[15] | — | — | array 或 object（治理面：只读列举（keysUsed/partition 不拒）） |
+| `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
+| `handover` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：交接对象） |
+| `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
+| `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `library` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：库引用（ref/uri）） |
+| `lifecycle` · `stages()` | refusal | VMU_LIFECYCLE_NOT_DECLARED | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `loader` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `math` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：数学请求体） |
+| `mathjobs` · `submit()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `mathtools` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：计划入参（op/limits）—— 零机制期望＝ok + enforced:[] ✓） |
+| `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
-| `members` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `memory` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `metrics` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `minutes` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `notify` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | （**设计未定** ✗：本模块未登记期望） |
-| `projmigrate` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `publication` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `ratelimit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `records` | op 抛出 | — | — | 具名拒或 ok（零机制＝无键则具名拒；有默认则 ok ✓） |
-| `recruit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `registry` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `replay` · `plan()` | ok | — | truncated=[object Object] | （**设计未定** ✗：本模块未登记期望） |
-| `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | （**设计未定** ✗：本模块未登记期望） |
-| `retention` · `plan()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
-| `rules` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `scheduler` · `list()` | ok | — | dropped=0 truncated=false | （**设计未定** ✗：本模块未登记期望） |
-| `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | （**设计未定** ✗：本模块未登记期望） |
-| `skills` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | （**设计未定** ✗：本模块未登记期望） |
-| `store` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `tasks` · `list()` | array[0] | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `topology` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `transaction` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `trust` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `work` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `workflow` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `members` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `memory` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：记忆条目） |
+| `metrics` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `minutes` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `notify` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | EXPECT_UNDECIDED（**现状：拒绝不带 `code`** ⇒ 待补具名码（另派 ✗）） |
+| `projmigrate` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `publication` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：出版请求） |
+| `ratelimit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `records` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：记录体（track/kind/body）） |
+| `recruit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `registry` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `replay` · `plan()` | ok | — | truncated=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `scheduler` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | EXPECT_UNDECIDED（同上：拒绝不带 `code` ⇒ 待补具名码 ✗） |
+| `skills` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `store` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：存储配置） |
+| `tasks` · `list()` | array[0] | — | — | array（任务板：零机制 ⇒ 空列表（放行）） |
+| `topology` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `transaction` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：事务体） |
+| `trust` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
+| `workflow` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作流定义） |
 
-=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 42 unregistered, 15 probe-errors ===
+=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 0 unregistered, 2 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

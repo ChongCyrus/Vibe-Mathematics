@@ -390,5 +390,23 @@ const A = async (fn) => { try { return { ok: true, value: await fn() } } catch (
   ok(Object.keys(e.status().unwiredReasons).length === 0, 'with nothing unwired the reason map is empty (mechanism retained for future keys)')
 }
 
+// D3: the evaluation scope rides with every receipt AND every refusal; no duplicates in a full scenario
+{
+  const calls = []
+  const e = createExternal({ clock: () => now, settings: { 'vmu.external.enabled': true, 'vmu.external.allowNetwork': true, 'vmu.external.sources': ['crossref'] }, fetchFn: mkSeam(calls) })
+  const r1 = await e.fetchOne({ source: 'crossref', id: '10.1/x', by: 'm1' })
+  ok(r1.ok === true && r1.enforcedScope === 'evaluated-so-far', 'D3: a fetchOne receipt states enforcedScope=evaluated-so-far')
+  ok(r1.receipt && r1.receipt.enforcedScope === 'evaluated-so-far', 'D3: the nested receipt states it too')
+  const cached = await e.fetchOne({ source: 'crossref', id: '10.1/x', by: 'm1' })
+  ok(cached.enforcedScope === 'evaluated-so-far' && cached.receipt.cached === true, 'D3: a cache-hit receipt carries the scope as well')
+  const many = await e.fetchMany({ refs: [{ source: 'crossref', id: '10.1/x' }], by: 'm1' })
+  ok(many.enforcedScope === 'evaluated-so-far', 'D3: a merge receipt carries the scope')
+  const bad = await rejects(() => e.fetchOne({ source: 'nope', id: 'x' }))
+  ok(bad.threw && bad.code === 'VMU_EXTERNAL_UNAVAILABLE', 'D3: the refusal is still named')
+  const receipts = [r1, cached, many]
+  ok(receipts.every((x) => Array.isArray(x.enforced) && new Set(x.enforced).size === x.enforced.length), 'D3: no duplicate entries in any receipt of the scenario')
+  ok(receipts.every((x) => x.enforced.every((k) => typeof k === 'string')), 'D3: every listed key is a string')
+}
+
 console.log('=== VMU EXTERNAL: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

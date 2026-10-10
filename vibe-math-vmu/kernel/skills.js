@@ -8,10 +8,15 @@
 //   · zero mechanism: level() answers "unknown" — never the lowest level; the clock is injected; reads never mutate
 export const apiVersion = 1
 
+/** D3 (round 26): every refusal states its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` says in words
+ *  that any key list travelling with the refusal is "what was consulted SO FAR", never the full key set. */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
+
 export function refuse(code, message, hint) {
   const e = new Error(message)
   e.code = code
   if (hint) e.hint = hint
+  e.enforcedScope = ENFORCED_SCOPE
   return e
 }
 

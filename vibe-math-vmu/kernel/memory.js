@@ -106,10 +106,16 @@ export function createMemory({ clock = () => 0, log = null, settings = {}, bus =
   const now = () => clock()
   const entryOf = (id) => entries.get(id) || null
 
+  /**
+   * Named refusal helper (counted by code before it is thrown).
+   * D3 (round 26): the refusal carries its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` states that any
+   * key list travelling with it is "what was consulted SO FAR", never the operation's full key set.
+   */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, message, hint) => {
     bump(refusals, code, 1)
-    say({ type: 'memory/refused', at: now(), code, message })
-    return refuse(code, message, hint)
+    say({ type: 'memory/refused', at: now(), code, message, enforcedScope: ENFORCED_SCOPE })
+    return Object.assign(refuse(code, message, hint), { enforcedScope: ENFORCED_SCOPE })
   }
   const record_ = (row) => {
     historyRows.push(Object.assign({ at: now() }, row))

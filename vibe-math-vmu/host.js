@@ -108,12 +108,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           return refused(e.code || 'VMU_INVALID_ARGUMENT', String(e.message), e.hint)
         }
         const def = (kernel.settingDef ? kernel.settingDef(key) : null) || null
-        // HOT CLASSES ARE A CONTRACT, not a label (docs/04 §5): H3 is framework-owned and must be REFUSED by
-        // name (a silent no-op is exactly the "改了没反应" the manual forbids); H1/H2 must say when it lands.
-        if (def && def.hot === 'H3') {
-          return refused('VMU_NOT_PERMITTED', 'setting ' + key + ' is read-only (H3): the framework owns it',
-            'H3 keys are not user-changeable; see docs/04 §5 for its declared who/hot')
-        }
+        // TASK-166: the hot-class/owner contract is NOT enforced here any more — it lives INSIDE
+        // kernel.setSettingsValue()/unsetSettingsValue() (the single source), so the tool face and the kernel
+        // API cannot answer the same (key, value) pair differently. This face only PARSES the value.
         let parsed = value
         if (typeof value === 'string') {
           const t = def ? def.type : null
@@ -121,22 +118,30 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           else if (t === 'natural' || t === 'positiveInteger') parsed = Number(value)
           else if (t === 'stringList' || t === 'objectList') { try { parsed = JSON.parse(value) } catch { return refused('VMU_INVALID_ARGUMENT', 'value must be JSON for ' + t) } }
         }
+        let setReceipt = null
         try {
-          kernel.setSettingsValue(key, parsed)
+          setReceipt = kernel.setSettingsValue(key, parsed)
         } catch (e) {
-          return refused('VMU_PACK_CONFLICT', String(e.message), e.hint)
+          // The kernel's code and words are preserved (it used to be flattened into VMU_PACK_CONFLICT, which
+          // hid the H3/unknown-key/owner refusals behind a code that meant something else).
+          return refused(e && e.code ? e.code : 'VMU_PACK_CONFLICT', String(e.message), e.hint)
         }
         log('vmu set ' + key)
         // The receipt says exactly WHEN the new value takes effect, per its declared hot class, so a reader
         // never has to guess whether a change was ignored (H2 ⇒ a new session is required, and we say so).
-        const APPLIES = { H0: 'immediately', H1: 'next turn', H2: 'next session (restart required)' }
+        // The table comes from the KERNEL (one source); this face only formats it.
+        const APPLIES = (kernel.appliesTable ? kernel.appliesTable() : null)
+          || (kernel.status && kernel.status().settings && kernel.status().settings.applies) || {}
         const resolved = kernel.status ? (kernel.status().settings.resolved || {})[key] : null
         // A PLANNED KEY is a design-phase declaration with NO consumer yet (settings/planned.js, docs/04 §6.3).
-        // The receipt must SAY so: "settable but inert" is exactly the trap the manual forbids, and an
-        // independent reviewer measured 51 wired of hundreds of keys - the tool face used to imply every knob
-        // worked. `noConsumer` is present only for planned keys, so no existing receipt changes shape.
+        // The receipt must SAY so: "settable but inert" is exactly the trap the manual forbids. `noConsumer` is
+        // present only for planned keys, so no other receipt changes shape.
         const planned = !!(def && def.planned === true)
         return { ok: true, key, value: parsed, hot: def ? def.hot : null, who: def ? def.who : null,
+          // `ownerCheck` is copied from the kernel receipt: an absent `by` is an EXPLICIT exemption, disclosed,
+          // never a silent bypass of the owner check.
+          ownerCheck: setReceipt ? setReceipt.ownerCheck : null,
+          requiresRestart: setReceipt ? setReceipt.requiresRestart === true : false,
           appliesFrom: planned ? 'never yet (planned key: no runtime consumer)'
             : (def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)'),
           source: resolved ? resolved.source : null,

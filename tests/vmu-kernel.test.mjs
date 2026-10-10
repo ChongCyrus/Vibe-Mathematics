@@ -521,6 +521,69 @@ if (SELF_PROBE) {
     'reads stay LIVE (property and get() both see the sanctioned write)')
 }
 
+// ---- E-7 (task-166): the contract lives in the KERNEL API, not only at the tool boundary --------------
+{
+  const k = m.createKernel({ clock })
+  // ① H3 (framework-owned, read-only) is refused by the kernel API with the SAME code and the SAME words the
+  //    tool face uses (before: kernel API said ok + applied:'immediate' while the tool face refused).
+  const H3_KEY = 'vmu.safety.pathPolicy'
+  const H3_MSG = 'setting ' + H3_KEY + ' is read-only (H3): the framework owns it'
+  let withBy = null
+  try { k.setSettingsValue(H3_KEY, 'workspace+shared', { by: 'office' }) } catch (e) { withBy = e }
+  ok(withBy && withBy.code === 'VMU_NOT_PERMITTED' && withBy.message === H3_MSG,
+    'H3 via the kernel API is refused BY NAME with the tool face\'s exact code and words', withBy && withBy.message)
+  let noBy = null
+  try { k.setSettingsValue(H3_KEY, 'workspace+shared') } catch (e) { noBy = e }
+  ok(noBy && noBy.code === 'VMU_NOT_PERMITTED' && noBy.message === H3_MSG,
+    'H3 is refused even when the caller omits `by` (no path may bypass a hot-class contract)')
+  ok(k.settingsSnapshot()[H3_KEY] === undefined, 'the refused H3 write changed nothing')
+  // ② unset runs the SAME guard (it used to be a bare `delete settings[key]`)
+  let unsetH3 = null
+  try { k.unsetSettingsValue(H3_KEY, { by: 'office' }) } catch (e) { unsetH3 = e }
+  ok(unsetH3 && unsetH3.code === 'VMU_NOT_PERMITTED' && unsetH3.message === H3_MSG,
+    'unset of an H3 key is refused with the same code and words (no silent deletion)', unsetH3 && unsetH3.code)
+  // ③ unknown keys are refused on BOTH writers
+  let unknownSet = null
+  try { k.setSettingsValue('vmu.no.such.key', 1, { by: 'office' }) } catch (e) { unknownSet = e }
+  ok(unknownSet && unknownSet.code === 'VMU_INVALID_ARGUMENT' && /undeclared setting key/.test(unknownSet.message),
+    'setting an UNDECLARED key is a named refusal (wording aligned with schema.assertDeclared)', unknownSet && unknownSet.message)
+  let unknownUnset = null
+  try { k.unsetSettingsValue('vmu.no.such.key', { by: 'office' }) } catch (e) { unknownUnset = e }
+  ok(unknownUnset && unknownUnset.code === 'VMU_INVALID_ARGUMENT', 'unsetting an undeclared key is refused too')
+  // ④ owner check: an identified non-owner is refused; a missing `by` is an EXPLICIT exemption, disclosed
+  let notOwner = null
+  try { k.setSettingsValue('vmu.middleware.dryRun', true, { by: 'member-1' }) } catch (e) { notOwner = e }
+  ok(notOwner && notOwner.code === 'VMU_NOT_PERMITTED' && /declared owner/.test(notOwner.message),
+    'a declared non-owner is refused (as before)', notOwner && notOwner.code)
+  const exempt = k.setSettingsValue('vmu.middleware.dryRun', true)   // no `by` = the office path
+  ok(exempt.ok === true && /exempted/.test(String(exempt.ownerCheck)),
+    'a missing `by` is an EXPLICIT exemption and the receipt SAYS so (never a silent skip)', exempt.ownerCheck)
+  // ⑤ unset H2: allowed, but the removal is RECORDED (who/when/previous value) and graded
+  const k2 = m.createKernel({ clock, settings: { 'vmu.math.formalVerify': 'require' } })
+  const un = k2.unsetSettingsValue('vmu.math.formalVerify', { by: 'office' })
+  ok(un.ok === true && un.action === 'unset' && un.hot === 'H2' && un.requiresRestart === true && un.previous === 'require',
+    'unset records the PREVIOUS value and the hot class (no silent removal)', JSON.stringify({ prev: un.previous, hot: un.hot }))
+  ok(k2.settingsSnapshot()['vmu.math.formalVerify'] === undefined, 'the value really was removed')
+  const lastWrite = k2.status().settings.lastRuntimeWrite
+  ok(lastWrite && lastWrite.action === 'unset' && lastWrite.key === 'vmu.math.formalVerify' && lastWrite.by === 'office' && lastWrite.previous === 'require',
+    'status() self-discloses the unset with who/when/previous', JSON.stringify(lastWrite))
+  const unNoBy = k2.unsetSettingsValue('vmu.math.formalVerify')
+  ok(unNoBy.ok === true && /exempted/.test(String(unNoBy.ownerCheck)),
+    'unset without `by` is the disclosed office exemption, not a silent bypass', unNoBy.ownerCheck)
+  // ⑥ ONE applies table, shared with the host face
+  const table = k.appliesTable()
+  ok(table.H0 === 'immediately' && table.H1 === 'next turn' && table.H2 === 'next session (restart required)' && /read-only/.test(table.H3),
+    'the APPLIES table covers all four hot classes (H3 = read-only)', JSON.stringify(table))
+  ok(JSON.stringify(k.status().settings.applies) === JSON.stringify(table),
+    'status() exposes the SAME table (the host reads this one instead of keeping a copy)')
+  const h1 = k.setSettingsValue('vmu.audit.chain.checkpointEvery', 5, { by: 'office' })
+  ok(h1.appliesAt === table.H1, 'every receipt derives appliesAt from the shared table', h1.appliesAt)
+  // ⑦ H0/H1 still apply live (continuity with task-163)
+  const k3 = m.createKernel({ clock, settings: { 'vmu.audit.chain.checkpointEvery': 100 } })
+  k3.setSettingsValue('vmu.audit.chain.checkpointEvery', 4, { by: 'office' })
+  ok(k3.auditchain.status().checkpointEvery === 4, 'H1 is still immediate after the guard was centralised')
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

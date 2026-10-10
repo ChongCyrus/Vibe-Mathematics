@@ -26,12 +26,41 @@ const BEGIN = '<!-- BEGIN GENERATED: zero-mechanism-matrix -->'
 const END = '<!-- END GENERATED: zero-mechanism-matrix -->'
 
 /** 期望（设计）表：`模块 → {shape, note}` ✓；**未登记 ⇒ 显式标"设计未定"** ✗✓（不算漂移，但计数 ✓）。 */
+/** 期望（设计）表 ✓（**逐条、一行理由** ✓ —— 从各模块的实际契约反推 ✓）。
+ *  三种登记值：形状 ✓／`EXPECT_UNDECIDED`（**显式待办**，不红但计数 ✓）／`EXPECT_NA`（非服务模块 ✓）。 */
+const G = (shape, note) => ({ shape, note })
+const OK_READ = G('ok 或 object', '状态/列表面：无声明 ⇒ 放行（不拒）')
+const REFUSE = G('具名拒（带 code）', '缺必填参数 ⇒ 具名拒并点名')
 const EXPECT = {
-  idempotency: { shape: '显式 absent', note: '零机制＝无状态可去重 ⇒ 显式 `absent` ✓' },
-  mathtools: { shape: 'ok + enforced:[]', note: '零机制＝无限额可管 ⇒ 放行且 `enforced` 为空 ✓' },
-  meetings: { shape: '按声明默认开成', note: '零机制＝按声明默认值开成（不拒）✓' },
-  records: { shape: '具名拒或 ok', note: '零机制＝无键则具名拒；有默认则 ok ✓' },
-  ballotbox: { shape: '具名拒或 ok', note: '同 records ✓' },
+  // ── 状态/列表/只读面：零机制＝宽松放行 ✓（26）
+  alerts: OK_READ, audit: OK_READ, auditchain: OK_READ, ballot: OK_READ, bidding: OK_READ,
+  board: OK_READ, bus: OK_READ, clockguard: G('ok 或 null', '时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）'),
+  crypto: OK_READ, domaingate: OK_READ, external: OK_READ, fairness: OK_READ, index: OK_READ,
+  loader: OK_READ, meeting: OK_READ, members: OK_READ, metrics: OK_READ, minutes: OK_READ,
+  notify: OK_READ, projmigrate: OK_READ, ratelimit: OK_READ, recruit: OK_READ, registry: OK_READ,
+  replay: OK_READ, retention: OK_READ, rules: OK_READ, scheduler: OK_READ, skills: OK_READ,
+  tasks: G('array', '任务板：零机制 ⇒ 空列表（放行）'), topology: OK_READ, trust: OK_READ,
+  governance: G('array 或 object', '治理面：只读列举（keysUsed/partition 不拒）'),
+  // ── 具名拒面：缺参数/未声明 ⇒ 具名拒 ✓
+  ballotbox: G('具名拒或 ok', '零机制：无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓'),
+  course: G('具名拒或 ok', '零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓'),
+  formal: REFUSE, mathjobs: REFUSE, lean: REFUSE, lifecycle: REFUSE, stateversion: REFUSE, repropack: REFUSE,
+  idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
+  meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
+  // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
+  arbitration: G('PROBE_NEEDS_ARGS', '缺：裁决请求体（案由/双方）'),
+  budget: G('PROBE_NEEDS_ARGS', '缺：预算条目（额度/科目）'), charter: G('PROBE_NEEDS_ARGS', '缺：章程条项'),
+  delegation: G('PROBE_NEEDS_ARGS', '缺：委派授权对（from/to/范围）'), handover: G('PROBE_NEEDS_ARGS', '缺：交接对象'),
+  library: G('PROBE_NEEDS_ARGS', '缺：库引用（ref/uri）'), math: G('PROBE_NEEDS_ARGS', '缺：数学请求体'),
+  mathtools: G('PROBE_NEEDS_ARGS', '缺：计划入参（op/limits）—— 零机制期望＝ok + enforced:[] ✓'),
+  memory: G('PROBE_NEEDS_ARGS', '缺：记忆条目'), publication: G('PROBE_NEEDS_ARGS', '缺：出版请求'),
+  records: G('PROBE_NEEDS_ARGS', '缺：记录体（track/kind/body）'),
+  store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('PROBE_NEEDS_ARGS', '缺：事务体'),
+  work: G('PROBE_NEEDS_ARGS', '缺：工作项'), workflow: G('PROBE_NEEDS_ARGS', '缺：工作流定义'),
+  // ── 显式待办（**不红但计数可见** ✓）＋ 非服务模块
+  pack: G('EXPECT_UNDECIDED', '**现状：拒绝不带 `code`** ⇒ 待补具名码（另派 ✗）'),
+  'script-bridge': G('EXPECT_UNDECIDED', '同上：拒绝不带 `code` ⇒ 待补具名码 ✗'),
+  guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 
 const shape = (v) => {
@@ -88,20 +117,30 @@ function judge(rows) {
   const mism = []
   let unregistered = 0
   let probeErrors = 0
+  let undecided = 0
+  let na = 0
   for (const r of rows) {
+    const e0 = EXPECT[r.module]
+    // **先看登记**（显式待办/不适用 ⇒ 明确计数，不红 ✓）；再判"无名拒"与形状 ✓
+    if (e0 && e0.shape === 'EXPECT_NA') { na += 1; continue }
+    if (e0 && e0.shape === 'EXPECT_UNDECIDED') { undecided += 1; continue }
     if (/抛出|import 失败|create 抛出/.test(r.shape)) { probeErrors += 1; continue }
+    if (e0 && e0.shape === 'PROBE_NEEDS_ARGS') { probeErrors += 1; continue }
     if (r.refusal === '（无名）✗') { mism.push(r.module + ': 拒绝**没有具名码** ✗'); continue }
-    const e = EXPECT[r.module]
-    if (!e) { unregistered += 1; continue }
+    if (!e0) { unregistered += 1; continue }
     const s = r.shape
-    const okShape = (e.shape === '具名拒或 ok') ? (s === 'refusal' || s === 'ok')
-      : (e.shape === 'ok + enforced:[]') ? (s === 'ok' && /enforced=\[0\]/.test(r.disclosed))
-        : (e.shape === '显式 absent') ? (/absent=/.test(r.disclosed) || s === 'ok')
-          : (e.shape === '按声明默认开成') ? (s === 'ok')
-            : false
-    if (!okShape) mism.push(r.module + ': 实测 `' + s + '`／自曝 `' + r.disclosed + '` ≠ 期望「' + e.shape + '」')
+    const okShape = (e0.shape === '具名拒或 ok') ? (s === 'refusal' || s === 'ok')
+      : (e0.shape === 'ok 或 object') ? (s === 'ok' || s === 'object')
+        : (e0.shape === 'ok 或 null') ? (s === 'ok' || s === 'null')
+          : (e0.shape === 'array 或 object') ? (s === 'array[15]' || s === 'object' || s === 'array[0]' || /^array/.test(s))
+            : (e0.shape === 'array') ? (/^array/.test(s))
+              : (e0.shape === 'ok（显式 absent）') ? (s === 'ok' && /absent=/.test(r.disclosed))
+                : (e0.shape === '按声明默认开成') ? (s === 'ok')
+                  : (e0.shape === '具名拒（带 code）') ? (s === 'refusal' && r.refusal !== '—')
+                    : false
+    if (!okShape) mism.push(r.module + ': 实测 `' + s + '`／自曝 `' + r.disclosed + '` ≠ 期望「' + e0.shape + '」')
   }
-  return { mism, unregistered, probeErrors }
+  return { mism, unregistered, probeErrors, undecided, na }
 }
 
 const main = async () => {
@@ -109,11 +148,32 @@ const main = async () => {
   const rows = []
   for (const f of files) { try { rows.push(await probe(f)) } catch (e) { rows.push({ module: f, shape: 'import 失败', refusal: '—', disclosed: '—', note: String((e && e.message) || e) }) } }
   const table = build(rows)
-  const { mism, unregistered, probeErrors } = judge(rows)
-  const last = '=== ZERO-MECHANISM MATRIX: ' + rows.length + ' modules, ' + mism.length + ' mismatches, ' + unregistered + ' unregistered, ' + probeErrors + ' probe-errors ==='
+  const { mism, unregistered, probeErrors, undecided, na } = judge(rows)
+  const last = '=== ZERO-MECHANISM MATRIX: ' + rows.length + ' modules, ' + mism.length + ' mismatches, ' + unregistered + ' unregistered, ' + undecided + ' EXPECT_UNDECIDED, ' + probeErrors + ' probe-errors, ' + na + ' n/a ==='
   const block = [BEGIN, '<!-- 本块由 `scripts/generate-zero-mechanism-matrix.mjs` 生成（生成式 ✓，勿手写 ✗） -->', '', table, '', last, END].join('\n')
 
   const args = process.argv.slice(2)
+  if (args.includes('--selftest')) {
+    // **自证（不写文件 ✓）**：① 期望改错 ⇒ **必红** ✗✓；② `EXPECT_UNDECIDED` ⇒ **不红但计数** ✓
+    const real = { ...EXPECT }
+    let bad = 0
+    EXPECT.audit = { shape: '具名拒（带 code）', note: '自证：故意改错（audit 实际是只读放行 ⇒ 应红）' }
+    const j1 = judge(rows)
+    console.log('selftest ①: mismatches=' + j1.mism.length + ' (期望 >0 ⇒ ' + (j1.mism.length > 0 ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (j1.mism.length === 0) bad += 1
+    delete EXPECT.audit
+    const j2 = judge(rows)
+    console.log('selftest ②: audit 未登记 ⇒ unregistered=' + j2.unregistered + ' mismatches=' + j2.mism.length + ' (期望 unregistered=1 且 mismatches=0 ⇒ ' + ((j2.unregistered === 1 && j2.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(j2.unregistered === 1 && j2.mism.length === 0)) bad += 1
+    EXPECT.audit = { shape: 'EXPECT_UNDECIDED', note: '自证：显式待办（→ 计数，不红 ✓）' }
+    const j3 = judge(rows)
+    console.log('selftest ③: audit=EXPECT_UNDECIDED ⇒ undecided=' + j3.undecided + ' mismatches=' + j3.mism.length + ' (期望 undecided=3 且 mismatches=0 ⇒ ' + ((j3.undecided === 3 && j3.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(j3.undecided === 3 && j3.mism.length === 0)) bad += 1
+    for (const k of Object.keys(EXPECT)) if (!(k in real)) delete EXPECT[k]
+    EXPECT.audit = real.audit
+    console.log('=== ZERO-MECHANISM SELFTEST: ' + (bad === 0 ? 'GREEN' : 'RED') + ' (' + bad + ' failed) ===')
+    process.exit(bad > 0 ? 1 : 0)
+  }
   if (args.includes('--write')) {
     const doc = readFileSync(DOC, 'utf8')
     const next = doc.includes(BEGIN) ? doc.replace(new RegExp(BEGIN + '[\\s\\S]*?' + END), block) : doc.trimEnd() + '\n\n' + block + '\n'

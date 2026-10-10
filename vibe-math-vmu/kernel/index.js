@@ -109,6 +109,19 @@ export const DEFAULT_SUBJECTS = Object.freeze({
  * never inflates the declared-key count, and never leaks into a pack's own settings layer.
  */
 const WRITERS = Symbol('vmu.settings.writers')
+/**
+ * THE ONE `APPLIES` TABLE (task-166, the "seventh case"). Hot classes are a CONTRACT (docs/04 §5):
+ * H0 lands immediately, H1 by the next turn, H2 only in a new session, and H3 is framework-owned and
+ * therefore READ-ONLY. Both writers below AND the host tool face derive their receipt from THIS table (the
+ * host reads it from `status().settings.applies`), so one (key, value) pair can no longer get two
+ * contradictory answers depending on which path it took.
+ */
+export const APPLIES = Object.freeze({
+  H0: 'immediately',
+  H1: 'next turn',
+  H2: 'next session (restart required)',
+  H3: 'read-only (framework-owned)',
+})
 export function markSettingWriter(settings, key, source) {
   const box = settings[WRITERS] || (settings[WRITERS] = {})
   box[key] = source
@@ -216,6 +229,44 @@ export function createKernel({
   // setSettingsValue() pushes the new value into the bus (bus.setDryRun) as well as into this variable.
   let dryRun = settings['vmu.middleware.dryRun'] === true
   const runtimeWrites = []
+
+  /**
+   * THE ONE SETTINGS GUARD (task-166, "the seventh case"): declared key · H3 read-only · declared owner.
+   * Both setSettingsValue() and unsetSettingsValue() call it, so the tool face, a middleware and the kernel's
+   * own API all get the SAME code and the SAME words. Missing `by` is NOT a silent skip: it is the office
+   * path, and it is EXEMPTED AND SELF-DISCLOSED in the receipt (`ownerCheck`).
+   */
+  const settingsGuard = (key, by, action) => {
+    if (typeof key !== 'string' || key.trim() === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', action + 'SettingsValue needs a non-empty setting key',
+        'e.g. ' + action + 'SettingsValue("vmu.middleware.dryRun", … , { by: "office" })')
+    }
+    const def = SETTING_DEFS.find((d) => d.key === key) || null
+    if (!def) {
+      // WORDING ALIGNED with schema.js `assertDeclared` (task-166): the tool face pre-checks the declared-key
+      // set, so if the two refusals used different words the same (key, value) pair would still read as two
+      // different contracts at the two boundaries. Code AND words are now identical.
+      throw refuse('VMU_INVALID_ARGUMENT', 'undeclared setting key: ' + key,
+        'declare it in vibe-math-vmu/settings/schema.js first (docs/04 R4)')
+    }
+    if (def.hot === 'H3') {
+      throw refuse('VMU_NOT_PERMITTED', 'setting ' + key + ' is read-only (H3): the framework owns it',
+        'H3 keys are not user-changeable; see docs/04 §5 for its declared who/hot')
+    }
+    let ownerCheck = 'identified'
+    if (by === null || by === undefined) {
+      ownerCheck = 'exempted (no `by` given: office path, DISCLOSED)'
+    } else if (def.who && String(by) !== String(def.who)) {
+      const delegable = Array.isArray(settings['vmu.safety.delegableKeys'])
+        && settings['vmu.safety.delegableKeys'].includes(key)
+      if (!delegable) {
+        throw refuse('VMU_NOT_PERMITTED', String(by) + ' may not set ' + key + ' (declared owner: ' + def.who + ')',
+          'list "' + key + '" in vmu.safety.delegableKeys to delegate it to a role slot (docs/04 §11)')
+      }
+      ownerCheck = 'delegated (listed in vmu.safety.delegableKeys)'
+    }
+    return { def, hot: def.hot ? String(def.hot) : null, who: def.who || null, ownerCheck }
+  }
 
   if (!enabled) {
     // Disabled means INERT, and it says so: no store, no bus, no hooks, no prompt work.
@@ -864,6 +915,8 @@ export function createKernel({
      * settings without the declared-owner check. Use setSettingsValue(key, value, { by }) to write.
      */
     settingsView() { return settingsView },
+    /** THE ONE APPLIES TABLE (task-166): the host tool face reads this instead of keeping its own copy. */
+    appliesTable() { return APPLIES },
 
     /**
      * Apply a pack's settings as a LAYER on the constructed values (docs/10 搂2). Conflicts are refused
@@ -903,16 +956,10 @@ export function createKernel({
      * with something that refuses by name.
      */
     setSettingsValue(key, value, { by = null } = {}) {
-      if (by !== null && by !== undefined) {
-        const def0 = SETTING_DEFS.find((d) => d.key === key)
-        const owner = def0 ? def0.who : null
-        const delegable = Array.isArray(settings['vmu.safety.delegableKeys'])
-          && settings['vmu.safety.delegableKeys'].includes(key)
-        if (owner && String(by) !== String(owner) && !delegable) {
-          throw refuse('VMU_NOT_PERMITTED', String(by) + ' may not set ' + key + ' (declared owner: ' + owner + ')',
-            'list "' + key + '" in vmu.safety.delegableKeys to delegate it to a role slot (docs/04 搂11)')
-        }
-      }
+      // THE CONTRACT LIVES HERE (task-166): declared key, H3 read-only, declared owner. It used to live ONLY
+      // in host.js, so the kernel API accepted an H3 write with `applied:'immediate'` while the tool face
+      // refused the very same pair with VMU_NOT_PERMITTED — two paths, two contracts.
+      const g = settingsGuard(key, by, 'set')
       settings[key] = value
       markSettingWriter(settings, key, 'runtime')
       // TASK-163 (sixth "receipt lies" case): the receipt is graded by the DECLARED hot class, so it can never
@@ -923,8 +970,7 @@ export function createKernel({
       //     LIVE (the bus for dryRun; the audit chain reads its own knob live), and the receipt names exactly
       //     which consumers were updated and which ones captured the option at construction (disclosed, never
       //     claimed).
-      const def = SETTING_DEFS.find((d) => d.key === key)
-      const hot = def && def.hot ? String(def.hot) : null
+      const hot = g.hot
       const liveApplied = []
       const pendingConsumers = []
       if (key === 'vmu.middleware.dryRun') {
@@ -938,7 +984,8 @@ export function createKernel({
       if (key === 'vmu.audit.chain.checkpointEvery') liveApplied.push('auditchain (live read)')
       const requiresRestart = hot === 'H2'
       const receipt = {
-        ok: true, key, source: 'runtime', hot,
+        ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
+        appliesAt: APPLIES[hot] || null,
         requiresRestart,
         applied: requiresRestart ? 'next-session' : 'immediate',
         liveApplied,
@@ -951,10 +998,33 @@ export function createKernel({
             ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
             : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live'),
       }
-      runtimeWrites.push({ key, hot, by, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at })
+      runtimeWrites.push({ key, hot, by, ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
       return receipt
     },
-    unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
+    /**
+     * UNSET (task-166): it used to be a bare `delete settings[key]` with NO check at all — an H3 framework key
+     * or an H2 switch could be removed silently by any caller. It now runs the SAME guard as set, records
+     * WHO/WHEN/the PREVIOUS value, and reports the hot class in the receipt.
+     */
+    unsetSettingsValue(key, { by = null } = {}) {
+      const g = settingsGuard(key, by, 'unset')
+      const had = Object.prototype.hasOwnProperty.call(settings, key)
+      const previous = had ? settings[key] : undefined
+      delete settings[key]
+      markSettingWriter(settings, key, 'runtime')
+      const row = {
+        key, by, action: 'unset', hot: g.hot, who: g.who, ownerCheck: g.ownerCheck,
+        hadValue: had, previous: previous === undefined ? null : previous,
+        appliesAt: APPLIES[g.hot] || null, requiresRestart: g.hot === 'H2', at: clock(),
+      }
+      runtimeWrites.push(row)
+      return {
+        ok: true, key, source: 'runtime', action: 'unset', hot: g.hot, who: g.who, ownerCheck: g.ownerCheck,
+        hadValue: had, previous: row.previous, appliesAt: row.appliesAt, requiresRestart: row.requiresRestart,
+        applied: row.requiresRestart ? 'next-session' : 'immediate', at: row.at,
+        note: 'the key was removed at runtime and the REMOVAL IS RECORDED (who/when/previous value); the declared default applies again on the next start',
+      }
+    },
 
     /**
      * CONTROL FLOW (docs/08 搂5). `pause` is a GATE, not a label: while paused every task mutation is refused
@@ -1028,7 +1098,8 @@ export function createKernel({
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved,
           // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
           // what it really applied — the receipt and this line are the same fact, not two opinions.
-          hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true',
+          hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true; H3 keys are framework-owned and REFUSED by name on BOTH paths (kernel API and tool face)',
+          applies: APPLIES,
           runtimeWrites: runtimeWrites.length,
           lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null },
         auditTail: auditRing.slice(-20),

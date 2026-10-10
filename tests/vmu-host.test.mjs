@@ -281,6 +281,54 @@ if (SELF_PROBE) {
   }
 }
 
+// ---- E-7 (task-166): the tool face and the KERNEL API give ONE answer (same code, same words) ----------
+{
+  const em = await import(pathToFileURL(join(KERNEL, '..', '..', 'vibe-math-vmu.js')).href)
+  const h = fakeHost()
+  const handle = em.apply(h.ctx, { clock: () => '2026-10-09T00:00:00.000Z', vmu: { 'vmu.limits.maxLiveMembers': 4 } })
+  await new Promise((r) => setTimeout(r, 20))
+  const kernel = handle.kernel
+  const spec = h.state.specs.find((s) => s.name === 'vibe_vmu_set')
+  ok(spec !== undefined && !!kernel, 'E-7: the entry exposes both the set tool and the kernel handle')
+  if (spec && kernel) {
+    // ① H3: the tool face and the kernel API must refuse with the SAME code AND the SAME message
+    const viaTool = JSON.parse(await spec.execute({ key: 'vmu.safety.pathPolicy', value: 'workspace+shared' }, {}))
+    let viaKernel = null
+    try { kernel.setSettingsValue('vmu.safety.pathPolicy', 'workspace+shared', { by: 'office' }) } catch (e) { viaKernel = e }
+    ok(viaTool.ok === false && viaTool.code === 'VMU_NOT_PERMITTED',
+      'E-7/H3: the tool face refuses by name', JSON.stringify(viaTool).slice(0, 90))
+    ok(viaKernel && viaKernel.code === viaTool.code && viaKernel.message === viaTool.message,
+      'E-7/H3: BOTH paths answer with the same code AND the same words (was: kernel said ok/immediate)',
+      JSON.stringify({ tool: [viaTool.code, viaTool.message], kernel: viaKernel && [viaKernel.code, viaKernel.message] }))
+    // ② an UNDECLARED key keeps the KERNEL's code (it used to be flattened into VMU_PACK_CONFLICT) and the
+    //    wording matches schema.js assertDeclared, so both boundaries read as ONE contract
+    const unknown = JSON.parse(await spec.execute({ key: 'vmu.limits.notDeclared', value: '1' }, {}))
+    const viaKernelUnknown = (() => { try { kernel.setSettingsValue('vmu.limits.notDeclared', 1, { by: 'office' }); return null } catch (e) { return e } })()
+    ok(unknown.ok === false && unknown.code === 'VMU_INVALID_ARGUMENT' && /undeclared setting key/.test(String(unknown.message)),
+      'E-7: an undeclared key reports the KERNEL code and wording (no more VMU_PACK_CONFLICT flattening)', JSON.stringify(unknown).slice(0, 110))
+    ok(viaKernelUnknown && viaKernelUnknown.code === unknown.code && viaKernelUnknown.message === unknown.message,
+      'E-7: the undeclared-key refusal is word-for-word the same on both paths',
+      JSON.stringify({ tool: unknown.message, kernel: viaKernelUnknown && viaKernelUnknown.message }))
+    // ③ the receipt's timing comes from the KERNEL's table (one source), not from a host-side copy
+    const table = kernel.appliesTable()
+    const h2 = JSON.parse(await spec.execute({ key: 'vmu.math.formalVerify', value: 'require' }, {}))
+    const h1 = JSON.parse(await spec.execute({ key: 'vmu.packs.allowOverride', value: 'true' }, {}))
+    const h0 = JSON.parse(await spec.execute({ key: 'vmu.limits.maxLiveMembers', value: '9' }, {}))
+    ok(h2.appliesFrom === table.H2 && h1.appliesFrom === table.H1 && h0.appliesFrom === table.H0,
+      'E-7: appliesFrom is derived from kernel.appliesTable() for every class',
+      JSON.stringify({ h0: h0.appliesFrom, h1: h1.appliesFrom, h2: h2.appliesFrom }))
+    ok(h2.requiresRestart === true && h1.requiresRestart === false && h0.requiresRestart === false,
+      'E-7: the tool receipt carries the kernel\'s requiresRestart verdict (H2 ⇒ true)', JSON.stringify({ h2: h2.requiresRestart, h0: h0.requiresRestart }))
+    ok(/exempted/.test(String(h0.ownerCheck)),
+      'E-7: the tool receipt discloses the owner-check exemption (no silent bypass)', h0.ownerCheck)
+    // ④ an H3 key cannot be removed through the kernel API either (same guard, disclosed)
+    let unsetH3 = null
+    try { kernel.unsetSettingsValue('vmu.safety.pathPolicy', { by: 'office' }) } catch (e) { unsetH3 = e }
+    ok(unsetH3 && unsetH3.code === 'VMU_NOT_PERMITTED' && unsetH3.message === viaTool.message,
+      'E-7: unset applies the same H3 guard with the same words', unsetH3 && unsetH3.code)
+  }
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
