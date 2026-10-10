@@ -31,6 +31,9 @@ import { createWorkflow } from '../vibe-math-vmu/kernel/workflow.js'
 import { createConference } from '../vibe-math-vmu/kernel/conference.js'
 import { createInstruments } from '../vibe-math-vmu/kernel/instruments.js'
 import { createIp } from '../vibe-math-vmu/kernel/ip.js'
+import { createCompliance } from '../vibe-math-vmu/kernel/compliance.js'
+import { createFunding } from '../vibe-math-vmu/kernel/funding.js'
+import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -331,6 +334,103 @@ const SCENARIOS = [
     limiting: { settings: {} }, permissive: { settings: {} },
     make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
     run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.ownership({ id: f.id }) } },
+
+  // ---- ROUND-17 (task-192): the "change a setting ⇒ behaviour changes" double-proof the critic found missing ----
+  // conference registrationCap: cap 0 (unlimited) lets the 3rd attendee through on the long path; cap 2 refuses it
+  // and reports [register, registrationCap]. Pre-state = an opened conference with two registrations already made.
+  { module: 'conference', call: 'register(registrationCap)', key: 'vmu.conference.registrationCap', expectDiff: true,
+    limiting: { settings: { 'vmu.conference.registrationCap': 0, 'vmu.conference.registrationFeeMinor': 12000 } },
+    permissive: { settings: { 'vmu.conference.registrationCap': 2, 'vmu.conference.registrationFeeMinor': 12000 } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml'] }); t.register({ conference: r.conference, attendee: 'a' }); t.register({ conference: r.conference, attendee: 'b' }); return t.register({ conference: r.conference, attendee: 'c' }) } },
+  // conference slotMinutes: 20-minute items do not fit 5-minute slots (conflict refusal, 2 keys) but fit 60 (ok, 4 keys).
+  { module: 'conference', call: 'planAgenda(slotMinutes)', key: 'vmu.conference.slotMinutes', expectDiff: true,
+    limiting: { settings: { 'vmu.conference.schedule': 'sequential', 'vmu.conference.slotMinutes': 5 } },
+    permissive: { settings: { 'vmu.conference.schedule': 'sequential', 'vmu.conference.slotMinutes': 60 } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml'] }); return t.planAgenda({ conference: r.conference, items: [{ id: 't1', minutes: 20 }, { id: 't2', minutes: 20 }] }) } },
+  // ip publicationHoldDays: 90 holds the disclosure (refusal names the remaining days), 0 releases it immediately.
+  { module: 'ip', call: 'disclose(publicationHoldDays)', key: 'vmu.ip.publicationHoldDays', outcomeDiff: true,
+    limiting: { settings: { 'vmu.ip.publicationHoldDays': 90 } }, permissive: { settings: { 'vmu.ip.publicationHoldDays': 0 } },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.disclose({ id: f.id, at: CLOCK() + 86400000 }) } },
+  // ip holdEnforcement with a HELD dossier: block refuses the disclosure, warn lets it through (marked held).
+  { module: 'ip', call: 'disclose(holdEnforcement, held)', key: 'vmu.ip.holdEnforcement', outcomeDiff: true,
+    limiting: { settings: { 'vmu.ip.holdEnforcement': 'block', 'vmu.ip.publicationHoldDays': 90 } },
+    permissive: { settings: { 'vmu.ip.holdEnforcement': 'warn', 'vmu.ip.publicationHoldDays': 90 } },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); a.hold({ id: f.id, reason: 'secrecy review', at: CLOCK() }); return a.disclose({ id: f.id, at: CLOCK() + 86400000 }) } },
+
+  // ---- ROUND-18 (task-193): compliance / funding / storepolicy (the last three uncovered modules) -------------
+  // compliance: `review` consults irbRequired + requireApprovalGate only while the gate is ON; with all three
+  // gates off nothing is evaluated ([]) so the two lists genuinely differ.
+  { module: 'compliance', call: 'review', key: 'vmu.compliance.irbRequired', expectDiff: true,
+    limiting: { settings: {} },
+    permissive: { settings: { 'vmu.compliance.irbRequired': false, 'vmu.compliance.requireApprovalGate': false, 'vmu.compliance.require': 'none' } },
+    make: (settings) => createCompliance({ clock: CLOCK, settings }),
+    run: (c) => c.review({ protocolId: 'P-1' }) },
+  // compliance: `exportData` always evaluates redactionPolicy, but missing redaction REFUSES and redactionPolicy=off
+  // lets the same export through ⇒ outcome form.
+  { module: 'compliance', call: 'exportData(redactionPolicy)', key: 'vmu.compliance.redactionPolicy', outcomeDiff: true,
+    limiting: { settings: {} }, permissive: { settings: { 'vmu.compliance.redactionPolicy': 'off' } },
+    make: (settings) => createCompliance({ clock: CLOCK, settings }),
+    run: (c) => c.exportData({ studyId: 'S-1', approvedBy: 'acad' }) },
+  // compliance: `coi` consults conflictOfInterestDisclosure + coiScope; an undeclared COI refuses (2 keys), a
+  // declared one passes (1 key) ⇒ the lists differ AND the outcome differs.
+  { module: 'compliance', call: 'coi', key: 'vmu.compliance.conflictOfInterestDisclosure', expectDiff: true,
+    limiting: { settings: {}, input: { declared: false } }, permissive: { settings: {}, input: { declared: true } },
+    make: (settings) => createCompliance({ clock: CLOCK, settings }),
+    run: (c, variant) => c.coi(variant.input.declared ? { who: 'r-1', declared: { declared: true } } : { who: 'r-1' }) },
+  { module: 'compliance', call: 'prepare', key: 'vmu.compliance.calendarDir', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => createCompliance({ clock: CLOCK, settings }),
+    run: (c) => c.prepare({}) },
+
+  // funding: all refusals are RETURNED (`{ok:false, code, enforced}`). approvalThresholdMinor decides whether the
+  // same 9000 request is auto-approved or refused ⇒ outcome form (the key is evaluated in both paths).
+  { module: 'funding', call: 'request(approvalThresholdMinor)', key: 'vmu.funding.approvalThresholdMinor', outcomeDiff: true,
+    limiting: { settings: { 'vmu.funding.request': 'auto', 'vmu.funding.approvalThresholdMinor': 5000 } },
+    permissive: { settings: { 'vmu.funding.request': 'auto', 'vmu.funding.approvalThresholdMinor': 100000 } },
+    make: (settings) => { const f = createFunding({ clock: CLOCK, settings }); f.openAccount({ id: 'a1', title: 'T', approved: true }); return f },
+    run: (f) => f.request({ account: 'a1', title: 'R', amountMinor: 9000 }) },
+  // funding: costSharePolicy cap 50% refuses a 70% share, allow-any accepts it ⇒ outcome form.
+  { module: 'funding', call: 'request(costSharePolicy)', key: 'vmu.funding.costSharePolicy', outcomeDiff: true,
+    limiting: { settings: { 'vmu.funding.costSharePolicy': 'cap', 'vmu.funding.split': ['0.5'] } },
+    permissive: { settings: { 'vmu.funding.costSharePolicy': 'allow-any' } },
+    make: (settings) => { const f = createFunding({ clock: CLOCK, settings }); f.openAccount({ id: 'a1', title: 'T', approved: true }); return f },
+    run: (f) => f.request({ account: 'a1', title: 'R', amountMinor: 1000, costShareMinor: 700 }) },
+  // funding: auditPack is gated by vmu.funding.auditPack (unset ⇒ VMU_NOT_PERMITTED, true ⇒ the pack is produced).
+  { module: 'funding', call: 'auditPack', key: 'vmu.funding.auditPack', outcomeDiff: true,
+    limiting: { settings: {} }, permissive: { settings: { 'vmu.funding.auditPack': true } },
+    make: (settings) => { const f = createFunding({ clock: CLOCK, settings }); f.openAccount({ id: 'a1', title: 'T', approved: true }); return f },
+    run: (f) => { f.request({ account: 'a1', title: 'R', amountMinor: 10 }); return f.auditPack({ account: 'a1' }) } },
+  { module: 'funding', call: 'request', key: 'vmu.funding.auditPackFields', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => { const f = createFunding({ clock: CLOCK, settings }); f.openAccount({ id: 'a1', title: 'T', approved: true }); return f },
+    run: (f) => f.request({ account: 'a1', title: 'R', amountMinor: 10 }) },
+
+  // storepolicy: onVersionTooHigh=refuse refuses a too-high version, warn assumes it ⇒ outcome form.
+  { module: 'storepolicy', call: 'read(onVersionTooHigh)', key: 'vmu.store.onVersionTooHigh', outcomeDiff: true,
+    limiting: { settings: { 'vmu.store.backend': 'memory', 'vmu.store.onVersionTooHigh': 'refuse' } },
+    permissive: { settings: { 'vmu.store.backend': 'memory', 'vmu.store.onVersionTooHigh': 'warn' } },
+    make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
+    run: (s) => s.read({ id: 'r', foundVersion: 3, currentVersion: 1 }) },
+  // storepolicy: the root key is evaluated by the FILE backend only - memory succeeds (8-key list), file without a
+  // root refuses with just [root] ⇒ the lists differ (and the key is reported by the refusing side).
+  { module: 'storepolicy', call: 'write(root)', key: 'vmu.store.root', expectDiff: true,
+    limiting: { settings: { 'vmu.store.backend': 'memory' } }, permissive: { settings: { 'vmu.store.backend': 'file' } },
+    make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
+    run: (s) => s.write({ id: 'w', online: false }) },
+  // storepolicy: lock=false lets the second acquire through, the lock family refuses the clash ⇒ outcome form.
+  { module: 'storepolicy', call: 'acquire(lock, 2nd)', key: 'vmu.store.lock', outcomeDiff: true,
+    limiting: { settings: { 'vmu.store.backend': 'memory', 'vmu.store.lock': false } },
+    permissive: { settings: { 'vmu.store.backend': 'memory', 'vmu.store.lock': true, 'vmu.store.lock.timeoutMs': 100, 'vmu.store.lock.retries': 3, 'vmu.store.lock.backoffMs': 50 } },
+    make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
+    run: (s) => { s.acquire({ name: 'a', by: 'm1' }); return s.acquire({ name: 'a', by: 'm2' }) } },
+  { module: 'storepolicy', call: 'release', key: 'vmu.store.onVersionTooHigh', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.store.backend': 'memory' } }, permissive: { settings: { 'vmu.store.backend': 'memory' } },
+    make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
+    run: (s) => s.release({ name: 'a' }) },
 ]
 
 // REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
@@ -355,6 +455,15 @@ const REFUSAL_SCENARIOS = [
   { module: 'ip', call: 'priorArt(standard, empty)', settings: { 'vmu.ip.priorArtSearchDepth': 'standard' },
     make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
     run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.priorArt({ id: f.id, hits: [] }) } },
+  { module: 'compliance', call: 'review(no approval)', settings: {},
+    make: (settings) => createCompliance({ clock: CLOCK, settings }),
+    run: (c) => c.review({ protocolId: 'P-1' }) },
+  { module: 'funding', call: 'request(over threshold)', settings: { 'vmu.funding.request': 'auto', 'vmu.funding.approvalThresholdMinor': 5000 },
+    make: (settings) => { const f = createFunding({ clock: CLOCK, settings }); f.openAccount({ id: 'a1', title: 'T', approved: true }); return f },
+    run: (f) => f.request({ account: 'a1', title: 'R', amountMinor: 9000 }) },
+  { module: 'storepolicy', call: 'acquire(lock clash)', settings: { 'vmu.store.backend': 'memory', 'vmu.store.lock': true, 'vmu.store.lock.timeoutMs': 100, 'vmu.store.lock.retries': 3, 'vmu.store.lock.backoffMs': 50 },
+    make: (settings) => createStorePolicy({ clock: CLOCK, log: () => {}, settings }),
+    run: (s) => { s.acquire({ name: 'a', by: 'm1' }); return s.acquire({ name: 'a', by: 'm2' }) } },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -462,6 +571,7 @@ for (const [mod, m] of [...byModule].sort()) {
     'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools',
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'instruments.js': 'instruments', 'ip.js': 'ip',
+    'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
   }
   const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))

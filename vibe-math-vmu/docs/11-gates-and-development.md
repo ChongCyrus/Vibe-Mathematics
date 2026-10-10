@@ -588,6 +588,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `charter` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：章程条项） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
+| `compliance` · `status()` | ok | — | enforcedScope=evaluated-so-far | EXPECT_UNDECIDED（本轮在途落地 ⇒ **下一轮按实测反推裁定**（16 wired ＋ 1 planned；`exportControlCheck` 归 domaingate ✓）） |
 | `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | EXPECT_UNDECIDED（在途未落地 ⇒ **落地后补裁定**（本轮实测前不得编造 ✗）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -596,6 +597,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `fairness` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
+| `funding` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | EXPECT_UNDECIDED（本轮在途落地 ⇒ **下一轮按实测反推裁定**（16/16 键已接；**全部返回型拒绝** ⇒ 期望很可能是“具名拒或 ok” ✓，但**须实测** ✗）） |
 | `governance` · `keysUsed()` | array[15] | — | — | array 或 object（治理面：只读列举（keysUsed/partition 不拒）） |
 | `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
 | `handover` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：交接对象） |
@@ -633,6 +635,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `skills` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
 | `store` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：存储配置） |
+| `storepolicy` · `status()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（存储策略面：零机制 ⇒ **策略可读、不拒**（`status()` 实测 `ok:true` ＋ `backend/rooted/durable/remote/onVersionTooHigh` ✓）；真实写入缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ＋ 口径 ✓（15/15 键已接 ✓）） |
 | `tasks` · `list()` | array[0] | — | — | array（任务板：零机制 ⇒ 空列表（放行）） |
 | `topology` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `transaction` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：事务体） |
@@ -640,5 +643,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` | op 抛出 | — | — | 具名拒或 ok（**两侧都写清** ✓：`define({})` ⇒ **有默认阶梯且放行（ok）** ✓；被探 op 缺参 ⇒ **具名拒** ✓（缺参归 NEEDS_ARGS 计数，不算 mismatch ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 63 modules, 0 mismatches, 0 unregistered, 2 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
+=== ZERO-MECHANISM MATRIX: 66 modules, 0 mismatches, 0 unregistered, 4 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

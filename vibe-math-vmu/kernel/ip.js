@@ -250,12 +250,15 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         return deny('VMU_IP_DISCLOSURE_INCOMPLETE', 'at least one named inventor is required', 'vmu.ip.disclosureFields includes "inventors"', enforced, { missing: ['inventors'] })
       }
       const filedMs = at(filingDate)
-      // ③ priority date: the declared rule (docs/22 + this task) is "an EARLIER priority date than the filing
-      //    date is refused". NOTE: real patent practice claims an earlier priority date; implemented literally.
-      if (Number.isFinite(priorityDate) && priorityDate < filedMs) {
+      // ③ priority date (task-186 CORRECTION, Lead ruling): a priority date must NOT be LATER than the filing
+      //    date — `priorityDate > filingDate` is refused; EARLIER is the NORMAL case (公约优先权: the priority
+      //    date is ordinarily before the filing date, e.g. a Paris-Convention claim), and EQUAL is accepted.
+      //    NO "too early" cap is imposed here: the Convention's 12-month limit would need its own registered
+      //    code plus a current/limit pair, and this surface does not invent codes ✗.
+      if (Number.isFinite(priorityDate) && priorityDate > filedMs) {
         mark(fired, 'vmu.ip.disclosureFields')
-        return deny('VMU_META_VALIDATION_FAILED', 'priorityDate is earlier than filingDate: ' + priorityDate + ' < ' + filedMs,
-          'this surface refuses a priority date earlier than the filing date (see docs/22 §IP)', enforced, { priorityDate, filingDate: filedMs })
+        return deny('VMU_META_VALIDATION_FAILED', 'priorityDate is later than filingDate: ' + priorityDate + ' > ' + filedMs,
+          'a priority date cannot be later than the filing date (an EARLIER priority date is the normal Convention case and is accepted)', enforced, { priorityDate, filingDate: filedMs })
       }
       // ④ patent-family duplication (same family + same title ⇒ refuse, COUNTED)
       if (familyId !== null) {

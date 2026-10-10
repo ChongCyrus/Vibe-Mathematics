@@ -238,6 +238,30 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   }
 }
 
+// ── ②b priority-date DIRECTION (task-186: EARLIER is the normal Convention case; LATER is refused) ────────
+{
+  const base = { title: 'P', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' }, filingDate: T0 }
+  // 早于 ⇒ 通过（公约优先权：优先权日通常早于申请日）
+  const early = mk()
+  const rEarly = early.ip.file(Object.assign({}, base, { priorityDate: T0 - 200 * DAY }))
+  ok(rEarly.ok === true && rEarly.filedAt === T0, 'priorityDate EARLIER than filingDate ⇒ accepted (the normal Convention priority case)')
+  ok(early.ip.get({ id: rEarly.id }).priorityDate === T0 - 200 * DAY, 'the earlier priority date is recorded, not discarded')
+  // 等于 ⇒ 通过
+  const equal = mk()
+  ok(equal.ip.file(Object.assign({}, base, { priorityDate: T0 })).ok === true, 'priorityDate EQUAL to filingDate ⇒ accepted')
+  // 晚于 ⇒ 具名拒，并给出两个日期
+  const late = mk()
+  const rLate = late.ip.file(Object.assign({}, base, { priorityDate: T0 + 5 * DAY }))
+  ok(codeOf(rLate) === 'VMU_META_VALIDATION_FAILED', 'priorityDate LATER than filingDate ⇒ refused by the registered code VMU_META_VALIDATION_FAILED')
+  ok(rLate.priorityDate === T0 + 5 * DAY && rLate.filingDate === T0, 'the refusal carries BOTH dates (current vs the filing date)')
+  ok(String(rLate.message).includes('later than filingDate'), 'the refusal says which direction is wrong')
+  // 未给 ⇒ 不校验
+  const omitted = mk()
+  const rOmitted = omitted.ip.file(Object.assign({}, base, {}))
+  ok(rOmitted.ok === true && rOmitted.priorityDate === undefined, 'no priorityDate ⇒ the check does not run (nothing to validate)')
+  ok(omitted.ip.get({ id: rOmitted.id }).priorityDate === null, 'an omitted priority date stays null (no invented value)')
+}
+
 // ── ③ receipts: enforced/fired discipline, no duplicates, one full scenario ────────────────────────────────
 {
   const h = mk()
@@ -282,7 +306,7 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   const grab = (fn) => { const r = fn(); cases.push(r); return r }
   grab(() => h.ip.file({ title: 'T', inventors: ['Ada Lovelace'] }))                                   // DISCLOSURE_REQUIRED
   grab(() => h.ip.file({ title: 'T', inventors: ['tbd'], publicDisclosures: [] }))                    // DISCLOSURE_INCOMPLETE
-  grab(() => h.ip.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], priorityDate: T0 - DAY, filingDate: T0 })) // META_VALIDATION_FAILED
+  grab(() => h.ip.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], priorityDate: T0 + DAY, filingDate: T0 })) // META_VALIDATION_FAILED — task-186: LATER is the refused direction
   const f = goodDossier(h)
   grab(() => h.ip.file({ title: 'D1', inventors: ['Ada Lovelace'], publicDisclosures: [], familyId: 'FAM-1', contributors: [{ id: 'm1', share: 0.6, evidence: ['e'] }] }))
   h.ip.file({ title: 'OTHER', inventors: ['Ada Lovelace'], publicDisclosures: [], familyId: 'FAM-1' })

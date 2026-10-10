@@ -26,6 +26,78 @@ export function refuse(code, message, hint) {
 
 const ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
+/**
+ * A deterministic, dependency-free LZSS codec — the engine behind `vmu.pack.compression` (task-194).
+ * 04 §11 claimed `vmu.pack.compression` was 已接线 while nothing read it; it is now READ FOR REAL and it
+ * CHANGES the reported/stored snapshot size. This is deliberately NOT a general-purpose archiver: it is a
+ * small, exact, reversible byte reducer whose contract is asserted by tests/vmu-pack.test.mjs:
+ *     decompressText(compressText(s)) === s      for every s
+ * It never lies about size either: callers compare `packedBytes` with `rawBytes` and fall back to the raw form
+ * when the packed form would EXPAND (JSON that carries no repetition), instead of reporting a fake saving.
+ * Token layout: one flag byte, then 8 tokens; flag bit set ⇒ match token = 2 bytes (12-bit offset, 4-bit
+ * length-4), bit clear ⇒ one literal byte.
+ */
+export function compressText(text) {
+  const src = new TextEncoder().encode(String(text))
+  const out = []
+  let i = 0
+  while (i < src.length) {
+    const flagPos = out.length
+    out.push(0)
+    let flags = 0
+    for (let b = 0; b < 8 && i < src.length; b++) {
+      let bestLen = 0
+      let bestOff = 0
+      const maxLen = Math.min(19, src.length - i)
+      const windowStart = Math.max(0, i - 4096)
+      for (let j = i - 1; j >= windowStart; j--) {
+        let len = 0
+        while (len < maxLen && src[j + len] === src[i + len]) len += 1
+        if (len > bestLen) { bestLen = len; bestOff = i - j; if (len === maxLen) break }
+      }
+      if (bestLen >= 4) {
+        flags |= (1 << b)
+        out.push(((bestLen - 4) << 4) | ((bestOff >> 8) & 0x0f))
+        out.push(bestOff & 0xff)
+        i += bestLen
+      } else {
+        out.push(src[i])
+        i += 1
+      }
+    }
+    out[flagPos] = flags
+  }
+  return Uint8Array.from(out)
+}
+
+export function decompressText(bytes) {
+  const src = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes || [])
+  const out = []
+  let i = 0
+  while (i < src.length) {
+    const flags = src[i]
+    i += 1
+    for (let b = 0; b < 8 && i < src.length; b++) {
+      if (flags & (1 << b)) {
+        const b1 = src[i]
+        const b2 = src[i + 1]
+        i += 2
+        const len = ((b1 >> 4) & 0x0f) + 4
+        const off = ((b1 & 0x0f) << 8) | b2
+        const start = out.length - off
+        if (off === 0 || start < 0) throw refuse('VMU_INVALID_ARGUMENT', 'compressed payload is corrupt: a match token points before the start of the stream', 'the payload did not come from compressText()')
+        for (let k = 0; k < len; k++) out.push(out[start + k])
+      } else {
+        out.push(src[i])
+        i += 1
+      }
+    }
+  }
+  return new TextDecoder().decode(Uint8Array.from(out))
+}
+
+const byteLength = (s) => new TextEncoder().encode(String(s)).length
+
 /** Validate a manifest. Returns a list of problems (empty means the pack is well-formed). */
 export function validatePack(manifest) {
   const problems = []
@@ -77,6 +149,31 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     packs: kernel.activePacks ? kernel.activePacks().slice().sort() : [],
     aliases: (registry ? registry.status().aliases : []).map((a) => a.from).sort(),
   })
+
+  /**
+   * `vmu.pack.compression` — read FOR REAL (task-194) from the running settings layer, per call, so a hot
+   * change is honoured. Absent/false ⇒ the raw snapshot is reported (zero-mechanism unchanged).
+   */
+  const compressionOn = () => {
+    const snap = typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : null
+    return !!snap && snap['vmu.pack.compression'] === true
+  }
+  /** The snapshot in its PACKED form: exact, reversible, and honest about whether packing actually helped. */
+  const snapshotPacked = () => {
+    const raw = snapshot()
+    const rawBytes = byteLength(raw)
+    const on = compressionOn()
+    const packed = compressText(raw)
+    const helps = packed.length < rawBytes
+    const applied = on && helps
+    return {
+      compression: on, algorithm: 'lzss-12/4', applied, helps,
+      rawBytes, candidateBytes: packed.length, packedBytes: applied ? packed.length : rawBytes,
+      ratio: Number(((applied ? packed.length : rawBytes) / (rawBytes || 1)).toFixed(4)),
+      exact: decompressText(packed) === raw,
+      base64: typeof Buffer !== 'undefined' ? Buffer.from(packed).toString('base64') : null,
+    }
+  }
 
   const buildPlan = (manifest) => {
     // A non-object manifest is normalised FIRST: `plan(undefined)` used to die on `manifest.settings` with a
@@ -212,9 +309,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       return {
         applied: [...applied.values()].map((r) => ({ id: r.id, version: r.version, at: r.appliedAt, actions: r.actions.length })),
         allowOverride,
-        note: 'plan() is pure; apply() refuses conflicts; unload() reverses the applied actions and reports residue',
+        snapshot: snapshotPacked(),
+        note: 'plan() is pure; apply() refuses conflicts; unload() reverses the applied actions and reports residue; `snapshot.compression` reports vmu.pack.compression (LZSS-12/4, exact)',
       }
     },
+
+    /** The packed snapshot on demand (same contract as status().snapshot: exact and honest about savings). */
+    packed: () => snapshotPacked(),
 
     /** The snapshot helper used by the residue test: two equal snapshots mean "no residue". */
     snapshot,

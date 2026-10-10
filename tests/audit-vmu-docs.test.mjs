@@ -338,7 +338,11 @@ ok(unregisteredInCode.length === 0,
   // Two hooks have LEFT this list in this session, each the moment a real producer appeared: the drifted
   // `prompt/assemble` was replaced by the frozen `prompt/section-assembled`, and `budget/exceeded` gained a
   // producer in kernel/fairness.js (the doc-side row in 05 was corrected in the same change).
-  const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before', 'record/appended',
+  // `record/appended` LEFT this list in round 32: kernel/compliance.js:89 really emits it (so do domaingate,
+  // handover and minutes), which made this list stale - and a stale exemption is exactly the kind of "the checker
+  // stopped seeing it" state this suite exists to catch. Removing it TIGHTENS the audit; the remaining three have
+  // no producer anywhere.
+  const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before',
     'pack/loading', 'pack/loaded'])
   const missing = registered.filter((h) => !emitted.has(h) && !KNOWN_UNEMITTED.has(h))
   ok(missing.length === 0,

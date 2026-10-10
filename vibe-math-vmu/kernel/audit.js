@@ -49,6 +49,7 @@ export function redactRow(row, redactKeys = DEFAULT_REDACT_KEYS, seen = new Weak
 export function createAudit({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, sink = null, ringMax = 64 } = {}) {
   const rows = []          // in-memory ring (append-only)
   let dropped = 0          // counted drops (ring overflow / sink refusal)
+  let expired = 0          // counted age-outs (`vmu.audit.retentionDays`); kept apart from ring `dropped`
   let seq = 0
   const cfg = () => ({
     redactKeys: Array.isArray(settings['vmu.audit.redactKeys']) && settings['vmu.audit.redactKeys'].length ? settings['vmu.audit.redactKeys'] : DEFAULT_REDACT_KEYS,
@@ -60,7 +61,14 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     // dead name would keep flagging this comment as a read.)
     keepEvery: Number.isInteger(settings['vmu.records.retention.keepEvery']) && settings['vmu.records.retention.keepEvery'] > 0 ? settings['vmu.records.retention.keepEvery'] : 1,
     exportFormat: settings['vmu.audit.exportFormat'] === 'jsonl' ? 'jsonl' : 'json',
+    // task-194 (WIRING, not a claim): 04 §11 marked `vmu.audit.retentionDays` 已接线 while no runtime source
+    // read it — the docs audit caught the lie. It is now READ FOR REAL and it CHANGES BEHAVIOUR: rows older
+    // than this many days are aged out of the ring (counted in `expired`), both on append() and via expire().
+    // 0 / absent ⇒ retention disabled (zero-mechanism unchanged; nothing is ever aged out by accident).
+    retentionDays: retentionOf(settings['vmu.audit.retentionDays']),
   })
+  /** Positive whole days or 0 (disabled). A negative/NaN/absent value never enables retention. */
+  function retentionOf(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0 }
 
   const writeSink = (row) => {
     if (!sink) return true                                  // zero-config: memory only
@@ -77,10 +85,27 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     }
   }
 
+  /**
+   * expire(): age out rows older than `vmu.audit.retentionDays` (the ONLY deletion outside the ring cap).
+   * `at` defaults to the injected clock. Retention 0 ⇒ a counted no-op that reports why (never a silent
+   * no-op, and never a surprise deletion when the knob is absent).
+   */
+  function expire({ at: whenMs } = {}) {
+    const c = cfg()
+    const at = whenMs === undefined ? clock() : whenMs
+    if (c.retentionDays <= 0) return { ok: true, expired: 0, remaining: rows.length, retentionDays: 0, cutoff: null, note: 'retention disabled (vmu.audit.retentionDays is absent or <= 0)' }
+    const cutoff = at - c.retentionDays * 86400000
+    const kept = rows.filter((r) => r.at >= cutoff)
+    const removed = rows.length - kept.length
+    if (removed > 0) { rows.length = 0; for (const r of kept) rows.push(r); expired += removed }
+    return { ok: true, expired: removed, remaining: rows.length, retentionDays: c.retentionDays, cutoff }
+  }
+
   /** Append one row. Redaction and sink write happen BEFORE it enters the ring. */
   function append({ what, ...fields } = {}) {
     if (!what || typeof what !== 'string') throw refuse('VMU_AUDIT_WRITE_FAILED', 'append needs a non-empty `what`', 'e.g. append({what:"vote", ballot:"b-1"})')
     const c = cfg()
+    if (c.retentionDays > 0) expire({ at: clock() })        // age-out happens BEFORE the new row (counted)
     const seqNo = ++seq
     const row = { ...redactRow(fields, c.redactKeys), what, seq: seqNo, at: clock() }
     writeSink(row)                                          // named failure propagates (never swallowed)
@@ -102,7 +127,7 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     if (hit.length > n) hit = hit.slice(-n)
     return { items: hit.map((r) => ({ ...r })), total, dropped, omitted: total - hit.length, unknownWhat: what && !WHAT_VOCAB.includes(what) ? what : null }
   }
-  const status = () => ({ rows: rows.length, dropped, seq, policy: cfg(), sink: sink ? 'injected' : 'memory-only', vocab: WHAT_VOCAB.slice() })
+  const status = () => ({ rows: rows.length, dropped, expired, seq, policy: cfg(), sink: sink ? 'injected' : 'memory-only', vocab: WHAT_VOCAB.slice() })
   /** verify(): integrity of the in-memory chain (seq strictly increasing, no gaps after drops). */
   const verify = () => {
     let mono = true
@@ -126,5 +151,5 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     return f === 'jsonl' ? { format: f, text: items.map((r) => JSON.stringify(r)).join('\n') } : { format: f, text: JSON.stringify(items) }
   }
 
-  return { apiVersion, append, tail, query, rotate, export: exportRows, verify, status, what: WHAT_VOCAB.slice() }
+  return { apiVersion, append, tail, query, rotate, expire, export: exportRows, verify, status, what: WHAT_VOCAB.slice() }
 }

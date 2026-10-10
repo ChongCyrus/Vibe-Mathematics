@@ -196,6 +196,41 @@ if (SELF_PROBE) {
   ok(applyCode === 'VMU_PACK_MISSING', 'apply() refuses the same problems with the same code', String(applyCode))
 }
 
+// task-194: `vmu.pack.compression` is READ FOR REAL from the settings layer and it CHANGES the reported
+// snapshot size. The codec is exact (round-trip) and HONEST (it never claims a saving it did not make).
+{
+  const { compressText, decompressText, createPackLoader } = await import('../vibe-math-vmu/kernel/pack.js')
+  const samples = ['', 'a', '{}', '{"a":1}', 'x'.repeat(500), '{"k":"v"},'.repeat(60), '{"settings":["a","b","c"],"bus":[],"packs":[],"aliases":[]}']
+  const bad = samples.filter((s) => decompressText(compressText(s)) !== s)
+  ok(bad.length === 0, 'the LZSS codec round-trips every sample exactly (' + bad.length + ' mismatches)')
+  const repetitive = JSON.stringify({ settings: Array.from({ length: 40 }, (_, i) => 'key-' + i), bus: Array.from({ length: 20 }, (_, i) => 'entry-' + i), packs: ['alpha', 'beta'], aliases: [] })
+  const packed = compressText(repetitive)
+  ok(packed.length < repetitive.length, 'the codec really reduces bytes on a repetitive snapshot (' + repetitive.length + ' -> ' + packed.length + ')')
+  ok(packed instanceof Uint8Array && decompressText(packed) === repetitive, 'the packed form is bytes and decodes back to the exact text')
+  // INCOMPRESSIBLE input may EXPAND: the report must then fall back to the raw form (never a fake saving).
+  const incompressible = Array.from({ length: 60 }, (_, i) => 'u' + i.toString(36) + Math.random().toString(36).slice(2) + i).join('|')
+  ok(decompressText(compressText(incompressible)) === incompressible, 'incompressible input still round-trips exactly (expansion is allowed, corruption is not)')
+
+  // the kernel settings layer decides: OFF ⇒ raw form reported; ON ⇒ the packed form is applied
+  const mkKernel = (settings) => ({ settingsSnapshot: () => settings, bus: { status: () => ({ entries: [] }) }, activePacks: () => [] })
+  const off = createPackLoader({ kernel: mkKernel({}) })
+  const on = createPackLoader({ kernel: mkKernel({ 'vmu.pack.compression': true }) })
+  const so = off.status().snapshot
+  const sn = on.status().snapshot
+  ok(so.compression === false && so.applied === false && so.packedBytes === so.rawBytes && so.ratio === 1,
+    'compression absent ⇒ the raw snapshot is reported (applied=false, ratio=1)')
+  ok(sn.compression === true && sn.applied === true && sn.packedBytes < sn.rawBytes && sn.ratio < 1,
+    'compression=true ⇒ the packed snapshot is reported (packedBytes < rawBytes, ratio < 1)')
+  ok(sn.exact === true && so.exact === true, 'both forms are EXACT (the codec round-trips the live snapshot)')
+  ok(sn.algorithm === 'lzss-12/4' && typeof sn.base64 === 'string' && sn.base64.length > 0, 'the applied form names its algorithm and carries the packed bytes')
+  ok(off.packed().packedBytes === off.packed().rawBytes && on.packed().applied === true, 'packed() exposes the same honest report on demand')
+  ok(JSON.stringify(off.status().snapshot) !== JSON.stringify(on.status().snapshot), 'turning the knob CHANGES the observable status (it is really read)')
+  // HONESTY INVARIANT: whatever the snapshot contains, the reported packed size never exceeds the raw size and
+  // `applied` is exactly "the knob is on AND packing helps" — a fake saving would be worse than no saving.
+  const inv = [off.status().snapshot, on.status().snapshot].every((s) => s.packedBytes <= s.rawBytes && s.applied === (s.compression === true && s.helps === true) && s.exact === true)
+  ok(inv, 'the report is honest: packedBytes <= rawBytes, applied = (compression && helps), exact = true')
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

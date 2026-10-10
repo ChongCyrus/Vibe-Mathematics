@@ -58,7 +58,11 @@ const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/
 
 /** Does any runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
-  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') || SOURCE_TEXT.includes('`' + key + '`')
+  // NO BACKTICK BRANCH (round 32). Counting a bare `vmu.something` inside a COMMENT as a consumer made this
+  // column claim 已接线 for keys that no code ever read - the audit suite flagged two of them, and the root cause
+  // was exactly this third alternative. A comment that mentions a key is documentation, not a reader; the audit
+  // suite has always judged by quoted literals, so the generator now matches that stricter standard.
+  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"')
 }
 
 /**
@@ -67,7 +71,7 @@ export function hasConsumer(key) {
  * the manual (docs/04 §7).
  */
 export function carrierOf(key) {
-  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"') || f.text.includes('`' + key + '`'))
+  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"'))
   return hit ? hit.rel : null
 }
 

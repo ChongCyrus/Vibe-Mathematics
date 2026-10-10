@@ -789,7 +789,7 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.store.remote.consistency", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.remote.offlinePolicy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.remote.url", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.store.root", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.store.root", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "11"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、11），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.tmpDir", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.supplychain.reproducibleBuild", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["20"], doc: "设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准）" },
   { key: "vmu.supplychain.requireLock", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["20"], doc: "设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准）" },

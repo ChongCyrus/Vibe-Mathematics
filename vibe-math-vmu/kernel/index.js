@@ -78,6 +78,13 @@ import { createCourse } from './course.js'
 import { createConference } from './conference.js'
 import { createInstruments } from './instruments.js'
 import { createIp } from './ip.js'
+// Round 32 continues: three more declared faces. The storage one is a POLICY layer only - it validates backends,
+// paths, lock behaviour, backup counting and the remote/version policies and never does IO itself; the archival
+// semantics some readers expect here (compression, migration targets, retention, per-file byte caps) live in
+// vmu.pack.*, vmu.migration.*, vmu.audit.retentionDays and records respectively, and that is stated in the module.
+import { createFunding } from './funding.js'
+import { createCompliance } from './compliance.js'
+import { createStorePolicy } from './storepolicy.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -576,6 +583,9 @@ export function createKernel({
   const conference = createConference({ settings: settingsView, bus, clock: guardedClock, log, meetings })
   const instruments = createInstruments({ settings: settingsView, bus, clock: guardedClock, log })
   const ip = createIp({ settings: settingsView, bus, clock: guardedClock, log })
+  const funding = createFunding({ settings: settingsView, bus, clock: guardedClock, log })
+  const compliance = createCompliance({ settings: settingsView, bus, clock: guardedClock, log })
+  const storepolicy = createStorePolicy({ settings: settingsView, bus, clock: guardedClock, log })
 
   // ── THE CAPABILITY GUARDS (task-170, "the eighth case") ────────────────────────────────────────────────
   // These three refusals used to live BOTH in the public guards (`requireStore()` etc.) AND as scattered
@@ -705,6 +715,9 @@ export function createKernel({
   registry.register('vmu.conference', { apiVersion: 1 }, { kind: 'service', description: 'conference hosting: calls for papers, review quorum, anonymity, registration cap and agenda fit (docs/08; layered on the single-session face)' })
   registry.register('vmu.instruments', { apiVersion: 1 }, { kind: 'service', description: 'instrument ledger: calibration currency, trained operators, reservation conflicts and maintenance windows (docs/22)' })
   registry.register('vmu.ip', { apiVersion: 1 }, { kind: 'service', description: 'intellectual property: disclosure hold, named inventors, priority dates and family duplicates (docs/21-22)' })
+  registry.register('vmu.funding', { apiVersion: 1 }, { kind: 'service', description: 'funding: account/currency scope, budget balance, cost-share policy, receipts and settlement windows (docs/13, 22)' })
+  registry.register('vmu.compliance', { apiVersion: 1 }, { kind: 'service', description: 'research compliance: IRB and consent approvals, retention windows, COI disclosure and evidence packs (docs/20, 22; export control stays with domaingate)' })
+  registry.register('vmu.storepolicy', { apiVersion: 1 }, { kind: 'service', description: 'storage POLICY only: backend/path validation, lock behaviour, backup counting, remote offline policy and the version-too-high stance (no IO; bytes stay with the store seam)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -820,6 +833,9 @@ export function createKernel({
     get conference() { return conference },
     get instruments() { return instruments },
     get ip() { return ip },
+    get funding() { return funding },
+    get compliance() { return compliance },
+    get storepolicy() { return storepolicy },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

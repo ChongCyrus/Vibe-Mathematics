@@ -54,6 +54,9 @@ const SURFACES = {
   'vmu.conference': 'conference',   // round 32 (conference hosting, layered on the single-session face)
   'vmu.instruments': 'instruments', // round 32 (instrument ledger)
   'vmu.ip': 'ip',                   // round 32 (intellectual property / disclosure hold)
+  'vmu.funding': 'funding',         // round 32 (funding rules: budget balance, cost share, settlement)
+  'vmu.compliance': 'compliance',   // round 32 (research compliance; export control stays with domaingate)
+  'vmu.storepolicy': 'storepolicy', // round 32 (storage policy layer only - no IO)
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }

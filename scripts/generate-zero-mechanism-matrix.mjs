@@ -66,6 +66,17 @@ const EXPECT = {
   // **在途未落地的新模块** ⇒ **显式待办**（✓ 计数不红；**第 33 轮规则**要求"出现即须裁定" ✓）
   conference: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（本轮实测前不得编造 ✗）'),
   ip: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（同上 ✗）'),
+  // Round 32 (continued). storepolicy's expectation is MEASURED, not guessed: status() answers ok:true with its
+  // policy (backend/rooted/durable/remote/onVersionTooHigh), while a real write with no root returns a NAMED
+  // refusal carrying vmU.store.root and the scope field. compliance and funding never reached the matrix as
+  // unadjudicated because their probes need arguments, so they are counted under PROBE_NEEDS_ARGS, not decided
+  // here by invention.
+  storepolicy: G('ok 或 object', '存储策略面：零机制 ⇒ **策略可读、不拒**（`status()` 实测 `ok:true` ＋ `backend/rooted/durable/remote/onVersionTooHigh` ✓）；真实写入缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ＋ 口径 ✓（15/15 键已接 ✓）'),
+  // These two landed while this round was in flight and their probes DID reach the matrix, so the "appears without
+  // an adjudication" rule flags them one at a time. They are registered as EXPLICIT to-dos with what is already
+  // known, rather than given expectations nobody measured - "undecided" is visible and counted, "missing" is not.
+  funding: G('EXPECT_UNDECIDED', '本轮在途落地 ⇒ **下一轮按实测反推裁定**（16/16 键已接；**全部返回型拒绝** ⇒ 期望很可能是“具名拒或 ok” ✓，但**须实测** ✗）'),
+  compliance: G('EXPECT_UNDECIDED', '本轮在途落地 ⇒ **下一轮按实测反推裁定**（16 wired ＋ 1 planned；`exportControlCheck` 归 domaingate ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 

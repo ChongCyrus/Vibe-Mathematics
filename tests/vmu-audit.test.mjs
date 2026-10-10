@@ -115,5 +115,42 @@ const throws = (fn) => { try { fn(); return { threw: false } } catch (e) { retur
   ok(written.length === 1 && written[0].what === 'vote', 'injected sink receives rows')
 }
 
+// task-194: `vmu.audit.retentionDays` is READ FOR REAL and CHANGES BEHAVIOUR (the docs audit had caught it
+// as "claimed wired, no runtime source reads it"). Retention 0/absent ⇒ nothing is ever aged out.
+{
+  // (a) absent / 0 / negative / NaN ⇒ retention DISABLED (zero-mechanism unchanged)
+  for (const settings of [{}, { 'vmu.audit.retentionDays': 0 }, { 'vmu.audit.retentionDays': -3 }, { 'vmu.audit.retentionDays': 'nope' }]) {
+    const a = createAudit({ clock: () => 1000, settings })
+    a.append({ what: 'create', id: 'x' })
+    const r = a.expire({ at: 1000 + 400 * 86400000 })
+    ok(a.status().policy.retentionDays === 0 && r.expired === 0 && a.status().rows === 1 && a.status().expired === 0,
+      'retention disabled (' + JSON.stringify(settings) + '): nothing ages out and the report says why: ' + r.note)
+  }
+  // (b) ABSENT vs ENABLED is a real behaviour difference (the same clock, the same two appends)
+  const old = 1000
+  const later = old + 2 * 86400000
+  const off = createAudit({ clock: () => later })
+  off.append({ what: 'create', id: 'a' })
+  let t = old
+  const on = createAudit({ clock: () => t, settings: { 'vmu.audit.retentionDays': 1 } })
+  on.append({ what: 'create', id: 'a' })
+  t = later
+  on.append({ what: 'update', id: 'b' })
+  ok(off.status().rows === 1 && off.status().expired === 0, 'retention off: both rows are kept')
+  ok(on.status().rows === 1 && on.status().expired === 1, 'retention 1 day: append() ages the 2-day-old row out (counted in expired)')
+  ok(on.status().seq === 2 && on.verify().ok === true, 'aging out keeps the sequence monotonic (verify() stays green)')
+  ok(on.query({}).items.every((r) => r.at >= later - 86400000), 'the expired row is really gone from the read views')
+  // (c) expire() is explicit and counted; the policy reports the wired knob
+  let t2 = old
+  const c = createAudit({ clock: () => t2, settings: { 'vmu.audit.retentionDays': 1 } })
+  c.append({ what: 'create', id: 'a' })          // written at `old`
+  t2 = later                                     // two days pass
+  const r = c.expire({ at: later })
+  ok(r.ok === true && r.expired === 1 && r.remaining === 0 && r.retentionDays === 1 && r.cutoff === later - 86400000,
+    'expire() reports expired/remaining/retentionDays/cutoff')
+  ok(c.status().policy.retentionDays === 1 && c.status().expired === 1, 'status() reports the wired knob and the age-outs')
+  ok(fail === 0, 'appending the retention assertions did not disturb the earlier scenarios')
+}
+
 console.log('=== VMU AUDIT: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)
