@@ -54,6 +54,10 @@ import { createFormal } from './formal.js'
 import { createMathJobs } from './mathjobs.js'
 import { createExternal } from './external.js'
 import { createDomainGate } from './domaingate.js'
+import { createScheduler } from './scheduler.js'
+import { createCrypto } from './crypto.js'
+import { createNotify } from './notify.js'
+import { createLifecycle } from './lifecycle.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -305,6 +309,14 @@ export function createKernel({
   // (`vmu.external.enabled=false`, no domain pack declared), and both refuse by name rather than inventing data.
   const external = createExternal({ settings: { get: (k) => settings[k] }, bus, clock, log, fetchFn: null })
   const domaingate = createDomainGate({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // Round-15 tails: scheduler (timer seam optional - tick() alone works), non-repudiation, notification
+  // delivery and the research lifecycle. Each one is inert without its declared configuration or its seam.
+  const scheduler = createScheduler({ settings: { get: (k) => settings[k] }, bus, clock, log, timer: null,
+    isPaused: () => controlState.state === 'paused' })
+  const crypto = createCrypto({ settings: { get: (k) => settings[k] }, bus, clock, log, signer: null })
+  const notify = createNotify({ settings: { get: (k) => settings[k] }, bus, clock, log, deliver: null })
+  const lifecycle = createLifecycle({ settings: { get: (k) => settings[k] }, bus, clock, log, workflow,
+    domaingate, publication })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -350,6 +362,10 @@ export function createKernel({
   registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
   registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 §8)' })
   registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 §9)' })
+  registry.register('vmu.scheduler', { apiVersion: 1 }, { kind: 'service', description: 'scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 §5)' })
+  registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 §6)' })
+  registry.register('vmu.notify', { apiVersion: 1 }, { kind: 'service', description: 'watchers and delivery: silence blocks delivery, never the record (docs/17 §29)' })
+  registry.register('vmu.lifecycle', { apiVersion: 1 }, { kind: 'service', description: 'research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 §1)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -445,6 +461,10 @@ export function createKernel({
     get mathjobs() { return mathjobs },
     get external() { return external },
     get domaingate() { return domaingate },
+    get scheduler() { return scheduler },
+    get crypto() { return crypto },
+    get notify() { return notify },
+    get lifecycle() { return lifecycle },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

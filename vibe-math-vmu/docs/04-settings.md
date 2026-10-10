@@ -515,6 +515,25 @@ vmu.packs.active: [v5r]
 | `vmu.schedule.minIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最小间隔（低于即拒 ✓） |
 | `vmu.schedule.maxHorizonMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最远调度视界（0＝不限；超出即拒 ✓） |
 | `vmu.schedule.cancelNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 取消必须给理由（留痕 ✓） |
+| `vmu.crypto.requireSigner` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 必须有签名接缝（无接缝 ⇒ 具名拒，绝不伪造 ✗✓） |
+| `vmu.crypto.keyTtlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 密钥有效期（0＝不自动过期） |
+| `vmu.crypto.signingKeyId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 默认签名密钥引用（只引用，不落材料 ✓） |
+| `vmu.crypto.algorithm` | string | `ed25519` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 签名算法声明（实现归注入接缝 ✓） |
+| `vmu.crypto.allowUnsignedVerify` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 无接缝时是否允许"验证"（放行也**只返回未验证** ✗✓） |
+| `vmu.notify.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知开关（默认关＝零机制） |
+| `vmu.notify.dedupWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知级去重窗口（指纹＝watcher×事件×对象 ✓，与 21 卷分层 ✗） |
+| `vmu.notify.digestWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 摘要窗口（当前只自曝，未驱动调度 ✗） |
+| `vmu.notify.quiet` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 全局免打扰（**只挡投递、不挡记录** ✗✓） |
+| `vmu.notify.maxWatchers` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 关注条目上限（超限具名拒 ✓） |
+| `vmu.notify.maxRegister` | int ≥1 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知登记册上限（溢出必计数 ✓） |
+| `vmu.notify.onFailure` | enum | `log` | `log`∣`throw` | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 投递失败策略（默认只记录：**不阻断业务** ✓） |
+| `vmu.notify.priorityFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 优先级下限（低于该级不投递但仍记录 ✓） |
+| `vmu.notify.registeredEvents` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 已注册事件清单（空则回退读钩子注册表 ✓） |
+| `vmu.hooks.registered` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 钩子注册表（05 卷；通知面据此校验订阅事件 ✓） |
+| `vmu.lifecycle.stages` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 阶段表（16 卷 §1 的 L1–L24；**空 ⇒ 拒，不默认放行** ✗✓） |
+| `vmu.lifecycle.requireEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 每阶段必须有准入证据 |
+| `vmu.lifecycle.maxArtifacts` | int ≥1 | `20` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 产物条数上限（溢出必计数） |
+| `vmu.lifecycle.allowBackward` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 是否允许回退阶段（默认否：回退即拒 ✓） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |
@@ -713,7 +732,6 @@ vmu.packs.active: [v5r]
 | `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.requireSignedAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.rotateAfterDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.signingKeyId` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.timestampAuthority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.verifyInterval` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.data.fingerprintAlgo` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
@@ -1140,17 +1158,13 @@ vmu.packs.active: [v5r]
 | `vmu.notes.linkKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.notify.channels` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.crossInstitution` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.notify.dedupWindowMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.defaultChannel` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.digestDefaultMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.dropOnFailure` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.notify.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.failureKeepMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.maxSubjectsPerWatcher` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.notify.maxWatchers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.mergeMaxPerDigest` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.mergeWindowMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.notify.priorityFloor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.quietDefault` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.quietTimezone` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.notify.requireReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |

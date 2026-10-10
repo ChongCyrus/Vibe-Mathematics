@@ -68,22 +68,32 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
 {
   const VMU = join(REPO, 'vibe-math-vmu')
   const jsFiles = []
+  // INDEPENDENT REVIEW FINDING (round 7): walking only `vibe-math-vmu/` left a real hole - a test file that
+  // imports a kernel module by RELATIVE path (`tests/vmu-crypto.test.mjs: import ... from '../vibe-math-vmu/
+  // kernel/crypto.js'`) was never checked, so a module could be imported by a test and shipped nowhere while
+  // this gate stayed green. `tests/` is walked now for the same closure property.
   const walk = (d, n) => {
     if (n > 4) return
     for (const e of readdirSync(d, { withFileTypes: true })) {
       if (e.name === 'node_modules' || e.name === '.git') continue
       const p = join(d, e.name)
       if (e.isDirectory()) walk(p, n + 1)
-      else if (e.name.endsWith('.js')) jsFiles.push(p)
+      else if (e.name.endsWith('.js') || e.name.endsWith('.mjs')) jsFiles.push(p)
     }
   }
   walk(VMU, 0)
+  // Only the SUITE files are walked under tests/: an audit that quotes an example import inside a comment (this
+  // very file does, explaining the round-7 finding) would otherwise report its own illustration as a missing
+  // module. The closure property we care about is "the code and the suites that exercise it are shipped".
+  for (const f of readdirSync(join(REPO, 'tests'))) {
+    if (/^vmu-.*\.test\.mjs$/.test(f)) jsFiles.push(join(REPO, 'tests', f))
+  }
   const relRe = /(?:from|import)\s+['"](\.[^'"]+)['"]/g
   const missing = []
   for (const f of jsFiles) {
     for (const m of readFileSync(f, 'utf8').matchAll(relRe)) {
       const target = resolve(dirname(f), m[1])
-      const rel = 'vibe-math-vmu/' + relative(VMU, target).replace(/\\/g, '/')
+      const rel = relative(REPO, target).replace(/\\/g, '/')
       if (!listed.has(rel)) missing.push(f.replace(REPO + '\\', '') + ' -> ' + m[1])
     }
   }
