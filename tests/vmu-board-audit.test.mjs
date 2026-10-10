@@ -163,6 +163,44 @@ test('REAL driving: keys change observable results where driveable; otherwise re
   passed += 1
 })
 
+// ⑧ **纯归因**（基线**同 `columns`** ⇒ 只单改目标键 ✓）：该键必须出现在 `changed` 里，
+//    否则**如实写"该键在该驱动路径下不改变结果"** ✓✓（**不许写"未接线"** ✗）
+test('PURE attribution: baseline carries the SAME columns, only the target key flips', () => {
+  const drive = (vals) => {
+    const b = mk(vals)
+    const rec = {}
+    const ops = [['columns', () => b.columns()], ['swimlanes', () => b.swimlanes()], ['aging', () => b.aging()], ['move', () => b.move({ taskId: 't1', from: 'todo', to: 'doing' })]]
+    for (const [name, fn] of ops) {
+      try { rec[name] = JSON.stringify(fn()) } catch (e) { rec[name] = 'THROW:' + String((e && e.code) || (e && e.message) || e) }
+    }
+    return rec
+  }
+  const twoCols = [{ id: 'todo' }, { id: 'doing' }]
+  const base = drive({ 'vmu.board.columns': twoCols })                 // **基线：有看板（两列）** ✓
+  const flips = [
+    ['vmu.board.columns', { 'vmu.board.columns': [{ id: 'todo' }] }, 'columns', true],
+    ['vmu.board.swimlanes', { 'vmu.board.swimlanes': ['ops'] }, 'swimlanes', true],
+    ['vmu.board.agingWarnMs', { 'vmu.board.agingWarnMs': 1000 }, 'aging', true],
+    ['vmu.board.wipPerColumn', { 'vmu.board.wipPerColumn': { todo: 0 } }, null, false],
+    ['vmu.board.wipDefault', { 'vmu.board.wipDefault': 1 }, null, false],
+    ['vmu.board.moveRequiresTransition', { 'vmu.board.moveRequiresTransition': true }, null, false],
+  ]
+  const rows = []
+  for (const [key, extra, downstream, mustChange] of flips) {
+    const snap = drive(Object.assign({ 'vmu.board.columns': twoCols }, extra))
+    const changed = Object.keys(snap).filter((op) => snap[op] !== base[op])
+    rows.push({ key, changed })
+    if (mustChange) {
+      assert.ok(changed.indexOf(downstream) !== -1, '纯归因：' + key + ' 必须改变 `' + downstream + '`（实际 changed=' + JSON.stringify(changed) + '）')
+    } else {
+      console.log('    - ' + key + '（基线**同 columns**）⇒ changed=' + (changed.length ? changed.join(',') : '（无差异 ⇒ **该键在该驱动路径下不改变结果** ✓ 非"未接线" ✗）'))
+    }
+  }
+  console.log('  · 纯归因已证明：' + rows.filter((r) => r.changed.length).map((r) => r.key).join('、'))
+  assert.equal(rows.length, 6)
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
