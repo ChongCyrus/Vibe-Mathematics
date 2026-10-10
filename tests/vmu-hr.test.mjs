@@ -75,6 +75,36 @@ const strict = mk({ 'vmu.hr.tenureQuorum': 5, 'vmu.hr.recruitWindowOpenMs': 1000
 refuses(() => strict.tenure({ who: 'r-9', trackStart: '2023-01-01T00:00:00.000Z', votes: 3 }), CODES.TENURE_QUORUM_MISSING, { quorum: 5 }, 'settings pair (3): quorum=5 refuses 3 votes (and reports quorum=5)')
 refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' }), CODES.CYCLE_CLOSED, null, 'settings pair (3): a 1-second window closes immediately')
 
+// task-210 (the THIRTEENTH falsy-zero case): epoch 0 is a LEGAL instant. "not given" is decided by an explicit
+// `undefined`/`null` test, so `0` must be ACCEPTED, recorded as 0, and be distinguishable from a missing value.
+{
+  const h = mk()
+  // (0) ACCEPTED and recorded truthfully
+  const r0 = h.recruit({ by: 'u', openedAt: 0, at: 0 })
+  ok(r0.ok === true && r0.openedAt === 0, 'openedAt=0 (epoch 0) is ACCEPTED, not treated as "not given"')
+  ok(r0.closesAt === new Date(0 + h.status().policy.recruitWindowOpenMs).toISOString(), 'the epoch-0 instant really participates: closesAt = 0 + recruitWindowOpenMs')
+  ok(r0.at === '0', 'at() records the given instant 0 instead of falling back to the clock')
+  // (0b) 0 vs 1 vs ISO are three DIFFERENT instants (no collapse onto a default)
+  const r1 = h.recruit({ by: 'u', openedAt: 1, at: 1 })
+  const rIso = h.recruit({ by: 'u', openedAt: '1970-01-01T00:00:00.000Z', at: 0 })
+  ok(r1.openedAt === 1 && r1.closesAt !== r0.closesAt, 'openedAt=1 is its own instant (not collapsed with 0)')
+  ok(rIso.openedAt === 0 && rIso.closesAt === r0.closesAt, 'the ISO epoch is the SAME instant as 0 (both legal, consistently read)')
+  // (1) really missing ⇒ named refusal (and NOT the "ISO instants" branch: the absence is named precisely)
+  refuses(() => h.recruit({ by: 'u' }), 'VMU_INVALID_ARGUMENT', null, 'openedAt=undefined ⇒ named refusal (needs { openedAt })')
+  refuses(() => h.recruit({ by: 'u', openedAt: null }), 'VMU_INVALID_ARGUMENT', null, 'openedAt=null ⇒ named refusal (null means "not given")')
+  // (2) the SAME class elsewhere in hr.js: lastAt / trackStart / decisionAt / appeal openedAt, plus `at: 0`
+  const perf = h.performance({ who: 'r-1', lastAt: 0, evidence: ['ev'], at: 0 })
+  ok(perf.ok === true && perf.at === '0', 'performance({ lastAt: 0, at: 0 }) is accepted (0 is an instant, not a fallback)')
+  const ten = mk({ 'vmu.hr.tenureQuorum': 0, 'vmu.hr.humanDecisionRequired': false })
+  ok(ten.tenure({ who: 'r-1', trackStart: 0, votes: 0, decisionAt: 0, at: 0 }).ok === true, 'tenure({ trackStart: 0, decisionAt: 0, at: 0 }) is accepted')
+  refuses(() => ten.tenure({ who: 'r-1', votes: 0 }), 'VMU_INVALID_ARGUMENT', null, 'tenure without trackStart is still refused by name')
+  // `appeal({openedAt})` means "an appeal IS open" — so reading 0 must REFUSE by name (before the fix the falsy
+  // guard IGNORED it and the call silently succeeded: that difference is the whole point of this case).
+  refuses(() => h.appeal({ who: 'r-1', openedAt: 0, at: 0 }), CODES.APPEAL_OPEN, { openedAt: '0' }, 'appeal({ openedAt: 0 }) ⇒ the epoch-0 appeal is SEEN (named refusal, openedAt recorded as 0)')
+  ok(h.appeal({ who: 'r-1', resolved: true, at: 0 }).ok === true, 'appeal({ resolved: true, at: 0 }) passes with at=0 recorded (no clock fallback)')
+  refuses(() => mk({ 'vmu.hr.appealWindowDays': 1 }).appeal({ who: 'r-1', openedAt: 0, at: day }), CODES.APPEAL_OPEN, null, 'an epoch-0 appeal really ages: past the window it is refused (0 is not ignored)')
+}
+
 console.log('')
 console.log('=== VMU HR: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

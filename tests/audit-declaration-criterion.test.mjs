@@ -203,6 +203,50 @@ export function auditSelfReportedStatus({ sources, gateSources, declared = DECLA
   return { violations, coverage, discovered, tableViolations: table.violations }
 }
 
+// ── RULE D (task-211): documented tool names must exist in host.js TOOL_NAMES, or be marked planned ──
+
+/** The "not implemented" marker style this repo already uses (⛔ / 规划 / 未实现 / roadmap …). */
+export const DOC_PLANNED_MARKERS = /未实现|未接线|规划|计划|提案|待实现|目标形态|尚未|roadmap|not implemented|planned|⛔/i
+
+export function extractToolNames(src) {
+  return [...new Set([...String(src).matchAll(/vibe_vmu_[a-z0-9_]+/g)].map((m) => m[0]))]
+}
+
+/** The REAL tool set: parsed from host.js's `export const TOOL_NAMES = Object.freeze({ … })`. */
+export function implementedToolNames(hostSrc) {
+  const out = new Set()
+  const block = /export const TOOL_NAMES = Object\.freeze\(\{([\s\S]*?)\}\)/.exec(String(hostSrc))
+  for (const m of (block ? block[1] : '').matchAll(/'(vibe_vmu_[a-z0-9_]+)'/g)) out.add(m[1])
+  return out
+}
+
+/**
+ * RULE D: every `vibe_vmu_*` name a doc mentions must be (a) in TOOL_NAMES, or (b) marked as
+ * planned/not-implemented — on its own line, OR inside a marked section/table (the "planning list"
+ * exception: a table whose header/heading carries the marker covers its rows).
+ */
+export function auditDocToolNames({ docs, implemented, markers = DOC_PLANNED_MARKERS }) {
+  const violations = []
+  const coverage = []
+  for (const d of docs) {
+    const lines = String(d.src).split('\n')
+    let sectionMarked = false
+    lines.forEach((line, i) => {
+      // a heading or a table header row carrying the marker marks the whole following block
+      if (/^\s*#{1,6}\s/.test(line) || /^\s*\|/.test(line)) sectionMarked = markers.test(line)
+      for (const name of extractToolNames(line)) {
+        const lineMarked = markers.test(line) || sectionMarked
+        const okImpl = implemented.has(name)
+        if (!okImpl && !lineMarked) {
+          violations.push(basename(d.file) + ':' + (i + 1) + ' documents "' + name + '" which is NOT in host.js TOOL_NAMES and carries no 规划/未实现 marker')
+        }
+        coverage.push({ file: basename(d.file), line: i + 1, name, implemented: okImpl, marked: lineMarked })
+      }
+    })
+  }
+  return { violations, coverage }
+}
+
 // ── real inventory (paths matter: the kernel lives under the preset directory) ────────────────────────
 
 const scriptFiles = listFiles(SCRIPTS, (f) => f.endsWith('.mjs'))
@@ -263,6 +307,22 @@ ok(ruleB.coverage.some((c) => c.markers.includes('EXPECT') && c.reconciledBy), '
 ok(ruleC.coverage.some((c) => ['usedByProduction', 'verifiedBy'].includes(c.field) && c.scannedByGate === true), 'the usedByProduction/verifiedBy surface is scanned by a gate')
 ok(ruleC.discovered.includes('runtimeWrites') || ruleC.discovered.includes('lastRuntimeWrite'), 'the mechanical discovery still sees the runtime-write surface')
 
+// ── 3b) RULE D on the real tree: documented tool names vs host.js TOOL_NAMES ─────────────────────────
+
+const hostSrc = readIf(join(REPO, 'vibe-math-vmu', 'host.js'))
+const implementedTools = implementedToolNames(hostSrc)
+const docFiles = listFiles(join(REPO, 'vibe-math-vmu', 'docs'), (f) => f.endsWith('.md')).map((f) => ({ file: f, src: readIf(f) }))
+const ruleD = auditDocToolNames({ docs: docFiles, implemented: implementedTools })
+console.log('  RULE D implemented tools=' + JSON.stringify([...implementedTools].sort()))
+console.log('  RULE D documented names=' + ruleD.coverage.length + ' hits=' + ruleD.violations.length)
+{
+  const byFile = {}
+  for (const v of ruleD.violations) { const f = v.split(':')[0]; byFile[f] = (byFile[f] || 0) + 1 }
+  console.log('  RULE D hits by volume: ' + JSON.stringify(byFile))
+}
+ok(implementedTools.size >= 9, 'the implemented tool set was really parsed from host.js TOOL_NAMES (' + implementedTools.size + ' names)')
+red(ruleD.violations, 'RULE D (every documented vibe_vmu_* tool is implemented or explicitly marked 规划/未实现)')
+
 // ── 4) deliberate-breakage fixtures: the checker must be able to go red ──────────────────────────────
 
 {
@@ -317,6 +377,21 @@ ok(ruleC.discovered.includes('runtimeWrites') || ruleC.discovered.includes('last
     ok(fGhost.violations.some((v) => /ghostField.*ghost entry/.test(v)), 'fixture F: a declared-but-undiscovered field is flagged as a ghost')
     const fBlind = auditSelfReportTable({ sources: [{ file: 'x.js', src: 'function status(){ return { surprisingScan: true } }' }], declared: [] })
     ok(fBlind.violations.some((v) => /surprisingScan.*blind spot/.test(v)), 'fixture F: a discovered-but-undeclared field is flagged as a blind spot')
+
+    // fixture G (task-211): RULE D — three two-way self-tests, none of them a false red
+    const impl = new Set(['vibe_vmu_status', 'vibe_vmu_records'])
+    const gRed = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: 'call `vibe_vmu_ballot` here\n' }], implemented: impl })
+    ok(gRed.violations.length === 1 && /fake-doc\.md:1 documents "vibe_vmu_ballot"/.test(gRed.violations[0]), 'fixture G①: an unimplemented, unmarked tool name ⇒ RED with file:line')
+    const gImpl = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: 'call `vibe_vmu_status` here\n' }], implemented: impl })
+    ok(gImpl.violations.length === 0, 'fixture G②: a name that IS in TOOL_NAMES ⇒ green')
+    const gMarked = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: '`vibe_vmu_ballot`（规划 ✗ 未实现）\n' }], implemented: impl })
+    ok(gMarked.violations.length === 0, 'fixture G③: an unimplemented name WITH an explicit marker ⇒ green (no false red)')
+    // the "planning list" exception: a marked table header covers its rows…
+    const gTable = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: '| 工具（规划/未实现 ⛔） | 说明 |\n|---|---|\n| `vibe_vmu_ballot` | 目标形态 |\n' }], implemented: impl })
+    ok(gTable.violations.length === 0, 'fixture G④: a marked table header covers its rows (planning-list exception)')
+    // …but an unmarked table must NOT be excused
+    const gTableBare = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: '| 工具 | 说明 |\n|---|---|\n| `vibe_vmu_ballot` | 表决 |\n' }], implemented: impl })
+    ok(gTableBare.violations.length === 1, 'fixture G⑤: an UNMARKED table row is still red (the exception is not a loophole)')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

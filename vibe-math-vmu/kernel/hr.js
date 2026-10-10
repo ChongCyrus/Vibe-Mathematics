@@ -117,20 +117,29 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     state.writes += 1
     return Object.assign({ ok: true, enforced: list, enforcedScope: ENFORCED_SCOPE, wouldEvaluate: would, fired: fl }, extra || {})
   }
-  const at = (v) => String(v || clock())
-  const num = (v) => { const n = Date.parse(String(v)); return Number.isFinite(n) ? n : NaN }
+  // task-210 (the THIRTEENTH case of the falsy-zero class): epoch 0 is a LEGAL instant, so "not given" is
+  // decided EXPLICITLY (`undefined`/`null`) and NEVER by falsiness. `given()` is the single rule for every
+  // time/count input in this module; `num()` accepts finite NUMBERS (0 included) as well as ISO strings, and
+  // `at()` falls back to the injected clock only when the instant is really absent.
+  const given = (v) => v !== undefined && v !== null
+  const at = (v) => String(given(v) ? v : clock())
+  const num = (v) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : NaN
+    const n = Date.parse(String(v))
+    return Number.isFinite(n) ? n : NaN
+  }
 
   /** recruit：招聘窗口（`recruitWindowOpenMs`）＋周期（`recruitCycleDays`）⇒ 过期即 `VMU_HR_CYCLE_CLOSED`。 */
   function recruit({ openingId = null, openedAt = null, at: when = null } = {}) {
     const enforced = []
     mark(enforced, 'vmu.hr.recruitCycleDays')
     mark(enforced, 'vmu.hr.recruitWindowOpenMs')
-    if (!openedAt) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs { openedAt }', 'pass the opening instant', enforced)
-    const t = num(when || clock()), o = num(openedAt)
-    if (!Number.isFinite(t) || !Number.isFinite(o)) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs ISO instants', 'pass ISO strings', enforced)
+    if (!given(openedAt)) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs { openedAt }', 'pass the opening instant (epoch 0 is a legal instant)', enforced)
+    const t = num(given(when) ? when : clock()), o = num(openedAt)
+    if (!Number.isFinite(t) || !Number.isFinite(o)) throw deny('recruit', 'VMU_INVALID_ARGUMENT', 'recruit needs ISO instants', 'pass ISO strings, or a finite millisecond number (0 is legal)', enforced)
     const closesAt = o + C.recruitWindowOpenMs
     if (t > closesAt) throw deny('recruit', CODES.CYCLE_CLOSED, 'the recruitment cycle is CLOSED: window closed at ' + new Date(closesAt).toISOString() + ' (cycle ' + C.recruitCycleDays + 'd)', 'open a new cycle (vmu.hr.recruitCycleDays=' + C.recruitCycleDays + ')', enforced, { openingId: openingId ? String(openingId) : null, closesAt: new Date(closesAt).toISOString(), at: at(when) })
-    return ok('recruit', enforced, enforced.slice(), { openingId: openingId ? String(openingId) : null, closesAt: new Date(closesAt).toISOString(), cycleDays: C.recruitCycleDays, at: at(when) })
+    return ok('recruit', enforced, enforced.slice(), { openingId: openingId ? String(openingId) : null, openedAt: o, closesAt: new Date(closesAt).toISOString(), cycleDays: C.recruitCycleDays, at: at(when) })
   }
 
   /** performance：绩效节奏（`performanceCadenceDays`）＋证据要求 ⇒ 缺证据 `VMU_HR_PERF_EVIDENCE_MISSING`。 */
@@ -138,7 +147,7 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     const enforced = []
     mark(enforced, 'vmu.hr.performanceCadenceDays')
     if (!who) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs { who }', 'pass the member id', enforced)
-    const t = num(when || clock()), l = lastAt ? num(lastAt) : t
+    const t = num(given(when) ? when : clock()), l = given(lastAt) ? num(lastAt) : t
     if (!Number.isFinite(t) || !Number.isFinite(l)) throw deny('performance', 'VMU_INVALID_ARGUMENT', 'performance needs ISO instants', 'pass ISO strings', enforced)
     if (t - l > ms(C.performanceCadenceDays)) {
       throw deny('performance', CODES.CYCLE_CLOSED, 'the performance cycle is overdue for ' + String(who) + ': last=' + new Date(l).toISOString() + ' cadence=' + C.performanceCadenceDays + 'd', 'close the cycle (cadence ' + C.performanceCadenceDays + 'd)', enforced, { who: String(who), lastAt: new Date(l).toISOString(), cadenceDays: C.performanceCadenceDays, at: at(when) })
@@ -161,13 +170,13 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     }
     mark(enforced, 'vmu.hr.tenureQuorum')
     if (Number(votes) < C.tenureQuorum) throw deny('tenure', CODES.TENURE_QUORUM_MISSING, 'the tenure quorum is not met for ' + String(who) + ': votes=' + Number(votes) + ' < quorum=' + C.tenureQuorum, 'collect at least ' + C.tenureQuorum + ' votes', enforced, { who: String(who), votes: Number(votes), quorum: C.tenureQuorum, at: at(when) })
-    if (!trackStart) throw deny('tenure', 'VMU_INVALID_ARGUMENT', 'tenure needs { trackStart }', 'pass the track start instant', enforced)
-    const s = num(trackStart), t = num(when || clock())
+    if (!given(trackStart)) throw deny('tenure', 'VMU_INVALID_ARGUMENT', 'tenure needs { trackStart }', 'pass the track start instant (epoch 0 is a legal instant)', enforced)
+    const s = num(trackStart), t = num(given(when) ? when : clock())
     const trackEnd = s + C.tenureTrackMonths * 30 * 86400000
     const due = trackEnd + ms(C.tenureDecisionWindowDays)
-    if (t > due && !decisionAt) {
+    if (t > due && !given(decisionAt)) {
       mark(enforced, 'vmu.hr.tenureDecisionWindowDays')
-      throw deny('tenure', CODES.TENURE_DECISION_DUE, 'the tenure decision is DUE for ' + String(who) + ': track ended ' + new Date(trackEnd).toISOString() + ', window ' + C.tenureDecisionWindowDays + 'd, now ' + (when ? at(when) : clock()), 'record the decision (window ' + C.tenureDecisionWindowDays + 'd)', enforced, { who: String(who), trackEnd: new Date(trackEnd).toISOString(), dueAt: new Date(due).toISOString(), at: at(when) })
+      throw deny('tenure', CODES.TENURE_DECISION_DUE, 'the tenure decision is DUE for ' + String(who) + ': track ended ' + new Date(trackEnd).toISOString() + ', window ' + C.tenureDecisionWindowDays + 'd, now ' + at(given(when) ? when : clock()), 'record the decision (window ' + C.tenureDecisionWindowDays + 'd)', enforced, { who: String(who), trackEnd: new Date(trackEnd).toISOString(), dueAt: new Date(due).toISOString(), at: at(when) })
     }
     return ok('tenure', enforced, enforced.slice(), { who: String(who), votes: Number(votes), quorum: C.tenureQuorum, trackMonths: C.tenureTrackMonths, at: at(when) })
   }
@@ -177,11 +186,11 @@ export function createHr({ clock = () => new Date(0).toISOString(), log = () => 
     const enforced = []
     mark(enforced, 'vmu.hr.appealWindowDays')
     if (!who) throw deny('appeal', 'VMU_INVALID_ARGUMENT', 'appeal needs { who }', 'pass the member id', enforced)
-    if (openedAt && resolved !== true) {
+    if (given(openedAt) && resolved !== true) {
       throw deny('appeal', CODES.APPEAL_OPEN, 'an appeal is OPEN for ' + String(who) + ' (opened ' + String(openedAt) + ')', 'resolve the appeal before any automatic decision', enforced, { who: String(who), openedAt: String(openedAt), at: at(when) })
     }
-    if (openedAt) {
-      const o = num(openedAt), t = num(when || clock())
+    if (given(openedAt)) {
+      const o = num(openedAt), t = num(given(when) ? when : clock())
       if (Number.isFinite(o) && Number.isFinite(t) && t - o > ms(C.appealWindowDays)) {
         throw deny('appeal', CODES.APPEAL_OPEN, 'the appeal window has CLOSED for ' + String(who) + ': opened ' + String(openedAt) + ' window=' + C.appealWindowDays + 'd', 'the appeal can no longer be filed (window ' + C.appealWindowDays + 'd)', enforced, { who: String(who), windowDays: C.appealWindowDays, at: at(when) })
       }

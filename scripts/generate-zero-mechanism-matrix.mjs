@@ -42,9 +42,9 @@ const EXPECT = {
   tasks: G('array', '任务板：零机制 ⇒ 空列表（放行）'), topology: OK_READ, trust: OK_READ,
   governance: G('array 或 object', '治理面：只读列举（keysUsed/partition 不拒）'),
   // ── 具名拒面：缺参数/未声明 ⇒ 具名拒 ✓
-  ballotbox: G('具名拒或 ok', '零机制：无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓'),
-  course: G('具名拒或 ok', '零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓'),
-  formal: REFUSE, mathjobs: REFUSE, lean: REFUSE, lifecycle: REFUSE, stateversion: REFUSE, repropack: REFUSE,
+  ballotbox: G('具名拒或 ok', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_CONFLICT**（带口径 `enforced=[0]`）⇒ 零机制＝无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓'),
+  course: G('具名拒或 ok', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓'),
+  formal: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓'), mathjobs: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无作业请求 ⇒ 具名拒即真实形状 ✓'), lean: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓'), lifecycle: G('具名拒（带 code）', 'task-214 实测：`stages()` ⇒ 具名拒 **VMU_LIFECYCLE_NOT_DECLARED** ⇒ 零机制＝未声明生命周期 ⇒ 具名拒即真实形状 ✓'), stateversion: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_COMPAT_UNKNOWN_COMBO** ⇒ 零机制＝无版本声明 ⇒ 具名拒即真实形状 ✓'), repropack: G('具名拒（带 code）', 'task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓'),
   idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
   meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
@@ -57,7 +57,7 @@ const EXPECT = {
   records: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-records.test.mjs:103）：`put({track,kind,title,body,settled:true})` ⇒ **ok**（零机制＝无配额限制、放行 ✓）'),
   store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-transaction.test.mjs:62）：`begin({id,steps:[{service,apply,undo}]})` ⇒ **ok**（零机制＝无预算门、放行 ✓）'),
   work: G('PROBE_NEEDS_ARGS', '缺：工作项'),
-  workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 op 缺参 ⇒ 实测 **`op 抛出`** ✗（归 `probe-error` 计数，**不算 mismatch** ✓）—— 旧 note 曾写"缺参 ⇒ 具名拒" ✗，与实测不符，已按实测改写 ✓'),
+  workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）'),
   // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
   'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
