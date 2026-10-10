@@ -6475,11 +6475,11 @@ export function apply(ctx) {
     async function runPaperProcess(argv, cwd) {
       const sub = subprocessOf()
       const started = now()
-      if (!sub || typeof sub.spawn !== 'function') return { ok: false, exitCode: null, ms: 0, message: 'no subprocess service' }
+      if (!sub || typeof sub.spawn !== 'function') return { ok: false, exitCode: null, ms: 0, message: 'no subprocess service', started: false }
       let handle
       try {
         handle = sub.spawn({ argv, cwd, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: 120000 })
-      } catch (e) { return { ok: false, exitCode: null, ms: now() - started, message: String((e && e.message) || e) } }
+      } catch (e) { return { ok: false, exitCode: null, ms: now() - started, message: String((e && e.message) || e), started: false } }
       let outcome = null
       let timer = null
       try {
@@ -6493,11 +6493,14 @@ export function apply(ctx) {
             }, 120000)
           }),
         ])
-        if (!r.settled) return { ok: false, exitCode: null, ms: now() - started, message: String((r.error && r.error.message) || r.error) }
+        if (!r.settled) return { ok: false, exitCode: null, ms: now() - started, message: String((r.error && r.error.message) || r.error), started: false }
         outcome = r.value
       } finally { if (timer) { try { timer() } catch (e) { /* already settled */ } } }
       const exitCode = outcome ? outcome.exitCode : null
-      return { ok: exitCode === 0, exitCode, ms: now() - started, message: '' }
+      // task-235: `started` = the engine process REALLY produced an exit code. A settled outcome with
+      // `exitCode === null` (spawn refused / killed before exec / host stub without a real process) is NOT
+      // a real run ⇒ `railRefused` (state 2) stays true instead of being confused with a compile failure.
+      return { ok: exitCode === 0, exitCode, ms: now() - started, message: '', started: exitCode !== null && exitCode !== undefined }
     }
     // Compile attempts are CAPPED (docs/final-paper.md §8): full → nonstopmode rerun → engine swap with
     // the optional packages stripped → one minimal-template retry → report and degrade.
@@ -6518,15 +6521,20 @@ export function apply(ctx) {
       for (const a of plan) {
         const r = await runLatexAttempt(id, a)
         attempts.push(r)
-        if (r.ok) return { status: 'compiled', engine: a.engine.name, attempts }
+        if (r.ok) return { status: 'compiled', engine: a.engine.name, attempts, railRefused: false }
       }
-      return { status: 'failed', engine: '', reason: '编译在 ' + attempts.length + ' 次尝试后仍失败（已保留 paper.tex 与 paper.md）', attempts }
+      // task-235 CONTRACT (docs/final-paper.md §8, three states): `status:'failed'` alone conflated
+      // "the engine could not START at all" with "the engine ran and the compile failed". `railRefused`
+      // is the machine-readable discriminator: true === NO attempt ever started (every attempt has
+      // `started !== true` / `exitCode === null`), false === at least one process really ran.
+      const railRefused = attempts.length > 0 && attempts.every((a) => a && a.started !== true)
+      return { status: 'failed', engine: '', reason: '编译在 ' + attempts.length + ' 次尝试后仍失败（已保留 paper.tex 与 paper.md）' + (railRefused ? '；没有任何一次尝试真正跑起来（引擎存在但未能启动，见 railRefused）' : ''), attempts, railRefused }
     }
     async function runLatexAttempt(id, a) {
       const dirRel = paperDirRel(id)
       const dirAbs = instRoot() + '/' + dirRel
       if (!await writeTextRel(dirRel + '/paper.tex', a.text)) {
-        return { label: a.label, engine: a.engine.name, ok: false, exitCode: null, ms: 0, message: 'tex 写入失败' }
+        return { label: a.label, engine: a.engine.name, ok: false, exitCode: null, ms: 0, message: 'tex 写入失败', started: false }
       }
       const started = now()
       const args = a.engine.name === 'tectonic'
@@ -6536,10 +6544,10 @@ export function apply(ctx) {
       // TWO passes (docs/final-paper.md §8): the second resolves references/TOC. A failed first pass is not
       // rerun — the retry PLAN is what varies the command, not a blind repeat.
       const first = await runPaperProcess(argv, dirAbs)
-      if (!first.ok) return { label: a.label, engine: a.engine.name, ok: false, exitCode: first.exitCode, ms: now() - started, message: first.message || 'first pass failed' }
+      if (!first.ok) return { label: a.label, engine: a.engine.name, ok: false, exitCode: first.exitCode, ms: now() - started, message: first.message || 'first pass failed', started: first.started === true }
       const second = await runPaperProcess(argv, dirAbs)
       const pdf = await fileExistsAbs(paperAbs(id, 'paper.pdf'))
-      return { label: a.label, engine: a.engine.name, ok: second.ok && pdf, exitCode: second.exitCode, ms: now() - started, message: pdf ? (second.message || '') : '编译器没有产出 paper.pdf' }
+      return { label: a.label, engine: a.engine.name, ok: second.ok && pdf, exitCode: second.exitCode, ms: now() - started, message: pdf ? (second.message || '') : '编译器没有产出 paper.pdf', started: second.started === true }
     }
     function paperMeta(p, extra) {
       const o = extra || {}
@@ -6666,7 +6674,7 @@ export function apply(ctx) {
       // so the warning lands in `meta.warnings`, in the flow log, in the state and in the return value.
       if (writeFailures.length) warnings.push(paperWriteFailureWarning(writeFailures))
       const meta = paperMeta(Object.assign({}, p, { finalizedAt, compile: compile.status, engine: compile.engine || '' }), {
-        finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', triedPaths: compile.triedPaths || [], attempts: compile.attempts || [] }, files,
+        finalizedAt, warnings, compile: { status: compile.status, engine: compile.engine || '', reason: compile.reason || '', triedPaths: compile.triedPaths || [], attempts: compile.attempts || [], railRefused: compile.railRefused === true }, files,
       })
       if (await writeTextRel(PAPER_FILE(id, 'paper.meta.json'), JSON.stringify(meta, null, 2) + '\n')) files.push('paper.meta.json')
       // `meta.warnings` is the SAME array, so a meta write failure still reaches the state, the log and
