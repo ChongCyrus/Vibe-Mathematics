@@ -59,10 +59,15 @@ const K_RETRY_SAME_PAYLOAD = 'vmu.idempotency.retrySamePayloadOnly'
 const K_MAX_PAYLOAD = 'vmu.idempotency.maxPayloadBytes'
 const K_KEY_SCOPE = 'vmu.workflow.idempotencyKeyScope'   // the 08-doc spelling, read as a scope fallback
 
+/** A stable content checksum for a projection (round 9 / M3: an unverifiable document is never loaded). */
+export function checksumOf(value) {
+  return createHash('sha256').update(canonicalize(value === undefined ? null : value), 'utf8').digest('hex')
+}
+
 const STATES = Object.freeze(['pending', 'committed', 'aborted'])
 const DEFAULT_LIST_CAP = 200
 const PREVIEW_CAP = 400
-const IDENT_SEP = '\u0000'
+const IDENTITY_RULE = 'len(scope):scope len(key):key'
 
 /**
  * The TYPE-TAGGED canonical encoding (B1). Every value carries its kind, so two different values can never
@@ -77,6 +82,8 @@ const IDENT_SEP = '\u0000'
  */
 export function canonicalize(value) {
   const seen = new Set()
+  const unsafe = (why, path) => refuse('VMU_INVALID_ARGUMENT', 'the payload could not be read at ' + path + ': ' + why,
+    'the idempotency fingerprint must READ the whole request — an object whose getter/Proxy throws cannot be fingerprinted; pass plain data')
   const walk = (v, path) => {
     if (v === undefined) return 'u'
     if (v === null) return 'z'
@@ -98,26 +105,43 @@ export function canonicalize(value) {
     if (Array.isArray(v)) {
       if (seen.has(v)) throw refuse('VMU_INVALID_ARGUMENT', 'the payload contains a cycle at ' + path, 'an idempotency fingerprint cannot encode a cyclic structure')
       seen.add(v)
-      const out = 'a:[' + v.map((x, i) => walk(x, path + '[' + i + ']')).join(',') + ']'
+      // Every read is wrapped: a throwing getter or Proxy trap becomes a NAMED refusal that says WHERE it
+      // happened — a bare `boom` must never escape the ledger (round 9).
+      let items
+      try { items = v.map((x, i) => walk(x, path + '[' + i + ']')) } catch (e) { if (e && e.code) throw e; throw unsafe(String((e && e.message) || e), path) }
       seen.delete(v)
-      return out
+      return 'a:[' + items.join(',') + ']'
     }
     if (t === 'object') {
-      const proto = Object.getPrototypeOf(v)
+      let proto
+      try { proto = Object.getPrototypeOf(v) } catch (e) { throw unsafe(String((e && e.message) || e), path) }
       if (proto !== Object.prototype && proto !== null) {
-        const name = (v && v.constructor && v.constructor.name) || 'unknown'
+        let name = 'unknown'
+        try { name = (v.constructor && v.constructor.name) || 'unknown' } catch (e) { name = 'unknown' }
         throw refuse('VMU_INVALID_ARGUMENT', 'the payload is not JSON-safe: ' + name + ' instance at ' + path,
           'only plain objects/arrays/primitives/bigint are accepted — serialise ' + name + ' first (e.g. toISOString(), [...map])')
       }
       if (seen.has(v)) throw refuse('VMU_INVALID_ARGUMENT', 'the payload contains a cycle at ' + path, 'an idempotency fingerprint cannot encode a cyclic structure')
       seen.add(v)
-      const out = 'o:{' + Object.keys(v).sort().map((k) => 's:' + JSON.stringify(k) + ':' + walk(v[k], path + '.' + k)).join(',') + '}'
+      let keys
+      try { keys = Object.keys(v) } catch (e) { throw unsafe(String((e && e.message) || e), path) }
+      const parts = []
+      for (const k of keys.sort()) {
+        let child
+        try { child = v[k] } catch (e) { throw unsafe(String((e && e.message) || e), path + '.' + k) }
+        parts.push('s:' + JSON.stringify(k) + ':' + walk(child, path + '.' + k))
+      }
       seen.delete(v)
-      return out
+      return 'o:{' + parts.join(',') + '}'
     }
     throw refuse('VMU_INVALID_ARGUMENT', 'the payload holds an unsupported value (' + t + ') at ' + path, 'pass JSON-safe data')
   }
-  return 'v' + CANONICAL_VERSION + '|' + walk(value, '$')
+  try {
+    return 'v' + CANONICAL_VERSION + '|' + walk(value, '$')
+  } catch (e) {
+    if (e && e.code) throw e
+    throw unsafe(String((e && e.message) || e), '$')
+  }
 }
 
 /**
@@ -164,13 +188,16 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   const unwired = new Map()
   const declaredTopics = new Set()
   const counts = { begun: 0, committed: 0, aborted: 0, deduplicated: 0, reaped: 0, dropped: 0, refusedAtCap: 0, retried: 0, retriedWithNewPayload: 0 }
-  const ident = (scope, key) => String(scope) + IDENT_SEP + String(key)
+  const ident = (scope, key) => String(scope).length + ':' + String(scope) + String(key).length + ':' + String(key)
   let loaded = false
-  let durableLoaded = false
-  let durableDegraded = false
+  let loadOk = false          // did the LAST full read succeed?
+  let loadAttempted = false
+  let lastPatchOk = null      // null = never attempted, true/false = the LAST write
+  let durableDegraded = false // STICKY: cleared only by a complete read+write cycle (round 9 / M3)
   let durableReason = store && typeof store.read === 'function' ? 'not loaded yet' : 'no store seam was injected'
   let lastPersistAt = null
   let lastPersistError = null
+  let loadError = null
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -206,20 +233,30 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     attempts: e.attempts, startedAt: e.startedAt, expiresAt: e.expiresAt, committedAt: e.committedAt,
     result: e.result === undefined ? null : e.result, abortedAt: e.abortedAt, abortReason: e.abortReason, by: e.by,
   }))
+  const projection = () => ({ version: CANONICAL_VERSION, savedAt: now(), checksum: checksumOf(rows()), entries: rows() })
   const persist = () => {
     if (!store || typeof store.patch !== 'function') {
       durableReason = 'no store seam was injected (the ledger is memory-only)'
       return { ok: true, durable: false, reason: durableReason, rows: rows().length }
     }
     try {
-      store.patch(LEDGER_KEY, () => ({ version: CANONICAL_VERSION, savedAt: now(), entries: rows() }))
+      store.patch(LEDGER_KEY, () => projection())
       lastPersistAt = now()
       lastPersistError = null
-      durableDegraded = false
-      durableReason = 'persisted through the injected store'
-      return { ok: true, durable: true, rows: rows().length, at: lastPersistAt }
+      lastPatchOk = true
+      // M3: a successful WRITE alone must never be read as "we have durability" — the degraded verdict is
+      // cleared ONLY when the store has also been read back successfully in this lifetime (loadOk).
+      if (loadOk) {
+        durableDegraded = false
+        durableReason = 'persisted and verified through the injected store'
+      } else {
+        durableReason = 'the write succeeded, but the store was never read back successfully'
+          + (loadError ? ' (' + loadError + ')' : '') + ' — durability is NOT established'
+      }
+      return { ok: true, durable: isDurable(), rows: rows().length, at: lastPersistAt }
     } catch (e) {
       durableDegraded = true
+      lastPatchOk = false
       lastPersistError = String((e && e.message) || e)
       durableReason = 'the store refused the projection: ' + lastPersistError
       bump(unwired, 'store-seam', 1)
@@ -227,35 +264,71 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       return { ok: false, durable: false, error: lastPersistError, rows: rows().length }
     }
   }
-  /** Lazy load: a restart with the same store replays the settled keys (this is the whole point of N2). */
-  const ensureLoaded = () => {
-    if (loaded) return
+  /** The ONE truthful durability verdict: seam wired + read verified + last write ok + not degraded. */
+  const isDurable = () => !!(store && typeof store.read === 'function' && typeof store.patch === 'function' && loadOk && loadAttempted && lastPatchOk === true && !durableDegraded)
+  /** Read the projection back. `force` re-reads (this is how a repaired store clears a degraded verdict). */
+  const load = ({ force = false } = {}) => {
+    if (loaded && !force) return { ok: loadOk, skipped: true }
     loaded = true
-    if (!store || typeof store.read !== 'function') { durableReason = 'no store seam was injected (the ledger is memory-only)'; return }
+    loadAttempted = true
+    if (!store || typeof store.read !== 'function') { durableReason = 'no store seam was injected (the ledger is memory-only)'; return { ok: false, noSeam: true } }
     let doc = null
     try {
       doc = store.read(LEDGER_KEY)
-      durableLoaded = true
+      loadOk = true
+      loadError = null
     } catch (e) {
+      loadOk = false
+      loadError = String((e && e.message) || e)
       durableDegraded = true
-      durableReason = 'the store could not be read: ' + String((e && e.message) || e)
+      durableReason = 'the store could not be read: ' + loadError
       bump(unwired, 'store-seam', 1)
       say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
-      return
+      return { ok: false, error: loadError }
     }
-    if (!doc) { durableReason = 'the store is empty (nothing to replay)'; return }
-    const persisted = Array.isArray(doc) ? doc : (doc && Array.isArray(doc.entries) ? doc.entries : null)
-    if (persisted === null) {
+    // A projection must be VERSIONED and CHECKSUMMED: an unverifiable document is not loaded into a safety
+    // ledger (it is counted and the ledger stays degraded) — silent half-loading is exactly what M3 warned about.
+    if (doc === null || doc === undefined) { durableReason = 'the store is empty (nothing to replay)'; durableDegraded = true; return { ok: true, empty: true } }
+    let entries_ = null
+    if (Array.isArray(doc)) {
+      entries_ = doc
+      bump(unwired, 'store-no-checksum', 1)
+      durableReason = 'the stored projection had no version/checksum: it was NOT loaded (unverifiable)'
+      durableDegraded = true
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return { ok: false, unverifiable: true }
+    }
+    if (!doc || typeof doc !== 'object' || !Array.isArray(doc.entries)) {
       bump(unwired, 'store-corrupt-doc', 1)
       durableReason = 'the store held an unrecognised projection shape'
+      durableDegraded = true
       say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
-      return
+      return { ok: false, corrupt: true }
     }
+    if (doc.version !== CANONICAL_VERSION) {
+      bump(unwired, 'store-version-mismatch', 1)
+      durableReason = 'the stored projection is version ' + String(doc.version) + ' but this ledger writes version ' + CANONICAL_VERSION + ': NOT loaded'
+      durableDegraded = true
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return { ok: false, versionMismatch: true }
+    }
+    const sum = checksumOf(doc.entries)
+    if (typeof doc.checksum !== 'string' || doc.checksum !== sum) {
+      bump(unwired, 'store-checksum-mismatch', 1)
+      durableReason = 'the stored projection failed its checksum (' + String(doc.checksum) + ' != ' + sum + '): NOT loaded'
+      durableDegraded = true
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return { ok: false, checksumMismatch: true }
+    }
+    const persisted = doc.entries
     let skipped = 0
+    const seenInDoc = new Set()
     for (const row of persisted) {
       if (!row || typeof row.key !== 'string' || typeof row.scope !== 'string' || typeof row.state !== 'string' || !STATES.includes(row.state)) { skipped += 1; continue }
       const i = ident(row.scope, row.key)
-      if (entries.has(i)) { skipped += 1; continue }
+      if (seenInDoc.has(i)) { skipped += 1; continue }   // a duplicate INSIDE the document is corruption
+      seenInDoc.add(i)
+      if (entries.has(i)) continue                       // a re-read of data we already hold is not corruption
       entries.set(i, {
         key: row.key, scope: row.scope, state: row.state,
         payloadFingerprint: typeof row.payloadFingerprint === 'string' ? row.payloadFingerprint : null,
@@ -271,12 +344,19 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       })
       order.push(i)
     }
-    if (skipped) bump(unwired, 'store-corrupt-row', skipped)
-    durableReason = skipped
-      ? 'loaded ' + order.length + ' entries; ' + skipped + ' malformed row(s) were SKIPPED and counted'
-      : 'loaded ' + order.length + ' entries from the store'
-    say({ type: 'idempotency/loaded', at: now(), entries: order.length, skipped })
+    if (skipped) {
+      bump(unwired, 'store-corrupt-row', skipped)
+      durableReason = 'loaded ' + order.length + ' entries; ' + skipped + ' malformed row(s) were SKIPPED and counted'
+      durableDegraded = true   // a partially readable projection is NOT a healthy one
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return { ok: false, skipped }
+    }
+    durableReason = 'loaded ' + order.length + ' verified entries from the store'
+    say({ type: 'idempotency/loaded', at: now(), entries: order.length, skipped: 0 })
+    return { ok: true, entries: order.length }
   }
+  /** Lazy load: a restart with the same store replays the settled keys (this is the whole point of N2). */
+  const ensureLoaded = () => { if (!loaded) load() }
   /** Resolve an entry by (scope, key). B2: a bare key that is ambiguous across scopes is REFUSED, not guessed. */
   const resolve = (scope, key, { required = false } = {}) => {
     if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'a non-empty string `key` is required', 'the key is the idempotency identity: e.g. { key: "task-create:t-3" }')
@@ -345,11 +425,25 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   const api = {
     apiVersion,
 
-    /** Whether the projection is actually durable right now (true only when the store is wired and the last write succeeded). */
-    durable() { ensureLoaded(); return { ok: true, durable: !!(store && !durableDegraded && lastPersistError === null && durableLoaded), loaded: durableLoaded, degraded: durableDegraded, reason: durableReason, at: now() } },
+    /**
+     * Whether the projection is durable RIGHT NOW. Three separate facts are exposed (round 9 / M3):
+     * `durable` (the verdict), `loaded` (the last full read), `lastPatchOk` (the last write) — a successful
+     * write after a failed load must never be reported as durability.
+     */
+    durable() {
+      ensureLoaded()
+      return {
+        ok: true, durable: isDurable(), loaded: loadOk, loadAttempted, lastPatchOk,
+        degraded: durableDegraded, reason: durableReason, loadError,
+        lastWriteAt: lastPersistAt, lastError: lastPersistError, at: now(),
+      }
+    },
 
     /** Explicitly write the projection (also happens automatically after every mutation). */
     persist() { ensureLoaded(); return persist() },
+
+    /** Re-read the projection. A degraded verdict clears only after a successful re-read AND a write. */
+    reload() { const r = load({ force: true }); return Object.assign({ ok: r.ok !== false, durable: isDurable(), loaded: loadOk, loadAttempted, lastPatchOk, degraded: durableDegraded, reason: durableReason, loadError }, r) },
 
     /** Start (or observe) a request under `key` inside `scope`. Same identity + same payload ⇒ the stored result. */
     begin({ key, scope = null, payload = null, by = null } = {}) {
@@ -570,20 +664,24 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       ensureLoaded()
       const at = now()
       const all = order.map((i) => entries.get(i)).filter(Boolean)
-      const durableNow = !!(store && !durableDegraded && lastPersistError === null)
+      const durableNow = isDurable()
       return {
         ok: true,
         configured: all.length > 0,
         maxEntries, ttlMs, pendingTimeoutMs, scopeDefault, abortNeedsReason, retryAfterAbort, retrySamePayloadOnly, maxPayloadBytes,
         canonicalVersion: CANONICAL_VERSION,
-        identity: 'scope' + JSON.stringify(IDENT_SEP) + 'key',
+        identity: IDENTITY_RULE,
         scopeIsPartOfIdentity: true,
         retryIsNewAttempt: !retrySamePayloadOnly,
         durable: durableNow,
+        loaded: loadOk,
+        loadAttempted,
+        lastPatchOk,
         durableBackend: store ? 'store' : null,
-        durableLoaded,
+        durableLoaded: loadOk,
         durableDegraded,
         durableReason,
+        durableLoadError: loadError,
         durableLastWriteAt: lastPersistAt,
         durableLastError: lastPersistError,
         ledgerKey: LEDGER_KEY,

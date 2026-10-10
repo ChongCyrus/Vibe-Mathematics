@@ -572,6 +572,8 @@ vmu.packs.active: [v5r]
 | `vmu.clock.onBackward` | enum | `clamp` | `clamp`∣`refuse`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 时钟回拨处置（clamp 不回退并自曝；refuse 具名拒；warn 必须自曝 ✗✓） |
 | `vmu.clock.maxBackwardMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 回拨容忍（≤ 容忍不判回拨 ✓） |
 | `vmu.clock.forwardJumpMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 异常前跳阈值（0＝不判定；超阈记 suspect ✓ 不静默 ✗） |
+| `vmu.clock.maxForwardJumpMs` | int ≥0 | `86400000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 异常前跳阈值（**默认 1 天，不许关闭** ✗✓；超阈按 onForward 处置 ✓） |
+| `vmu.clock.onForward` | enum | `clamp` | `clamp`∣`refuse`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 异常前跳处置（clamp 不让值跳跃并自曝 ✓；refuse 具名拒 ✓；warn 可跳但必须自曝＋计数 ✗✓） |
 | `vmu.clock.maxSkews` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 回拨/前跳记录上限（溢出必计数 ✓） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |

@@ -296,7 +296,10 @@ export function createKernel({
   const metrics = createMetrics({ settings: { get: (k) => settings[k] }, bus, clock, log })
   // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
   // path: the ring above stays the in-memory view, this service is the queryable/rotatable face over it.
-  const audit = createAudit({ settings: { get: (k) => settings[k] }, bus, clock, log, sink: auditToDisk })
+  // ROUND 20: every module whose semantics depend on ELAPSED TIME takes the guarded clock. An independent review
+  // pointed out that only four of them did, and that `delegation` was the worst omission - a backwards clock
+  // would EXTEND an authorisation's life. The rest of the kernel keeps the raw clock on purpose.
+  const audit = createAudit({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, sink: auditToDisk })
   const alerts = createAlerts({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
@@ -305,7 +308,7 @@ export function createKernel({
   // `roots` = who holds authority that does NOT come from a delegation. It is an EXPLICIT setting rather than
   // a guess from role names: unset means nobody can grant anything (S-2 refuses every grant), which is the
   // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
-  const delegation = createDelegation({ settings: { get: (k) => settings[k] }, bus, clock, log, members,
+  const delegation = createDelegation({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, members,
     roots: Array.isArray(settings['vmu.delegation.roots']) ? settings['vmu.delegation.roots'] : [] })
   const workflow = createWorkflow({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
   const trust = createTrust({ settings: { get: (k) => settings[k] }, bus, clock, log })
@@ -343,8 +346,8 @@ export function createKernel({
   // delivery and the research lifecycle. Each one is inert without its declared configuration or its seam.
   const scheduler = createScheduler({ settings: { get: (k) => settings[k] }, bus, clock, log, timer: null,
     isPaused: () => controlState.state === 'paused' })
-  const crypto = createCrypto({ settings: { get: (k) => settings[k] }, bus, clock, log, signer: null })
-  const notify = createNotify({ settings: { get: (k) => settings[k] }, bus, clock, log, deliver: null })
+  const crypto = createCrypto({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, signer: null })
+  const notify = createNotify({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, deliver: null })
   const lifecycle = createLifecycle({ settings: { get: (k) => settings[k] }, bus, clock, log, workflow,
     domaingate, publication })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
@@ -356,8 +359,8 @@ export function createKernel({
   const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, audit, idempotency })
   // K1/K2 (round 17): compensation transactions and rate limiting. Transactions get the idempotency ledger so a
   // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
-  const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock, log, idempotency })
-  const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, idempotency })
+  const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
   // N4 (round 18): the state-version/migration primitive that keeps an old snapshot from being read silently by
   // newer code. (The chain is built earlier now - see the N1 consumer-wiring comment above the bus.)
   const stateversion = createStateVersion({ settings: { get: (k) => settings[k] }, bus, clock, log })

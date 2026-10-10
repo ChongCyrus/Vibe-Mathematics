@@ -31,18 +31,28 @@ export function rowPreimage(row, prevHash) {
   return JSON.stringify({ prevHash: prevHash === undefined ? r.prevHash : prevHash, seq: r.seq === undefined ? null : r.seq, what: r.what === undefined ? null : r.what, at: r.at === undefined ? null : r.at, payload: r.payload === undefined ? null : r.payload })
 }
 
-export function createAuditChain({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, hash = null, verifyCap = 0 } = {}) {
+export function createAuditChain({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, hash = null, sign = null, verifyCap = 0 } = {}) {
   const cfg = () => ({
     hasherInjected: typeof hash === 'function',
+    keyed: typeof sign === 'function',
     verifyCap: intOr(settings['vmu.audit.chain.verifyCap'], verifyCap),
     algorithm: settings['vmu.audit.chain.algorithm'] || 'sha256',
   })
 
-  /** The ONLY place digests are produced. No seam ⇒ named refusal, never a fabricated hash. */
+  /**
+   * The ONLY place digests are produced. No seam ⇒ named refusal, never a fabricated hash.
+   * With a `sign` seam the row digest is a KEYED MAC: an attacker can no longer recompute a whole chain
+   * (a plain sha256 chain only proves ACCIDENTAL corruption — every receipt says which one you got).
+   */
   function digestOf(preimage) {
+    if (typeof sign === 'function') {
+      const mac = sign({ data: preimage })
+      if (mac === undefined || mac === null) throw refuse('VMU_AUDIT_CHAIN_NO_HASHER', 'the injected sign seam returned no MAC', 'the seam must return a mac for { data }', { op: 'sign' })
+      return 'hmac:' + String(mac)
+    }
     if (typeof hash !== 'function') {
       throw refuse('VMU_AUDIT_CHAIN_NO_HASHER', 'no hash seam was injected: the chain cannot be built and no hash will be invented',
-        'wire it with createAuditChain({ hash }) (e.g. a sha256 h(preimage) function)', { op: 'hash' })
+        'wire it with createAuditChain({ hash }) (sha256) or createAuditChain({ sign }) (keyed MAC)', { op: 'hash' })
     }
     return String(hash(preimage))
   }
@@ -63,11 +73,12 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
    * `actual`. Partial verification (verifyCap) reports `verified` vs `unverified` EXACTLY — it never
    * claims the whole chain was checked.
    */
-  function verifyChain({ rows = [], from = 0, limit = null } = {}) {
+  function verifyChain({ rows = [], from = 0, limit = null, expectHead = undefined, expectSeq = undefined } = {}) {
     const c = cfg()
-    if (typeof hash !== 'function') {
+    const anchored = expectHead !== undefined || expectSeq !== undefined
+    if (typeof hash !== 'function' && typeof sign !== 'function') {
       throw refuse('VMU_AUDIT_CHAIN_NO_HASHER', 'no hash seam was injected: verification cannot be performed honestly',
-        'wire createAuditChain({ hash }); a verification claim without a hasher would be a lie', { op: 'verify', verified: 0 })
+        'wire createAuditChain({ hash }) or createAuditChain({ sign }); a verification claim without a hasher would be a lie', { op: 'verify', verified: 0 })
     }
     const all = Array.isArray(rows) ? rows : []
     const start = intOr(from, 0)
@@ -75,7 +86,7 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
     const end = cap > 0 ? Math.min(all.length, start + cap) : all.length
 
     // Empty chain: explicit semantics, not a vacuous success.
-    if (all.length === 0) return { ok: true, verified: 0, total: 0, unverified: 0, empty: true, genesis: GENESIS, note: 'empty chain: nothing to verify (this is NOT a claim about any data)' }
+    if (all.length === 0) return { ok: true, verified: 0, total: 0, unverified: 0, empty: true, genesis: GENESIS, anchored, keyed: c.keyed, note: 'empty chain: nothing to verify (this is NOT a claim about any data)' }
 
     let prevHash = start === 0 ? GENESIS : (all[start - 1] && all[start - 1].hash !== undefined ? String(all[start - 1].hash) : null)
     let prevSeq = start === 0 ? null : (all[start - 1] && all[start - 1].seq !== undefined ? all[start - 1].seq : null)
@@ -99,8 +110,15 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
       // (b) the row's prevHash must equal the previous row's hash
       const expectedPrev = prevHash === null ? row.prevHash : prevHash
       if (row.prevHash !== undefined && expectedPrev !== null && String(row.prevHash) !== String(expectedPrev)) {
-        const reason = String(row.prevHash) === GENESIS && i > 0 ? 'row-inserted' : 'row-modified'
-        return { ok: false, index: i, reason, detail: 'prevHash mismatch at row ' + i + ': expected ' + String(expectedPrev) + ' got ' + String(row.prevHash), expected: String(expectedPrev), actual: String(row.prevHash), verified: i - start, total: all.length, unverified: all.length - (i - start) }
+        // At the very start of the chain, a first row that does not point at GENESIS means the GENESIS row
+        // itself is GONE (a removal at index 0) — not a modification of a later row.
+        const reason = i === start && expectedPrev === GENESIS
+          ? 'row-removed'
+          : (String(row.prevHash) === GENESIS && i > 0 ? 'row-inserted' : 'row-modified')
+        // When a trusted checkpoint is supplied and the break is at the LAST row, this is a tail
+        // replacement: report it under the truncated code as well (the lead's requirement, task-118).
+        const tailCode = anchored && i === all.length - 1 ? 'VMU_AUDIT_CHAIN_TRUNCATED' : null
+        return { ok: false, code: tailCode, index: i, reason, detail: 'prevHash mismatch at row ' + i + ': expected ' + String(expectedPrev) + ' got ' + String(row.prevHash) + (reason === 'row-removed' && i === start ? ' (the GENESIS row is missing)' : ''), expected: String(expectedPrev), actual: String(row.prevHash), verified: i - start, total: all.length, unverified: all.length - (i - start), anchored, keyed: c.keyed }
       }
       // (c) the stored hash must equal the recomputation
       const recomputed = digestOf(rowPreimage(row, row.prevHash === undefined ? expectedPrev : row.prevHash))
@@ -117,6 +135,24 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
     const verified = end - start
     const unverified = all.length - verified
     const partial = unverified > 0
+    // ANCHOR CHECK (task-118): without a trusted checkpoint a chain cannot detect a truncated TAIL at all
+    // (recompute-and-stop is always self-consistent). With one, a removed/replaced tail fails by name.
+    const lastVerified = end > start ? all[end - 1] : null
+    const actualHead = lastVerified && lastVerified.hash !== undefined ? String(lastVerified.hash) : null
+    const actualSeq = lastVerified && lastVerified.seq !== undefined ? lastVerified.seq : null
+    if (anchored && end === all.length) {
+      if (expectHead !== undefined && expectHead !== null && String(expectHead) !== String(actualHead)) {
+        return { ok: false, code: 'VMU_AUDIT_CHAIN_TRUNCATED', reason: 'tail-truncated', index: end > 0 ? end - 1 : 0,
+          detail: 'chain head does not match the trusted checkpoint: expected ' + String(expectHead) + ' got ' + String(actualHead) + ' — the tail was removed or replaced',
+          expected: String(expectHead), actual: String(actualHead), verified, total: all.length, unverified: 0, partial: false, anchored, keyed: c.keyed,
+          note: 'TAIL MISMATCH: the verified rows are self-consistent, which is exactly why a trusted checkpoint is required' }
+      }
+      if (expectSeq !== undefined && expectSeq !== null && Number(expectSeq) !== Number(actualSeq)) {
+        return { ok: false, code: 'VMU_AUDIT_CHAIN_TRUNCATED', reason: 'tail-truncated', index: end > 0 ? end - 1 : 0,
+          detail: 'chain seq does not match the trusted checkpoint: expected ' + String(expectSeq) + ' got ' + String(actualSeq) + ' — rows were removed from the tail',
+          expected: Number(expectSeq), actual: Number(actualSeq), verified, total: all.length, unverified: 0, partial: false, anchored, keyed: c.keyed }
+      }
+    }
     if (partial && bus && typeof bus.emit === 'function') bus.emit('auditchain/partial-verify', { verified, unverified })
     return {
       ok: true,
@@ -126,11 +162,19 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
       partial,
       from: start,
       to: end - 1,
-      // (5) honesty: a partial check must never be reported as a full one
-      note: partial ? 'PARTIAL: only rows ' + start + '..' + (end - 1) + ' were verified; ' + unverified + ' row(s) were NOT verified' : 'full chain verified (' + verified + ' row(s))',
+      head: actualHead,
+      seq: actualSeq,
+      anchored,
+      keyed: c.keyed,
+      // (5) honesty: a partial check must never be reported as a full one, and an unanchored check must
+      // never be presented as tamper-proof (it only proves accidental corruption).
+      note: [
+        anchored ? 'anchored: checked against a trusted checkpoint (' + String(expectHead || expectSeq) + ')' : 'anchored:false — no checkpoint was supplied, so a truncated or fully rebuilt TAIL cannot be detected (accidental corruption only)',
+        partial ? 'PARTIAL: only rows ' + start + '..' + (end - 1) + ' were verified; ' + unverified + ' row(s) were NOT verified' : 'full chain verified (' + verified + ' row(s))',
+        c.keyed ? 'keyed:true (MAC chain)' : 'keyed:false (plain sha256 chain: an attacker who can rewrite the log can recompute it)',
+      ].join(' | '),
       truncated: partial,
       truncatedCode: partial ? 'VMU_AUDIT_CHAIN_TRUNCATED' : null,
-      head: all.length ? String(all[all.length - 1].hash) : null,
       genesis: GENESIS,
     }
   }
@@ -148,15 +192,28 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
     })
   }
 
-  /** Read-only status. Says plainly whether the chain can be built at all. */
+  /**
+   * checkpoint(): the TRUSTED anchor. Keep it outside the log (task-118): it is the only way to detect a
+   * truncated or wholly rebuilt tail. Returns the head hash + seq + when it was taken.
+   */
+  function checkpoint({ rows = [] } = {}) {
+    const all = Array.isArray(rows) ? rows : []
+    const last = all.length ? all[all.length - 1] : null
+    if (!last) return { seq: null, hash: GENESIS, at: clock(), rows: 0, keyed: cfg().keyed, note: 'empty chain: the checkpoint is the genesis marker' }
+    return { seq: last.seq === undefined ? null : last.seq, hash: last.hash === undefined ? null : String(last.hash), at: clock(), rows: all.length, keyed: cfg().keyed }
+  }
+
+  /** Read-only status. Says plainly whether the chain can be built and HOW STRONG it is. */
   const status = () => ({
-    hasher: typeof hash === 'function' ? 'injected' : 'none',
-    chainable: typeof hash === 'function',
-    note: typeof hash === 'function' ? null : 'no hash seam: appends and verification will refuse by name (no fake hashes)',
+    hasher: typeof sign === 'function' ? 'sign(hmac)' : (typeof hash === 'function' ? 'hash' : 'none'),
+    chainable: typeof hash === 'function' || typeof sign === 'function',
+    keyed: cfg().keyed,
+    strength: cfg().keyed ? 'keyed MAC chain (resists recomputation by an attacker without the key)' : (typeof hash === 'function' ? 'plain sha256 chain (accidental corruption only: anyone can recompute it)' : 'none'),
+    note: (typeof hash === 'function' || typeof sign === 'function') ? null : 'no hash seam: appends and verification will refuse by name (no fake hashes)',
     policy: cfg(),
     genesis: GENESIS,
     failureReasons: CHAIN_FAILURES.slice(),
   })
 
-  return { apiVersion, append, verifyChain, link, status }
+  return { apiVersion, append, verifyChain, link, checkpoint, status }
 }

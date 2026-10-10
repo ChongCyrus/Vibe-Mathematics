@@ -5,7 +5,7 @@
 // Round 8 additions: B1 type-tagged canonicalisation, B2 scope-in-identity, B3 explicit abort→retry payload
 // rule, N2 optional store-backed durability (a replay after a RESTART still deduplicates).
 // Run: node tests/vmu-idempotency.test.mjs     Last line: === VMU IDEMPOTENCY: N passed, M failed ===
-import { createIdempotency, canonicalize, refuse, CANONICAL_VERSION, LEDGER_KEY } from '../vibe-math-vmu/kernel/idempotency.js'
+import { createIdempotency, canonicalize, refuse, CANONICAL_VERSION, LEDGER_KEY, checksumOf } from '../vibe-math-vmu/kernel/idempotency.js'
 
 let passed = 0
 let failed = 0
@@ -24,12 +24,13 @@ function fakeBus({ throwOnEmit = false } = {}) {
   return { rows, topics, declareTopic: (n) => { topics.push(n); return { ok: true, topic: n, existing: false } }, emit: (h, p) => { if (throwOnEmit) throw new Error('bus down'); rows.push({ hook: h, payload: p }) } }
 }
 /** A minimal store seam in the shape of kernel/store.js: read + patch, and a RESTART means a new ledger over it. */
-function fakeStore({ failRead = false, failWrite = false, corrupt = false } = {}) {
+function fakeStore(opts = {}) {
   const disk = {}
+  const o = Object.assign({ failRead: false, failWrite: false, corrupt: false }, opts)
   return {
-    disk,
-    read(key) { if (failRead) throw new Error('store not open'); return Object.prototype.hasOwnProperty.call(disk, key) ? JSON.parse(JSON.stringify(disk[key])) : null },
-    patch(key, fn) { if (failWrite) throw new Error('store write refused'); if (corrupt) disk[key] = { junk: true }; else disk[key] = fn(Object.prototype.hasOwnProperty.call(disk, key) ? disk[key] : null); return disk[key] },
+    disk, opts: o,
+    read(key) { if (o.failRead) throw new Error('store not open'); return Object.prototype.hasOwnProperty.call(disk, key) ? JSON.parse(JSON.stringify(disk[key])) : null },
+    patch(key, fn) { if (o.failWrite) throw new Error('store write refused'); if (o.corrupt) disk[key] = { junk: true }; else disk[key] = fn(Object.prototype.hasOwnProperty.call(disk, key) ? disk[key] : null); return disk[key] },
   }
 }
 const S = (extra = {}) => Object.assign({}, extra)
@@ -46,7 +47,7 @@ const S = (extra = {}) => Object.assign({}, extra)
   const r = m.reap()
   ok(r.ok === true && r.reapedCount === 0 && r.droppedCount === 0 && r.kept === 0, 'zero-mechanism: reap() is a harmless no-op')
   ok(m.status().counters.begun === 0, 'zero-mechanism: nothing was begun')
-  ok(m.status().canonicalVersion === CANONICAL_VERSION && m.status().identity === 'scope"\\u0000"key', 'zero-mechanism: status() declares the encoding version and the identity rule')
+  ok(m.status().canonicalVersion === CANONICAL_VERSION && m.status().identity === 'len(scope):scope len(key):key', 'zero-mechanism: status() declares the encoding version and the identity rule')
 }
 
 // ── 2. begin ⇒ pending (NOT a success) ⇒ commit ⇒ committed (the only settled state) ─────────────────
@@ -250,7 +251,7 @@ const S = (extra = {}) => Object.assign({}, extra)
   const ambiguous = throwsNamed(() => m.lookup({ key: 'close' }), 'VMU_INVALID_ARGUMENT', 'B2: a bare key that matches several scopes is REFUSED (never guessed)')
   ok(!!ambiguous && /meeting:A, meeting:B/.test(ambiguous.message), 'B2: the refusal names the candidate scopes')
   ok(m.list({ scope: 'meeting:B' }).count === 1 && m.list({ scope: 'meeting:A' }).count === 1, 'B2: list() can filter by scope')
-  ok(m.status().scopeIsPartOfIdentity === true && m.status().identity === 'scope"\\u0000"key', 'B2: status() declares that scope is part of the identity')
+  ok(m.status().scopeIsPartOfIdentity === true && m.status().identity === 'len(scope):scope len(key):key', 'B2: status() declares that scope is part of the identity')
   m.commit({ key: 'close', scope: 'meeting:B', result: 'B closed' })
   ok(m.begin({ key: 'close', scope: 'meeting:A', payload: { agenda: 1 } }).deduplicated === true, 'B2: each scope deduplicates on its own payload')
   const scoped = m.begin({ key: 'fresh', scope: 'brand:new', payload: 1 })
@@ -371,7 +372,7 @@ const S = (extra = {}) => Object.assign({}, extra)
   ok(lb.found === true && lb.state === 'committed' && lb.result.closed === 42, 'N2: after a restart the committed entry is REPLAYED from the store')
   const replay = b.begin({ key: 'job:42', scope: 'meeting:A', payload: { op: 'close', at: 7 } })
   ok(replay.deduplicated === true && replay.settled === true && replay.result.closed === 42, 'N2: the same payload after a restart DEDUPLICATES (the whole point of N2)')
-  ok(b.status().durableLoaded === true && /loaded 1 entries/.test(b.status().durableReason), 'N2: the load is reported in the status')
+  ok(b.status().durableLoaded === true && /loaded 1 verified entries/.test(b.status().durableReason), 'N2: the load is reported in the status')
   const e = throwsNamed(() => b.begin({ key: 'job:42', scope: 'meeting:A', payload: { op: 'close', at: 8 } }), 'VMU_IDEMPOTENCY_KEY_REUSED', 'N2: a DIFFERENT payload after a restart is refused (cross-restart protection both ways)')
   ok(!!e && /first difference at byte/.test(String(e.hint)), 'N2: the cross-restart refusal still carries the diff')
   ok(b.status().counters.deduplicated === 1, 'N2: the cross-restart dedup is counted')
@@ -397,6 +398,117 @@ const S = (extra = {}) => Object.assign({}, extra)
   c2.begin({ key: 'y1', payload: 1 })
   ok(c2.status().unwired['store-corrupt-doc'] >= 1, 'N2: an unrecognised projection shape is counted, not swallowed')
   ok(c2.lookup({ key: 'y1' }).state === 'pending', 'N2: a corrupt document does not stop new work')
+}
+
+// ── 11b. M3: `durable` is never restored by a successful write alone (and projections are checksummed) ─
+{
+  const c = fakeClock(0)
+  const store = fakeStore({ failRead: true })
+  const deg = createIdempotency({ clock: c.clock, settings: S(), store })
+  deg.begin({ key: 'm3', payload: 1 })
+  deg.commit({ key: 'm3', result: 'ok' })
+  const s1 = deg.status()
+  ok(s1.durable === false && s1.loaded === false && s1.lastPatchOk === true, 'M3: a successful WRITE after a failed READ does not make the ledger durable (three facts are separate)')
+  ok(s1.durableDegraded === true && s1.durableLoadError === 'store not open', 'M3: the degraded verdict is sticky and names the load error')
+  ok(/never read back successfully/.test(s1.durableReason) && /NOT established/.test(s1.durableReason), 'M3: the reason says in words that durability is NOT established')
+  ok(/MEMORY ONLY/.test(s1.note), 'M3: the note still reports a memory-only ledger')
+  ok(deg.durable().durable === false && deg.durable().loaded === false && deg.durable().lastPatchOk === true, 'M3: durable() exposes loaded/lastPatchOk separately from the verdict')
+
+  store.opts.failRead = false
+  const r = deg.reload()
+  ok(r.ok === true && r.loaded === true && r.durable === false, 'M3: a successful RE-READ alone still does not restore durability (a write must follow)')
+  ok(deg.status().durableDegraded === true, 'M3: the verdict stays degraded until the write leg also succeeds')
+  deg.persist()
+  const s2 = deg.status()
+  ok(s2.durable === true && s2.durableDegraded === false && s2.loaded === true && s2.lastPatchOk === true, 'M3: only a COMPLETE read+write cycle clears the degraded verdict')
+  ok(/persisted and verified/.test(s2.durableReason), 'M3: the reason now says the projection was persisted AND verified')
+
+  const st = fakeStore()
+  const a = createIdempotency({ clock: c.clock, settings: S(), store: st })
+  a.begin({ key: 'ck', payload: 1 })
+  a.commit({ key: 'ck', result: 'r' })
+  ok(st.disk[LEDGER_KEY].version === CANONICAL_VERSION && typeof st.disk[LEDGER_KEY].checksum === 'string', 'M3: the projection carries a VERSION and a CHECKSUM')
+  ok(st.disk[LEDGER_KEY].checksum === checksumOf(st.disk[LEDGER_KEY].entries), 'M3: the checksum covers the entries')
+
+  st.disk[LEDGER_KEY].entries[0].result = 'tampered'
+  const b = createIdempotency({ clock: c.clock, settings: S(), store: st })
+  ok(b.lookup({ key: 'ck' }).found === false, 'M3: a projection whose checksum does not match is NOT loaded')
+  ok(b.status().unwired['store-checksum-mismatch'] === 1 && b.status().durableDegraded === true, 'M3: the checksum mismatch is counted and the ledger stays degraded')
+  ok(/failed its checksum/.test(b.status().durableReason), 'M3: the reason names the checksum failure')
+
+  const st2 = fakeStore()
+  st2.disk[LEDGER_KEY] = { version: CANONICAL_VERSION - 1, savedAt: 0, checksum: checksumOf([]), entries: [] }
+  const v = createIdempotency({ clock: c.clock, settings: S(), store: st2 })
+  ok(v.lookup({ key: 'anything' }).state === 'absent' && v.status().unwired['store-version-mismatch'] === 1, 'M3: an older projection version is refused and counted (never silently interpreted)')
+  ok(v.status().durable === false && v.status().durableDegraded === true, 'M3: a version mismatch keeps the ledger degraded')
+
+  const st3 = fakeStore()
+  st3.disk[LEDGER_KEY] = [{ scope: 'session', key: 'legacy', state: 'committed', payloadFingerprint: 'x', payloadCanon: 'v1|x', attempts: 1, startedAt: 0, result: 1 }]
+  const legacy = createIdempotency({ clock: c.clock, settings: S(), store: st3 })
+  ok(legacy.lookup({ key: 'legacy' }).found === false && legacy.status().unwired['store-no-checksum'] === 1, 'M3: an unversioned/unchecksummed projection is counted and NOT loaded (fail closed)')
+}
+
+// ── 11c. bare-crash hardening: throwing getters and Proxy traps become NAMED refusals (with the path) ─
+{
+  const boom = {}
+  Object.defineProperty(boom, 'x', { enumerable: true, get() { throw new Error('boom') } })
+  const e1 = throwsNamed(() => canonicalize(boom), 'VMU_INVALID_ARGUMENT', 'crash: a throwing getter is refused by name (no bare crash)')
+  ok(!!e1 && /boom/.test(e1.message) && /\$\.x/.test(e1.message), 'crash: the refusal carries the underlying message AND the path ($.x)')
+  ok(!!e1 && /could not be read/.test(e1.message), 'crash: the refusal explains that the payload could not be READ')
+
+  const e2 = throwsNamed(() => canonicalize(new Proxy({}, { ownKeys() { throw new Error('trapped') } })), 'VMU_INVALID_ARGUMENT', 'crash: a Proxy whose ownKeys trap throws is refused by name')
+  ok(!!e2 && /trapped/.test(e2.message) && /\$/.test(e2.message), 'crash: the Proxy refusal carries the trap message and a path')
+
+  const e3 = throwsNamed(() => canonicalize(new Proxy({ a: { b: 1 } }, { get() { throw new Error('get-trap') } })), 'VMU_INVALID_ARGUMENT', 'crash: a Proxy whose get trap throws is refused by name')
+  ok(!!e3 && /get-trap/.test(e3.message), 'crash: the get-trap refusal carries its message')
+
+  const e4 = throwsNamed(() => canonicalize(new Proxy([1, 2], { get() { throw new Error('arr-trap') } })), 'VMU_INVALID_ARGUMENT', 'crash: a Proxy around an array is refused by name too')
+  ok(!!e4 && /arr-trap/.test(e4.message), 'crash: the array trap refusal carries its message')
+
+  const rev = Proxy.revocable({ a: 1 }, {})
+  rev.revoke()
+  ok(throwsNamed(() => canonicalize(rev.proxy), 'VMU_INVALID_ARGUMENT', 'crash: a revoked Proxy is refused by name') !== null, 'crash: revoked proxies are named refusals')
+  ok(throwsNamed(() => canonicalize(new Proxy({}, { getPrototypeOf() { throw new Error('proto-trap') } })), 'VMU_INVALID_ARGUMENT', 'crash: a getPrototypeOf trap is refused by name') !== null, 'crash: prototype traps are named refusals')
+
+  const deep = [{ ok: 1 }, { get bad() { throw new Error('deep-boom') } }]
+  const e5 = throwsNamed(() => canonicalize(deep), 'VMU_INVALID_ARGUMENT', 'crash: a getter deep inside an array is refused by name')
+  ok(!!e5 && /deep-boom/.test(e5.message) && /\$\[1\]\.bad/.test(e5.message), 'crash: the deep refusal reports the full path ($[1].bad)')
+
+  const m = createIdempotency({ clock: fakeClock(0).clock, settings: S() })
+  const e6 = throwsNamed(() => m.begin({ key: 'p1', payload: boom }), 'VMU_INVALID_ARGUMENT', 'crash: begin() with a throwing getter is refused by name')
+  ok(!!e6 && m.status().entries.total === 0 && m.status().refusals.VMU_INVALID_ARGUMENT === 1, 'crash: the ledger is left untouched and the refusal is counted')
+  ok(msgHasNoBareBoom(() => m.begin({ key: 'p2', payload: new Proxy({}, { ownKeys() { throw new Error('trapped') } }) })), 'crash: NO bare error escapes begin() either')
+}
+function msgHasNoBareBoom(fn) {
+  try { fn(); return false } catch (e) { return !!e.code && e.code === 'VMU_INVALID_ARGUMENT' }
+}
+
+// ── 11d. M2: the composite identity is INJECTIVE (a delimiter cannot collapse two identities) ────────
+{
+  const c = fakeClock(0)
+  const m = createIdempotency({ clock: c.clock, settings: S() })
+  ok(m.status().identity === 'len(scope):scope len(key):key', 'M2: the identity rule is length-prefixed (and self-disclosed)')
+  const first = m.begin({ scope: 'a', key: 'b\u0000c', payload: { v: 1 } })
+  m.commit({ scope: 'a', key: 'b\u0000c', result: 'first' })
+  const second = m.begin({ scope: 'a\u0000b', key: 'c', payload: { v: 1 } })
+  ok(second.ok === true && second.deduplicated !== true && second.settled === false, 'M2: the critic\u2019s pair is now TWO identities (no false dedup)')
+  ok(first.ref === 'a/b\u0000c' && second.ref === 'a\u0000b/c' && first.ref !== second.ref, 'M2: the two entries have distinct refs')
+  ok(m.status().entries.total === 2, 'M2: both identities are in the ledger')
+  ok(m.lookup({ scope: 'a', key: 'b\u0000c' }).result === 'first' && m.lookup({ scope: 'a\u0000b', key: 'c' }).state === 'pending', 'M2: each identity resolves on its own')
+  const pairs = [
+    ['', '1:a'], ['1', ':a'], ['a:', '1'], [':', 'a'],
+    ['x\u0000', 'y'], ['x', '\u0000y'], ['1:2', '3'], ['1', '2:3'],
+  ]
+  const seen = new Set()
+  for (const [scope, key] of pairs) {
+    const r = m.begin({ scope, key, payload: { tag: scope + '|' + key } })
+    seen.add(r.ref)
+  }
+  ok(seen.size === pairs.length, 'M2: eight adversarial (scope,key) pairs produce eight distinct identities')
+  ok(m.status().entries.total === 2 + pairs.length, 'M2: every adversarial pair is a separate entry (no collapsing)')
+  const collide = pairs.map(([scope, key]) => scope.length + ':' + scope + key.length + ':' + key)
+  ok(new Set(collide).size === pairs.length, 'M2: the length-prefixed ident string itself has no collisions on the adversarial set')
+  ok(collide[0] !== collide[1], 'M2: (\'\',\'1:a\') and (\'1\',\':a\') no longer share an ident')
 }
 
 // ── 12. truncation counting + read-only purity + determinism ─────────────────────────────────────────

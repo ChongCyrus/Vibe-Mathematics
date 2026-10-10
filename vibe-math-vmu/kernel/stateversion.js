@@ -56,7 +56,7 @@ export function createStateVersion(opts) {
       if (!m.from || !m.to) return refuse('VMU_COMPAT_UNKNOWN_COMBO', '迁移项必须含 from 与 to', '形如 {from:"1",to:"2",run}')
       if (typeof m.run !== 'function') return refuse('VMU_MIGRATE_DRYRUN_FAILED', '迁移 ' + m.from + '→' + m.to + ' 缺少 run', '每步必须是**显式**函数（不得隐式改写 ✗）')
     }
-    declared = { version, migrations }
+    declared = { version, migrations, order: Array.isArray(args.order) ? args.order.map(String) : null }
     current = version
     return { ok: true, version, migrations: migrations.map((m) => ({ from: m.from, to: m.to })) }
   }
@@ -122,6 +122,25 @@ export function createStateVersion(opts) {
     return refuse('VMU_NOT_FOUND', '没有从 ' + from + ' 到 ' + to + ' 的显式迁移路径', '补迁移链；本面**绝不隐式改写** ✗')
   }
 
+  /**
+   * 方向判定（**fail-closed** ✗✓）：`order` 显式全序优先；否则**只有两者都是纯数值**才敢比大小；
+   * 其余（`vX`／`2024-01`／`1.2.3`…）⇒ `unknown:true` ⇒ 调用处**视同降级并拒**（绝不静默放行 ✗）。
+   */
+  const directionOf = (from, to) => {
+    const ord = (declared && Array.isArray(declared.order)) ? declared.order : null
+    if (ord) {
+      const a = ord.indexOf(from), b = ord.indexOf(to)
+      if (a !== -1 && b !== -1) return { unknown: false, backward: b < a, forward: b > a }
+      return { unknown: true, backward: false, forward: false }   // 不在显式序里 ⇒ 不可比 ⇒ fail-closed ✗
+    }
+    const pureNumber = (x) => /^-?\d+(\.\d+)?$/.test(String(x)) && Number.isFinite(Number(x))
+    if (pureNumber(from) && pureNumber(to)) {
+      const nf = Number(from), nt = Number(to)
+      return { unknown: false, backward: nt < nf, forward: nt > nf }
+    }
+    return { unknown: true, backward: false, forward: false }
+  }
+
   /** 显式迁移：逐版本前进；**失败 ⇒ 原状态一字不变** ✓；已达成 ⇒ `noop:true` ✓。 */
   const migrate = (a) => {
     const args = a || {}
@@ -132,10 +151,19 @@ export function createStateVersion(opts) {
     if (!from) return refuse('VMU_COMPAT_UNKNOWN_COMBO', '状态缺少版本标签 ⇒ 拒绝迁移（不做"猜版本" ✗）', '先 wrap() 或给出带标签的快照')
     if (from === to) return { ok: true, noop: true, state: args.state, from, to, steps: [] }   // ⑤ 幂等
     const idxFrom = Number(from), idxTo = Number(to)
-    const numeric = Number.isFinite(idxFrom) && Number.isFinite(idxTo)
-    if (numeric && idxTo < idxFrom && readKey('vmu.state.allowDowngrade') !== true) {
+    const allowDown = readKey('vmu.state.allowDowngrade') === true
+    const dir = directionOf(from, to)
+    // **非数值/序外 ⇒ fail-closed**：方向未知一律视同降级 ⇒ 默认拒（+ 自曝）✗✓
+    if (dir.unknown && !allowDown) {
+      return refuse('VMU_INDEX_STALE', '版本方向未知（非纯数值且未声明 order）：' + from + ' ⇒ ' + to + ' ⇒ **视同降级并拒绝**',
+        '要么 declare({order:[…]}) 给出**显式全序**，要么设 vmu.state.allowDowngrade=true（会**自曝** directionUnknown ✓）')
+    }
+    if (dir.backward && !allowDown) {
       return refuse('VMU_INDEX_STALE', '降级被拒：' + from + ' ⇒ ' + to + '（默认不允许降级）', '显式设置 vmu.state.allowDowngrade=true 才可降级（会自曝 ✓）')
     }
+    void idxFrom; void idxTo
+    const directionUnknown = dir.unknown === true
+    const forced = directionUnknown || dir.backward === true
     const path = findPath(from, to, c)
     if (path.ok === false) return path
     // **原子性**：在副本上跑完全部步骤才提交 ✓
@@ -159,7 +187,7 @@ export function createStateVersion(opts) {
     if (c.keepHistory) history.push(rec)
     log('stateversion.migrate ' + from + '→' + to)
     emit({ type: 'stateversion.migrate', from, to, steps: audit.length })
-    return { ok: true, state: draft, from, to, noop: false, steps: audit, audit: audit.map((x) => x.from + '→' + x.to) }
+    return { ok: true, state: draft, from, to, noop: false, steps: audit, audit: audit.map((x) => x.from + '→' + x.to), directionUnknown, forced }
   }
 
   const status = () => {

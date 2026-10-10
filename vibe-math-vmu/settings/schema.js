@@ -476,6 +476,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.clock.onBackward', type: 'enum', domain: ['clamp', 'refuse', 'warn'], def: 'clamp', hot: HOT.H1, who: 'office', doc: '时钟回拨处置（clamp 不回退并自曝；refuse 具名拒；warn 必须自曝 ✗✓）' },
   { key: 'vmu.clock.maxBackwardMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '回拨容忍（≤ 容忍不判回拨 ✓）' },
   { key: 'vmu.clock.forwardJumpMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '异常前跳阈值（0＝不判定；超阈记 suspect ✓ 不静默 ✗）' },
+  // M4 (round 20): the guard was one-sided - it caught backwards motion but a forward jump could empty the ledger
+  // and reset a rate limiter. `maxForwardJumpMs` is the effective threshold (default one day: scheduling jitter is
+  // milliseconds, so a day-long jump in one session can only be a broken clock) and `onForward` mirrors onBackward.
+  { key: 'vmu.clock.maxForwardJumpMs', type: 'natural', def: 86400000, hot: HOT.H1, who: 'office', doc: '异常前跳阈值（**默认 1 天，不许关闭** ✗✓；超阈按 onForward 处置 ✓）' },
+  { key: 'vmu.clock.onForward', type: 'enum', domain: ['clamp', 'refuse', 'warn'], def: 'clamp', hot: HOT.H1, who: 'office', doc: '异常前跳处置（clamp 不让值跳跃并自曝 ✓；refuse 具名拒 ✓；warn 可跳但必须自曝＋计数 ✗✓）' },
   { key: 'vmu.clock.maxSkews', type: 'positiveInteger', def: 100, hot: HOT.H1, who: 'office', doc: '回拨/前跳记录上限（溢出必计数 ✓）' },
   { key: 'vmu.handover.packBudgetBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '上下文包预算（触界必报丢弃）' },
   { key: 'vmu.handover.compress', type: 'enum', domain: ['none', 'summary'], def: 'summary', hot: HOT.H1, who: 'office', doc: '压缩方式' },

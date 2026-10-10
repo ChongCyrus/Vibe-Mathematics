@@ -143,5 +143,78 @@ const build = (n) => {
   now = 1000
 }
 
+// ===== task-118 fixes: trusted checkpoint, keyed MAC, first-row classification =====
+
+// 13) the criticised case: deleting the TAIL. With a trusted checkpoint it must fail BY NAME.
+{
+  const { c, rows } = build(5)
+  const cp = c.checkpoint({ rows })
+  ok(cp.seq === 4 && cp.hash === rows[4].hash && typeof cp.at === 'number', 'checkpoint() returns {seq,hash,at}')
+  const cut = rows.slice(0, 4)                                  // the tail row was deleted
+  const unanchored = c.verifyChain({ rows: cut })
+  ok(unanchored.ok === true && unanchored.anchored === false && unanchored.verified === 4, 'WITHOUT an anchor the truncated chain still verifies (that was the criticism)')
+  ok(/accidental corruption only/.test(String(unanchored.note)), 'and the receipt SELF-REPORTS that it is not tamper-proof')
+  const anchored = c.verifyChain({ rows: cut, expectHead: cp.hash, expectSeq: cp.seq })
+  ok(anchored.ok === false && anchored.code === 'VMU_AUDIT_CHAIN_TRUNCATED' && anchored.reason === 'tail-truncated', 'WITH the checkpoint the deleted tail fails by name')
+  ok(anchored.expected === cp.hash && anchored.actual === cut[3].hash, 'the failure shows expected vs actual head')
+  const swappedTail = rows.slice(0, 4).concat([{ ...rows[3], seq: 4 }])   // tail REPLACED by a copy of row 3
+  const replaced = c.verifyChain({ rows: swappedTail, expectHead: cp.hash, expectSeq: cp.seq })
+  ok(replaced.ok === false && replaced.code === 'VMU_AUDIT_CHAIN_TRUNCATED', 'a REPLACED tail is caught by the checkpoint too')
+  ok(c.verifyChain({ rows, expectHead: cp.hash, expectSeq: cp.seq }).ok === true, 'the intact chain still passes its own checkpoint')
+}
+
+// 14) rebuild attack, no key: the attacker recomputes the whole chain ⇒ caught by the checkpoint
+{
+  const { c, rows } = build(3)
+  const forgedRows = []
+  let prev = null
+  for (let i = 0; i < 3; i++) { const r = c.append({ row: { seq: i, what: 'update', at: 1000 + i, payload: { forged: i } }, prevHash: prev }); forgedRows.push(r); prev = r.hash }
+  const v = c.verifyChain({ rows: forgedRows, expectHead: rows[2].hash })
+  ok(v.ok === false && v.code === 'VMU_AUDIT_CHAIN_TRUNCATED', 'a rebuilt chain is caught BY THE CHECKPOINT (head differs)')
+  const unanchored = c.verifyChain({ rows: forgedRows })
+  ok(unanchored.ok === true && unanchored.keyed === false && /recompute it/.test(String(unanchored.note)), 'without key+anchor a rebuilt sha256 chain passes, and the receipt says why')
+  ok(/plain sha256 chain/.test(String(c.status().strength)), 'status() states the actual strength (unkeyed)')
+}
+
+// 15) keyed MAC chain: a rebuild without the key cannot pass
+{
+  const key = 'test-key-1'
+  const mac = ({ data }) => createHash('sha256').update(key + '|' + data).digest('hex')
+  const c = createAuditChain({ clock: () => now, sign: mac })
+  const rows = []
+  let prev = null
+  for (let i = 0; i < 3; i++) { const r = c.append({ row: { seq: i, what: 'update', at: 1000 + i, payload: { i } }, prevHash: prev }); rows.push(r); prev = r.hash }
+  ok(rows[0].hash.startsWith('hmac:') && c.status().keyed === true, 'keyed chain produces MAC digests and self-reports keyed:true')
+  const selfCheck = c.verifyChain({ rows })
+  ok(selfCheck.ok === true && selfCheck.keyed === true, 'keyed chain verifies and says keyed:true')
+  const unkeyed = createAuditChain({ clock: () => now, hash: hasher })
+  const forged = []
+  let p2 = null
+  for (let i = 0; i < 3; i++) { const r = unkeyed.append({ row: { seq: i, what: 'update', at: 1000 + i, payload: { i } }, prevHash: p2 }); forged.push(r); p2 = r.hash }
+  const v = c.verifyChain({ rows: forged })
+  ok(v.ok === false && v.index === 0 && v.reason === 'row-modified', 'a rebuild without the key is caught at row 0 (row-modified)')
+  ok(/keyed MAC chain/.test(String(c.status().strength)), 'status() states the keyed strength')
+}
+
+// 16) first-row deletion is classified as a REMOVAL at index 0 (was wrongly row-modified)
+{
+  const { c, rows } = build(4)
+  const withoutFirst = rows.slice(1).map((r) => ({ ...r }))
+  const v = c.verifyChain({ rows: withoutFirst })
+  ok(v.ok === false && v.index === 0 && v.reason === 'row-removed', 'deleting the genesis row ⇒ row-removed at index 0')
+  ok(/GENESIS row is missing/.test(String(v.detail)), 'the detail explains the missing GENESIS row')
+}
+
+// 17) checkpoint()/status() are read-only and never mutate
+{
+  const { c, rows } = build(3)
+  const before = JSON.stringify({ s: c.status(), cp: c.checkpoint({ rows }), v: c.verifyChain({ rows }) })
+  c.status(); c.checkpoint({ rows }); c.verifyChain({ rows }); c.link({ rows })
+  ok(JSON.stringify({ s: c.status(), cp: c.checkpoint({ rows }), v: c.verifyChain({ rows }) }) === before, 'new read-only surfaces do not mutate')
+  const empty = c.checkpoint({ rows: [] })
+  ok(empty.hash === GENESIS && empty.rows === 0 && /genesis marker/.test(String(empty.note)), 'empty checkpoint uses the explicit genesis marker')
+  now = 1000
+}
+
 console.log('=== VMU AUDITCHAIN: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

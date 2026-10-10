@@ -135,6 +135,58 @@ test('zero-configuration works; read paths are pure', () => {
   passed += 1
 })
 
+// ⑨ N4 修复：非数值版本**方向未知 ⇒ fail-closed**（批评者第 9 轮最小复现）
+test('the minimal repro is refused: non-numeric versions never downgrade silently', () => {
+  const s = createStateVersion({ clock: () => 0, settings: {} })
+  s.declare({ version: 'v10', migrations: [{ from: 'vX', to: 'v10', run: (st) => st }, { from: 'v10', to: 'vX', run: (st) => st }] })
+  const r = s.migrate({ state: { schemaVersion: 'v10' }, to: 'vX' })
+  assert.equal(r.ok, false, '方向未知**不得**静默放行')
+  assert.equal(r.code, 'VMU_INDEX_STALE')
+  assert.ok(/方向未知/.test(r.message), '必须说明方向未知：' + r.message)
+  passed += 1
+})
+
+test('non-numeric version shapes are each fail-closed (1.2.3 / 2024-01 / vX)', () => {
+  for (const v of ['1.2.3', '2024-01', 'vX']) {
+    const s = createStateVersion({ clock: () => 0, settings: {} })
+    s.declare({ version: '2', migrations: [{ from: v, to: '2', run: (st) => st }, { from: '2', to: v, run: (st) => st }] })
+    const r = s.migrate({ state: { schemaVersion: '2' }, to: v })
+    assert.equal(r.ok, false, v + ' 必须 fail-closed')
+    assert.equal(r.code, 'VMU_INDEX_STALE', v + ' ⇒ 码')
+  }
+  const s2 = createStateVersion({ clock: () => 0, settings: {} })
+  s2.declare({ version: '2', migrations: [{ from: '1', to: '2', run: (st) => st }, { from: '2', to: '1', run: (st) => st }] })
+  assert.equal(s2.migrate({ state: { schemaVersion: '2' }, to: '1' }).code, 'VMU_INDEX_STALE')
+  passed += 1
+})
+
+test('directionUnknown is SELF-REPORTED when allowDowngrade explicitly permits it', () => {
+  const s = createStateVersion({ clock: () => 0, settings: { 'vmu.state.allowDowngrade': true } })
+  s.declare({ version: 'v10', migrations: [{ from: 'vX', to: 'v10', run: (st) => st }, { from: 'v10', to: 'vX', run: (st) => Object.assign({}, st, { down: true }) }] })
+  const r = s.migrate({ state: { schemaVersion: 'v10' }, to: 'vX' })
+  assert.equal(r.ok, true)
+  assert.equal(r.directionUnknown, true, '必须自曝 directionUnknown')
+  assert.equal(r.forced, true)
+  passed += 1
+})
+
+test('an explicit order makes non-numeric versions decidable (and gates the downgrade)', () => {
+  const mkSv = (over) => {
+    const s = createStateVersion({ clock: () => 0, settings: over || {} })
+    s.declare({ version: 'v10', order: ['v1', 'v2', 'v10'], migrations: [{ from: 'v1', to: 'v2', run: (st) => st }, { from: 'v2', to: 'v10', run: (st) => st }, { from: 'v10', to: 'v2', run: (st) => Object.assign({}, st, { down: true }) }] })
+    return s
+  }
+  const f = mkSv().migrate({ state: { schemaVersion: 'v1' }, to: 'v10' })
+  assert.equal(f.ok, true)
+  assert.equal(f.directionUnknown, false, '显式 order ⇒ 方向已知')
+  assert.equal(mkSv().migrate({ state: { schemaVersion: 'v10' }, to: 'v2' }).code, 'VMU_INDEX_STALE', 'order 里 v2 < v10 ⇒ 降级被拒')
+  const allowed = mkSv({ 'vmu.state.allowDowngrade': true }).migrate({ state: { schemaVersion: 'v10' }, to: 'v2' })
+  assert.equal(allowed.ok, true)
+  assert.equal(allowed.directionUnknown, false, '显式 order ⇒ 非"未知"')
+  assert.equal(allowed.forced, true)
+  passed += 1
+})
+
 // 确定性（注入时钟）＋ keysUsed 真读
 test('determinism and keysUsed() honesty', () => {
   const run = () => {
