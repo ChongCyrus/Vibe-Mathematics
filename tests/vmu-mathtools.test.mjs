@@ -336,6 +336,101 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
     'refusals are COUNTED BY CODE', JSON.stringify(counted.t.status().refusals))
 }
 
+// ---- M. enforced[] honesty (round-11 fixes) --------------------------------------------------------
+{
+  const ring = []
+  const mkRing = (settings = {}, seam = null) => createMathTools({
+    clock: () => 1000, settings, log: { append: (r) => ring.push(r) },
+    spawn: seam || (() => ({ ok: true, result: { value: 1 } })),
+  })
+  // M1–M7: the keys the reviewer found missing are now listed on the SUCCESS path
+  const reqKey = (settings, req, key, label) => {
+    const p = mkRing(settings).plan(req)
+    ok(p.enforced.includes(key), label + '[+]: the key is listed on the SUCCESS path', JSON.stringify(p.enforced))
+  }
+  reqKey({ 'vmu.math.repro.requireSeed': true }, { op: 'stats/mean', seed: 7 }, 'vmu.math.repro.requireSeed', 'repro.requireSeed')
+  reqKey({ 'vmu.math.repro.deterministic': true }, { op: 'stats/mean', seed: 7 }, 'vmu.math.repro.deterministic', 'repro.deterministic')
+  reqKey({ 'vmu.math.sandbox.memoryMb': 128 }, { op: 'stats/mean', memoryMb: 64 }, 'vmu.math.sandbox.memoryMb', 'sandbox.memoryMb')
+  reqKey({ 'vmu.math.sandbox.wallMs': 5000 }, { op: 'stats/mean', wallMs: 100 }, 'vmu.math.sandbox.wallMs', 'sandbox.wallMs')
+  reqKey({ 'vmu.math.sandbox.cpuMs': 5000 }, { op: 'stats/mean', cpuMs: 100 }, 'vmu.math.sandbox.cpuMs', 'sandbox.cpuMs')
+  ok(mkRing({ 'vmu.math.jobs.maxParallel': 3 }).plan({ op: 'stats/mean' }).enforced.includes('vmu.math.jobs.maxParallel'),
+    'jobs.maxParallel[+]: the concurrency rail runs on every plan and says so')
+  ok(mkRing({ 'vmu.math.repro.seed': 99 }).plan({ op: 'stats/mean' }).enforced.includes('vmu.math.repro.seed'),
+    'repro.seed[+]: a configured seed that fills in the request seed is listed')
+  // M8: the REFUSAL path carries the same proof (the reviewer saw `enforced: null`)
+  const refusalOf = (settings, req) => { const t = mkRing(settings); try { t.plan(req); return null } catch (e) { return e } }
+  const seedErr = refusalOf({ 'vmu.math.repro.requireSeed': true }, { op: 'stats/mean' })
+  ok(seedErr && Array.isArray(seedErr.enforced) && seedErr.enforced.includes('vmu.math.repro.requireSeed'),
+    'repro.requireSeed[-]: the REFUSAL carries `enforced` naming the key', seedErr && JSON.stringify(seedErr.enforced))
+  const netErr = refusalOf({ 'vmu.math.sandbox.network': 'deny' }, { op: 'stats/mean', needsNetwork: true })
+  ok(netErr && Array.isArray(netErr.enforced) && netErr.enforced.includes('vmu.math.sandbox.network'),
+    'network[-]: VMU_NETWORK_DENIED carries `enforced` (the reviewer saw null here)', netErr && JSON.stringify(netErr.enforced))
+  const opErr = refusalOf({}, {})
+  ok(opErr && Array.isArray(opErr.enforced) && opErr.enforced.length === 0,
+    'op[-]: VMU_MATH_INVALID_INPUT carries an EXPLICITLY EMPTY (not null) enforced list', opErr && JSON.stringify(opErr.enforced))
+  // M9: EVERY refusal path carries a non-null enforced array (table-driven over the rails)
+  const triggers = [
+    ['no op', {}, {}],
+    ['network', { 'vmu.math.sandbox.network': 'deny' }, { op: 'x', needsNetwork: true }],
+    ['jobDir', { 'vmu.math.jobs.dir': process.cwd() }, { op: 'x', jobDir: process.cwd() + '/../escape' }],
+    ['memoryMb', { 'vmu.math.sandbox.memoryMb': 1 }, { op: 'x', memoryMb: 9 }],
+    ['cpuMs', { 'vmu.math.sandbox.cpuMs': 1 }, { op: 'x', cpuMs: 9 }],
+    ['wallMs', { 'vmu.math.sandbox.wallMs': 1 }, { op: 'x', wallMs: 9 }],
+    ['threads', { 'vmu.math.sandbox.threads': 1 }, { op: 'x', threads: 9 }],
+    ['timeLimit', { 'vmu.math.optim.timeLimitMs': 1 }, { op: 'optim/x', timeoutMs: 9 }],
+    ['seed', { 'vmu.math.repro.requireSeed': true }, { op: 'x' }],
+    ['deterministic', { 'vmu.math.repro.deterministic': true }, { op: 'x', randomized: true }],
+    ['backend', { 'vmu.math.optim.backend': 'ipopt' }, { op: 'optim/x', backend: 'scipy' }],
+    ['units off', { 'vmu.math.units.enabled': false }, { op: 'x', units: 'm' }],
+    ['constants', { 'vmu.math.units.constantsSource': 'CODATA' }, { op: 'x', constantsSource: 'NIST' }],
+    ['interval', { 'vmu.math.interval.enabled': false }, { op: 'x', interval: true }],
+    ['retries', { 'vmu.math.artifacts.maxAttemptsPerRun': 1 }, { op: 'x', retries: 9 }],
+    ['sparse', { 'vmu.math.linalg.sparse': true }, { op: 'linalg/x', dense: true, size: 5000 }],
+  ]
+  const bad = []
+  for (const [label, settings, req] of triggers) {
+    const e = refusalOf(settings, req)
+    if (!e) { bad.push(label + ':NO-THROW'); continue }
+    if (!Array.isArray(e.enforced)) bad.push(label + ':NOT-ARRAY(' + String(e.enforced) + ')')
+  }
+  ok(bad.length === 0, 'EVERY refusal path carries an array `enforced` (never null/undefined)', JSON.stringify(bad))
+  // M10: the refusal error and the audit row agree (the two channels must match)
+  ring.length = 0
+  const t = mkRing({ 'vmu.math.sandbox.network': 'deny' })
+  let caught = null
+  try { t.plan({ op: 'x', needsNetwork: true }) } catch (e) { caught = e }
+  const row = ring.filter((r) => r.type === 'mathtools/refused').slice(-1)[0]
+  ok(row && caught && JSON.stringify(row.enforced) === JSON.stringify(caught.enforced),
+    'the audit row and the thrown refusal carry the SAME enforced list (two channels agree)',
+    JSON.stringify({ row: row && row.enforced, err: caught && caught.enforced }))
+  // M11: reverse direction — keys NOT evaluated must not appear
+  const quiet = mkRing({}).plan({ op: 'stats/mean' })
+  const forbidden = ['vmu.math.units.enabled', 'vmu.math.units.strictDimensions', 'vmu.math.interval.enabled',
+    'vmu.math.optim.timeLimitMs', 'vmu.math.artifacts.maxAttemptsPerRun'].filter((k) => quiet.enforced.includes(k))
+  ok(forbidden.length === 0, 'keys that were NOT evaluated do not appear in enforced[]', JSON.stringify(forbidden))
+  ok(quiet.enforced.includes('vmu.math.jobs.maxParallel'),
+    'the concurrency rail (always evaluated) IS present, so the reverse check is meaningful')
+  // M12: the SHAPING rails are listed too (self-audit: the same defect class existed here)
+  const sig = (over = {}) => {
+    const t = createMathTools({ clock: () => 1000, settings: Object.assign({}, over), spawn: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
+    return t.run({ op: 'stats/mean', seed: 1 })
+  }
+  const shaping = sig({ 'vmu.math.precision.digits': 3, 'vmu.math.jobs.persist': true, 'vmu.math.report.style': 'json', 'vmu.math.repro.packOnSuccess': true, 'vmu.math.cache.enabled': true, 'vmu.math.cache.crossProject': true })
+  for (const k of ['vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding', 'vmu.math.precision.tolerance',
+    'vmu.math.jobs.persist', 'vmu.math.repro.packOnSuccess', 'vmu.math.cache.crossProject',
+    'vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) {
+    ok(shaping.enforced.includes(k), 'shaping[]: ' + k + ' is listed when its read shaped this result', JSON.stringify(shaping.enforced))
+  }
+  ok(sig({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.optim.tolerance'),
+    'shaping[]: optim ops list optim.tolerance (not precision.tolerance)')
+  ok(!sig({}).enforced.includes('vmu.math.precision.digits'),
+    'shaping[-]: with digits=0 the rounding keys are NOT claimed (their read changes nothing)')
+  const cap2 = createMathTools({ clock: () => 1000, settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.maxEntries': 1 }, spawn: () => ({ ok: true, result: { value: 1 } }) })
+  cap2.run({ op: 'stats/mean', args: { a: 1 } })
+  const evicted = cap2.run({ op: 'stats/mean', args: { a: 2 } })
+  ok(evicted.enforced.includes('vmu.math.cache.maxEntries'), 'shaping[]: an eviction lists cache.maxEntries', JSON.stringify(evicted.enforced))
+}
+
 if (failed === 0) {
   console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')
   process.exit(0)

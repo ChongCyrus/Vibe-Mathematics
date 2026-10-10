@@ -81,7 +81,7 @@ import { createFairness } from './fairness.js'
 import { createCharter } from './charter.js'
 import { createReproPack } from './repropack.js'
 import { SETTING_DEFS } from '../settings/schema.js'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export function refuse(code, message, hint) {
@@ -199,6 +199,20 @@ export function createKernel({
   if (auditState.dir) {
     try { mkdirSync(auditState.dir, { recursive: true }) } catch (e) { auditState.lastWriteError = String((e && e.message) || e) }
   }
+  // ROUND 23, from an independent review: the chain could compute a checkpoint but had nowhere to keep it, so the
+  // anti-truncation check was theoretical. With a durable root the kernel now supplies a file anchor - a separate
+  // FILE from the audit log itself, because an anchor stored in the same log it protects would be rewritten by
+  // whoever rewrites the log. No root means no anchor, and the chain then SAYS so instead of pretending.
+  const anchorPath = auditState.dir ? join(auditState.dir, 'checkpoint.json') : null
+  const auditAnchor = anchorPath ? {
+    name: 'file:' + anchorPath,
+    write: (cp) => {
+      try { writeFileSync(anchorPath, JSON.stringify(cp), 'utf8'); return true } catch (e) { auditState.lastWriteError = String((e && e.message) || e); return false }
+    },
+    read: () => {
+      try { return JSON.parse(readFileSync(anchorPath, 'utf8')) } catch (e) { return null }
+    },
+  } : null
   const auditToDisk = (row) => {
     if (!auditState.dir) return
     try {
@@ -227,6 +241,7 @@ export function createKernel({
   // The hash seam is real sha256 here; a host that wants its own can override it, and the module still refuses
   // rather than inventing a hash when no seam is given at all.
   const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus: injectedBus, clock, log,
+    anchor: auditAnchor,
     hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
 
   const bus = injectedBus || createBus({

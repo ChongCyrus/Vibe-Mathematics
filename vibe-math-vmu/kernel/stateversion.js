@@ -141,6 +141,21 @@ export function createStateVersion(opts) {
     return { unknown: true, backward: false, forward: false }
   }
 
+  /**
+   * 可选校验接缝（**A3 修复** ✗✓）：`createStateVersion({ validate })` 或 `declare({ validate })`。
+   * **`noop` 也必须走它** —— `{noop:true}` ＝ "**不需要迁移**" ≠ "**文档已检查合格**" ✗✓（两件事分开字段 ✓）。
+   * 返回 `{ok:true}`／`{ok:false, missing:[…]}`；未提供 ⇒ 结果**自曝 `validated:'skipped'`** ✗✓。
+   */
+  const runValidate = (state) => {
+    const fn = (typeof o.validate === 'function') ? o.validate : (declared && typeof declared.validate === 'function' ? declared.validate : null)
+    if (!fn) return { validated: 'skipped' }                       // **必须自曝** ✗✓（不得让人以为已检查 ✓）
+    let r
+    try { r = fn(state) } catch (e) { r = { ok: false, missing: ['validate threw: ' + String((e && e.message) || e)] } }
+    if (r && r.ok === true) return { validated: true }
+    const missing = Array.isArray(r && r.missing) && r.missing.length ? r.missing.map(String) : ['（校验未给出缺项）']
+    return { validated: false, missing }
+  }
+
   /** 显式迁移：逐版本前进；**失败 ⇒ 原状态一字不变** ✓；已达成 ⇒ `noop:true` ✓。 */
   const migrate = (a) => {
     const args = a || {}
@@ -149,7 +164,18 @@ export function createStateVersion(opts) {
     const from = versionOf(args.state)
     const to = String(args.to || c.current)
     if (!from) return refuse('VMU_COMPAT_UNKNOWN_COMBO', '状态缺少版本标签 ⇒ 拒绝迁移（不做"猜版本" ✗）', '先 wrap() 或给出带标签的快照')
-    if (from === to) return { ok: true, noop: true, state: args.state, from, to, steps: [] }   // ⑤ 幂等
+    if (from === to) {
+      // **A3**：`noop` 之前**必须先走可选校验** ✗✓ —— 损坏文档不得因"版本相同"而静默通过 ✓
+      const v = runValidate(args.state)
+      if (v.validated === false) {
+        return Object.assign(refuse('VMU_META_VALIDATION_FAILED', '版本已是目标（' + to + '）但**校验不通过** ⇒ 拒绝（**不得** `ok:true, noop:true` ✗）', '缺项：' + v.missing.join('、')), { validated: false, missing: v.missing })
+      }
+      return {
+        ok: true, noop: true, state: args.state, from, to, steps: [],
+        validated: v.validated,
+        noopMeans: '不需要迁移（**≠ 文档已检查合格** ✗✓；见 validated 字段 ✓）',
+      }
+    }
     const idxFrom = Number(from), idxTo = Number(to)
     const allowDown = readKey('vmu.state.allowDowngrade') === true
     const dir = directionOf(from, to)

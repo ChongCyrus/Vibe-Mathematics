@@ -118,6 +118,9 @@ const DEFAULTS = Object.freeze({
 
 const DENSE_SIZE_SOFT_CAP = 1000        // documented constant for `linalg.sparse=true` (dense-only refusal)
 
+/** Append a key to an evaluation list without mutating the caller's array (used by the refusal trails). */
+const evalKeyList = (list, key) => (list.includes(key) ? list.slice() : list.concat([key]))
+
 /** The rounding kernels (`vmu.math.precision.*`) — pure and deterministic.
  *  `fixed` counts digits AFTER the decimal point (0 ⇒ round to an integer); `significant` counts significant
  *  digits (>0 required; 0 ⇒ leave the value untouched, which is also the documented default). */
@@ -195,16 +198,27 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   const receiptDropped = { n: 0 }
   let active = 0
 
+  /**
+   * Named refusal that ALWAYS carries the audit trail of the keys evaluated so far (round-11 reviewer: a
+   * refusal with `enforced:null` is "rejected AND without proof" — the two must never coexist ✗✓).
+   * `enforced` may be explicitly empty (`[]`) when no key was consulted yet, never `undefined`.
+   */
   const deny = (code, message, hint, enforced) => {
     counters.refused += 1
     refusals.set(code, (refusals.get(code) || 0) + 1)
-    say({ type: 'mathtools/refused', at: clock(), code, message, enforced: (enforced || []).slice() })
-    return refuse(code, message, hint)
+    const keys = Array.isArray(enforced) ? enforced.slice() : []
+    say({ type: 'mathtools/refused', at: clock(), code, message, enforced: keys })
+    const e = refuse(code, message, hint)
+    e.enforced = keys                       // ← the proof travels WITH the refusal
+    e.evaluated = keys.slice()
+    return e
   }
-  const capRefusal = (code, label, value, cap, key) => {
-    // MUST throw: a cap helper that only counted would leave every上限 rail ineffective (caught by the test).
+  const capRefusal = (code, label, value, cap, key, evaluated) => {
+    // MUST throw: a cap helper that only counted would leave every upper-bound rail ineffective.
+    const keys = (Array.isArray(evaluated) ? evaluated.slice() : [])
+    if (!keys.includes(key)) keys.push(key)
     throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + cap,
-      '现值=' + value + ', 上限=' + cap + ' (' + key + ')', [key])
+      '现值=' + value + ', 上限=' + cap + ' (' + key + ')', keys)
   }
 
   const withinWorkspace = (p, root) => {
@@ -245,95 +259,116 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
      */
     plan(req = {}) {
       counters.planned += 1
+      // `enforced` is built INCREMENTALLY: every rail pushes its key(s) BEFORE its check runs, so a refusal
+      // always carries the proof of exactly what had been evaluated up to that point (round-11 ruling ✗✓).
       const enforced = []
-      if (typeof req.op !== 'string' || !req.op) throw deny('VMU_MATH_INVALID_INPUT', 'plan/run needs a non-empty `op`', 'e.g. { op: "optim/minimize", args: { … } }')
+      const evalKey = (k) => { if (!enforced.includes(k)) enforced.push(k); return enforced }
+      if (typeof req.op !== 'string' || !req.op) {
+        throw deny('VMU_MATH_INVALID_INPUT', 'plan/run needs a non-empty `op`', 'e.g. { op: "optim/minimize", args: { … } }', enforced)
+      }
       // ① NETWORK (vmu.math.sandbox.network)
+      if (req.needsNetwork !== undefined) evalKey('vmu.math.sandbox.network')
       if (req.needsNetwork === true && !(K.network === true || K.network === 'allow')) {
-        throw deny('VMU_NETWORK_DENIED', 'op "' + req.op + '" needs the network but vmu.math.sandbox.network denies it', 'set vmu.math.sandbox.network="allow" to permit egress (default "deny")', ['vmu.math.sandbox.network'])
+        throw deny('VMU_NETWORK_DENIED', 'op "' + req.op + '" needs the network but vmu.math.sandbox.network denies it', 'set vmu.math.sandbox.network="allow" to permit egress (default "deny")', enforced)
       }
       // ② WORKSPACE (vmu.math.jobs.dir)
-      if (req.jobDir && K.jobsDir && !withinWorkspace(req.jobDir, K.jobsDir)) {
-        throw deny('VMU_PATH_ESCAPE_REFUSED', 'jobDir escapes vmu.math.jobs.dir: ' + req.jobDir + ' not under ' + K.jobsDir, '现值=' + req.jobDir + ', 允许根=' + K.jobsDir, ['vmu.math.jobs.dir'])
+      if (K.jobsDir) {
+        if (req.jobDir !== undefined) evalKey('vmu.math.jobs.dir')
+        if (req.jobDir && !withinWorkspace(req.jobDir, K.jobsDir)) {
+          throw deny('VMU_PATH_ESCAPE_REFUSED', 'jobDir escapes vmu.math.jobs.dir: ' + req.jobDir + ' not under ' + K.jobsDir, '现值=' + req.jobDir + ', 允许根=' + K.jobsDir, enforced)
+        }
       }
-      // ③ RESOURCE CAPS (sandbox.memoryMb / cpuMs / wallMs / threads)
-      if (K.memoryMb > 0 && num(req.memoryMb) > K.memoryMb) capRefusal('VMU_RESOURCE_BUDGET', 'memoryMb', num(req.memoryMb), K.memoryMb, 'vmu.math.sandbox.memoryMb')
-      if (K.cpuMs > 0 && num(req.cpuMs) > K.cpuMs) capRefusal('VMU_RESOURCE_BUDGET', 'cpuMs', num(req.cpuMs), K.cpuMs, 'vmu.math.sandbox.cpuMs')
-      if (K.wallMs > 0 && num(req.wallMs) > K.wallMs) capRefusal('VMU_RESOURCE_BUDGET', 'wallMs', num(req.wallMs), K.wallMs, 'vmu.math.sandbox.wallMs')
-      if (K.threads > 0 && num(req.threads) > K.threads) capRefusal('VMU_RESOURCE_BUDGET', 'threads', num(req.threads), K.threads, 'vmu.math.sandbox.threads')
+      // ③ RESOURCE CAPS (sandbox.memoryMb / cpuMs / wallMs / threads) — a cap is listed when its comparison
+      //    ran (the request carried the field), so "the rail was consulted" is visible on success too.
+      for (const [key, field, cap] of [
+        ['vmu.math.sandbox.memoryMb', 'memoryMb', K.memoryMb], ['vmu.math.sandbox.cpuMs', 'cpuMs', K.cpuMs],
+        ['vmu.math.sandbox.wallMs', 'wallMs', K.wallMs], ['vmu.math.sandbox.threads', 'threads', K.threads],
+      ]) {
+        if (cap > 0 && req[field] !== undefined) {
+          evalKey(key)
+          if (num(req[field]) > cap) capRefusal('VMU_RESOURCE_BUDGET', field, num(req[field]), cap, key, enforced)
+        }
+      }
       // ④ TIME LIMIT (optim.timeLimitMs for optimisation ops, formal.coqTimeoutMs for formal ops)
       const formalOp = /^formal\//.test(req.op)
       const limitKey = formalOp ? 'vmu.math.formal.coqTimeoutMs' : 'vmu.math.optim.timeLimitMs'
       const limit = formalOp ? K.coqTimeoutMs : K.optimTimeLimitMs
+      if (limit > 0 && req.timeoutMs !== undefined) evalKey(limitKey)
       if (limit > 0 && num(req.timeoutMs) > limit) {
         throw deny('VMU_TIMEOUT', 'timeoutMs exceeds ' + limitKey + ': ' + num(req.timeoutMs) + ' > ' + limit,
-          '现值=' + num(req.timeoutMs) + 'ms, 上限=' + limit + 'ms (' + limitKey + ')', [limitKey])
+          '现值=' + num(req.timeoutMs) + 'ms, 上限=' + limit + 'ms (' + limitKey + ')', evalKey(limitKey))
       }
       // ⑤ SEED POLICY (repro.requireSeed / repro.seed / repro.deterministic)
       const seed = req.seed === undefined || req.seed === null ? K.seed : req.seed
+      if (K.requireSeed) evalKey('vmu.math.repro.requireSeed')
+      if (K.seed !== null && K.seed !== undefined && (req.seed === undefined || req.seed === null)) evalKey('vmu.math.repro.seed')
+      if (K.deterministic) evalKey('vmu.math.repro.deterministic')
       if (K.requireSeed && (seed === undefined || seed === null)) {
         throw deny('VMU_MATH_INVALID_INPUT', 'this configuration requires a seed for every run (vmu.math.repro.requireSeed=true)',
-          'vmu.math.repro.requireSeed=true: pass { seed: <int> } or set vmu.math.repro.seed — an unseeded run is not reproducible', ['vmu.math.repro.requireSeed'])
+          'vmu.math.repro.requireSeed=true: pass { seed: <int> } or set vmu.math.repro.seed — an unseeded run is not reproducible', enforced)
       }
       if (K.deterministic && (seed === undefined || seed === null || req.randomized === true)) {
         throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.repro.deterministic=true forbids nondeterministic runs',
-          req.randomized === true ? 'the request asked for randomized:true — remove it' : 'no seed was given; pass { seed } or vmu.math.repro.seed', ['vmu.math.repro.deterministic', 'vmu.math.repro.seed'])
+          req.randomized === true ? 'the request asked for randomized:true — remove it' : 'no seed was given; pass { seed } or vmu.math.repro.seed', enforced)
       }
       // ⑥ BACKEND (optim.backend / linalg.backend)
       const backendKey = /^linalg\//.test(req.op) ? 'vmu.math.linalg.backend' : 'vmu.math.optim.backend'
       const declaredBackend = /^linalg\//.test(req.op) ? K.linalgBackend : K.optimBackend
+      if (declaredBackend || req.backend !== undefined) evalKey(backendKey)
       if (declaredBackend && req.backend && req.backend !== declaredBackend) {
         throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested backend "' + req.backend + '" is not the declared one',
-          'declared=' + declaredBackend + ' (' + backendKey + '), requested=' + req.backend, [backendKey])
+          'declared=' + declaredBackend + ' (' + backendKey + '), requested=' + req.backend, enforced)
       }
       // ⑦ UNITS (units.enabled / units.constantsSource)
       const wantsUnits = req.units !== undefined || req.dimensions !== undefined
+      if (wantsUnits || req.constantsSource !== undefined) evalKey('vmu.math.units.enabled')
+      if (K.constantsSource && req.constantsSource !== undefined) evalKey('vmu.math.units.constantsSource')
       if (wantsUnits && !K.unitsEnabled) {
         throw deny('VMU_MATH_INVALID_INPUT', 'this configuration disables units (vmu.math.units.enabled=false)',
-          'remove units/dimensions from the request, or set vmu.math.units.enabled=true', ['vmu.math.units.enabled'])
+          'remove units/dimensions from the request, or set vmu.math.units.enabled=true', enforced)
       }
       if (K.constantsSource && req.constantsSource && req.constantsSource !== K.constantsSource) {
         throw deny('VMU_MATH_INVALID_INPUT', 'constantsSource differs from the declared one',
-          'declared=' + K.constantsSource + ', requested=' + req.constantsSource + ' (vmu.math.units.constantsSource)', ['vmu.math.units.constantsSource'])
+          'declared=' + K.constantsSource + ', requested=' + req.constantsSource + ' (vmu.math.units.constantsSource)', enforced)
       }
       // ⑧ INTERVAL (interval.enabled)
+      if (req.interval !== undefined) evalKey('vmu.math.interval.enabled')
       if (req.interval === true && !K.interval) {
         throw deny('VMU_MATH_INVALID_INPUT', 'interval arithmetic is disabled (vmu.math.interval.enabled=false)',
-          'set vmu.math.interval.enabled=true, or drop the interval request', ['vmu.math.interval.enabled'])
+          'set vmu.math.interval.enabled=true, or drop the interval request', enforced)
       }
       // ⑨ ARTIFACTS / QUOTA (artifacts.maxRuns / maxAttemptsPerRun)
-      if (K.maxRuns > 0 && counters.rangeRuns >= K.maxRuns) {
-        counters.refusedAtQuota += 1
-        throw deny('VMU_QUOTA_EXCEEDED', 'artifact run quota reached: ' + counters.rangeRuns + '/' + K.maxRuns,
-          '现值=' + counters.rangeRuns + ', 上限=' + K.maxRuns + ' (vmu.math.artifacts.maxRuns)', ['vmu.math.artifacts.maxRuns'])
+      if (K.maxRuns > 0) {
+        evalKey('vmu.math.artifacts.maxRuns')
+        if (counters.rangeRuns >= K.maxRuns) {
+          counters.refusedAtQuota += 1
+          throw deny('VMU_QUOTA_EXCEEDED', 'artifact run quota reached: ' + counters.rangeRuns + '/' + K.maxRuns,
+            '现值=' + counters.rangeRuns + ', 上限=' + K.maxRuns + ' (vmu.math.artifacts.maxRuns)', enforced)
+        }
       }
-      if (K.maxAttempts > 0 && num(req.retries) > K.maxAttempts) capRefusal('VMU_RESOURCE_BUDGET', 'retries', num(req.retries), K.maxAttempts, 'vmu.math.artifacts.maxAttemptsPerRun')
-      // ⑩ CONCURRENCY (jobs.maxParallel)
-      if (active >= K.maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, K.maxParallel, 'vmu.math.jobs.maxParallel')
+      if (K.maxAttempts > 0 && req.retries !== undefined) {
+        evalKey('vmu.math.artifacts.maxAttemptsPerRun')
+        if (num(req.retries) > K.maxAttempts) capRefusal('VMU_RESOURCE_BUDGET', 'retries', num(req.retries), K.maxAttempts, 'vmu.math.artifacts.maxAttemptsPerRun', enforced)
+      }
+      // ⑩ CONCURRENCY (jobs.maxParallel) — the comparison runs on EVERY plan, so the key is always listed.
+      evalKey('vmu.math.jobs.maxParallel')
+      if (active >= K.maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, K.maxParallel, 'vmu.math.jobs.maxParallel', enforced)
       // ⑪ SPARSE POLICY (linalg.sparse)
+      if (K.sparse && req.dense !== undefined) evalKey('vmu.math.linalg.sparse')
       if (K.sparse && req.dense === true && num(req.size) > DENSE_SIZE_SOFT_CAP) {
         throw deny('VMU_RESOURCE_BUDGET', 'dense-only request above the sparse policy cap: size ' + num(req.size),
-          '现值=' + num(req.size) + ', 上限=' + DENSE_SIZE_SOFT_CAP + ' (vmu.math.linalg.sparse=true ⇒ sparse required)', ['vmu.math.linalg.sparse'])
+          '现值=' + num(req.size) + ', 上限=' + DENSE_SIZE_SOFT_CAP + ' (vmu.math.linalg.sparse=true ⇒ sparse required)', enforced)
       }
-      // `enforced` names ONLY the keys whose rule was actually evaluated for this request (honesty: a key
-      // that did not constrain anything is not claimed as wired-by-this-call).
-      if (req.needsNetwork !== undefined) enforced.push('vmu.math.sandbox.network')
-      if (num(req.timeoutMs) > 0 || limit > 0) enforced.push(limitKey)
-      if (req.backend !== undefined) enforced.push(backendKey)
-      if (K.requireSeed) enforced.push('vmu.math.repro.requireSeed')
-      if (K.deterministic) enforced.push('vmu.math.repro.deterministic')
-      if (K.constantsSource && req.constantsSource !== undefined) enforced.push('vmu.math.units.constantsSource')
-      if (req.jobDir !== undefined && K.jobsDir) enforced.push('vmu.math.jobs.dir')
-      if (req.interval !== undefined) enforced.push('vmu.math.interval.enabled')
-      if (req.retries !== undefined && K.maxAttempts > 0) enforced.push('vmu.math.artifacts.maxAttemptsPerRun')
-      if (K.maxRuns > 0) enforced.push('vmu.math.artifacts.maxRuns')
+      if (K.cacheEnabled) evalKey('vmu.math.cache.enabled')
       const plan = { op: req.op, args: req.args === undefined ? null : req.args, seed: seed === undefined ? null : seed, backend: req.backend || declaredBackend || null, workspace: req.workspace === undefined ? null : req.workspace, enforced, at: clock() }
       plan.cacheKey = cacheKeyOf(req, plan)
       const hit = K.cacheEnabled ? cache.get(plan.cacheKey) : undefined
       if (hit !== undefined && hit.corrupt) {
         counters.cacheCorrupt += 1
+        evalKey('vmu.math.cache.onCorrupt')
         if (K.cacheOnCorrupt === 'refuse') {
           throw deny('VMU_STATE', 'the cached entry for this request is CORRUPT and vmu.math.cache.onCorrupt="refuse"',
-            'clean the cache (or set vmu.math.cache.onCorrupt="recompute")', ['vmu.math.cache.onCorrupt'])
+            'clean the cache (or set vmu.math.cache.onCorrupt="recompute")', enforced)
         }
       }
       plan.cached = K.cacheEnabled && hit !== undefined && !hit.corrupt
@@ -358,61 +393,70 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       }
       if (typeof spawn !== 'function') {
         throw deny('VMU_ENGINE_UNAVAILABLE', 'no computation seam is injected: mathtools only PLAYS POLICY',
-          'inject { spawn } (the existing math surface) to execute; plan() works without it', [])
+          'inject { spawn } (the existing math surface) to execute; plan() works without it', p.enforced)
       }
       active += 1
       counters.rangeRuns += 1
       let raw
       try { raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
-      if (!raw || typeof raw !== 'object') throw deny('VMU_ENGINE_UNAVAILABLE', 'the injected seam returned no result object', 'spawn must return { ok, result, … }')
+      if (!raw || typeof raw !== 'object') throw deny('VMU_ENGINE_UNAVAILABLE', 'the injected seam returned no result object', 'spawn must return { ok, result, … }', p.enforced)
       const result = raw.result === undefined ? null : raw.result
       const enforced = p.enforced.slice()
       // ⑫ RESULT-CONDITIONAL RAILS (each one belongs to a wired key)
       if (K.certificates && !(raw.certificate || (result && result.certificate))) {
         throw deny('VMU_STATE', 'vmu.math.optim.certificates=true requires a certificate for every accepted run',
-          'the seam returned no certificate — a verified optimum must come with its evidence', ['vmu.math.optim.certificates'])
+          'the seam returned no certificate — a verified optimum must come with its evidence', evalKeyList(enforced, 'vmu.math.optim.certificates'))
       }
       if (K.sorryPolicy === 'deny' && (raw.sorry === true || (result && result.sorry === true))) {
         throw deny('VMU_FORMAL_SORRY_FOUND', 'the proof still contains `sorry`/`admit` and vmu.math.formal.sorryPolicy="deny"',
-          'sorry is NOT a proof (it is not a compile failure either): fill it, or set sorryPolicy="warn"', ['vmu.math.formal.sorryPolicy'])
+          'sorry is NOT a proof (it is not a compile failure either): fill it, or set sorryPolicy="warn"', evalKeyList(enforced, 'vmu.math.formal.sorryPolicy'))
       }
       if (K.axiomAudit && Array.isArray(raw.axioms) && raw.axioms.length > 0) {
         throw deny('VMU_FORMAL_AXIOM_UNTRUSTED', 'the proof uses untrusted axioms: ' + raw.axioms.join(', '),
-          'vmu.math.formal.axiomAudit=true refuses proofs outside the trust boundary', ['vmu.math.formal.axiomAudit'])
+          'vmu.math.formal.axiomAudit=true refuses proofs outside the trust boundary', evalKeyList(enforced, 'vmu.math.formal.axiomAudit'))
       }
       if (K.requireAll && Array.isArray(raw.assistants) && Array.isArray(raw.expectedAssistants)) {
         const missing = raw.expectedAssistants.filter((a) => !raw.assistants.includes(a))
         if (missing.length) {
           throw deny('VMU_FORMAL_ADAPTER_UNSUPPORTED', 'vmu.math.formal.requireAll=true but these assistants did not run: ' + missing.join(', '),
-            '现值=' + raw.assistants.length + '/' + raw.expectedAssistants.length + ' (vmu.math.formal.requireAll)', ['vmu.math.formal.requireAll'])
+            '现值=' + raw.assistants.length + '/' + raw.expectedAssistants.length + ' (vmu.math.formal.requireAll)', evalKeyList(enforced, 'vmu.math.formal.requireAll'))
         }
       }
       if (K.strictDimensions && raw.dimensionMismatch === true) {
         throw deny('VMU_MATH_DIMENSION_MISMATCH', 'the result carries a dimension mismatch and vmu.math.units.strictDimensions=true',
-          raw.dimensionDetail || '两侧量纲不一致（vmu.math.units.strictDimensions）', ['vmu.math.units.strictDimensions'])
+          raw.dimensionDetail || '两侧量纲不一致（vmu.math.units.strictDimensions）', evalKeyList(enforced, 'vmu.math.units.strictDimensions'))
       }
       if (K.requireResidual && !(raw.residual !== undefined && raw.residual !== null)) {
         throw deny('VMU_STATE', 'vmu.math.linalg.requireResidual=true requires a residual on every solve',
-          'the seam returned no residual: a solve without an error estimate is not evidence', ['vmu.math.linalg.requireResidual'])
+          'the seam returned no residual: a solve without an error estimate is not evidence', evalKeyList(enforced, 'vmu.math.linalg.requireResidual'))
       }
       if (K.convergence === 'require' && raw.converged === false) {
         throw deny('VMU_STATE', 'vmu.math.convergence.policy="require" refuses a run that did not converge',
-          'the seam reported converged=false (proposed code name: VMU_MATH_NOT_CONVERGED — not registered yet)', ['vmu.math.convergence.policy'])
+          'the seam reported converged=false (proposed code name: VMU_MATH_NOT_CONVERGED — not registered yet)', evalKeyList(enforced, 'vmu.math.convergence.policy'))
       }
       if (K.stability === 'require' && raw.unstable === true) {
         throw deny('VMU_STATE', 'vmu.math.numeric.stability="require" refuses an unstable result',
-          'the seam flagged the result as unstable (vmu.math.numeric.stability)', ['vmu.math.numeric.stability'])
+          'the seam flagged the result as unstable (vmu.math.numeric.stability)', evalKeyList(enforced, 'vmu.math.numeric.stability'))
       }
       if (K.maxFileMb > 0) {
         const mb = num(raw.artifactMb)
-        if (mb > K.maxFileMb) capRefusal('VMU_RESOURCE_BUDGET', 'artifact size (MB)', mb, K.maxFileMb, 'vmu.math.artifacts.maxFileMb')
+        if (mb > K.maxFileMb) capRefusal('VMU_RESOURCE_BUDGET', 'artifact size (MB)', mb, K.maxFileMb, 'vmu.math.artifacts.maxFileMb', enforced)
       }
       // ⑬ SHAPING (precision / tolerance / logs / warnings / receipts / repro / report)
+      //     EVERY key whose read changes THIS result is recorded here (the round-11 criterion, applied to
+      //     the whole shaping path — not only to the rails the reviewer happened to probe).
       const tolerance = /^optim\//.test(p.plan.op) ? K.optimTolerance : K.pTolerance
+      evalKeyList(enforced, /^optim\//.test(p.plan.op) ? 'vmu.math.optim.tolerance' : 'vmu.math.precision.tolerance')
       const delta = numf(raw.delta, null)
       const converged = delta === null ? (raw.converged === undefined ? null : raw.converged === true) : Math.abs(delta) <= tolerance
+      const rounds = K.digits > 0
+      if (rounds) for (const k of ['vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding']) evalKeyList(enforced, k)
       const value = result && typeof result.value === 'number' ? roundTo(result.value, K.digits, K.pMode, K.rounding) : (result ? result.value : null)
       const shaped = Object.assign({}, result, value === undefined ? {} : { value })
+      evalKeyList(enforced, 'vmu.math.jobs.persist')          // decides detail kept + whether the library is written
+      if (K.packOnSuccess) evalKeyList(enforced, 'vmu.math.repro.packOnSuccess')
+      if (K.cacheEnabled) evalKeyList(enforced, 'vmu.math.cache.crossProject')   // it shaped the cache key
+      for (const k of ['vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) evalKeyList(enforced, k)
       let logLines = Array.isArray(raw.logLines) ? raw.logLines.slice() : []
       if (logLines.length > K.logMax) {
         const dropped = logLines.length - K.logMax
@@ -443,6 +487,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         else counters.persistUnwired = (counters.persistUnwired || 0) + 1
       }
       if (K.cacheEnabled) store(p.plan.cacheKey, { result: shaped, receipt })
+      if (K.cacheEnabled && counters.cacheEvictions > 0) evalKeyList(enforced, 'vmu.math.cache.maxEntries')   // an eviction changed the cache
       counters.ran += 1
       pushReceipt(receipt)
       emit({ type: 'mathtools/ran', at, op: p.plan.op, cacheKey: p.plan.cacheKey })

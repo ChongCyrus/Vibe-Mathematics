@@ -205,6 +205,36 @@ test('determinism and keysUsed() honesty', () => {
   passed += 1
 })
 
+// ⑩ A3 修复：`noop` 也走可选校验；损坏文档不得静默通过
+test('the minimal repro is fixed: a corrupt doc at the target version is no longer silently ok', () => {
+  const strict = createStateVersion({
+    clock: () => 0, settings: {},
+    validate: (st) => (st && st.junk === true) ? { ok: false, missing: ['junk 字段不允许'] } : { ok: true },
+  })
+  strict.declare({ version: 'v10', migrations: [{ from: 'vX', to: 'v10', run: (s) => s }] })
+  const r = strict.migrate({ state: { schemaVersion: 'v10', junk: true }, to: 'v10' })
+  assert.equal(r.ok, false, '损坏文档在 noop 路径上**必须被拒**')
+  assert.equal(r.code, 'VMU_META_VALIDATION_FAILED')
+  assert.equal(r.validated, false)
+  assert.ok(r.missing.indexOf('junk 字段不允许') !== -1)
+  const clean = strict.migrate({ state: { schemaVersion: 'v10' }, to: 'v10' })
+  assert.equal(clean.ok, true)
+  assert.equal(clean.noop, true)
+  assert.equal(clean.validated, true)
+  assert.ok(/不需要迁移/.test(clean.noopMeans), 'noop 语义必须写明：' + clean.noopMeans)
+  passed += 1
+})
+
+test('without a validate seam the result SELF-REPORTS validated:"skipped"', () => {
+  const bare = createStateVersion({ clock: () => 0, settings: {} })
+  bare.declare({ version: 'v10', migrations: [] })
+  const r = bare.migrate({ state: { schemaVersion: 'v10', junk: true }, to: 'v10' })
+  assert.equal(r.ok, true)
+  assert.equal(r.noop, true)
+  assert.equal(r.validated, 'skipped', '未提供校验 ⇒ **必须自曝 skipped** ✗✓')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
