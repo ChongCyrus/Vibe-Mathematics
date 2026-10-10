@@ -135,9 +135,11 @@ if (process.argv.includes('--self-probe')) process.exit(await selfProbe() ? 0 : 
 console.log('-- math_computation parity --')
 
 // ---- 1/2. the four copies are identical, and match the canonical source ----
+ok(MODULES.length > 0, 'non-vacuous: MODULES must not be empty')
 for (const f of MODULES) {
   const hashes = {}
-  for (const p of PRESETS) {
+  ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty')
+for (const p of PRESETS) {
     const file = join(REPO, p, f)
     if (!existsSync(file)) { ok(false, p + '/' + f + ' exists'); continue }
     const h = sha(file)
@@ -160,7 +162,8 @@ for (const f of MODULES) {
   const re = /src:\s*'([^']+)',\s*dst:\s*'[^']+',\s*(?:\/\/[^\n]*\n\s*)*files:\s*\[([^\]]*)\]/g
   let m
   while ((m = re.exec(installer)) !== null) blocks[m[1]] = m[2]
-  for (const p of PRESETS) {
+  ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty')
+for (const p of PRESETS) {
     const list = blocks[p]
     ok(!!list, 'installer.js has a PRESETS entry for ' + p)
     for (const f of MODULES) ok(!!list && list.indexOf("'" + f + "'") !== -1, 'installer.js ' + p + ' files[] ships ' + f)

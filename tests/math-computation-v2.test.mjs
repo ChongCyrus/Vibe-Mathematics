@@ -232,9 +232,9 @@ section('§1 六参数（默认值、归一化、schema 面、off/typed+shell �
 {
   const setup = await call('vibe_math_setup', {})
   const names = setup.parameters.map((p) => p.name)
-  assert(MATH_PARAM_NAMES.every((k) => names.indexOf(k) !== -1), '★ vibe_math_setup 列出全部六个 math 参数')
+  assert(MATH_PARAM_NAMES.length > 0 && MATH_PARAM_NAMES.every((k) => names.indexOf(k) !== -1), '★ vibe_math_setup 列出全部六个 math 参数')
   const st = await call('vibe_math_status', {})
-  assert(MATH_PARAM_NAMES.every((k) => JSON.stringify(st.params[k]) === JSON.stringify(MATH_PARAM_DEFAULTS[k])), '★ 默认值与共享模块的 MATH_PARAM_DEFAULTS 逐字一致（' + JSON.stringify(MATH_PARAM_NAMES.map((k) => st.params[k])) + '）')
+  assert(MATH_PARAM_NAMES.length > 0 && MATH_PARAM_NAMES.every((k) => JSON.stringify(st.params[k]) === JSON.stringify(MATH_PARAM_DEFAULTS[k])), '★ 默认值与共享模块的 MATH_PARAM_DEFAULTS 逐字一致（' + JSON.stringify(MATH_PARAM_NAMES.map((k) => st.params[k])) + '）')
   assert(st.params.mathEngines !== MATH_PARAM_DEFAULTS.mathEngines, '★ 默认数组是**拷贝**，不与模块共享同一对象（否则跨预设互相污染）')
   const spec = specOf('math_computation')
   assert(!!spec && spec.description === MATH_TOOL_DESCRIPTION, '★ 工具面注册了 math_computation，描述逐字等于 MATH_TOOL_DESCRIPTION')
@@ -744,7 +744,7 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
   assert(produced.indexOf('路径说明') !== -1, '对照：路径说明仍随材料下发（只是不再占用证据索引条目）')
   // D5：索引只列**存在**的文件（qs/qs.json 也必须存在才列）
   const evPaths = evBlock.split('\n').filter((l) => l.trim().indexOf('- ') === 0).map((l) => l.trim().slice(2))
-  assert(evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).every((p) => existsSync(join(projRoot(), p))),
+  assert(evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).length > 0 && evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).every((p) => existsSync(join(projRoot(), p))),
     '★★ [D5] 证据索引里的 qs/qs.json 在磁盘上真实存在（实测索引前几项 ' + JSON.stringify(evPaths.slice(0, 4)) + '）')
   const v2src = readFileSync(join(HERE, '..', 'vibe-math-v2', 'vibe-math-v2.js'), 'utf8')
   assert(v2src.indexOf("if (await paperPathExists('qs/qs.json')) out.push('qs/qs.json')") !== -1,

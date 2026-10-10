@@ -232,9 +232,9 @@ section('§1 六参数（默认值、归一化、schema 面、off/typed+shell �
 {
   const setup = await call('vibe_math_setup', {})
   const names = setup.parameters.map((p) => p.name)
-  assert(MATH_PARAM_NAMES.every((k) => names.indexOf(k) !== -1), '★ vibe_math_setup 列出全部六个 math 参数')
+  assert(MATH_PARAM_NAMES.length > 0 && MATH_PARAM_NAMES.every((k) => names.indexOf(k) !== -1), '★ vibe_math_setup 列出全部六个 math 参数')
   const st = await call('vibe_math_status', {})
-  assert(MATH_PARAM_NAMES.every((k) => JSON.stringify(st.params[k]) === JSON.stringify(MATH_PARAM_DEFAULTS[k])), '★ 默认值与共享模块的 MATH_PARAM_DEFAULTS 逐字一致（' + JSON.stringify(MATH_PARAM_NAMES.map((k) => st.params[k])) + '）')
+  assert(MATH_PARAM_NAMES.length > 0 && MATH_PARAM_NAMES.every((k) => JSON.stringify(st.params[k]) === JSON.stringify(MATH_PARAM_DEFAULTS[k])), '★ 默认值与共享模块的 MATH_PARAM_DEFAULTS 逐字一致（' + JSON.stringify(MATH_PARAM_NAMES.map((k) => st.params[k])) + '）')
   assert(st.params.mathEngines !== MATH_PARAM_DEFAULTS.mathEngines, '★ 默认数组是**拷贝**，不与模块共享同一对象（否则跨预设互相污染）')
   const spec = specOf('math_computation')
   assert(!!spec && spec.description === MATH_TOOL_DESCRIPTION, '★ 工具面注册了 math_computation，描述逐字等于 MATH_TOOL_DESCRIPTION')
@@ -686,7 +686,8 @@ section('§18 可选 host 回调：listDir（保留上限只告警）与 hasSubp
   const inline = sites.filter((s) => s.kind === 'inline').length
   assert(helper >= 3, '★★★ [sites] all three formalDailySection() call sites are present (found ' + helper + ')')
   assert(inline >= 1, '★★★ [sites] the inline daily-line site (methodKeeperPrompt) is present (found ' + inline + ')')
-  for (const s of sites) {
+  assert(sites.length > 0, 'non-vacuous: sites must not be empty')
+for (const s of sites) {
     assert(!s.gated, '★★★ [site @line ' + s.n + '] the daily-line producer is NOT behind a formalOn() gate (initiative is an independent axis)')
   }
 }

@@ -576,6 +576,7 @@ const runVariant = async (scn, variant, label) => {
 const byModule = new Map()
 const attributionRows = []
 const keySetOf = (run) => new Set(run.arrays.flatMap((a) => a.value))
+ok(SCENARIOS.length > 0, 'non-vacuous: the scenario table must not be empty (' + SCENARIOS.length + ' scenarios)')
 for (const scn of SCENARIOS) {
   const label = scn.module + '.' + scn.call + ' [' + scn.key + ']'
   const lim = await runVariant(scn, scn.limiting, label + ' limiting')
@@ -598,15 +599,15 @@ for (const scn of SCENARIOS) {
 
   const shape = checkArrayShape(lim).concat(checkArrayShape(per))
   ok(shape.length === 0, 'rule ⑤ array-not-null: ' + label, shape[0])
-  for (const f of shape) finding(f.split(':')[0], label, f)
+  for (const f of shape) finding(f.split(':')[0], label, f) // EMPTY_ALLOWED: `shape` 为空正是"无数组形状 finding"的期望结果（上面的 ok 已断言 length === 0）
 
   const dup = checkDuplicates(lim).concat(checkDuplicates(per))
   ok(dup.length === 0, 'rule ① no duplicates: ' + label, dup[0])
-  for (const f of dup) finding('DUPLICATE', label, f)
+  for (const f of dup) finding('DUPLICATE', label, f) // EMPTY_ALLOWED: `dup` 为空正是"无重复键 finding"的期望结果（上面的 ok 已断言 length === 0）
 
   const det = checkDeterministic(lim, lim2)
   ok(det.length === 0, 'rule ② deterministic: ' + label, det[0])
-  for (const f of det) finding('NONDETERMINISTIC', label, f)
+  for (const f of det) finding('NONDETERMINISTIC', label, f) // EMPTY_ALLOWED: `det` 为空正是"确定性 finding 为零"的期望结果（上面的 ok 已断言 length === 0）
 
   if (scn.expectDiff) {
     const st = checkBehaviourListed(lim, per, scn.key)
@@ -634,6 +635,7 @@ for (const scn of SCENARIOS) {
 
 // REFUSAL DISCIPLINE runs
 const refusalRuns = []
+ok(REFUSAL_SCENARIOS.length > 0, 'non-vacuous: the refusal table must not be empty (' + REFUSAL_SCENARIOS.length + ' scenarios)')
 for (const scn of REFUSAL_SCENARIOS) {
   const label = scn.module + '.' + scn.call
   const r = await runVariant(scn, { settings: scn.settings }, label)

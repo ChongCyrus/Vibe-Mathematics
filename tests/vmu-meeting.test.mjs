@@ -213,6 +213,24 @@ if (SELF_PROBE) {
   ok(refused && refused.code === 'VMU_STATE' && /timed out/.test(String(refused.message)) && /1000ms/.test(String(refused.message)),
     'roundTimeoutMs refuses further input after the round budget', String(refused && refused.message))
 
+  // ROUND 50 REGRESSION DEFENCE: the very same scenario with a NUMERIC clock must reach the SAME verdict. Before
+  // the fix `Date.parse(clock())` was NaN whenever the caller injected a numeric clock - which the kernel does
+  // (its guarded clock returns a number) - so the budget check silently stopped firing and a stale round accepted
+  // input forever. Two clocks, one verdict.
+  let numNowMs = Date.parse('2026-10-09T00:00:00.000Z')
+  const numeric = m.createMeeting({ id: 'mt-b6-num', roster, deliver: async () => {}, roundTimeoutMs: 1000,
+    clock: () => numNowMs })
+  await numeric.convene('an agenda')
+  await numeric.openRound({ members: roster })
+  const numFine = await numeric.speak(roster[0], 'within budget')
+  ok(numFine.ok === true, 'a NUMERIC clock passes the pre-budget check too (it used to be silently NaN)', JSON.stringify(numFine))
+  numNowMs += 5000
+  let numRefused = null
+  try { await numeric.speak(roster[1], 'too late') } catch (e) { numRefused = e }
+  ok(numRefused && numRefused.code === 'VMU_STATE' && /timed out/.test(String(numRefused.message)) && /1000ms/.test(String(numRefused.message)),
+    'roundTimeoutMs fires with a NUMERIC clock exactly as with an ISO one - the regression this guards',
+    String(numRefused && numRefused.message))
+
   paused = true
   const other = m.createMeeting({ id: 'mt-b6b', roster, deliver: async () => {}, isPaused: () => paused })
   refused = null

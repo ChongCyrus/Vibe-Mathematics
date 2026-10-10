@@ -221,6 +221,7 @@ const PRESETS = [
 
 const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs', 'leanAsync', 'leanJobsMaxParallel', 'leanInitiative', 'leanSearchPaths']
 
+ok(PRESETS.length > 0, 'non-vacuous: the preset table must not be empty (' + PRESETS.length + ' presets)')
 for (const P of PRESETS) {
   const ymlPath = join(BASE, P.dir, 'agent.cordis.yml')
   const jsPath = join(BASE, P.dir, P.js)
@@ -282,7 +283,7 @@ for (const P of PRESETS) {
     }
     const stale = [...mentioned].filter((n) => !registered.has(n)).sort()
     eq(stale, [], `${P.dir} [${key}]: persona advertises tool(s) that are not registered`)
-    for (const w of wildcards) {
+    for (const w of wildcards) { // EMPTY_ALLOWED: 该 persona 未使用任何通配符时 wildcards 为空 ⇒ 无"匹配不到工具"可查（空集即合规）
       ok([...registered].some((n) => n.startsWith(w)), `${P.dir} [${key}]: wildcard mention ${w}* matches no registered tool`)
     }
     const unmentioned = [...registered].filter((n) => !mentioned.has(n)).sort()
@@ -297,7 +298,7 @@ for (const P of PRESETS) {
     const staleAllowed = [...allowed].filter((n) => !registered.has(n)).sort()
     ok(staleAllowed.length === 0, `${P.dir} [${key}]: every allow-list entry is a real registered tool`,
       'allow-listed but not registered: ' + JSON.stringify(staleAllowed))
-    for (const must of (P.required || [])) {
+    for (const must of (P.required || [])) { // EMPTY_ALLOWED: 该预设未声明 `required` 时为空 ⇒ "必须被提到"的清单为空，正是合规
       ok(mentioned.has(must) && !allowed.has(must), `${P.dir} [${key}]: ${must} must be MENTIONED in the persona (never allow-listed)`)
     }
   }
@@ -422,6 +423,7 @@ try {
   } else {
     try {
       const back = readFileSync(join(corpusDir, 'persona-corpus.md'), 'utf8')
+      ok(rows.length > 0, 'non-vacuous: the shipped persona corpus must have rows (' + rows.length + ')')
       for (const r of rows) {
         ok(back.includes(`## ${r.preset}`), `persona corpus: ${r.preset} is missing from the shipped corpus`)
         ok(back.includes(r.prefix.split('\n')[0]), `persona corpus: ${r.preset} prefix line 0 is missing from the shipped corpus`)

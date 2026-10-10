@@ -70,6 +70,7 @@ ok(!/^ {4,6}disabled:/m.test(patch),
 
 // ---- 4. every declaration's composition -------------------------------------------------------
 const IDS = { v2: '20', v3: '21', v4: '22', v5: '23', v5r: '24', vmu: '25' }
+ok(VERSIONS.length > 0, 'non-vacuous: VERSIONS must not be empty')
 for (const v of VERSIONS) {
   const start = patch.indexOf('- id: preset-vibe-math-' + v)
   const next = patch.indexOf('\n- insert:', start)
@@ -159,6 +160,7 @@ for (const v of VERSIONS) {
 }
 
 // ---- 5. module resolution ---------------------------------------------------------------------
+ok(VERSIONS.length > 0, 'non-vacuous: VERSIONS must not be empty')
 for (const v of VERSIONS) {
   const sub = './vibe-math-' + v + '/vibe-math-' + v + '.js'
   ok(pkg.exports[sub] === sub && existsSync(at(sub)),
@@ -171,6 +173,7 @@ ok(pkg.exports['./preset-declaration'] === './preset-declaration.js' && existsSy
 ok(pkg.files.includes('preset-declaration.js'), 'preset-declaration.js ships')
 
 // ---- 6. the frozen 0.1.x compositions stay the field-tested shape -----------------------------
+ok(VERSIONS.length > 0, 'non-vacuous: VERSIONS must not be empty')
 for (const v of VERSIONS) {
   const src = readFileSync(at('vibe-math-' + v + '/agent.cordis.yml'), 'utf8')
   ok(src.includes("name: '@deepseek-ai/dsh-workflow-worker-thread'"),

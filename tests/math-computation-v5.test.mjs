@@ -252,7 +252,7 @@ section('1 the six frozen params reach every v5 surface')
   const h = makeHost(seam)
   const st = await h.callTool('vibe_v5_status', {})
   const p = st.params
-  assert(math.MATH_PARAM_NAMES.every((k) => p[k] !== undefined),
+  assert(math.MATH_PARAM_NAMES.length > 0 && math.MATH_PARAM_NAMES.every((k) => p[k] !== undefined),
     '★ visibleParams exposes all six math keys (/v5 status can see them): ' + JSON.stringify({ c: p.mathComputation, m: p.mathMode, e: p.mathEngines, t: p.mathTimeoutMs, k: p.mathPackages, s: p.mathInstallScope }))
   assert(p.mathComputation === math.MATH_PARAM_DEFAULTS.mathComputation && p.mathMode === math.MATH_PARAM_DEFAULTS.mathMode &&
     p.mathTimeoutMs === math.MATH_PARAM_DEFAULTS.mathTimeoutMs && p.mathInstallScope === math.MATH_PARAM_DEFAULTS.mathInstallScope,
@@ -261,7 +261,7 @@ section('1 the six frozen params reach every v5 surface')
     'the default engine list (incl. cli) is the frozen one: ' + JSON.stringify(p.mathEngines))
   const setSpec = h.toolRegs.find((t) => t.name === 'vibe_v5_set')
   const props = setSpec.parameters.properties
-  assert(math.MATH_PARAM_NAMES.every((k) => Object.prototype.hasOwnProperty.call(props, k)),
+  assert(math.MATH_PARAM_NAMES.length > 0 && math.MATH_PARAM_NAMES.every((k) => Object.prototype.hasOwnProperty.call(props, k)),
     '★ the CLOSED vibe_v5_set schema advertises all six math keys')
   assert(JSON.stringify((props.mathComputation || {}).enum) === JSON.stringify(['off', 'auto', 'on']) &&
     JSON.stringify((props.mathMode || {}).enum) === JSON.stringify(['typed', 'typed+shell']) &&
@@ -285,7 +285,8 @@ section('1 the six frozen params reach every v5 surface')
   const r2 = await h.callTool('vibe_v5_set', { maxParallel: 3 })
   assert(r2.params.mathMode === 'typed+shell' && JSON.stringify(r2.params.mathEngines) === JSON.stringify(['python', 'cli']),
     '★ an unrelated tuning call does not reset the math keys (' + JSON.stringify(r2.params.mathEngines) + ')')
-  for (const k of math.MATH_PARAM_NAMES) {
+  assert(math.MATH_PARAM_NAMES.length > 0, 'non-vacuous: math.MATH_PARAM_NAMES must not be empty')
+for (const k of math.MATH_PARAM_NAMES) {
     // The audit's I14 invariant: every advertised key must be accepted by normalizeParams.
     const probe = await h.callTool('vibe_v5_set', { [k]: k === 'mathEngines' ? ['python'] : k === 'mathPackages' ? ['numpy'] : k === 'mathTimeoutMs' ? 5000 : k === 'mathComputation' ? 'on' : k === 'mathMode' ? 'typed' : 'user' })
     assert(probe.ok === true && probe.params[k] !== undefined, 'the closed schema accepts ' + k)

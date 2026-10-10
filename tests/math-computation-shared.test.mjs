@@ -228,7 +228,7 @@ console.log('-- math_computation shared contract --')
   ok(M.MATH_TOOL_DESCRIPTION.indexOf('mathEngineOverride') !== -1, 'description mentions mathEngineOverride')
   ok(M.MATH_RULE_LINES.some((l) => l.indexOf('①') !== -1 && l.indexOf('③') !== -1), 'rule lines carry the three selection criteria')
   ok(M.MATH_SHELL_RULE_LINE.indexOf(M.MATH_SHELL_FALLBACK_MARK) !== -1, 'shell rule line carries the marking')
-  ok(M.MATH_RULE_LINES.every((l) => l.indexOf(M.MATH_SHELL_FALLBACK_MARK) === -1), 'mode-independent rule lines contain NO shell sentence')
+  ok(M.MATH_RULE_LINES.length > 0 && M.MATH_RULE_LINES.every((l) => l.indexOf(M.MATH_SHELL_FALLBACK_MARK) === -1), 'mode-independent rule lines contain NO shell sentence (non-vacuous: the rule-line table is non-empty)')
   ok(M.MATH_SHELL_FALLBACK_MARK_EN === 'not tool-archived', 'EN marking constant')
 }
 
@@ -380,7 +380,7 @@ console.log('-- math_computation shared contract --')
     ok(r.ok === false && r.code === 'MATH_MISSING_PACKAGES', 'missing package -> MISSING_PACKAGES')
     eq(r.missing, ['sympy'], 'missing list reported')
     ok(r.next && r.next.kind === 'agent-install' && r.next.dryRun === true, 'missing package leads to an install PLAN (not an install)')
-    ok(state.spawns.every((s) => s.argv.join(' ').indexOf('script.py') === -1), 'the user script was NOT executed when a package is missing')
+    ok(state.spawns.every((s) => s.argv.join(' ').indexOf('script.py') === -1), 'the user script was NOT executed when a package is missing') // EMPTY_ALLOWED: 缺包路径不拉起任何进程 ⇒ spawns 为空正是期望结果（断言查"从未执行用户脚本"，空集无从违规）
   })
   await withHost({ licence: false }, async (state) => {
     const r = await state.call({ op: 'run', engine: 'matlab', mode: 'expr', expr: 'disp(1)' })
@@ -937,6 +937,7 @@ console.log('-- math_computation shared contract --')
     M.registerMathComputation(h.host)
     push('probe resolve throws', await h.call({ op: 'probe', engine: 'python' }))
   }
+  ok(cases.length > 0, 'non-vacuous: the probe case table must not be empty (' + cases.length + ' cases)')
   for (const c of cases) {
     let json = null
     let err = null
@@ -1188,6 +1189,7 @@ async function task2ProbeBuiltInRoots(opts) {
 // the archived script never ran. This section walks the whole descriptor table.
 {
   const PLACEHOLDER = /<script>|<expr>|<pkgs>|<pkgs\.\.\.>|<probeCode>|<exe>|<pkg>|<cliArgv/
+  ok((M.MATH_PARAM_DEFAULTS.mathEngines || []).length > 0, 'non-vacuous: the declared engine table must not be empty')
   for (const name of (M.MATH_PARAM_DEFAULTS.mathEngines || [])) {
     if (name === 'cli') continue
     const h = makeFakeHost({ installed: [name], files: {}, licence: true })

@@ -72,6 +72,7 @@ function toolTokens(text) {
   return out
 }
 
+ok(PRESETS.length > 0, 'non-vacuous: the preset table must not be empty (' + PRESETS.length + ' presets)')
 for (const P of PRESETS) {
   const js = read(P.js)
   const spec = read(P.spec)
@@ -101,6 +102,7 @@ for (const P of PRESETS) {
   if (undocumented.length) notes.push(P.tag + ': registered but not named in spec/README: ' + undocumented.join(', '))
 
   // the four Lean parameters: documented in spec + README, and accepted by the code
+  ok(LEAN_PARAMS.length > 0, 'non-vacuous: the Lean parameter table must not be empty (' + LEAN_PARAMS.length + ')')
   for (const prm of LEAN_PARAMS) {
     ok(spec.includes(prm), P.tag + ': 实现方案 documents ' + prm)
     ok(README.includes(prm), P.tag + ': README documents ' + prm)
@@ -141,6 +143,7 @@ for (const P of PRESETS) {
       f.body = lines.slice(f.start, end).join('\n')
     }
     const byName = (n) => fns.find((f) => f.name === n)
+    ok(cfg.writers.length > 0, P.tag + ' §8: the writer table must not be empty (non-vacuous)')
     for (const w of cfg.writers) {
       const f = byName(w)
       ok(!!f, P.tag + ' §8: the documented card writer ' + w + ' exists')
@@ -159,6 +162,7 @@ for (const P of PRESETS) {
 
 // cross-preset: the shared contract must name the four parameters too
 const contract = read('docs/formal-verification.md') || ''
+ok(LEAN_PARAMS.length > 0, 'non-vacuous: the shared contract sweep needs a non-empty parameter table')
 for (const prm of LEAN_PARAMS) ok(contract.includes(prm), 'contract documents ' + prm)
 
 // The §4 transition table is the normative statement every preset implements. Two rows were WRONG

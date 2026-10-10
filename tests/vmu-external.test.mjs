@@ -37,7 +37,7 @@ const mkSeam = (log) => async ({ source, ref }) => { log.push(source + ':' + (re
   const r1 = await e.fetchOne({ source: 'crossref', id: '10.1/x', by: 'acad' })
   ok(r1.ok === true && r1.receipt.cached === false && r1.receipt.stale === false, 'first fetch is a live fetch')
   const need = ['at', 'by', 'source', 'endpoint', 'queryFingerprint', 'resultFingerprint', 'cached', 'stale', 'ttlMs', 'ageMs']
-  ok(need.every((k) => r1.receipt[k] !== undefined && r1.receipt[k] !== null), 'receipt carries all ten fields')
+  ok(need.length > 0 && need.every((k) => r1.receipt[k] !== undefined && r1.receipt[k] !== null), 'receipt carries all ten fields')
   ok(r1.receipt.by === 'acad' && r1.receipt.at === 1000 && r1.receipt.ttlMs === 5000 && r1.receipt.ageMs === 0, 'receipt traces who/when/ttl/age')
   ok(calls.length === 1, 'exactly one network call so far')
   now = 3000
@@ -404,7 +404,7 @@ const A = async (fn) => { try { return { ok: true, value: await fn() } } catch (
   const bad = await rejects(() => e.fetchOne({ source: 'nope', id: 'x' }))
   ok(bad.threw && bad.code === 'VMU_EXTERNAL_UNAVAILABLE', 'D3: the refusal is still named')
   const receipts = [r1, cached, many]
-  ok(receipts.every((x) => Array.isArray(x.enforced) && new Set(x.enforced).size === x.enforced.length), 'D3: no duplicate entries in any receipt of the scenario')
+  ok(receipts.length > 0 && receipts.every((x) => Array.isArray(x.enforced) && new Set(x.enforced).size === x.enforced.length), 'D3: no duplicate entries in any receipt of the scenario')
   ok(receipts.every((x) => x.enforced.every((k) => typeof k === 'string')), 'D3: every listed key is a string')
 }
 

@@ -49,6 +49,7 @@ ok(DOC_FILES.length >= 15, 'the design set has at least the 15 core docs (00..14
 
 // ---- A. the design set exists and is non-trivial -------------------------------------------------
 const docText = new Map()
+ok(DOC_FILES.length > 0, 'non-vacuous: DOC_FILES must not be empty')
 for (const name of DOC_FILES) {
   const p = join(DOCS, name + '.md')
   if (!existsSync(p)) { ok(false, 'design doc exists: ' + name, 'missing'); continue }
@@ -127,7 +128,7 @@ ok(unregisteredInCode.length === 0,
   unregisteredInCode.slice(0, 8).join(' | '))
 {
   const packish = [...codeCodes.keys()].filter((c) => c.startsWith('VMU_PACK_') && !isPlaceholder(c))
-  ok(packish.every((c) => /^VMU_PACK_[A-Z0-9_]+$/.test(c)),
+  ok(packish.length > 0 && packish.every((c) => /^VMU_PACK_[A-Z0-9_]+$/.test(c)),
     'pack codes keep the VMU_PACK_<ID>_<REASON> shape (R-d)', packish.join(','))
 }
 
@@ -333,7 +334,9 @@ ok(unregisteredInCode.length === 0,
     }
   }
   for (const file of kernelFiles) {
-    for (const m of readFileSync(file, 'utf8').matchAll(/bus\.emit\('([^']+)'/g)) emitted.add(m[1])
+    const emits = [...readFileSync(file, 'utf8').matchAll(/bus\.emit\('([^']+)'/g)]
+  ok(emits.length > 0, 'non-vacuous: the file must emit at least one bus event')
+  for (const m of emits) emitted.add(m[1])
   }
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 

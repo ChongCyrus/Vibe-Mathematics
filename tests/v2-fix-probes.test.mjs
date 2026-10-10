@@ -429,7 +429,7 @@ console.log('\n-- F5/F6: 两面字段集与 paths 基准 --');
   const rep = await h.call('vibe_math_report', {});
   assert('paper' in st && 'paper' in rep && 'at' in st && 'at' in rep, '★★★ [F5] paper/at 两面都有（v2 status/report 字段集对齐）');
   const need = ['base', 'project', 'proofs', 'lib', 'proved', 'note'];
-  assert(st.formal && st.formal.paths && need.every((k) => k in st.formal.paths), '★★★ [F6] status.formal.paths 带 base + note（缺 ' + JSON.stringify(need.filter((k) => !st.formal.paths || !(k in st.formal.paths))) + '）');
+  assert(st.formal && st.formal.paths && need.length > 0 && need.every((k) => k in st.formal.paths), '★★★ [F6] status.formal.paths 带 base + note（缺 ' + JSON.stringify(need.filter((k) => !st.formal.paths || !(k in st.formal.paths))) + '）');
   const pp = st.formal.paths || {};
   assert(typeof pp.base === 'string' && pp.base.indexOf('/') !== -1 && /^([A-Za-z]:[\\/]|\/)/.test(pp.base), '★★ [F6] base 是绝对项目根（实测 ' + JSON.stringify(pp.base) + '）');
   const rpj = rep.formal && rep.formal.paths ? rep.formal.paths : null;
@@ -753,7 +753,8 @@ console.log('\n-- PAPER §6.2/§6.3: closure trigger, idempotence, 9-section con
   const tex = readFileSync(join(h.paperDir('p'), 'paper.tex'), 'utf8')
   const heads = (md.match(/^## /gm) || []).length
   assert(heads === 9, '★ the md carries exactly the 9-section skeleton (got ' + heads + ')')
-  for (const s of h.H.PAPER_SKELETON) assert(md.indexOf('## ' + s.key) !== -1, 'md section present: ' + s.key)
+  assert(h.H.PAPER_SKELETON.length > 0, 'non-vacuous: PAPER_SKELETON must not be empty')
+for (const s of h.H.PAPER_SKELETON) assert(md.indexOf('## ' + s.key) !== -1, 'md section present: ' + s.key)
   assert(md.indexOf('### 证据与文件索引') !== -1 && md.indexOf('`qs/qs.json`') !== -1, '★ the appendix carries the evidence index (existing files only)')
   assert(md.indexOf('未定论') !== -1, 'the unresolved item is labelled in the paper (不得编造)')
   assert((tex.match(/\\section\{/g) || []).length === 9, '★ the tex carries the same 9 sections')
@@ -880,7 +881,7 @@ console.log('\n-- PAPER §6.5/§6.6: path confinement, id normalisation, command
   const m = await h.find(() => (existsSync(join(h.paperDir('p'), 'paper.meta.json')) ? readMeta(h, 'p') : undefined), 40)
   assert(!!m && m.dir === 'Paper/p' && m.trigger === 'manual', 'the manual run is recorded with trigger=manual under Paper/<id>/')
   const files = readdirSync(h.paperDir('p')).sort()
-  assert(files.every((f) => ['paper.md', 'paper.tex', 'paper.pdf', 'paper.meta.json', 'paper.log.md', 'paper.lock.json'].indexOf(f) !== -1), '★ only the paper artifacts live in Paper/<id>/ (got ' + JSON.stringify(files) + ')')
+  assert(files.length > 0 && files.every((f) => ['paper.md', 'paper.tex', 'paper.pdf', 'paper.meta.json', 'paper.log.md', 'paper.lock.json'].indexOf(f) !== -1), '★ only the paper artifacts live in Paper/<id>/ (got ' + JSON.stringify(files) + ')')
   assert(files.indexOf('paper.md') !== -1 && files.indexOf('paper.meta.json') !== -1, 'the expected artifacts exist')
   assert(!existsSync(join(h.WS, 'VibeMath', 'Projects', 'p', 'Space', 'p')), 'no escaped paper directory was created')
   assert(!existsSync(join(h.WS, 'etc')) && !existsSync(join(h.WS, 'y')), 'no file/dir was written outside the project tree')
