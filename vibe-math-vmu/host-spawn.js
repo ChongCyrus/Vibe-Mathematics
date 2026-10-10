@@ -27,6 +27,20 @@ export function refuse(code, message, hint) {
   return err
 }
 
+/**
+ * Diagnostic shape summary for a failed spawn (issue #13 / M3): the LIVE host failure had no stack because
+ * this seam dropped it. This builds a bounded, countable summary of what was ACTUALLY passed, so a refusal
+ * carries both the host stack and the real shape. It never truncates silently: the omitted character count
+ * is reported (the same rule the readers follow).
+ */
+export function shapeSummary(shape, cap = 400) {
+  let text
+  try { text = JSON.stringify(shape) } catch (e) { text = '{"unserializable":' + JSON.stringify(String((e && e.message) || e)) + '}' }
+  if (typeof text !== 'string') text = String(text)
+  if (text.length <= cap) return { text, droppedChars: 0 }
+  return { text: text.slice(0, cap), droppedChars: text.length - cap }
+}
+
 export const DEFAULT_STDOUT_CAP = 1 << 20 // 1 MiB
 export const DEFAULT_STDERR_CAP = 1 << 20
 
@@ -81,8 +95,15 @@ export function createHostSpawn({
         const resolved = await sub.resolveExecutable(String(argv[0]))
         if (typeof resolved === 'string' && resolved.length > 0) argv[0] = resolved
       } catch (e) {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'cannot resolve executable ' + argv[0] + ': ' + String((e && e.message) || e),
+        const shape = { phase: 'resolveExecutable', argv0: String(argv[0]), argvLen: argv.length }
+        const sum = shapeSummary(shape)
+        const err = refuse('VMU_ENGINE_UNAVAILABLE', 'cannot resolve executable ' + argv[0] + ': ' + String((e && e.message) || e) +
+          ' | shape=' + sum.text + (sum.droppedChars ? ' (+' + sum.droppedChars + ' chars omitted)' : ''),
           'the host resolves executables against its scrubbed PATH; an unresolvable command is a named failure')
+        err.hostStack = (e && e.stack) || null
+        err.shape = shape
+        err.cause = e
+        throw err
       }
     }
 
@@ -97,8 +118,25 @@ export function createHostSpawn({
       })
     } catch (e) {
       // The host validates argv/cwd/env and throws BEFORE a handle exists (documented contract).
-      throw refuse('VMU_INVALID_ARGUMENT', 'the host refused to spawn: ' + String((e && e.message) || e),
+      // Issue #13 / M3: carry the HOST STACK and the ACTUAL shape — the earlier seam dropped both, so the
+      // live failure was recorded as a NON-RESULT with no stack. Error code and behaviour are unchanged.
+      const shape = {
+        phase: 'subprocess.spawn',
+        argv,
+        argvLen: argv.length,
+        cwd: request.cwd || defaultCwd || undefined,
+        stdio: { stdin: 'ignore', stdout: { maxBytes: stdoutCapBytes }, stderr: { maxBytes: stderrCapBytes } },
+        graceMs: budget || undefined,
+        envKeys: request.env ? Object.keys(request.env).length : 0,
+      }
+      const sum = shapeSummary(shape)
+      const err = refuse('VMU_INVALID_ARGUMENT', 'the host refused to spawn: ' + String((e && e.message) || e) +
+        ' | shape=' + sum.text + (sum.droppedChars ? ' (+' + sum.droppedChars + ' chars omitted)' : ''),
         'the host validates argv/cwd/env synchronously')
+      err.hostStack = (e && e.stack) || null
+      err.shape = shape
+      err.cause = e
+      throw err
     }
 
     const outcome = await Promise.race([

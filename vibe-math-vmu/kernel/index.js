@@ -34,6 +34,8 @@ import { createLoader } from './loader.js'
 import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
+import { createLeanFace } from './lean.js'
+import { memoryCeilingExceeded } from './guard.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -190,14 +192,27 @@ export function createKernel({
       headListAt: settings['vmu.records.headListAt'],
       truncateMode: settings['vmu.records.truncateMode'],
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
+      // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 §11): the library gates its writes through
+      // kernel/guard.js, so `vmu.safety.pathPolicy` is a consumer rather than a declaration.
+      settings,
       clock,
     })
     : null
 
+  // THE LEAN FACE (docs/09, `vmu.math.lean*`): a real subsystem, created only when a spawn seam exists. The
+  // face owns the semantics the docs promise ("exit 0 AND the content hash unchanged"); the kernel only wires.
+  const lean = spawn
+    ? createLeanFace({ settings: { get: (k) => settings[k] }, spawn, root, clock, log })
+    : null
+
+  // The resource gate closes the `vmu.limits.memoryCeilingMb` loop. The ceiling is the HOST PROCESS RSS (the
+  // framework cannot measure its own "net" memory - documented), and the roster refuses to grow past it by name.
+  const resourceGate = () => memoryCeilingExceeded({ settings, rssBytes: process.memoryUsage().rss })
+
   // `members` and `library` are re-declarable: a PACK owns the institution (slots, tracks), so applying a
   // pack must be able to declare them. Re-declaring a library rebuilds its index from disk, so no record
   // is lost by the swap (docs/10 §2).
-  let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings })
+  let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings, resourceGate })
   const packNotes = []
   const tasks = createTasks({
     stages: stages || settings['vmu.tasks.stages'] || [],
@@ -271,7 +286,7 @@ export function createKernel({
       // Nothing declared: no roster, no wake seam, no cost. Members become real only when a pack asks.
       return null
     }
-    return createMembers({ slots: declaredSlots, maxLiveMembers: cap, deliver: opts.deliver, bus: opts.bus, clock: opts.clock })
+    return createMembers({ slots: declaredSlots, maxLiveMembers: cap, deliver: opts.deliver, bus: opts.bus, clock: opts.clock, resourceGate: opts.resourceGate })
   }
 
   /** Lazy math surface: asking for it without a host seam is refused by name (never faked). */
@@ -293,6 +308,8 @@ export function createKernel({
     get library() { return library },
     get members() { return members },
     get work() { return workLedger },
+    /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
+    get lean() { return lean },
     tasks,
     rules,
     loader,
@@ -422,6 +439,7 @@ export function createKernel({
           deliver,
           bus,
           clock,
+          resourceGate,
         })
         : null
       // Publication follows DECLARATION: a service that did not exist a moment ago must appear in the
@@ -448,6 +466,9 @@ export function createKernel({
         headListAt: settings['vmu.records.headListAt'],
         truncateMode: settings['vmu.records.truncateMode'],
         fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
+        // The path policy must survive a RE-DECLARATION too, or a pack that declares tracks would silently
+        // drop the write gate the first library had (docs/04 §11).
+        settings,
         clock,
       })
       return { ok: true, tracks: library.status ? list.slice() : list.slice() }

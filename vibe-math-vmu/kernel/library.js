@@ -16,6 +16,7 @@
 import { mkdir, readdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { guardWrite } from './guard.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -46,6 +47,7 @@ const nowIso = (clock) => clock()
  */
 export function createLibrary({
   root,
+  settings = {},
   tracks = ['progress', 'routes', 'obstacles', 'rejected', 'state'],
   headListAt = 7,
   truncateMode = 'keepChars',
@@ -56,6 +58,8 @@ export function createLibrary({
   if (typeof root !== 'string' || root.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'createLibrary needs a workspace root', 'pass { root }')
   }
+  // Enforcement point: every library write is decided by the resolved path policy.
+  const gate = (target, kind) => guardWrite({ settings, root, target, kind })
   const truncation = []
   const index = new Map() // id -> { id, kind, dir, file, head }
 
@@ -181,6 +185,7 @@ export function createLibrary({
         owner: member,
         updatedAt: nowIso(clock),
       }
+      gate(file, 'library write')
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
       return { ok: true, id, fingerprint: fp, deduplicated: false, file }
@@ -197,6 +202,7 @@ export function createLibrary({
       let prev = ''
       try { prev = await readFile(file, 'utf8') } catch { prev = '# ' + track + '\n' }
       const line = '- ' + nowIso(clock) + ' ' + String(text).replace(/\s*\n\s*/g, ' ') + '\n'
+      gate(file, 'library write')
       await writeFile(file, prev.replace(/\s*$/, '\n') + line, 'utf8')
       return { ok: true, file, track, member }
     },

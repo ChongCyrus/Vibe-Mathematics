@@ -114,7 +114,7 @@ interface EngineAdapter {
 
 - **数学计算面已接入真机（2026-10-09 ✓）**：`host-math.js` 把宿主接缝（`register/params/projectRoot/writeText/readText/exists/listDir/resolveExecutable/spawn/log` ✓）接到共享模块 ✓ ⇒ **6 个 `vmu.math.*` 键**（`computation`／`mode`／`engines`／`timeoutMs`／`packages`／`installScope` ✓）经 `host.params()` 真正生效 ✓；出现条件＝声明 `math: true` 或任一 `vmu.math.*` ✓（零机制 ✓）。路径逃逸**具名拒** ✓（`VMU_NOT_PERMITTED` ✓）。
 - **本机工具链的真实运行仍未实测** ✗：vmu 侧从未跑过一次真实编译/证明 ✓（负例一律由**注入接缝**制造 ✓，见 §2.1 ✓）；且**真实计算依赖子进程服务** ✗（M3 真机 NON-RESULT ⇒ 目标机上的 provider 内部报错 ✓，见 11-§9.6 ✓）⇒ 本机 `probe` 可跑、**真实 run 待该缺陷解决** ✓。
-- **8 个 `vmu.math.lean*` 键仍未接线** ✗（`formalVerify`／`leanCommand`／`leanArgs`／`leanTimeoutMs`／`leanAsync`／`leanInitiative`／`leanSearchPaths`／`leanJobsMaxParallel` ＋ `compileTimeoutMs` ✓）：Lean 面在 vmu 里**只有适配器与 `settled()` 规则**（R-b ✓），**没有**编译/作业队列 ✗ ⇒ 04 §11 的"接线"列已逐键标注 ✓。
+- **8 个 `vmu.math.lean*` 键已由 `kernel/lean.js` 真接线** ✓（`formalVerify`／`leanCommand`／`leanArgs`／`leanTimeoutMs`／`leanAsync`／`leanInitiative`／`leanSearchPaths`／`leanJobsMaxParallel` ＋ `compileTimeoutMs` ✓）：Lean 面现有**编译作业队列**（`createLeanFace({settings,spawn,root,clock,log})` ⇒ `submit/status/list/settle/keysUsed/policy/commandFor` ✓）；`passed` **收窄为"退出 0 **且** 内容哈希未变"** ✓（R-b ✓）；`leanAsync=true` 入队即返回、`false` 同步等待；`leanJobsMaxParallel` 限并发（默认 1＝串行）；`leanSearchPaths` 去重后注入在**自动 VibMath 根之前**；`leanInitiative` 与 `formalVerify` **正交**（`off` ⇒ 零策略 ✓）；测试 `tests/vmu-lean.test.mjs`（**假 `spawn` 接缝**）⇒ `ALL GREEN (passed=9, failed=0)` ✓。**未做 ✗**：**真机 Lean 未跑** ✗（未探测 `lean` 是否在 PATH；`spawn` 接缝由接线方提供）；**尚未接入 `kernel/index.js`／提示词／计数** ✗（接线由接线方负责）；`compileTimeoutMs` 本面**未消费** ✗。
 - **Lean 侧复用细节未核**：v5r 的 `sha256Hex` 是**自实现**（非复用 DSH 能力）⇒ vmu 是否沿用待定；
 - **引擎适配器的能力边界**（哪些计算必须走内部模块 vs 外部进程）未定；
 - **作业持久化**（异步作业跨重启）语义未定。

@@ -206,6 +206,13 @@
 | `VMU_STORE_FAILED` / `VMU_STORE_MIGRATION` | 耐久写失败/迁移失败 | 耐久层 | ✅ |
 | `VMU_LEAN_NOT_FOUND` | **无工具链**（Lean 不存在/不可解析） | 形式化面 | ✅（须给**怎么装/怎么指路**） |
 | `VMU_LEAN_COMPILE_FAILED` | **编译失败**（**不是**"命题为假" ✗） | 形式化面 | ✅（须**显式区分**"缺陷"与"反驳"） |
+| `VMU_LEAN_EXIT_NONZERO` | Lean 作业退出非 0（**编译/检查失败**） | 形式化面（`kernel/lean.js` ✓） | ✅（与"哈希变了"分开登记 ✓） |
+| `VMU_LEAN_HASH_CHANGED` | 退出 0 **但**产物内容哈希变了 ⇒ **不算 passed** ✓ | 形式化面 | ✅（"退出 0 就行"是错的 ✓） |
+| `VMU_LEAN_TIMEOUT` | 超过 `vmu.math.leanTimeoutMs` 单次预算 | 形式化面 | ✅（须给当前值 ✓） |
+| `VMU_LEAN_SPAWN_FAILED` | Lean 进程起不来/异常（**须给原始错误** ✓） | 形式化面 | ✅ |
+| `VMU_LEAN_FILE_UNREADABLE` / `VMU_LEAN_FILE_REQUIRED` | 产物文件读不到／`submit` 未给 `file` | 形式化面 | ✅（本面只编译既有文件 ✓） |
+| `VMU_LEAN_STATEMENT_REQUIRED` | `submit` 未给 `statement`（回执与审计的对象 ✓） | 形式化面 | ✅ |
+| `VMU_LEAN_NOT_SETTLED` | 作业尚未结算（`state≠settled`）就要求结算 | 形式化面 | ✅（须给当前 state ✓） |
 | `VMU_ENGINE_UNAVAILABLE` | 引擎不可用（探测失败/未注册） | 计算/形式化 | ✅ |
 | `VMU_JOB_TIMEOUT` / `VMU_JOB_CANCELLED` | 作业超时/被取消 | 计算/形式化作业 | ✅ |
 | `VMU_MATH_INVALID_INPUT` | 数学输入非法（域/精度/单位） | 计算面 | ✅ |

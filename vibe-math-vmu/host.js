@@ -64,7 +64,16 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
 export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false }) {
-  const refused = (code, message, hint) => ({ ok: false, code, message, hint: hint || null })
+  // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
+  // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
+  // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
+  // carried `hostStack`/`shape`, the tool face dropped them (task-33's finding).
+  const refused = (code, message, hint, extra = null) => Object.assign({ ok: false, code, message, hint: hint || null },
+    extra && typeof extra === 'object'
+      ? Object.assign({},
+        extra.hostStack ? { hostStack: String(extra.hostStack).slice(0, 2000) } : {},
+        extra.shape ? { shape: extra.shape } : {})
+      : {})
   const specs = []
 
   // 1) status — ALWAYS available when the kernel is enabled: it is how the inert default is observable.
@@ -257,7 +266,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           const result = await kernel.bridge.run(request)
           return Object.assign({ ok: true, action, script: id }, result)
         } catch (e) {
-          return refused(e.code || 'VMU_MIDDLEWARE_FAILED', String(e.message), e.hint)
+          return refused(e.code || 'VMU_MIDDLEWARE_FAILED', String(e.message), e.hint, e)
         }
       },
     })

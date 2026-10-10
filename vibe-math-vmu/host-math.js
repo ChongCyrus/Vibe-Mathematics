@@ -24,6 +24,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path'
 import { createHostSpawn } from './host-spawn.js'
+import { guardWrite } from './kernel/guard.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7). */
 export const apiVersion = 1
@@ -56,13 +57,17 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
   const seam = createHostSpawn({ ctx, defaultCwd: root })
   const subprocessOf = () => { try { return ctx && typeof ctx.get === 'function' ? ctx.get('subprocess') : null } catch { return null } }
 
-  /** Resolve a module-supplied (project-relative) path and refuse escapes BY NAME. */
+  /** Resolve a module-supplied (project-relative) path; the DECISION comes from the resolved policy. */
   const under = (rel) => {
     const p = isAbsolute(String(rel)) ? normalize(String(rel)) : normalize(join(root, String(rel)))
-    const rl = relative(root, p)
-    if (rl.startsWith('..') || isAbsolute(rl)) {
-      throw refuse('VMU_NOT_PERMITTED', 'the math surface refuses a path outside the project root: ' + String(rel),
-        'paths are resolved under ' + root)
+    try {
+      guardWrite({ settings, root, target: p, kind: 'math surface path' })
+    } catch (e) {
+      if (e && e.code === 'VMU_NOT_PERMITTED') {
+        // Keep the historical wording (callers/tests quote it) and carry the policy hint from the guard.
+        throw refuse('VMU_NOT_PERMITTED', 'the math surface refuses a path outside the project root: ' + String(rel), e.hint)
+      }
+      throw e
     }
     return p
   }

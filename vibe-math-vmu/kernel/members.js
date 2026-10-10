@@ -35,6 +35,9 @@ export function createMembers({
   deliver = null,
   bus = null,
   clock = () => new Date().toISOString(),
+  // `resourceGate` closes the `vmu.limits.memoryCeilingMb` loop: the kernel supplies a function reporting
+  // whether the HOST process RSS is over the declared ceiling, and hire() refuses by name when it is.
+  resourceGate = null,
 } = {}) {
   const slotDefs = new Map()
   const members = new Map()
@@ -118,6 +121,16 @@ export function createMembers({
 
     /** Convenience over assignRole with the institute-wide live-member cap applied as well. */
     async hire({ id, slot } = {}) {
+      // The RESOURCE gate first: `vmu.limits.memoryCeilingMb` is the HOST process RSS ceiling, and refusing to
+      // grow the roster when the process is already over it is the whole point of the key (docs/04 §11).
+      if (typeof resourceGate === 'function') {
+        const gate = resourceGate()
+        if (gate && gate.exceeded === true) {
+          throw refuse('VMU_RESOURCE_BUDGET',
+            'host process RSS over the ceiling: ' + gate.rssMb + 'MB > ' + gate.ceilingMb + 'MB',
+            'vmu.limits.memoryCeilingMb caps the HOST process (docs/04 §11); raise it, or end members first')
+        }
+      }
       if (maxLiveMembers > 0 && live().length >= maxLiveMembers && !members.has(id)) {
         throw refuse('VMU_RESOURCE_BUDGET',
           'live members at the ceiling: ' + live().length + '/' + maxLiveMembers,

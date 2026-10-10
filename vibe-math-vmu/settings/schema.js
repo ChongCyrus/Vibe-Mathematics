@@ -59,7 +59,7 @@ export const SETTING_DEFS = Object.freeze([
   // ---- limits (machine-enforced; refusals must name the current value and the cap) ----------
   { key: 'vmu.limits.toolCallsPerTurnCap', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '单回合工具调用上限；0＝不限' },
   { key: 'vmu.limits.maxLiveMembers', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '在活成员上限；0＝不设（机器强制）' },
-  { key: 'vmu.limits.memoryCeilingMb', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '内存上限（超限拒绝新建成员）；0＝不设' },
+  { key: 'vmu.limits.memoryCeilingMb', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '宿主进程 RSS 上限（超限拒绝新建成员；框架无法测量自己的"净"内存，故此处是宿主进程口径）；0＝不设' },
   { key: 'vmu.limits.wallClockMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻）' },
   { key: 'vmu.limits.maxParallel', type: 'positiveInteger', def: 3, hot: HOT.H0, who: 'office', doc: '并发上限（P3：吸收 v5r 的 maxParallel；机器强制）' },
 
