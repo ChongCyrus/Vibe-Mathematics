@@ -49,6 +49,7 @@ const SURFACES = {
   'vmu.auditchain': 'auditchain', 'vmu.stateversion': 'stateversion',   // N1 (+N4), round 18
   'vmu.clockguard': 'clockguard',   // N3, round 19 (wired into every TTL-sensitive service)
   'vmu.mathtools': 'mathtools', 'vmu.projmigrate': 'projmigrate',   // round 21
+  'vmu.meetings': 'meetings', 'vmu.ballotbox': 'ballotbox', 'vmu.records': 'records',   // round 22
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }

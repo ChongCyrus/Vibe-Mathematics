@@ -68,6 +68,9 @@ import { createHash } from 'node:crypto'
 import { createClockGuard } from './clockguard.js'
 import { createMathTools } from './mathtools.js'
 import { createProjectionMigrator } from './projmigrate.js'
+import { createMeetings } from './meetings.js'
+import { createBallotBox } from './ballotbox.js'
+import { createRecords } from './records.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -377,6 +380,11 @@ export function createKernel({
   // dropped when the kernel's own version moves.
   const mathtools = createMathTools({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, spawn, library })
   const projmigrate = createProjectionMigrator({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the
+  // receipt lists the keys it actually enforced, and anything unwired is named rather than silently ignored).
+  const meetings = createMeetings({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
+  const ballotbox = createBallotBox({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
+  const records = createRecords({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -435,6 +443,9 @@ export function createKernel({
   registry.register('vmu.clockguard', { apiVersion: 1 }, { kind: 'service', description: 'monotonic clock guard, consumed by every TTL-sensitive service (N3)' })
   registry.register('vmu.mathtools', { apiVersion: 1 }, { kind: 'service', description: 'math tool policy layer: 45 declared knobs change behaviour, the rest are named as unwired (docs/09·15)' })
   registry.register('vmu.projmigrate', { apiVersion: 1 }, { kind: 'service', description: 'projection migration: an unlabelled or unreachable old document is refused, never dropped (A3)' })
+  registry.register('vmu.meetings', { apiVersion: 1 }, { kind: 'service', description: 'meeting policy layer: all 47 declared vmu.meetings knobs change behaviour (docs/08)' })
+  registry.register('vmu.ballotbox', { apiVersion: 1 }, { kind: 'service', description: 'ballot box: quorum is refused by name, abstention and absence counted apart (docs/08)' })
+  registry.register('vmu.records', { apiVersion: 1 }, { kind: 'service', description: 'records tracks: caps refuse by name, retention counts, permanent markers cannot be deleted' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -543,6 +554,9 @@ export function createKernel({
     get clockguard() { return clockguard },
     get mathtools() { return mathtools },
     get projmigrate() { return projmigrate },
+    get meetings() { return meetings },
+    get ballotbox() { return ballotbox },
+    get records() { return records },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,
