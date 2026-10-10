@@ -57,6 +57,12 @@ export function defaultOf(src, key) {
     new RegExp("[\"']" + esc + "[\"']\\s*:\\s*" + VAL),                                // an object-literal table
     // A coercing helper's SECOND argument is the fallback the module really uses when the setting is absent.
     new RegExp("(?:intOr|nat|numOr|listOr|listOf|boolOf)\\s*\\(\\s*" + S + "\\s*,\\s*" + VAL + "\\s*\\)"),
+    // A TERNARY whose condition names the setting: the ELSE branch is the absent-value answer. Two shapes are
+    // common - an enum guard (`POLICIES.includes(settings['k']) ? settings['k'] : 'refresh'`) and a type guard
+    // (`Array.isArray(settings['k']) ? settings['k'] : []`). The else is read off the code, never invented.
+    new RegExp("[\\w.]+\\.includes\\(\\s*" + S + "\\s*\\)\\s*\\?[^:]*:\\s*" + VAL),
+    new RegExp("Array\\.isArray\\(\\s*" + S + "\\s*\\)\\s*\\?[^:]*:\\s*" + VAL),
+    new RegExp(S + "[^?\\n]*\\?[^:\\n]*:\\s*" + VAL),
   ]
   if (alias) shapes.push(new RegExp("\\[\\s*K\\." + alias[1] + "\\s*\\]\\s*:\\s*" + VAL)) // [K.alias]: <lit>
   /**
