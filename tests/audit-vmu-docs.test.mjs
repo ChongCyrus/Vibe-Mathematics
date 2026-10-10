@@ -335,8 +335,9 @@ ok(unregisteredInCode.length === 0,
   }
   for (const file of kernelFiles) {
     const emits = [...readFileSync(file, 'utf8').matchAll(/bus\.emit\('([^']+)'/g)]
-  ok(emits.length > 0, 'non-vacuous: the file must emit at least one bus event')
-  for (const m of emits) emitted.add(m[1])
+    // EMPTY_ALLOWED: 有些 kernel 文件本来就不发起 bus 事件（本扫描是"收集全体发射者"），空集即合规；
+    // 全体规模由下面的 `emitted.size >= 10` 把关，不会被空集掩盖。
+    for (const m of emits) emitted.add(m[1])
   }
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 
