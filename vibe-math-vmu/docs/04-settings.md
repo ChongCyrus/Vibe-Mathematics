@@ -383,6 +383,54 @@ vmu.packs.active: [v5r]
 | `vmu.workflow.requireAssignee` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 阶段推进须有负责人 |
 | `vmu.workflow.gateOnOpenTasks` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 有未结任务时拦门（需注入 tasks 接缝） |
 | `vmu.workflow.reopenPolicy` | enum | `deny` | `deny`∣`allow`∣`gate` | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 回退到首阶段的策略（gate 未实现 ✗） |
+| `vmu.roles.map` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 职位名 → role slot 显式映射（S-1：内核不认识职位名，未映射即拒） |
+| `vmu.recruit.probationMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 试用期（0＝无试用期） |
+| `vmu.recruit.seatsMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 席位总上限（0＝不限） |
+| `vmu.recruit.scoreRequiresRationale` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分必须给理由 |
+| `vmu.recruit.scoreAggregate` | enum | `mean` | `mean`∣`median`∣`trimmed` | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分聚合方式 |
+| `vmu.recruit.offerExpiryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 录用报价有效期（0＝不过期） |
+| `vmu.recruit.rejectNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 拒绝必须给理由 |
+| `vmu.recruit.requireEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 申请必须带证据 |
+| `vmu.recruit.maxCandidates` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 单岗位候选人上限（0＝不限） |
+| `vmu.topology.mode` | enum | `flat` | `flat`∣`star`∣`committee`∣`market`∣`pipeline`∣`swarm`∣`matrix`∣`hierarchy` | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 协作拓扑（flat＝零机制：无路径约束） |
+| `vmu.topology.pipelineStages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 流水线阶段（跳段即拒） |
+| `vmu.topology.hierarchyDepthMax` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 层级深度上限 |
+| `vmu.topology.matrixDimensions` | string[] | `[business,topic]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 矩阵维度 |
+| `vmu.topology.marketBidWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 市场竞价窗口（0＝不限） |
+| `vmu.topology.swarmQuorum` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 群体认领的法定数（0＝不判） |
+| `vmu.topology.committeeSize` | int ≥1 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 委员会规模上限（0＝不限） |
+| `vmu.topology.allowCrossLane` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 矩阵是否允许跨维直连 |
+| `vmu.topology.starCenterSlot` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 星型中心席位（空＝星型不可用） |
+| `vmu.topology.autoSelect` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 拓扑是否自动选择 |
+| `vmu.topology.maxDepth` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 深度上限（hierarchyDepthMax 的兼容别名来源） |
+| `vmu.topology.budgetMultiplier` | ratio | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 拓扑预算倍率（当前只自曝，未接入预算 ✗） |
+| `vmu.fairness.priorityWeights` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 优先级权重（唯一合法权重源；声誉分数传入即拒 ✗） |
+| `vmu.fairness.reserveRatio` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 保留比例 |
+| `vmu.fairness.maxShare` | ratio | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 单人份额硬顶（不得突破） |
+| `vmu.fairness.minShare` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 单人保底份额 |
+| `vmu.fairness.minShares` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 按主体的保底份额 |
+| `vmu.fairness.tieBreak` | string | `lexicographic` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 平手规则（必须确定性） |
+| `vmu.fairness.explainRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 每次分配必须可解释 |
+| `vmu.fairness.auditWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 公平性审计窗口（0＝全程） |
+| `vmu.fairness.underUseThreshold` | ratio | `0.5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 使用不足判定阈值 |
+| `vmu.charter.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 宪章机制总开关（false＝零机制） |
+| `vmu.charter.ratifyThreshold` | ratio | `0.5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 通过门槛（弃权不入分母） |
+| `vmu.charter.amendQuorum` | ratio | `0.5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 修订所需法定比例 |
+| `vmu.charter.amendNeedsQuorum` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 修订须有审批记录 |
+| `vmu.charter.amendNeedsHuman` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 修订须人类批准 |
+| `vmu.charter.dissolveRequiresReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 解散必须给理由 |
+| `vmu.charter.dissolveNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 解散须人类批准 |
+| `vmu.charter.maxArticles` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 条款数上限（0＝不限） |
+| `vmu.charter.effectiveDelayMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 批准后延迟生效（0＝立即） |
+| `vmu.charter.requiresParentConsent` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 子机构须母机构同意 |
+| `vmu.charter.inheritDelegation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 是否继承母机构委托权限（fail closed） |
+| `vmu.charter.immutableArticles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 不可改条款 id（改动即拒并点名） |
+| `vmu.charter.frozenClauses` | string[] | `[S-1,S-2,S-3,S-4,S-5,S-6]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 冻结条款族（S-x 不变式） |
+| `vmu.charter.depthMax` | int ≥1 | `2` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 子机构嵌套深度上限 |
+| `vmu.charter.spawnMaxChildren` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 单机构子机构数上限（0＝不限） |
+| `vmu.charter.precedence` | string | `charter-over-pack` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 优先序（当前只自曝，未做冲突强制 ✗） |
+| `vmu.charter.fissionMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 裂变上限（未实现 API ✗） |
+| `vmu.charter.mergeNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 合并须人类批准（未实现 API ✗） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |
@@ -476,16 +524,6 @@ vmu.packs.active: [v5r]
 | `vmu.capacity.seatsPerDomain` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.capacity.storageWarnRatio` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.capacity.waitlistMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.charter.amendNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.amendNeedsQuorum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.depthMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.dissolveNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.fissionMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.frozenClauses` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.mergeNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.precedence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.charter.spawnMaxChildren` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.citations.allowFreeText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.idPriority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.orcid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
@@ -638,7 +676,6 @@ vmu.packs.active: [v5r]
 | `vmu.export.includeHistory` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.criticalSlots` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.maxSlotsPerInstance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.fairness.minShares` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.newcomerQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.rebalanceEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fingerprint.algo` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
@@ -1101,10 +1138,8 @@ vmu.packs.active: [v5r]
 | `vmu.records.treatNegativeAsFirstClass` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.decideBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.evidenceRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.maxCandidates` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.needsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.policy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.probationMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.probationPermissions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.refs.backlinkDepth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.refs.danglingPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
@@ -1202,11 +1237,6 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.create` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.items` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.topology.autoSelect` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.topology.budgetMultiplier` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.topology.maxDepth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.topology.mode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.topology.starCenterSlot` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.trust.appealNeedsEvidence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.trust.decayOnEnd` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.trust.displayMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |

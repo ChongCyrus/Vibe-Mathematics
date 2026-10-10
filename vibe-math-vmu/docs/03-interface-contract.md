@@ -336,6 +336,15 @@
 | `VMU_WORKFLOW_ESCALATION_NOT_DUE` | 升级**未到时限**（实现于 `kernel/workflow.js` ✓） | 工作流 | ✅（须给**年龄与阈值** ✓） |
 | `VMU_ARBITER_UNAVAILABLE` | 选择规则要求**人类指定**仲裁者（实现于 `kernel/arbitration.js` ✓） | 仲裁 | ✅（须说明"内核不代人指定" ✓） |
 | `VMU_ARBITRATION_OFF` | 仲裁**未启用**（零机制；实现于 `kernel/arbitration.js` ✓） | 仲裁 | ✅（须给**如何启用** ✓） |
+| `VMU_RECRUIT_SLOT_UNKNOWN` | 职位名**未映射到 slot**（S-1：内核不认识职位名；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**已知 slot 清单** ✓） |
+| `VMU_RECRUIT_SEATS_EXCEEDED` | 席位**超员**（含已开岗位预留；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**当前/上限** ✓） |
+| `VMU_RECRUIT_NOT_APPLIED` | 对**未申请**的岗位发出录用（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给可用申请入口 ✓） |
+| `VMU_RECRUIT_REASON_REQUIRED` | 评分/拒绝**缺理由**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点明缺哪一项 ✓） |
+| `VMU_RECRUIT_OFFER_EXPIRED` | 录用报价**已过期**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**过期时刻** ✓） |
+| `VMU_RECRUIT_PROBATION_NOT_DUE` | **试用期未满**不得转正（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**剩余时间** ✓） |
+| `VMU_TOPOLOGY_PATH_FORBIDDEN` | 拓扑**不允许该路径**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**允许路径** ✓） |
+| `VMU_TOPOLOGY_CYCLE` | 层级/流水线**成环或自指**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**环路径** ✓） |
+| `VMU_TOPOLOGY_SIZE_EXCEEDED` | 委员会/层级**超出规模上限**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**当前/上限** ✓） |
 
 **共享模块码表（**由数学/归档/脚本模块抛出 ✓；独立批评者第 5 轮发现这些码**整批在登记面之外** ✗ ⇒ 现纳入同一登记表与门禁 ✓）**
 
@@ -632,7 +641,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **145** 个码：其中 **63** 个能在运行时代码里找到 ✓，
+> 手写表登记 **154** 个码：其中 **72** 个能在运行时代码里找到 ✓，
 > **82** 个**暂时只存在于表里**（提案 ⛔）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓，删改任一码都会让 `--check` 变红 ✓。
 

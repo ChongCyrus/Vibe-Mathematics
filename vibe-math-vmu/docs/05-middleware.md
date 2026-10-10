@@ -169,7 +169,7 @@
 | 10 | `task/assign` | `closed` | **✓** `members.js`／`tasks.js` | 任务、被指派者、验收 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义 |
 | 11 | `task/transition` | `closed` | **✓** `tasks.js` | 任务、原/目标状态 | `deny`／`record` | ✓ | ✗ | 用户可定义（状态机仍内核校验） |
 | 12 | `prompt/section-assembled` | **`open`** | **✓ 已有生产者**（装配路径 emit ✓；曾漂移为 `prompt/assemble` ✗ ⇒ 本会话已修 ✓ 见 §5.2） | 段名、段文本、来源、顺序、剩余预算 | `deny`／`appendPrompt`／`rewriteResult`／`annotate` | ✓ | ✓ | 用户可定义（**见 06**） |
-| 13 | `budget/exceeded` | **`abort`** | **✗ 无生产者** | 超预算对象、已用/上限、候选 | `deny`／`annotate` | ✓ | ✗ | 用户可定义（截断协商） |
+| 13 | `budget/exceeded` | **`abort`** | **✓ 已有生产者**（`kernel/fairness.js` 在守恒分配失败时 emit ✓；独立复核者第 6 轮指出本表曾写"无生产者"✗ ⇒ 已更正 ✓） | 超预算对象、已用/上限、候选 | `deny`／`annotate` | ✓ | ✓ | 用户可定义（截断协商） |
 | 14 | `pack/loading` | `closed` | **✗ 无生产者** | 包 id、声明、计划 | `deny`／`rewriteArgs` | ✓ | ✓ | 用户可定义 |
 | 15 | `pack/loaded` | `closed` | **✗ 无生产者** | 包 id、条目数、服务、耗时 | `record`／`notify` | ✗ | ✗ | 用户可定义 |
 | 16 | `settle/before` | `closed` | **✓** `tasks.js` | 结算对象、口径、参与集 | `deny`（**唯一**） | ✓ | ✗ | **内核强制**（口径不可改写） |
@@ -187,7 +187,7 @@
 - `kernel/prompt/index.js:231` 与 `host-hooks.js`／`kernel/loader.js` 里 **emit 的钩子名是 `prompt/assemble`**，而**冻结集里是 `prompt/section-assembled`**。总线**不校验 emit 的钩子名** ⇒ 这三处 emit **匹配不到任何条目**（静默空跑）。
 - 后果：**中间件无法介入提示词装配**（本卷与 `06` 的核心承诺在这条路径上不成立）。
 - 处置（二选一，见 §13-2）：① 把 `prompt/assemble` 登记进 `VU_HOOKS`（并给默认失败策略）；② 把三处 emit 改为 `prompt/section-assembled`。**本卷建议 ②**（`06` 的目标是"逐段接管"，整篇粒度太粗）。
-- 另：`budget/exceeded` 与 `pack/loading|loaded` **有冻结名与默认策略却无人 emit** ⇒ "截断协商/包装载介入"目前是**纸面能力 ✗**；`prompt/index.js` 的 `truncation[]` 只进 `status()`，**没有**触发 `budget/exceeded`。
+- 另：`pack/loading|loaded` **有冻结名与默认策略却无人 emit** ⇒ "包装载介入"目前是**纸面能力 ✗**；`prompt/index.js` 的 `truncation[]` 只进 `status()`，**没有**触发 `budget/exceeded`（**但 `budget/exceeded` 本身已有生产者** ✓：`kernel/fairness.js` 在守恒分配不可能时 emit ✓）。
 
 ---
 
@@ -333,7 +333,7 @@
 
 > **判据（机器可判定 ✓）**：本节缺失即 T0 预检 `[D8]` **红** ✓（"缺少未核项小节" ✓）⇒ 它是**断言**不是装饰 ✓；每条的失败都必须是**具名**拒绝而不是静默 ✓。
 
-1. **6 个"注册但无生产者"的钩子仍未接线** ✗：`turn/reply-parsed`／`record/append-before`／`record/appended`／`budget/exceeded`／`pack/loading`／`pack/loaded`（**`prompt/section-assembled` 已接线 ✓** 本会话修 ✓）⇒ 挂上它们**今天不会触发** ✓；**场景**：接线后逐个补"生产者存在"的断言 ✓。
+1. **5 个"注册但无生产者"的钩子仍未接线** ✗：`turn/reply-parsed`／`record/append-before`／`record/appended`／`pack/loading`／`pack/loaded`（`prompt/section-assembled` ✓ 与 `budget/exceeded` ✓ **均已接线**，本会话修 ✓）⇒ 挂上它们**今天不会触发** ✓；**场景**：接线后逐个补"生产者存在"的断言 ✓。
 2. **`prompt/assemble` 命名漂移已修** ✓（代码改为冻结名 `prompt/section-assembled` ✓，总线加了名字校验 ✓）—— 但**逐段触发粒度**未定 ✗（每段一次 vs 一次带清单 ✓）。
 3. **无 `remove()`** ✗：条目只能 `disable`，**卸载/回滚**为计划 ✓；`disable` 与"卸载"的语义差别未实证 ✗。
 4. **脚本桥沙箱边界未定** ✗：M3 脚本能否调用外部命令（本卷建议**默认否** ✓）尚未由代码强制 ✗。

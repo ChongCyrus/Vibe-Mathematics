@@ -243,13 +243,26 @@ export function renderBlock(idx) {
     '> 读法 ✗✓：**声明的计划键 高 ≠ 今天能用** —— 只有"**其中已接线**"那一列是真的会改变行为的旋钮 ✓；'
     + '计划键改了**不会有任何行为变化**（`def: null`，表里显示"未接线"）✗。',
   ]
-  // NOTE (round 9): the N15 discoverability sub-table (which volume owns which term / key families) was built
-  // and then WITHDRAWN rather than shipped half-tested - it broke the per-volume assertions of
-  // tests/vmu-wiring-index.test.mjs, and changing an external test's parsing to fit a new block is exactly the
-  // kind of "make the gate match the artefact" move this project refuses. The collection code above
-  // (families/termsPer) stays so the next round can land the sub-table WITH its assertions.
-  void idx.families; void idx.termsPer
-  return head.concat(rows, tail).join('\n')
+  // N15: the discoverability sub-table lands INSIDE the same markers, with the volume cell in inline code
+  // (`07`) so the per-volume assertions of tests/vmu-wiring-index.test.mjs - which select rows whose first cell
+  // is exactly two digits - cannot mistake it for key counts.
+  // DELIBERATELY TERMS ONLY: an earlier revision also listed the key FAMILIES each volume declares, but that
+  // column is derived from settings/planned.js, so a lagging registry changed the block and turned the design's
+  // SOFT staleness class (warn and continue) into a hard failure. Term ownership comes from glossary.json and
+  // does not depend on that registry, so the soft class stays soft.
+  const disc = idx.volumes.map((v) => {
+    const terms = (idx.termsPer && idx.termsPer.get(v.num)) || []
+    const tCell = terms.length
+      ? terms.length + '：' + terms.slice(0, 8).join('、') + (terms.length > 8 ? ' …' : '')
+      : '—'
+    return '| `' + v.num + '` | ' + orientationOf(v.text) + ' | ' + tCell + ' |'
+  })
+  const tail2 = [
+    '| 卷 | 定位 | 拥有的术语（数：前 8 个） |',
+    '|---|---|---|',
+  ]
+  return head.concat(rows, tail, ['', '#### 3.2.1 逐卷可发现性（**生成 ✓**）：这卷**拥有**哪些术语', '',
+    '> 术语的**定义归属**取 `glossary.json` 的 `definedIn` ✓（其它卷只能引用、不得重定义 ✗）。**找规定先看这里** ✓：它把"谁定义什么"变成可检索的事实 ✓。'], tail2, disc).join('\n')
 }
 
 /** Replace exactly the text between the markers; everything outside is returned untouched. */

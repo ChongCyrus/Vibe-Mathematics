@@ -50,6 +50,10 @@ import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
 import { createArbitration } from './arbitration.js'
+import { createRecruit } from './recruit.js'
+import { createTopology } from './topology.js'
+import { createFairness } from './fairness.js'
+import { createCharter } from './charter.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -266,6 +270,12 @@ export function createKernel({
   // Batch 2 slice 3: arbitration. `minutes` is the live minutes service so a ruling can be recorded there;
   // `mode` defaults to off (zero mechanism) so nothing is arbitrated unless the institution turns it on.
   const arbitration = createArbitration({ settings: { get: (k) => settings[k] }, bus, clock, log, members, minutes })
+  // Batch-2 slices 5-8: recruitment, collaboration topology, charters, fair allocation. All four are
+  // zero-mechanism by default (no postings / flat topology / charters disabled / no claimants).
+  const recruit = createRecruit({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
+  const topology = createTopology({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
+  const fairness = createFairness({ settings: { get: (k) => settings[k] }, bus, clock, log, budget, tasks })
+  const charter = createCharter({ settings: { get: (k) => settings[k] }, bus, clock, log, members, delegation })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -298,6 +308,10 @@ export function createKernel({
   registry.register('vmu.trust', { apiVersion: 1 }, { kind: 'service', description: 'auditable reputation that NEVER grants authority (S-3, docs/17 §5)' })
   registry.register('vmu.handover', { apiVersion: 1 }, { kind: 'service', description: 'handover packets: required fields named, redacted before packing (docs/17 §11)' })
   registry.register('vmu.arbitration', { apiVersion: 1 }, { kind: 'service', description: 'arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 §6)' })
+  registry.register('vmu.recruit', { apiVersion: 1 }, { kind: 'service', description: 'postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 §7)' })
+  registry.register('vmu.topology', { apiVersion: 1 }, { kind: 'service', description: 'collaboration topologies and path assertions, describe and assert share one rule (docs/17 §14)' })
+  registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 §17)' })
+  registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 §15)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -380,6 +394,10 @@ export function createKernel({
     get trust() { return trust },
     get handover() { return handover },
     get arbitration() { return arbitration },
+    get recruit() { return recruit },
+    get topology() { return topology },
+    get fairness() { return fairness },
+    get charter() { return charter },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

@@ -335,10 +335,11 @@ ok(unregisteredInCode.length === 0,
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 
   // Declared gaps: registered, no producer yet. Keeping this list HONEST is the point (docs/05 §4.3).
-  // `prompt/section-assembled` LEFT this list the moment the assembly path emitted the frozen name instead of
-  // the drifted `prompt/assemble` - which is exactly what this two-sided check is for.
+  // Two hooks have LEFT this list in this session, each the moment a real producer appeared: the drifted
+  // `prompt/assemble` was replaced by the frozen `prompt/section-assembled`, and `budget/exceeded` gained a
+  // producer in kernel/fairness.js (the doc-side row in 05 was corrected in the same change).
   const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before', 'record/appended',
-    'budget/exceeded', 'pack/loading', 'pack/loaded'])
+    'pack/loading', 'pack/loaded'])
   const missing = registered.filter((h) => !emitted.has(h) && !KNOWN_UNEMITTED.has(h))
   ok(missing.length === 0,
     'every registered vmu hook is either EMITTED or explicitly listed as not-yet-emitted',
