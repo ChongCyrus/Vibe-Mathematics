@@ -1,4 +1,4 @@
-﻿// vmu kernel 鈥?the composition root (docs/02 搂2, docs/03 搂1).
+// vmu kernel 鈥?the composition root (docs/02 搂2, docs/03 搂1).
 //
 // This file is what the goal means by "the vmu framework": the place where the parts are ASSEMBLED, and
 // the place where the framework's first promise is enforced. That promise is the zero-mechanism default
@@ -175,12 +175,21 @@ export function createKernel({
   // chain becomes keyed and a re-forged chain is refused. The kernel never invents a key.
   secrets = null,
 } = {}) {
-  // THE FOURTH INSTANCE of the phase lesson, and the most systemic: an independent review measured that the kernel
-  // handed every service a view with ONLY a get() method, while thirteen modules read their settings by PROPERTY
-  // access (`settings['vmu.external.enabled']`). Those keys could therefore never be set at runtime - the reviewer
-  // showed external.enabled reading true from a plain object and FALSE through this very view. One shape fixes the
-  // whole class: the view carries the properties AND get(), so both reading styles see the same values.
-  const settingsView = Object.assign({}, settings, { get: (k) => settings[k] })
+  // FIXING THE FOURTH INSTANCE CREATED THE FIFTH, and an independent review measured it: copying settings into a
+  // view turned those properties into a CONSTRUCTION-TIME SNAPSHOT, while the official runtime entry
+  // setSettingsValue() mutates the ORIGINAL object. A runtime change therefore reached the get() channel and
+  // never the property channel: external.enabled was set to true, the receipt said ok, and the service still read
+  // false. A receipt that claims "applied" while a whole class of modules can never see it is worse than the
+  // original defect, so the view is LIVE now - property reads fall through to the original on every access and
+  // get() reads it directly. Iteration and `in` keep working through the proxy traps.
+  const settingsView = new Proxy(settings, {
+    get: (target, key) => (key === 'get' ? (k) => target[k] : target[key]),
+    has: (target, key) => key === 'get' || key in target,
+    ownKeys: (target) => [...new Set([...Reflect.ownKeys(target), 'get'])],
+    getOwnPropertyDescriptor: (target, key) => (key === 'get'
+      ? { value: (k) => target[k], enumerable: false, configurable: true }
+      : Reflect.getOwnPropertyDescriptor(target, key)),
+  })
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard nobody uses changes
   // nothing - a backwards clock would still extend every TTL and keep every pending idempotency entry alive
   // forever. The guard is therefore built FIRST (before any TTL-sensitive service) and its `now()` is handed to
@@ -343,7 +352,18 @@ export function createKernel({
   // `members` and `library` are re-declarable: a PACK owns the institution (slots, tracks), so applying a
   // pack must be able to declare them. Re-declaring a library rebuilds its index from disk, so no record
   // is lost by the swap (docs/10 搂2).
+  // E2 (task-154): SEAM AVAILABILITY IS A CONSTRUCTION FACT, never an inference. `status().seams` used to
+  // rebuild `deliverConsumedBy` as `['members','meetings','notify'].filter(n => !!deliver)` — a HARD-CODED
+  // list that kept naming "members" even when `createMembersList` had returned null (no slots ⇒ no roster
+  // service existed at all), and `seams.timer` used a truthiness test while `scheduler.arm` only accepts four
+  // OBJECT shapes (so a bare function timer made status claim a seam the consumer refused with
+  // VMU_CONTROL_NO_TIMER). Both are now recorded/handed over at the construction site.
+  const seamReceipts = { deliver: [] }
+  const noteSeam = (name, consumer, received) => {
+    if (received !== null && received !== undefined && !seamReceipts[name].includes(consumer)) seamReceipts[name].push(consumer)
+  }
   let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings, resourceGate })
+  noteSeam('deliver', 'members', members ? deliver : null)
   const packNotes = []
   const tasks = createTasks({
     stages: stages || settings['vmu.tasks.stages'] || [],
@@ -421,6 +441,7 @@ export function createKernel({
     isPaused: () => controlState.state === 'paused' })
   const crypto = createCrypto({ settings: settingsView, bus, clock: guardedClock, log, signer })
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
+  noteSeam('deliver', 'notify', notify ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
     domaingate, publication })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
@@ -657,6 +678,8 @@ export function createKernel({
         quotesPerMessageMax: settings['vmu.meetings.quotesPerMessageMax'] || 0,
         quoteDepthMax: settings['vmu.meetings.quoteDepthMax'] || 0,
         isPaused: () => controlState.state === 'paused' }, opts, { id }))
+      // E2: the MEETING factory receives `deliver` on construction AND hands it to every meeting it makes.
+      noteSeam('deliver', 'meetings', made ? deliver : null)
       rememberLive(liveMeetings, id, made)
       return made
     },
@@ -960,10 +983,18 @@ export function createKernel({
         bridge: bridge.status(),
         registry: registry.status(),
         seams: { host: !!host, store: !!store, library: !!library, members: !!members, spawn: !!spawn,
-          // Built from what each service ACTUALLY received, not from the option: the review showed this line
-          // reporting deliver:true while vmu.notify had been handed null.
-          deliver: !!deliver, deliverConsumedBy: ['members', 'meetings', 'notify'].filter((n) => !!deliver),
-          signer: !!signer, fetchFn: !!fetchFn, timer: !!timer },
+          // E2: both facts are CONSTRUCTION facts. `deliverConsumedBy` lists the services that were actually
+          // handed a usable `deliver` seam (a null roster service is not listed); `timer` is judged by the
+          // scheduler's OWN contract shape — the single source of truth — so status can never claim a timer
+          // the consumer would refuse (`VMU_CONTROL_NO_TIMER`). `timerNote` names the expected shapes.
+          deliver: !!deliver, deliverConsumedBy: seamReceipts.deliver.slice().sort(),
+          signer: !!signer, fetchFn: !!fetchFn,
+          timer: scheduler.status().timerShape !== null,
+          timerShape: scheduler.status().timerShape,
+          timerInjected: scheduler.status().timerInjected,
+          timerNote: scheduler.status().timerShape === null
+            ? 'timer seam NOT usable: the scheduler accepts one of four OBJECT shapes — {arm,disarm} | {schedule,cancel} | {set,clear} | {setTimeout,clearTimeout} (kernel/scheduler.js owns this contract); a bare function or any other shape is refused by name (VMU_CONTROL_NO_TIMER)'
+            : null },
         note: 'a kernel with no declarations is inert by construction (zero mechanism, R1)',
       }
     },

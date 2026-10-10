@@ -524,6 +524,41 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- E3 (task-154): bus.emit validates the hook NAME (never a bare crash, never a silent no-op) ---------
+{
+  const host = fakeCtx()
+  const handle = entry.apply(host.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 0))
+  const kernel = handle.kernel
+  ok(kernel && kernel.bus && typeof kernel.bus.emit === 'function', 'E3: the entry exposes a real bus')
+  const grab = async (hook) => { try { await kernel.bus.emit(hook, {}, {}); return null } catch (e) { return e } }
+  const n123 = await grab(123)
+  ok(n123 && n123.code === 'VMU_INVALID_ARGUMENT' && /got number/.test(n123.message),
+    'E3: emit(123) is a NAMED refusal (was a bare TypeError: hook.replace is not a function)', n123 && n123.message)
+  ok(/NON-EMPTY STRING hook/.test(String(n123.message)) && /declareTopic/.test(String(n123.hint)),
+    'E3: the refusal states the requirement in the message and the remedy in the hint', n123 && (n123.message + ' | ' + n123.hint))
+  const nobj = await grab({})
+  ok(nobj && nobj.code === 'VMU_INVALID_ARGUMENT' && /got object/.test(nobj.message),
+    'E3: emit({}) is a NAMED refusal (was the same bare TypeError)', nobj && nobj.message)
+  const nnull = await grab(null)
+  ok(nnull && nnull.code === 'VMU_INVALID_ARGUMENT' && /got null/.test(nnull.message),
+    'E3: emit(null) is a NAMED refusal (was "Cannot read properties of null")', nnull && nnull.message)
+  const nempty = await grab('')
+  ok(nempty && nempty.code === 'VMU_INVALID_ARGUMENT' && /empty\/whitespace/.test(nempty.message),
+    'E3: emit("") is REFUSED (it used to be ACCEPTED, reaching no listener at all)', nempty && nempty.message)
+  const nspace = await grab('   ')
+  ok(nspace && nspace.code === 'VMU_INVALID_ARGUMENT', 'E3: a whitespace-only hook is refused too')
+  // legal hooks keep working — a VMU hook, a declared custom topic and a host-namespace name
+  const legal = await kernel.bus.emit('control/heartbeat', { beats: 1, at: clock() }, {})
+  ok(legal && legal.ok !== false && typeof legal.traceId === 'string',
+    'E3[+]: a legal VMU hook still runs and gets a traceId', JSON.stringify(legal).slice(0, 80))
+  kernel.bus.declareTopic('custom/e3-probe')
+  const custom = await kernel.bus.emit('custom/e3-probe', {}, {})
+  ok(custom && custom.ok !== false, 'E3[+]: a DECLARED custom topic still runs')
+  const hostHook = await kernel.bus.emit('tools/pre-execute', { tool: 'x' }, {})
+  ok(hostHook && hostHook.ok !== false, 'E3[+]: a host-namespace hook still passes through')
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

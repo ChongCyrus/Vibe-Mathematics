@@ -408,6 +408,55 @@ if (SELF_PROBE) {
     'the face reads exactly the eight Lean keys', JSON.stringify(withSeam.lean.keysUsed()))
 }
 
+// ---- E2 (task-154): `status().seams` is a CONSTRUCTION FACT, never an inference -----------------------
+{
+  // E2-a: with no slots there is NO roster service ⇒ "members" must not be claimed as a deliver consumer
+  const bare = m.createKernel({ clock })
+  const bs = bare.status().seams
+  ok(bare.members === null && bs.members === false, 'E2-a: no slots ⇒ no roster service and seams.members === false')
+  ok(Array.isArray(bs.deliverConsumedBy) && !bs.deliverConsumedBy.includes('members'),
+    'E2-a: a NULL service is NOT listed in deliverConsumedBy (the old hard-coded list named it anyway)', JSON.stringify(bs.deliverConsumedBy))
+  ok(JSON.stringify(bs.deliverConsumedBy) === '[]', 'E2-a: with no deliver seam at all the consumer list is empty', JSON.stringify(bs.deliverConsumedBy))
+  // ... and with a real seam the services that ACTUALLY received it are listed
+  const deliver = async () => ({ ok: true, delivered: true })
+  const withSeam = m.createKernel({ clock, slots: [{ id: 'chair', capacity: 1 }], deliver })
+  const ws = withSeam.status().seams
+  ok(ws.deliver === true && ws.deliverConsumedBy.includes('members') && ws.deliverConsumedBy.includes('notify'),
+    'E2-a[+]: roster + notify really received the seam and are listed', JSON.stringify(ws.deliverConsumedBy))
+  ok(!ws.deliverConsumedBy.includes('meetings'),
+    'E2-a: the meeting factory is listed only once a meeting was really built (construction fact, not a guess)',
+    JSON.stringify(ws.deliverConsumedBy))
+  withSeam.meeting({ id: 'e2m1' })
+  ok(withSeam.status().seams.deliverConsumedBy.includes('meetings'),
+    'E2-a[+]: after a meeting is created the factory is listed too', JSON.stringify(withSeam.status().seams.deliverConsumedBy))
+  // E2-b: the timer is judged by the CONSUMER's contract shape, not by truthiness
+  const bareTimer = m.createKernel({ clock, timer: () => {} })
+  const bt = bareTimer.status().seams
+  ok(bt.timer === false && bt.timerShape === null,
+    'E2-b: a BARE FUNCTION timer is not a usable seam (status says false, matching the scheduler)', JSON.stringify({ timer: bt.timer, shape: bt.timerShape }))
+  ok(bt.timerInjected === true, 'E2-b: the option WAS injected — that separate fact stays visible')
+  ok(typeof bt.timerNote === 'string' && /arm,disarm/.test(bt.timerNote) && /setTimeout,clearTimeout/.test(bt.timerNote),
+    'E2-b: the note NAMES the expected contract shapes', bt.timerNote)
+  const objectTimer = m.createKernel({ clock, timer: { arm: () => 1, disarm: () => true } })
+  const ot = objectTimer.status().seams
+  ok(ot.timer === true && ot.timerShape === 'arm/disarm' && ot.timerNote === null,
+    'E2-b[+]: one of the four OBJECT shapes ⇒ seams.timer === true and the shape is disclosed', JSON.stringify({ t: ot.timer, s: ot.timerShape }))
+  // SINGLE SOURCE OF TRUTH + the hard rule: status may not claim what the consumer refuses
+  ok(bareTimer.scheduler.status().timerShape === null && objectTimer.scheduler.status().timerShape === 'arm/disarm',
+    'E2-b: status() reproduces the SCHEDULER\'s own shape verdict (one source of truth)')
+  let armErr = null
+  const hostTimerBare = m.createKernel({ clock, timer: () => {}, settings: { 'vmu.schedule.timeSource': 'host-timer' } })
+  try { await hostTimerBare.scheduler.arm({}) } catch (e) { armErr = e }
+  ok(armErr && armErr.code === 'VMU_CONTROL_NO_TIMER',
+    'E2 hard rule: the consumer refuses (VMU_CONTROL_NO_TIMER) ...', String(armErr && armErr.code))
+  ok(hostTimerBare.status().seams.timer === false,
+    'E2 hard rule: ... and status AGREES (before the fix status said true here — "available" vs "refused")')
+  const hostTimerOk = m.createKernel({ clock, timer: { arm: () => 1, disarm: () => true }, settings: { 'vmu.schedule.timeSource': 'host-timer' } })
+  const armed = await hostTimerOk.scheduler.arm({})
+  ok(armed && armed.mode === 'host-timer' && hostTimerOk.status().seams.timer === true,
+    'E2 hard rule[+]: with a contractual timer both the consumer and status agree it is usable', JSON.stringify({ mode: armed && armed.mode }))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

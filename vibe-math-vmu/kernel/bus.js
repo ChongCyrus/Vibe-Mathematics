@@ -252,6 +252,16 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
      * A deny is terminal and named; an abort is reported to the caller to end the turn or stage.
      */
     async emit(hook, payload = {}, opts = {}) {
+      // E3 (task-154): the hook NAME is validated FIRST. Before this, `emit(123)` died inside
+      // `hook.replace(...)` with a bare TypeError, `emit({})` likewise, `emit(null)` with "Cannot read
+      // properties of null", and `emit('')` was ACCEPTED (an unnamed hook can reach no listener, so every
+      // subscriber silently never ran). A nameless emission is now a NAMED refusal — never a crash, never a
+      // silent no-op; valid string hooks (including declared custom topics) are untouched.
+      if (typeof hook !== 'string' || hook.trim().length === 0) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'bus.emit needs a NON-EMPTY STRING hook, got ' + (hook === null ? 'null' : Array.isArray(hook) ? 'array' : typeof hook) + (typeof hook === 'string' ? ' (empty/whitespace)' : ''),
+          'e.g. bus.emit("control/paused", payload) — declare a new topic with bus.declareTopic(name); an unnamed hook reaches nobody')
+      }
       // HOOK-NAME MEMBERSHIP (independent verification, task-40). The name was never validated, so a misspelled
       // hook - or a name that had drifted from the frozen set (the proven case: `prompt/assemble` was emitted
       // while the registry declared `prompt/section-assembled`) - reached NO listener: the middleware never ran

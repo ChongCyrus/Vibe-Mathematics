@@ -537,3 +537,72 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 1. **索引的自动生成是否已存在**（`04`／`03-§8` 的生成器）**未核** ✗ —— 见 `14-§2`（未决登记）✓；
 2. **术语表的权威位置**（本卷 vs `01`）**未定** ✗ —— 见 `14-§2` ✓；
 3. **`grep ✗` 的可执行入口**（是否提供一条脚本）**未做** ✗ ✓。
+
+<!-- BEGIN GENERATED: zero-mechanism-matrix -->
+<!-- 本块由 `scripts/generate-zero-mechanism-matrix.mjs` 生成（生成式 ✓，勿手写 ✗） -->
+
+| 模块 | 零机制下的返回形状 | 是否具名拒（码） | 自曝字段 | 期望（设计） |
+|---|---|---|---|---|
+| `alerts` · `status()` | ok | — | dropped=[object Object] | （**设计未定** ✗：本模块未登记期望） |
+| `arbitration` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `audit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `auditchain` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `ballot` · `open()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] | 具名拒或 ok（同 records ✓） |
+| `bidding` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `board` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `budget` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `bus` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `charter` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `clockguard` · `status()` | null | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] | （**设计未定** ✗：本模块未登记期望） |
+| `crypto` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `delegation` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `domaingate` · `status()` | ok | — | dropped=[object Object] | （**设计未定** ✗：本模块未登记期望） |
+| `external` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `fairness` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | （**设计未定** ✗：本模块未登记期望） |
+| `governance` · `keysUsed()` | array[15] | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `guard` | （无 create* 工厂） | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `handover` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `idempotency` · `list()` | ok | — | dropped=0 truncated=false | 显式 absent（零机制＝无状态可去重 ⇒ 显式 `absent` ✓） |
+| `index` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | （**设计未定** ✗：本模块未登记期望） |
+| `library` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `lifecycle` · `stages()` | refusal | VMU_LIFECYCLE_NOT_DECLARED | — | （**设计未定** ✗：本模块未登记期望） |
+| `loader` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `math` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `mathjobs` · `submit()` | refusal | VMU_MATH_INVALID_INPUT | — | （**设计未定** ✗：本模块未登记期望） |
+| `mathtools` | op 抛出 | — | — | ok + enforced:[]（零机制＝无限额可管 ⇒ 放行且 `enforced` 为空 ✓） |
+| `meeting` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
+| `members` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `memory` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `metrics` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `minutes` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `notify` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `pack` · `plan()` | refusal | （无名）✗ | — | （**设计未定** ✗：本模块未登记期望） |
+| `projmigrate` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `publication` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `ratelimit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `records` | op 抛出 | — | — | 具名拒或 ok（零机制＝无键则具名拒；有默认则 ok ✓） |
+| `recruit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `registry` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `replay` · `plan()` | ok | — | truncated=[object Object] | （**设计未定** ✗：本模块未登记期望） |
+| `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | （**设计未定** ✗：本模块未登记期望） |
+| `retention` · `plan()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `rules` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `scheduler` · `list()` | ok | — | dropped=0 truncated=false | （**设计未定** ✗：本模块未登记期望） |
+| `script-bridge` · `plan()` | refusal | （无名）✗ | — | （**设计未定** ✗：本模块未登记期望） |
+| `skills` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | （**设计未定** ✗：本模块未登记期望） |
+| `store` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `tasks` · `list()` | array[0] | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `topology` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `transaction` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `trust` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `work` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `workflow` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+
+=== ZERO-MECHANISM MATRIX: 60 modules, 2 mismatches, 40 unregistered, 15 probe-errors ===
+<!-- END GENERATED: zero-mechanism-matrix -->

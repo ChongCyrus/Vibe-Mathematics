@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { performance } from 'node:perf_hooks'
 import { createWorkflow, DECLARED_KEYS, WIRED_KEYS, UNWIRED_REASONS, EXTRA_WIRED_KEYS } from '../vibe-math-vmu/kernel/workflow.js'
 
 let pass = 0, fail = 0
@@ -502,6 +503,27 @@ const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], tra
   for (let i = 0; i < 3; i++) { w2.status(); w2.queue(); w2.listTemplates(); w2.checkpointDue({ taskId: 'f1' }); w2.idempotencyScope(); w2.gate({ taskId: 'f1' }); w2.due({ taskId: 'f1', dueAt: now }) }
   ok(JSON.stringify([w2.status(), w2.queue(), w2.listTemplates(), w2.checkpointDue({ taskId: 'f1' }), w2.idempotencyScope(), w2.gate({ taskId: 'f1' }), w2.due({ taskId: 'f1', dueAt: now })]) === before, 'read-only: the new readers never mutate state')
   ok(Object.keys(w2.status().refusals).length >= 0 && w2.status().refusalsTotal >= 0, 'counting: refusals are grouped by code and totalised')
+}
+
+// ── E4 (round 15): the read-only view must stay a READ, not a file scan ──────────────────────────────────
+// Measured before the fix: `status()` median ≈ 1502 µs, of which ≈ 1310 µs was `declaredRegistry()` re-reading
+// settings/planned.js + settings/schema.js and re-running two regex scans ON EVERY CALL (≈570x records.list()).
+// The budget below is deliberately generous (200 µs, i.e. >8x the post-fix median) so CI jitter cannot produce
+// a false red - it fires only if the per-call rebuild comes back.
+{
+  const wf = mk({}, { listCap: 100 })
+  wf.define({ stages: ['open', 'done'], transitions: [{ from: 'open', to: 'done' }] })
+  wf.advance({ taskId: 'perf', to: 'open', by: 'a' })
+  for (let i = 0; i < 30; i++) wf.status()                       // warm up (JIT + first-touch)
+  const samples = []
+  for (let i = 0; i < 200; i++) { const t0 = performance.now(); wf.status(); samples.push((performance.now() - t0) * 1000) }
+  samples.sort((a, b) => a - b)
+  const median = samples[Math.floor(samples.length / 2)]
+  const p90 = samples[Math.floor(samples.length * 0.9)]
+  const BUDGET_US = 200
+  ok(median <= BUDGET_US, 'E4 budget: status() median ' + median.toFixed(1) + ' µs <= ' + BUDGET_US + ' µs (no per-call file scan)')
+  ok(p90 <= BUDGET_US * 3, 'E4 budget: status() p90 ' + p90.toFixed(1) + ' µs <= ' + (BUDGET_US * 3) + ' µs (jitter headroom)')
+  console.log('E4 timing: status() median=' + median.toFixed(1) + ' µs p90=' + p90.toFixed(1) + ' µs (budget ' + BUDGET_US + ' µs)')
 }
 
 console.log('=== VMU WORKFLOW: ' + pass + ' passed, ' + fail + ' failed ===')

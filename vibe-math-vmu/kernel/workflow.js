@@ -658,20 +658,24 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     const c = cfg()
     const all = [...state.entries()].map(([taskId, s]) => ({ taskId, stage: s.stage, by: s.by, evidence: s.evidence.length, updatedAt: s.updatedAt, escalatedAt: s.escalatedAt, reopened: s.reopened, priority: s.priority, parent: s.parent, attempts: s.attempts, timedOut: timedOut(taskId) }))
     const kept = all.slice(0, listCap)
-    const wired = WIRED_KEYS.slice()
-    const unwiredKeys = DECLARED_KEYS.filter((k) => !wired.includes(k))
-    const registry = declaredRegistry()
+    // E4 (round 15): the key tables, the unwiredReasons map and the file-derived registry are IMMUTABLE, so they
+    // are computed once at construction (STATIC_STATUS) instead of on every call. Before this, `status()` spent
+    // ~1310 of ~1500 µs re-reading settings/planned.js + settings/schema.js and re-running two regex scans, which
+    // made a read-only view ~570x slower than records.list(). Arrays/objects are still COPIED per call so the
+    // returned value keeps its "fresh object, callers cannot mutate our state" semantics, and every field keeps
+    // exactly the same meaning. Only the genuinely dynamic fields are computed here.
+    const S = STATIC_STATUS
     return {
       defined: !!def, tasks: all.length, items: kept, dropped: all.length - kept.length,
       policy: Object.assign({}, c), taskSource: tasks ? 'injected' : 'none',
-      declaredKeys: DECLARED_KEYS.slice(), declaredCount: DECLARED_KEYS.length,
-      wired, wiredCount: wired.length,
-      unwiredKeys, unwiredCount: unwiredKeys.length,
-      unwiredReasons: Object.fromEntries(unwiredKeys.map((k) => [k, UNWIRED_REASONS[k] || '尚未接线（本批未覆盖）'])),
-      extraWired: EXTRA_WIRED_KEYS.slice(), extraWiredCount: EXTRA_WIRED_KEYS.length,
-      partitionOk: wired.length + unwiredKeys.length === DECLARED_KEYS.length,
-      complementOk: wired.every((k) => !unwiredKeys.includes(k)) && wired.length + unwiredKeys.length === DECLARED_KEYS.length,
-      registry,
+      declaredKeys: S.declaredKeys.slice(), declaredCount: S.declaredCount,
+      wired: S.wired.slice(), wiredCount: S.wiredCount,
+      unwiredKeys: S.unwiredKeys.slice(), unwiredCount: S.unwiredCount,
+      unwiredReasons: Object.assign({}, S.unwiredReasons),
+      extraWired: S.extraWired.slice(), extraWiredCount: S.extraWiredCount,
+      partitionOk: S.partitionOk,
+      complementOk: S.complementOk,
+      registry: { source: S.registry.source, declaredWorkflowKeys: S.registry.declaredWorkflowKeys, undocumented: S.registry.undocumented.slice() },
       counters: Object.assign({}, counters),
       refusals: Object.fromEntries([...refusals.keys()].sort().map((k) => [k, refusals.get(k)])),
       refusalsTotal: [...refusals.values()].reduce((a, b) => a + b, 0),
@@ -696,6 +700,24 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
       return { source: 'error:' + String((e && e.message) || e), declaredWorkflowKeys: DECLARED_KEYS.length, undocumented: [] }
     }
   }
+
+  /** IMMUTABLE status furniture, computed ONCE (E4 fix). The registry snapshot is taken at construction time:
+   *  it mirrors the settings files as they were when this service was built (documented, observable via `source`),
+   *  which is exactly the trade-off the E4 ruling asks for - a read-only view must not do file I/O per call. */
+  const STATIC_STATUS = (() => {
+    const wired = WIRED_KEYS.slice()
+    const unwiredKeys = DECLARED_KEYS.filter((k) => !wired.includes(k))
+    return {
+      declaredKeys: DECLARED_KEYS.slice(), declaredCount: DECLARED_KEYS.length,
+      wired, wiredCount: wired.length,
+      unwiredKeys, unwiredCount: unwiredKeys.length,
+      unwiredReasons: Object.fromEntries(unwiredKeys.map((k) => [k, UNWIRED_REASONS[k] || '尚未接线（本批未覆盖）'])),
+      extraWired: EXTRA_WIRED_KEYS.slice(), extraWiredCount: EXTRA_WIRED_KEYS.length,
+      partitionOk: wired.length + unwiredKeys.length === DECLARED_KEYS.length,
+      complementOk: wired.every((k) => !unwiredKeys.includes(k)) && wired.length + unwiredKeys.length === DECLARED_KEYS.length,
+      registry: declaredRegistry(),
+    }
+  })()
 
   return {
     apiVersion,
