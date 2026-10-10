@@ -72,8 +72,11 @@
 | 7 | 合规与审计运营 | 20 合规基线 · 21 审计导出 | `vmu.compliance.*` | `VMU_COMPLIANCE_*` | ✗ |
 | 8 | 资源与容量 | 07 `vmu.quota.*` · 17 席位 | `vmu.capacity.*` | `VMU_CAPACITY_*` | ✗ |
 | 9 | 人事与任期 | 17 `vmu.recruit.*`／席位 | `vmu.hr.*` | `VMU_HR_*` | ✗ |
+| **10** | **生物样本库与链式保管（N4）** | `vibe_vmu_records`／§2.1 台账／07 记录轨 | `vmu.biospecimen.*` | `VMU_BIOSAMPLE_*` | ✗ |
+| **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.legalentity.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
+| **12** | **DUA／MTA 协议闸（N10）** | §7.1 协议登记／21 提醒（引用） | `vmu.agreements.*` | `VMU_AGREEMENT_*` | ✗ |
 
-> **成熟度诚实声明** ✗：本卷 **10 个族（含 §3.0 的货币类型）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
+> **成熟度诚实声明** ✗：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
 
 ---
 
@@ -144,6 +147,26 @@
 | **优先级** | P2 |
 
 > **这一族怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给"要不要台账、时间窗多长、过期是否阻断"；**中间件**在 `before`（预约/占用前）查台账与校准状态、在 `after`（数据产出后）校验引用链，把违规**具名拒**；**pack** 声明"哪些设备类别需要校准、谁有优先权、哪些设备禁止某类用途"。**内核只提供记录、任务、钩子与设置** —— 不出现"仪器/PI"这类组织名词 ✓。
+
+### 2.5 生物样本库与链式保管（Biobank / Biospecimen —— **补 N4** ✗✓）
+
+> **为什么要有这一节** ✗：批评者第 6/7 轮关键词实测"**生物样本**"**0 命中** ✗ —— 一个能管仪器与经费的平台却**没有样本**这一最典型的实验资产 ✓。样本的特殊性在于：它**不可重建** ✓、与**受试者**关联 ✓、且必须证明"**一直没脱离监管**" ✓。
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 生物样本台账与链式保管（Biospecimen Ledger & Chain of Custody） |
+| **目的** | 每个样本**可追溯**：谁采集／谁保管／谁取用／冻融几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
+| **面向谁** | 实验执行者、样本管理员、伦理/合规、审计、代理 |
+| **接口形状** | 协议 `BiospecimenRecord` ⛔ 待实现：`{ sampleId, subjectRef, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.biospecimen`（**计划 ✗**）：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_biospecimen` ⛔ 未实现 |
+| **可调控参数** | `vmu.biospecimen.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.biospecimen.requireChain`（默认 `true`）、`vmu.biospecimen.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.biospecimen.freezeThawWarnAt`（默认 `5`）、`vmu.biospecimen.destroyKeepsReference`（默认 `true`）、`vmu.biospecimen.subjectRefStyle`（默认 `pseudonym`）、`vmu.biospecimen.mappingIrreversible`（默认 **`true`** ✗✓） |
+| **相关错误码** | `VMU_BIOSAMPLE_NOT_REGISTERED` ⛔／`VMU_BIOSAMPLE_CHAIN_GAP` ⛔（**断链**）／`VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` ⛔／`VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` ⛔／`VMU_BIOSAMPLE_DESTROYED` ⛔ |
+| **四条哲学** | F：不登记＝无样本概念 ✓｜T：断链策略/冻融阈值/去标识样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"生物样本" ✓｜X：新样本类型只加字段 ✓ |
+| **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（`VMU_BIOSAMPLE_CHAIN_GAP`）✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `subjectRef`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` |
+| **依赖与前置** | §2.1 台账（同构）、07 记录轨/保留（引用 ✓）、20 去标识化与密级（引用 ✓）、§8.2 伦理审批（取样前闸点）✓ |
+| **成熟度** | ✗ 计划（本仓今天**没有**任何样本/保管实现 ✓） |
+| **优先级** | P1（不可重建的资产 + 合规风险） |
+
+> **这一节怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给账本位置、是否强制链式、断链处置、冻融阈值、去标识样式；**中间件**在 `before`（取样/转移/取用/销毁）校验登记与链条连续性、在 `after` 追加事件并广播；**pack** 给"链式三要素的字段、样本类型、允许的存储条件"。**内核只提供记录、钩子与设置** ✓。
 
 ---
 
@@ -322,6 +345,28 @@ AuditTuple := {
 | **优先级** | P1 |
 
 > **这一族怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给阈值、SLA、必填字段、币种；**中间件**在 `before` 校验（账户/预算行/字段齐全）、在 `after` 补记凭证与分摊、把违规具名拒；**pack** 给"科目树＋审批链＋分摊规则＋谁可批"。**与 17 的分工**：`vmu.budget.*`（令牌/回合）**不是钱** ✓；若某 pack 想把"令牌消耗"折算成成本，**必须**在 pack 里声明换算率与留痕字段（O-1）✓。
+
+---
+
+### 3.6 税务与法务实体（Tax & Legal Entities —— **补 N9** ✗✓）
+
+> **为什么要有这一节** ✗：批评者实测"**税务**"**0 命中** ✗ —— 经费族有账户与凭证，却**没有"钱属于哪个法律实体、在哪个辖区、发票上要有哪些字段位"** ✓。**纪律**：本节**只声明字段位与校验点** ✗，**不写任何税法条文/税率/免税规则** ✓（那些随辖区变化，必须由 pack 与外部系统提供 ✓）。
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 法律实体与税务字段位（Legal Entity & Tax Field Slots） |
+| **目的** | 每笔钱的**法律归属**可核（哪个实体、哪个辖区、哪个税号引用）✓；发票/报销的**必要字段位**缺失即拒 ✓；**跨境**报销多一道闸点 ✓ |
+| **面向谁** | 财务、法务、审计、PI、代理 |
+| **接口形状** | 协议 `LegalEntity` ⛔ 待实现：`{ entityId, jurisdiction, taxIdRef, currency? }`；协议 `TaxFieldSlots` ⛔ 待实现：`{ slot, required, source }`；服务 `vmu.legalentity`（**计划 ✗**）：`register(entity)`／`bind(accountId, entityId)`／`validateInvoice(doc)`／`gate(documentType, context)`；工具 `vibe_vmu_legalentity` ⛔ 未实现 |
+| **可调控参数** | `vmu.legalentity.registryDir`（默认 `Ops/Entities`）、`vmu.legalentity.requireEntity`（默认 `true`）、`vmu.legalentity.taxIdStyle`（默认 `opaque-ref`＝**只存引用，不存明文** ✓）、`vmu.legalentity.invoiceTaxSlots`（默认 `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]`）、`vmu.legalentity.crossBorderGate`（默认 `require-approval`）、`vmu.legalentity.crossBorderApproverRoles`（默认 `[]`） |
+| **相关错误码** | `VMU_ENTITY_UNKNOWN` ⛔／`VMU_ENTITY_ACCOUNT_UNBOUND` ⛔／`VMU_TAX_FIELD_MISSING` ⛔／`VMU_CROSSBORDER_GATE_REQUIRED` ⛔／`VMU_CROSSBORDER_CURRENCY_MISMATCH` ⛔ |
+| **四条哲学** | F：不登记实体＝无税务位 ✓｜T：字段位清单/闸点策略/审批角色可配 ✓｜D：**字段位是 pack 声明**，税率与法条**只在 pack/外部** ✓｜X：新辖区只加实体行与字段位 ✓ |
+| **实现要点** | ① **只做字段位与校验点** ✗：`validateInvoice()` 检查清单里的**位**是否存在（缺位 ⇒ `VMU_TAX_FIELD_MISSING`），**不判断税率是否"正确"** ✓；② 税务标识只存**不透明引用**（`taxIdRef`）⇒ 明文税号不进研究所记录 ✓；③ 金额与币种一律走 **§3.0 的 Money**（整数 minor units）✓，实体 `currency` 与单据币种不一致 ⇒ `VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓；④ **跨境闸点**：单据涉及非本实体辖区的支付/收款时，`crossBorderGate=require-approval` ⇒ 缺人类批准即**具名拒** `VMU_CROSSBORDER_GATE_REQUIRED` ✓（人类在环 O-6 ✓） |
+| **依赖与前置** | §3.0／§3.1／§3.2、20（隐私与密级，引用 ✓）、§8（合规日历）✓ |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P2（有跨境或报销才有硬需求） |
+
+> **这一节怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给实体账本、是否强制绑定、字段位清单、跨境闸点与审批角色；**中间件**在 `before`（报账/采购/付款）校验实体绑定与字段位、在 `after` 记录校验结果；**pack** 给"辖区→字段位集合""谁能批跨境"。**内核不认识税号/税率/辖区** ✓。
 
 ---
 
@@ -563,6 +608,26 @@ AuditTuple := {
 | **依赖与前置** | §3.3、§4.3、20 ✓ |
 | **成熟度** | ✗ 计划 |
 | **优先级** | P3 |
+
+### 7.4 数据使用协议与材料转移协议（DUA / MTA —— **补 N10** ✗✓）
+
+> **为什么要有这一节** ✗：批评者实测"**数据使用协议/材料转移协议**"**0 命中** ✗ —— §7 有"合作备忘与数据共享协议"的**运营步骤** ✓，却没有**协议本体**与"**未签不得共享**"这条**机器可判定**的闸 ✓。本节的协议同时覆盖 **数据（DUA）** 与 **材料/样本（MTA）** ✓，后者与 §2.5 的样本交接联动 ✓。
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 协议本体与共享闸（Agreement Registry & Sharing Gate） |
+| **目的** | **共享/转移前必须有已签协议** ✗✓（机器可判定）；协议**范围与限制**可核；**到期⇒复审**（机制**引用 21** ✓，本卷不重定义通知/日历） |
+| **面向谁** | PI、法务、数据管理、样本管理员、代理 |
+| **接口形状** | 协议 `Agreement` ⛔ 待实现：`{ agreementId, kind: 'dua'|'mta', parties[], scope, expiresAt, restrictions[], signatureRef }`；服务 `vmu.agreements`（**计划 ✗**）：`register(agreement)`／`sign(agreementId, {signatureRef})`／`check(agreementId, {action, targetRef})`／`expiring(windowDays)`；工具 `vibe_vmu_agreements` ⛔ 未实现；钩子 `agreement/check-before` ⛔ 提案 |
+| **可调控参数** | `vmu.agreements.registryDir`（默认 `Ops/Agreements`）、`vmu.agreements.kinds`（默认 `["dua","mta"]`）、`vmu.agreements.unsignedPolicy`（默认 **`block`** ✗✓）、`vmu.agreements.signatureRefRequired`（默认 `true`）、`vmu.agreements.expiryWarnDays`（默认 `30`）、`vmu.agreements.reviewCadenceDays`（默认 `365`）、`vmu.agreements.scopeEnforcement`（默认 `block`） |
+| **相关错误码** | `VMU_AGREEMENT_MISSING` ⛔／`VMU_AGREEMENT_UNSIGNED` ⛔／`VMU_AGREEMENT_EXPIRED` ⛔／`VMU_AGREEMENT_SCOPE_VIOLATION` ⛔／`VMU_AGREEMENT_SIGNATURE_MISSING` ⛔ |
+| **四条哲学** | F：不登记协议＝无共享闸（自由共享）✓｜T：是否阻断/预警期/复审周期可配 ✓｜D：**协议种类与限制项由 pack 声明** ✓｜X：新协议类型只加 `kind` 与字段 ✓ |
+| **实现要点** | ① `check()` 是**纯判定**（返回 `{ allowed, agreementId, reason }`）✓：无协议 ⇒ `VMU_AGREEMENT_MISSING`；有协议但 `signatureRef` 为空 ⇒ **`VMU_AGREEMENT_UNSIGNED`**（**未签不得共享** ✗✓，机器可判定 ⇒ 可在 `before` 钩子里硬拦）；`expiresAt < now` ⇒ `VMU_AGREEMENT_EXPIRED`；`restrictions[]` 与请求的 `action`/`targetRef` 不符 ⇒ `VMU_AGREEMENT_SCOPE_VIOLATION`；② **到期复审提醒**：本卷只提供 `expiring(windowDays)` **查询** ✓，**提醒/日历/告警机制引用 21** ✗（不在本卷重定义）；③ **签名只存引用**（`signatureRef`，如外部签署系统的条目 id）✓，不存签名正文；④ 与 **§7.1/§7.2** 绑定：DSA/联合署名规则走同一条闸 ✓；**MTA** 与 **§2.5 样本转移**联动（材料交接必须引用有效 MTA）✓ |
+| **依赖与前置** | §7.1、§2.5（MTA）、21（提醒机制，引用 ✓）、20（隐私与密级，引用 ✓）、§8.1 合规日历（引用 ✓） |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P1（"未签先共享"是最高频的合规事故） |
+
+> **这一节怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给协议账本、未签策略、预警期、复审周期、范围强制度；**中间件**在 `before`（任何共享/导出/样本转移前）调用 `check()` 并按策略**具名拒**、在 `after` 记录判定；**pack** 给"协议种类、限制项词汇、谁能签署"。**内核只提供记录、钩子与设置** ✓。
 
 ---
 
@@ -807,6 +872,26 @@ AuditTuple := {
 | 货币 | `vmu.money.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
 | 货币 | `vmu.money.allowNegative` | boolean | `false` | — | pack |
 | 货币 | `vmu.money.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
+| 生物样本 | `vmu.biospecimen.ledgerDir` | string | `Ops/Biosamples` | 相对项目根 | 样本管理员 |
+| 生物样本 | `vmu.biospecimen.requireChain` | boolean | `true` | — | pack |
+| 生物样本 | `vmu.biospecimen.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
+| 生物样本 | `vmu.biospecimen.freezeThawWarnAt` | integer | `5` | ≥0 | pack |
+| 生物样本 | `vmu.biospecimen.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
+| 生物样本 | `vmu.biospecimen.subjectRefStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
+| 生物样本 | `vmu.biospecimen.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
+| 税务/法务 | `vmu.legalentity.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
+| 税务/法务 | `vmu.legalentity.requireEntity` | boolean | `true` | — | pack |
+| 税务/法务 | `vmu.legalentity.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |
+| 税务/法务 | `vmu.legalentity.invoiceTaxSlots` | string[] | `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]` | 字段位名 | pack |
+| 税务/法务 | `vmu.legalentity.crossBorderGate` | string | `require-approval` | `require-approval`｜`warn`｜`off` | pack |
+| 税务/法务 | `vmu.legalentity.crossBorderApproverRoles` | string[] | `[]` | 席位名 | pack |
+| 协议闸 | `vmu.agreements.registryDir` | string | `Ops/Agreements` | 相对项目根 | 法务 |
+| 协议闸 | `vmu.agreements.kinds` | string[] | `["dua","mta"]` | 协议种类 | pack |
+| 协议闸 | `vmu.agreements.unsignedPolicy` | string | **`block`** | `block`｜`warn` | pack（"未签不得共享" ✓） |
+| 协议闸 | `vmu.agreements.signatureRefRequired` | boolean | `true` | — | pack |
+| 协议闸 | `vmu.agreements.expiryWarnDays` | integer | `30` | ≥0 | 法务 |
+| 协议闸 | `vmu.agreements.reviewCadenceDays` | integer | `365` | ≥1 | pack |
+| 协议闸 | `vmu.agreements.scopeEnforcement` | string | `block` | `block`｜`warn` | pack |
 
 ---
 
@@ -889,12 +974,27 @@ AuditTuple := {
 | `VMU_MONEY_OVERFLOW` | 金额溢出 | 22 |
 | `VMU_MONEY_NEGATIVE_FORBIDDEN` | 禁止负金额（未开 `allowNegative`） | 22 |
 | `VMU_ALLOCATION_REMAINDER` | 分摊余数不守恒/不可归属 | 22 |
+| `VMU_BIOSAMPLE_NOT_REGISTERED` | 未登记样本被操作 | 22 |
+| `VMU_BIOSAMPLE_CHAIN_GAP` | **链式保管断链**（交接不连续/时间倒流/缺环） | 22 |
+| `VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` | 冻融次数超阈值 | 22 |
+| `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` | 试图由样本反查受试者（映射默认不可逆） | 22 |
+| `VMU_BIOSAMPLE_DESTROYED` | 样本已销毁（不可再取用） | 22 |
+| `VMU_ENTITY_UNKNOWN` | 未知法律实体 | 22 |
+| `VMU_ENTITY_ACCOUNT_UNBOUND` | 账户未绑定实体 | 22 |
+| `VMU_TAX_FIELD_MISSING` | 发票/报销缺税务字段位 | 22 |
+| `VMU_CROSSBORDER_GATE_REQUIRED` | 跨境单据缺人类批准 | 22 |
+| `VMU_CROSSBORDER_CURRENCY_MISMATCH` | 实体辖区与单据币种不一致 | 22 |
+| `VMU_AGREEMENT_MISSING` | 无协议即共享/转移 | 22 |
+| `VMU_AGREEMENT_UNSIGNED` | **协议未签**（未签不得共享） | 22 |
+| `VMU_AGREEMENT_EXPIRED` | 协议已到期 | 22 |
+| `VMU_AGREEMENT_SCOPE_VIOLATION` | 请求超出协议范围/限制 | 22 |
+| `VMU_AGREEMENT_SIGNATURE_MISSING` | 缺签名引用 | 22 |
 
 ---
 
 ## 15. 验收（机器可判定判据；进 `11` 的 T1/T2 场景集）
 
-1. **场景：零机制** —— 不声明任何 `vmu.<ops>.*` 键 ⇒ 9 个运营族**全部不可用**且**不报错**（与"关掉了"可区分：`status` 必须显示 `unavailable` 而不是"成功但空"）✓。
+1. **场景：零机制** —— 不声明任何 `vmu.<ops>.*` 键 ⇒ 13 个运营族**全部不可用**且**不报错**（与"关掉了"可区分：`status` 必须显示 `unavailable` 而不是"成功但空"）✓。
 2. **断言：凭证链闭合（O-2）** —— 造一笔**缺凭证**的支出 ⇒ 必须**具名拒** `VMU_FUNDING_RECEIPT_MISSING`，且记录轨**有且只有一条**拒绝痕 ✓。
 3. **红/绿：披露时钟（O-3）** —— 设 `vmu.ip.holdEnforcement=block` 后尝试发布 ⇒ **红**（`VMU_IP_PUBLICATION_HOLD`）；取得人类豁免后 ⇒ **绿**且豁免**入档** ✓。
 4. **断言：证据保真（O-4）** —— 造一份"内部结论为未定论、传播稿写成已证明"的摘要 ⇒ **红**（`VMU_OUTREACH_EVIDENCE_MISMATCH`）✓。
@@ -908,12 +1008,18 @@ AuditTuple := {
 12. **红/绿：汇率方向与时效（§3.0.4）** —— 跨币种动作**不带** `FxConversion` ⇒ **红** `VMU_FX_RATE_MISSING`；只给汇率不给方向 ⇒ **红** `VMU_FX_DIRECTION_MISSING`；快照超 `fxMaxAgeDays` ⇒ **红** `VMU_FX_RATE_STALE`；补齐后 ⇒ **绿**且四元组里 `fx` 字段**非空** ✓。
 13. **具名：审计四元组完备（§3.0.6）** —— 每笔分摊/换算/结算**必须**产出 `{inputs, fx, rounding, result}`；未发生换算/舍入时**必须**显式 `null` ＋说明 ⇒ 缺失即 **红**（"没做"与"漏记"可分）✓。
 14. **场景：混币种与精度不一致** —— 直接相加两种币种 ⇒ **红** `VMU_MONEY_MIXED_CURRENCY`；同币种但 scale 不同 ⇒ **红** `VMU_SCALE_MISMATCH` ✓。
+15. **断言：链式保管断链必须报（N4）** —— 造一个"上一环 `to` ≠ 下一环 `from`"的样本交接 ⇒ **红** `VMU_BIOSAMPLE_CHAIN_GAP`（`chainGapPolicy=block` 时**拒绝后续操作**且计数；`warn` 时**计数并继续**但必须留痕）✓；链完整时同一条操作 ⇒ **绿** ✓。
+16. **断言：样本↔受试者默认不可逆（N4）** —— 请求"由 `sampleId` 反查受试者" ⇒ **红** `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN`（除非 pack 显式改 `mappingIrreversible=false` 并留痕）✓。
+17. **红/绿：未签不得共享（N10）** —— 无协议共享 ⇒ **红** `VMU_AGREEMENT_MISSING`；有协议但 `signatureRef` 为空 ⇒ **红** `VMU_AGREEMENT_UNSIGNED`；`expiresAt` 已过 ⇒ **红** `VMU_AGREEMENT_EXPIRED`；请求超出 `restrictions[]` ⇒ **红** `VMU_AGREEMENT_SCOPE_VIOLATION`；签齐且范围内 ⇒ **绿** ✓（**全部机器可判定** ✓）。
+18. **具名：跨境闸点（N9）** —— 跨境单据在 `crossBorderGate=require-approval` 下缺人类批准 ⇒ **红** `VMU_CROSSBORDER_GATE_REQUIRED`；实体辖区与单据币种不一致 ⇒ **红** `VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓。
+19. **断言：税务只做字段位（N9）** —— 缺 `taxIdRef` 位 ⇒ **红** `VMU_TAX_FIELD_MISSING`；而"税率是否算对"**不在**校验面内（禁止本卷实现税率推导 ✗）⇒ 静态门：本卷代码不得出现税率常量表 ✓。
+20. **场景：销毁保留引用（N4）** —— 销毁样本 ⇒ 样本记录**仍可查**（状态 `destroyed`＋原因＋时间），且与 07 的保留/回收站面**只引用**（删除动作走 07）✓。
 
 ---
 
 ## 16. 与其它卷的交叉引用（**必读**）
 
-- `03-§8`：**错误码唯一登记表**（本卷 **75** 个规划码 ⛔ 由生成管线登记）✓。
+- `03-§8`：**错误码唯一登记表**（本卷 **90** 个规划码 ⛔ 由生成管线登记）✓。
 - `04`：参数全表与热改等级（本卷 §13 的键按 04 的 H0–H3 规则落位）✓。
 - `05`：钩子全表与失败策略（本卷 `ops/*`、`ip/*`、`compliance/*` 钩子为**提案** ✗）。
 - `07`：记录轨/归档/`datasets`/`vmu.quota.*`（本卷存储与数据引用**只引用** ✗）。
@@ -924,6 +1030,7 @@ AuditTuple := {
 - `17`：席位/招募/委托/仲裁/预算令牌（`vmu.recruit.*`／`vmu.budget.*` **归 17** ✗；本卷管"钱与物"）。
 - `20`：许可/密级/脱敏/合规基线（本卷合规运营**引用**其判据 ✗）。
 - `21`：审计/指标/SLO/导出（本卷运营事件**必须**经其留痕）✓。
+- **边界加注（N4／N9／N10）** ✗：**样本销毁与保留**只引用 07 的保留/回收站面；**样本↔受试者映射**只引用 20 的去标识化（本卷默认**不可逆** ✓）；**协议到期复审的提醒/日历/告警**只引用 21 ✓；**税务字段位**只声明"位与校验点"，法条与税率**不在本卷** ✓。
 
 ---
 
@@ -942,7 +1049,11 @@ AuditTuple := {
 | O7 | 容量预测的数据来源（任务板？历史用量？） | 未定 | §9.4 的 `fair-share` 无输入 |
 | O8 | 人事决策的"人类在环"在无人类在场时如何处置 | 未定 | §10.5 的阻塞语义 |
 | O9 | 审计证据包的**跨机构格式**兼容性 | 未定 | §3.4/§8.3 只能自用 |
-| O10 | **75** 个规划码与既有码族的命名冲突 | 未核 | 04/03 登记前可能撞名 |
+| O10 | **90** 个规划码与既有码族的命名冲突 | 未核 | 04/03 登记前可能撞名 |
+| **O14** | **样本链式保管的真实载体** ✗ | 未定（记录轨条目？外部 LIMS？） | §2.5 的断链检测依赖事件流的真实来源 |
+| **O15** | **税务字段位的辖区目录** ✗ | 未定（pack 声明？外部税务系统？） | §3.6 只校验"位是否存在"，缺目录则无法落地 |
+| **O16** | **协议签名的验签** ✗ | 未做（只存 `signatureRef`，不验签） | §7.4 的"未签不得共享"可被伪造引用绕过 ⇒ 需外部签署系统对接或验签接缝 |
+| **O17** | **MTA 与样本转移的联动清单** ✗ | 文字联动（§2.5↔§7.4） | 需一条**判定点**才能成为机器事实 |
 | **O11** | **真实汇率提供者对接** ✗ | **未做**（离线优先：只接受**显式导入**的汇率快照 ✓；不内建联网/定时抓取 ✗） | §3.0.4 只能用手工快照；跨机构结算需人工导入 |
 | **O12** | **多币种报表的呈现规则** ✗ | **未做**（汇总币种、展示精度、汇兑差额列示规则未定） | §3.3/§3.4 的报表会出现"混合币种"缺口 |
 | **O13** | 币种精度表（ISO-4217）在仓库里的**载体**未定 | 未定（schema？pack？外部数据文件？） | §3.0.2 的 `scaleByCurrency` 覆盖需要基线表 |

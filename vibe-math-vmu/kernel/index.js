@@ -60,6 +60,8 @@ import { createNotify } from './notify.js'
 import { createLifecycle } from './lifecycle.js'
 import { createIdempotency } from './idempotency.js'
 import { createReplay } from './replay.js'
+import { createTransaction } from './transaction.js'
+import { createRateLimit } from './ratelimit.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -328,6 +330,10 @@ export function createKernel({
   // K5 (round 16): read-only replay of the audit log. It never writes back into any service - rebuilding state
   // is a pure function, and gaps in the log are reported rather than papered over.
   const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock, log, audit, idempotency })
+  // K1/K2 (round 17): compensation transactions and rate limiting. Transactions get the idempotency ledger so a
+  // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
+  const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock, log, idempotency })
+  const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -379,6 +385,8 @@ export function createKernel({
   registry.register('vmu.lifecycle', { apiVersion: 1 }, { kind: 'service', description: 'research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 §1)' })
   registry.register('vmu.idempotency', { apiVersion: 1 }, { kind: 'service', description: 'idempotency ledger: same key with a different payload is refused by name (K6)' })
   registry.register('vmu.replay', { apiVersion: 1 }, { kind: 'service', description: 'audit replay: pure read-only reconstruction, gaps reported (K5)' })
+  registry.register('vmu.transaction', { apiVersion: 1 }, { kind: 'service', description: 'compensation transactions: a step without undo is refused at begin (K1)' })
+  registry.register('vmu.ratelimit', { apiVersion: 1 }, { kind: 'service', description: 'token-bucket rate limiting on the injected clock; unlimited by default and it says so (K2)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -480,6 +488,8 @@ export function createKernel({
     get lifecycle() { return lifecycle },
     get idempotency() { return idempotency },
     get replay() { return replay },
+    get transaction() { return transaction },
+    get ratelimit() { return ratelimit },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

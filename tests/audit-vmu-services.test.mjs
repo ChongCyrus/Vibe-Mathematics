@@ -45,6 +45,7 @@ const SURFACES = {
   'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.domaingate': 'domaingate', 'vmu.scheduler': 'scheduler',
   'vmu.crypto': 'crypto', 'vmu.notify': 'notify', 'vmu.lifecycle': 'lifecycle',
   'vmu.replay': 'replay',
+  'vmu.transaction': 'transaction', 'vmu.ratelimit': 'ratelimit',   // K1 (+K2), round 17
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }
