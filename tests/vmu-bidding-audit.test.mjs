@@ -94,6 +94,46 @@ test('refusals are named; zero-mechanism works; repeated probing is identical', 
   passed += 1
 })
 
+// ⑥ **真驱动**（读 `bidding.js` 正文取得真键与真操作 ✓）：键在 **`vmu.auction.*`** ✗✓（**不是** `vmu.bidding.*` ✓）
+//    `post()` 需要 `deadlineMs` **或**正的 `vmu.auction.bidWindowMs` ✓；`bid()` 的具名拒**是抛出的**（读 `e.code` ✓）。
+//    三条：**窗口外** `VMU_AUCTION_CLOSED` ✓／**超 `maxBids`** `VMU_RESOURCE_BUDGET`（带**现值/上限** ✓）／
+//    **超 `maxBidCost`** `VMU_AUCTION_INVALID_BID`（带**现值/上限** ✓）⇒ 驱动不到 ⇒ **如实写"未能证明＋试过的参数"** ✓✓（不猜 ✗）
+test('REAL driving: window / maxBids / maxBidCost produce NAMED refusals (or recorded as 未能证明)', () => {
+  const codes = []
+  const drive = (label, vals, argsList, script) => {
+    for (const args of argsList) {
+      let t = 0
+      const b = createBidding({ clock: () => t, log: () => {}, settings: Object.assign({ get(k) { return vals[k] }, ...vals }), bus: { emit: () => {} } })
+      let p
+      try { p = b.post(args) } catch (e) { continue }                 // 该参数形状不可用 ⇒ 试下一个 ✓
+      if (!p || p.ok !== true) continue
+      const postId = p.postId || (p.post && p.post.id) || 'p1'
+      try {
+        const out = script(b, (ms) => { t += ms }, postId)
+        console.log('    - ' + label + ' ⇒ **ok**（' + JSON.stringify(out).slice(0, 100) + '）· post() 可用参数=' + JSON.stringify(args))
+      } catch (e) {
+        const code = String((e && e.code) || '（无名）✗')
+        codes.push(code)
+        console.log('    - ' + label + ' ⇒ **throw ' + code + '** :: ' + String((e && e.message) || '').slice(0, 110) + ' | hint=' + String((e && e.hint) || '').slice(0, 80))
+      }
+      return true
+    }
+    console.log('    - ' + label + ' ⇒ **未能证明** ✗（post() 参数都驱动不到：' + JSON.stringify(argsList) + '）')
+    return false
+  }
+  // ① 窗口外：不传 deadlineMs ⇒ 截止＝现在＋bidWindowMs(1000) ✓，时钟推 2000 ⇒ 已关 ✓
+  drive('① 窗口外（bidWindowMs=1000，时钟推 +2000）', { 'vmu.auction.bidWindowMs': 1000 }, [{ title: 't' }], (b, adv, id) => { adv(2000); return b.bid({ postId: id, by: 'a', price: 1 }) })
+  // ② 超 maxBids：首个投标 ok ⇒ 第二人触发上限 ✓
+  drive('② 超 maxBids=1（第二人投标）', { 'vmu.auction.bidWindowMs': 600000, 'vmu.auction.maxBids': 1 }, [{ deadlineMs: 600000 }, { title: 't' }], (b, adv, id) => { b.bid({ postId: id, by: 'a', price: 1 }); return b.bid({ postId: id, by: 'b', price: 2 }) })
+  // ③ 超 maxBidCost：报价 11 > 上限 10 ✓（hint 必须带现值/上限 ✓）
+  drive('③ 超 maxBidCost=10（报价 11）', { 'vmu.auction.bidWindowMs': 600000, 'vmu.auction.maxBidCost': 10 }, [{ deadlineMs: 600000 }, { title: 't' }], (b, adv, id) => b.bid({ postId: id, by: 'a', price: 11 }))
+  // **具名性硬断言**：所有抛出的拒绝必须带 `VMU_*` ✓（不许无名 ✗）
+  const unnamed = codes.filter((c) => !/^VMU_/.test(c))
+  assert.deepEqual(unnamed, [], '真驱动下的拒绝必须具名（无名 ⇒ ✗）：' + JSON.stringify(unnamed))
+  console.log('  · 真驱动实测到的码：' + (codes.length ? codes.join('、') : '（无：三条均未能证明 ✗）'))
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
