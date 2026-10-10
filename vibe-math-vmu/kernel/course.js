@@ -54,10 +54,16 @@ export function createCourse(opts) {
   let droppedSubmissions = 0
   const trail = []
   const LOG_MAX = 200
-  /** 拒绝一律带 `enforced`（数组 ✓、可空 ✓、**不得 undefined** ✗✓）。 */
+  /** 拒绝一律带 `enforced`（数组 ✓、可空 ✓、**不得 undefined** ✗✓）。
+   *  D3（第 26 轮）：**口径随证明同行** —— `enforcedScope` 明写这是"**到此为止**"已求值集合，
+   *  而非该操作会读的完整集合 ⇒ 审计者**不得**把部分集当成全集 ✗✓（照 records／meetings 已验收口径 ✓）。 */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, msg, hint, enforced) => {
     refusals.set(code, (refusals.get(code) || 0) + 1)
-    return Object.assign(refuse(code, msg, hint), { enforced: Array.isArray(enforced) ? enforced.slice() : [] })
+    return Object.assign(refuse(code, msg, hint), {
+      enforced: Array.isArray(enforced) ? enforced.slice() : [],
+      enforcedScope: ENFORCED_SCOPE,
+    })
   }
   const note = (what, id, extra) => {
     trail.push(Object.assign({ at: clock(), what, id: String(id || '') }, extra || {}))

@@ -147,6 +147,25 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- task-159: the zero-mechanism refusal is NAMED (a returned refusal must carry a code) --------------
+{
+  const b = m.createScriptBridge({ clock: () => '2026-10-09T00:00:00.000Z' })   // zero mechanism: no spawn, no settings
+  const refused = b.plan({})
+  ok(refused.ok === false && refused.code === 'VMU_INVALID_ARGUMENT',
+    'zero-mechanism plan() returns a NAMED refusal (was {ok:false,problems} with no code)', JSON.stringify({ ok: refused.ok, code: refused.code }))
+  ok(refused.refused && refused.refused.code === 'VMU_INVALID_ARGUMENT' && typeof refused.refused.message === 'string',
+    'the returned refusal also carries the house-style refused{code,message,hint} shape')
+  ok(Array.isArray(refused.problems) && refused.problems.length > 0 && /invalid M3 request/.test(refused.message),
+    'the problems list is unchanged and the message explains the refusal', JSON.stringify(refused.problems).slice(0, 80))
+  ok(typeof refused.hint === 'string' && /docs\/05/.test(refused.hint), 'the refusal points at the accepted shape', refused.hint)
+  const good = b.plan({ file: 'probe.mjs', args: [] })
+  ok(good.ok === true && good.code === null && good.runs === false,
+    'a valid request still plans ok with a STABLE shape (code:null, runs:false)', JSON.stringify({ ok: good.ok, code: good.code }))
+  ok(good.plan && good.plan.argv && good.plan.argv.file === 'probe.mjs', 'the dry-run plan is unchanged')
+  // the same zero-mechanism refusal raised by run() keeps its code (no regression)
+  await expectThrow(() => b.run({}), 'VMU_INVALID_ARGUMENT', 'run() with an invalid request is still a named refusal')
+}
+
 console.log('=== VMU SCRIPT BRIDGE: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

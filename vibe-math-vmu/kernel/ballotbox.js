@@ -55,11 +55,13 @@ export function createBallotBox(opts) {
 
   const refusals = new Map()
   const bumpRefusal = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1) }
+  const ENFORCED_SCOPE = 'evaluated-so-far'
   const deny = (code, msg, hint, enforced) => {
     bumpRefusal(code)
     // 拒绝一律**带上 `enforced`**（数组 ✓，可空 ✓，**不得 `undefined`** ✗✓）—— 照 `mathtools.js` 口径 ✓
+    // D3（第 26 轮）：并带 `enforcedScope` ⇒ 明写这是"**到此为止**"的已求值集合，**不是**全集 ✗✓
     const keys = Array.isArray(enforced) ? enforced.slice() : []
-    return Object.assign(refuse(code, msg, hint), { enforced: keys })
+    return Object.assign(refuse(code, msg, hint), { enforced: keys, enforcedScope: ENFORCED_SCOPE })
   }
 
   const boxes = new Map()

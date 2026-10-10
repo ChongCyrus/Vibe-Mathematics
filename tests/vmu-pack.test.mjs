@@ -169,6 +169,33 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- task-159: the zero-mechanism refusal is NAMED (a returned refusal must carry a code) --------------
+{
+  // EXACTLY how the zero-mechanism matrix probes this module: a loader with no kernel and no settings,
+  // then plan({}) — the returned refusal used to be {ok:false, problems} with NO code.
+  const bare = m.createPackLoader({ clock: () => '2026-10-09T00:00:00.000Z' })
+  const refused = bare.plan({})
+  ok(refused.ok === false && refused.code === 'VMU_PACK_MISSING',
+    'zero-mechanism plan({}) returns a NAMED refusal (was {ok:false,problems} with no code)', JSON.stringify({ ok: refused.ok, code: refused.code }))
+  ok(refused.refused && refused.refused.code === 'VMU_PACK_MISSING' && typeof refused.refused.hint === 'string',
+    'the returned refusal also carries the house-style refused{code,message,hint} shape')
+  ok(Array.isArray(refused.problems) && refused.problems.length > 0 && /cannot be planned/.test(refused.message),
+    'the problems list is unchanged and the message explains the refusal', JSON.stringify(refused.problems).slice(0, 80))
+  ok(/PURE|problems/.test(refused.hint), 'the hint says the plan is pure and where the problems are', refused.hint)
+  // a NON-OBJECT manifest is a named refusal too (it used to die on `manifest.settings` with a bare TypeError)
+  const undef = bare.plan(undefined)
+  ok(undef.ok === false && undef.code === 'VMU_PACK_MISSING',
+    'plan(undefined) is a NAMED refusal, not a bare TypeError', JSON.stringify({ ok: undef.ok, code: undef.code }))
+  // a valid manifest keeps the stable shape (code:null) and the same action list
+  const good = bare.plan({ id: 'ok-pack', tracks: ['progress'] })
+  ok(good.ok === true && good.code === null && good.count === 1,
+    'a valid manifest still plans ok with a STABLE shape (code:null)', JSON.stringify({ ok: good.ok, code: good.code, count: good.count }))
+  // the code the plan reports is the SAME one apply() uses for the same problems (module consistency)
+  let applyCode = null
+  try { await bare.apply({}) } catch (e) { applyCode = e.code }
+  ok(applyCode === 'VMU_PACK_MISSING', 'apply() refuses the same problems with the same code', String(applyCode))
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

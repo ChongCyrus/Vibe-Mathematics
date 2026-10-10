@@ -88,11 +88,16 @@ export function createScriptBridge({ spawn = null, defaultTimeoutMs = 60_000, dr
       const problems = validateRequest(request)
       if (problems.length > 0) {
         stats.refusals++
-        return { ok: false, problems }
+        // NAMED REFUSAL (task-159): this returned `{ ok:false, problems }` with no code, so a caller could
+        // not tell a refusal from any other failure shape. The code is the one `run()` already uses for the
+        // identical validation, and `refused{}` mirrors the house style of returned refusals.
+        const message = 'invalid M3 request: ' + problems.join('; ')
+        const hint = 'see docs/05 §6.2 for the accepted shape'
+        return { ok: false, code: 'VMU_INVALID_ARGUMENT', message, hint, refused: { code: 'VMU_INVALID_ARGUMENT', message, hint }, problems, runs: false }
       }
       const argv = request.file ? { file: request.file, args: (request.args || []).slice() }
         : { inline: '(inline source)', args: (request.args || []).slice() }
-      return { ok: true, problems: [], plan: { argv, cwd: request.cwd || null, timeoutMs: request.timeoutMs || defaultTimeoutMs,
+      return { ok: true, code: null, problems: [], plan: { argv, cwd: request.cwd || null, timeoutMs: request.timeoutMs || defaultTimeoutMs,
         env: Object.keys(request.env || {}).sort() }, runs: false }
     },
 

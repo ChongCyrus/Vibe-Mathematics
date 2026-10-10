@@ -79,24 +79,39 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
   })
 
   const buildPlan = (manifest) => {
-    const problems = validatePack(manifest)
+    // A non-object manifest is normalised FIRST: `plan(undefined)` used to die on `manifest.settings` with a
+    // bare TypeError (a nameless crash instead of a named refusal — the zero-mechanism matrix caught the
+    // sibling case in the returned shape below).
+    const m = manifest && typeof manifest === 'object' ? manifest : {}
+    const problems = validatePack(m)
     let requires = null
-    if (registry && Array.isArray(manifest.requires) && manifest.requires.length > 0) {
-      requires = registry.checkPack({ requires: manifest.requires, packContractVersion: manifest.packContractVersion })
+    if (registry && Array.isArray(m.requires) && m.requires.length > 0) {
+      requires = registry.checkPack({ requires: m.requires, packContractVersion: m.packContractVersion })
       if (!requires.ok) {
         problems.push('unmet requirements: ' + JSON.stringify({ missing: requires.missing, tooOld: requires.tooOld, contract: requires.packContractVersion }))
       }
     }
     const actions = []
-    for (const [key, value] of Object.entries(manifest.settings || {})) actions.push({ kind: 'setting', key, value })
-    for (const s of manifest.slots || []) actions.push({ kind: 'slot', id: s.id, capacity: s.capacity || 0 })
-    for (const t of manifest.tracks || []) actions.push({ kind: 'track', name: t })
-    for (const r of manifest.rules || []) actions.push({ kind: 'rule', id: r.id })
-    for (const m of manifest.middleware || []) actions.push({ kind: 'middleware', id: m.id, form: m.kind || 'module' })
-    for (const a of manifest.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
-    for (const c of manifest.codes || []) actions.push({ kind: 'code', code: c })
-    return { ok: problems.length === 0, id: manifest.id, version: manifest.version || null, problems, requires, actions,
-      count: actions.length, wouldTouch: actions.map((a) => a.kind).filter((v, i, arr) => arr.indexOf(v) === i) }
+    for (const [key, value] of Object.entries(m.settings || {})) actions.push({ kind: 'setting', key, value })
+    for (const s of m.slots || []) actions.push({ kind: 'slot', id: s.id, capacity: s.capacity || 0 })
+    for (const t of m.tracks || []) actions.push({ kind: 'track', name: t })
+    for (const r of m.rules || []) actions.push({ kind: 'rule', id: r.id })
+    for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
+    for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
+    for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
+    // THE NAMED REFUSAL (task-159): a plan that cannot be built is a refusal and MUST carry a code —
+    // `{ ok:false, problems:[…] }` without one left the caller holding a nameless error (the matrix finding).
+    // The code is the SAME one `apply()` uses for the very same `problems` (module consistency), and the
+    // nested `refused{}` mirrors the house style of returned refusals elsewhere in the kernel.
+    const ok = problems.length === 0
+    const message = ok ? null : 'pack ' + String(m.id === undefined ? '(no id)' : m.id) + ' cannot be planned: ' + problems.join('; ')
+    const hint = ok ? null : 'fix the manifest problems they are listed in `problems`; plan() is PURE (nothing was applied)'
+    return {
+      ok, code: ok ? null : 'VMU_PACK_MISSING', message, hint,
+      refused: ok ? null : { code: 'VMU_PACK_MISSING', message, hint },
+      id: m.id, version: m.version || null, problems, requires, actions,
+      count: actions.length, wouldTouch: actions.map((a) => a.kind).filter((v, i, arr) => arr.indexOf(v) === i),
+    }
   }
 
   return {

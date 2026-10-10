@@ -548,14 +548,14 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `audit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
 | `auditchain` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `ballot` · `open()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] | 具名拒或 ok（同 records ✓） |
+| `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（同 records ✓） |
 | `bidding` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `board` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `budget` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `bus` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `charter` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `clockguard` · `status()` | null | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] | （**设计未定** ✗：本模块未登记期望） |
+| `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | （**设计未定** ✗：本模块未登记期望） |
 | `crypto` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
 | `delegation` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `domaingate` · `status()` | ok | — | dropped=[object Object] | （**设计未定** ✗：本模块未登记期望） |
@@ -581,7 +581,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `metrics` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `minutes` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `notify` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `pack` · `plan()` | refusal | （无名）✗ | — | （**设计未定** ✗：本模块未登记期望） |
+| `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | （**设计未定** ✗：本模块未登记期望） |
 | `projmigrate` · `status()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `publication` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `ratelimit` · `status()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
@@ -593,7 +593,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `retention` · `plan()` | object | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
 | `rules` · `status()` | object | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `scheduler` · `list()` | ok | — | dropped=0 truncated=false | （**设计未定** ✗：本模块未登记期望） |
-| `script-bridge` · `plan()` | refusal | （无名）✗ | — | （**设计未定** ✗：本模块未登记期望） |
+| `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | （**设计未定** ✗：本模块未登记期望） |
 | `skills` · `list()` | ok | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | （**设计未定** ✗：本模块未登记期望） |
 | `store` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
@@ -604,5 +604,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `workflow` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 
-=== ZERO-MECHANISM MATRIX: 60 modules, 2 mismatches, 40 unregistered, 15 probe-errors ===
+=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 42 unregistered, 15 probe-errors ===
 <!-- END GENERATED: zero-mechanism-matrix -->
