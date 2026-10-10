@@ -565,9 +565,6 @@
 | `VMU_FUNDING_RECEIPT_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_FUNDING_SETTLEMENT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_FUNDING_UNAPPROVED_EXPENSE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_FX_DIRECTION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_FX_RATE_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_FX_RATE_STALE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_GATE_UNSATISFIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_GC_REFUSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_GLOSSARY_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 06 | ⛔ |
@@ -627,7 +624,6 @@
 | `VMU_MENTOR_UNAVAILABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_MIGRATE_CONFIRM_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_MIGRATE_UNCOVERED_PRESENT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
-| `VMU_MONEY_MIXED_CURRENCY` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_MW_ORDER_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
 | `VMU_NEGOTIATION_FAILED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_NETWORK_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
@@ -670,7 +666,6 @@
 | `VMU_REVIEW_SELF_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_ROLE_TERM_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_SAE_REPORT_OVERDUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
-| `VMU_SCALE_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_SCHEDULE_OVERDUE_REPORT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_SCHEDULE_RECURRENCE_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_SCHEDULE_TRIGGER_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |

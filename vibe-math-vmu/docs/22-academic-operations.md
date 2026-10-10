@@ -824,17 +824,10 @@
 7. **具名：令牌≠钱（O-1）** —— 静态门：`vmu.budget.*` 与 `vmu.funding.*` 之间**不得**出现隐式换算；任何换算必须在 pack 里显式声明 ✓。
 8. **断言：容量不静默** —— 池耗尽 ⇒ `VMU_CAPACITY_EXHAUSTED` 且观测面计数；**不得**静默排队 ✓。
 9. **场景：设备过期阻断** —— 校准过期的设备产出的数据 ⇒ 引用上带**过期标记**且不可作为"可引用数据"✓。
-10. **断言：金额必为整数（§3.0 规则 M1）** —— 传一个浮点/小数金额 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`；`vmu.money.rejectFloatAmounts=true` 时**不得**有任何"自动四舍五入接受"的路径 ✗✓。
-11. **断言：分摊守恒与可复算（§3.0.5）** —— 造一组"比例除不尽"的分摊 ⇒ `Σ result = total` **必须**成立（差 1 分即 **红** `VMU_ALLOCATION_REMAINDER`）；同一输入跑两次 ⇒ 输出**逐字节相同** ✓（含余数归属对象）。
-12. **红/绿：汇率方向与时效（§3.0.4）** —— 跨币种动作**不带** `FxConversion` ⇒ **红** `VMU_FX_RATE_MISSING`；只给汇率不给方向 ⇒ **红** `VMU_FX_DIRECTION_MISSING`；快照超 `fxMaxAgeDays` ⇒ **红** `VMU_FX_RATE_STALE`；补齐后 ⇒ **绿**且四元组里 `fx` 字段**非空** ✓。
-13. **具名：审计四元组完备（§3.0.6）** —— 每笔分摊/换算/结算**必须**产出 `{inputs, fx, rounding, result}`；未发生换算/舍入时**必须**显式 `null` ＋说明 ⇒ 缺失即 **红**（"没做"与"漏记"可分）✓。
-14. **场景：混币种与精度不一致** —— 直接相加两种币种 ⇒ **红** `VMU_MONEY_MIXED_CURRENCY`；同币种但 scale 不同 ⇒ **红** `VMU_SCALE_MISMATCH` ✓。
-15. **断言：链式保管断链必须报（N4）** —— 造一个"上一环 `to` ≠ 下一环 `from`"的样本交接 ⇒ **红** `VMU_BIOSAMPLE_CHAIN_GAP`（`chainGapPolicy=block` 时**拒绝后续操作**且计数；`warn` 时**计数并继续**但必须留痕）✓；链完整时同一条操作 ⇒ **绿** ✓。
-16. **断言：样本↔受试者默认不可逆（N4）** —— 请求"由 `sampleId` 反查受试者" ⇒ **红** `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN`（除非 pack 显式改 `mappingIrreversible=false` 并留痕）✓。
-17. **红/绿：未签不得共享（N10）** —— 无协议共享 ⇒ **红** `VMU_AGREEMENT_MISSING`；有协议但 `signatureRef` 为空 ⇒ **红** `VMU_AGREEMENT_UNSIGNED`；`expiresAt` 已过 ⇒ **红** `VMU_AGREEMENT_EXPIRED`；请求超出 `restrictions[]` ⇒ **红** `VMU_AGREEMENT_SCOPE_VIOLATION`；签齐且范围内 ⇒ **绿** ✓（**全部机器可判定** ✓）。
-18. **具名：跨境闸点（N9）** —— 跨境单据在 `crossBorderGate=require-approval` 下缺人类批准 ⇒ **红** `VMU_CROSSBORDER_GATE_REQUIRED`；实体辖区与单据币种不一致 ⇒ **红** `VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓。
-19. **断言：税务只做字段位（N9）** —— 缺 `taxIdRef` 位 ⇒ **红** `VMU_TAX_FIELD_MISSING`；而"税率是否算对"**不在**校验面内（禁止本卷实现税率推导 ✗）⇒ 静态门：本卷代码不得出现税率常量表 ✓。
-20. **场景：销毁保留引用（N4）** —— 销毁样本 ⇒ 样本记录**仍可查**（状态 `destroyed`＋原因＋时间），且与 07 的保留/回收站面**只引用**（删除动作走 07）✓。
+10. **断言：金额必为整数（§3.0 规则 M1）** —— 传浮点/小数/字符串金额 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`（**含现值** ✓）；**零是合法值** ✓。**实现状态：部分 ✓** —— `request()` **已具名拒**（轮 57 ✓）；`expense()`／预算行／`costShareMinor` 仍走强转助手 ⇒ 收尾见 §14 ✓。**该规则无条件生效** ✓（**不引入 `vmu.money.*` 键** ✗ —— 见 §14 裁决）。
+11. **断言：分摊守恒与可复算（§3.0.5）** —— 造一组"比例除不尽"的分摊 ⇒ `Σ result = total` **必须**成立（差 1 分即 **红** `VMU_ALLOCATION_REMAINDER`）；同一输入跑两次 ⇒ 输出**逐字节相同** ✓。**实现状态：已实现 ✓**（`settle()` 返回 `remainderMinor` ＋ 余数计 `counters.remainderMinor` ✓）。
+12. **以下 9 条（原 12–20：汇率方向与时效／审计四元组／混币种与精度／链式保管 N4／样本↔受试者 N4／DUA 未签不得共享 N10／跨境闸点 N9／税务字段位 N9／销毁保留引用 N4）** ⇒ **裁决：不做 ✗**（**理由与改判条件见 §14** ✓）。
+    ⇒ 它们**不再作为本卷的验收项** ✗✓（**规格已删、不进 T1/T2 场景集** ✗）；**机器可判定的那部分若要保留，须先按 §14 恢复为规格并登记键与码** ✓。
 
 ---
 
